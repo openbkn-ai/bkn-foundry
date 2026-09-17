@@ -71,6 +71,37 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 	return response, nil
 }
 
+func (pa *permissionAccess) CheckPermissions(ctx context.Context,
+	request interfaces.PermissionChecksRequest) (interfaces.PermissionChecksResponse, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CheckPermissions")
+	defer span.End()
+
+	var response interfaces.PermissionChecksResponse
+	endpoint, err := pa.endpoint("/api/safe/v1/authz/checks")
+	if err != nil {
+		return response, err
+	}
+	respCode, body, err := pa.httpClient.PostNoUnmarshal(ctx, endpoint, map[string]string{
+		interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON,
+	}, request)
+	if err != nil {
+		return response, fmt.Errorf("call bkn-safe checks: %w", err)
+	}
+	if respCode != http.StatusOK {
+		return response, fmt.Errorf("bkn-safe checks returned status %d", respCode)
+	}
+	if len(body) == 0 {
+		return response, fmt.Errorf("bkn-safe checks returned an empty response")
+	}
+	if err := sonic.Unmarshal(body, &response); err != nil {
+		return response, fmt.Errorf("decode bkn-safe checks response: %w", err)
+	}
+	if response.Results == nil {
+		return response, fmt.Errorf("bkn-safe checks response omitted results")
+	}
+	return response, nil
+}
+
 func (pa *permissionAccess) ResolvePropertyLevels(ctx context.Context,
 	request interfaces.PropertyLevelsRequest) (interfaces.PropertyLevelsResponse, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ResolvePropertyLevels")

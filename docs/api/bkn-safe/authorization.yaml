@@ -59,10 +59,10 @@ paths:
                 $ref: '#/components/schemas/AuthorizationRegistryResponse'
         '500':
           $ref: '#/components/responses/InternalError'
-  /check:
+  /checks:
     post:
-      operationId: checkAuthorization
-      summary: Check one resource operation
+      operationId: checkAuthorizations
+      summary: Check one or more resource operations
       description: |
         `evaluation_scope` defaults to `effective`, which invokes the final
         `operation_decision` used by ordinary business callers. `local` inspects
@@ -85,18 +85,17 @@ paths:
               objectTypeQueryData:
                 value:
                   accessor_id: user-a
-                  resource:
-                    type: object_type
-                    id: supply_chain/purchase_order
-                  operation: query_data
+                  checks:
+                    - resource:
+                        type: object_type
+                        id: supply_chain/purchase_order
+                      operation: query_data
       responses:
         '200':
           description: |
-            Structured decision. `allowed` remains backward compatible and is
-            true exactly when `decision=allow`. Unknown and disabled accounts
-            preserve their existing `{allowed:false}` response and omit the
-            structured fields, so account state is not misreported as a local
-            policy miss or an effective default deny.
+            One ordered decision for every requested check. The top-level
+            `allowed` is true only when every result is allowed. Unknown and
+            disabled accounts return false for every requested check.
           content:
             application/json:
               schema:
@@ -135,31 +134,28 @@ paths:
       operationId: filterAuthorizedResources
       summary: Filter trusted candidates and project their allowed operations
       description: |
-        `visibility_operations` and `candidate_operations` are independent.
         `visibility_match` selects whether every visibility operation (`all`,
         the default) or any visibility operation (`any`) is sufficient.
-        Its `operations` value is the allowed subset of candidate operations.
-        `include_operations=false` performs visibility filtering only and
-        returns every visible resource with an empty `operations` list.
-        Omitted `include_operations` defaults to `true` for compatibility.
-        An empty visibility list returns every requested resource. When
-        operations are included, omitting candidate operations uses each
-        resource type's operation catalog.
+        `include_operations=false` performs pure visibility filtering and
+        omits `operations` from every response resource. With
+        `include_operations=true`, each response resource includes its complete
+        effective operation set from the registered catalog. An empty
+        visibility list returns every requested resource.
 
         `evaluation_scope=local` is available only on the platform-internal
         network face. It accepts only concrete Resource/Catalog references and
         their approved operations, returns every requested resource regardless
         of visibility, and adds one `decisions` entry for every visibility or
-        candidate operation and every direct requirement, including explicit
+        catalog operation and every direct requirement, including explicit
         `deny` and `none`. Each target entry also lists its `requires`. Vega uses
         those entries to perform the parent fallback it owns; it must not treat
         local `allowed` as final. Out-of-bound local shapes return 400 and never
         fall back to effective evaluation.
         Omitting the scope keeps the historical effective response shape.
 
-        The response preserves first-seen candidate order and de-duplicates
+        The response preserves first-seen resource order and de-duplicates
         resources and operations. An unknown or disabled account returns an
-        empty `resources` array. An empty candidate list is valid.
+        empty `resources` array.
       requestBody:
         required: true
         content:
@@ -176,10 +172,10 @@ paths:
                     - type: metric
                       id: supply_chain/on_time_rate
                   visibility_operations: [view_detail]
-                  candidate_operations: [view_detail, query_data, modify, delete, authorize]
+                  include_operations: true
       responses:
         '200':
-          description: Filtered resources in stable candidate order.
+          description: Filtered resources in stable input order.
           content:
             application/json:
               schema:
@@ -582,21 +578,42 @@ components:
             type: string
     CheckRequest:
       type: object
-      required: [accessor_id, resource, operation]
+      required: [accessor_id, checks]
       properties:
         accessor_id: {type: string}
+        checks:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AuthorizationCheck'
+        evaluation_scope:
+          $ref: '#/components/schemas/EvaluationScope'
+    AuthorizationCheck:
+      type: object
+      required: [resource, operation]
+      properties:
         resource:
           $ref: '#/components/schemas/ResourceRef'
         operation: {type: string}
-        evaluation_scope:
-          $ref: '#/components/schemas/EvaluationScope'
     CheckResponse:
       type: object
-      required: [allowed]
+      required: [allowed, evaluation_scope, results]
       properties:
         allowed: {type: boolean}
         evaluation_scope:
           $ref: '#/components/schemas/EvaluationScope'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationCheckResult'
+    AuthorizationCheckResult:
+      type: object
+      required: [resource_type, resource_id, operation, allowed]
+      properties:
+        resource_type: {type: string}
+        resource_id: {type: string}
+        operation: {type: string}
+        allowed: {type: boolean}
         decision:
           $ref: '#/components/schemas/AuthorizationDecision'
         basis:
@@ -604,10 +621,7 @@ components:
         requires:
           type: array
           items: {type: string}
-          description: Direct same-resource prerequisites declared by the operation catalog; omitted when empty.
-        denied_requirement:
-          type: string
-          description: Present when the final decision is denied because this direct required operation was denied.
+        denied_requirement: {type: string}
         requirement_basis:
           $ref: '#/components/schemas/DecisionBasis'
     OperationsRequest:
@@ -645,18 +659,15 @@ components:
           enum: [all, any]
           default: all
           description: Controls whether all or any visibility_operations are required. It affects filtering only, not operation projection.
-        candidate_operations:
-          type: array
-          items: {type: string}
         include_operations:
           type: boolean
-          default: true
-          description: When false, return only resources that satisfy visibility_operations and do not project allowed operations.
+          default: false
+          description: When false, return only resources that satisfy visibility_operations and omit operations. When true, return the complete effective registered operation set for every returned resource.
         evaluation_scope:
           $ref: '#/components/schemas/EvaluationScope'
     FilteredResource:
       type: object
-      required: [resource_type, resource_id, operations]
+      required: [resource_type, resource_id]
       properties:
         resource_type: {type: string}
         resource_id: {type: string}

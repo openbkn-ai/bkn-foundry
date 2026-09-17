@@ -38,6 +38,14 @@ const (
 	VisibilityMatchAny VisibilityMatch = "any"
 )
 
+// ResourceOperationCheck groups the exact operations requested for one
+// resource. Unlike resource filtering, different resources may carry different
+// operation sets without expanding them into a resource-by-operation matrix.
+type ResourceOperationCheck struct {
+	Resource   ResourceRef
+	Operations []string
+}
+
 // FilterResourceOps answers, for a batch of resource instances at once: which
 // of them the accessor may see, and which of the candidate operations it holds
 // on each.
@@ -77,6 +85,58 @@ func (en *Enforcer) FilterResourceOpsScoped(ctx context.Context,
 	return en.filterResourceOps(ctx, accessorID, resources, visibility, candidates, visibilityMatch, scope, true)
 }
 
+// CheckResourceOpsScoped evaluates only the explicitly requested sparse
+// resource-operation pairs in one grant-index pass.
+func (en *Enforcer) CheckResourceOpsScoped(ctx context.Context, accessorID string,
+	checks []ResourceOperationCheck, scope EvaluationScope) ([]FilteredResource, error) {
+	if scope != ScopeEffective && scope != ScopeLocal {
+		return nil, fmt.Errorf("unsupported evaluation scope %q", scope)
+	}
+	order := make([]ResourceRef, 0, len(checks))
+	want := make(map[ResourceRef][]string, len(checks))
+	seenResources := make(map[ResourceRef]struct{}, len(checks))
+	seenOperations := make(map[ResourceRef]map[string]struct{}, len(checks))
+	for _, check := range checks {
+		if _, seen := seenResources[check.Resource]; !seen {
+			seenResources[check.Resource] = struct{}{}
+			order = append(order, check.Resource)
+			seenOperations[check.Resource] = map[string]struct{}{}
+		}
+		for _, operation := range check.Operations {
+			if operation == "" {
+				continue
+			}
+			if _, seen := seenOperations[check.Resource][operation]; seen {
+				continue
+			}
+			seenOperations[check.Resource][operation] = struct{}{}
+			want[check.Resource] = append(want[check.Resource], operation)
+		}
+	}
+	originalWant := cloneResourceOperations(want)
+	decided, requirements, _, err := en.decideResourceOpsScoped(ctx, accessorID, want, scope, true)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]FilteredResource, 0, len(order))
+	for _, resource := range order {
+		item := FilteredResource{Type: resource.Type, ID: resource.ID}
+		for _, operation := range originalWant[resource] {
+			decision := decided[resource][operation]
+			if scope == ScopeLocal {
+				decision.Requirements = append([]string(nil), requirements[resource.Type][operation]...)
+			}
+			item.Decisions = append(item.Decisions, OperationDecision{
+				Operation: operation, Decision: decision.Decision, Basis: decision.Basis,
+				Requirements: decision.Requirements, DeniedRequirement: decision.DeniedRequirement,
+				RequirementBasis: decision.RequirementBasis,
+			})
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
 // filterResourceOps performs the batched Casbin and hierarchy projection. The
 // provenance flag is disabled only while validating the human delegators that
 // back a managed proxy source; those checks must never recurse through proxy
@@ -89,10 +149,6 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string,
 	}
 	if visibilityMatch != VisibilityMatchAll && visibilityMatch != VisibilityMatchAny {
 		return nil, fmt.Errorf("unsupported visibility match %q", visibilityMatch)
-	}
-	idx, err := en.grantIndex(accessorID)
-	if err != nil {
-		return nil, err
 	}
 
 	// One decision pass per distinct resource, over the union of both op sets.
@@ -112,58 +168,11 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string,
 			want[r] = union
 		}
 	}
-	var requirements map[string]map[string][]string
-	if scope == ScopeLocal {
-		requirements, err = en.requirementsFor(ctx, want)
-		if err != nil {
-			return nil, err
-		}
-		want = expandWithRequirements(want, requirements)
-	}
-	var decided map[ResourceRef]map[string]Evaluation
-	if scope == ScopeLocal {
-		decided, err = en.localDecisionsWithIndex(ctx, accessorID, idx, want)
-	} else {
-		decided, err = en.operationDecisionsWithIndex(ctx, accessorID, idx, want, validateProvenance)
-	}
+	decided, requirements, evaluatedWant, err := en.decideResourceOpsScoped(ctx, accessorID, want, scope, validateProvenance)
 	if err != nil {
 		return nil, err
 	}
-
-	// Managed proxies have a second, provenance-aware condition that is not
-	// represented in Casbin: an exact active source must still be valid. Apply
-	// it after the batched raw-policy calculation so list/filter decisions stay
-	// identical to Check. Human and ordinary app accessors keep the optimized
-	// path above without per-decision source lookups.
-	if scope == ScopeLocal && validateProvenance && en.db != nil {
-		managed, err := en.isManagedProxyContext(ctx, accessorID)
-		if err != nil {
-			return nil, err
-		}
-		if managed {
-			current, err := en.currentProxyPermissions(ctx, accessorID)
-			if err != nil {
-				return nil, err
-			}
-			for resource, decisions := range decided {
-				for operation, decision := range decisions {
-					if !decision.Allowed() {
-						continue
-					}
-					if current[proxyPermission{
-						ResourceType: resource.Type,
-						ResourceID:   resource.ID,
-						Operation:    operation,
-					}] {
-						continue
-					}
-					decisions[operation] = Evaluation{
-						Scope: scope, Decision: DecisionDeny, Basis: BasisDirect,
-					}
-				}
-			}
-		}
-	}
+	want = evaluatedWant
 
 	out := make([]FilteredResource, 0, len(resources))
 	for _, r := range resources {
@@ -223,6 +232,76 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string,
 		out = append(out, FilteredResource{Type: r.Type, ID: r.ID, Operations: ops, Decisions: structured})
 	}
 	return out, nil
+}
+
+func cloneResourceOperations(source map[ResourceRef][]string) map[ResourceRef][]string {
+	cloned := make(map[ResourceRef][]string, len(source))
+	for resource, operations := range source {
+		cloned[resource] = append([]string(nil), operations...)
+	}
+	return cloned
+}
+
+func (en *Enforcer) decideResourceOpsScoped(ctx context.Context, accessorID string,
+	want map[ResourceRef][]string, scope EvaluationScope, validateProvenance bool,
+) (map[ResourceRef]map[string]Evaluation, map[string]map[string][]string, map[ResourceRef][]string, error) {
+	idx, err := en.grantIndex(accessorID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var requirements map[string]map[string][]string
+	if scope == ScopeLocal {
+		requirements, err = en.requirementsFor(ctx, want)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		want = expandWithRequirements(want, requirements)
+	}
+	var decided map[ResourceRef]map[string]Evaluation
+	if scope == ScopeLocal {
+		decided, err = en.localDecisionsWithIndex(ctx, accessorID, idx, want)
+	} else {
+		decided, err = en.operationDecisionsWithIndex(ctx, accessorID, idx, want, validateProvenance)
+	}
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Managed proxies have a second, provenance-aware condition that is not
+	// represented in Casbin: an exact active source must still be valid. Apply
+	// it after the batched raw-policy calculation so list/filter decisions stay
+	// identical to Check. Human and ordinary app accessors keep the optimized
+	// path above without per-decision source lookups.
+	if scope == ScopeLocal && validateProvenance && en.db != nil {
+		managed, err := en.isManagedProxyContext(ctx, accessorID)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if managed {
+			current, err := en.currentProxyPermissions(ctx, accessorID)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			for resource, decisions := range decided {
+				for operation, decision := range decisions {
+					if !decision.Allowed() {
+						continue
+					}
+					if current[proxyPermission{
+						ResourceType: resource.Type,
+						ResourceID:   resource.ID,
+						Operation:    operation,
+					}] {
+						continue
+					}
+					decisions[operation] = Evaluation{
+						Scope: scope, Decision: DecisionDeny, Basis: BasisDirect,
+					}
+				}
+			}
+		}
+	}
+	return decided, requirements, want, nil
 }
 
 // grantRow is one policy line the accessor can invoke: the object pattern and

@@ -37,7 +37,7 @@ func TestAuthorizationDecisionsRequireActiveAccounts(t *testing.T) {
 		{"missing", false},
 	} {
 		t.Run(tc.accessor, func(t *testing.T) {
-			check := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+			check := doSingleCheck(t, r, map[string]any{
 				"accessor_id": tc.accessor,
 				"resource":    map[string]string{"type": "agent", "id": "a-1"},
 				"operation":   "use",
@@ -64,9 +64,8 @@ func TestAuthorizationDecisionsRequireActiveAccounts(t *testing.T) {
 			}
 
 			filter := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
-				"accessor_id":          tc.accessor,
-				"resources":            []map[string]string{{"type": "agent", "id": "a-1"}},
-				"candidate_operations": []string{"use"},
+				"accessor_id": tc.accessor,
+				"resources":   []map[string]string{{"type": "agent", "id": "a-1"}},
 			})
 			var filterBody struct {
 				Resources []filterEntry `json:"resources"`
@@ -117,7 +116,7 @@ func TestDefaultModelAccessRequiresAnEnabledAccount(t *testing.T) {
 		{"model-disabled", "large_model", "display", false},
 		{"missing-model-user", "small_model", "execute", false},
 	} {
-		w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+		w := doSingleCheck(t, r, map[string]any{
 			"accessor_id": tc.accessor,
 			"resource":    map[string]string{"type": tc.resourceType, "id": "model-1"},
 			"operation":   tc.operation,
@@ -163,7 +162,7 @@ func TestAuthorizationAccountStoreFailureIsUnavailable(t *testing.T) {
 	if err := sqlDB.Close(); err != nil {
 		t.Fatal(err)
 	}
-	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+	w := doSingleCheck(t, r, map[string]any{
 		"accessor_id": "u-1",
 		"resource":    map[string]string{"type": "agent", "id": "a-1"},
 		"operation":   "use",

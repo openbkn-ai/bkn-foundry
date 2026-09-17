@@ -21,15 +21,17 @@ import (
 func fakeAuthz(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/safe/v1/authz/check", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/safe/v1/authz/checks", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			AccessorID      string `json:"accessor_id"`
 			EvaluationScope string `json:"evaluation_scope"`
-			Resource        struct {
-				Type string `json:"type"`
-				ID   string `json:"id"`
-			} `json:"resource"`
-			Operation string `json:"operation"`
+			Checks          []struct {
+				Resource struct {
+					Type string `json:"type"`
+					ID   string `json:"id"`
+				} `json:"resource"`
+				Operation string `json:"operation"`
+			} `json:"checks"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -37,9 +39,8 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 		}
 		allowed := req.AccessorID == "admin" &&
 			req.EvaluationScope == "effective" &&
-			req.Resource.Type == "skill" &&
-			req.Resource.ID == interfaces.ResourceIDAll &&
-			req.Operation == "view"
+			len(req.Checks) == 1 && req.Checks[0].Resource.Type == "skill" &&
+			req.Checks[0].Resource.ID == interfaces.ResourceIDAll && req.Checks[0].Operation == "view"
 		_ = json.NewEncoder(w).Encode(map[string]bool{"allowed": allowed})
 	})
 	mux.HandleFunc("/api/safe/v1/authz/resources", func(w http.ResponseWriter, r *http.Request) {
@@ -67,17 +68,16 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 				ID   string `json:"id"`
 			} `json:"resources"`
 			VisibilityOperations []string `json:"visibility_operations"`
-			CandidateOperations  []string `json:"candidate_operations"`
+			IncludeOperations    bool     `json:"include_operations"`
 			EvaluationScope      string   `json:"evaluation_scope"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		wantCandidates := []string{"view", "modify", "publish", "unpublish", "delete", "authorize"}
 		if req.AccessorID != "u1" || len(req.Resources) != 2 || req.Resources[0].Type != "skill" || req.Resources[0].ID != "s1" ||
 			len(req.VisibilityOperations) != 1 || req.VisibilityOperations[0] != "view" ||
-			!reflect.DeepEqual(req.CandidateOperations, wantCandidates) ||
+			!req.IncludeOperations ||
 			req.EvaluationScope != "effective" {
 			http.Error(w, "unexpected resource filter request", http.StatusBadRequest)
 			return
@@ -90,25 +90,18 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
-func TestSafeAuthorizationResourceFilterProjectsCandidateOperations(t *testing.T) {
+func TestSafeAuthorizationResourceFilterProjectsCompleteOperations(t *testing.T) {
 	srv := fakeAuthz(t)
 	defer srv.Close()
 
 	resources, err := newSafeAuthorization(srv.URL, testLogger{}).ResourceFilter(context.Background(), &interfaces.AuthResourceFilterRequest{
-		Accessor: &interfaces.AuthAccessor{ID: "u1"},
+		Accessor:          &interfaces.AuthAccessor{ID: "u1"},
+		IncludeOperations: true,
 		Resources: []*interfaces.AuthResource{
 			{ID: "s1", Type: "skill"},
 			{ID: "s2", Type: "skill"},
 		},
 		Operations: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-		CandidateOperations: []interfaces.AuthOperationType{
-			interfaces.AuthOperationTypeView,
-			interfaces.AuthOperationTypeModify,
-			interfaces.AuthOperationTypePublish,
-			interfaces.AuthOperationTypeUnpublish,
-			interfaces.AuthOperationTypeDelete,
-			interfaces.AuthOperationTypeAuthorize,
-		},
 	})
 	if err != nil {
 		t.Fatalf("ResourceFilter: %v", err)
@@ -223,6 +216,65 @@ func TestSafeAuthorizationUsesEffectiveLocale(t *testing.T) {
 	})
 	if err != nil || !result.Result {
 		t.Fatalf("OperationCheck() = %#v, %v", result, err)
+	}
+}
+
+func TestSafeAuthorizationBatchesMultipleOperationChecks(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		var body struct {
+			Checks []struct {
+				Operation string `json:"operation"`
+			} `json:"checks"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Checks) != 2 || body.Checks[0].Operation != "view" || body.Checks[1].Operation != "modify" {
+			t.Fatalf("checks = %+v, want one ordered two-item batch", body.Checks)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"allowed": true})
+	}))
+	defer server.Close()
+
+	result, err := newSafeAuthorization(server.URL, testLogger{}).OperationCheck(context.Background(), &interfaces.AuthOperationCheckRequest{
+		Accessor: &interfaces.AuthAccessor{ID: "user-1"},
+		Resource: &interfaces.AuthResource{Type: "skill", ID: "skill-1"},
+		Operation: []interfaces.AuthOperationType{
+			interfaces.AuthOperationTypeView,
+			interfaces.AuthOperationTypeModify,
+		},
+	})
+	if err != nil || !result.Result || requests != 1 {
+		t.Fatalf("OperationCheck() = %#v, %v, requests=%d", result, err, requests)
+	}
+}
+
+func TestSafeAuthorizationResourceFilterCanSkipOperationProjection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			IncludeOperations bool `json:"include_operations"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.IncludeOperations {
+			t.Fatal("pure resource filtering must not request operation projection")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"resources": []map[string]any{
+			{"resource_id": "s1", "resource_type": "skill"},
+		}})
+	}))
+	defer server.Close()
+
+	resources, err := newSafeAuthorization(server.URL, testLogger{}).ResourceFilter(context.Background(), &interfaces.AuthResourceFilterRequest{
+		Accessor:   &interfaces.AuthAccessor{ID: "user-1"},
+		Resources:  []*interfaces.AuthResource{{ID: "s1", Type: "skill"}},
+		Operations: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+	})
+	if err != nil || len(resources) != 1 || len(resources[0].Operations) != 0 {
+		t.Fatalf("ResourceFilter() = %+v, %v", resources, err)
 	}
 }
 

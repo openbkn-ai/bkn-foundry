@@ -217,11 +217,11 @@ func (s *authServiceImpl) ResourceFilterIDs(
 	operations ...interfaces.AuthOperationType,
 ) ([]string, error) {
 	req := &interfaces.AuthResourceFilterRequest{
-		Accessor:            accessor,
-		Resources:           []*interfaces.AuthResource{},
-		Operations:          operations,
-		CandidateOperations: operations,
-		Method:              interfaces.AuthMethodGet,
+		Accessor:          accessor,
+		Resources:         []*interfaces.AuthResource{},
+		Operations:        operations,
+		IncludeOperations: false,
+		Method:            interfaces.AuthMethodGet,
 	}
 
 	for _, resourceID := range resourceIDS {
@@ -242,16 +242,14 @@ func (s *authServiceImpl) ResourceFilterIDs(
 	return resourceIDs, nil
 }
 
-// ResourceFilterOperations returns the candidate operations held on each resource that is
-// visible to the accessor. The caller supplies explicit candidates so list rendering cannot
-// accidentally infer instance permissions from a type-wide grant.
+// ResourceFilterOperations returns the complete effective operation set held on
+// each resource that is visible to the accessor.
 func (s *authServiceImpl) ResourceFilterOperations(
 	ctx context.Context,
 	accessor *interfaces.AuthAccessor,
 	resourceIDs []string,
 	resourceType interfaces.AuthResourceType,
 	visibilityOperations []interfaces.AuthOperationType,
-	candidateOperations []interfaces.AuthOperationType,
 ) (map[string][]interfaces.AuthOperationType, error) {
 	result := make(map[string][]interfaces.AuthOperationType, len(resourceIDs))
 	if len(resourceIDs) == 0 {
@@ -262,11 +260,11 @@ func (s *authServiceImpl) ResourceFilterOperations(
 		resources = append(resources, &interfaces.AuthResource{ID: resourceID, Type: string(resourceType)})
 	}
 	response, err := s.authorization.ResourceFilter(ctx, &interfaces.AuthResourceFilterRequest{
-		Accessor:            accessor,
-		Resources:           resources,
-		Operations:          visibilityOperations,
-		CandidateOperations: candidateOperations,
-		Method:              interfaces.AuthMethodGet,
+		Accessor:          accessor,
+		Resources:         resources,
+		Operations:        visibilityOperations,
+		IncludeOperations: true,
+		Method:            interfaces.AuthMethodGet,
 	})
 	if err != nil {
 		return nil, err

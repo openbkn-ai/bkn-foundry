@@ -7,7 +7,7 @@
 //
 // For each request {accessor, type, id, operation} it calls:
 //   - ISF:      POST {isf}/api/authorization/v1/operation-check  -> {result}
-//   - bkn-safe: POST {safe}/api/safe/v1/authz/check              -> {allowed}
+//   - bkn-safe: POST {safe}/api/safe/v1/authz/checks             -> {allowed}
 //
 // and reports MATCH / DIFF per request plus a summary. Use it to (a) batch-
 // validate before flipping a service, and (b) understand the intentional deltas
@@ -113,12 +113,14 @@ func callISF(c *http.Client, base, token string, r request) (bool, bool) {
 	return out.Result, true
 }
 
-// callSafe posts to bkn-safe check; returns (allowed, ok).
+// callSafe posts one item to bkn-safe checks; returns (allowed, ok).
 func callSafe(c *http.Client, base, token string, r request) (bool, bool) {
 	body := map[string]any{
 		"accessor_id": r.Accessor,
-		"resource":    map[string]string{"type": r.Type, "id": r.ID},
-		"operation":   r.Operation,
+		"checks": []map[string]any{{
+			"resource":  map[string]string{"type": r.Type, "id": r.ID},
+			"operation": r.Operation,
+		}},
 	}
 	hdr := map[string]string{}
 	if token != "" {
@@ -127,7 +129,7 @@ func callSafe(c *http.Client, base, token string, r request) (bool, bool) {
 	var out struct {
 		Allowed bool `json:"allowed"`
 	}
-	if !postJSON(c, base+"/api/safe/v1/authz/check", body, hdr, &out) {
+	if !postJSON(c, base+"/api/safe/v1/authz/checks", body, hdr, &out) {
 		return false, false
 	}
 	return out.Allowed, true

@@ -23,7 +23,7 @@ import (
 // to the real bkn-safe adapter against a stub bkn-safe, and asserts the whole
 // chain the knowledge-network detail responses depend on:
 //
-//   - no locally maintained candidate set is sent, so bkn-safe uses its catalog;
+//   - no locally maintained operation set is sent, so bkn-safe uses its catalog;
 //   - operation projection is explicitly enabled;
 //   - view_detail, modify and delete come back together for an authorized
 //     resource, which is what Studio reads to decide whether to show the
@@ -68,8 +68,6 @@ func Test_PermissionServiceImpl_FilterResources_FullOperationSet(t *testing.T) {
 		So(paths, ShouldResemble, []string{"/api/safe/v1/authz/resource-filter"})
 		So(len(requests), ShouldEqual, 1)
 
-		candidates, _ := requests[0]["candidate_operations"].([]any)
-		So(len(candidates), ShouldEqual, 0)
 		So(requests[0]["include_operations"], ShouldEqual, true)
 		visibility, _ := requests[0]["visibility_operations"].([]any)
 		So(len(visibility), ShouldEqual, 1)

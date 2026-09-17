@@ -40,7 +40,7 @@ func TestPermissionAccessFilterResources(t *testing.T) {
 			ID:   "kn-1/ot-1",
 		}},
 		VisibilityOperations: []string{interfaces.PermissionOperationQueryData},
-		CandidateOperations:  []string{interfaces.PermissionOperationQueryData},
+		IncludeOperations:    false,
 	}
 	response, err := access.FilterResources(context.Background(), request)
 	if err != nil {

@@ -30,14 +30,23 @@ func newSafeClient(baseURL string) *safeClient {
 	}
 }
 
-func (c *safeClient) checkOne(ctx context.Context, accessorID, rtype, rid, op string) (bool, error) {
+func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
+	if len(ops) == 0 {
+		return true, nil
+	}
+	checks := make([]map[string]any, 0, len(ops))
+	for _, op := range ops {
+		checks = append(checks, map[string]any{
+			"resource":  map[string]string{"type": rtype, "id": rid},
+			"operation": op,
+		})
+	}
 	var out struct {
 		Allowed *bool `json:"allowed"`
 	}
-	err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+	err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/checks", map[string]any{
 		"accessor_id": accessorID,
-		"resource":    map[string]string{"type": rtype, "id": rid},
-		"operation":   op,
+		"checks":      checks,
 	}, &out)
 	if err != nil {
 		return false, err
@@ -55,11 +64,12 @@ type safeResource struct {
 }
 
 // filterResources runs one batched decision for a whole page: visibility decides
-// which resources come back, candidates decide which operations each carries.
+// which resources come back. When requested, bkn-safe returns complete
+// effective operations for each returned resource.
 // One round trip regardless of resource or operation count — the per-resource,
 // per-operation loop it replaces made list pages scale as N x M (#357).
 func (c *safeClient) filterResources(ctx context.Context, accessorID string,
-	resources []safeResource, visibility, candidates []string, includeOperations bool) (map[string][]string, error) {
+	resources []safeResource, visibility []string, includeOperations bool) (map[string][]string, error) {
 
 	out := map[string][]string{}
 	if len(resources) == 0 {
@@ -75,7 +85,6 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 		"accessor_id":           accessorID,
 		"resources":             resources,
 		"visibility_operations": visibility,
-		"candidate_operations":  candidates,
 		"include_operations":    includeOperations,
 	}, &resp); err != nil {
 		return nil, err
@@ -109,19 +118,6 @@ func (c *safeClient) deleteResourceParents(ctx context.Context, resourceType str
 		"resource_type": resourceType,
 		"resource_ids":  resourceIDs,
 	}, nil)
-}
-
-func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
-	for _, op := range ops {
-		ok, err := c.checkOne(ctx, accessorID, rtype, rid, op)
-		if err != nil {
-			return false, err
-		}
-		if !ok {
-			return false, nil
-		}
-	}
-	return true, nil
 }
 
 func (c *safeClient) do(ctx context.Context, method, path string, body, out any) error {
@@ -183,8 +179,7 @@ func (s *safePermissionAccess) filterBatch(ctx context.Context,
 	for _, r := range filter.Resources {
 		resources = append(resources, safeResource{Type: r.Type, ID: r.ID})
 	}
-	ops, err := s.safe.filterResources(ctx, filter.Accessor.ID, resources, visibility,
-		filter.CandidateOperations, includeOperations)
+	ops, err := s.safe.filterResources(ctx, filter.Accessor.ID, resources, visibility, includeOperations)
 	if err != nil {
 		return nil, err
 	}

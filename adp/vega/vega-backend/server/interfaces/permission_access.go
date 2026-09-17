@@ -123,9 +123,6 @@ type PermissionResourcesFilter struct {
 	Accessor   PermissionAccessor   `json:"accessor,omitempty"`
 	Resources  []PermissionResource `json:"resources,omitempty"`
 	Operations []string             `json:"operation,omitempty"`
-	// CandidateOperations optionally narrows the reported operations for trusted
-	// callers. bkn-safe derives the complete type-specific set when this is empty.
-	CandidateOperations []string `json:"candidate_operations,omitempty"`
 	// VisibilityMatch selects how Operations determine visibility.
 	VisibilityMatch string `json:"visibility_match,omitempty"`
 	// AllowOperation selects the independent operation-projection axis. False

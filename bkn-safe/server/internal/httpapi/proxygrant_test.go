@@ -219,14 +219,14 @@ func TestManagedProxyAuthzCheckFollowsKNBindingDelegatorPermission(t *testing.T)
 		"resource":    map[string]any{"type": "resource", "id": "r-runtime"},
 		"operation":   "query_data",
 	}
-	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", check); w.Code != http.StatusOK || !jsonBool(t, w.Body.Bytes(), "allowed") {
+	if w := doSingleCheck(t, r, check); w.Code != http.StatusOK || !jsonBool(t, w.Body.Bytes(), "allowed") {
 		t.Fatalf("initial check = %d body=%s", w.Code, w.Body.String())
 	}
 
 	if err := enforcer.RevokeObjectPermission("builder-runtime", "resource", "r-runtime", "query_data"); err != nil {
 		t.Fatal(err)
 	}
-	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", check); w.Code != http.StatusOK || jsonBool(t, w.Body.Bytes(), "allowed") {
+	if w := doSingleCheck(t, r, check); w.Code != http.StatusOK || jsonBool(t, w.Body.Bytes(), "allowed") {
 		t.Fatalf("check after delegator revoke = %d body=%s", w.Code, w.Body.String())
 	}
 }

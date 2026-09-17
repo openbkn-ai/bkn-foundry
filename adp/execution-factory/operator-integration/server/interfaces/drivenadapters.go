@@ -330,11 +330,11 @@ type ResourceListRequest struct {
 
 // AuthResourceFilterRequest resource filtering request.
 type AuthResourceFilterRequest struct {
-	Accessor            *AuthAccessor       `json:"accessor"`             // Visitor information.
-	Resources           []*AuthResource     `json:"resources"`            // Resource list.
-	Operations          []AuthOperationType `json:"operation"`            // Operations required for visibility.
-	CandidateOperations []AuthOperationType `json:"candidate_operations"` // Operations to project for every visible resource.
-	Method              string              `json:"method"`               // method.
+	Accessor          *AuthAccessor       `json:"accessor"`           // Visitor information.
+	Resources         []*AuthResource     `json:"resources"`          // Resource list.
+	Operations        []AuthOperationType `json:"operation"`          // Operations required for visibility.
+	IncludeOperations bool                `json:"include_operations"` // Return complete effective operations.
+	Method            string              `json:"method"`             // method.
 }
 
 type AuthOperation struct {

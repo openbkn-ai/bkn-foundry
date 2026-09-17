@@ -203,7 +203,7 @@ func TestResourceParentsDelete(t *testing.T) {
 }
 
 // TestOwnershipPushMakesCheckInherit walks the whole contract end to end: a
-// module pushes the ownership fact over HTTP, and the very next /authz/check on
+// module pushes the ownership fact over HTTP, and the very next /authz/checks on
 // a resource with no policy row of its own is answered by its catalog's grant.
 // Before the push, the same call is refused.
 func TestOwnershipPushMakesCheckInherit(t *testing.T) {
@@ -214,7 +214,7 @@ func TestOwnershipPushMakesCheckInherit(t *testing.T) {
 	_ = e.GrantObjectPermission(user, "catalog", "cat-a", "resource_manage")
 
 	check := func() bool {
-		w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+		w := doSingleCheck(t, r, map[string]any{
 			"accessor_id": user,
 			"resource":    map[string]string{"type": "resource", "id": "res-1"},
 			"operation":   "modify",

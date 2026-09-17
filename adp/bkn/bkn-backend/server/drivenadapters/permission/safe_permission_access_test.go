@@ -26,7 +26,6 @@ type capturedFilter struct {
 		ID   string `json:"id"`
 	} `json:"resources"`
 	VisibilityOperations []string `json:"visibility_operations"`
-	CandidateOperations  []string `json:"candidate_operations"`
 	IncludeOperations    bool     `json:"include_operations"`
 }
 
@@ -70,8 +69,10 @@ func newFilterStub(t *testing.T, reply map[string][]string) (*safePermissionAcce
 }
 
 func TestSafeCheckUsesDefaultEffectiveDecision(t *testing.T) {
+	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/safe/v1/authz/check" {
+		calls++
+		if r.URL.Path != "/api/safe/v1/authz/checks" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
 		var body map[string]json.RawMessage
@@ -79,9 +80,20 @@ func TestSafeCheckUsesDefaultEffectiveDecision(t *testing.T) {
 			t.Fatalf("decode request: %v", err)
 		}
 		if _, exists := body["evaluation_scope"]; exists {
-			t.Fatalf("check request selected a non-default evaluation scope: %#v", body)
+			t.Fatalf("checks request selected a non-default evaluation scope: %#v", body)
 		}
-		_, _ = w.Write([]byte(`{"allowed":true,"decision":"allow","basis":"inherited"}`))
+		var checks []struct {
+			Resource  safeResource `json:"resource"`
+			Operation string       `json:"operation"`
+		}
+		if err := json.Unmarshal(body["checks"], &checks); err != nil {
+			t.Fatalf("decode checks: %v", err)
+		}
+		if len(checks) != 2 || checks[0].Operation != interfaces.OPERATION_TYPE_EXECUTE ||
+			checks[1].Operation != interfaces.OPERATION_TYPE_VIEW_DETAIL {
+			t.Fatalf("checks = %#v, want execute and view_detail", checks)
+		}
+		_, _ = w.Write([]byte(`{"allowed":true,"evaluation_scope":"effective","results":[]}`))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -89,10 +101,13 @@ func TestSafeCheckUsesDefaultEffectiveDecision(t *testing.T) {
 	allowed, err := access.CheckPermission(context.Background(), interfaces.PermissionCheck{
 		Accessor:   interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
 		Resource:   interfaces.PermissionResource{Type: "action_type", ID: "kn-1/action-1"},
-		Operations: []string{interfaces.OPERATION_TYPE_EXECUTE},
+		Operations: []string{interfaces.OPERATION_TYPE_EXECUTE, interfaces.OPERATION_TYPE_VIEW_DETAIL},
 	})
 	if err != nil || !allowed {
 		t.Fatalf("CheckPermission() = %v, %v; want final inherited allow", allowed, err)
+	}
+	if calls != 1 {
+		t.Fatalf("CheckPermission() made %d requests, want one batched request", calls)
 	}
 }
 
@@ -140,17 +155,16 @@ func TestSafeResolvePropertyLevelsRejectsMissingEntries(t *testing.T) {
 	}
 }
 
-func knFilter(ids []string, ops, candidates []string) interfaces.PermissionResourcesFilter {
+func knFilter(ids []string, ops, _ []string) interfaces.PermissionResourcesFilter {
 	resources := make([]interfaces.PermissionResource, 0, len(ids))
 	for _, id := range ids {
 		resources = append(resources, interfaces.PermissionResource{Type: "knowledge_network", ID: id})
 	}
 	return interfaces.PermissionResourcesFilter{
-		Accessor:            interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
-		Resources:           resources,
-		Operations:          ops,
-		CandidateOperations: candidates,
-		AllowOperation:      true,
+		Accessor:       interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
+		Resources:      resources,
+		Operations:     ops,
+		AllowOperation: true,
 	}
 }
 
@@ -259,17 +273,16 @@ func TestSafeResourceParentErrorsPropagate(t *testing.T) {
 }
 
 // TestSafeFilterResourcesIsOneCall pins the two properties the batch endpoint
-// exists for: a page costs one round trip regardless of size, and the candidate
-// operations reach bkn-safe instead of collapsing to the visibility op.
+// exists for: a page costs one round trip regardless of size, and complete
+// effective operations are projected when requested.
 func TestSafeFilterResourcesIsOneCall(t *testing.T) {
-	candidates := []string{"view_detail", "modify", "delete"}
 	access, calls := newFilterStub(t, map[string][]string{
 		"kn-1": {"view_detail", "modify", "delete"},
 		"kn-2": {"view_detail"},
 	})
 
 	got, err := access.FilterResources(context.Background(),
-		knFilter([]string{"kn-1", "kn-2", "kn-3"}, []string{"view_detail"}, candidates))
+		knFilter([]string{"kn-1", "kn-2", "kn-3"}, []string{"view_detail"}, nil))
 	if err != nil {
 		t.Fatalf("filter: %v", err)
 	}
@@ -283,9 +296,6 @@ func TestSafeFilterResourcesIsOneCall(t *testing.T) {
 	}
 	if !reflect.DeepEqual(call.VisibilityOperations, []string{"view_detail"}) {
 		t.Errorf("visibility = %v", call.VisibilityOperations)
-	}
-	if !reflect.DeepEqual(call.CandidateOperations, candidates) {
-		t.Errorf("candidates = %v, want %v", call.CandidateOperations, candidates)
 	}
 	if !call.IncludeOperations {
 		t.Error("include_operations = false, want true")
@@ -303,17 +313,14 @@ func TestSafeFilterResourcesIsOneCall(t *testing.T) {
 	}
 }
 
-// TestSafeFilterResourcesUsesCatalogFallback covers callers that pass no
-// candidate set: bkn-safe derives the complete projection from its catalog.
+// TestSafeFilterResourcesUsesCompleteProjection covers complete registry-backed
+// operation projection.
 func TestSafeFilterResourcesUsesCatalogFallback(t *testing.T) {
 	access, calls := newFilterStub(t, map[string][]string{"kn-1": {"view_detail"}})
 
 	if _, err := access.FilterResources(context.Background(),
 		knFilter([]string{"kn-1"}, []string{"view_detail"}, nil)); err != nil {
 		t.Fatalf("filter: %v", err)
-	}
-	if len((*calls)[0].CandidateOperations) != 0 {
-		t.Errorf("candidates = %v, want empty catalog fallback", (*calls)[0].CandidateOperations)
 	}
 	if !(*calls)[0].IncludeOperations {
 		t.Error("include_operations = false, want true")

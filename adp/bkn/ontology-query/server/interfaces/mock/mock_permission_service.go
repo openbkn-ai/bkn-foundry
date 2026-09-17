@@ -56,6 +56,21 @@ func (mr *MockPermissionAccessMockRecorder) FilterResources(ctx, request any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterResources", reflect.TypeOf((*MockPermissionAccess)(nil).FilterResources), ctx, request)
 }
 
+// CheckPermissions mocks base method.
+func (m *MockPermissionAccess) CheckPermissions(ctx context.Context, request interfaces.PermissionChecksRequest) (interfaces.PermissionChecksResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckPermissions", ctx, request)
+	ret0, _ := ret[0].(interfaces.PermissionChecksResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckPermissions indicates an expected call of CheckPermissions.
+func (mr *MockPermissionAccessMockRecorder) CheckPermissions(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPermissions", reflect.TypeOf((*MockPermissionAccess)(nil).CheckPermissions), ctx, request)
+}
+
 // ResolvePropertyLevels mocks base method.
 func (m *MockPermissionAccess) ResolvePropertyLevels(ctx context.Context, request interfaces.PropertyLevelsRequest) (interfaces.PropertyLevelsResponse, error) {
 	m.ctrl.T.Helper()
