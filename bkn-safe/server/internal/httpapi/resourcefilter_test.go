@@ -402,10 +402,6 @@ func TestResourceFilterDoesNotRejectLargeBatch(t *testing.T) {
 	for i := 0; i < 501; i++ {
 		resources = append(resources, map[string]string{"type": "resource", "id": strconv.Itoa(i + 1)})
 	}
-	operations := make([]string, 0, 9)
-	for i := 0; i < 9; i++ {
-		operations = append(operations, "op-"+strconv.Itoa(i+1))
-	}
 	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
 		"accessor_id": user,
 		"resources":   resources,

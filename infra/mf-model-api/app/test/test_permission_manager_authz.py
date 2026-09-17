@@ -50,10 +50,13 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
             "user-1", 42, "execute", "small_model", "user")
 
         self.assertFalse(allowed)
+        self.assertEqual(session.calls[0]["url"], "http://bkn-safe/api/safe/v1/authz/checks")
         self.assertEqual(session.calls[0]["json"], {
             "accessor_id": "user-1",
-            "resource": {"type": "small_model", "id": "42"},
-            "operation": "execute",
+            "checks": [{
+                "resource": {"type": "small_model", "id": "42"},
+                "operation": "execute",
+            }],
             "evaluation_scope": "effective",
         })
 
