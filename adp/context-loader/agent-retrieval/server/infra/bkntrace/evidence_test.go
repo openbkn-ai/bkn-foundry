@@ -142,13 +142,24 @@ func TestBuildSchemaSnapshotEventsDistinguishesCompleteEmptyFromUnknown(t *testi
 		t.Fatalf("schema events = %d", len(events))
 	}
 	payload := events[0]["payload"].(map[string]any)
-	if payload["schema_kind"] != "network" || payload["complete"] != true || payload["definition_count"] != 1 {
+	if payload["schema_kind"] != "network" || payload["complete"] != true || payload["definition_count"] != 0 {
 		t.Fatalf("complete empty schema lost: %#v", payload)
 	}
 	definition := payload["definition"].(map[string]any)
 	counts := definition["mounted_capabilities"].(map[string]any)
 	if counts["function"] != 0 {
 		t.Fatalf("zero function count lost: %#v", definition)
+	}
+}
+
+func TestBuildSchemaSnapshotEventsCountsMountedNetworkCapabilities(t *testing.T) {
+	events := BuildSchemaSnapshotEvents(testTraceContext(), "network", "kn-capabilities", nil, map[string]any{"mounted_capabilities": map[string]any{"total": 3, "function": 2, "skill": 1}}, true)
+	if len(events) != 1 {
+		t.Fatalf("schema events = %d", len(events))
+	}
+	payload := events[0]["payload"].(map[string]any)
+	if payload["definition_count"] != 3 {
+		t.Fatalf("network definition_count = %#v, want mounted capability total", payload["definition_count"])
 	}
 }
 

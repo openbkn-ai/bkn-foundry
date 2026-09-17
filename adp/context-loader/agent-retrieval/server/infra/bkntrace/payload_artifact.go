@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 )
 
 type payloadArtifactScope struct {
@@ -49,11 +51,13 @@ func (evidencePayloadArtifactWriter) Put(ctx context.Context, mediaType string, 
 		return "", "", errors.New("payload artifact requires interaction identity")
 	}
 	var content any
-	if err := json.Unmarshal(raw, &content); err != nil {
+	if err := common.UnmarshalPreciseJSON(raw, &content); err != nil {
 		return "", "", err
 	}
-	sum := sha256.Sum256(raw)
-	digest := "sha256:" + hex.EncodeToString(sum[:])
+	digest, err := hashArtifactContent(content)
+	if err != nil {
+		return "", "", err
+	}
 	idSeed := strings.Join([]string{scope.InteractionID, scope.OperationID, scope.Direction, digest}, "|")
 	idSum := sha256.Sum256([]byte(idSeed))
 	artifactID := "art_payload_" + hex.EncodeToString(idSum[:16])

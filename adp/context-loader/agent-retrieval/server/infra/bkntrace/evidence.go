@@ -817,7 +817,7 @@ func BuildSchemaSnapshotEvents(ctx context.Context, kind, knID string, ids []str
 	}
 	payload := map[string]any{
 		"network_ref": "kn:" + strings.TrimSpace(knID), "schema_kind": kind,
-		"definition_refs": refs, "definition_count": schemaDefinitionCount(definition), "complete": complete,
+		"definition_refs": refs, "definition_count": schemaDefinitionCount(kind, definition), "complete": complete,
 		"definition": definition, "source_refs": refs,
 	}
 	event := buildEvent(ec, "ontology.schema.snapshot", "context.get_"+kind+"_schema", payload, "", ec.causationEventID)
@@ -825,9 +825,12 @@ func BuildSchemaSnapshotEvents(ctx context.Context, kind, knID string, ids []str
 	return []Event{event}
 }
 
-func schemaDefinitionCount(definition any) int {
+func schemaDefinitionCount(kind string, definition any) int {
 	if definition == nil {
 		return 0
+	}
+	if kind == "network" {
+		return mountedCapabilityTotal(definition)
 	}
 	value := reflect.ValueOf(definition)
 	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
@@ -842,6 +845,22 @@ func schemaDefinitionCount(definition any) int {
 	default:
 		return 1
 	}
+}
+
+func mountedCapabilityTotal(definition any) int {
+	raw, err := json.Marshal(definition)
+	if err != nil {
+		return 0
+	}
+	var snapshot struct {
+		MountedCapabilities *struct {
+			Total int `json:"total"`
+		} `json:"mounted_capabilities"`
+	}
+	if err := json.Unmarshal(raw, &snapshot); err != nil || snapshot.MountedCapabilities == nil || snapshot.MountedCapabilities.Total < 0 {
+		return 0
+	}
+	return snapshot.MountedCapabilities.Total
 }
 
 func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidateCount int, truncated bool, refs []map[string]any) []Event {
