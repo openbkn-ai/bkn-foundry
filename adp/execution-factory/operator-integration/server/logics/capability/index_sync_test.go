@@ -6,6 +6,7 @@ package capability
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -278,7 +279,11 @@ func TestCreateDatasetMarksResourceInternal(t *testing.T) {
 		vega := mocks.NewMockVegaBackendClient(ctrl)
 		vega.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
-				So(req.Internal, ShouldBeTrue)
+				So(req.Builtin, ShouldBeTrue)
+				payload, err := json.Marshal(req)
+				So(err, ShouldBeNil)
+				So(string(payload), ShouldContainSubstring, `"built_in":true`)
+				So(string(payload), ShouldNotContainSubstring, `"internal"`)
 				return &interfaces.VegaResource{ID: req.ID}, nil
 			})
 		sync := &capabilityIndexSync{vegaClient: vega, logger: logger.DefaultLogger()}

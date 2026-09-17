@@ -841,8 +841,8 @@ type VegaCatalogRequest struct {
 	Name        string   `json:"name"`
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
-	// Internal catalogs are visible and operable only by the built-in administrator.
-	Internal bool `json:"internal"`
+	// Built-in catalogs are visible and operable only by the built-in administrator.
+	Builtin bool `json:"built_in"`
 	// Enabled Directory enabled status. If the logical directory is false, the reading and writing of the dataset under it will be blocked.
 	// vega is rejected with Catalog.IsDisabled(409), so the built-in catalog must be enabled.
 	Enabled bool `json:"enabled"`
@@ -860,6 +860,7 @@ type VegaCatalog struct {
 	Description   string   `json:"description"`
 	Type          string   `json:"type"`
 	Enabled       bool     `json:"enabled"`
+	Builtin       bool     `json:"built_in"`
 	ConnectorType string   `json:"connector_type"`
 	UpdateTime    int64    `json:"update_time"`
 }
@@ -879,7 +880,7 @@ type VegaResourceRequest struct {
 	Tags             []string                 `json:"tags"`
 	Description      string                   `json:"description"`
 	Category         string                   `json:"category"`
-	Internal         bool                     `json:"internal"`
+	Builtin          bool                     `json:"built_in"`
 	Status           string                   `json:"status"`
 	SourceIdentifier string                   `json:"source_identifier"`
 	SchemaDefinition []VegaProperty           `json:"schema_definition"`
@@ -893,7 +894,7 @@ type VegaResource struct {
 	Tags             []string                 `json:"tags"`
 	Description      string                   `json:"description"`
 	Category         string                   `json:"category"`
-	Internal         bool                     `json:"internal"`
+	Builtin          bool                     `json:"built_in"`
 	Status           string                   `json:"status"`
 	SourceIdentifier string                   `json:"source_identifier"`
 	SchemaDefinition []VegaProperty           `json:"schema_definition,omitempty"`

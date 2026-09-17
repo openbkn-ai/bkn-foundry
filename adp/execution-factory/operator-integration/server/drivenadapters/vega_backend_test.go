@@ -92,7 +92,7 @@ func TestVegaBackendClient(t *testing.T) {
 				Name:               "bkn_execution_factory_catalog",
 				Tags:               []string{"execution-factory", "索引"},
 				ExpectedUpdateTime: 123,
-				Internal:           true,
+				Builtin:            true,
 				Enabled:            true,
 			}
 			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", headers, req).

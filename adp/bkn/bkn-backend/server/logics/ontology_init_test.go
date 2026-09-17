@@ -37,6 +37,17 @@ func Test_bknCatalogRequest(t *testing.T) {
 		Convey("Uses the BKN catalog id and name\n", func() {
 			So(req.ID, ShouldEqual, interfaces.BKN_CATALOG_ID)
 			So(req.Name, ShouldEqual, interfaces.BKN_CATALOG_NAME)
+			So(req.Builtin, ShouldBeTrue)
+		})
+
+		Convey("Serializes the built-in marker using Vega's contract\n", func() {
+			data, err := json.Marshal(req)
+			So(err, ShouldBeNil)
+
+			var payload map[string]any
+			So(json.Unmarshal(data, &payload), ShouldBeNil)
+			So(payload["built_in"], ShouldBeTrue)
+			So(payload["internal"], ShouldBeNil)
 		})
 	})
 }
@@ -199,7 +210,7 @@ func TestBKNConceptDatasetRequest(t *testing.T) {
 		request := bknConceptDatasetRequest(nil, "text-embedding-v4")
 
 		So(request, ShouldNotEqual, interfaces.BKN_CONCEPT_DATASET)
-		So(request.Internal, ShouldBeTrue)
+		So(request.Builtin, ShouldBeTrue)
 		So(request.IndexConfig.DefaultFulltextAnalyzer, ShouldEqual, "standard")
 		So(request.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
 		So(interfaces.BKN_CONCEPT_DATASET.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "")

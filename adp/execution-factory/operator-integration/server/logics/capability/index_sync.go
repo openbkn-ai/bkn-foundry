@@ -204,7 +204,7 @@ func (s *capabilityIndexSync) createDataset(ctx context.Context, catalogID strin
 		Tags:             []string{"execution-factory", "capability", "index"},
 		Description:      capabilityDatasetDesc,
 		Category:         "dataset",
-		Internal:         true,
+		Builtin:          true,
 		Status:           capabilityDatasetStatus,
 		SourceIdentifier: capabilityDataset,
 		SchemaDefinition: buildCapabilityIndexSchema(embeddingModel.EmbeddingDim, analyzer),
@@ -247,8 +247,8 @@ func (s *capabilityIndexSync) ensureCatalog(ctx context.Context) (string, error)
 			Name:        executionFactoryCatalogID,
 			Tags:        []string{"execution-factory", "index", internalCatalogTag},
 			Description: executionFactoryCatalogDesc,
-			// Internal catalogs are visible and operable only by the built-in administrator.
-			Internal: true,
+			// Built-in catalogs are visible and operable only by the built-in administrator.
+			Builtin: true,
 			// A disabled catalog makes vega reject reads and writes of the datasets under it
 			// with 409.
 			Enabled: true,

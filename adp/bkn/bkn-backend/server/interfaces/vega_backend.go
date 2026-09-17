@@ -47,8 +47,8 @@ type CatalogRequest struct {
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
 	Enabled     bool     `json:"enabled"`
-	// Internal catalogs are visible and operable only by the built-in administrator.
-	Internal bool `json:"internal"`
+	// Built-in catalogs are visible and operable only by the built-in administrator.
+	Builtin bool `json:"built_in"`
 }
 
 // Catalog represents a Catalog entity.
@@ -59,6 +59,7 @@ type Catalog struct {
 	Description   string   `json:"description"`
 	Type          string   `json:"type"`
 	Enabled       bool     `json:"enabled"`
+	Builtin       bool     `json:"built_in"`
 	ConnectorType string   `json:"connector_type"`
 }
 
@@ -70,7 +71,7 @@ type VegaResource struct {
 	Tags             []string                 `json:"tags"`
 	Description      string                   `json:"description"`
 	Category         string                   `json:"category"`
-	Internal         bool                     `json:"internal"`
+	Builtin          bool                     `json:"built_in"`
 	SchemaDefinition []*Property              `json:"schema_definition,omitempty"`
 	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
 	// LocalIndexName names the managed index behind the resource. An empty value means there is

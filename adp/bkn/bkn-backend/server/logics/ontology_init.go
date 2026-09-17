@@ -144,8 +144,8 @@ func bknCatalogRequest() *interfaces.CatalogRequest {
 		Description: "BKN的逻辑命名空间",
 		Tags:        []string{"BKN", "概念索引"},
 		Enabled:     true,
-		// Internal catalogs are visible and operable only by the built-in administrator.
-		Internal: true,
+		// Built-in catalogs are visible and operable only by the built-in administrator.
+		Builtin: true,
 	}
 }
 
