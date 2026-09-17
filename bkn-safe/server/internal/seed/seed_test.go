@@ -66,7 +66,7 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	if err := db.First(&networkBuilder, "id = ?", "1572fb82-526f-11f0-bde6-e674ec8dde71").Error; err != nil {
 		t.Fatal(err)
 	}
-	if networkBuilder.Description != "负责数据、知识和执行工厂资产的业务网络构建者。" {
+	if networkBuilder.Description != "负责数据、知识、模型、执行工厂资产的业务网络构建者" {
 		t.Errorf("network_builder description = %q", networkBuilder.Description)
 	}
 
@@ -239,7 +239,8 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"audit views audit logs", audit, "admin-audit", "x", "view", true},
 		{"audit not user edit", audit, "admin-user", "x", "edit", false},
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
-		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
+		{"network-builder creates skill", networkBuilder, "skill", "s1", "create", true},
+		{"network-builder cannot publish arbitrary skill", networkBuilder, "skill", "s1", "publish", false},
 		{"network-builder manages large models", networkBuilder, "large_model", "m1", "modify", true},
 		{"network-builder manages small models", networkBuilder, "small_model", "m1", "delete", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
@@ -772,13 +773,58 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 		"large_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"operator:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"small_model:*":       {"create", "display", "modify", "delete", "execute"},
-		"tool_box:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
-		"function:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
-		"skill:*":             {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
-		"mcp:*":               {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
+		"tool_box:*":          {"create"},
+		"function:*":          {"create"},
+		"skill:*":             {"create"},
+		"mcp:*":               {"create"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("network_builder grants = %#v, want %#v", got, want)
+	}
+}
+
+func TestApplyRemovesFormerNetworkBuilderExecutionFactoryGrants(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		roleID = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+		user   = "network-builder-upgrade"
+	)
+	if err := e.AssignRole(user, roleID); err != nil {
+		t.Fatal(err)
+	}
+	for _, resourceType := range []string{"skill", "mcp", "function", "tool_box"} {
+		if err := e.GrantRolePermission(roleID, resourceType, "*", "publish"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, resourceType := range []string{"skill", "mcp", "function", "tool_box"} {
+		for _, tc := range []struct {
+			operation string
+			want      bool
+		}{
+			{"create", true},
+			{"publish", false},
+		} {
+			got, err := e.Check(user, resourceType, "other-owner-resource", tc.operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("%s/%s after re-seed = %v, want %v", resourceType, tc.operation, got, tc.want)
+			}
+		}
 	}
 }
 
