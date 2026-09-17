@@ -30,7 +30,7 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckModifyPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxModifyPermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}
@@ -44,6 +44,10 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound,
 			fmt.Sprintf("toolbox %s not found", req.BoxID))
+		return
+	}
+	if string(req.MetadataType) != toolBox.MetadataType {
+		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "tool metadata type does not match toolbox")
 		return
 	}
 	// The built-in toolbox does not allow adding tools.

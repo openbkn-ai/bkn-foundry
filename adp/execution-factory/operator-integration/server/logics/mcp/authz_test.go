@@ -72,8 +72,8 @@ func TestParseSSEAuthz(t *testing.T) {
 	})
 }
 
-func TestProjectMCPAuthorizeOperations(t *testing.T) {
-	Convey("MCP list projects authorize with the existing accessor", t, func() {
+func TestProjectMCPOperations(t *testing.T) {
+	Convey("MCP list projects record operations with the existing accessor", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
@@ -82,12 +82,15 @@ func TestProjectMCPAuthorizeOperations(t *testing.T) {
 		authService.EXPECT().ResourceFilterOperations(
 			gomock.Any(), accessor, []string{"mcp-1", "mcp-2"}, interfaces.AuthResourceTypeMCP,
 			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+			[]interfaces.AuthOperationType{
+				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypeModify, interfaces.AuthOperationTypePublish,
+				interfaces.AuthOperationTypeUnpublish, interfaces.AuthOperationTypeDelete, interfaces.AuthOperationTypeAuthorize,
+			},
 		).Return(map[string][]interfaces.AuthOperationType{
 			"mcp-1": {interfaces.AuthOperationTypeAuthorize},
 		}, nil)
 
-		err := projectMCPAuthorizeOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, configs)
+		err := projectMCPOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, configs)
 
 		So(err, ShouldBeNil)
 		So(configs[0].Operations, ShouldResemble, []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize})

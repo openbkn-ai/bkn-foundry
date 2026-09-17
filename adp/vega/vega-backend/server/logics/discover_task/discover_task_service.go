@@ -99,11 +99,17 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	}
 
 	// 探查任务是对目录的写操作（#269）。
-	if err := dts.cs.CheckTaskPermission(ctx, req.CatalogID,
-		interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	allowed, _, err := dts.cs.CheckCatalogPermission(ctx, req.CatalogID,
+		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+	if err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", err
 	}
+	if !allowed {
+		span.SetStatus(codes.Error, "Permission denied")
+		return "", rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	}
+
 	if req.ResourceID != "" {
 		activeTasks, err := dts.dta.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
@@ -181,12 +187,19 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 		span.SetStatus(codes.Error, "Discover task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
 	}
+
 	// 一个探查任务是通过它所属的目录被看见的（#269）。
-	if err := dts.cs.CheckTaskPermission(ctx, task.CatalogID,
-		interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	allowed, _, err := dts.cs.CheckCatalogPermission(ctx, task.CatalogID,
+		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+	if err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
 	}
+	if !allowed {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	}
+
 	if err := dts.populateDiscoverTaskReferences(ctx, []*interfaces.DiscoverTask{task}); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task references: %v", err)
@@ -218,28 +231,28 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	// 让 total 计入看不到的行,还会出现中间空页而后面仍有可见行——按空页停会漏
 	// 数据,按 total 翻又会请求大量全被滤掉的页(#269 / #472)。
 	if params.CatalogID != "" {
-		if err := dts.cs.CheckTaskPermission(ctx, params.CatalogID,
-			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
-			if !interfaces.IsPermissionRefusal(err) {
-				span.SetStatus(codes.Error, "Check catalog permission failed")
-				return nil, 0, err
-			}
+		allowed, _, err := dts.cs.CheckCatalogPermission(ctx, params.CatalogID,
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+		if err != nil {
+			span.SetStatus(codes.Error, "Check catalog permission failed")
+			return nil, 0, err
+		}
+		if !allowed {
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.DiscoverTaskSummary{}, 0, nil
 		}
 	} else {
-		visible, unrestricted, excluded, err := dts.cs.AuthorizedCatalogsForTasks(ctx,
-			interfaces.OPERATION_TYPE_TASK_MANAGE)
+		visible, _, err := dts.cs.ListPermittedCatalogIDs(ctx, []string{interfaces.OPERATION_TYPE_TASK_MANAGE},
+			interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{})
 		if err != nil {
 			span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
 			return nil, 0, err
 		}
-		if !unrestricted && len(visible) == 0 {
+		if len(visible) == 0 {
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.DiscoverTaskSummary{}, 0, nil
 		}
 		params.CatalogIDs = visible
-		params.ExcludeCatalogIDs = excluded
 	}
 
 	tasks, total, err := dts.dta.List(ctx, params)
@@ -414,7 +427,6 @@ func (dts *discoverTaskService) InternalMarkCompleted(ctx context.Context, id st
 // Delete atomically deletes discover tasks by IDs after pre-validating existence and status.
 //
 // Behavior:
-//   - Input ids are de-duplicated.
 //   - Loads each id; if any task is in pending/running, returns 409 HasRunningExecution
 //     with {running_ids: [...]}. This check cannot be bypassed.
 //   - If any id is missing, returns 404 NotFound with {missing_ids: [...]} unless
@@ -424,22 +436,12 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.DeleteByIDs")
 	defer span.End()
 
-	// Dedupe ids while preserving order.
-	seen := make(map[string]struct{}, len(ids))
-	uniqueIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		uniqueIDs = append(uniqueIDs, id)
-	}
-
-	toDelete := make([]string, 0, len(uniqueIDs))
+	toDelete := make([]string, 0, len(ids))
 	missingIDs := make([]string, 0)
 	runningIDs := make([]string, 0)
+	checkedCatalogIDs := make(map[string]struct{})
 
-	for _, id := range uniqueIDs {
+	for _, id := range ids {
 		task, err := dts.dta.GetByID(ctx, id)
 		if err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Get discover_task %s failed", id), err)
@@ -450,15 +452,26 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 			missingIDs = append(missingIDs, id)
 			continue
 		}
-		// Checked before anything is deleted, and before the status verdicts are
-		// reported: a batch is one transaction, and telling an unauthorized caller
-		// which ids are running is already a disclosure (#269).
-		if err := dts.cs.CheckTaskPermission(ctx, task.CatalogID,
-			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
-			span.SetStatus(codes.Error, "Permission denied")
-			return err
+
+		// Check each catalog once before anything is deleted and before status
+		// verdicts are reported. A batch is one transaction, and telling an
+		// unauthorized caller which ids are running is already a disclosure (#269).
+		if _, checked := checkedCatalogIDs[task.CatalogID]; !checked {
+			allowed, _, permissionErr := dts.cs.CheckCatalogPermission(ctx, task.CatalogID,
+				[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+			if permissionErr != nil {
+				span.SetStatus(codes.Error, "Permission denied")
+				return permissionErr
+			}
+			if !allowed {
+				span.SetStatus(codes.Error, "Permission denied")
+				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+			}
+			checkedCatalogIDs[task.CatalogID] = struct{}{}
 		}
-		if task.Status == interfaces.DiscoverTaskStatusPending || task.Status == interfaces.DiscoverTaskStatusRunning {
+
+		if task.Status == interfaces.DiscoverTaskStatusPending ||
+			task.Status == interfaces.DiscoverTaskStatusRunning {
 			runningIDs = append(runningIDs, id)
 			continue
 		}

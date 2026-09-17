@@ -147,6 +147,30 @@ func applyEnv(cfg *Config) {
 			cfg.Authz.PolicyRefreshInterval = d
 		}
 	}
+	if v := os.Getenv("SAFE_BKN_BACKEND_BASE_URL"); v != "" {
+		cfg.Upstreams.BKNBackend.BaseURL = v
+	}
+	if v := os.Getenv("SAFE_BKN_BACKEND_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Upstreams.BKNBackend.Timeout = d
+		}
+	}
+	if v := os.Getenv("SAFE_EXECUTION_FACTORY_BASE_URL"); v != "" {
+		cfg.Upstreams.ExecutionFactory.BaseURL = v
+	}
+	if v := os.Getenv("SAFE_EXECUTION_FACTORY_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Upstreams.ExecutionFactory.Timeout = d
+		}
+	}
+	if v := os.Getenv("SAFE_VEGA_BACKEND_BASE_URL"); v != "" {
+		cfg.Upstreams.VegaBackend.BaseURL = v
+	}
+	if v := os.Getenv("SAFE_VEGA_BACKEND_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Upstreams.VegaBackend.Timeout = d
+		}
+	}
 }
 
 func envInt(k string) (int, bool) {

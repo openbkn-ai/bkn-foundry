@@ -236,6 +236,12 @@ func TestValidateSortFields(t *testing.T) {
 		}))
 	})
 
+	t.Run("normalizes direction case", func(t *testing.T) {
+		sortFields := []*interfaces.SortField{{Field: "name", Direction: "dEsC"}}
+		require.NoError(t, validateSortFields(ctx, sortFields))
+		require.Equal(t, interfaces.DESC_DIRECTION, sortFields[0].Direction)
+	})
+
 	t.Run("rejects unknown direction", func(t *testing.T) {
 		require.Error(t, validateSortFields(ctx, []*interfaces.SortField{{Field: "name", Direction: "up"}}))
 	})

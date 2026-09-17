@@ -136,6 +136,10 @@ func Boot(opts Options) (*App, error) {
 		AllowSampleRate: cfg.Audit.DecisionLog.AllowSampleRate,
 		QueueSize:       cfg.Audit.DecisionLog.QueueSize,
 	})
+	authorizationResources, err := httpapi.NewAuthorizationResourceCatalog(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
+	if err != nil {
+		return nil, fmt.Errorf("authorization resource catalog: %w", err)
+	}
 	if decisionStore.Enabled() {
 		slog.Info("authz decision log enabled",
 			"allow_sample_rate", cfg.Audit.DecisionLog.AllowSampleRate,
@@ -174,16 +178,17 @@ func Boot(opts Options) (*App, error) {
 		freshAuthorizationStore: freshAuthorizationStore,
 		decisions:               decisionStore,
 		deps: httpapi.Deps{
-			Enforcer:  enforcer,
-			DB:        db,
-			Provider:  provider,
-			Hydra:     hydraAdmin,
-			Directory: dir,
-			Users:     userStore,
-			Audit:     auditStore,
-			AccessLog: accessLogStore,
-			Decisions: decisionStore,
-			License:   licSvc,
+			Enforcer:               enforcer,
+			DB:                     db,
+			Provider:               provider,
+			Hydra:                  hydraAdmin,
+			Directory:              dir,
+			Users:                  userStore,
+			Audit:                  auditStore,
+			AccessLog:              accessLogStore,
+			Decisions:              decisionStore,
+			License:                licSvc,
+			AuthorizationResources: authorizationResources,
 		},
 	}, nil
 }

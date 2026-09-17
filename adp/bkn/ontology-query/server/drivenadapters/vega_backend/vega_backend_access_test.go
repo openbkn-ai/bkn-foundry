@@ -102,9 +102,10 @@ func TestVegaBackendAccessQueryResourceDataUsesLocalClientSpan(t *testing.T) {
 			httpClient: mockHTTPClient,
 			baseURL:    "http://vega",
 		}
-		_, err := access.QueryResourceData(ctx, "resource-1", &interfaces.ResourceDataQueryParams{})
-
+		response, err := access.QueryResourceData(ctx, "resource-1", &interfaces.ResourceDataQueryParams{})
 		convey.So(err, convey.ShouldBeNil)
+		convey.So(response.Entries, convey.ShouldBeEmpty)
+		convey.So(response.Paging, convey.ShouldBeNil)
 		convey.So(outboundTraceparent, convey.ShouldNotBeEmpty)
 		match := regexp.MustCompile(`^00-([0-9a-f]{32})-([0-9a-f]{16})-01$`).FindStringSubmatch(outboundTraceparent)
 		convey.So(match, convey.ShouldHaveLength, 3)
@@ -118,7 +119,7 @@ func TestNormalizeResourceDataQueryParams(t *testing.T) {
 	convey.Convey("normalizeResourceDataQueryParams defaults to single paging", t, func() {
 		input := &interfaces.ResourceDataQueryParams{}
 		got := normalizeResourceDataQueryParams(input)
-		convey.So(got.Paging.Mode, convey.ShouldEqual, "single")
+		convey.So(got.Paging.Mode, convey.ShouldEqual, interfaces.ResourceDataPagingModeSingle)
 		convey.So(input.Paging.Mode, convey.ShouldBeEmpty)
 	})
 
@@ -186,7 +187,7 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 					"nested":{"uint64_max":18446744073709551615}
 				}],
 				"total_count":1,
-				"search_after":[18446744073709551615]
+				"paging":{"next_cursor":"vega-cursor","expires_at_sec":12345}
 			}`), nil)
 
 		access := &vegaBackendAccess{
@@ -218,9 +219,12 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 		nested, ok := response.Entries[0]["nested"].(map[string]any)
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(nested["uint64_max"], convey.ShouldResemble, json.Number("18446744073709551615"))
-		searchAfter, ok := response.SearchAfter[0].(json.Number)
-		convey.So(ok, convey.ShouldBeTrue)
-		convey.So(searchAfter.String(), convey.ShouldEqual, "18446744073709551615")
+		convey.So(response.SearchAfter, convey.ShouldBeEmpty)
+		convey.So(response.Paging, convey.ShouldNotBeNil)
+		convey.So(response.Paging.NextCursor, convey.ShouldNotBeNil)
+		convey.So(*response.Paging.NextCursor, convey.ShouldEqual, "vega-cursor")
+		convey.So(response.Paging.ExpiresAtSec, convey.ShouldNotBeNil)
+		convey.So(*response.Paging.ExpiresAtSec, convey.ShouldEqual, int64(12345))
 
 		wire, err := sonic.Marshal(response)
 		convey.So(err, convey.ShouldBeNil)

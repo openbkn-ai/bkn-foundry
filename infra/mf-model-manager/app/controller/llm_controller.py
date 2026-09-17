@@ -309,7 +309,10 @@ async def edit_model(model_para, userId, language, role=""):
                 model_name_list = [ids["f_model_name"] for ids in llm_model_dao.get_all_model_list()]
                 old_name = info[0]["f_model_name"]
                 re_name = model_para['model_name']
-                quota = model_para["quota"]
+                # quota is optional on edit, as it is on add: an omitted quota keeps
+                # the stored one. Indexing it raised KeyError, reported as HTTP 500
+                # ModelFactory.Mydb.DataBase.ParameterError (bkn-sdk#123).
+                quota = model_para.get("quota", old_quota)
                 config_old = json.loads(info[0]["f_model_config"])
                 config_new = model_para['model_config']
                 if not change:

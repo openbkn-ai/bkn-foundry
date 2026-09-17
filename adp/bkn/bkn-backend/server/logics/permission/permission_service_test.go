@@ -287,7 +287,7 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		Convey("Failed: missing account info\n", func() {
-			result, err := svc.FilterResources(context.Background(), "kn", []string{"kn1"}, []string{"read"}, true, []string{"read"})
+			result, err := svc.FilterResources(context.Background(), "kn", []string{"kn1"}, []string{"read"}, true)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})
@@ -299,9 +299,15 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 					ResourceID: "kn1", Operations: []string{"read"},
 				},
 			}
-			pa.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(paResult, nil)
+			pa.EXPECT().FilterResources(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
+					So(filter.Operations, ShouldResemble, []string{"read"})
+					So(filter.AllowOperation, ShouldBeTrue)
+					So(filter.CandidateOperations, ShouldBeEmpty)
+					return paResult, nil
+				})
 
-			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true, []string{"read"})
+			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true)
 			So(err, ShouldBeNil)
 			So(result["kn1"].ResourceID, ShouldEqual, "kn1")
 		})
@@ -310,7 +316,7 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 			ctx := withAccountInfo(context.Background(), "u1", "user")
 			pa.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(nil, errors.New("filter error"))
 
-			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true, []string{"read"})
+			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})
@@ -321,7 +327,7 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 				"kn2": {ResourceID: "kn2", Operations: []string{"read"}},
 			}, nil)
 
-			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true, []string{"read"})
+			result, err := svc.FilterResources(ctx, "kn", []string{"kn1"}, []string{"read"}, true)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

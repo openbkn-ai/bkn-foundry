@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
+	"ontology-query/common"
 	"ontology-query/common/visitor"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
@@ -319,6 +321,19 @@ func (r *restHandler) GetObjectsPropertiesByEx(c *gin.Context) {
 }
 
 // Object data query by object type.
+// callerRuntimeCredentialFromRequest captures the caller's own credential for a
+// Function-backed logic property. The public route has already introspected it;
+// on the internal route it is whatever the trusted internal caller (Context
+// Loader) forwarded from its own authenticated request, and it only ever decides
+// what the Function can read, never whether it may run.
+func callerRuntimeCredentialFromRequest(c *gin.Context) interfaces.CallerRuntimeCredential {
+	return interfaces.CallerRuntimeCredential{
+		Authorization:     strings.TrimSpace(c.GetHeader("Authorization")),
+		ConversationID:    common.SanitizeBusinessTraceID(c.GetHeader(common.HeaderBKNConversationID)),
+		ParentOperationID: common.SanitizeBusinessTraceID(c.GetHeader(common.HeaderBKNParentOperationID)),
+	}
+}
+
 func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler GetObjectsProperties Start")
 	startTime := time.Now()
@@ -332,6 +347,8 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	}
 	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	// A Function-backed logic property reads BKN as this caller.
+	ctx = interfaces.WithCallerRuntimeCredential(ctx, callerRuntimeCredentialFromRequest(c))
 
 	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))

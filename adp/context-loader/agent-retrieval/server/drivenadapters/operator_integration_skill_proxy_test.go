@@ -20,7 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-func proxyAuthContext() interfaces.AccountAuthContext {
+func skillProxyAccount() interfaces.AccountAuthContext {
 	return interfaces.AccountAuthContext{AccountID: "proxy-1", AccountType: interfaces.AccessorTypeApp}
 }
 
@@ -64,7 +64,7 @@ func TestSkillReadsAsAnAccountUseTheCallerScopedRouteWithThatIdentity(t *testing
 		})
 	httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://asset/SKILL.md", gomock.Any(), gomock.Any()).
 		Return(http.StatusOK, []byte("# SKILL"), nil)
-	content, err := client.GetSkillContentAs(ctx, proxyAuthContext(), "skill-1")
+	content, err := client.GetSkillContentAs(ctx, skillProxyAccount(), "skill-1")
 	if err != nil || string(content.Content) != "# SKILL" || content.Status != "published" {
 		t.Fatalf("GetSkillContentAs() = (%+v, %v)", content, err)
 	}
@@ -79,7 +79,7 @@ func TestSkillReadsAsAnAccountUseTheCallerScopedRouteWithThatIdentity(t *testing
 		})
 	httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://asset/a.md", gomock.Any(), gomock.Any()).
 		Return(http.StatusOK, []byte("body"), nil)
-	file, err := client.ReadSkillFileAs(ctx, proxyAuthContext(),
+	file, err := client.ReadSkillFileAs(ctx, skillProxyAccount(),
 		&interfaces.ReadSkillFileRequest{SkillID: "skill-1", RelPath: "refs/a.md"})
 	if err != nil || string(file.Content) != "body" {
 		t.Fatalf("ReadSkillFileAs() = (%+v, %v)", file, err)
@@ -121,7 +121,7 @@ func TestSkillReadAsAnAccountKeepsTheExecutionFactoryRefusal(t *testing.T) {
 	httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(http.StatusForbidden, nil, errors.New("user has no permission"))
 
-	_, err := client.GetSkillContentAs(ctx, proxyAuthContext(), "skill-1")
+	_, err := client.GetSkillContentAs(ctx, skillProxyAccount(), "skill-1")
 	if status, ok := infraErr.HTTPStatus(err); !ok || status != http.StatusForbidden {
 		t.Fatalf("error = %v, want the 403 kept for the caller's message", err)
 	}

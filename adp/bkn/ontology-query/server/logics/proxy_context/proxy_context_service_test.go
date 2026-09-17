@@ -25,7 +25,15 @@ type proxyAccessStub struct {
 func (s *proxyAccessStub) ResolveKnowledgeNetworkProxy(_ context.Context,
 	binding interfaces.TrustedProxyBinding) (*interfaces.KnowledgeNetworkProxyAccount, error) {
 	s.binding = binding
-	return s.mapping, s.err
+	if s.mapping == nil || s.err != nil {
+		return s.mapping, s.err
+	}
+	mapping := *s.mapping
+	if mapping.ResolvedBinding == nil {
+		resolved := binding
+		mapping.ResolvedBinding = &resolved
+	}
+	return &mapping, nil
 }
 
 func TestResolveBuildsReadyDualPrincipalContext(t *testing.T) {
@@ -56,6 +64,30 @@ func TestResolveAcceptsPublishedLogicPropertyToolBinding(t *testing.T) {
 	got, err := resolver.Resolve(callerContext(), binding)
 	if err != nil || got == nil || got.Binding != binding || access.binding != binding {
 		t.Fatalf("Resolve() = %#v, %v; resolved binding = %#v", got, err, access.binding)
+	}
+}
+
+func TestResolveUsesSnapshotTargetTypeForActionLookup(t *testing.T) {
+	resolved := interfaces.TrustedProxyBinding{
+		ChildType: interfaces.PermissionResourceTypeActionType, ChildID: "at-1",
+		TargetType: interfaces.ProxyTargetTypeFunction, TargetID: "box-1", Operation: interfaces.PermissionOperationExecute,
+	}
+	access := &proxyAccessStub{mapping: &interfaces.KnowledgeNetworkProxyAccount{
+		KNID: "kn-1", ProxyAccountID: "proxy-1", ProxyAccountType: interfaces.ProxyAccountTypeApp,
+		LifecycleStatus: interfaces.ProxyLifecycleActive, Version: 4, SyncStatus: interfaces.ProxySyncReady,
+		PublishedModelVersion: "snapshot-v1", SyncedModelVersion: "snapshot-v1", ResolvedBinding: &resolved,
+	}}
+	resolver := NewProxyContextResolver(access)
+	lookup := resolved
+	lookup.KNID = "kn-1"
+	lookup.TargetType = ""
+
+	context, err := resolver.Resolve(callerContext(), lookup)
+	if err != nil || context == nil || context.Binding.TargetType != interfaces.ProxyTargetTypeFunction {
+		t.Fatalf("Resolve() = %#v, %v; want published function target", context, err)
+	}
+	if access.binding.TargetType != "" {
+		t.Fatalf("lookup target type = %q, want no runtime classification", access.binding.TargetType)
 	}
 }
 

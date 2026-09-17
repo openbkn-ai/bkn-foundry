@@ -1745,7 +1745,7 @@ components:
           description: Field name mapped to the data source
         mask_rule:
           $ref: "#/components/schemas/MaskRule"
-          description: Optional masking rule used when the effective property access level is masked.
+          description: Optional Column Masking rule used when the effective property access level is `masked`. It applies only to query results and never modifies source data.
         condition_operations:
           description: |
             Supported filter operations for this property. They are inferred from the property type, such as
@@ -1758,9 +1758,10 @@ components:
             type: string
     MaskRule:
       description: |
-        Strongly typed masking rule for a data property. String rules keep string output, round keeps JSON number
+        Strongly typed Column Masking rule for a data property. String rules keep string output, round keeps JSON number
         output, and date_granularity keeps the original date/time string representation. This field is optional;
-        logic properties and unsupported data-property types cannot configure a masking rule.
+        logic properties and unsupported data-property types cannot configure a Column Masking rule. Column Masking
+        applies only to query results and never modifies source data.
       oneOf:
         - $ref: "#/components/schemas/FixedMaskRule"
         - $ref: "#/components/schemas/PartialMaskRule"

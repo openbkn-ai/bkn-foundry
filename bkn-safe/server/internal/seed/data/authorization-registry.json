@@ -1,0 +1,1129 @@
+{
+  "_comment": "Authorization resource-and-operation contract. Exact operation ids are the seed source of truth. name is a concise display label; description is optional explanatory text. grantable is optional and defaults to true; false reserves an operation for computed/read-only decisions and forbids persisted allow or deny policies. parent_type + parent_operation are an explicit bkn-safe generic fallback mapping only: an empty parent_operation means no generic inheritance, never same-name inheritance by convention. requires contains same-resource prerequisites that bkn-safe normalizes into allow grants and enforces at runtime. Business services may retain separately documented checks on another resource; do not encode those as parent_operation unless bkn-safe owns the fallback. NOTE: view (execution factory / flow automation) and view_detail (Vega / BKN) are distinct operation ids. Role-to-permission grants are maintained in grants.json.",
+  "resource_types": [
+    {
+      "id": "agent",
+      "name": "数据智能体",
+      "_note": "Standalone authorization root. The operation vocabulary is compatibility-sensitive: use is the execution permission; system, built-in, and cross-owner operations remain explicit and are not part of the Community business bundle.",
+      "operations": [
+        {
+          "id": "use",
+          "name": "使用",
+          "description": "使用数据智能体。"
+        },
+        {
+          "id": "publish",
+          "name": "发布",
+          "description": "发布数据智能体，使其可被其他用户使用。"
+        },
+        {
+          "id": "unpublish",
+          "name": "取消发布",
+          "description": "取消发布数据智能体。"
+        },
+        {
+          "id": "unpublish_other_user_agent",
+          "name": "下架他人",
+          "description": "取消发布其他用户的智能体。"
+        },
+        {
+          "id": "publish_to_be_skill_agent",
+          "name": "发布为技能",
+          "description": "将智能体发布为技能。"
+        },
+        {
+          "id": "publish_to_be_web_sdk_agent",
+          "name": "发布为 Web SDK",
+          "description": "将智能体发布为 Web SDK。"
+        },
+        {
+          "id": "publish_to_be_api_agent",
+          "name": "发布为 API",
+          "description": "将智能体发布为 API。"
+        },
+        {
+          "id": "publish_to_be_data_flow_agent",
+          "name": "发布为数据流",
+          "description": "将智能体发布为数据流。"
+        },
+        {
+          "id": "create_system_agent",
+          "name": "创建系统智能体",
+          "description": "创建系统智能体。"
+        },
+        {
+          "id": "mgnt_built_in_agent",
+          "name": "管理内置智能体",
+          "description": "管理内置智能体。"
+        },
+        {
+          "id": "see_trajectory_analysis",
+          "name": "轨迹分析",
+          "description": "查看智能体运行轨迹分析。"
+        }
+      ]
+    },
+    {
+      "id": "agent_tpl",
+      "name": "数据智能体模板",
+      "_note": "Standalone authorization root. Cross-owner template operations are explicit system/admin permissions and are excluded from the Community business bundle.",
+      "operations": [
+        {
+          "id": "publish",
+          "name": "发布",
+          "description": "发布数据智能体模板，使其可被其他用户使用。"
+        },
+        {
+          "id": "unpublish",
+          "name": "取消发布",
+          "description": "取消发布数据智能体模板。"
+        },
+        {
+          "id": "unpublish_other_user_agent_tpl",
+          "name": "下架他人",
+          "description": "取消发布其他用户的智能体模板。"
+        }
+      ]
+    },
+    {
+      "id": "catalog",
+      "name": "数据目录",
+      "_source": "vega",
+      "_note": "create/modify/delete 只针对目录本身；modify/delete/authorize/task_manage/resource_manage 要求本目录 view_detail；query_data/data_write 与 view_detail 独立。管理目录下的资源用 resource_manage。",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "description": "查看数据目录的配置与概览。当目录下数据资源未显式授予查看权限时，可回退到数据目录的查看权限。"
+        },
+        {
+          "id": "view_summary",
+          "name": "查看摘要",
+          "description": "查看数据目录摘要以便导航。该操作由 bkn-safe 在鉴权读取时计算，不能配置为允许或禁止规则。",
+          "grantable": false
+        },
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "创建数据目录。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "description": "修改数据目录自身配置，并配置目录健康检查计划；不包含目录下的数据资源。需要同时具有查看数据目录权限。",
+          "requires": [
+            "view_detail"
+          ]
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "description": "删除数据目录；需要同时具有查看数据目录权限。",
+          "requires": [
+            "view_detail"
+          ]
+        },
+        {
+          "id": "authorize",
+          "name": "授权",
+          "description": "配置数据目录的访问权限；需要同时具有查看数据目录权限。",
+          "requires": [
+            "view_detail"
+          ]
+        },
+        {
+          "id": "task_manage",
+          "name": "任务管理",
+          "description": "查看、创建、取消和管理数据目录下的构建任务、资源发现任务、语义理解任务及资源发现调度；需要同时具有查看数据目录权限。",
+          "requires": [
+            "view_detail"
+          ]
+        },
+        {
+          "id": "resource_manage",
+          "name": "资源管理",
+          "description": "管理数据目录下的数据资源及其配置。当目录下数据资源未显式授予修改或删除权限时，可回退到数据目录的资源管理权限。需要同时具有查看数据目录权限。",
+          "requires": [
+            "view_detail"
+          ]
+        },
+        {
+          "id": "query_data",
+          "name": "查询",
+          "description": "查询数据目录下资源的数据，支持数据集和物理表。当目录下数据资源未显式授予查询权限时，可回退到数据目录的查询权限。"
+        },
+        {
+          "id": "data_write",
+          "name": "写入",
+          "description": "仅可写入或删除数据集文档，不支持操作 MariaDB/MySQL 等物理表数据。当目录下数据资源未显式授予写入权限时，可回退到数据目录的写入权限。"
+        }
+      ]
+    },
+    {
+      "id": "resource",
+      "name": "数据资源",
+      "_source": "vega",
+      "_note": "数据资源的所有实例级操作均由 bkn-safe 直接判定。modify/delete 通过父子关系继承 catalog 的 resource_manage；Vega 不再翻译或回退权限操作。",
+      "_parent_note": "声明 Resource 操作到 Catalog 操作的映射。实例注册 ResourceParent 后，bkn-safe 按此映射继承父目录授权。",
+      "parent_type": "catalog",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "description": "查看数据资源的配置、结构和内容。未显式授予时，可回退到所属数据目录的查看权限。",
+          "parent_operation": "view_detail"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "description": "修改数据资源配置。未显式授予时，可回退到所属数据目录的资源管理权限。",
+          "parent_operation": "resource_manage"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "description": "删除数据资源。未显式授予时，可回退到所属数据目录的资源管理权限。",
+          "parent_operation": "resource_manage"
+        },
+        {
+          "id": "query_data",
+          "name": "查询",
+          "description": "查询数据资源的数据。未显式授予时，可回退到所属数据目录的查询权限。",
+          "parent_operation": "query_data"
+        },
+        {
+          "id": "data_write",
+          "name": "写入",
+          "description": "仅可写入或删除数据集文档；物理表不支持数据写入。未显式授予时，可回退到所属数据目录的写入权限。",
+          "parent_operation": "data_write"
+        }
+      ]
+    },
+    {
+      "id": "connector_type",
+      "name": "连接器类型",
+      "_source": "vega",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/authorize 都是在同一连接器类型上 requires view_detail；create 与 view_detail 独立。",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "description": "查看连接器类型的详细配置与内容。"
+        },
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建连接器类型。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "修改连接器类型配置。需要同时具有连接器类型的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "删除连接器类型。需要同时具有连接器类型的查看权限。"
+        },
+        {
+          "id": "authorize",
+          "name": "授权",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "配置连接器类型的访问权限。需要同时具有连接器类型的查看权限。"
+        }
+      ]
+    },
+    {
+      "id": "knowledge_network",
+      "name": "知识网络",
+      "_source": "bkn",
+      "_note": "知识网络是 BKN 域的授权根；子实例通过 ResourceParent 按各自 parent_operation 回退。authorize 仅定义在根上。modify/delete/authorize 是同资源上的管理操作，requires view_detail；query_data 与 execute 独立。",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "description": "查看知识网络的详细配置与内容。当知识网络下的概念分组、对象类型、关系类型、动作类型、指标和风险类型未显式授予查看权限时，可回退到知识网络的查看权限。"
+        },
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建知识网络。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "修改知识网络配置。当知识网络下的概念分组、对象类型、关系类型、动作类型、指标和风险类型未显式授予修改或删除权限时，可回退到知识网络的修改权限。需要同时具有知识网络的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "删除知识网络。需要同时具有知识网络的查看权限。"
+        },
+        {
+          "id": "query_data",
+          "name": "查询",
+          "description": "查询知识网络的数据。当知识网络下的对象类型、关系类型和指标未显式授予查询权限时，可回退到知识网络的查询权限。"
+        },
+        {
+          "id": "authorize",
+          "name": "授权",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "配置知识网络的访问权限。需要同时具有知识网络的查看权限。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "description": "执行或调用知识网络。当知识网络下的动作类型未显式授予执行权限时，可回退到知识网络的执行权限。"
+        }
+      ]
+    },
+    {
+      "id": "concept_group",
+      "name": "Concept Group",
+      "_source": "bkn",
+      "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；modify/delete→父级 modify。modify/delete 在概念分组自身上 requires view_detail。",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "parent_operation": "view_detail",
+          "description": "查看Concept Group的详细配置与内容。未显式授予时，可回退到所属知识网络的查看权限。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "修改Concept Group配置。需要同时具有Concept Group的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "删除Concept Group。需要同时具有Concept Group的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        }
+      ]
+    },
+    {
+      "id": "object_type",
+      "name": "Object Type",
+      "_source": "bkn",
+      "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；query_data→父级 query_data；modify/delete→父级 modify。modify/delete 在对象类型自身上 requires view_detail；query_data 独立。",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "parent_operation": "view_detail",
+          "description": "查看Object Type的详细配置与内容。未显式授予时，可回退到所属知识网络的查看权限。"
+        },
+        {
+          "id": "query_data",
+          "name": "查询",
+          "parent_operation": "query_data",
+          "description": "查询Object Type的数据。未显式授予时，可回退到所属知识网络的查询权限。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "修改Object Type配置。需要同时具有Object Type的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "删除Object Type。需要同时具有Object Type的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        }
+      ]
+    },
+    {
+      "id": "relation_type",
+      "name": "Relation Type",
+      "_source": "bkn",
+      "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；query_data→父级 query_data；modify/delete→父级 modify。modify/delete 在关系类型自身上 requires view_detail；query_data 独立。",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "parent_operation": "view_detail",
+          "description": "查看Relation Type的详细配置与内容。未显式授予时，可回退到所属知识网络的查看权限。"
+        },
+        {
+          "id": "query_data",
+          "name": "查询",
+          "parent_operation": "query_data",
+          "description": "查询Relation Type的数据。未显式授予时，可回退到所属知识网络的查询权限。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "修改Relation Type配置。需要同时具有Relation Type的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "删除Relation Type。需要同时具有Relation Type的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        }
+      ]
+    },
+    {
+      "id": "action_type",
+      "name": "Action Type",
+      "_source": "bkn",
+      "_note": "通用回退：view_detail→父级 view_detail；modify/delete→父级 modify；execute→父级 execute。modify/delete 在动作类型自身上 requires view_detail；execute 独立，先检查具体动作类型再回退。",
+      "parent_type": "knowledge_network",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "parent_operation": "view_detail",
+          "description": "查看Action Type的详细配置与内容。未显式授予时，可回退到所属知识网络的查看权限。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "修改Action Type配置。需要同时具有Action Type的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "删除Action Type。需要同时具有Action Type的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "parent_operation": "execute",
+          "description": "执行或调用Action Type。未显式授予时，可回退到所属知识网络的执行权限。"
+        }
+      ]
+    },
+    {
+      "id": "metric",
+      "name": "Metric",
+      "_source": "bkn",
+      "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；query_data→父级 query_data；modify/delete→父级 modify。modify/delete 在指标自身上 requires view_detail；query_data 独立。",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "parent_operation": "view_detail",
+          "description": "查看Metric的详细配置与内容。未显式授予时，可回退到所属知识网络的查看权限。"
+        },
+        {
+          "id": "query_data",
+          "name": "查询",
+          "parent_operation": "query_data",
+          "description": "查询Metric的数据。未显式授予时，可回退到所属知识网络的查询权限。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "修改Metric配置。需要同时具有Metric的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "删除Metric。需要同时具有Metric的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        }
+      ]
+    },
+    {
+      "id": "risk_type",
+      "name": "Risk Type",
+      "_source": "bkn",
+      "parent_type": "knowledge_network",
+      "_authorization_note": "通用回退：view_detail→父级 view_detail；modify/delete→父级 modify。modify/delete 在风险类型自身上 requires view_detail。",
+      "operations": [
+        {
+          "id": "view_detail",
+          "name": "查看",
+          "parent_operation": "view_detail",
+          "description": "查看Risk Type的详细配置与内容。未显式授予时，可回退到所属知识网络的查看权限。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "修改Risk Type配置。需要同时具有Risk Type的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "parent_operation": "modify",
+          "requires": [
+            "view_detail"
+          ],
+          "description": "删除Risk Type。需要同时具有Risk Type的查看权限。未显式授予时，可回退到所属知识网络的修改权限。"
+        }
+      ]
+    },
+    {
+      "id": "function",
+      "name": "函数集",
+      "_source": "execution-factory",
+      "operations": [
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建函数集。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "view"
+          ],
+          "description": "修改函数集配置。需要同时具有函数集的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "view"
+          ],
+          "description": "删除函数集。需要同时具有函数集的查看权限。"
+        },
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看函数集。"
+        },
+        {
+          "id": "publish",
+          "name": "发布",
+          "requires": [
+            "view"
+          ],
+          "description": "发布函数集，使其可被其他用户使用。需要同时具有函数集的查看权限。"
+        },
+        {
+          "id": "unpublish",
+          "name": "取消发布",
+          "requires": [
+            "view"
+          ],
+          "description": "取消发布函数集。需要同时具有函数集的查看权限。"
+        },
+        {
+          "id": "authorize",
+          "name": "授权",
+          "requires": [
+            "view"
+          ],
+          "description": "配置函数集的访问权限。需要同时具有函数集的查看权限。"
+        },
+        {
+          "id": "public_access",
+          "name": "公开访问",
+          "description": "配置函数集的公开访问。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "description": "执行或调用函数集。"
+        }
+      ]
+    },
+    {
+      "id": "tool_box",
+      "name": "API 工具集",
+      "_source": "execution-factory",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/publish/unpublish/authorize requires 同资源的 view；create/view/public_access/execute 独立。",
+      "operations": [
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建API 工具集。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "view"
+          ],
+          "description": "修改API 工具集配置。需要同时具有API 工具集的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "view"
+          ],
+          "description": "删除API 工具集。需要同时具有API 工具集的查看权限。"
+        },
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看API 工具集。"
+        },
+        {
+          "id": "publish",
+          "name": "发布",
+          "requires": [
+            "view"
+          ],
+          "description": "发布API 工具集，使其可被其他用户使用。需要同时具有API 工具集的查看权限。"
+        },
+        {
+          "id": "unpublish",
+          "name": "取消发布",
+          "requires": [
+            "view"
+          ],
+          "description": "取消发布API 工具集。需要同时具有API 工具集的查看权限。"
+        },
+        {
+          "id": "authorize",
+          "name": "授权",
+          "requires": [
+            "view"
+          ],
+          "description": "配置API 工具集的访问权限。需要同时具有API 工具集的查看权限。"
+        },
+        {
+          "id": "public_access",
+          "name": "公开访问",
+          "description": "配置API 工具集的公开访问。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "description": "执行或调用API 工具集。"
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "name": "MCP",
+      "_source": "execution-factory",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/publish/unpublish/authorize requires 同资源的 view；create/view/public_access/execute 独立。",
+      "operations": [
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建MCP。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "view"
+          ],
+          "description": "修改MCP配置。需要同时具有MCP的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "view"
+          ],
+          "description": "删除MCP。需要同时具有MCP的查看权限。"
+        },
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看MCP。"
+        },
+        {
+          "id": "publish",
+          "name": "发布",
+          "requires": [
+            "view"
+          ],
+          "description": "发布MCP，使其可被其他用户使用。需要同时具有MCP的查看权限。"
+        },
+        {
+          "id": "unpublish",
+          "name": "取消发布",
+          "requires": [
+            "view"
+          ],
+          "description": "取消发布MCP。需要同时具有MCP的查看权限。"
+        },
+        {
+          "id": "authorize",
+          "name": "授权",
+          "requires": [
+            "view"
+          ],
+          "description": "配置MCP的访问权限。需要同时具有MCP的查看权限。"
+        },
+        {
+          "id": "public_access",
+          "name": "公开访问",
+          "description": "配置MCP的公开访问。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "description": "执行或调用MCP。"
+        }
+      ]
+    },
+    {
+      "id": "operator",
+      "name": "算子",
+      "_source": "execution-factory + flow-automation (ops 取并集; flow-automation 仅用 execute)",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/publish/unpublish/authorize requires 同资源的 view；create/view/public_access/execute 独立。",
+      "operations": [
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建算子。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "view"
+          ],
+          "description": "修改算子配置。需要同时具有算子的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "view"
+          ],
+          "description": "删除算子。需要同时具有算子的查看权限。"
+        },
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看算子。"
+        },
+        {
+          "id": "publish",
+          "name": "发布",
+          "requires": [
+            "view"
+          ],
+          "description": "发布算子，使其可被其他用户使用。需要同时具有算子的查看权限。"
+        },
+        {
+          "id": "unpublish",
+          "name": "取消发布",
+          "requires": [
+            "view"
+          ],
+          "description": "取消发布算子。需要同时具有算子的查看权限。"
+        },
+        {
+          "id": "authorize",
+          "name": "授权",
+          "requires": [
+            "view"
+          ],
+          "description": "配置算子的访问权限。需要同时具有算子的查看权限。"
+        },
+        {
+          "id": "public_access",
+          "name": "公开访问",
+          "description": "配置算子的公开访问。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "description": "执行或调用算子。"
+        }
+      ]
+    },
+    {
+      "id": "skill",
+      "name": "Skill",
+      "_source": "execution-factory",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete/publish/unpublish/authorize requires 同资源的 view；create/view/public_access/execute 独立。",
+      "operations": [
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建Skill。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "view"
+          ],
+          "description": "修改Skill配置。需要同时具有Skill的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "view"
+          ],
+          "description": "删除Skill。需要同时具有Skill的查看权限。"
+        },
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看Skill。"
+        },
+        {
+          "id": "publish",
+          "name": "发布",
+          "requires": [
+            "view"
+          ],
+          "description": "发布Skill，使其可被其他用户使用。需要同时具有Skill的查看权限。"
+        },
+        {
+          "id": "unpublish",
+          "name": "取消发布",
+          "requires": [
+            "view"
+          ],
+          "description": "取消发布Skill。需要同时具有Skill的查看权限。"
+        },
+        {
+          "id": "authorize",
+          "name": "授权",
+          "requires": [
+            "view"
+          ],
+          "description": "配置Skill的访问权限。需要同时具有Skill的查看权限。"
+        },
+        {
+          "id": "public_access",
+          "name": "公开访问",
+          "description": "配置Skill的公开访问。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "description": "执行或调用Skill。"
+        }
+      ]
+    },
+    {
+      "id": "small_model",
+      "name": "小模型",
+      "_source": "mf-model-manager + mf-model-api",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete requires 同资源的 display；create/display/execute 独立。",
+      "operations": [
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建小模型。"
+        },
+        {
+          "id": "display",
+          "name": "查看",
+          "description": "查看小模型的配置与状态。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "display"
+          ],
+          "description": "修改小模型配置。需要同时具有小模型的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "display"
+          ],
+          "description": "删除小模型。需要同时具有小模型的查看权限。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "description": "执行或调用小模型。"
+        }
+      ]
+    },
+    {
+      "id": "large_model",
+      "name": "大模型",
+      "_source": "mf-model-manager + mf-model-api",
+      "_authorization_note": "独立根资源，不做父级回退。modify/delete requires 同资源的 display；create/display/execute 独立。",
+      "operations": [
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "新建大模型。"
+        },
+        {
+          "id": "display",
+          "name": "查看",
+          "description": "查看大模型的配置与状态。"
+        },
+        {
+          "id": "modify",
+          "name": "修改",
+          "requires": [
+            "display"
+          ],
+          "description": "修改大模型配置。需要同时具有大模型的查看权限。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "requires": [
+            "display"
+          ],
+          "description": "删除大模型。需要同时具有大模型的查看权限。"
+        },
+        {
+          "id": "execute",
+          "name": "执行",
+          "description": "执行或调用大模型。"
+        }
+      ]
+    },
+    {
+      "id": "admin-user",
+      "name": "系统用户管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看系统用户列表。"
+        },
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "创建系统用户。"
+        },
+        {
+          "id": "edit",
+          "name": "编辑",
+          "description": "编辑系统用户信息。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "description": "删除系统用户。"
+        },
+        {
+          "id": "toggle",
+          "name": "启停",
+          "description": "启用或停用账号。"
+        },
+        {
+          "id": "reset-password",
+          "name": "重置密码",
+          "description": "重置用户密码。"
+        }
+      ]
+    },
+    {
+      "id": "admin-dept",
+      "name": "系统部门管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看系统部门列表。"
+        },
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "创建系统部门。"
+        },
+        {
+          "id": "edit",
+          "name": "编辑",
+          "description": "编辑系统部门信息。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "description": "删除系统部门。"
+        },
+        {
+          "id": "members",
+          "name": "成员管理",
+          "description": "管理部门成员。"
+        }
+      ]
+    },
+    {
+      "id": "admin-role",
+      "name": "系统角色管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看系统角色列表。"
+        },
+        {
+          "id": "create",
+          "name": "新建",
+          "description": "创建系统角色。"
+        },
+        {
+          "id": "edit",
+          "name": "编辑",
+          "description": "编辑系统角色信息。"
+        },
+        {
+          "id": "delete",
+          "name": "删除",
+          "description": "删除系统角色。"
+        },
+        {
+          "id": "members",
+          "name": "成员管理",
+          "description": "管理角色成员。"
+        },
+        {
+          "id": "permissions",
+          "name": "权限配置",
+          "description": "配置角色权限。"
+        }
+      ]
+    },
+    {
+      "id": "admin-authz",
+      "name": "系统授权管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看系统授权记录。"
+        },
+        {
+          "id": "grant",
+          "name": "授权",
+          "description": "授予访问权限。"
+        },
+        {
+          "id": "revoke",
+          "name": "撤权",
+          "description": "撤销访问权限。"
+        }
+      ]
+    },
+    {
+      "id": "admin-audit",
+      "name": "系统审计日志",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看系统审计日志。"
+        }
+      ]
+    },
+    {
+      "id": "safe_admin",
+      "name": "bkn-safe 管理 API",
+      "_source": "bkn-safe",
+      "operations": [
+        {
+          "id": "manage",
+          "name": "管理",
+          "description": "管理 bkn-safe 管理 API 配置。"
+        }
+      ]
+    },
+    {
+      "id": "admin-license",
+      "name": "产品授权管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {
+          "id": "view",
+          "name": "查看",
+          "description": "查看产品授权信息。"
+        },
+        {
+          "id": "manage",
+          "name": "管理",
+          "description": "管理产品授权配置。"
+        }
+      ]
+    },
+    {
+      "id": "admin-client",
+      "name": "登录客户端管理",
+      "_source": "bkn-safe",
+      "operations": [
+        {
+          "id": "manage",
+          "name": "管理",
+          "description": "管理登录客户端配置。"
+        }
+      ]
+    },
+    {
+      "id": "admin-apikey",
+      "name": "全局 AppKey 管理",
+      "_source": "bkn-safe",
+      "operations": [
+        {
+          "id": "manage",
+          "name": "管理",
+          "description": "管理全局 AppKey。"
+        }
+      ]
+    }
+  ]
+}

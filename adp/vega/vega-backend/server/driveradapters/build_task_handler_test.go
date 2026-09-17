@@ -133,7 +133,7 @@ func TestParseBuildTaskListParams(t *testing.T) {
 				assert.Equal(t, 0, got.Offset)
 				assert.Equal(t, 20, got.Limit)
 				assert.Equal(t, interfaces.BuildTaskSortCreateTime, got.Sort)
-				assert.Equal(t, interfaces.DESC_DIRECTION, got.Direction)
+				assert.Equal(t, "DESC", got.Direction)
 				assert.Empty(t, got.Statuses)
 			},
 		},
@@ -156,7 +156,7 @@ func TestParseBuildTaskListParams(t *testing.T) {
 			query: "sort=create_time&direction=asc",
 			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
 				assert.Equal(t, interfaces.BuildTaskSortCreateTime, got.Sort)
-				assert.Equal(t, interfaces.ASC_DIRECTION, got.Direction)
+				assert.Equal(t, "ASC", got.Direction)
 			},
 		},
 		{
@@ -253,7 +253,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
 				assert.Equal(t, interfaces.BuildTaskSortCreateTime, params.Sort)
-				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
+				assert.Equal(t, "DESC", params.Direction)
 				return []*interfaces.BuildTaskSummary{}, int64(0), nil
 			})
 
@@ -276,7 +276,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, interfaces.BuildTaskSortCreateTime, params.Sort)
-				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				assert.Equal(t, "ASC", params.Direction)
 				return []*interfaces.BuildTaskSummary{}, int64(0), nil
 			})
 

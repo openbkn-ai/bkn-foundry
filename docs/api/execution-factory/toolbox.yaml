@@ -1258,6 +1258,21 @@ components:
       type: object
       description: 工具箱概要（列表用）。
       properties:
+        operations:
+          type: array
+          items:
+            type: string
+            enum:
+              - view
+              - modify
+              - publish
+              - unpublish
+              - delete
+              - authorize
+          description: |
+            当前请求主体对该工具箱或函数实例拥有的有效操作，仅在公有管理面列表响应中投影。
+            缺少 `view` 的记录不会出现在列表中；可见记录没有任何候选操作时，该字段
+            可能因 `omitempty` 被省略，客户端应按空数组处理。
         box_id:
           type: string
         box_name:

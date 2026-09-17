@@ -301,6 +301,10 @@ func TestAnyShareQueryHelpers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, map[string]interface{}{"field": "created_at", "sort_type": "desc"}, sort)
 
+		sort, err = processSortParams([]*interfaces.SortField{{Field: "created_at", Direction: "DESC"}})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]interface{}{"field": "created_at", "sort_type": "desc"}, sort)
+
 		sort, err = processSortParams([]*interfaces.SortField{{Field: "modified_at"}})
 		require.NoError(t, err)
 		assert.Equal(t, "asc", sort["sort_type"])

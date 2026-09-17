@@ -25,6 +25,44 @@ func (s *mcpServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interfaces
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonImportDataEmpty, "mcp configs is empty")
 		return
 	}
+	// Imported dependencies may be inserted in the same transaction and cannot yet
+	// be read via ToolService. Validate those against the bundle; validate existing
+	// dependencies through the persisted execution factory data.
+	importedBoxes := map[string]*interfaces.ToolBoxImpexItem{}
+	if data.Toolbox != nil {
+		for _, box := range data.Toolbox.Configs {
+			if box != nil {
+				importedBoxes[box.BoxID] = box
+			}
+		}
+	}
+	for _, config := range data.MCP.Configs {
+		if config == nil || config.CreationType != interfaces.MCPCreationTypeToolImported {
+			continue
+		}
+		for _, tool := range config.MCPTools {
+			if tool == nil {
+				return errors.DefaultHTTPError(ctx, http.StatusBadRequest, "MCP imported tool is missing")
+			}
+			if box := importedBoxes[tool.BoxID]; box != nil {
+				if box.MetadataType != interfaces.MetadataTypeAPI {
+					return errors.DefaultHTTPError(ctx, http.StatusBadRequest, "MCP import requires an API toolbox")
+				}
+				found := false
+				for _, item := range box.Tools {
+					if item != nil && item.ToolID == tool.ToolID && item.MetadataType == interfaces.MetadataTypeAPI {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return errors.DefaultHTTPError(ctx, http.StatusBadRequest, "MCP import requires an API tool in its toolbox")
+				}
+			} else if err := s.validateImportedAPITool(ctx, userID, tool.BoxID, tool.ToolID); err != nil {
+				return err
+			}
+		}
+	}
 	// Import pre-check.
 	waitUpdataMCPList, err := s.importPreCheck(ctx, mode, data.MCP.Configs)
 	if err != nil {

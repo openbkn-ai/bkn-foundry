@@ -113,5 +113,8 @@ type PageQuery struct {
 	Sort []*SortParams `json:"sort"`
 	// Cursor is the opaque, authenticated pagination position exposed by object queries.
 	Cursor string `json:"cursor,omitempty"`
+	// ResourceCursor is the opaque Vega continuation state restored from Cursor.
+	// It must never be accepted from or exposed to API callers directly.
+	ResourceCursor string `json:"-"`
 	SearchAfterParams
 }

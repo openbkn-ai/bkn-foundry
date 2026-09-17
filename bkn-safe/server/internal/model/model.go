@@ -73,8 +73,12 @@ type ManagedProxyAccount struct {
 	ManagedResourceID   string `gorm:"size:128;uniqueIndex:uidx_managed_proxy_resource,priority:3"`
 	LifecycleStatus     string `gorm:"size:16;index"`
 	Version             uint64
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	// GrantSyncGeneration fences full grant-set replacement requests from BKN.
+	// A lower generation must never restore sources removed by a newer publish.
+	GrantSyncGeneration  uint64 `gorm:"not null;default:0"`
+	GrantSnapshotVersion string `gorm:"size:80;not null;default:''"`
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 const (
@@ -197,10 +201,14 @@ const (
 // Role — preserves the ISF role UUIDs (seeded from role.json). Source is
 // system|business for built-ins, custom for API-created roles.
 type Role struct {
-	ID          string `gorm:"primaryKey;size:64"`
-	Name        string `gorm:"size:128"`
-	Description string `gorm:"size:1024"`
-	Source      string `gorm:"size:16"` // system | business | custom
+	ID   string `gorm:"primaryKey;size:64"`
+	Name string `gorm:"size:128"`
+	// NameKey is the canonical form of Name (trimmed and case-folded). It is
+	// nullable so adding it to a deployment with legacy duplicate role names
+	// does not make the schema migration fail; all newly written roles set it.
+	NameKey     *string `gorm:"size:128;uniqueIndex:idx_roles_name_key"`
+	Description string  `gorm:"size:1024"`
+	Source      string  `gorm:"size:16"` // system | business | custom
 	CreatedAt   time.Time
 }
 
@@ -254,7 +262,7 @@ type ResourceType struct {
 	// ParentTypeID declares that instances of this type sit UNDER an instance of
 	// another type ("resource" under "catalog"). It is the type-level half of the
 	// hierarchy; the instance-level half is ResourceParent. Empty = no parent,
-	// which is every type except the explicit hierarchies seeded in catalog.json.
+	// which is every type except the explicit hierarchies seeded in authorization-registry.json.
 	ParentTypeID string `gorm:"size:64;index"`
 }
 
@@ -264,6 +272,11 @@ type Operation struct {
 	ID             string `gorm:"primaryKey;size:64"` // e.g. "use"
 	Name           string `gorm:"size:128"`
 	Description    string `gorm:"size:1024"`
+	// Grantable controls whether an operation may be persisted as an allow or
+	// deny policy. The database default keeps every operation from an older
+	// registry grantable. A pointer lets seed persist an explicit false instead
+	// of GORM replacing the bool zero value with the database default.
+	Grantable *bool `gorm:"not null;default:true"`
 	// ParentOperationID is the operation to look for ON THE PARENT when this one
 	// is not granted on the instance itself. It is an explicit MAPPING, never the
 	// same name by convention: "modify" on a data table means "edit that table",
@@ -280,6 +293,12 @@ type Operation struct {
 	// the former "implies" rule represented the same stored edge, but enforced it
 	// only while writing. Seed rewrites the authoritative values on every start.
 	RequiredOperationIDs string `gorm:"column:implied_operation_ids;size:512"`
+}
+
+// IsGrantable preserves the registry's backward-compatible default when an
+// Operation is constructed in memory without the optional field.
+func (o Operation) IsGrantable() bool {
+	return o.Grantable == nil || *o.Grantable
 }
 
 // ResourceParent records that ONE concrete resource instance sits under one
@@ -301,9 +320,10 @@ type ResourceParent struct {
 
 // AuditLog records a user or admin management mutation: who (ActorID, the verified
 // token subject), what (Method + Resource + Action + TargetID + Detail), and the
-// outcome (Status). One row is written for each mutating request on an audited
-// /admin or /me surface; ordinary reads are not audited. Action carries a stable
-// business verb while Method retains the transport fact.
+// outcome (Status). One row is normally written for each mutating request on an
+// audited /admin or /me surface; a batch mutation may write one row per target,
+// correlated by RequestID. Ordinary reads are not audited. Action carries a
+// stable business verb while Method retains the transport fact.
 type AuditLog struct {
 	ID                string `json:"id" gorm:"primaryKey;size:64"`
 	ActorID           string `json:"actor_id" gorm:"size:64;index"` // token subject that performed the action

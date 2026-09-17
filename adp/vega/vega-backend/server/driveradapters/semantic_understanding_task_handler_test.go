@@ -193,7 +193,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, interfaces.SemanticUnderstandingTaskSortCreateTime, params.Sort)
-				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				assert.Equal(t, "ASC", params.Direction)
 				return []*interfaces.SemanticUnderstandingTaskSummary{
 					{
 						ID:         "task-1",
@@ -228,7 +228,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 					interfaces.SemanticUnderstandingTaskStatusRunning,
 				}, params.Statuses)
 				assert.Equal(t, interfaces.SemanticUnderstandingTaskSortCreateTime, params.Sort)
-				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
+				assert.Equal(t, "DESC", params.Direction)
 				return []*interfaces.SemanticUnderstandingTaskSummary{}, int64(0), nil
 			})
 
@@ -319,7 +319,7 @@ func Test_SemanticUnderstandingTaskRestHandler_DeleteTasks(t *testing.T) {
 		engine, suts := setupSemanticUnderstandingTaskHandlerTest(t)
 		suts.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}, true).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, semanticUnderstandingTaskURL+"/task-1,task-2?ignore_missing=true", nil)
+		req := httptest.NewRequest(http.MethodDelete, semanticUnderstandingTaskURL+"/task-1,task-2,task-1?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

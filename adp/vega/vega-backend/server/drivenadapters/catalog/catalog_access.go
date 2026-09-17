@@ -158,6 +158,9 @@ func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, 
 }
 
 func applyCatalogFilters(builder sq.SelectBuilder, params interfaces.CatalogsQueryParams) sq.SelectBuilder {
+	if !params.IncludeInternal {
+		builder = builder.Where(sq.Eq{"f_internal": false})
+	}
 	if params.Name != "" {
 		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
 	}
@@ -502,45 +505,6 @@ func (ca *catalogAccess) ListConnectorTypePermissionRefs(ctx context.Context, pa
 	return refs, nil
 }
 
-// ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
-func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal catalog IDs")
-	defer span.End()
-
-	sqlStr, vals, err := sq.Select("f_id").From(CATALOG_TABLE_NAME).
-		Where(sq.Eq{"f_internal": true}).
-		ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
-	if err != nil {
-		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		logger.Errorf("Iterate internal catalog rows failed: %v", err)
-		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return ids, nil
-}
-
 // List lists Catalog summaries with filters.
 func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalogs")
@@ -597,44 +561,53 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	return catalogs, total, nil
 }
 
-// ListAuthResources lists catalog auth resources with filters.
-func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResources")
+// ListAuthResourceEntries lists catalog authorization entries with filters.
+func (ca *catalogAccess) ListAuthResourceEntries(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResourceEntries")
 	defer span.End()
 
 	builder := sq.Select(
 		"f_id",
 		"f_name",
-	).From(CATALOG_TABLE_NAME).
-		// The internal system directory is authorized by the internal_catalog type and does not enter the list of authorized resources of the catalog type
-		Where(sq.Eq{"f_internal": false})
-
-	if params.ID != "" {
-		builder = builder.Where(sq.Eq{"f_id": params.ID})
+	).From(CATALOG_TABLE_NAME)
+	countBuilder := sq.Select("COUNT(*)").From(CATALOG_TABLE_NAME)
+	if !params.IncludeInternal {
+		builder = builder.Where(sq.Eq{"f_internal": false})
+		countBuilder = countBuilder.Where(sq.Eq{"f_internal": false})
 	}
 
-	if params.Keyword != "" {
-		keyword := "%" + params.Keyword + "%"
+	if params.Name != "" {
+		keyword := "%" + params.Name + "%"
 		builder = builder.Where(sq.Like{"f_name": keyword})
+		countBuilder = countBuilder.Where(sq.Like{"f_name": keyword})
 	}
 
-	// Sorting
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
+	countSQL, countVals, err := countBuilder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build count sql failed")
+		return nil, 0, err
+	}
+	var total int64
+	if err := ca.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&total); err != nil {
+		span.SetStatus(codes.Error, "Count failed")
+		return nil, 0, err
+	}
+	builder = builder.OrderBy(authResourceOrderByClause(params.Sort, params.Direction))
+	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
+		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
+		return nil, 0, err
 	}
 
 	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -648,20 +621,29 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 		)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
+			return nil, 0, err
 		}
 
-		entry.Type = interfaces.AUTH_RESOURCE_TYPE_CATALOG
 		entries = append(entries, entry)
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate catalog authorization resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, err
+		return nil, 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return entries, nil
+	return entries, total, nil
+}
+
+func authResourceOrderByClause(sort, direction string) string {
+	if sort != interfaces.AuthResourceSortName {
+		return "f_update_time DESC"
+	}
+	if direction == interfaces.ASC_DIRECTION {
+		return "f_name ASC, f_id ASC"
+	}
+	return "f_name DESC, f_id DESC"
 }
 
 // Update updates ca Catalog.

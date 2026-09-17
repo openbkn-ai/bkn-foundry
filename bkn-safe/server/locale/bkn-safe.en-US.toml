@@ -27,6 +27,11 @@ Description = "The request conflicts with the current resource state."
 Solution = "Refresh the resource state and try again."
 ErrorLink = ""
 
+[RESOURCE_EXISTED]
+Description = "The role identifier already exists."
+Solution = "Use a different role identifier."
+ErrorLink = ""
+
 [BknSafe.MethodNotAllowed]
 Description = "This request method is not supported."
 Solution = "Use a method supported by this endpoint."

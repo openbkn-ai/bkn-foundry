@@ -15,7 +15,62 @@ import (
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"vega-backend/interfaces"
+	"vega-backend/logics/filter_condition"
 )
+
+func TestDeleteDocumentsByQueryRejectsEmptyFilter(t *testing.T) {
+	connector := &OpenSearchConnector{}
+
+	err := connector.DeleteDocumentsByQuery(context.Background(), "dataset-1", nil, nil)
+
+	require.ErrorContains(t, err, "non-empty filter condition")
+}
+
+func TestIsUnconditionalDeleteQuery(t *testing.T) {
+	assert.True(t, isUnconditionalDeleteQuery(map[string]any{"match_all": map[string]any{}}))
+	assert.True(t, isUnconditionalDeleteQuery(map[string]any{"bool": map[string]any{"must": []map[string]any{}}}))
+	assert.False(t, isUnconditionalDeleteQuery(map[string]any{"term": map[string]any{"kind": "remove"}}))
+}
+
+func TestDeleteDocumentsByQueryUsesTheFilterCondition(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/dataset-1/_delete_by_query", r.URL.Path)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, map[string]any{
+			"query": map[string]any{
+				"term": map[string]any{"kind": "remove"},
+			},
+		}, body)
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"deleted":1}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	schema := []*interfaces.Property{{Name: "kind", Type: interfaces.DataType_String}}
+	condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{
+		Name:      "kind",
+		Operation: filter_condition.OperationEqual2,
+		ValueOptCfg: interfaces.ValueOptCfg{
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     "remove",
+		},
+	}, map[string]*interfaces.Property{"kind": schema[0]})
+	require.NoError(t, err)
+
+	connector := &OpenSearchConnector{client: client}
+	err = connector.DeleteDocumentsByQuery(context.Background(), "dataset-1", &interfaces.ResourceDataQueryParams{
+		ActualFilterCond: condition,
+	}, schema)
+
+	require.NoError(t, err)
+}
 
 func TestCreateDocumentsSplitsBulkRequestsBySerializedSize(t *testing.T) {
 	var requestSizes []int

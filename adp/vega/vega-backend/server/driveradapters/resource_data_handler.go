@@ -91,7 +91,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 		return
 	}
 
-	resource, err := r.rs.GetByID(ctx, resourceID)
+	resource, err := r.resourceForDataOperation(ctx, resourceID, interfaces.OPERATION_TYPE_QUERY_DATA)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, "Get resource failed", httpErr)
@@ -111,25 +111,11 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 }
 
 // queryProxyResourceData reads a resource after the final PEP without falling back to caller authorization.
-func (r *restHandler) queryProxyResourceData(c *gin.Context, ctx context.Context, span trace.Span) {
+func (r *restHandler) queryProxyResourceData(c *gin.Context, ctx context.Context, span trace.Span,
+	resource *interfaces.Resource) {
 	start := time.Now()
 	params, ok := bindResourceDataQuery(c, ctx, span)
 	if !ok {
-		return
-	}
-	resource, err := r.rs.InternalGetByID(ctx, nil, c.Param("id"))
-	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_GetFailed)
-		otellog.LogError(ctx, "Get proxy resource failed", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if resource == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
-		otellog.LogError(ctx, "Proxy resource not found", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
 		return
 	}
 	r.executeResourceDataQuery(c, ctx, span, resource, params, start)
@@ -210,7 +196,7 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 // createResourceData handles POST /resources/:id/data + Override: POST.
 // Create one document; dataset category only.
 func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, span trace.Span) {
-	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
+	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"), interfaces.OPERATION_TYPE_DATA_WRITE)
 	if !ok {
 		return
 	}
@@ -242,7 +228,7 @@ func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, sp
 func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Context, span trace.Span) {
 	start := time.Now()
 
-	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
+	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"), interfaces.OPERATION_TYPE_DATA_WRITE)
 	if !ok {
 		return
 	}
@@ -268,6 +254,13 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 	if err := mapstructure.Decode(params.FilterCondition, &actualCond); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterCondition).
 			WithErrorDetails(fmt.Sprintf("mapstructure decode filters failed: %s", err.Error()))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if actualCond == nil || actualCond.Operation == "" {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterCondition).
+			WithErrorDetails("delete-by-query requires a filter condition with an operation")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -321,7 +314,7 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
+	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"), interfaces.OPERATION_TYPE_QUERY_DATA)
 	if !ok {
 		return
 	}
@@ -398,7 +391,7 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
+	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"), interfaces.OPERATION_TYPE_DATA_WRITE)
 	if !ok {
 		return
 	}
@@ -475,7 +468,7 @@ func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, 
 	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
+	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"), interfaces.OPERATION_TYPE_DATA_WRITE)
 	if !ok {
 		return
 	}
@@ -507,8 +500,9 @@ func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, 
 
 // requireDatasetResource loads resource by id and verifies it exists with category=dataset.
 // On failure replies with the appropriate HTTP error and returns ok=false.
-func (r *restHandler) requireDatasetResource(c *gin.Context, ctx context.Context, span trace.Span, id string) (*interfaces.Resource, bool) {
-	resource, err := r.rs.GetByID(ctx, id)
+func (r *restHandler) requireDatasetResource(c *gin.Context, ctx context.Context, span trace.Span,
+	id, operation string) (*interfaces.Resource, bool) {
+	resource, err := r.resourceForDataOperation(ctx, id, operation)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -529,4 +523,13 @@ func (r *restHandler) requireDatasetResource(c *gin.Context, ctx context.Context
 		return nil, false
 	}
 	return resource, true
+}
+
+// resourceForDataOperation authorizes the data operation independently from
+// resource:view_detail, then loads the resource needed to execute it.
+func (r *restHandler) resourceForDataOperation(ctx context.Context, id, operation string) (*interfaces.Resource, error) {
+	if err := r.rs.CheckResourcePermission(ctx, id, operation); err != nil {
+		return nil, err
+	}
+	return r.rs.InternalGetByID(ctx, nil, id)
 }

@@ -5,11 +5,66 @@
 package knowledge_network
 
 import (
+	"go.uber.org/mock/gomock"
 	"strings"
 	"testing"
 
 	"bkn-backend/interfaces"
+	bmock "bkn-backend/interfaces/mock"
 )
+
+func TestTypedProxyProjectionIncludesFunctionMountAndConceptGroup(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "mounted-fn").Return([]*interfaces.ToolBrief{{
+		ToolID: "mounted-tool", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION,
+	}}, nil)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "group-fn").Return([]*interfaces.ToolBrief{{
+		ToolID: "group-tool", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION,
+	}}, nil)
+	kn := &interfaces.KN{KNID: "kn-1", ConceptGroups: []*interfaces.ConceptGroup{{
+		CGID: "group-1", ActionTypes: []*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+			ATID: "group-action", ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "group-fn", ToolID: "group-tool"},
+		}}},
+	}}}
+	capabilities := []*interfaces.CapabilityBinding{{
+		ID: "mount-1", KNID: kn.KNID, Branch: interfaces.MAIN_BRANCH,
+		CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, OwnerID: "mounted-fn", CapabilityID: "mounted-tool",
+	}}
+	sources, _, err := (&knowledgeNetworkService{aoa: aoa}).buildTypedProxyGrantSourcesWithCapabilities(t.Context(), kn, capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, source := range sources {
+		got[source.ResourceID] = source.ResourceType
+	}
+	if got["mounted-fn"] != "function" || got["group-fn"] != "function" {
+		t.Fatalf("function mounts and concept group sources = %#v", got)
+	}
+}
+
+func TestBuildTypedProxyGrantSourcesSeparatesFunctionAndAPI(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "box-fn").Return([]*interfaces.ToolBrief{{ToolID: "fn-1", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION}}, nil)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "box-api").Return([]*interfaces.ToolBrief{{ToolID: "api-1", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI}}, nil)
+	kn := &interfaces.KN{KNID: "kn-1", ActionTypes: []*interfaces.ActionType{
+		{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "fn-action", ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-fn", ToolID: "fn-1"}}},
+		{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "api-action", ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-api", ToolID: "api-1"}}},
+	}}
+	sources, _, err := (&knowledgeNetworkService{aoa: aoa}).buildTypedProxyGrantSources(t.Context(), kn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, source := range sources {
+		got[source.ResourceID] = source.ResourceType
+	}
+	if got["box-fn"] != "function" || got["box-api"] != "tool_box" {
+		t.Fatalf("typed proxy sources = %#v", got)
+	}
+}
 
 func TestBuildProxyGrantSourcesDerivesCompletePublishedSet(t *testing.T) {
 	kn := &interfaces.KN{
@@ -461,5 +516,37 @@ func TestBuildProxyGrantSourcesSkipsIncompleteSkillMount(t *testing.T) {
 	}})
 	if err != nil || len(sources) != 0 {
 		t.Fatalf("incomplete skill mount = (%#v, %v), want skipped without failing the projection", sources, err)
+	}
+}
+
+func TestProxyGrantSnapshotVersionIsCanonicalAndCoversAuthorizationFields(t *testing.T) {
+	first := interfaces.ProxyGrantSourceSpec{
+		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-a", KNID: "kn-1",
+		BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+		ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+	}
+	second := interfaces.ProxyGrantSourceSpec{
+		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-b", KNID: "kn-1",
+		BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-2",
+		ResourceType: "resource", ResourceID: "resource-2", Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+	}
+	version, err := proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reordered, err := proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{second, first})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reordered != version {
+		t.Fatalf("reordered snapshot version = %s, want %s", reordered, version)
+	}
+	second.Operation = interfaces.OPERATION_TYPE_QUERY_DATA
+	changed, err := proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == version {
+		t.Fatal("changing an authorization field did not change the snapshot version")
 	}
 }

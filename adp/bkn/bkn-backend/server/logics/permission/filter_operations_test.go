@@ -21,10 +21,10 @@ import (
 
 // Test_PermissionServiceImpl_FilterResources_FullOperationSet wires the service
 // to the real bkn-safe adapter against a stub bkn-safe, and asserts the whole
-// chain the knowledge-network list and detail responses depend on:
+// chain the knowledge-network detail responses depend on:
 //
-//   - the candidate operation set (COMMON_OPERATIONS) reaches bkn-safe instead
-//     of being dropped at the service layer;
+//   - no locally maintained candidate set is sent, so bkn-safe uses its catalog;
+//   - operation projection is explicitly enabled;
 //   - view_detail, modify and delete come back together for an authorized
 //     resource, which is what Studio reads to decide whether to show the
 //     edit/delete entry points;
@@ -62,15 +62,15 @@ func Test_PermissionServiceImpl_FilterResources_FullOperationSet(t *testing.T) {
 
 		ctx := withAccountInfo(context.Background(), "u1", "user")
 		result, err := svc.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{"kn1", "kn2"},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 
 		So(err, ShouldBeNil)
 		So(paths, ShouldResemble, []string{"/api/safe/v1/authz/resource-filter"})
 		So(len(requests), ShouldEqual, 1)
 
 		candidates, _ := requests[0]["candidate_operations"].([]any)
-		So(len(candidates), ShouldEqual, len(interfaces.COMMON_OPERATIONS))
-		So(candidates[0], ShouldEqual, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		So(len(candidates), ShouldEqual, 0)
+		So(requests[0]["include_operations"], ShouldEqual, true)
 		visibility, _ := requests[0]["visibility_operations"].([]any)
 		So(len(visibility), ShouldEqual, 1)
 

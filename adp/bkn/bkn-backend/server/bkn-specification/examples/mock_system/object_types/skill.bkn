@@ -11,13 +11,13 @@ tags: []
 
 | Type | ID | Name |
 |------|----|------|
-| resource | bkn_execution_factory_skill_dataset | bkn_execution_factory_skill_dataset |
+| resource | bkn_execution_factory_capability_dataset | bkn_execution_factory_capability_dataset |
 
 ### Data Properties
 
 | Name | Display Name | Type | Description | Mapped Field |
 |------|--------------|------|-------------|--------------|
-| id | 技能id | string | Skill 业务主键 | skill_id |
+| id | 技能id | string | Skill 业务主键 | capability_id |
 | name | 技能名称 | text | Skill 名称 | name |
 | description | 技能描述 | text | Skill 描述 | description |
 | version | 技能版本 | string | Skill 版本 | version |

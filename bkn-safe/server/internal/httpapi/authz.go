@@ -39,6 +39,7 @@ type resourceRef struct {
 // array-vs-map responses, policy-delete double form, public/private split).
 func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *audit.Store, dir *directory.Service) {
 	g := r.Group("/api/safe/v1/authz")
+	registerAuthorizationRegistry(g, db)
 	registerPropertyLevels(g, e, db)
 	// Policy and hierarchy writes are the authorization changes this tokenless
 	// face accepts. They are audited like the token-gated ones (#334); the
@@ -143,9 +144,11 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 
 	// POST /resource-filter — batched decision for a whole list page: which of
 	// the given resources the accessor may see, and which of the candidate
-	// operations it holds on each.
+	// operations it holds on each. include_operations separates operation
+	// projection from visibility filtering: false returns visible resources with
+	// an empty operations list; omitted keeps the historical projection behavior.
 	//
-	//	{ accessor_id, resources:[{type,id}], visibility_operations:[...], candidate_operations:[...] }
+	//	{ accessor_id, resources:[{type,id}], visibility_operations:[...], include_operations:true, candidate_operations:[...] }
 	//	-> { resources:[ {resource_type, resource_id, operations:[...]} ] }
 	//
 	// Resources may also be given as resource_type + resource_ids (the
@@ -153,11 +156,13 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 	// mixed within one request.
 	//
 	// The two operation lists are separate axes on purpose. visibility_operations
-	// filters — a resource is returned only if the accessor holds every one of
-	// them; an empty list returns each requested resource. candidate_operations
-	// projects — the returned operations are the subset held, regardless of what
-	// made the resource visible. Omitting candidate_operations falls back to the
-	// resource type's catalog ops, as POST /operations does.
+	// filters — visibility_match selects all (the default) or any; an empty list
+	// returns each requested resource. candidate_operations
+	// projects — when include_operations is true, the returned operations are the
+	// subset held, regardless of what made the resource visible. Omitting
+	// candidate_operations falls back to the resource type's catalog ops, as
+	// POST /operations does. include_operations defaults to true for existing
+	// callers.
 	//
 	// Duplicate resources and operations are collapsed in first-seen order.
 	// Errors: 400 on malformed input, 503 when account state cannot be read, and
@@ -170,7 +175,9 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			ResourceType         string        `json:"resource_type"`
 			ResourceIDs          []string      `json:"resource_ids"`
 			VisibilityOperations []string      `json:"visibility_operations"`
+			VisibilityMatch      string        `json:"visibility_match"`
 			CandidateOperations  []string      `json:"candidate_operations"`
+			IncludeOperations    *bool         `json:"include_operations"`
 			EvaluationScope      string        `json:"evaluation_scope"`
 		}
 		if !bind(c, &req) {
@@ -183,6 +190,15 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		}
 		req.VisibilityOperations = uniqueStrings(req.VisibilityOperations)
 		req.CandidateOperations = uniqueStrings(req.CandidateOperations)
+		visibilityMatch := authz.VisibilityMatch(req.VisibilityMatch)
+		if visibilityMatch == "" {
+			visibilityMatch = authz.VisibilityMatchAll
+		}
+		if visibilityMatch != authz.VisibilityMatchAll && visibilityMatch != authz.VisibilityMatchAny {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		includeOperations := req.IncludeOperations == nil || *req.IncludeOperations
 		refs := make([]authz.ResourceRef, 0, len(req.Resources)+len(req.ResourceIDs))
 		for _, r := range req.Resources {
 			refs = append(refs, authz.ResourceRef{Type: r.Type, ID: r.ID})
@@ -197,7 +213,11 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			}
 		}
 		refs = uniqueResourceRefs(refs)
-		requestedOperations := uniqueStrings(append(append([]string{}, req.VisibilityOperations...), req.CandidateOperations...))
+		requestedOperations := append([]string{}, req.VisibilityOperations...)
+		if includeOperations {
+			requestedOperations = append(requestedOperations, req.CandidateOperations...)
+		}
+		requestedOperations = uniqueStrings(requestedOperations)
 		if scope == authz.ScopeLocal && !validateLocalScope(c, refs, requestedOperations) {
 			return
 		}
@@ -246,9 +266,23 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 				out = append(out, entry)
 			}
 		}
+		// A visibility-only caller must not trigger an operation projection. Keep
+		// the candidate set empty so the engine evaluates only the visibility axis.
+		if !includeOperations {
+			results, err := e.FilterResourceOpsScoped(c.Request.Context(), req.AccessorID,
+				refs, req.VisibilityOperations, nil, visibilityMatch, scope)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			appendResults(results)
+			recordFilterDecision(c, req.AccessorID, refs, req.VisibilityOperations, nil, scope, len(out))
+			c.JSON(http.StatusOK, gin.H{"resources": out})
+			return
+		}
 		if len(req.CandidateOperations) > 0 {
 			results, err := e.FilterResourceOpsScoped(c.Request.Context(), req.AccessorID,
-				refs, req.VisibilityOperations, req.CandidateOperations, scope)
+				refs, req.VisibilityOperations, req.CandidateOperations, visibilityMatch, scope)
 			if err != nil {
 				serverError(c, err)
 				return
@@ -283,7 +317,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		resultsByResource := make(map[authz.ResourceRef]authz.FilteredResource, len(refs))
 		for _, rtype := range order {
 			results, err := e.FilterResourceOpsScoped(c.Request.Context(), req.AccessorID,
-				byType[rtype], req.VisibilityOperations, catalogCandidates[rtype], scope)
+				byType[rtype], req.VisibilityOperations, catalogCandidates[rtype], visibilityMatch, scope)
 			if err != nil {
 				serverError(c, err)
 				return
@@ -366,6 +400,14 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		// alone and produce a grant that reaches nothing.
 		ops, err := e.NormalizeOperations(c.Request.Context(), req.Resource.Type, req.Operations)
 		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if err := e.ValidateGrantableOperations(c.Request.Context(), req.Resource.Type, ops); err != nil {
+			if errors.Is(err, authz.ErrOperationNotGrantable) {
+				replyPublicError(c, http.StatusBadRequest)
+				return
+			}
 			serverError(c, err)
 			return
 		}

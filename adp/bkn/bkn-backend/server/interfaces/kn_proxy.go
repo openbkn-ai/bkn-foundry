@@ -46,10 +46,10 @@ func (e *ManagedProxyStatusError) Error() string {
 // IsBestEffortProxyGrantSource reports whether a grant source may be left
 // unmaterialized without failing the network's proxy synchronization.
 //
-// Only a mounted Skill qualifies. It is excluded from the model version, and a
-// delegator who lacks execute on it, or an authorization service that predates
-// Skill sources, leaves that one Skill unreadable through the proxy instead of
-// blocking every proxied data read and execution of the network.
+// Only a mounted Skill qualifies. A delegator who lacks execute on it, or an
+// authorization service that predates Skill sources, leaves that one Skill
+// unreadable through the proxy instead of blocking every proxied data read and
+// execution of the network.
 func IsBestEffortProxyGrantSource(source ProxyGrantSourceSpec) bool {
 	return source.BindingType == KNProxyBindingTypeCapability && source.ResourceType == KNProxyTargetTypeSkill
 }
@@ -65,12 +65,19 @@ type KNProxyAccount struct {
 	SyncStatus            string `json:"sync_status"`
 	PublishedModelVersion string `json:"published_model_version"`
 	SyncedModelVersion    string `json:"synced_model_version"`
-	LastSyncError         string `json:"last_error,omitempty"`
-	LastGrantorID         string `json:"-"`
-	LockOwner             string `json:"-"`
-	LockUntil             int64  `json:"-"`
-	CreatedAt             int64  `json:"created_at"`
-	UpdatedAt             int64  `json:"updated_at"`
+	// ResolvedBinding is populated only by the internal proxy-resolution endpoint.
+	// It is read from the published snapshot and is never persisted on the mapping.
+	ResolvedBinding     *KNProxyBinding `json:"resolved_binding,omitempty"`
+	PendingModelVersion string          `json:"-"`
+	SyncGeneration      int64           `json:"-"`
+	LastSyncError       string          `json:"last_error,omitempty"`
+	LastGrantorID       string          `json:"-"`
+	LockOwner           string          `json:"-"`
+	LockUntil           int64           `json:"-"`
+	LastSyncStartedAt   int64           `json:"-"`
+	LastSyncSucceededAt int64           `json:"-"`
+	CreatedAt           int64           `json:"created_at"`
+	UpdatedAt           int64           `json:"updated_at"`
 }
 
 // KNProxyGovernanceView is the public, sanitized projection of a proxy
@@ -234,10 +241,9 @@ type KNProxySyncPlan struct {
 	Sources        []ProxyGrantSourceSpec `json:"sources"`
 }
 
-// KNProxyBinding identifies one runtime target that ontology-query derived
-// from a published knowledge-network child. BKN validates the complete tuple
-// against its authoritative current main-model projection before returning the
-// managed proxy mapping.
+// KNProxyBinding identifies one runtime target associated with a published
+// knowledge-network child. The proxy-resolution endpoint accepts child, target
+// ID, and operation, then returns the published target type from its snapshot.
 type KNProxyBinding struct {
 	ChildType  string `json:"child_type"`
 	ChildID    string `json:"child_id"`
@@ -251,10 +257,17 @@ type KNProxyAccess interface {
 	Get(ctx context.Context, knID string) (*KNProxyAccount, error)
 	List(ctx context.Context) ([]*KNProxyAccount, error)
 	Ensure(ctx context.Context, mapping *KNProxyAccount) (*KNProxyAccount, bool, error)
-	SetPending(ctx context.Context, tx *sql.Tx, knID, modelVersion, grantorID string, updatedAt int64) error
-	SetSyncResult(ctx context.Context, knID, modelVersion, syncStatus, syncedVersion, lastError string, updatedAt int64) (bool, error)
+	SetPending(ctx context.Context, tx *sql.Tx, knID, modelVersion, grantorID, lockOwner string, updatedAt int64) (int64, error)
+	ReserveSyncGeneration(ctx context.Context, knID, lockOwner string, updatedAt int64) (int64, error)
+	MarkSyncFailed(ctx context.Context, knID string, generation int64, lockOwner, lastError string, updatedAt int64) (bool, error)
+	ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID string, generation int64,
+		lockOwner, snapshotVersion string, sources []ProxyGrantSourceSpec, updatedAt int64) error
+	DeletePublishedSnapshot(ctx context.Context, knID string) error
+	ResolvePublishedBinding(ctx context.Context, knID string, binding KNProxyBinding) (*KNProxyBinding, error)
+	ResolvePublishedBindings(ctx context.Context, knID string, bindings []KNProxyBinding) ([]KNProxyBinding, error)
 	SetLifecycle(ctx context.Context, knID, lifecycleStatus string, updatedAt int64) error
 	TryAcquireLock(ctx context.Context, knID, owner string, now, lockUntil int64) (bool, error)
+	RenewLock(ctx context.Context, knID, owner string, now, lockUntil int64) (bool, error)
 	ReleaseLock(ctx context.Context, knID, owner string, updatedAt int64) error
 	ListProxyConflicts(ctx context.Context) (map[string][]string, error)
 }
@@ -276,6 +289,7 @@ type ManagedProxyAccess interface {
 	Archive(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	CheckGrant(ctx context.Context, proxyAccountID, grantorID string, source ProxyGrantSourceSpec) (ProxyGrantCheckResult, error)
 	CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantBatchCheckResult, error)
-	SyncGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantSyncResult, error)
+	SyncGrants(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64,
+		snapshotVersion string, sources []ProxyGrantSourceSpec) (ProxyGrantSyncResult, error)
 	ReconcileGrants(ctx context.Context, proxyAccountID, requestedBy string) (ProxyGrantReconcileResult, error)
 }

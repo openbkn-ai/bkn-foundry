@@ -12,7 +12,8 @@ info:
     Three records are kept, in three tables, and they answer different
     questions:
 
-    - **Audit log** (`/admin/audit-logs`): one row per management mutation —
+    - **Audit log** (`/admin/audit-logs`): one row per auditable management
+      mutation target —
       admin API writes, self-service writes (profile, AppKey issue/revoke,
       object-grant delegation), tokenless `/authz` policy and hierarchy
       writes, and 401/403 refusals at the token gates (throttled to one row
@@ -21,7 +22,9 @@ info:
       form a
       tamper-evidence hash chain: each carries `seq`, `prev_hash` and
       `row_hash`; editing, deleting or reordering a chained row is detected by
-      `/admin/audit-chain/verify`. Rows written before the chain existed have
+      `/admin/audit-chain/verify`. A batch mutation produces one row for each
+      target and correlates those rows with one `request_id`; therefore one HTTP
+      request can appear as several audit rows. Rows written before the chain existed have
       no `seq` and are reported as `unchained_rows`, never verified.
     - **Access log** (`/admin/access-logs`): login and logout facts.
     - **Authorization decision log** (`/admin/authz-decisions`): one row per
@@ -55,6 +58,10 @@ paths:
         - $ref: '#/components/parameters/AcceptLanguage'
         - name: actor_id
           in: query
+          schema: { type: string }
+        - name: request_id
+          in: query
+          description: Return all audit rows produced by one mutating HTTP request.
           schema: { type: string }
         - name: resource
           in: query
@@ -95,6 +102,7 @@ paths:
                   total:
                     type: integer
                     format: int64
+                    description: Total matching audit rows, rather than HTTP request count. A batch mutation can contribute multiple rows.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -330,7 +338,9 @@ components:
           type: string
           enum: [oauth, network, none]
         credential_id: { type: string }
-        request_id: { type: string }
+        request_id:
+          type: string
+          description: Correlation id shared by all audit rows emitted for one mutating HTTP request.
         source_channel:
           type: string
           enum: [api, internal]

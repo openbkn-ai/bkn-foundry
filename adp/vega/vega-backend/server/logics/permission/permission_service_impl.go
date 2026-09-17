@@ -2,7 +2,6 @@ package permission
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -69,65 +68,40 @@ func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource i
 	return nil
 }
 
-func (ps *PermissionServiceImpl) LocalDecision(ctx context.Context, resource interfaces.PermissionResource,
-	op string) (interfaces.PermissionOperationDecision, error) {
-
-	accountInfo := interfaces.AccountInfo{}
-	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
-		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+func (ps *PermissionServiceImpl) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	if len(items) == 0 {
+		return nil
 	}
-	if accountInfo.ID == "" || accountInfo.Type == "" {
-		return interfaces.PermissionOperationDecision{}, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("Access denied: missing account ID or type")
+	if err := ps.pa.UpsertResourceParents(ctx, resourceType, parentType, items); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err)
 	}
-	local, ok := ps.pa.(interfaces.LocalPermissionAccess)
-	if !ok {
-		return interfaces.PermissionOperationDecision{}, interfaces.ErrLocalPermissionUnsupported
-	}
-	decision, err := local.LocalDecision(ctx, interfaces.LocalPermissionCheck{
-		Accessor: interfaces.PermissionAccessor{ID: accountInfo.ID, Type: accountInfo.Type},
-		Resource: resource, Operation: op,
-	})
-	if err != nil {
-		if errors.Is(err, interfaces.ErrPermissionAccountNotActive) {
-			return interfaces.PermissionOperationDecision{}, err
-		}
-		return interfaces.PermissionOperationDecision{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_InternalError_CheckPermissionFailed).WithErrorDetails(err)
-	}
-	return decision, nil
+	return nil
 }
 
-func (ps *PermissionServiceImpl) LocalResourceDecisions(ctx context.Context, resourceType string,
-	ids, ops []string) (map[string]map[string]interfaces.PermissionOperationDecision, error) {
+func (ps *PermissionServiceImpl) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	if len(resourceIDs) == 0 {
+		return nil
+	}
+	if err := ps.pa.DeleteResourceParents(ctx, resourceType, resourceIDs); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
+	}
+	return nil
+}
 
-	accountInfo := interfaces.AccountInfo{}
-	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
-		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+func (ps *PermissionServiceImpl) GetResourceParents(ctx context.Context, resourceType string,
+	resourceIDs []string) (map[string]interfaces.PermissionResourceParent, error) {
+	if len(resourceIDs) == 0 {
+		return map[string]interfaces.PermissionResourceParent{}, nil
 	}
-	if accountInfo.ID == "" || accountInfo.Type == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("Access denied: missing account ID or type")
-	}
-	if len(ids) == 0 || len(ops) == 0 {
-		return map[string]map[string]interfaces.PermissionOperationDecision{}, nil
-	}
-	local, ok := ps.pa.(interfaces.LocalPermissionAccess)
-	if !ok {
-		return nil, interfaces.ErrLocalPermissionUnsupported
-	}
-	decisions, err := local.LocalResourceDecisions(ctx, interfaces.LocalPermissionFilter{
-		Accessor:     interfaces.PermissionAccessor{ID: accountInfo.ID, Type: accountInfo.Type},
-		ResourceType: resourceType, ResourceIDs: ids, Operations: ops,
-	})
+	items, err := ps.pa.GetResourceParents(ctx, resourceType, resourceIDs)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrPermissionAccountNotActive) {
-			return nil, err
-		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
 	}
-	return decisions, nil
+	return items, nil
 }
 
 func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources []interfaces.PermissionResource, ops []string) error {
@@ -208,8 +182,7 @@ func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource in
 }
 
 func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceType string, ids []string,
-	ops []string, allowOperation bool, fullOps []string) (map[string]interfaces.PermissionResourceOps, error) {
-
+	ops []string, visibilityMatch string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
@@ -236,10 +209,10 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 			ID:   accountInfo.ID,
 			Type: accountInfo.Type,
 		},
-		Resources:           resources,
-		Operations:          ops,
-		CandidateOperations: fullOps,
-		AllowOperation:      allowOperation,
+		Resources:       resources,
+		Operations:      ops,
+		VisibilityMatch: visibilityMatch,
+		AllowOperation:  allowOperation,
 	})
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,

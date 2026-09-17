@@ -164,6 +164,9 @@ func writeErr(c *gin.Context, err error) {
 	case errors.Is(err, ErrNotFound):
 		status = http.StatusNotFound
 		code = httperrors.NotFound
+	case errors.Is(err, ErrRoleNameExisted):
+		status = http.StatusConflict
+		code = httperrors.ResourceExisted
 	case errors.Is(err, ErrImmutable):
 		status = http.StatusForbidden
 		code = httperrors.AdminWriteImmutable
@@ -183,7 +186,12 @@ func writeErr(c *gin.Context, err error) {
 		status = http.StatusBadRequest
 		code = httperrors.AdminWriteInvalid
 	}
-	httperrors.WriteCode(c, status, code, nil)
+	var details any
+	var conflict interface{ ExistingRoleID() string }
+	if errors.As(err, &conflict) {
+		details = gin.H{"existing_id": conflict.ExistingRoleID()}
+	}
+	httperrors.WriteCode(c, status, code, details)
 }
 
 // revokeRolePermissions hands the whole set to svc when it satisfies

@@ -79,45 +79,47 @@ func TestValidateRequirementsAcceptsMultipleDirectPrerequisites(t *testing.T) {
 	}
 }
 
-// TestShippedCatalogBindsResourceManageToViewDetail is the regression guard on
-// the product rule (#1121): managing the tables in a catalog is unreachable
-// without the right to open the catalog, because every management route loads
-// its target first and that load is a view_detail judgement. Dropping the
-// missing requirement would let the console hand out a grant whose every route answers
-// 403 while naming a permission the operator never meant to withhold.
-func TestShippedCatalogBindsResourceManageToViewDetail(t *testing.T) {
+// TestShippedCatalogBindsManagementToViewDetail pins the Catalog contract:
+// every management operation is reachable only after opening that Catalog,
+// while creation and data queries remain independent capabilities.
+func TestShippedCatalogBindsManagementToViewDetail(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid requirement: %v", err)
 	}
 	for _, rt := range c.ResourceTypes {
 		if rt.ID != "catalog" {
 			continue
 		}
+		operations := map[string][]string{}
 		for _, op := range rt.Operations {
-			if op.ID != "resource_manage" {
-				continue
-			}
-			if len(op.Requires) != 1 || op.Requires[0] != "view_detail" {
-				t.Fatalf("catalog.resource_manage requires %v, want [view_detail]", op.Requires)
-			}
-			return
+			operations[op.ID] = op.Requires
 		}
-		t.Fatal("catalog type no longer declares resource_manage")
+		for _, operation := range []string{"modify", "delete", "authorize", "task_manage", "resource_manage"} {
+			if got := operations[operation]; len(got) != 1 || got[0] != "view_detail" {
+				t.Errorf("catalog/%s requires %v, want [view_detail]", operation, got)
+			}
+		}
+		for _, operation := range []string{"view_detail", "create", "query_data", "data_write"} {
+			if got := operations[operation]; len(got) != 0 {
+				t.Errorf("catalog/%s unexpectedly requires %v", operation, got)
+			}
+		}
+		return
 	}
-	t.Fatal("catalog type missing from catalog.json")
+	t.Fatal("catalog type missing from authorization-registry.json")
 }
 
 func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid requirement: %v", err)
 	}
 	operations := map[string][]string{}
 	for _, resourceType := range c.ResourceTypes {
@@ -146,10 +148,10 @@ func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateRequirements(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid requirement: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid requirement: %v", err)
 	}
 
 	types := map[string]map[string][]string{}
@@ -161,7 +163,7 @@ func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T)
 		types[resourceType.ID] = operations
 	}
 
-	for _, resourceType := range []string{"tool_box", "mcp", "operator", "skill"} {
+	for _, resourceType := range []string{"tool_box", "function", "mcp", "operator", "skill"} {
 		for _, operation := range []string{"modify", "delete", "publish", "unpublish", "authorize"} {
 			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "view" {
 				t.Errorf("%s/%s requires %v, want [view]", resourceType, operation, got)
@@ -189,7 +191,7 @@ func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T)
 
 // TestSeedPersistsImplications proves the declaration survives the seed, since
 // the grant paths read it from the operations table rather than from the file.
-func TestSeedPersistsImplications(t *testing.T) {
+func TestSeedPersistsCatalogManagementRequirements(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -198,12 +200,77 @@ func TestSeedPersistsImplications(t *testing.T) {
 	if err := Apply(db, e); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	var row model.Operation
-	if err := db.First(&row, "resource_type_id = ? AND id = ?", "catalog", "resource_manage").Error; err != nil {
-		t.Fatalf("load operation: %v", err)
+	for _, operation := range []string{"modify", "delete", "authorize", "task_manage", "resource_manage"} {
+		var row model.Operation
+		if err := db.First(&row, "resource_type_id = ? AND id = ?", "catalog", operation).Error; err != nil {
+			t.Fatalf("load catalog/%s: %v", operation, err)
+		}
+		if row.RequiredOperationIDs != "view_detail" {
+			t.Errorf("catalog/%s required operation ids = %q, want view_detail", operation, row.RequiredOperationIDs)
+		}
 	}
-	if row.RequiredOperationIDs != "view_detail" {
-		t.Fatalf("required operation ids = %q, want %q", row.RequiredOperationIDs, "view_detail")
+}
+
+func TestCatalogManagementRequirementsDenyAndRecoverIndependentlyOfDataQuery(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	const resource = "catalog-1"
+	for _, operation := range []string{"modify", "delete", "authorize", "task_manage", "resource_manage"} {
+		t.Run(operation, func(t *testing.T) {
+			user := "catalog-" + operation
+			mustNoErrSeed(t, e.GrantObjectPermission(user, "catalog", resource, operation))
+			mustNoErrSeed(t, e.GrantObjectPermission(user, "catalog", resource, "view_detail"))
+			mustNoErrSeed(t, e.DenyObjectPermission(user, "catalog", resource, "view_detail"))
+
+			decision, err := e.OperationDecision(t.Context(), user, "catalog", resource, operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.Decision != authz.DecisionDeny || decision.Basis != authz.BasisRequires ||
+				decision.DeniedRequirement != "view_detail" {
+				t.Fatalf("catalog/%s decision = %+v, want requires deny on view_detail", operation, decision)
+			}
+			ids, err := e.AccessibleResources(user, "catalog", operation)
+			if err != nil || len(ids) != 0 {
+				t.Fatalf("AccessibleResources(catalog/%s) = %v, %v; want none", operation, ids, err)
+			}
+			filtered, err := e.FilterResourceOps(user,
+				[]authz.ResourceRef{{Type: "catalog", ID: resource}}, nil, []string{operation})
+			if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 0 ||
+				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisRequires {
+				t.Fatalf("FilterResourceOps(catalog/%s) = %+v, %v; want requires denial", operation, filtered, err)
+			}
+
+			if _, err := e.RemoveAccessorResourcePoliciesForEffect(user, "catalog", resource, authz.EffectDeny); err != nil {
+				t.Fatal(err)
+			}
+			decision, err = e.OperationDecision(t.Context(), user, "catalog", resource, operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.Decision != authz.DecisionAllow {
+				t.Fatalf("catalog/%s did not recover after view_detail deny removal: %+v", operation, decision)
+			}
+		})
+	}
+
+	const queryUser = "catalog-query-user"
+	mustNoErrSeed(t, e.GrantObjectPermission(queryUser, "catalog", resource, "query_data"))
+	mustNoErrSeed(t, e.DenyObjectPermission(queryUser, "catalog", resource, "view_detail"))
+	if allowed, err := e.Check(queryUser, "catalog", resource, "query_data"); err != nil || !allowed {
+		t.Fatalf("catalog/query_data = %v, %v; want independent allow", allowed, err)
+	}
+	filtered, err := e.FilterResourceOps(queryUser,
+		[]authz.ResourceRef{{Type: "catalog", ID: resource}}, nil, []string{"query_data"})
+	if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 1 || filtered[0].Operations[0] != "query_data" {
+		t.Fatalf("FilterResourceOps(catalog/query_data) = %+v, %v; want independent allow", filtered, err)
 	}
 }
 
@@ -344,7 +411,7 @@ func TestIndependentResourceRequirementsApplyToChecksAndLists(t *testing.T) {
 	}
 
 	viewByType := map[string]string{
-		"tool_box": "view", "mcp": "view", "operator": "view", "skill": "view",
+		"tool_box": "view", "function": "view", "mcp": "view", "operator": "view", "skill": "view",
 		"small_model": "display", "large_model": "display",
 	}
 	for resourceType, viewOperation := range viewByType {

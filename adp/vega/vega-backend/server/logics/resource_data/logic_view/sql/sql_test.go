@@ -210,7 +210,7 @@ func TestLogicViewSQLHelpers(t *testing.T) {
 			{Field: "age", Direction: interfaces.DESC_DIRECTION},
 		})
 
-		assert.Equal(t, "`name` asc, `age` desc", got)
+		assert.Equal(t, "`name` ASC, `age` DESC", got)
 	})
 
 	generator := NewlogicDefinitionSQLGenerator(testSQLView())
@@ -296,7 +296,7 @@ func TestLogicViewSQLBuilderApplyParams(t *testing.T) {
 		}, view)
 
 		require.NoError(t, err)
-		assert.Equal(t, "SELECT * FROM users WHERE `age` > 18 ORDER BY `age` desc LIMIT 20", builder.Build())
+		assert.Equal(t, "SELECT * FROM users WHERE `age` > 18 ORDER BY `age` DESC LIMIT 20", builder.Build())
 	})
 
 	t.Run("stream query skips limit", func(t *testing.T) {

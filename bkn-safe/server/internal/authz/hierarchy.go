@@ -709,7 +709,8 @@ func (en *Enforcer) PreviewOwnershipContext(ctx context.Context, resourceType, p
 		// What the subject may do on the proposed parents — through direct
 		// grants, roles, wildcards, the grant-to-everyone subject, AND the
 		// parents' own ancestors. This is the enforcer's answer, not a row scan.
-		onParents, err := en.FilterResourceOpsScoped(ctx, sub, parentRefs, nil, parentOps, ScopeEffective)
+		onParents, err := en.FilterResourceOpsScoped(ctx, sub,
+			parentRefs, nil, parentOps, VisibilityMatchAll, ScopeEffective)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -723,7 +724,8 @@ func (en *Enforcer) PreviewOwnershipContext(ctx context.Context, resourceType, p
 		}
 		// What the subject may do on the children TODAY, including whatever the
 		// current ownership rows already confer.
-		onChildren, err := en.FilterResourceOpsScoped(ctx, sub, childRefs, nil, childOps, ScopeEffective)
+		onChildren, err := en.FilterResourceOpsScoped(ctx, sub,
+			childRefs, nil, childOps, VisibilityMatchAll, ScopeEffective)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -736,7 +738,8 @@ func (en *Enforcer) PreviewOwnershipContext(ctx context.Context, resourceType, p
 			have[c.ID] = set
 		}
 
-		localChildren, err := en.FilterResourceOpsScoped(ctx, sub, childRefs, nil, childOps, ScopeLocal)
+		localChildren, err := en.FilterResourceOpsScoped(ctx, sub,
+			childRefs, nil, childOps, VisibilityMatchAll, ScopeLocal)
 		if err != nil {
 			return nil, 0, err
 		}

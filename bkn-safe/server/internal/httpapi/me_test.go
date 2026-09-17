@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
 )
 
 func TestMeAuthGate(t *testing.T) {
@@ -29,6 +30,51 @@ func TestMeAuthGate(t *testing.T) {
 	// any authenticated subject -> 200, even with zero grants
 	if w := tokReq(t, r, http.MethodGet, path, nil, "nobody"); w.Code != http.StatusOK {
 		t.Errorf("plain user: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// Public model access is enforced by the Casbin matcher through
+// PublicAccessorID, not by a role binding. /me/permissions must nevertheless
+// expose it so Studio can derive the model-menu visibility points.
+func TestMePermissionsIncludePublicModelAccess(t *testing.T) {
+	r, e, db, _ := newAdminServer(t)
+	db.Create(&model.User{ID: "model-reader", Account: "model-reader", Enabled: true})
+	if err := seed.Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	w := tokReq(t, r, http.MethodGet, "/api/safe/v1/me/permissions?scope=type", nil, "model-reader")
+	if w.Code != http.StatusOK {
+		t.Fatalf("permissions: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var response struct {
+		Permissions []struct {
+			Resource struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"resource"`
+			Operations []string `json:"operations"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	operationsByType := map[string]map[string]bool{}
+	for _, permission := range response.Permissions {
+		if permission.Resource.ID != "*" {
+			continue
+		}
+		operations := map[string]bool{}
+		for _, operation := range permission.Operations {
+			operations[operation] = true
+		}
+		operationsByType[permission.Resource.Type] = operations
+	}
+	for _, resourceType := range []string{"large_model", "small_model"} {
+		operations := operationsByType[resourceType]
+		if !operations["display"] || !operations["execute"] {
+			t.Errorf("%s public model operations = %v, want display and execute", resourceType, operations)
+		}
 	}
 }
 

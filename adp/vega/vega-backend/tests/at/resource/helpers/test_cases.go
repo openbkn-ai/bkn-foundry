@@ -495,7 +495,8 @@ func RunCommonUpdateTests(suite *TestSuite) {
 
 	Convey("RM303: 更新不存在的resource", func() {
 		updatePayload := map[string]any{
-			"name": "new-name",
+			"name":                 "new-name",
+			"expected_update_time": int64(1),
 		}
 		resp := suite.Client.PUT("/api/vega-backend/v1/resources/non-existent-id-12345", updatePayload)
 		So(resp.StatusCode, ShouldEqual, http.StatusNotFound)

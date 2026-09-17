@@ -525,6 +525,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// administrator and /me delegation routes.
 	g.POST("/object-grants", setObjectGrantHandler(e, db))
 	g.POST("/object-grants/preview", RequirePermission(e, "admin-authz", "view"), previewObjectGrantHandler(e))
+	g.POST("/object-grants/revoke", revokeObjectGrantBatchHandler(e, db))
 
 	// DELETE /object-grants revokes exactly one stable grant_id. It never deletes
 	// by the Casbin tuple, so a sibling grant with identical runtime semantics but
@@ -596,7 +597,8 @@ func policyRecordJSON(record authz.PolicyRecord) gin.H {
 		"grant_id": record.GrantID, "accessor_id": record.AccessorID,
 		"operation": record.Operation, "effect": record.Effect,
 		"policy_source": record.PolicySource, "authority_source": record.AuthoritySource,
-		"active": record.Active, "inherited": false,
+		"created_by": record.CreatedBy,
+		"active":     record.Active, "inherited": false,
 	}
 }
 
@@ -708,16 +710,19 @@ func objectGrantQueryParam(c *gin.Context, primary, alias string) string {
 	return c.Query(alias)
 }
 
-// catalogOpSet returns the resource type's registered operation ids as a set
-// (membership-test form of catalogOps).
+// catalogOpSet returns the resource type's grantable operation ids as a set.
+// Read-only/computed operations remain available from the registry and the
+// decision APIs, but never appear valid on an authorization write request.
 func catalogOpSet(db *gorm.DB, resourceType string) (map[string]bool, error) {
-	ops, err := catalogOps(db, resourceType)
-	if err != nil {
+	var operations []model.Operation
+	if err := db.Where("resource_type_id = ?", resourceType).Find(&operations).Error; err != nil {
 		return nil, err
 	}
-	set := make(map[string]bool, len(ops))
-	for _, op := range ops {
-		set[op] = true
+	set := make(map[string]bool, len(operations))
+	for _, operation := range operations {
+		if operation.IsGrantable() {
+			set[operation.ID] = true
+		}
 	}
 	return set, nil
 }
@@ -739,9 +744,8 @@ func catalogOpSet(db *gorm.DB, resourceType string) (map[string]bool, error) {
 func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service) {
 	// GET /object-grants?resource_type=&resource_id= — who currently holds what
 	// on ONE object. The share UI opens with this: an owner about to hand their
-	// network to a colleague has to see who already has it, and submitting
-	// without that read would silently replace someone else's operation set
-	// (POST is replace, not merge).
+	// network to a colleague has to see who already has it. POST replaces only
+	// the caller's independently managed source slice, never another grantor's.
 	g.GET("/object-grants", func(c *gin.Context) {
 		ref := resourceRef{
 			Type: objectGrantQueryParam(c, "resource_type", "obj_type"),
@@ -768,7 +772,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		// Names are resolved here rather than left to the caller: the owner-facing
 		// surface has no user directory of its own (that is admin-only), so a
 		// client would have nothing to turn an accessor id into a person with.
-		named, err := grantAccessorNames(c, db, ids)
+		identities, err := grantAccessorIdentities(c, db, ids)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -794,12 +798,16 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 				"grants":              grants,
 				"effective_decisions": decisions,
 			}
-			// A row whose subject is a role, or a user since deleted, resolves to
-			// nothing. It is still shown — hiding a grant that exists would be
-			// worse than showing a bare id.
-			if who, ok := named[policy.AccessorID]; ok {
-				entry["accessor_account"] = who.Account
-				entry["accessor_name"] = who.Name
+			// A deleted user has no directory row, but a role is still a valid
+			// subject. Tell clients which case it is so they do not turn a role's
+			// expected user-directory 404 into a misleading "deleted user" label.
+			identity := identities[policy.AccessorID]
+			entry["accessor_type"] = identity.kind
+			if identity.account != "" {
+				entry["accessor_account"] = identity.account
+			}
+			if identity.name != "" {
+				entry["accessor_name"] = identity.name
 			}
 			entries = append(entries, entry)
 		}
@@ -859,23 +867,52 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		c.JSON(http.StatusOK, gin.H{"users": out})
 	})
 	g.POST("/object-grants", setObjectGrantHandler(e, db))
+	g.POST("/object-grants/revoke", revokeObjectGrantBatchHandler(e, db))
 	g.DELETE("/object-grants", revokeObjectGrantHandler(e, db))
 }
 
-// grantAccessorNames resolves grant subjects to accounts, skipping ids that are
-// not users (casbin stores role subjects in the same column).
-func grantAccessorNames(c *gin.Context, db *gorm.DB, ids []string) (map[string]model.User, error) {
-	out := map[string]model.User{}
+type grantAccessorIdentity struct {
+	kind    string
+	account string
+	name    string
+}
+
+// grantAccessorIdentities resolves the two subject types Casbin stores in an
+// object-policy row. Missing subjects remain classified as users: that is the
+// only way a client can accurately render a deleted user without exposing its
+// opaque ID. Roles are explicitly classified and named instead.
+func grantAccessorIdentities(c *gin.Context, db *gorm.DB, ids []string) (map[string]grantAccessorIdentity, error) {
+	out := make(map[string]grantAccessorIdentity, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
-	var rows []model.User
+	for _, id := range ids {
+		kind := "user"
+		if id == authz.PublicAccessorID {
+			kind = "public"
+		}
+		out[id] = grantAccessorIdentity{kind: kind}
+	}
+	var users []model.User
 	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
-		Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		Where("id IN ?", ids).Find(&users).Error; err != nil {
 		return nil, err
 	}
-	for _, row := range rows {
-		out[row.ID] = row
+	userIDs := make(map[string]struct{}, len(users))
+	for _, user := range users {
+		userIDs[user.ID] = struct{}{}
+		out[user.ID] = grantAccessorIdentity{kind: "user", account: user.Account, name: user.Name}
+	}
+	var roles []model.Role
+	if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
+		Where("id IN ?", ids).Find(&roles).Error; err != nil {
+		return nil, err
+	}
+	for _, role := range roles {
+		if _, isUser := userIDs[role.ID]; isUser {
+			continue
+		}
+		out[role.ID] = grantAccessorIdentity{kind: "role", name: role.Name}
 	}
 	return out, nil
 }
@@ -1026,8 +1063,8 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			outcome["required_operations"] = required
 		}
 		setAuditOutcome(c, outcome)
-		if err := e.SetProfessionalObjectPermissions(req.AccessorID, req.Resource.Type, req.Resource.ID,
-			ops, effect, authoritySource); err != nil {
+		if err := e.SetProfessionalObjectPermissionsBy(req.AccessorID, req.Resource.Type, req.Resource.ID,
+			ops, effect, authoritySource, c.GetString(ctxAccessorID)); err != nil {
 			serverError(c, err)
 			return
 		}
@@ -1146,84 +1183,198 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if !bind(c, &req) {
 			return
 		}
-		req.GrantID = strings.TrimSpace(req.GrantID)
-		if req.GrantID == "" || len(req.GrantID) > 64 {
-			replyPublicError(c, http.StatusBadRequest)
+		if result, ok := revokeObjectGrantIDs(c, e, db, []string{req.GrantID}); ok {
+			outcome := result.sources[0]
+			outcome["removed"] = result.removed > 0
+			setAuditOutcome(c, outcome)
+			c.Status(http.StatusNoContent)
+		}
+	}
+}
+
+// revokeObjectGrantBatchHandler removes several independently managed grant
+// records in one policy transaction. It exists for a UI action that removes a
+// complete source or grantee: individual DELETE requests could otherwise leave
+// half the selected source removed after a transient failure.
+func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			GrantIDs []string `json:"grant_ids" binding:"required"`
+		}
+		if !bind(c, &req) {
 			return
 		}
-		records, err := e.PolicyRecords(authz.PolicyFilter{GrantID: req.GrantID})
+		if result, ok := revokeObjectGrantIDs(c, e, db, req.GrantIDs); ok {
+			setAuditOutcomeRecords(c, result.auditRecords)
+			c.Status(http.StatusNoContent)
+		}
+	}
+}
+
+// objectGrantRevokeResult keeps provenance available for audit after the policy
+// rows are deleted. Request bodies contain only opaque stable IDs, so the
+// audit middleware cannot reconstruct the source once RevokePolicies commits.
+type objectGrantRevokeResult struct {
+	sources      []gin.H
+	auditRecords []auditOutcomeRecord
+	removed      int
+}
+
+type objectGrantRevokeAuditChoices struct {
+	kept    auditOutcomeRecord
+	removed auditOutcomeRecord
+}
+
+func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantIDs []string) (objectGrantRevokeResult, bool) {
+	if len(grantIDs) == 0 || len(grantIDs) > 500 {
+		replyPublicError(c, http.StatusBadRequest)
+		return objectGrantRevokeResult{}, false
+	}
+	seen := make(map[string]struct{}, len(grantIDs))
+	normalized := make([]string, 0, len(grantIDs))
+	for _, grantID := range grantIDs {
+		grantID = strings.TrimSpace(grantID)
+		if grantID == "" || len(grantID) > 64 {
+			replyPublicError(c, http.StatusBadRequest)
+			return objectGrantRevokeResult{}, false
+		}
+		if _, duplicate := seen[grantID]; duplicate {
+			replyPublicError(c, http.StatusBadRequest)
+			return objectGrantRevokeResult{}, false
+		}
+		seen[grantID] = struct{}{}
+		normalized = append(normalized, grantID)
+	}
+
+	result := objectGrantRevokeResult{
+		sources: make([]gin.H, 0, len(normalized)),
+	}
+	for _, grantID := range normalized {
+		records, err := e.PolicyRecords(authz.PolicyFilter{GrantID: grantID})
 		if err != nil {
 			serverError(c, err)
-			return
+			return objectGrantRevokeResult{}, false
 		}
 		if len(records) == 0 {
 			allowed, err := e.CheckContext(c.Request.Context(), c.GetString(ctxAccessorID),
 				"admin-authz", "*", "revoke")
 			if err != nil {
 				serverError(c, err)
-				return
+				return objectGrantRevokeResult{}, false
 			}
 			if !allowed {
 				replyPublicError(c, http.StatusForbidden)
-				return
+				return objectGrantRevokeResult{}, false
 			}
-			setAuditOutcome(c, map[string]any{"grant_id": req.GrantID, "removed": false})
-			c.Status(http.StatusNoContent)
-			return
+			result.sources = append(result.sources, gin.H{
+				"grant_id": grantID,
+				"removed":  false,
+				"via":      string(authorityAdminAuthz),
+			})
+			continue
 		}
-		record := records[0]
-		// Role grants have their own rbac_basic route, capability gate and
-		// admin-role:permissions check. Letting a stable ID through this
-		// user-object route would bypass all three, particularly after a downgrade
-		// where role configuration must remain active but its writer is closed.
-		if record.PolicySource == authz.PolicySourceRolePermission {
-			replyPublicError(c, http.StatusForbidden)
-			return
-		}
-		resourceType, resourceID, ok := strings.Cut(record.Object, ":")
-		if !ok || resourceType == "" || !isConcreteResourceID(resourceID) {
-			replyPublicError(c, http.StatusBadRequest)
-			return
-		}
-		ref := resourceRef{Type: resourceType, ID: resourceID}
-		managed, err := managedproxy.IsManaged(c.Request.Context(), db, record.AccessorID)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		if managed {
-			replyPublicError(c, http.StatusForbidden)
-			return
-		}
-		// Revoking on an object is the mirror of granting on it: whoever can open
-		// their own object up can close it again. No op restriction applies —
-		// taking access away can only narrow, never widen.
-		authority, ok := resolveGrantAuthority(c, e, db, "revoke", ref)
+		authority, ok := authorizeObjectGrantRevoke(c, e, db, records[0])
 		if !ok {
-			return
+			return objectGrantRevokeResult{}, false
 		}
-		// A delegated owner may revoke only an ordinary allow produced by the
-		// delegated Professional writer. Stable source identity makes this check
-		// sufficient: selecting that row cannot remove an administrator deny,
-		// authorize, bundle, legacy, system or role sibling.
-		if authority != authorityAdminAuthz {
-			ordinaryOwnerGrant := record.PolicySource == authz.PolicySourceProfessionalRule &&
-				record.AuthoritySource == authz.AuthoritySourceOwnerDelegate &&
-				record.Effect == authz.EffectAllow && record.Operation != opAuthorize
-			if !ordinaryOwnerGrant {
-				replyPublicError(c, http.StatusForbidden)
-				return
-			}
-		}
-		removed, err := e.RevokePolicy(req.GrantID)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		setAuditOutcome(c, map[string]any{
-			"grant_id": req.GrantID, "policy_source": record.PolicySource,
-			"authority_source": record.AuthoritySource, "removed": removed, "via": string(authority),
-		})
-		c.Status(http.StatusNoContent)
+		source := objectGrantRevokeAuditSource(records[0], authority)
+		// false is the longer JSON spelling, so this also validates the worst-case
+		// per-target audit size before any policy is removed.
+		source["removed"] = false
+		result.sources = append(result.sources, source)
 	}
+	auditChoices := make(map[string]objectGrantRevokeAuditChoices, len(result.sources))
+	for _, source := range result.sources {
+		grantID, _ := source["grant_id"].(string)
+		source["removed"] = false
+		keptRecord, ok := newAuditOutcomeRecord(grantID, source)
+		if !ok {
+			serverError(c, fmt.Errorf("object grant audit detail exceeds storage limit for grant %q", grantID))
+			return objectGrantRevokeResult{}, false
+		}
+		source["removed"] = true
+		removedRecord, ok := newAuditOutcomeRecord(grantID, source)
+		if !ok {
+			serverError(c, fmt.Errorf("object grant audit detail exceeds storage limit for grant %q", grantID))
+			return objectGrantRevokeResult{}, false
+		}
+		source["removed"] = false
+		auditChoices[grantID] = objectGrantRevokeAuditChoices{kept: keptRecord, removed: removedRecord}
+	}
+
+	removedByID, err := e.RevokePolicies(normalized)
+	if err != nil {
+		serverError(c, err)
+		return objectGrantRevokeResult{}, false
+	}
+	result.auditRecords = make([]auditOutcomeRecord, 0, len(result.sources))
+	for _, source := range result.sources {
+		grantID, _ := source["grant_id"].(string)
+		removed := removedByID[grantID]
+		source["removed"] = removed
+		if removed {
+			result.removed++
+			result.auditRecords = append(result.auditRecords, auditChoices[grantID].removed)
+		} else {
+			result.auditRecords = append(result.auditRecords, auditChoices[grantID].kept)
+		}
+	}
+	return result, true
+}
+
+func objectGrantRevokeAuditSource(record authz.PolicyRecord, authority grantAuthority) gin.H {
+	return gin.H{
+		"grant_id":         record.GrantID,
+		"policy_source":    record.PolicySource,
+		"authority_source": record.AuthoritySource,
+		"created_by":       record.CreatedBy,
+		"operation":        record.Operation,
+		"effect":           record.Effect,
+		"via":              string(authority),
+	}
+}
+
+func authorizeObjectGrantRevoke(c *gin.Context, e *authz.Enforcer, db *gorm.DB, record authz.PolicyRecord) (grantAuthority, bool) {
+	// Role grants have their own rbac_basic route, capability gate and
+	// admin-role:permissions check. Letting a stable ID through this user-object
+	// route would bypass all three.
+	if record.PolicySource == authz.PolicySourceRolePermission {
+		replyPublicError(c, http.StatusForbidden)
+		return "", false
+	}
+	resourceType, resourceID, ok := strings.Cut(record.Object, ":")
+	if !ok || resourceType == "" || !isConcreteResourceID(resourceID) {
+		replyPublicError(c, http.StatusBadRequest)
+		return "", false
+	}
+	ref := resourceRef{Type: resourceType, ID: resourceID}
+	managed, err := managedproxy.IsManaged(c.Request.Context(), db, record.AccessorID)
+	if err != nil {
+		serverError(c, err)
+		return "", false
+	}
+	if managed {
+		replyPublicError(c, http.StatusForbidden)
+		return "", false
+	}
+	// Revoking on an object is the mirror of granting on it: whoever can open
+	// their own object up can close it again. No op restriction applies — taking
+	// access away can only narrow, never widen.
+	authority, ok := resolveGrantAuthority(c, e, db, "revoke", ref)
+	if !ok {
+		return "", false
+	}
+	// A delegated owner may revoke only an ordinary allow produced by that same
+	// delegated writer. Stable source identity prevents cross-grantor removal.
+	if authority != authorityAdminAuthz {
+		ordinaryOwnerGrant := record.PolicySource == authz.PolicySourceProfessionalRule &&
+			record.AuthoritySource == authz.AuthoritySourceOwnerDelegate &&
+			record.CreatedBy == c.GetString(ctxAccessorID) &&
+			record.Effect == authz.EffectAllow && record.Operation != opAuthorize
+		if !ordinaryOwnerGrant {
+			replyPublicError(c, http.StatusForbidden)
+			return "", false
+		}
+	}
+	return authority, true
 }

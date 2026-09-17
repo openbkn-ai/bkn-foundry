@@ -46,15 +46,6 @@ const (
 )
 
 var (
-	COMMON_OPERATIONS = []string{
-		OPERATION_TYPE_VIEW_DETAIL,
-		OPERATION_TYPE_CREATE,
-		OPERATION_TYPE_MODIFY,
-		OPERATION_TYPE_DELETE,
-		OPERATION_TYPE_QUERY_DATA,
-		OPERATION_TYPE_AUTHORIZE,
-		OPERATION_TYPE_EXECUTE,
-	}
 	// KN_CREATOR_OPERATIONS asks bkn-safe to atomically install the Community
 	// business bundle and the system-derived authorize permission. Create remains
 	// a type-level capability.
@@ -137,19 +128,18 @@ func IsValidAuthorizationID(id string) bool {
 
 // PermissionResourcesFilter is used for filtering and deletion.
 //
-// Operations and CandidateOperations are independent dimensions.
-// Operations determine visibility: a resource must hold all listed operations to be returned.
-// CandidateOperations determine which operations are returned to the frontend. When empty,
-// they fall back to Operations for backward compatibility.
-//
-// BKN Safe intersects the requested candidate list, so callers must pass the
-// candidates explicitly when they differ from the visibility operations.
+// Operations determine visibility: a resource must hold all listed operations
+// to be returned. CandidateOperations optionally narrows the projected
+// operations for trusted transport callers; when empty, bkn-safe derives the
+// complete resource-type operation set from its authorization catalog.
 type PermissionResourcesFilter struct {
-	Accessor       PermissionAccessor   `json:"accessor,omitempty"`
-	Resources      []PermissionResource `json:"resources,omitempty"`
-	Operations     []string             `json:"operation,omitempty"`
-	AllowOperation bool                 `json:"allow_operation"`
-	// CandidateOperations is an adapter-only projection hint.
+	Accessor   PermissionAccessor   `json:"accessor,omitempty"`
+	Resources  []PermissionResource `json:"resources,omitempty"`
+	Operations []string             `json:"operation,omitempty"`
+	// AllowOperation selects the independent operation-projection axis. False
+	// returns visible resources only; true returns each resource's effective ops.
+	AllowOperation bool `json:"allow_operation"`
+	// CandidateOperations is an optional adapter-only projection hint.
 	CandidateOperations []string `json:"-"`
 }
 

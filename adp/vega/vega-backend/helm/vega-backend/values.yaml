@@ -6,15 +6,8 @@ env:
   timezone: Asia/Shanghai
   language: en_US.UTF-8
 
-# bkn-safe (ISF replacement) cutover knobs. isf is accepted but retired; a
-# misspelled value refuses to start, an unset one falls back to ISF and warns.
-# provider: "bkn-safe" (authoritative) | "shadow" (ISF authoritative, diff-logged) | "isf".
-# url: bkn-safe ClusterIP base URL.
+# bkn-safe authorization endpoint. The service requires this URL at startup.
 bknSafe:
-  # Defaults match what the installer writes, so a chart-only install lands on
-  # a working bkn-safe deployment instead of the retired ISF.
-  authzProvider: "bkn-safe"
-  directoryProvider: "bkn-safe"
   url: "http://bkn-safe:3000"
 
 # 节点选择器
@@ -70,16 +63,8 @@ depServices:
     protocol: http
     user: admin
     password: ""
-  authorization-private:
-    host: authorization-private
-    port: 30920
-    protocol: http
-  user-management:
-    host: user-management-private
-    port: 30980
-    protocol: http
   hydra-admin:
-    # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
+    # Introspect against bkn-safe's paired Hydra service (cross-namespace).
     host: bkn-safe-hydra-admin
     port: 4445
     protocol: http

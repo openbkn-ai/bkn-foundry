@@ -43,7 +43,7 @@ func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context,
 	}
 	logger.Infof("Discovered %d fileset objects from source", len(sourceFilesets))
 
-	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
+	existingResources, err := dtw.rs.InternalGetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
@@ -172,6 +172,7 @@ func (dtw *DiscoverTaskWorker) createFilesetResource(ctx context.Context, catalo
 	meta["original_description"] = ""
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
+		Internal:         &catalog.Internal,
 		Name:             fs.Name,
 		Category:         interfaces.ResourceCategoryFileset,
 		Enabled:          true,

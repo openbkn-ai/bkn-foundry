@@ -41,7 +41,7 @@ func (r *proxyContextResolver) Resolve(
 		strings.TrimSpace(caller.Type) == "" || strings.TrimSpace(caller.Type) != caller.Type {
 		return nil, proxyUnavailable(ctx, "request caller is unavailable")
 	}
-	if err := validateBinding(binding); err != nil {
+	if err := validateLookupBinding(binding); err != nil {
 		return nil, proxyError(ctx, http.StatusForbidden, oerrors.OntologyQuery_Proxy_BindingInvalid,
 			"trusted proxy binding is invalid")
 	}
@@ -55,6 +55,16 @@ func (r *proxyContextResolver) Resolve(
 	}
 	if mapping == nil {
 		return nil, proxyUnavailable(ctx, "knowledge network proxy mapping is unavailable")
+	}
+	if mapping.ResolvedBinding == nil || mapping.ResolvedBinding.ChildType != binding.ChildType ||
+		mapping.ResolvedBinding.ChildID != binding.ChildID || mapping.ResolvedBinding.TargetID != binding.TargetID ||
+		mapping.ResolvedBinding.Operation != binding.Operation {
+		return nil, proxyUnavailable(ctx, "published proxy binding is unavailable")
+	}
+	resolvedBinding := *mapping.ResolvedBinding
+	resolvedBinding.KNID = binding.KNID
+	if err := validateBinding(resolvedBinding); err != nil {
+		return nil, proxyUnavailable(ctx, "published proxy binding is invalid")
 	}
 	if mapping.LifecycleStatus != interfaces.ProxyLifecycleActive {
 		return nil, proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_Disabled,
@@ -87,16 +97,23 @@ func (r *proxyContextResolver) Resolve(
 		},
 		ProxyVersion:          mapping.Version,
 		PublishedModelVersion: mapping.PublishedModelVersion,
-		Binding:               binding,
+		Binding:               resolvedBinding,
 	}, nil
 }
 
 func validateBinding(binding interfaces.TrustedProxyBinding) error {
+	return validateProxyBinding(binding, true)
+}
+
+func validateLookupBinding(binding interfaces.TrustedProxyBinding) error {
+	return validateProxyBinding(binding, false)
+}
+
+func validateProxyBinding(binding interfaces.TrustedProxyBinding, requireTargetType bool) error {
 	values := []string{
 		binding.KNID,
 		binding.ChildType,
 		binding.ChildID,
-		binding.TargetType,
 		binding.TargetID,
 		binding.Operation,
 	}
@@ -107,6 +124,12 @@ func validateBinding(binding interfaces.TrustedProxyBinding) error {
 		if strings.ContainsAny(value, "*\r\n") {
 			return fmt.Errorf("binding fields contain forbidden characters")
 		}
+	}
+	if requireTargetType && strings.TrimSpace(binding.TargetType) == "" {
+		return fmt.Errorf("binding target type is required")
+	}
+	if binding.TargetType != "" && (strings.TrimSpace(binding.TargetType) != binding.TargetType || strings.ContainsAny(binding.TargetType, "*\r\n")) {
+		return fmt.Errorf("binding target type is invalid")
 	}
 	if strings.Contains(binding.KNID, "/") || strings.Contains(binding.ChildID, "/") ||
 		strings.Contains(binding.TargetID, "/") {
@@ -127,13 +150,14 @@ func validateBinding(binding interfaces.TrustedProxyBinding) error {
 			return fmt.Errorf("data binding target or operation is invalid")
 		}
 	case interfaces.PermissionResourceTypeActionType:
-		if (binding.TargetType != interfaces.ProxyTargetTypeToolBox &&
+		if (binding.TargetType != "" && binding.TargetType != interfaces.ProxyTargetTypeToolBox &&
+			binding.TargetType != interfaces.ProxyTargetTypeFunction &&
 			binding.TargetType != interfaces.ProxyTargetTypeMCP) ||
 			binding.Operation != interfaces.PermissionOperationExecute {
 			return fmt.Errorf("action binding target or operation is invalid")
 		}
 	case interfaces.PermissionResourceTypeLogicProperty:
-		if binding.TargetType != interfaces.ProxyTargetTypeToolBox ||
+		if (binding.TargetType != "" && binding.TargetType != interfaces.ProxyTargetTypeToolBox && binding.TargetType != interfaces.ProxyTargetTypeFunction) ||
 			binding.Operation != interfaces.PermissionOperationExecute {
 			return fmt.Errorf("logic property binding target or operation is invalid")
 		}

@@ -32,6 +32,7 @@ const (
 
 	ProxyTargetTypeResource = "resource"
 	ProxyTargetTypeToolBox  = "tool_box"
+	ProxyTargetTypeFunction = "function"
 	ProxyTargetTypeMCP      = "mcp"
 )
 
@@ -40,14 +41,15 @@ type proxyContextKey struct{}
 // KnowledgeNetworkProxyAccount is the runtime subset of BKN's authoritative
 // knowledge-network-to-proxy mapping.
 type KnowledgeNetworkProxyAccount struct {
-	KNID                  string `json:"kn_id"`
-	ProxyAccountID        string `json:"proxy_account_id"`
-	ProxyAccountType      string `json:"proxy_account_type"`
-	LifecycleStatus       string `json:"lifecycle_status"`
-	Version               int64  `json:"version"`
-	SyncStatus            string `json:"sync_status"`
-	PublishedModelVersion string `json:"published_model_version"`
-	SyncedModelVersion    string `json:"synced_model_version"`
+	KNID                  string               `json:"kn_id"`
+	ProxyAccountID        string               `json:"proxy_account_id"`
+	ProxyAccountType      string               `json:"proxy_account_type"`
+	LifecycleStatus       string               `json:"lifecycle_status"`
+	Version               int64                `json:"version"`
+	SyncStatus            string               `json:"sync_status"`
+	PublishedModelVersion string               `json:"published_model_version"`
+	SyncedModelVersion    string               `json:"synced_model_version"`
+	ResolvedBinding       *TrustedProxyBinding `json:"resolved_binding,omitempty"`
 }
 
 // KnowledgeNetworkProxyResolveError preserves only the stable status and code
@@ -96,6 +98,38 @@ func TrustedProxyContextFromContext(ctx context.Context) (*TrustedProxyContext, 
 	}
 	proxy, ok := ctx.Value(proxyContextKey{}).(*TrustedProxyContext)
 	return proxy, ok && proxy != nil
+}
+
+type callerRuntimeCredentialKey struct{}
+
+// CallerRuntimeCredential is the invoking caller's own platform credential and,
+// when the caller is inside one, its managed Conversation and the registered
+// operation that made this call. It is handed only to
+// this deployment's Function runtime, so a Function backing a logic property
+// reads BKN as the caller who asked for it. It never authorizes the proxied
+// execution itself: that still runs as the knowledge network's proxy account.
+type CallerRuntimeCredential struct {
+	Authorization     string
+	ConversationID    string
+	ParentOperationID string
+}
+
+// WithCallerRuntimeCredential attaches the caller's credential captured from
+// the inbound request. A blank credential attaches nothing.
+func WithCallerRuntimeCredential(ctx context.Context, credential CallerRuntimeCredential) context.Context {
+	if credential.Authorization == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, callerRuntimeCredentialKey{}, credential)
+}
+
+// CallerRuntimeCredentialFromContext returns the captured caller credential.
+func CallerRuntimeCredentialFromContext(ctx context.Context) (CallerRuntimeCredential, bool) {
+	if ctx == nil {
+		return CallerRuntimeCredential{}, false
+	}
+	credential, ok := ctx.Value(callerRuntimeCredentialKey{}).(CallerRuntimeCredential)
+	return credential, ok && credential.Authorization != ""
 }
 
 // KnowledgeNetworkProxyAccess loads the authoritative proxy mapping from BKN.

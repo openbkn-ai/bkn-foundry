@@ -16,16 +16,18 @@ import (
 )
 
 const (
-	HeaderTraceparent         = "traceparent"
-	HeaderBKNRequestID        = "bkn-request-id"
-	HeaderLegacyRequestID     = "x-request-id"
-	HeaderBaggage             = "baggage"
-	HeaderBKNInteractionID    = "bkn-interaction-id"
-	HeaderBKNOperationID      = "bkn-operation-id"
-	HeaderBKNCausationEventID = "bkn-causation-event-id"
-	HeaderBKNClaimID          = "bkn-claim-id"
-	HeaderBKNAttempt          = "bkn-attempt"
-	HeaderBKNEventObservedAt  = "bkn-event-observed-at"
+	HeaderTraceparent          = "traceparent"
+	HeaderBKNRequestID         = "bkn-request-id"
+	HeaderLegacyRequestID      = "x-request-id"
+	HeaderBaggage              = "baggage"
+	HeaderBKNConversationID    = "bkn-conversation-id"
+	HeaderBKNInteractionID     = "bkn-interaction-id"
+	HeaderBKNParentOperationID = "bkn-parent-operation-id"
+	HeaderBKNOperationID       = "bkn-operation-id"
+	HeaderBKNCausationEventID  = "bkn-causation-event-id"
+	HeaderBKNClaimID           = "bkn-claim-id"
+	HeaderBKNAttempt           = "bkn-attempt"
+	HeaderBKNEventObservedAt   = "bkn-event-observed-at"
 )
 
 type traceContextKey string
@@ -183,6 +185,12 @@ func childOperationID(parentOperationID, operationName string, attempt, callOrdi
 	}
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%d", parentOperationID, strings.TrimSpace(operationName), attempt, callOrdinal)))
 	return "op_" + hex.EncodeToString(sum[:])
+}
+
+// SanitizeBusinessTraceID returns value when it is a well-formed business
+// trace id (conversation, interaction, operation), and "" otherwise.
+func SanitizeBusinessTraceID(value string) string {
+	return sanitizeBusinessTraceID(value)
 }
 
 func sanitizeBusinessTraceID(value string) string {

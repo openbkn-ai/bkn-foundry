@@ -51,6 +51,7 @@ type knowledgeNetworkService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	ata        interfaces.ActionTypeAccess
+	aoa        interfaces.AgentOperatorAccess
 	cba        interfaces.CapabilityBindingAccess
 	cbs        interfaces.CapabilityBindingService
 	ats        interfaces.ActionTypeService
@@ -72,7 +73,6 @@ type knowledgeNetworkService struct {
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
 
-	proxyBindingCache sync.Map // kn_id -> publishedProxyBindingCacheEntry
 }
 
 func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMutation {
@@ -80,6 +80,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 		knService = &knowledgeNetworkService{
 			appSetting: appSetting,
 			ata:        logics.ATA,
+			aoa:        logics.AOA,
 			cba:        logics.CBA,
 			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
 			ats:        action_type.NewActionTypeService(appSetting),
@@ -561,7 +562,7 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 	}
 
 	operations, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, knIDs,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -594,7 +595,7 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 
 	for resourceType, resourceIDs := range resourceIDsByType {
 		matched, err := permission.FilterKNChildResourceIDsWithAnyOperation(ctx, kns.ps, resourceType,
-			common.DuplicateSlice(resourceIDs), permission.KNChildOperationCandidates(resourceType))
+			common.DuplicateSlice(resourceIDs))
 		if err != nil {
 			return nil, err
 		}
@@ -771,6 +772,16 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 
 	span.SetStatus(codes.Ok, "")
 	return KNs, total, nil
+}
+
+func (kns *knowledgeNetworkService) ListAuthorizationResources(ctx context.Context,
+	query interfaces.AuthorizationResourcesQuery) ([]*interfaces.AuthorizationResource, int, error) {
+	resources, total, err := kns.kna.ListAuthorizationResources(ctx, query)
+	if err != nil {
+		return []*interfaces.AuthorizationResource{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	return resources, total, nil
 }
 
 // GetKNNamesByIDs resolves knowledge network names in bulk for object-level authorization display.
@@ -1800,7 +1811,7 @@ func (kns *knowledgeNetworkService) ListKnSrcs(ctx context.Context,
 	}
 	// Validate permission-management operations.
 	matchResoucesMap, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, resMids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false, interfaces.COMMON_OPERATIONS)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false)
 	if err != nil {
 		return emptyResources, 0, err
 	}

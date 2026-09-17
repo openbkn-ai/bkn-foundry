@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -30,8 +31,18 @@ func newTestDiscoverScheduleService(t *testing.T) (*discoverScheduleService, *vm
 	dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	cs.EXPECT().
+		CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(true, nil, nil)
+	cs.EXPECT().
+		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return([]string{"catalog-1"}, nil, nil)
 
 	return &discoverScheduleService{
+		cs:  cs,
 		dsa: dsa,
 		dts: dts,
 		ums: ums,
@@ -76,6 +87,22 @@ func TestCalculateScheduleNextRun(t *testing.T) {
 }
 
 func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
+	t.Run("create denies a catalog without task-manage permission", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cs := vmock.NewMockCatalogService(ctrl)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
+		service := &discoverScheduleService{cs: cs}
+
+		_, err := service.Create(context.Background(), &interfaces.DiscoverScheduleRequest{
+			CatalogID: "catalog-1",
+			CronExpr:  "0 0 * * *",
+		})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+	})
+
 	t.Run("create rejects empty cron", func(t *testing.T) {
 		service, _, _, _ := newTestDiscoverScheduleService(t)
 
@@ -248,7 +275,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 			{ID: "s2", Creator: interfaces.AccountInfo{ID: "u3"}, Updater: interfaces.AccountInfo{ID: "u4"}},
 		}
 
-		dsa.EXPECT().List(gomock.Any(), params).Return(schedules, int64(2), nil)
+		dsa.EXPECT().List(gomock.Any(), gomock.Any()).Return(schedules, int64(2), nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(4)).Return(nil)
 
 		got, total, err := service.List(context.Background(), params)
@@ -256,6 +283,48 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(2), total)
 		assert.Equal(t, schedules, got)
+	})
+
+	t.Run("list applies permitted catalog ids to the query", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		ums := vmock.NewMockUserMgmtService(ctrl)
+		visible := []string{"catalog-1", "catalog-2"}
+		service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
+
+		cs.EXPECT().
+			ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{}).
+			Return(visible, nil, nil)
+		dsa.EXPECT().
+			List(gomock.Any(), gomock.Cond(func(params interfaces.DiscoverScheduleQueryParams) bool {
+				return reflect.DeepEqual(params.CatalogIDs, visible)
+			})).
+			Return([]*interfaces.DiscoverSchedule{}, int64(0), nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(0)).Return(nil)
+
+		got, total, err := service.List(context.Background(), interfaces.DiscoverScheduleQueryParams{})
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.Zero(t, total)
+	})
+
+	t.Run("list skips data access when no catalogs are permitted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		service := &discoverScheduleService{dsa: dsa, cs: cs}
+
+		cs.EXPECT().
+			ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{}).
+			Return([]string{}, nil, nil)
+
+		got, total, err := service.List(context.Background(), interfaces.DiscoverScheduleQueryParams{})
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.Zero(t, total)
 	})
 
 	t.Run("list wraps access error", func(t *testing.T) {
@@ -276,6 +345,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		service, dsa, _, _ := newTestDiscoverScheduleService(t)
 		schedule := &interfaces.DiscoverSchedule{
 			ID:         "schedule-1",
+			CatalogID:  "catalog-1",
 			CronExpr:   "0 * * * *",
 			UpdateTime: 100,
 		}
@@ -289,7 +359,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		rowsAffected, err := service.UpdateRunMetadata(context.Background(), "schedule-1", 100, 110, 123, 456)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), rowsAffected)
-		require.NoError(t, service.Delete(context.Background(), "schedule-1"))
+		require.NoError(t, service.Delete(context.Background(), schedule))
 	})
 
 	t.Run("returns conflict when enabled state was based on a stale schedule", func(t *testing.T) {
@@ -312,6 +382,17 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 
 		require.Error(t, service.UpdateEnabled(context.Background(), nil, false))
 	})
+
+	t.Run("worker state update bypasses creator permissions", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		service := &discoverScheduleService{dsa: dsa}
+		schedule := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", UpdateTime: 100}
+
+		dsa.EXPECT().UpdateEnabled(gomock.Any(), "schedule-1", false, nil, int64(100), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+
+		require.NoError(t, service.InternalUpdateEnabled(context.Background(), schedule, false))
+	})
 }
 
 func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
@@ -320,6 +401,14 @@ func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
 	dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
+	cs.EXPECT().
+		CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(true, nil, nil)
+	cs.EXPECT().
+		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return([]string{"catalog-1"}, nil, nil)
 	service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
 
 	t.Run("list batches current page catalog ids", func(t *testing.T) {
@@ -354,6 +443,7 @@ func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return([]string{"catalog-3"}, nil, nil)
 		ums := vmock.NewMockUserMgmtService(ctrl)
 		service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
 		schedules := []*interfaces.DiscoverSchedule{{ID: "schedule-4", CatalogID: "catalog-3"}}

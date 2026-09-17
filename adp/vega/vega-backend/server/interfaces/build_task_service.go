@@ -26,7 +26,8 @@ type BuildTaskService interface {
 	// Stop transitions pending to stopped, or running to stopping (then asynchronously stopped by the worker).
 	Stop(ctx context.Context, taskID string) error
 	// DeleteByIDs atomically deletes build tasks by IDs.
-	// Pre-validates: any missing id returns 404 unless ignoreMissing=true; any pending/running/stopping id returns 409 (cannot be skipped).
+	// Callers must provide unique IDs. Pre-validates: any missing id returns 404 unless
+	// ignoreMissing=true; any pending/running/stopping id returns 409 (cannot be skipped).
 	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error
 
 	// InternalGetByID retrieves a build task by ID for internal workers.

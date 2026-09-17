@@ -13,7 +13,7 @@ import (
 )
 
 // The Community whitelist is intentionally maintained in code rather than
-// derived from catalog.json. This cross-check only prevents an approved entry
+// derived from authorization-registry.json. This cross-check only prevents an approved entry
 // from becoming a dead operation after a catalog edit; it never adds catalog
 // operations to the bundle.
 func TestCommunityBundleWhitelistOperationsExistInCatalog(t *testing.T) {
@@ -29,7 +29,7 @@ func TestCommunityBundleWhitelistOperationsExistInCatalog(t *testing.T) {
 		}
 	}
 	for _, resourceType := range []string{
-		"catalog", "knowledge_network", "connector_type", "tool_box", "mcp", "operator", "skill", "small_model", "large_model",
+		"catalog", "knowledge_network", "connector_type", "tool_box", "function", "mcp", "operator", "skill", "small_model", "large_model",
 		"agent", "agent_tpl",
 	} {
 		operations, ok := authz.CommunityBundleOperations(resourceType)

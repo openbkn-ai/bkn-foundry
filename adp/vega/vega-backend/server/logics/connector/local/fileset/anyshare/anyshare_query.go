@@ -13,11 +13,31 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"vega-backend/interfaces"
+)
+
+const (
+	sortFieldCreatedAt  = "created_at"
+	sortFieldModifiedAt = "modified_at"
+
+	sortTypeAsc  = "asc"
+	sortTypeDesc = "desc"
+)
+
+var (
+	allowedSortFields = map[string]struct{}{
+		sortFieldCreatedAt:  {},
+		sortFieldModifiedAt: {},
+	}
+	allowedSortTypes = map[string]struct{}{
+		sortTypeAsc:  {},
+		sortTypeDesc: {},
+	}
 )
 
 // ExecuteQuery executes a query on the fileset.
@@ -173,18 +193,6 @@ func processSortParams(sort []*interfaces.SortField) (map[string]interface{}, er
 		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
-	// Define allowed fields for sorting
-	allowedFields := map[string]bool{
-		"created_at":  true,
-		"modified_at": true,
-	}
-
-	// Define allowed sort types
-	allowedSortTypes := map[string]bool{
-		"asc":  true,
-		"desc": true,
-	}
-
 	// Check if more than one sort field is specified
 	if len(sort) > 1 {
 		return nil, fmt.Errorf("only one sort field is allowed")
@@ -197,17 +205,17 @@ func processSortParams(sort []*interfaces.SortField) (map[string]interface{}, er
 	}
 
 	// Validate field
-	if !allowedFields[s.Field] {
+	if _, ok := allowedSortFields[s.Field]; !ok {
 		return nil, fmt.Errorf("invalid sort field: %s, allowed fields are: created_at, modified_at", s.Field)
 	}
 
 	// Validate sort type
-	sortType := "asc" // default sort type
+	sortType := sortTypeAsc // default sort type
 	if s.Direction != "" {
-		if !allowedSortTypes[s.Direction] {
+		sortType = strings.ToLower(s.Direction)
+		if _, ok := allowedSortTypes[sortType]; !ok {
 			return nil, fmt.Errorf("invalid sort type: %s, allowed types are: asc, desc", s.Direction)
 		}
-		sortType = s.Direction
 	}
 
 	// Return sort object

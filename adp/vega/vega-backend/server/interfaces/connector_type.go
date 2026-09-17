@@ -9,9 +9,9 @@ package interfaces
 const (
 	ConnectorModeLocal  string = "local"  // It runs built-in within the vega-backend process
 	ConnectorModeRemote string = "remote" // It runs as an independent service and is invoked via HTTP
-)
 
-const (
+	ConnectorTypeSortName string = "name"
+
 	ConnectorCategoryTable   string = "table"   // Relational database
 	ConnectorCategoryIndex   string = "index"   // Search engine
 	ConnectorCategoryTopic   string = "topic"   // Message queue
@@ -22,8 +22,8 @@ const (
 )
 
 var (
-	CONNECTOR_TYPE_SORT = map[string]string{
-		"name": "f_name",
+	CONNECTOR_TYPE_SORT = map[string]struct{}{
+		ConnectorTypeSortName: {},
 	}
 )
 

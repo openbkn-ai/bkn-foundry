@@ -66,9 +66,13 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 		}
 		expectPreflight := func(stored *model.ToolboxDB) {
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user_1").Return(&interfaces.AuthAccessor{ID: "user_1"}, nil)
-			mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), boxID, interfaces.AuthResourceTypeToolBox).Return(nil)
+			resourceType, err := toolboxAuthorizationType(stored.MetadataType)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), boxID, resourceType).Return(nil)
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true)
-			mockToolBoxDB.EXPECT().SelectToolBox(gomock.Any(), boxID).Return(true, stored, nil)
+			mockToolBoxDB.EXPECT().SelectToolBox(gomock.Any(), boxID).Return(true, stored, nil).Times(2)
 		}
 
 		Convey("已存 openapi 工具箱,请求带合法 box_svc_url 应更新成功", func() {

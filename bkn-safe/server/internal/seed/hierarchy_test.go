@@ -108,8 +108,25 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	if err := db.First(&vegaResource, "id = ?", "resource").Error; err != nil {
 		t.Fatalf("load Vega resource type: %v", err)
 	}
-	if vegaResource.ParentTypeID != "" {
-		t.Errorf("Vega resource parent = %q, want no hierarchy", vegaResource.ParentTypeID)
+	if vegaResource.ParentTypeID != "catalog" {
+		t.Errorf("Vega resource parent = %q, want catalog", vegaResource.ParentTypeID)
+	}
+	resourceOps := map[string]string{}
+	var operations []model.Operation
+	if err := db.Where("resource_type_id = ?", "resource").Find(&operations).Error; err != nil {
+		t.Fatalf("load Vega resource operations: %v", err)
+	}
+	for _, operation := range operations {
+		resourceOps[operation.ID] = operation.ParentOperationID
+	}
+	if got := resourceOps["view_detail"]; got != "view_detail" {
+		t.Errorf("resource/view_detail parent operation = %q, want view_detail", got)
+	}
+	if got := resourceOps["query_data"]; got != "query_data" {
+		t.Errorf("resource/query_data parent operation = %q, want query_data", got)
+	}
+	if got := resourceOps["data_write"]; got != "data_write" {
+		t.Errorf("resource/data_write parent operation = %q, want data_write", got)
 	}
 
 	parents := []model.ResourceParent{
@@ -186,6 +203,73 @@ func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	assertFinal("default-deny", false, authz.BasisDefault)
 }
 
+// TestSeedDeclaresVegaAuthorizationHierarchy pins the complete Resource-to-Catalog
+// hierarchy so Vega can rely exclusively on bkn-safe's final decisions.
+func TestSeedDeclaresVegaAuthorizationHierarchy(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	var resource model.ResourceType
+	if err := db.First(&resource, "id = ?", "resource").Error; err != nil {
+		t.Fatal(err)
+	}
+	if resource.ParentTypeID != "catalog" {
+		t.Fatalf("resource parent = %q, want catalog", resource.ParentTypeID)
+	}
+
+	var operations []model.Operation
+	if err := db.Where("resource_type_id = ?", "resource").Find(&operations).Error; err != nil {
+		t.Fatal(err)
+	}
+	wantParentOperations := map[string]string{
+		"view_detail": "view_detail",
+		"modify":      "resource_manage",
+		"delete":      "resource_manage",
+		"query_data":  "query_data",
+		"data_write":  "data_write",
+	}
+	if len(operations) != len(wantParentOperations) {
+		t.Fatalf("resource operations = %+v, want exactly %v", operations, wantParentOperations)
+	}
+	for _, operation := range operations {
+		wantParent, ok := wantParentOperations[operation.ID]
+		if !ok {
+			t.Errorf("resource unexpectedly declares %q", operation.ID)
+			continue
+		}
+		if operation.ParentOperationID != wantParent || operation.RequiredOperationIDs != "" {
+			t.Errorf("resource/%s parent=%q requires=%q, want parent=%q and no prerequisite",
+				operation.ID, operation.ParentOperationID, operation.RequiredOperationIDs, wantParent)
+		}
+	}
+
+	for _, operationID := range []string{"modify", "delete", "authorize", "task_manage", "resource_manage"} {
+		var operation model.Operation
+		if err := db.First(&operation, "resource_type_id = ? AND id = ?", "catalog", operationID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if operation.ParentOperationID != "" || operation.RequiredOperationIDs != "view_detail" {
+			t.Errorf("catalog/%s parent=%q requires=%q, want parent empty and requires view_detail",
+				operationID, operation.ParentOperationID, operation.RequiredOperationIDs)
+		}
+	}
+	for _, operationID := range []string{"query_data", "data_write"} {
+		var operation model.Operation
+		if err := db.First(&operation, "resource_type_id = ? AND id = ?", "catalog", operationID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if operation.RequiredOperationIDs != "" {
+			t.Errorf("catalog/%s requires=%q, want independent operation", operationID, operation.RequiredOperationIDs)
+		}
+	}
+}
+
 // TestValidateHierarchyRejectsAuthoringMistakes: every case here would compile,
 // seed cleanly and then produce a grant that silently never applies, so the seed
 // fails instead.
@@ -257,10 +341,10 @@ func TestValidateHierarchyRejectsAuthoringMistakes(t *testing.T) {
 func TestValidateHierarchyAcceptsShippedCatalog(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		t.Fatalf("parse catalog.json: %v", err)
+		t.Fatalf("parse authorization-registry.json: %v", err)
 	}
 	if err := validateHierarchy(c); err != nil {
-		t.Fatalf("shipped catalog.json declares an invalid hierarchy: %v", err)
+		t.Fatalf("shipped authorization-registry.json declares an invalid hierarchy: %v", err)
 	}
 }
 
@@ -341,7 +425,6 @@ func TestSeedPrunesWithdrawnOperations(t *testing.T) {
 	// Simulate what an older seed left behind on an upgraded deployment.
 	stale := []model.Operation{
 		{ResourceTypeID: "knowledge_network", ID: "data_query", Name: "数据查询"},
-		{ResourceTypeID: "resource", ID: "modify", Name: "修改"},
 	}
 	if err := db.Create(&stale).Error; err != nil {
 		t.Fatal(err)
@@ -368,6 +451,9 @@ func TestSeedPrunesWithdrawnOperations(t *testing.T) {
 	for _, tc := range []struct{ rtype, op string }{
 		{"resource", "view_detail"},
 		{"resource", "query_data"},
+		{"resource", "data_write"},
+		{"resource", "modify"},
+		{"resource", "delete"},
 		{"catalog", "resource_manage"},
 		{"knowledge_network", "query_data"},
 	} {

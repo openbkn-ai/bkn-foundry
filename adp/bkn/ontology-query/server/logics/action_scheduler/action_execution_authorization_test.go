@@ -22,8 +22,9 @@ type actionPermissionStub struct {
 }
 
 type actionProxyResolverStub struct {
-	err      error
-	bindings []interfaces.TrustedProxyBinding
+	err        error
+	targetType string
+	bindings   []interfaces.TrustedProxyBinding
 }
 
 func attachTestActionProxySnapshot(t *testing.T, execution *interfaces.ActionExecution,
@@ -61,12 +62,19 @@ func (s *actionProxyResolverStub) Resolve(ctx context.Context,
 	if caller.ID == "" {
 		caller = interfaces.AccountInfo{ID: "test-caller", Type: "user"}
 	}
+	resolved := binding
+	if resolved.TargetType == "" {
+		resolved.TargetType = s.targetType
+		if resolved.TargetType == "" {
+			resolved.TargetType = interfaces.ProxyTargetTypeToolBox
+		}
+	}
 	return &interfaces.TrustedProxyContext{
 		Caller:                caller,
 		Proxy:                 interfaces.AccountInfo{ID: "test-proxy", Type: interfaces.ProxyAccountTypeApp},
 		ProxyVersion:          2,
 		PublishedModelVersion: "model-v2",
-		Binding:               binding,
+		Binding:               resolved,
 	}, nil
 }
 
@@ -209,6 +217,21 @@ func TestResolveActionProxyContextKeepsDownstreamPermissionSeparate(t *testing.T
 	if !reflect.DeepEqual(requirements, want) || proxy.Proxy.ID != "test-proxy" ||
 		len(resolver.bindings) != 1 || resolver.bindings[0].ChildID != "at-1" {
 		t.Fatalf("proxy = %#v, requirements = %#v, bindings = %#v", proxy, requirements, resolver.bindings)
+	}
+}
+
+func TestResolveFunctionActionProxyContextUsesFunctionGrant(t *testing.T) {
+	resolver := &actionProxyResolverStub{targetType: interfaces.ProxyTargetTypeFunction}
+	service := &actionSchedulerService{proxy: resolver}
+	_, requirements, err := service.resolveActionProxyContext(t.Context(), "kn-1", &interfaces.ActionType{
+		ATID: "at-fn", ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-fn", ToolID: "fn-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(requirements) != 1 || requirements[0].ResourceType != interfaces.PermissionResourceTypeFunction ||
+		len(resolver.bindings) != 1 || resolver.bindings[0].TargetType != "" {
+		t.Fatalf("function proxy requirements=%#v bindings=%#v", requirements, resolver.bindings)
 	}
 }
 

@@ -74,8 +74,8 @@ func TestGetOperatorNamesByIDsAuthz(t *testing.T) {
 	})
 }
 
-func TestProjectOperatorAuthorizeOperations(t *testing.T) {
-	Convey("Operator list projects authorize with the existing accessor", t, func() {
+func TestProjectOperatorOperations(t *testing.T) {
+	Convey("Operator list projects record operations with the existing accessor", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
@@ -84,12 +84,15 @@ func TestProjectOperatorAuthorizeOperations(t *testing.T) {
 		authService.EXPECT().ResourceFilterOperations(
 			gomock.Any(), accessor, []string{"op-1", "op-2"}, interfaces.AuthResourceTypeOperator,
 			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+			[]interfaces.AuthOperationType{
+				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypeModify, interfaces.AuthOperationTypePublish,
+				interfaces.AuthOperationTypeUnpublish, interfaces.AuthOperationTypeDelete, interfaces.AuthOperationTypeAuthorize,
+			},
 		).Return(map[string][]interfaces.AuthOperationType{
 			"op-2": {interfaces.AuthOperationTypeAuthorize},
 		}, nil)
 
-		err := projectOperatorAuthorizeOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, operators)
+		err := projectOperatorOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, operators)
 
 		So(err, ShouldBeNil)
 		So(operators[0].Operations, ShouldBeEmpty)

@@ -332,10 +332,8 @@ func (dta *discoverTaskAccess) InternalList(ctx context.Context, params interfac
 	builder = applyDiscoverTaskFilters(builder, params).
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
-	if params.Offset < 0 {
-		return nil, fmt.Errorf("discover task offset must not be negative")
-	}
 	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 
@@ -527,19 +525,29 @@ func (dta *discoverTaskAccess) DeleteByIDs(ctx context.Context, ids []string) (i
 	return affected, nil
 }
 
-// MarkCancelledByCatalogID marks pending tasks as cancelled when their Catalog is deleted.
-func (dta *discoverTaskAccess) MarkCancelledByCatalogID(
-	ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64,
-) error {
-	_, err := dta.update(ctx, tx, map[string]any{
-		"f_status":      interfaces.DiscoverTaskStatusCancelled,
-		"f_message":     message,
-		"f_finish_time": finishTime,
-	}, map[string]any{
-		"f_catalog_id": catalogID,
-		"f_status":     interfaces.DiscoverTaskStatusPending,
-	})
-	return err
+// DeleteByCatalogID deletes DiscoverTasks belonging to a Catalog.
+func (dta *discoverTaskAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete discover tasks by catalog ID")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Delete(DISCOVER_TASK_TABLE_NAME).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = dta.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Delete failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 func (dta *discoverTaskAccess) update(

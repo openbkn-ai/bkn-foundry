@@ -106,9 +106,15 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 	// InternalGetByID above deliberately skips authorization, so this is the only
 	// thing standing between an unauthorized caller and a task that reads the
 	// table's unmasked sample rows (bkn-studio#342).
-	if err := suts.cs.CheckTaskPermission(ctx, resource.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	allowed, _, err := suts.cs.CheckCatalogPermission(ctx, resource.CatalogID,
+		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+	if err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
+	}
+	if !allowed {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
 	task, err := normalizeResourceSemanticUnderstandingRequest(resource, req)
@@ -147,15 +153,17 @@ func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Cont
 			WithErrorDetails("catalog_id is required")
 	}
 
-	catalog, err := suts.cs.InternalGetByID(ctx, catalogID, false)
+	allowed, catalog, err := suts.cs.CheckCatalogPermission(ctx, catalogID,
+		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
 	if err != nil {
-		span.SetStatus(codes.Error, "Get catalog failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
-			WithErrorDetails(err.Error())
+		span.SetStatus(codes.Error, "Check catalog permission failed")
+		return nil, err
 	}
-	if catalog == nil {
-		span.SetStatus(codes.Error, "Catalog not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	if !allowed {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]",
+				interfaces.OPERATION_TYPE_TASK_MANAGE))
 	}
 
 	resources, err := suts.rs.InternalGetByCatalogID(ctx, catalogID)
@@ -163,13 +171,6 @@ func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Cont
 		span.SetStatus(codes.Error, "Get catalog resources failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
 			WithErrorDetails(err.Error())
-	}
-
-	// Same hole as the resource path: the catalog was fetched internally, which
-	// skips authorization (bkn-studio#342).
-	if err := suts.cs.CheckTaskPermission(ctx, catalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
-		span.SetStatus(codes.Error, "Permission denied")
-		return nil, err
 	}
 
 	task, err := normalizeCatalogSemanticUnderstandingRequest(catalog, resources, req)
@@ -211,22 +212,6 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 	return task, nil
 }
 
-// checkTaskPermission authorizes an operation on one semantic-understanding task
-// through whatever it was created against: a resource-scoped task is judged on
-// its table, a catalog-scoped one on its catalog.
-//
-// Reads matter as much as writes here. The task's input snapshot holds the
-// table's unmasked sample rows, so an unguarded detail endpoint hands out
-// exactly what the creation guard was added to protect (#571).
-func (suts *semanticUnderstandingTaskService) checkTaskPermission(ctx context.Context,
-	task *interfaces.SemanticUnderstandingTask, op string) error {
-
-	// 两种 scope 都判在目录上,与列表口径一致。资源域的任务落库时也写了
-	// catalog_id,所以不需要回查资源表——而按表判会让「列表里看不到、按 id 却读
-	// 得到」这种矛盾重新出现。目录被删之后的兜底在 CheckTaskPermission 里。
-	return suts.cs.CheckTaskPermission(ctx, task.CatalogID, op)
-}
-
 func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.GetByID")
 	defer span.End()
@@ -241,10 +226,18 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 		span.SetStatus(codes.Error, "Semantic understanding task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
 	}
-	if err := suts.checkTaskPermission(ctx, task, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+
+	allowed, _, err := suts.cs.CheckCatalogPermission(ctx, task.CatalogID,
+		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+	if err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
 	}
+	if !allowed {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	}
+
 	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, []*interfaces.SemanticUnderstandingTask{task}); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
@@ -285,18 +278,17 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 	// that total counts what the caller can see and pages keep their size —
 	// filtering after LIMIT breaks both, and the set is small enough to push down
 	// because it is catalogs rather than tables.
-	visible, unrestricted, excluded, err := suts.cs.AuthorizedCatalogsForTasks(ctx,
-		interfaces.OPERATION_TYPE_TASK_MANAGE)
+	visible, _, err := suts.cs.ListPermittedCatalogIDs(ctx, []string{interfaces.OPERATION_TYPE_TASK_MANAGE},
+		interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{})
 	if err != nil {
 		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
 		return nil, 0, err
 	}
-	if !unrestricted && len(visible) == 0 {
+	if len(visible) == 0 {
 		span.SetStatus(codes.Ok, "")
 		return []*interfaces.SemanticUnderstandingTaskSummary{}, 0, nil
 	}
 	params.CatalogIDs = visible
-	params.ExcludeCatalogIDs = excluded
 
 	tasks, total, err := suts.suta.List(ctx, params)
 	if err != nil {
@@ -425,17 +417,7 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.DeleteByIDs")
 	defer span.End()
 
-	seen := make(map[string]struct{}, len(ids))
-	uniqueIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		uniqueIDs = append(uniqueIDs, id)
-	}
-
-	tasksByID, err := suts.suta.GetByIDs(ctx, uniqueIDs)
+	tasksByID, err := suts.suta.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get semantic understanding tasks failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
@@ -443,21 +425,32 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 	}
 
 	// Checked before anything is deleted: a batch is one transaction, so one
-	// unauthorized id stops the whole request rather than deleting the rest.
-	for _, id := range uniqueIDs {
+	// unauthorized catalog stops the whole request rather than deleting the rest.
+	checkedCatalogIDs := make(map[string]struct{})
+	for _, id := range ids {
 		task := tasksByID[id]
 		if task == nil {
 			continue
 		}
-		if err := suts.checkTaskPermission(ctx, task, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
-			span.SetStatus(codes.Error, "Permission denied")
-			return err
+		if _, checked := checkedCatalogIDs[task.CatalogID]; checked {
+			continue
 		}
+		allowed, _, permissionErr := suts.cs.CheckCatalogPermission(ctx, task.CatalogID,
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+		if permissionErr != nil {
+			span.SetStatus(codes.Error, "Permission denied")
+			return permissionErr
+		}
+		if !allowed {
+			span.SetStatus(codes.Error, "Permission denied")
+			return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		}
+		checkedCatalogIDs[task.CatalogID] = struct{}{}
 	}
 
 	toDelete := make([]string, 0, len(tasksByID))
 	runningIDs := make([]string, 0)
-	for _, id := range uniqueIDs {
+	for _, id := range ids {
 		task := tasksByID[id]
 		if task == nil {
 			continue
@@ -474,9 +467,9 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_SemanticUnderstandingTask_HasRunningExecution).
 			WithErrorDetails(map[string]any{"running_ids": runningIDs})
 	}
-	if !ignoreMissing && len(tasksByID) != len(uniqueIDs) {
-		missingIDs := make([]string, 0, len(uniqueIDs))
-		for _, id := range uniqueIDs {
+	if !ignoreMissing && len(tasksByID) != len(ids) {
+		missingIDs := make([]string, 0, len(ids))
+		for _, id := range ids {
 			if tasksByID[id] == nil {
 				missingIDs = append(missingIDs, id)
 			}

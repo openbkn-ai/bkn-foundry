@@ -936,7 +936,10 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 				[]string{"skill-12c"},
 				interfaces.AuthResourceTypeSkill,
 				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+				[]interfaces.AuthOperationType{
+					interfaces.AuthOperationTypeView, interfaces.AuthOperationTypeModify, interfaces.AuthOperationTypePublish,
+					interfaces.AuthOperationTypeUnpublish, interfaces.AuthOperationTypeDelete, interfaces.AuthOperationTypeAuthorize,
+				},
 			).Return(map[string][]interfaces.AuthOperationType{
 				"skill-12c": {interfaces.AuthOperationTypeAuthorize},
 			}, nil)

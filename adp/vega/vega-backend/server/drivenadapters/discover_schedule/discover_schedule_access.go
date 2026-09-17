@@ -92,6 +92,22 @@ func scanDiscoverSchedule(scanner discoverScheduleScanner) (*interfaces.Discover
 	return schedule, nil
 }
 
+func applyDiscoverScheduleFilters(builder sq.SelectBuilder,
+	params interfaces.DiscoverScheduleQueryParams) sq.SelectBuilder {
+	if params.Name != "" {
+		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
+	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	} else if len(params.CatalogIDs) > 0 {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogIDs})
+	}
+	if params.Enabled != nil {
+		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
+	}
+	return builder
+}
+
 // NewDiscoverScheduleAccess creates a new DiscoverScheduleAccess.
 func NewDiscoverScheduleAccess(appSetting *common.AppSetting) interfaces.DiscoverScheduleAccess {
 	dsAccessOnce.Do(func() {
@@ -265,30 +281,10 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 	builder := sq.Select(discoverScheduleColumns()...).
 		From(DISCOVER_SCHEDULE_TABLE_NAME)
 
-	// Apply filters
-	if params.Name != "" {
-		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{"f_name": name})
-	}
-	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if params.Enabled != nil {
-		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
-	}
+	builder = applyDiscoverScheduleFilters(builder, params)
 
-	// Get total count
 	countBuilder := sq.Select("COUNT(*)").From(DISCOVER_SCHEDULE_TABLE_NAME)
-	if params.Name != "" {
-		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		countBuilder = countBuilder.Where(sq.Like{"f_name": name})
-	}
-	if params.CatalogID != "" {
-		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if params.Enabled != nil {
-		countBuilder = countBuilder.Where(sq.Eq{"f_enabled": *params.Enabled})
-	}
+	countBuilder = applyDiscoverScheduleFilters(countBuilder, params)
 
 	countSql, countVals, err := countBuilder.ToSql()
 	if err != nil {
@@ -306,17 +302,10 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 	}
 
 	// Apply ordering and pagination
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
+	builder = builder.OrderBy(discoverScheduleOrderByClause(params.Sort, params.Direction))
 
-	// Pagination
-	if params.Offset < 0 {
-		return nil, 0, fmt.Errorf("discover schedule offset must not be negative")
-	}
 	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 
@@ -558,4 +547,22 @@ func (dsa *discoverScheduleAccess) UpdateRunMetadata(ctx context.Context, id str
 
 	span.SetStatus(codes.Ok, "")
 	return rowsAffected, nil
+}
+
+func discoverScheduleOrderByClause(sort, direction string) string {
+	column := "f_update_time"
+	switch sort {
+	case interfaces.DiscoverScheduleSortName:
+		column = "f_name"
+	case interfaces.DiscoverScheduleSortCreateTime:
+		column = "f_create_time"
+	case interfaces.DiscoverScheduleSortUpdateTime, "":
+		column = "f_update_time"
+	case interfaces.DiscoverScheduleSortNextRun:
+		column = "f_next_run"
+	}
+	if direction == interfaces.ASC_DIRECTION {
+		return fmt.Sprintf("%s ASC", column)
+	}
+	return fmt.Sprintf("%s DESC", column)
 }

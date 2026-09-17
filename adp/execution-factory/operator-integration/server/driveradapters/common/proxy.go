@@ -69,7 +69,7 @@ func NewUnifiedProxyHandler() UnifiedProxyHandler {
 // Account - you can use this to gain code execution capabilities in the sandbox.
 func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 	var err error
-	if err = requireOperatorTypePermission(c.Request.Context(), h.AuthService,
+	if err = requireFunctionPermission(c.Request.Context(), h.AuthService,
 		interfaces.AuthOperationTypeExecute); err != nil {
 		rest.ReplyError(c, err)
 		return
@@ -227,24 +227,28 @@ func buildFunctionProxyExecutionEnv(c *gin.Context, version string) (map[string]
 }
 
 // fillManagedInteractionFromRequest hands a proxied Function the invoking
-// caller's credential and its managed Interaction.
+// caller's credential and, when there is one, its managed Interaction.
 //
 // A published Function is a business operation, and the useful ones read the
 // knowledge network. Without a credential sandbox_sdk.bkn reports "not
-// configured"; without the Interaction its reads are unattributable. The public
-// Toolbox execute handler captures both from the request it authenticated and
-// forwards them here, so a Function reads BKN as the principal that asked for
-// it, inside the Interaction that asked.
+// configured"; without the Interaction its reads are unattributable. The Toolbox
+// execute handler captures both from the request it authenticated and forwards
+// them here, so a Function reads BKN as the principal that asked for it, inside
+// the Interaction that asked.
 //
 // The cost is explicit and accepted: the code being run was registered by a
 // third party, the sandbox has outbound network, and this route authenticates by
 // trusted header rather than by introspection, so a function author can read the
-// invoking user's live token out of its own environment. Two things bound it.
-// All three values must be present, so a Function invoked outside a managed
-// Interaction still receives nothing and the unmanaged proxy call keeps the
-// earlier withhold-everything behaviour. And they are written as one set, over
-// keys newExecutionEnv already preset to blank, so a pooled container never
-// serves one caller's token beside another caller's Interaction.
+// invoking user's live token out of its own environment.
+//
+// Whether a credential may be forwarded at all is decided upstream, where the
+// call is known: functionRuntimeHeaders forwards it on a direct Toolbox call
+// only inside a managed Interaction, and on ontology-query's trusted proxy call
+// (logic properties and actions, which a Studio trial evaluates outside any
+// Interaction) without one. This route only receives what that gate let through,
+// so a token alone is enough here. The Interaction ids are written only as a
+// complete pair, over keys newExecutionEnv already preset to blank, so a pooled
+// container never serves one caller's token beside another caller's Interaction.
 //
 // The direct /v1/function/execute path is deliberately untouched: session
 // context there stays caller-stated in the body (#1161), because a request that
@@ -254,12 +258,15 @@ func fillManagedInteractionFromRequest(env map[string]any, c *gin.Context) map[s
 		return env
 	}
 	token := drivenadapters.GetToken(c)
-	conversationID := strings.TrimSpace(c.GetHeader(string(interfaces.HeaderBKNConversationID)))
-	interactionID := strings.TrimSpace(c.GetHeader(string(interfaces.HeaderBKNInteractionID)))
-	if token == "" || conversationID == "" || interactionID == "" {
+	if token == "" {
 		return env
 	}
 	env["BKN_TOKEN"] = token
+	conversationID := strings.TrimSpace(c.GetHeader(string(interfaces.HeaderBKNConversationID)))
+	interactionID := strings.TrimSpace(c.GetHeader(string(interfaces.HeaderBKNInteractionID)))
+	if conversationID == "" || interactionID == "" {
+		return env
+	}
 	env["BKN_CONVERSATION_ID"] = conversationID
 	env["BKN_INTERACTION_ID"] = interactionID
 	env["BKN_PARENT_OPERATION_ID"] = strings.TrimSpace(c.GetHeader(string(interfaces.HeaderBKNParentOperationID)))
@@ -529,7 +536,7 @@ _bkn_sys.exit(0)
 // Executing user code means the same capability as FunctionExecute, so the same set of execute authorizations is used.
 func (h *unifiedProxyHandler) FunctionInferSchema(c *gin.Context) {
 	ctx := c.Request.Context()
-	if err := requireOperatorTypePermission(ctx, h.AuthService,
+	if err := requireFunctionPermission(ctx, h.AuthService,
 		interfaces.AuthOperationTypeExecute); err != nil {
 		rest.ReplyError(c, err)
 		return

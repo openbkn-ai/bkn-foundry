@@ -253,13 +253,14 @@ func TestBuildFunctionProxyExecutionEnvFallsBackToRequestAccount(t *testing.T) {
 	}
 }
 
-// An unmanaged proxy call still gets nothing.
+// A proxied Function outside any Interaction still reads BKN as its caller.
 //
-// It runs code registered by a third party, and its route authenticates by
-// trusted header (hydra.GenerateVisitor) rather than by introspection, so the
-// Authorization value is an unverified passthrough. Only a complete managed
-// context lifts that, and a bare token is not one.
-func TestBuildFunctionProxyExecutionEnvWithholdsCredential(t *testing.T) {
+// Logic properties and actions reach this route through ontology-query's
+// trusted proxy, and a Studio trial or a plain property query evaluates them
+// outside any Interaction. Whether the credential may travel is decided by
+// functionRuntimeHeaders before the request gets here; this route receives the
+// token only when that gate let it through, and fills no Interaction for it.
+func TestBuildFunctionProxyExecutionEnvCarriesCredentialWithoutInteraction(t *testing.T) {
 	env, err := buildFunctionProxyExecutionEnv(
 		newRequestContext("tok-req", "acct-req"),
 		"11111111-1111-4111-8111-111111111111",
@@ -268,12 +269,31 @@ func TestBuildFunctionProxyExecutionEnvWithholdsCredential(t *testing.T) {
 		t.Fatalf("构造函数代理执行环境失败: %v", err)
 	}
 
-	value, ok := env["BKN_TOKEN"]
-	if !ok {
-		t.Fatalf("BKN_TOKEN 必须在场（缺席会让上一个调用方的值留下）: %v", env)
+	if env["BKN_TOKEN"] != "tok-req" {
+		t.Fatalf("上游放行的调用方凭据未注入: %v", env["BKN_TOKEN"])
 	}
-	if value != "" {
-		t.Fatalf("无受管上下文时不得注入调用方凭据，得到 %v", value)
+	for _, key := range []string{"BKN_CONVERSATION_ID", "BKN_INTERACTION_ID", "BKN_PARENT_OPERATION_ID"} {
+		if value, ok := env[key]; !ok || value != "" {
+			t.Fatalf("无 Interaction 时 %s 必须在场且为空: %v", key, env)
+		}
+	}
+}
+
+// Without a credential nothing is filled, and every key stays present so a
+// pooled container never keeps the previous caller's value.
+func TestBuildFunctionProxyExecutionEnvWithholdsWithoutCredential(t *testing.T) {
+	c := newRequestContext("", "acct-req")
+	c.Request.Header.Set("bkn-conversation-id", "conv_1")
+	c.Request.Header.Set("bkn-interaction-id", "int_1")
+
+	env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
+	if err != nil {
+		t.Fatalf("构造函数代理执行环境失败: %v", err)
+	}
+	for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
+		if value, ok := env[key]; !ok || value != "" {
+			t.Fatalf("无凭据时 %s 必须在场且为空: %v", key, env)
+		}
 	}
 }
 
@@ -302,8 +322,8 @@ func TestBuildFunctionProxyExecutionEnvCarriesAManagedInteraction(t *testing.T) 
 	}
 }
 
-// A partial context is treated as absent: a credential separated from the
-// lifecycle guard it belongs to must not reach a pooled sandbox.
+// A partial Interaction is treated as absent: half of it must never sit beside
+// the caller's token in a pooled sandbox.
 func TestBuildFunctionProxyExecutionEnvRefusesAPartialInteraction(t *testing.T) {
 	for _, header := range []string{"bkn-conversation-id", "bkn-interaction-id"} {
 		c := newRequestContext("tok-req", "acct-req")
@@ -314,7 +334,7 @@ func TestBuildFunctionProxyExecutionEnvRefusesAPartialInteraction(t *testing.T) 
 			t.Fatalf("构造函数代理执行环境失败: %v", err)
 		}
 
-		for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
+		for _, key := range []string{"BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
 			value, ok := env[key]
 			if !ok {
 				t.Fatalf("%s 必须在场: %v", key, env)

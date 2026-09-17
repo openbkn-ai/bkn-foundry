@@ -21,6 +21,7 @@ type KNService interface {
 	ResolveKNReadAccess(ctx context.Context, knID string, branch string) (KNReadAccessMode, error)
 	CreateKN(ctx context.Context, kn *KN, mode string, strictMode bool) (string, error)
 	ListKNs(ctx context.Context, query KNsQueryParams) ([]*KN, int, error)
+	ListAuthorizationResources(ctx context.Context, query AuthorizationResourcesQuery) ([]*AuthorizationResource, int, error)
 	GetKNByID(ctx context.Context, knID string, branch string, mode string) (*KN, error)
 	// ExportKNForProjection reads exactly one current main-branch network after
 	// the HTTP boundary has verified a ProjectionReadGrant.

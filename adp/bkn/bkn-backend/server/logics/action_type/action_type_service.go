@@ -436,6 +436,10 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 		return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
+	if interfaces.IsAuthorizationResourceCatalog(ctx) {
+		total := len(actionTypes)
+		return permission.PaginateKNChildCandidates(actionTypes, query.Offset, query.Limit), total, nil
+	}
 
 	// Action types are independently authorized resources. Their visibility is determined by the
 	// action type permission itself; a bound object type controls access to that object type and

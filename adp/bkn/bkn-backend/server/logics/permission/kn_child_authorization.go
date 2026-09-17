@@ -18,23 +18,6 @@ import (
 
 const knChildResourceFilterChunkSizeEnv = "KN_CHILD_RESOURCE_FILTER_CHUNK_SIZE"
 
-var schemaChildOperations = []string{
-	interfaces.OPERATION_TYPE_VIEW_DETAIL,
-	interfaces.OPERATION_TYPE_QUERY_DATA,
-	interfaces.OPERATION_TYPE_MODIFY,
-	interfaces.OPERATION_TYPE_DELETE,
-}
-
-var structuralChildOperations = []string{
-	interfaces.OPERATION_TYPE_VIEW_DETAIL,
-	interfaces.OPERATION_TYPE_MODIFY,
-	interfaces.OPERATION_TYPE_DELETE,
-}
-
-var actionTypeOperations = append(append([]string{}, structuralChildOperations...),
-	interfaces.OPERATION_TYPE_EXECUTE,
-)
-
 type knImportPermissionPrecheckedKey struct{}
 type dependencyValidationPermissionPrecheckedKey struct{}
 
@@ -63,22 +46,6 @@ func WithDependencyValidationPermissionPrechecked(ctx context.Context) context.C
 func DependencyValidationPermissionPrechecked(ctx context.Context) bool {
 	prechecked, _ := ctx.Value(dependencyValidationPermissionPrecheckedKey{}).(bool)
 	return prechecked
-}
-
-// KNChildOperationCandidates returns the instance-level operations exposed to
-// the current accessor for one knowledge-network child resource type.
-func KNChildOperationCandidates(resourceType string) []string {
-	switch resourceType {
-	case interfaces.RESOURCE_TYPE_ACTION_TYPE:
-		return append([]string{}, actionTypeOperations...)
-	case interfaces.RESOURCE_TYPE_OBJECT_TYPE, interfaces.RESOURCE_TYPE_RELATION_TYPE,
-		interfaces.RESOURCE_TYPE_METRIC:
-		return append([]string{}, schemaChildOperations...)
-	case interfaces.RESOURCE_TYPE_CONCEPT_GROUP, interfaces.RESOURCE_TYPE_RISK_TYPE:
-		return append([]string{}, structuralChildOperations...)
-	default:
-		return []string{}
-	}
 }
 
 // CheckKNChildBatchPermission authorizes every requested child with
@@ -216,7 +183,6 @@ func FilterAndPaginateKNChildrenWithOperations[T any](ctx context.Context, ps in
 	resourceType, knID string, candidates []T, childID func(T) string,
 	offset, limit int) ([]T, int, map[string]interfaces.PermissionResourceOps, error) {
 
-	candidateOperations := KNChildOperationCandidates(resourceType)
 	if len(candidates) == 0 {
 		return []T{}, 0, map[string]interfaces.PermissionResourceOps{}, nil
 	}
@@ -237,8 +203,8 @@ func FilterAndPaginateKNChildrenWithOperations[T any](ctx context.Context, ps in
 	}
 
 	resourceIDs := interfaces.KNChildResourceIDs(knID, childIDs)
-	matched, err := FilterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs,
-		interfaces.OPERATION_TYPE_VIEW_DETAIL, candidateOperations)
+	matched, err := FilterKNChildResourceIDsWithOperations(ctx, ps, resourceType,
+		resourceIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
 		return nil, 0, nil, err
 	}
@@ -261,8 +227,8 @@ func GetKNChildOperations(ctx context.Context, ps interfaces.PermissionService,
 		return nil, err
 	}
 	canonicalID := interfaces.KNChildResourceID(knID, childID)
-	matched, err := FilterKNChildResourceIDs(ctx, ps, resourceType, []string{canonicalID},
-		interfaces.OPERATION_TYPE_VIEW_DETAIL, KNChildOperationCandidates(resourceType))
+	matched, err := FilterKNChildResourceIDsWithOperations(ctx, ps, resourceType,
+		[]string{canonicalID}, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
 		return nil, err
 	}
@@ -277,14 +243,20 @@ func GetKNChildOperations(ctx context.Context, ps interfaces.PermissionService,
 // batches. It is shared by child list endpoints and parent navigation
 // visibility so both paths evaluate the same Safe contract.
 func FilterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionService,
-	resourceType string, resourceIDs []string, operation string, candidateOperations ...[]string) (map[string]interfaces.PermissionResourceOps, error) {
+	resourceType string, resourceIDs []string, operation string) (map[string]interfaces.PermissionResourceOps, error) {
 
-	fullOperations := []string{operation}
-	if len(candidateOperations) > 0 {
-		fullOperations = candidateOperations[0]
-	}
+	return filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs,
+		[]string{operation}, false, false)
+}
 
-	return filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, []string{operation}, fullOperations, false)
+// FilterKNChildResourceIDsWithOperations filters children by one visibility
+// operation and asks bkn-safe to project the complete catalog-derived operation
+// set for every visible resource.
+func FilterKNChildResourceIDsWithOperations(ctx context.Context, ps interfaces.PermissionService,
+	resourceType string, resourceIDs []string, operation string) (map[string]interfaces.PermissionResourceOps, error) {
+
+	return filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs,
+		[]string{operation}, true, false)
 }
 
 // FilterKNChildResourceIDsWithAnyOperation returns children on which the
@@ -292,14 +264,14 @@ func FilterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 // uses this projection because query_data and execute are valid independent
 // entry points even when the child detail itself is not readable.
 func FilterKNChildResourceIDsWithAnyOperation(ctx context.Context, ps interfaces.PermissionService,
-	resourceType string, resourceIDs []string, candidateOperations []string) (map[string]interfaces.PermissionResourceOps, error) {
+	resourceType string, resourceIDs []string) (map[string]interfaces.PermissionResourceOps, error) {
 
-	return filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, nil, candidateOperations, true)
+	return filterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, nil, true, true)
 }
 
 func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionService,
-	resourceType string, resourceIDs, visibilityOperations, candidateOperations []string,
-	requireAnyOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+	resourceType string, resourceIDs, visibilityOperations []string,
+	allowOperation, requireAnyOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 
 	chunkSize := len(resourceIDs)
 	if configured, err := strconv.Atoi(strings.TrimSpace(os.Getenv(knChildResourceFilterChunkSizeEnv))); err == nil && configured > 0 && configured < chunkSize {
@@ -313,7 +285,7 @@ func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 		}
 		blockIDs := resourceIDs[start:end]
 		block, err := ps.FilterResources(ctx, resourceType, blockIDs,
-			visibilityOperations, true, candidateOperations)
+			visibilityOperations, allowOperation)
 		if err != nil {
 			return nil, err
 		}

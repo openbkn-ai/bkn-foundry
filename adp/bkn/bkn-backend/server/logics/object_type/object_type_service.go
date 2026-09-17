@@ -492,6 +492,10 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
+	if interfaces.IsAuthorizationResourceCatalog(ctx) {
+		total := len(objectTypes)
+		return permission.PaginateKNChildCandidates(objectTypes, query.Offset, query.Limit), total, nil
+	}
 
 	var operationMap map[string]interfaces.PermissionResourceOps
 	objectTypes, total, operationMap, err := permission.FilterAndPaginateKNChildrenWithOperations(ctx, ots.ps,

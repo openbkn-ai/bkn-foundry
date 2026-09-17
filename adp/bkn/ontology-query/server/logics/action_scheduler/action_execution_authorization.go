@@ -121,7 +121,10 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 func (s *actionSchedulerService) resolveActionProxyContext(
 	ctx context.Context, knID string, actionType *interfaces.ActionType,
 ) (*interfaces.TrustedProxyContext, []interfaces.PermissionRequirement, error) {
-	binding, requirement, err := actionProxyBinding(ctx, knID, actionType)
+	// Function/toolbox classification is part of the published proxy snapshot.
+	// Do not re-read execution-factory metadata here: it can change independently
+	// and must not invalidate a ready snapshot during a query.
+	binding, _, err := actionProxyBinding(ctx, knID, actionType, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -132,11 +135,16 @@ func (s *actionSchedulerService) resolveActionProxyContext(
 	if err != nil {
 		return nil, nil, err
 	}
+	requirement := interfaces.PermissionRequirement{
+		ResourceType: proxy.Binding.TargetType,
+		ResourceID:   proxy.Binding.TargetID,
+		Operation:    proxy.Binding.Operation,
+	}
 	return proxy, []interfaces.PermissionRequirement{requirement}, nil
 }
 
 func actionProxyBinding(ctx context.Context, knID string,
-	actionType *interfaces.ActionType) (interfaces.TrustedProxyBinding, interfaces.PermissionRequirement, error) {
+	actionType *interfaces.ActionType, toolTargetTypes ...string) (interfaces.TrustedProxyBinding, interfaces.PermissionRequirement, error) {
 	if actionType == nil {
 		return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{},
 			actionPermissionInvalid(ctx, "action type is required")
@@ -150,6 +158,12 @@ func actionProxyBinding(ctx context.Context, knID string,
 	switch actionType.ActionSource.Type {
 	case interfaces.ActionSourceTypeTool:
 		targetType = interfaces.ProxyTargetTypeToolBox
+		if len(toolTargetTypes) > 0 {
+			targetType = toolTargetTypes[0]
+		}
+		if targetType != "" && targetType != interfaces.ProxyTargetTypeToolBox && targetType != interfaces.ProxyTargetTypeFunction {
+			return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{}, actionPermissionInvalid(ctx, "tool target kind is invalid")
+		}
 		targetID = actionType.ActionSource.BoxID
 		if err := validateStandaloneActionResourceID(actionType.ActionSource.ToolID); err != nil {
 			return interfaces.TrustedProxyBinding{}, interfaces.PermissionRequirement{},
@@ -192,7 +206,11 @@ func trustedActionProxyContext(execution *interfaces.ActionExecution,
 	if execution == nil || actionType == nil {
 		return nil, fmt.Errorf("execution and action type are required")
 	}
-	binding, requirement, err := actionProxyBinding(context.Background(), execution.KNID, actionType)
+	targetType := ""
+	if actionType.ActionSource.Type == interfaces.ActionSourceTypeTool && len(execution.ProxyPermissionSnapshot) == 1 {
+		targetType = execution.ProxyPermissionSnapshot[0].ResourceType
+	}
+	binding, requirement, err := actionProxyBinding(context.Background(), execution.KNID, actionType, targetType)
 	if err != nil {
 		return nil, err
 	}

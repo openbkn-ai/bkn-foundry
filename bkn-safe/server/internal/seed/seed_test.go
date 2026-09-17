@@ -5,6 +5,7 @@
 package seed
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -66,7 +67,7 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	if err := db.First(&networkBuilder, "id = ?", "1572fb82-526f-11f0-bde6-e674ec8dde71").Error; err != nil {
 		t.Fatal(err)
 	}
-	if networkBuilder.Description != "负责数据、知识和执行工厂资产的业务网络构建者。" {
+	if networkBuilder.Description != "负责数据、知识、模型、执行工厂资产的业务网络构建者" {
 		t.Errorf("network_builder description = %q", networkBuilder.Description)
 	}
 
@@ -96,6 +97,52 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	}
 	if !ok {
 		t.Error("network_builder should be able to create knowledge networks after seed")
+	}
+}
+
+func TestSeedCatalogGrantableDefaultsTrueAndPersistsFalse(t *testing.T) {
+	db := newDB(t)
+	data := []byte(`{
+		"resource_types": [{
+			"id": "report",
+			"name": "Report",
+			"operations": [
+				{"id": "view", "name": "View"},
+				{"id": "summary", "name": "Summary", "grantable": false}
+			]
+		}]
+	}`)
+	if err := seedCatalogData(db, data); err != nil {
+		t.Fatal(err)
+	}
+	for operation, want := range map[string]bool{"view": true, "summary": false} {
+		var row model.Operation
+		if err := db.First(&row, "resource_type_id = ? AND id = ?", "report", operation).Error; err != nil {
+			t.Fatal(err)
+		}
+		if got := row.IsGrantable(); got != want {
+			t.Errorf("report/%s grantable = %v, want %v", operation, got, want)
+		}
+	}
+
+	// Removing the optional field restores the compatibility default on an
+	// upgraded deployment instead of preserving the previous false value.
+	data = []byte(`{
+		"resource_types": [{
+			"id": "report",
+			"name": "Report",
+			"operations": [{"id": "summary", "name": "Summary"}]
+		}]
+	}`)
+	if err := seedCatalogData(db, data); err != nil {
+		t.Fatal(err)
+	}
+	var summary model.Operation
+	if err := db.First(&summary, "resource_type_id = ? AND id = ?", "report", "summary").Error; err != nil {
+		t.Fatal(err)
+	}
+	if !summary.IsGrantable() {
+		t.Fatal("report/summary remained non-grantable after the field was omitted")
 	}
 }
 
@@ -239,7 +286,8 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"audit views audit logs", audit, "admin-audit", "x", "view", true},
 		{"audit not user edit", audit, "admin-user", "x", "edit", false},
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
-		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
+		{"network-builder creates skill", networkBuilder, "skill", "s1", "create", true},
+		{"network-builder cannot publish arbitrary skill", networkBuilder, "skill", "s1", "publish", false},
 		{"network-builder manages large models", networkBuilder, "large_model", "m1", "modify", true},
 		{"network-builder manages small models", networkBuilder, "small_model", "m1", "delete", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
@@ -599,13 +647,13 @@ func TestReconcileWithdrawnNormalUserRole(t *testing.T) {
 }
 
 // TestCatalogResourceOperationSplit pins where each verb lives once #801 has
-// converged: management on the catalog, reading on the table.
+// converged: management on the catalog, reading on the resource.
 //
 // The earlier revision of this test asserted the opposite — that the management
 // verbs were STILL declared on the resource — because Apply wipes every seeded
 // role's p-lines and rebuilds them from grants.json, so removing them before
 // vega judged the catalog would have revoked network_builder's ability to create
-// a table on upgrade. vega has switched, so the assertion inverts.
+// a resource on upgrade. vega has switched, so the assertion inverts.
 func TestCatalogResourceOperationSplit(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
@@ -629,30 +677,80 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	}
 
 	catalogOps := ops("catalog")
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+	for _, op := range []string{"view_detail", "view_summary", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data", "data_write"} {
 		if !catalogOps[op] {
 			t.Errorf("catalog is missing operation %q", op)
 		}
 	}
+	var summary model.Operation
+	if err := db.First(&summary, "resource_type_id = ? AND id = ?", "catalog", "view_summary").Error; err != nil {
+		t.Fatal(err)
+	}
+	if summary.IsGrantable() {
+		t.Fatal("catalog/view_summary must be non-grantable")
+	}
+	if err := e.GrantObjectPermission("summary-reader", "catalog", "catalog-1", "view_summary"); !errors.Is(err, authz.ErrOperationNotGrantable) {
+		t.Fatalf("grant catalog/view_summary error = %v, want ErrOperationNotGrantable", err)
+	}
 
 	resourceOps := ops("resource")
-	for _, op := range []string{"view_detail", "query_data"} {
+	for _, op := range []string{"view_detail", "query_data", "data_write", "modify", "delete"} {
 		if !resourceOps[op] {
-			t.Errorf("resource is missing read operation %q", op)
+			t.Errorf("resource is missing operation %q", op)
 		}
 	}
-	// The management verbs are gone from the table. Putting one back would give
-	// the vocabulary two answers to "who may change this table" — the catalog's
-	// resource_manage and a table-level verb — and only the first is the one vega
-	// asks. create is the clearest case: a table is always created inside a
-	// catalog, so a verb on the table could never say which catalog it lands in.
-	for _, op := range []string{"create", "modify", "delete", "authorize", "task_manage"} {
+	// create cannot be an instance operation because a new resource has no ID;
+	// authorize and task_manage remain catalog-level operations.
+	for _, op := range []string{"create", "authorize", "task_manage"} {
 		if resourceOps[op] {
-			t.Errorf("resource still declares %q — management is judged on the owning catalog now (#801)", op)
+			t.Errorf("resource unexpectedly declares %q", op)
 		}
 	}
-	if len(resourceOps) != 2 {
-		t.Errorf("resource declares %d operations, want exactly view_detail and query_data", len(resourceOps))
+	if len(resourceOps) != 5 {
+		t.Errorf("resource declares %d operations, want view_detail/query_data/data_write/modify/delete", len(resourceOps))
+	}
+
+	for _, tc := range []struct {
+		resourceType string
+		operation    string
+		name         string
+		description  string
+	}{
+		{"catalog", "data_write", "写入", "仅可写入或删除数据集文档，不支持操作 MariaDB/MySQL 等物理表数据。当目录下数据资源未显式授予写入权限时，可回退到数据目录的写入权限。"},
+		{"resource", "data_write", "写入", "仅可写入或删除数据集文档；物理表不支持数据写入。未显式授予时，可回退到所属数据目录的写入权限。"},
+	} {
+		var operation model.Operation
+		if err := db.First(&operation, "resource_type_id = ? AND id = ?", tc.resourceType, tc.operation).Error; err != nil {
+			t.Fatalf("load %s/%s: %v", tc.resourceType, tc.operation, err)
+		}
+		if operation.Name != tc.name || operation.Description != tc.description {
+			t.Errorf("%s/%s = (%q, %q), want (%q, %q)", tc.resourceType, tc.operation,
+				operation.Name, operation.Description, tc.name, tc.description)
+		}
+	}
+}
+
+func TestSeededOperationsHaveDescriptions(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	var operations []model.Operation
+	if err := db.Find(&operations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(operations) == 0 {
+		t.Fatal("seed did not create any operations")
+	}
+	for _, operation := range operations {
+		if operation.Description == "" {
+			t.Errorf("%s/%s has no description", operation.ResourceTypeID, operation.ID)
+		}
 	}
 }
 
@@ -740,7 +838,7 @@ func TestNetworkBuilderCanCreateButCannotManageOtherCatalogs(t *testing.T) {
 			t.Errorf("network_builder lost type-wide catalog/%s", op)
 		}
 	}
-	for _, op := range []string{"view_detail", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+	for _, op := range []string{"view_detail", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data", "data_write"} {
 		ok, err := e.Check(builder, "catalog", catalog, op)
 		if err != nil {
 			t.Fatal(err)
@@ -773,14 +871,59 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 		"catalog:*":           {"create"},
 		"knowledge_network:*": {"create"},
 		"large_model:*":       {"create", "display", "modify", "delete", "execute"},
-		"operator:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
 		"small_model:*":       {"create", "display", "modify", "delete", "execute"},
-		"tool_box:*":          {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
-		"skill:*":             {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
-		"mcp:*":               {"create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"},
+		"tool_box:*":          {"create"},
+		"function:*":          {"create"},
+		"skill:*":             {"create"},
+		"mcp:*":               {"create"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("network_builder grants = %#v, want %#v", got, want)
+	}
+}
+
+func TestApplyRemovesFormerNetworkBuilderExecutionFactoryGrants(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		roleID = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+		user   = "network-builder-upgrade"
+	)
+	if err := e.AssignRole(user, roleID); err != nil {
+		t.Fatal(err)
+	}
+	for _, resourceType := range []string{"operator", "skill", "mcp", "function", "tool_box"} {
+		if err := e.GrantRolePermission(roleID, resourceType, "*", "publish"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, resourceType := range []string{"operator", "skill", "mcp", "function", "tool_box"} {
+		for _, tc := range []struct {
+			operation string
+			want      bool
+		}{
+			{"create", resourceType != "operator"},
+			{"publish", false},
+		} {
+			got, err := e.Check(user, resourceType, "other-owner-resource", tc.operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("%s/%s after re-seed = %v, want %v", resourceType, tc.operation, got, tc.want)
+			}
+		}
 	}
 }
 

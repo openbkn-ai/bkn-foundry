@@ -27,6 +27,21 @@ hydra:
   # Gateway base URL (https://<your-host> if accessAddress uses 443)
   public_url: https://<your-host>
 
+upstreams:
+  bkn_backend:
+    # bkn-backend's internal resource-directory provider. The endpoint path is
+    # intentionally fixed in bkn-safe code, not configurable here.
+    base_url: http://127.0.0.1:13014
+    timeout: 3s
+  execution_factory:
+    # The authorization-resource path is intentionally fixed in bkn-safe code.
+    base_url: http://127.0.0.1:13014
+    timeout: 3s
+  vega_backend:
+    # Vega's authorization-resource path is intentionally fixed in bkn-safe code.
+    base_url: http://127.0.0.1:13014
+    timeout: 3s
+
 ldap:
   url: ""
   bind_dn: ""

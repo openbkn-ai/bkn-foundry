@@ -76,7 +76,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 	category := c.Query("category")
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "name")
+	sort := common.GetQueryOrDefault(c, "sort", interfaces.ConnectorTypeSortName)
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
 	// Verify the pagination query parameters
@@ -94,8 +94,6 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	pageParam.Sort = interfaces.CONNECTOR_TYPE_SORT[sort]
-
 	params := interfaces.ConnectorTypesQueryParams{
 		PaginationQueryParams: pageParam,
 		Name:                  name,

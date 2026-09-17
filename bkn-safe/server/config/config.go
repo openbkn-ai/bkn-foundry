@@ -25,7 +25,21 @@ type Config struct {
 	// decision log (#334).
 	Audit AuditConfig `yaml:"audit"`
 
-	Authz AuthzConfig `yaml:"authz"`
+	Authz     AuthzConfig     `yaml:"authz"`
+	Upstreams UpstreamsConfig `yaml:"upstreams"`
+}
+
+// UpstreamsConfig contains environment-specific base URLs. Provider paths and
+// response mappings remain compiled into bkn-safe.
+type UpstreamsConfig struct {
+	BKNBackend       UpstreamConfig `yaml:"bkn_backend"`
+	ExecutionFactory UpstreamConfig `yaml:"execution_factory"`
+	VegaBackend      UpstreamConfig `yaml:"vega_backend"`
+}
+
+type UpstreamConfig struct {
+	BaseURL string        `yaml:"base_url"`
+	Timeout time.Duration `yaml:"timeout"`
 }
 
 // AuthzConfig tunes the authorization engine.

@@ -329,17 +329,18 @@ func TestDiscoverTaskAccessDeleteByIDs(t *testing.T) {
 	})
 }
 
-func TestDiscoverTaskAccessMarkCancelledByCatalogID(t *testing.T) {
-	access, mock, cleanup := newDiscoverTaskAccessMock(t)
-	defer cleanup()
+func TestDiscoverTaskAccessDeleteByCatalogID(t *testing.T) {
+	t.Run("deletes tasks", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
 
-	mock.ExpectExec("UPDATE t_discover_task SET f_finish_time = ?, f_message = ?, f_status = ? WHERE f_catalog_id = ? AND f_status = ?").
-		WithArgs(int64(100), "catalog deleted", interfaces.DiscoverTaskStatusCancelled, "catalog-1",
-			interfaces.DiscoverTaskStatusPending).
-		WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("DELETE FROM t_discover_task WHERE f_catalog_id = ?").
+			WithArgs("catalog-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
 
-	require.NoError(t, access.MarkCancelledByCatalogID(context.Background(), nil, "catalog-1", "catalog deleted", 100))
-	require.NoError(t, mock.ExpectationsWereMet())
+		require.NoError(t, access.DeleteByCatalogID(context.Background(), nil, "catalog-1"))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestDiscoverTaskAccessMarkCancelled(t *testing.T) {

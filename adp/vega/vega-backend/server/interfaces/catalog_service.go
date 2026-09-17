@@ -16,28 +16,22 @@ type CatalogService interface {
 	Create(ctx context.Context, req *CatalogRequest, allowUnhealthy bool) (string, error)
 	// Get retrieves a Catalog by ID.
 	GetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
-	// Get retrieves a Catalog by IDs.
+	// GetByIDs retrieves Catalogs by IDs. Callers must provide unique IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
 	// List lists Catalogs with filters.
 	List(ctx context.Context, params CatalogsQueryParams) ([]*CatalogSummary, int64, error)
 	// ListConnectorTypeStats groups visible catalogs matching params by connector type.
 	ListConnectorTypeStats(ctx context.Context, params CatalogsQueryParams) ([]*CatalogConnectorTypeStat, error)
 	// Update updates a Catalog.
-	Update(ctx context.Context, catalog *Catalog, req *CatalogRequest, allowUnhealthy bool) error
+	Update(ctx context.Context, req *CatalogRequest, allowUnhealthy bool) error
 	// SetEnabled updates Catalog enabled state.
-	SetEnabled(ctx context.Context, catalog *Catalog, enabled bool) error
+	SetEnabled(ctx context.Context, id string, enabled bool) (*Catalog, error)
 	// DeleteByID deletes a Catalog by ID.
 	DeleteByID(ctx context.Context, id string) error
 	// GetDeletionImpact returns the current impact and guards for deleting a catalog.
 	GetDeletionImpact(ctx context.Context, id string) (*CatalogDeletionImpact, error)
 	// CheckExistByID checks if a Catalog exists by ID.
 	CheckExistByID(ctx context.Context, id string) (bool, error)
-	// ListInternalIDs lists the ids of all internal system directories (grouped by internal_resource type for resource permission verification).
-	ListInternalIDs(ctx context.Context) ([]string, error)
-	// InternalCatalogIDSet returns the ids of all internal system directories as a set.
-	InternalCatalogIDSet(ctx context.Context) (map[string]struct{}, error)
-	// CheckExistByName checks if a Catalog exists by name.
-	CheckExistByName(ctx context.Context, name string) (bool, error)
 	// TestConnection tests catalog connection.
 	TestConnection(ctx context.Context, catalogID string) (*CatalogHealthCheckStatus, error)
 	// TestConnectionConfig tests an unpersisted physical catalog connection configuration.
@@ -46,22 +40,18 @@ type CatalogService interface {
 	// UpdateMetadata updates a Catalog metadata.
 	UpdateMetadata(ctx context.Context, id string, metadata map[string]any) error
 
-	// ListAuthResources lists catalog auth resources with filters.
-	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
+	// ListAuthResourceEntries lists catalog authorization entries with filters.
+	ListAuthResourceEntries(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 
-	// AuthorizedCatalogsForTasks resolves which catalogs the caller may act on,
-	// for listings to push into their query. unrestricted reports a type-wide
-	// grant, in which case ids is empty and only excluded has to be filtered out
-	// — "sees everything" and "sees nothing" would otherwise be the same empty
-	// slice. Both slices are bounded by the number of catalogs a deployment has,
-	// which is why this belongs in the SQL rather than in a pass over the page.
-	AuthorizedCatalogsForTasks(ctx context.Context, op string) (ids []string, unrestricted bool, excluded []string, err error)
+	// ListPermittedCatalogIDs returns catalog IDs matching visibilityMatch across
+	// the requested operations, preserving the requested catalog sort order. The
+	// resource operations map contains the bkn-safe result for each returned ID.
+	ListPermittedCatalogIDs(ctx context.Context, ops []string, visibilityMatch string, allowOperation bool,
+		params CatalogsQueryParams) ([]string, map[string]PermissionResourceOps, error)
 
-	// CheckTaskPermission authorizes an operation on something that hangs off a
-	// catalog. Unlike CheckCatalogPermission it survives the catalog's deletion:
-	// tasks outlive their catalog, and judging them on an object that is gone
-	// would strand them beyond anyone's reach.
-	CheckTaskPermission(ctx context.Context, catalogID string, op string) error
+	// CheckCatalogPermission checks bkn-safe permission for a catalog ID. When
+	// getCatalog is true, it also returns the existing, non-sensitive catalog.
+	CheckCatalogPermission(ctx context.Context, catalogID string, ops []string, getCatalog bool) (bool, *Catalog, error)
 
 	// InternalGetByID retrieves a Catalog by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)

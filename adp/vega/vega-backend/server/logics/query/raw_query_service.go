@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+	"github.com/lib/pq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -322,7 +324,7 @@ func validateSQLPolicy(ctx context.Context, sql, dialect string, allowedReferenc
 func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resourceIDs []string, dialect string) ([]string, error) {
 	identifiers := make([]string, 0, len(resourceIDs))
 	for _, resourceID := range resourceIDs {
-		resource, err := rqs.rs.GetByID(ctx, resourceID)
+		resource, err := rqs.rs.InternalGetByID(ctx, nil, resourceID)
 		if err != nil {
 			return nil, err
 		}
@@ -473,7 +475,7 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 			WithErrorDetails("sort is required for OpenSearch cursor paging")
 	}
 
-	resource, err := rqs.rs.GetByID(ctx, resourceID)
+	resource, err := rqs.resourceForQuery(ctx, resourceID)
 	if err != nil {
 		return nil, "", nil, "", err
 	}
@@ -485,7 +487,7 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 	if err != nil {
 		return nil, "", nil, "", err
 	}
-	// Resource visibility was checked by GetByID above. The Catalog is loaded
+	// Resource query permission was checked above. The Catalog is loaded
 	// solely for query execution, so it must not impose catalog:view_detail.
 	catalog, err := rqs.cs.InternalGetByID(ctx, resource.CatalogID, true)
 	if err != nil {
@@ -622,7 +624,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 			WithErrorDetails("resource_id is required for DSL queries")
 	}
 
-	resource, err := rqs.rs.GetByID(queryCtx, resourceID)
+	resource, err := rqs.resourceForQuery(queryCtx, resourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -635,7 +637,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, err
 	}
 
-	// Resource visibility was checked by GetByID above. The Catalog is loaded
+	// Resource query permission was checked above. The Catalog is loaded
 	// solely for query execution, so it must not impose catalog:view_detail.
 	catalog, err := rqs.cs.InternalGetByID(queryCtx, resource.CatalogID, true)
 	if err != nil {
@@ -772,10 +774,20 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		return nil, nil, fmt.Errorf("no resource ids provided")
 	}
 
-	// Get all resources
-	resources, err := rqs.rs.GetByIDs(ctx, resourceIDs, false)
+	for _, resourceID := range resourceIDs {
+		if err := rqs.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+			return nil, nil, err
+		}
+	}
+	resourcesByID, err := rqs.rs.InternalGetByIDs(ctx, resourceIDs)
 	if err != nil {
 		return nil, nil, err
+	}
+	resources := make([]*interfaces.Resource, 0, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		if resource, ok := resourcesByID[resourceID]; ok {
+			resources = append(resources, resource)
+		}
 	}
 	if len(resources) != len(resourceIDs) {
 		resourceMap := make(map[string]bool)
@@ -848,7 +860,7 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 
 	for _, resourceID := range resourceIDs {
 		// Load resource metadata.
-		resource, err := rqs.rs.GetByID(ctx, resourceID)
+		resource, err := rqs.rs.InternalGetByID(ctx, nil, resourceID)
 		if err != nil {
 			return "", err
 		}
@@ -870,6 +882,13 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 
 	logger.Infof("After replace - %s", SafeQuerySummary(replacedSQL))
 	return replacedSQL, nil
+}
+
+func (rqs *rawQueryService) resourceForQuery(ctx context.Context, resourceID string) (*interfaces.Resource, error) {
+	if err := rqs.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+		return nil, err
+	}
+	return rqs.rs.InternalGetByID(ctx, nil, resourceID)
 }
 
 func quotedResourceSourceIdentifier(resource *interfaces.Resource, dialect string) string {
@@ -1000,12 +1019,30 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 	result, err := tableConnector.ExecuteRawSQL(ctx, sql)
 	if err != nil {
 		otellog.LogError(ctx, "Execute SQL failed", err)
+		if detail := rawQueryInvalidColumnError(err); detail != "" {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(detail)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
 	}
 
 	logger.Infof("SQL query executed successfully: paging_mode=%s, returned_rows=%d", pagingMode, len(result.Entries))
 	return result, nil
+}
+
+func rawQueryInvalidColumnError(err error) string {
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1054 {
+		return mysqlErr.Message
+	}
+
+	var postgresErr *pq.Error
+	if errors.As(err, &postgresErr) && string(postgresErr.Code) == "42703" {
+		return postgresErr.Message
+	}
+
+	return ""
 }
 
 func rawQueryValidationError(ctx context.Context, err error) error {

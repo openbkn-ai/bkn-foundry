@@ -50,6 +50,7 @@ var resourceColumns = []string{
 	"f_tags",
 	"f_description",
 	"f_category",
+	"f_internal",
 	"f_enabled",
 	"f_status",
 	"f_status_message",
@@ -79,6 +80,7 @@ var resourceSummaryColumns = []string{
 	"f_tags",
 	"f_description",
 	"f_category",
+	"f_internal",
 	"f_enabled",
 	"f_status",
 	"f_status_message",
@@ -113,6 +115,7 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 		&tagsStr,
 		&resource.Description,
 		&resource.Category,
+		&resource.Internal,
 		&resource.Enabled,
 		&resource.Status,
 		&resource.StatusMessage,
@@ -163,6 +166,7 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 		&tagsStr,
 		&summary.Description,
 		&summary.Category,
+		&summary.Internal,
 		&summary.Enabled,
 		&summary.Status,
 		&summary.StatusMessage,
@@ -187,6 +191,9 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 }
 
 func applyResourceFilters(builder sq.SelectBuilder, params interfaces.ResourcesQueryParams) sq.SelectBuilder {
+	if !params.IncludeInternal {
+		builder = builder.Where(sq.Eq{"f_internal": false})
+	}
 	if params.Name != "" {
 		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
 	}
@@ -257,6 +264,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			"f_tags",
 			"f_description",
 			"f_category",
+			"f_internal",
 			"f_enabled",
 			"f_status",
 			"f_status_message",
@@ -288,6 +296,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			tagsStr,
 			resource.Description,
 			resource.Category,
+			resource.Internal,
 			resource.Enabled,
 			resource.Status,
 			resource.StatusMessage,
@@ -508,40 +517,6 @@ func (ra *resourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []stri
 
 	span.SetStatus(codes.Ok, "")
 	return refs, nil
-}
-
-// GetByName retrieves ra Resource by catalog and name.
-func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name string) (*interfaces.Resource, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource by name")
-	defer span.End()
-
-	span.SetAttributes(attr.Key("resource_name").String(name))
-
-	sqlStr, vals, err := sq.Select(resourceColumns...).
-		From(RESOURCE_TABLE_NAME).
-		Where(sq.Eq{"f_catalog_id": catalogID}).
-		Where(sq.Eq{"f_name": name}).
-		ToSql()
-	if err != nil {
-		logger.Errorf("Failed to build select resource sql: %v", err)
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
-	resource, err := scanResource(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		span.SetStatus(codes.Ok, "")
-		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
-	}
-	if err != nil {
-		logger.Errorf("Scan resource failed: %v", err)
-		span.SetStatus(codes.Error, "Scan failed")
-		return nil, err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return resource, nil
 }
 
 // ListPermissionRefs lists the minimal relations needed before list authorization.
@@ -1058,42 +1033,58 @@ func (ra *resourceAccess) DeleteByIDs(ctx context.Context, ids []string) error {
 	return nil
 }
 
-// ListAuthResources lists resource auth resources with filters.
-func (ra *resourceAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResources")
+// ListAuthResourceEntries lists resource authorization entries with filters.
+func (ra *resourceAccess) ListAuthResourceEntries(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResourceEntries")
 	defer span.End()
 
 	builder := sq.Select(
 		"f_id",
 		"f_name",
 	).From(RESOURCE_TABLE_NAME)
-
-	if params.ID != "" {
-		builder = builder.Where(sq.Eq{"f_id": params.ID})
+	countBuilder := sq.Select("COUNT(*)").From(RESOURCE_TABLE_NAME)
+	if !params.IncludeInternal {
+		builder = builder.Where(sq.Eq{"f_internal": false})
+		countBuilder = countBuilder.Where(sq.Eq{"f_internal": false})
 	}
 
-	if params.Keyword != "" {
-		keyword := "%" + common.EscapeLikePattern(params.Keyword) + "%"
+	if params.Name != "" {
+		keyword := "%" + common.EscapeLikePattern(params.Name) + "%"
 		builder = builder.Where(sq.Like{"f_name": keyword})
+		countBuilder = countBuilder.Where(sq.Like{"f_name": keyword})
+	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
 	}
 
-	// Sorting
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
+	countSQL, countVals, err := countBuilder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build count sql failed")
+		return nil, 0, err
+	}
+	var total int64
+	if err := ra.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&total); err != nil {
+		span.SetStatus(codes.Error, "Count failed")
+		return nil, 0, err
+	}
+	builder = builder.OrderBy(authResourceOrderByClause(params.Sort, params.Direction))
+
+	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
+		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
+		return nil, 0, err
 	}
 
 	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -1107,19 +1098,28 @@ func (ra *resourceAccess) ListAuthResources(ctx context.Context, params interfac
 		)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
+			return nil, 0, err
 		}
-		entry.Type = interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 		entries = append(entries, entry)
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate resource authorization resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, err
+		return nil, 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return entries, nil
+	return entries, total, nil
+}
+
+func authResourceOrderByClause(sort, direction string) string {
+	if sort != interfaces.AuthResourceSortName {
+		return "f_update_time DESC"
+	}
+	if direction == interfaces.ASC_DIRECTION {
+		return "f_name ASC, f_id ASC"
+	}
+	return "f_name DESC, f_id DESC"
 }
 
 func (ra *resourceAccess) CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error) {

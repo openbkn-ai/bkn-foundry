@@ -70,6 +70,20 @@ func (mr *MockPermissionAccessMockRecorder) CreateResources(ctx, policies any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateResources", reflect.TypeOf((*MockPermissionAccess)(nil).CreateResources), ctx, policies)
 }
 
+// DeleteResourceParents mocks base method.
+func (m *MockPermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteResourceParents", ctx, resourceType, resourceIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteResourceParents indicates an expected call of DeleteResourceParents.
+func (mr *MockPermissionAccessMockRecorder) DeleteResourceParents(ctx, resourceType, resourceIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResourceParents", reflect.TypeOf((*MockPermissionAccess)(nil).DeleteResourceParents), ctx, resourceType, resourceIDs)
+}
+
 // DeleteResources mocks base method.
 func (m *MockPermissionAccess) DeleteResources(ctx context.Context, resources []interfaces.PermissionResource) error {
 	m.ctrl.T.Helper()
@@ -99,56 +113,31 @@ func (mr *MockPermissionAccessMockRecorder) FilterResources(ctx, filter any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterResources", reflect.TypeOf((*MockPermissionAccess)(nil).FilterResources), ctx, filter)
 }
 
-// MockLocalPermissionAccess is a mock of LocalPermissionAccess interface.
-type MockLocalPermissionAccess struct {
-	ctrl     *gomock.Controller
-	recorder *MockLocalPermissionAccessMockRecorder
-	isgomock struct{}
-}
-
-// MockLocalPermissionAccessMockRecorder is the mock recorder for MockLocalPermissionAccess.
-type MockLocalPermissionAccessMockRecorder struct {
-	mock *MockLocalPermissionAccess
-}
-
-// NewMockLocalPermissionAccess creates a new mock instance.
-func NewMockLocalPermissionAccess(ctrl *gomock.Controller) *MockLocalPermissionAccess {
-	mock := &MockLocalPermissionAccess{ctrl: ctrl}
-	mock.recorder = &MockLocalPermissionAccessMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockLocalPermissionAccess) EXPECT() *MockLocalPermissionAccessMockRecorder {
-	return m.recorder
-}
-
-// LocalDecision mocks base method.
-func (m *MockLocalPermissionAccess) LocalDecision(ctx context.Context, check interfaces.LocalPermissionCheck) (interfaces.PermissionOperationDecision, error) {
+// GetResourceParents mocks base method.
+func (m *MockPermissionAccess) GetResourceParents(ctx context.Context, resourceType string, resourceIDs []string) (map[string]interfaces.PermissionResourceParent, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LocalDecision", ctx, check)
-	ret0, _ := ret[0].(interfaces.PermissionOperationDecision)
+	ret := m.ctrl.Call(m, "GetResourceParents", ctx, resourceType, resourceIDs)
+	ret0, _ := ret[0].(map[string]interfaces.PermissionResourceParent)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// LocalDecision indicates an expected call of LocalDecision.
-func (mr *MockLocalPermissionAccessMockRecorder) LocalDecision(ctx, check any) *gomock.Call {
+// GetResourceParents indicates an expected call of GetResourceParents.
+func (mr *MockPermissionAccessMockRecorder) GetResourceParents(ctx, resourceType, resourceIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LocalDecision", reflect.TypeOf((*MockLocalPermissionAccess)(nil).LocalDecision), ctx, check)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResourceParents", reflect.TypeOf((*MockPermissionAccess)(nil).GetResourceParents), ctx, resourceType, resourceIDs)
 }
 
-// LocalResourceDecisions mocks base method.
-func (m *MockLocalPermissionAccess) LocalResourceDecisions(ctx context.Context, filter interfaces.LocalPermissionFilter) (map[string]map[string]interfaces.PermissionOperationDecision, error) {
+// UpsertResourceParents mocks base method.
+func (m *MockPermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []interfaces.PermissionResourceParent) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LocalResourceDecisions", ctx, filter)
-	ret0, _ := ret[0].(map[string]map[string]interfaces.PermissionOperationDecision)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "UpsertResourceParents", ctx, resourceType, parentType, items)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
-// LocalResourceDecisions indicates an expected call of LocalResourceDecisions.
-func (mr *MockLocalPermissionAccessMockRecorder) LocalResourceDecisions(ctx, filter any) *gomock.Call {
+// UpsertResourceParents indicates an expected call of UpsertResourceParents.
+func (mr *MockPermissionAccessMockRecorder) UpsertResourceParents(ctx, resourceType, parentType, items any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LocalResourceDecisions", reflect.TypeOf((*MockLocalPermissionAccess)(nil).LocalResourceDecisions), ctx, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertResourceParents", reflect.TypeOf((*MockPermissionAccess)(nil).UpsertResourceParents), ctx, resourceType, parentType, items)
 }

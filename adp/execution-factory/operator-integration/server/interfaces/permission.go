@@ -5,4 +5,6 @@ const (
 	ADMIN_ACCOUNT_ID = "266c6a42-6131-4d62-8f39-853e7093701c"
 	// ADMIN_ACCOUNT_TYPE Administrator account type.
 	ADMIN_ACCOUNT_TYPE = "user"
+	// CAPABILITY_DATASET_ID is the execution factory's internal capability index.
+	CAPABILITY_DATASET_ID = "bkn_execution_factory_capability_dataset"
 )

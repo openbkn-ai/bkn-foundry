@@ -296,6 +296,10 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 		return []*interfaces.RelationType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
 	}
+	if interfaces.IsAuthorizationResourceCatalog(ctx) {
+		total := len(relationTypes)
+		return permission.PaginateKNChildCandidates(relationTypes, query.Offset, query.Limit), total, nil
+	}
 
 	// Filter by the relation types themselves, then by their endpoints, and page only after both:
 	// total_count and every page have to count what the caller can actually see.

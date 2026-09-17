@@ -17,7 +17,7 @@ import (
 )
 
 // seedCatalogOpRequires registers one operation with direct same-type
-// requirements, the shape catalog.json gives resource_manage.
+// requirements, the shape authorization-registry.json gives resource_manage.
 func seedCatalogOpRequires(t *testing.T, db *gorm.DB, resourceType, op string, requires string) {
 	t.Helper()
 	row := model.Operation{

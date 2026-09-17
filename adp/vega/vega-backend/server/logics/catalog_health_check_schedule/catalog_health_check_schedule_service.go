@@ -187,12 +187,12 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 			verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).WithErrorDetails("health check schedules are only supported for physical catalogs")
 	}
 
-	resourceType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
-	if catalog.Internal {
-		resourceType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+	if catalog.Internal && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("internal catalogs are restricted to the built-in administrator")
 	}
 	if err := chcss.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: resourceType,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   catalogID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
 		span.SetStatus(codes.Error, "Check catalog modify permission failed")

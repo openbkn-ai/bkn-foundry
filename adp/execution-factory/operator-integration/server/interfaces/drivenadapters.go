@@ -816,7 +816,7 @@ type VegaCatalogRequest struct {
 	Name        string   `json:"name"`
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
-	// Internal system internal catalog: registered in the permission service by internal_catalog type, visible only to super administrators.
+	// Internal catalogs are visible and operable only by the built-in administrator.
 	Internal bool `json:"internal"`
 	// Enabled Directory enabled status. If the logical directory is false, the reading and writing of the dataset under it will be blocked.
 	// vega is rejected with Catalog.IsDisabled(409), so the built-in catalog must be enabled.
@@ -854,6 +854,7 @@ type VegaResourceRequest struct {
 	Tags             []string                 `json:"tags"`
 	Description      string                   `json:"description"`
 	Category         string                   `json:"category"`
+	Internal         bool                     `json:"internal"`
 	Status           string                   `json:"status"`
 	SourceIdentifier string                   `json:"source_identifier"`
 	SchemaDefinition []VegaProperty           `json:"schema_definition"`
@@ -867,6 +868,7 @@ type VegaResource struct {
 	Tags             []string                 `json:"tags"`
 	Description      string                   `json:"description"`
 	Category         string                   `json:"category"`
+	Internal         bool                     `json:"internal"`
 	Status           string                   `json:"status"`
 	SourceIdentifier string                   `json:"source_identifier"`
 	SchemaDefinition []VegaProperty           `json:"schema_definition,omitempty"`

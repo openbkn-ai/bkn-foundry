@@ -33,7 +33,7 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckModifyPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxModifyPermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}
@@ -63,6 +63,9 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 	if !exist {
 		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtToolNotFound,
 			fmt.Sprintf("tool %s not found", req.ToolID))
+		return
+	}
+	if err = validateToolBoxMembership(ctx, tool, req.BoxID); err != nil {
 		return
 	}
 	// Check if the tool name has the same name.

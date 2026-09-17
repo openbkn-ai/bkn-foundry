@@ -31,11 +31,11 @@ const (
 )
 
 var (
-	DISCOVER_TASK_SORT = map[string]string{
-		DiscoverTaskSortCreateTime:       "",
-		DiscoverTaskSortStartTime:        "",
-		DiscoverTaskSortFinishTime:       "",
-		DiscoverTaskSortLastProgressTime: "",
+	DISCOVER_TASK_SORT = map[string]struct{}{
+		DiscoverTaskSortCreateTime:       {},
+		DiscoverTaskSortStartTime:        {},
+		DiscoverTaskSortFinishTime:       {},
+		DiscoverTaskSortLastProgressTime: {},
 	}
 )
 

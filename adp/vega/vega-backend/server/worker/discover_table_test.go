@@ -55,11 +55,16 @@ func TestReconcileTableResources(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		dh := &DiscoverTaskWorker{rs: rs}
 		created := &interfaces.Resource{ID: "r1", SourceIdentifier: "users", Status: interfaces.ResourceStatusActive}
-		rs.EXPECT().Create(gomock.Any(), gomock.Any()).Return(created, nil)
+		rs.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
+			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+				require.NotNil(t, req.Internal)
+				assert.True(t, *req.Internal)
+				return created, nil
+			})
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusNew).Return(nil)
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
-		result, items, err := dh.reconcileTableResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "cat1"},
+		result, items, err := dh.reconcileTableResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "cat1", Internal: true},
 			[]*interfaces.TableMeta{{Name: "users"}}, nil)
 
 		require.NoError(t, err)

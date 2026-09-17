@@ -231,7 +231,7 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		assert.Nil(t, got)
 	})
 
-	t.Run("uses internal catalog modify permission", func(t *testing.T) {
+	t.Run("built-in admin uses catalog modify permission for internal catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
@@ -243,11 +243,13 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		current := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1"}
 
 		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, Internal: true}, nil)
-		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, ID: "catalog-1"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "catalog-1"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 		sa.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return(current, nil)
 		sa.EXPECT().Update(gomock.Any(), current, int64(0)).Return(int64(1), nil)
 
-		got, err := service.Update(context.Background(), "catalog-1", &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit})
+		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+			interfaces.AccountInfo{ID: interfaces.BuiltinAdminID})
+		got, err := service.Update(ctx, "catalog-1", &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit})
 
 		require.NoError(t, err)
 		assert.Same(t, current, got)

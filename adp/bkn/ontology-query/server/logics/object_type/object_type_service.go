@@ -166,6 +166,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		Name:                 objects.ObjectType.OTName,
 		TotalCount:           objects.TotalCount,
 		SearchAfter:          objects.SearchAfter,
+		Paging:               objects.Paging,
 		Cursor:               objects.Cursor,
 		EffectivePermissions: objects.EffectivePermissions,
 	}
@@ -237,7 +238,10 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	if err != nil {
 		return resps, err
 	}
-	if query.Sort == nil {
+	// A missing or explicitly empty sort both need the stable default used by
+	// Vega cursor paging. JSON clients commonly encode an optional empty list
+	// as [], which must not bypass this default.
+	if len(query.Sort) == 0 {
 		query.Sort = logics.BuildViewSort(objectType)
 	}
 
@@ -285,11 +289,19 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		if ots.cursor == nil {
 			return resps, invalidQueryCursorError(ctx)
 		}
-		searchAfter, err := ots.cursor.decode(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
-		if err != nil {
-			return resps, invalidQueryCursorError(ctx)
+		if dataSourceType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
+			resourceCursor, err := ots.cursor.decodeResource(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
+			if err != nil {
+				return resps, invalidQueryCursorError(ctx)
+			}
+			query.ResourceCursor = resourceCursor
+		} else {
+			searchAfter, err := ots.cursor.decode(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
+			if err != nil {
+				return resps, invalidQueryCursorError(ctx)
+			}
+			query.SearchAfter = searchAfter
 		}
-		query.SearchAfter = searchAfter
 	}
 
 	// 3. Request Vega Resource to get data.
@@ -303,7 +315,16 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		resps.ObjectType = &filteredObjectType
 	}
 	resps.EffectivePermissions = plan.effective
-	if len(resps.SearchAfter) > 0 {
+	if resps.ResourceCursor != "" {
+		if ots.cursor == nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
+		}
+		resps.Cursor, err = ots.cursor.encodeResource(ctx, query, proxyContext.PublishedModelVersion,
+			resps.ResourceCursor, resps.ResourceCursorExpiry)
+		if err != nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
+		}
+	} else if len(resps.SearchAfter) > 0 {
 		if ots.cursor == nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
 		}
@@ -311,6 +332,17 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		if err != nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
 		}
+	}
+	resps.Paging = &interfaces.ObjectPagingResponse{}
+	if resps.Cursor != "" {
+		expiresAt, expiryErr := ots.cursor.cursorExpiresAt(resps.ResourceCursorExpiry)
+		if expiryErr != nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, expiryErr)
+		}
+		nextCursor := resps.Cursor
+		expiresAtSec := expiresAt.Unix()
+		resps.Paging.NextCursor = &nextCursor
+		resps.Paging.ExpiresAtSec = &expiresAtSec
 	}
 
 	logger.Debugf("从对象类[%s]中获取到的数据条数为[%d],耗时: %dms", objectType.OTID, len(resps.Datas), time.Now().UnixMilli()-start)
@@ -472,6 +504,17 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
+	pagingMode := interfaces.ResourceDataPagingModeCursor
+	if query.ResourceCursor == "" {
+		var stable bool
+		resourceSort, stable = appendResourceSortTieBreakers(resourceSort, objectType)
+		if !stable {
+			// A legacy object type may expose a schema-only primary key without a
+			// physical resource mapping. Its sort cannot be made total for
+			// search_after, so retain the historical single-page query behavior.
+			pagingMode = interfaces.ResourceDataPagingModeSingle
+		}
+	}
 
 	viewQuery := interfaces.ViewQuery{
 		NeedTotal:         query.NeedTotal,
@@ -507,7 +550,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	params := &interfaces.ResourceDataQueryParams{
 		NeedTotal: query.NeedTotal,
 		Paging: interfaces.ResourceDataPagingRequest{
-			Mode:   "single",
+			Mode:   pagingMode,
 			Limit:  query.Limit,
 			Offset: query.Offset,
 		},
@@ -516,7 +559,26 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),
 		OutputFields:    outputFields,
 	}
+	if query.ResourceCursor != "" {
+		params = &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.ResourceDataPagingRequest{Cursor: query.ResourceCursor},
+		}
+	}
 	resp, err := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
+	// Object-type bindings identify a Vega resource by ID but do not carry its
+	// category. Cursor paging is unavailable for some categories. Retry only an
+	// initial cursor request rejected as unsupported, retaining the historical
+	// single-page behavior for those resources. A continuation is never retried:
+	// it can only exist for a category that already accepted cursor paging.
+	if err != nil && query.ResourceCursor == "" && isCursorPagingUnsupported(err) {
+		singlePageParams := *params
+		singlePageParams.Paging = interfaces.ResourceDataPagingRequest{
+			Mode:   interfaces.ResourceDataPagingModeSingle,
+			Limit:  query.Limit,
+			Offset: query.Offset,
+		}
+		resp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, &singlePageParams)
+	}
 	if err != nil {
 		// When downstream identifies a caller-side issue (4xx), pass through the original status code and carry its reason upward.
 		// Upgrading everything to 500 makes self-correctable problems such as unsupported operators or resources without built indexes look
@@ -554,9 +616,57 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		}
 	}
 	resps.TotalCount = resp.TotalCount
-	resps.SearchAfter = resp.SearchAfter
+	if resp.Paging != nil {
+		if resp.Paging.NextCursor != nil {
+			resps.ResourceCursor = *resp.Paging.NextCursor
+			resps.ResourceCursorExpiry = resp.Paging.ExpiresAtSec
+		}
+	} else {
+		resps.SearchAfter = resp.SearchAfter
+	}
 	resps.Datas = objects
 	return nil
+}
+
+func isCursorPagingUnsupported(err error) bool {
+	downstream, ok := interfaces.AsVegaDownstreamError(err)
+	return ok && downstream.StatusCode == http.StatusNotImplemented
+}
+
+// appendResourceSortTieBreakers makes the cursor sort a total order. Vega uses
+// search_after internally, so a non-unique caller sort must end with every
+// object primary key in its mapped resource-field form.
+func appendResourceSortTieBreakers(sorts []*interfaces.SortParams, objectType interfaces.ObjectType) ([]*interfaces.SortParams, bool) {
+	fieldByProperty := make(map[string]string, len(objectType.DataProperties))
+	for _, property := range objectType.DataProperties {
+		fieldByProperty[property.Name] = property.MappedField.Name
+	}
+
+	result := append([]*interfaces.SortParams(nil), sorts...)
+	present := make(map[string]struct{}, len(result))
+	for _, sortParam := range result {
+		if sortParam != nil {
+			present[sortParam.Field] = struct{}{}
+		}
+	}
+	if len(objectType.PrimaryKeys) == 0 {
+		return result, false
+	}
+	for _, primaryKey := range objectType.PrimaryKeys {
+		mappedField := fieldByProperty[primaryKey]
+		if mappedField == "" {
+			return result, false
+		}
+		if _, exists := present[mappedField]; exists {
+			continue
+		}
+		result = append(result, &interfaces.SortParams{
+			Field:     mappedField,
+			Direction: interfaces.ASC_DIRECTION,
+		})
+		present[mappedField] = struct{}{}
+	}
+	return result, true
 }
 
 // getObjectsFromObjectIndex retrieves object data from the object-type index.
@@ -838,6 +948,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 	resps.ObjectType = objects.ObjectType
 	resps.TotalCount = objects.TotalCount
 	resps.SearchAfter = objects.SearchAfter
+	resps.Paging = objects.Paging
 	resps.Cursor = objects.Cursor
 	resps.EffectivePermissions = objects.EffectivePermissions
 	return resps, nil
@@ -980,12 +1091,11 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
 	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
-		KNID:       knID,
-		ChildType:  interfaces.PermissionResourceTypeLogicProperty,
-		ChildID:    logicPropertyBindingID(knID, objectTypeID, propName),
-		TargetType: interfaces.ProxyTargetTypeToolBox,
-		TargetID:   logicProp.DataSource.BoxID,
-		Operation:  interfaces.PermissionOperationExecute,
+		KNID:      knID,
+		ChildType: interfaces.PermissionResourceTypeLogicProperty,
+		ChildID:   logicPropertyBindingID(knID, objectTypeID, propName),
+		TargetID:  logicProp.DataSource.BoxID,
+		Operation: interfaces.PermissionOperationExecute,
 	})
 	if err != nil {
 		return nil, err

@@ -15,6 +15,10 @@ import (
 )
 
 const (
+	// Visibility matching mode for PermissionResourcesFilter.
+	VISIBILITY_MATCH_ALL = "all"
+	VISIBILITY_MATCH_ANY = "any"
+
 	// Visitor type
 	ACCESSOR_TYPE_USER = "user"
 	ACCESSOR_TYPE_APP  = "app"
@@ -27,23 +31,20 @@ const (
 	AUTH_RESOURCE_TYPE_RESOURCE       = "resource"
 	AUTH_RESOURCE_TYPE_CONNECTOR_TYPE = "connector_type"
 
-	// Internal resource type: The system's internal catalog and its affiliated resources are registered as independent types.
-	// catalog of business roles :*/resource:* Wildcard authorization does not match, only visible to the super administrator (* wildcard)
-	AUTH_RESOURCE_TYPE_INTERNAL_CATALOG  = "internal_catalog"
-	AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE = "internal_resource"
-
 	// Resource operation type
-	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
-	OPERATION_TYPE_CREATE      = "create"
-	OPERATION_TYPE_MODIFY      = "modify"
-	OPERATION_TYPE_DELETE      = "delete"
-	OPERATION_TYPE_AUTHORIZE   = "authorize"
-	OPERATION_TYPE_TASK_MANAGE = "task_manage"
+	OPERATION_TYPE_VIEW_DETAIL  = "view_detail"
+	OPERATION_TYPE_VIEW_SUMMARY = "view_summary"
+	OPERATION_TYPE_CREATE       = "create"
+	OPERATION_TYPE_MODIFY       = "modify"
+	OPERATION_TYPE_DELETE       = "delete"
+	OPERATION_TYPE_AUTHORIZE    = "authorize"
+	OPERATION_TYPE_TASK_MANAGE  = "task_manage"
 
-	// OPERATION_TYPE_QUERY_DATA is "the data that can be retrieved from this table", and view_detail (only looking at the structure)
-	// Separate. OPERATION_TYPE_RESOURCE_MANAGE is the "data Table under the Management Directory" on the data directory.
-	// Both are in the permission vocabulary (#801), and a constant is added here for determination.
+	// Data access is independent from view_detail: query_data reads resource data,
+	// while data_write creates, replaces, or deletes Dataset documents.
+	// resource_manage manages the resources contained by a Catalog.
 	OPERATION_TYPE_QUERY_DATA           = "query_data"
+	OPERATION_TYPE_DATA_WRITE           = "data_write"
 	OPERATION_TYPE_RESOURCE_MANAGE      = "resource_manage"
 	OPERATION_TYPE_FULL_BUSINESS_ACCESS = "full_business_access"
 
@@ -52,12 +53,9 @@ const (
 )
 
 var (
-	ErrLocalPermissionUnsupported = errors.New("local permission decisions are unavailable for the configured authorization provider")
-	ErrPermissionAccountNotActive = errors.New("permission account is missing or disabled")
-
 	// COMMON_OPERATIONS is the set every authorization answer is asked to report
 	// on. It grants nothing by itself — a verb missing here is simply never
-	// mentioned back, which is how query_data and resource_manage stayed
+	// mentioned back, which is how query_data, data_write, and resource_manage stayed
 	// invisible to the caller after #801 introduced them: the API kept answering
 	// that nobody held either, including the accounts that did.
 	COMMON_OPERATIONS = []string{
@@ -68,6 +66,7 @@ var (
 		OPERATION_TYPE_AUTHORIZE,
 		OPERATION_TYPE_TASK_MANAGE,
 		OPERATION_TYPE_QUERY_DATA,
+		OPERATION_TYPE_DATA_WRITE,
 		OPERATION_TYPE_RESOURCE_MANAGE,
 	}
 
@@ -79,55 +78,6 @@ var (
 		OPERATION_TYPE_AUTHORIZE,
 	}
 )
-
-type PermissionDecision string
-
-const (
-	PermissionDecisionAllow PermissionDecision = "allow"
-	PermissionDecisionDeny  PermissionDecision = "deny"
-	PermissionDecisionNone  PermissionDecision = "none"
-)
-
-type PermissionDecisionBasis string
-
-const (
-	PermissionBasisDirect    PermissionDecisionBasis = "direct"
-	PermissionBasisInherited PermissionDecisionBasis = "inherited"
-	PermissionBasisBundle    PermissionDecisionBasis = "bundle"
-	PermissionBasisWildcard  PermissionDecisionBasis = "wildcard"
-	PermissionBasisDefault   PermissionDecisionBasis = "default"
-	PermissionBasisRequires  PermissionDecisionBasis = "requires"
-	PermissionBasisNone      PermissionDecisionBasis = "none"
-)
-
-// PermissionOperationDecision is one structured authorization result. Local
-// decisions may return none; decisions returned to a business operation must
-// first be composed into allow or deny.
-type PermissionOperationDecision struct {
-	Operation         string                  `json:"operation"`
-	Decision          PermissionDecision      `json:"decision"`
-	Basis             PermissionDecisionBasis `json:"basis"`
-	Requires          []string                `json:"requires,omitempty"`
-	DeniedRequirement string                  `json:"denied_requirement,omitempty"`
-	RequirementBasis  PermissionDecisionBasis `json:"requirement_basis,omitempty"`
-}
-
-func (d PermissionOperationDecision) Allowed() bool {
-	return d.Decision == PermissionDecisionAllow
-}
-
-type LocalPermissionCheck struct {
-	Accessor  PermissionAccessor
-	Resource  PermissionResource
-	Operation string
-}
-
-type LocalPermissionFilter struct {
-	Accessor     PermissionAccessor
-	ResourceType string
-	ResourceIDs  []string
-	Operations   []string
-}
 
 // IsPermissionRefusal reports whether an authorization error is the service
 // saying no, as opposed to the service failing to answer.
@@ -173,12 +123,15 @@ type PermissionResourcesFilter struct {
 	Accessor   PermissionAccessor   `json:"accessor,omitempty"`
 	Resources  []PermissionResource `json:"resources,omitempty"`
 	Operations []string             `json:"operation,omitempty"`
-	// CandidateOperations is what the answer should report on, as opposed to what
-	// makes a resource visible. Callers render buttons from it, so leaving it
-	// unset means the answer can only ever name the visibility operation itself.
+	// CandidateOperations optionally narrows the reported operations for trusted
+	// callers. bkn-safe derives the complete type-specific set when this is empty.
 	CandidateOperations []string `json:"candidate_operations,omitempty"`
-	AllowOperation      bool     `json:"allow_operation"`
-	Method              string   `json:"method,omitempty"`
+	// VisibilityMatch selects how Operations determine visibility.
+	VisibilityMatch string `json:"visibility_match,omitempty"`
+	// AllowOperation selects the independent operation-projection axis. False
+	// returns visible resources only; true returns each resource's effective ops.
+	AllowOperation bool   `json:"allow_operation"`
+	Method         string `json:"method,omitempty"`
 }
 
 // Set permissions
@@ -204,6 +157,13 @@ type PermissionResourceOps struct {
 	Operations []string `json:"operation,omitempty"`
 }
 
+// PermissionResourceParent records one concrete Resource-to-Catalog ownership
+// edge used by bkn-safe's declared hierarchy.
+type PermissionResourceParent struct {
+	ResourceID string `json:"resource_id"`
+	ParentID   string `json:"parent_id"`
+}
+
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go
 type PermissionAccess interface {
 	CheckPermission(ctx context.Context, check PermissionCheck) (bool, error)
@@ -211,12 +171,7 @@ type PermissionAccess interface {
 
 	CreateResources(ctx context.Context, policies []PermissionPolicy) error
 	DeleteResources(ctx context.Context, resources []PermissionResource) error
-}
-
-// LocalPermissionAccess is the narrow, typed port used only by Vega's trusted
-// Resource-to-Catalog composition. Implementations must not turn an unavailable
-// account or authorization backend into PermissionDecisionNone.
-type LocalPermissionAccess interface {
-	LocalDecision(ctx context.Context, check LocalPermissionCheck) (PermissionOperationDecision, error)
-	LocalResourceDecisions(ctx context.Context, filter LocalPermissionFilter) (map[string]map[string]PermissionOperationDecision, error)
+	UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []PermissionResourceParent) error
+	DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error
+	GetResourceParents(ctx context.Context, resourceType string, resourceIDs []string) (map[string]PermissionResourceParent, error)
 }

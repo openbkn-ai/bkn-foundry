@@ -6,7 +6,11 @@
 
 package interfaces
 
-import "github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+import (
+	"context"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+)
 
 type contextKey string // Customize the exclusive key type
 
@@ -22,14 +26,18 @@ const (
 
 	ACCOUNT_INFO_KEY contextKey = "x-account-info" // Avoid using string directly
 
+	// BuiltinAdminID is the bkn-safe built-in administrator. Internal Vega
+	// catalogs and resources are intentionally visible only to this account.
+	BuiltinAdminID = "266c6a42-6131-4d62-8f39-853e7093701c"
+
 	NAME_MAX_LENGTH        = 255
 	DESCRIPTION_MAX_LENGTH = 1000
 
 	DEFAULT_OFFSET    = "0"
 	DEFAULT_LIMIT     = "20"
-	DEFAULT_DIRECTION = "desc"
-	DESC_DIRECTION    = "desc"
-	ASC_DIRECTION     = "asc"
+	DEFAULT_DIRECTION = "DESC"
+	DESC_DIRECTION    = "DESC"
+	ASC_DIRECTION     = "ASC"
 	MIN_OFFSET        = 0
 	MIN_LIMIT         = 1
 	MAX_LIMIT         = 1000
@@ -52,6 +60,13 @@ type AccountInfo struct {
 	ID   string `json:"id"`
 	Type string `json:"type"`
 	Name string `json:"name,omitempty"`
+}
+
+// IsBuiltinAdmin reports whether ctx belongs to the only account allowed to
+// access Vega internal catalogs and the resources they contain.
+func IsBuiltinAdmin(ctx context.Context) bool {
+	account, ok := ctx.Value(ACCOUNT_INFO_KEY).(AccountInfo)
+	return ok && account.ID == BuiltinAdminID
 }
 
 // PaginationQueryParams holds common pagination parameters.

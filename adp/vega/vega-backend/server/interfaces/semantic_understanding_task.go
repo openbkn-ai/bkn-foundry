@@ -49,10 +49,10 @@ var (
 		SemanticUnderstandingTaskStatusRunning,
 	}
 
-	SEMANTIC_UNDERSTANDING_TASK_SORT = map[string]string{
-		SemanticUnderstandingTaskSortCreateTime: "",
-		SemanticUnderstandingTaskSortStartTime:  "",
-		SemanticUnderstandingTaskSortFinishTime: "",
+	SEMANTIC_UNDERSTANDING_TASK_SORT = map[string]struct{}{
+		SemanticUnderstandingTaskSortCreateTime: {},
+		SemanticUnderstandingTaskSortStartTime:  {},
+		SemanticUnderstandingTaskSortFinishTime: {},
 	}
 )
 

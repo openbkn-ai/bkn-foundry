@@ -28,7 +28,7 @@ import (
 	"bkn-backend/logics/batchindex"
 )
 
-func allowAllRelationPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+func allowAllRelationPermissionResources(_ context.Context, _ string, ids, _ []string, _ bool) (map[string]interfaces.PermissionResourceOps, error) {
 	matched := make(map[string]interfaces.PermissionResourceOps, len(ids))
 	for _, id := range ids {
 		matched[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: []string{
@@ -160,7 +160,7 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
@@ -377,7 +377,7 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
@@ -670,7 +670,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -954,7 +954,7 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -1088,7 +1088,7 @@ func Test_relationTypeService_DeleteRelationTypesByIDs(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -1527,7 +1527,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1",
 				SourceObjectTypeID: "ot1", TargetObjectTypeID: "ot2"},
 		}}, nil).AnyTimes()
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 
 		service := &relationTypeService{
@@ -2156,7 +2156,7 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1",
 				SourceObjectTypeID: "ot1", TargetObjectTypeID: "ot2"},
 		}}, nil).AnyTimes()
-		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()
 
 		service := &relationTypeService{

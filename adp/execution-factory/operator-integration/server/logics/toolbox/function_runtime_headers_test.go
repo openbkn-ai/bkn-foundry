@@ -50,6 +50,75 @@ func TestFunctionRuntimeHeadersRefusesAPartialContext(t *testing.T) {
 	})
 }
 
+// A logic property or action reaches its Function through ontology-query's
+// trusted proxy, often outside any Interaction (a Studio trial). The caller's
+// credential still travels; the Interaction only when it is complete.
+func TestFunctionRuntimeHeadersForwardsATrustedProxyCallWithoutInteraction(t *testing.T) {
+	Convey("A trusted proxy call carries the credential without an Interaction", t, func() {
+		headers := functionRuntimeHeaders(
+			map[string]any{"bkn-interaction-id": "int_body"},
+			&interfaces.ExecuteToolReq{
+				RequestAuthorization: "Bearer caller-token",
+				BKNInteractionID:     "int_half",
+				BKNParentOperationID: "op_function",
+				TrustedProxyCall:     true,
+			},
+		)
+
+		So(headers["Authorization"], ShouldEqual, "Bearer caller-token")
+		So(headers["bkn-conversation-id"], ShouldBeNil)
+		So(headers["bkn-interaction-id"], ShouldBeNil)
+		So(headers["bkn-parent-operation-id"], ShouldBeNil)
+	})
+
+	Convey("A trusted proxy call inside an Interaction carries both", t, func() {
+		headers := functionRuntimeHeaders(nil, &interfaces.ExecuteToolReq{
+			RequestAuthorization: "Bearer caller-token",
+			BKNConversationID:    "conv_1",
+			BKNInteractionID:     "int_1",
+			TrustedProxyCall:     true,
+		})
+
+		So(headers["Authorization"], ShouldEqual, "Bearer caller-token")
+		So(headers["bkn-conversation-id"], ShouldEqual, "conv_1")
+		So(headers["bkn-interaction-id"], ShouldEqual, "int_1")
+	})
+
+	Convey("A trusted proxy call without a credential forwards nothing", t, func() {
+		headers := functionRuntimeHeaders(map[string]any{}, &interfaces.ExecuteToolReq{TrustedProxyCall: true})
+
+		So(headers["Authorization"], ShouldBeNil)
+	})
+}
+
+// The Function runtime accepts a bare token, so a Tool body must never be able
+// to choose the credential a Function runs under, in any casing, whether or not
+// a server-captured credential replaces it.
+func TestFunctionRuntimeHeadersDropsBodySuppliedAuthorization(t *testing.T) {
+	Convey("A body Authorization never reaches the Function runtime", t, func() {
+		for _, req := range []*interfaces.ExecuteToolReq{
+			nil,
+			{},
+			{RequestAuthorization: "Bearer caller-token"},
+			{RequestAuthorization: "Bearer caller-token", TrustedProxyCall: true},
+		} {
+			headers := functionRuntimeHeaders(map[string]any{
+				"Authorization": "Bearer body-token",
+				"authorization": "Bearer body-token",
+				"X-Api-Key":     "tool-own-key",
+			}, req)
+
+			So(headers["authorization"], ShouldBeNil)
+			So(headers["X-Api-Key"], ShouldEqual, "tool-own-key")
+			if req != nil && req.TrustedProxyCall {
+				So(headers["Authorization"], ShouldEqual, "Bearer caller-token")
+			} else {
+				So(headers["Authorization"], ShouldBeNil)
+			}
+		}
+	})
+}
+
 // The captured values are server-owned. A Tool body that names them would be
 // naming whose credential and whose Interaction the Function runs under.
 func TestFunctionRuntimeHeadersOverridesBodySuppliedValues(t *testing.T) {

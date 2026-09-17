@@ -39,6 +39,26 @@ servers:
   - url: /api/safe/v1/authz
 security: []
 paths:
+  /registry:
+    get:
+      operationId: getAuthorizationRegistry
+      summary: Get the persisted authorization registry
+      description: |
+        Returns the resource types and operations currently registered in
+        bkn-safe. This is a tokenless service-to-service endpoint on the
+        platform-internal `/api/safe/v1/authz` network surface; it must not be
+        exposed through an Ingress or called directly by browsers. Browser
+        clients use the bearer-token-protected
+        `/api/safe/v1/me/authorization-registry` endpoint instead.
+      responses:
+        '200':
+          description: Authorization resource types and their operations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationRegistryResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /check:
     post:
       operationId: checkAuthorization
@@ -116,10 +136,15 @@ paths:
       summary: Filter trusted candidates and project their allowed operations
       description: |
         `visibility_operations` and `candidate_operations` are independent.
-        A resource is returned only when every visibility operation is allowed.
+        `visibility_match` selects whether every visibility operation (`all`,
+        the default) or any visibility operation (`any`) is sufficient.
         Its `operations` value is the allowed subset of candidate operations.
-        An empty visibility list returns every requested resource. Omitting
-        candidate operations uses each resource type's operation catalog.
+        `include_operations=false` performs visibility filtering only and
+        returns every visible resource with an empty `operations` list.
+        Omitted `include_operations` defaults to `true` for compatibility.
+        An empty visibility list returns every requested resource. When
+        operations are included, omitting candidate operations uses each
+        resource type's operation catalog.
 
         `evaluation_scope=local` is available only on the platform-internal
         network face. It accepts only concrete Resource/Catalog references and
@@ -171,7 +196,10 @@ paths:
       summary: Resolve effective access levels for requested object properties
       description: |
         Resolves `none < schema < masked < full` in one call for the exact
-        object types and properties supplied by a trusted workload. The
+        object types and properties supplied by a trusted workload. `masked`
+        is the stable wire value for Column Masking: a configured rule is
+        applied only to the requested property's query result, and never
+        modifies source data. The
         workload derives `accessor_id` from its already-authenticated public
         request; it must never copy an accessor supplied by an end user.
 
@@ -179,7 +207,7 @@ paths:
         `schema`, and no applicable operation to `none`. A registered Enterprise
         resolver may only narrow that base level. Community builds and
         unavailable Enterprise capability return the core mapping and cannot
-        produce `masked`.
+        produce `masked` (Column Masking).
 
         Entries and properties preserve request order. Unknown or disabled
         accessors receive `none` for every requested property. Invalid object
@@ -434,7 +462,7 @@ paths:
         hold `admin-authz:view`. It returns matching user/role/public Core
         grants, wildcard and parent fallback, Community bundle expansion, and
         each direct runtime requirement. The response never includes property
-        names, masking rules, or data values and does not persist a proof chain.
+        names, Column Masking rules, or data values and does not persist a proof chain.
       security:
         - BearerAuth: []
       requestBody:
@@ -503,6 +531,55 @@ components:
       properties:
         type: {type: string}
         id: {type: string}
+    AuthorizationRegistryResponse:
+      type: object
+      required: [resource_types]
+      properties:
+        resource_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationRegistryResourceType'
+    AuthorizationRegistryResourceType:
+      type: object
+      required: [id, name, operations]
+      properties:
+        id:
+          type: string
+          description: Stable authorization resource-type identifier.
+        name:
+          type: string
+          description: Display name registered for the resource type.
+        parent_type:
+          type: string
+          description: Parent resource type from which compatible operations may inherit; omitted when none is declared.
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationRegistryOperation'
+    AuthorizationRegistryOperation:
+      type: object
+      required: [id, name, grantable, requires]
+      properties:
+        id:
+          type: string
+          description: Stable operation identifier.
+        name:
+          type: string
+          description: Display name registered for the operation.
+        description:
+          type: string
+          description: Optional explanation of the operation's scope and limitations.
+        grantable:
+          type: boolean
+          description: Whether authorization write APIs may persist allow or deny policies for this operation. Defaults to true when omitted from the seed registry.
+        parent_operation:
+          type: string
+          description: Compatible operation on `parent_type` used for parent-resource inheritance; omitted when none is declared.
+        requires:
+          type: array
+          description: Direct same-resource prerequisite operations. Empty when the operation has no prerequisites.
+          items:
+            type: string
     CheckRequest:
       type: object
       required: [accessor_id, resource, operation]
@@ -563,9 +640,18 @@ components:
         visibility_operations:
           type: array
           items: {type: string}
+        visibility_match:
+          type: string
+          enum: [all, any]
+          default: all
+          description: Controls whether all or any visibility_operations are required. It affects filtering only, not operation projection.
         candidate_operations:
           type: array
           items: {type: string}
+        include_operations:
+          type: boolean
+          default: true
+          description: When false, return only resources that satisfy visibility_operations and do not project allowed operations.
         evaluation_scope:
           $ref: '#/components/schemas/EvaluationScope'
     FilteredResource:
@@ -634,7 +720,10 @@ components:
     PropertyAccessLevel:
       type: string
       enum: [none, schema, masked, full]
-      description: Ordered effective visibility; unknown values are invalid and fail closed.
+      description: |
+        Effective property access level. `masked` is Column Masking: a configured
+        rule is applied to the property's query result only; source data is not modified.
+        Ordered effective visibility; unknown values are invalid and fail closed.
     PropertyLevelsRequest:
       type: object
       additionalProperties: false

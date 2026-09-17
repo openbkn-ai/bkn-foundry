@@ -60,14 +60,6 @@ depServices:
     protocol: http
     user: admin
     password: ""
-  authorization-private:
-    host: authorization-private
-    port: 30920
-    protocol: http
-  user-management:
-    host: user-management-private
-    port:  30980
-    protocol: http
   hydra-admin:
     host: hydra-admin
     port: 4445

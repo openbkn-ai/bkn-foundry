@@ -295,8 +295,10 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 			WithErrorDetails(err.Error())
 	}
 
-	// Start async execution in goroutine
-	go s.executeAsync(execution, &actionType, req)
+	// Start async execution in goroutine. The caller's credential is carried in
+	// memory only: it is never part of the execution record.
+	callerCredential, _ := interfaces.CallerRuntimeCredentialFromContext(ctx)
+	go s.executeAsync(execution, &actionType, req, callerCredential)
 
 	// Return immediate response
 	return &interfaces.ActionExecutionResponse{
@@ -336,12 +338,15 @@ const batchSize = 100
 
 // executeAsync executes the action asynchronously with batch storage and cancellation support
 func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecution,
-	actionType *interfaces.ActionType, req *interfaces.ActionExecutionRequest) {
+	actionType *interfaces.ActionType, req *interfaces.ActionExecutionRequest,
+	callerCredential interfaces.CallerRuntimeCredential) {
 
 	// Create a new context for async execution
 	ctx := context.Background()
 	// Restore account info from execution record for downstream API calls (user_id header)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, execution.Executor)
+	// A Function-backed action reads BKN as the caller who started it.
+	ctx = interfaces.WithCallerRuntimeCredential(ctx, callerCredential)
 	if proxyContext, err := trustedActionProxyContext(execution, actionType); err == nil {
 		ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
 	} else {
@@ -415,6 +420,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 				ObjectSystemInfo: req.Instances[i],
 				Status:           interfaces.ObjectStatusFailed,
 				Parameters:       params,
+				Result:           result,
 				ErrorMessage:     execErr.Error(),
 				StartTime:        startTime,
 				EndTime:          endTime,
@@ -563,6 +569,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 		result.Parameters = sentParams
 		if execErr != nil {
 			result.Status = interfaces.ObjectStatusFailed
+			result.Result = invokeResult
 			result.ErrorMessage = execErr.Error()
 			failedCount = 1
 		} else {

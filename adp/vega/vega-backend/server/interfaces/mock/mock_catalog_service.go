@@ -41,21 +41,20 @@ func (m *MockCatalogService) EXPECT() *MockCatalogServiceMockRecorder {
 	return m.recorder
 }
 
-// AuthorizedCatalogsForTasks mocks base method.
-func (m *MockCatalogService) AuthorizedCatalogsForTasks(ctx context.Context, op string) ([]string, bool, []string, error) {
+// CheckCatalogPermission mocks base method.
+func (m *MockCatalogService) CheckCatalogPermission(ctx context.Context, catalogID string, ops []string, getCatalog bool) (bool, *interfaces.Catalog, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AuthorizedCatalogsForTasks", ctx, op)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].([]string)
-	ret3, _ := ret[3].(error)
-	return ret0, ret1, ret2, ret3
+	ret := m.ctrl.Call(m, "CheckCatalogPermission", ctx, catalogID, ops, getCatalog)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(*interfaces.Catalog)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
-// AuthorizedCatalogsForTasks indicates an expected call of AuthorizedCatalogsForTasks.
-func (mr *MockCatalogServiceMockRecorder) AuthorizedCatalogsForTasks(ctx, op any) *gomock.Call {
+// CheckCatalogPermission indicates an expected call of CheckCatalogPermission.
+func (mr *MockCatalogServiceMockRecorder) CheckCatalogPermission(ctx, catalogID, ops, getCatalog any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizedCatalogsForTasks", reflect.TypeOf((*MockCatalogService)(nil).AuthorizedCatalogsForTasks), ctx, op)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckCatalogPermission", reflect.TypeOf((*MockCatalogService)(nil).CheckCatalogPermission), ctx, catalogID, ops, getCatalog)
 }
 
 // CheckExistByID mocks base method.
@@ -71,35 +70,6 @@ func (m *MockCatalogService) CheckExistByID(ctx context.Context, id string) (boo
 func (mr *MockCatalogServiceMockRecorder) CheckExistByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByID", reflect.TypeOf((*MockCatalogService)(nil).CheckExistByID), ctx, id)
-}
-
-// CheckExistByName mocks base method.
-func (m *MockCatalogService) CheckExistByName(ctx context.Context, name string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckExistByName", ctx, name)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CheckExistByName indicates an expected call of CheckExistByName.
-func (mr *MockCatalogServiceMockRecorder) CheckExistByName(ctx, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByName", reflect.TypeOf((*MockCatalogService)(nil).CheckExistByName), ctx, name)
-}
-
-// CheckTaskPermission mocks base method.
-func (m *MockCatalogService) CheckTaskPermission(ctx context.Context, catalogID, op string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckTaskPermission", ctx, catalogID, op)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CheckTaskPermission indicates an expected call of CheckTaskPermission.
-func (mr *MockCatalogServiceMockRecorder) CheckTaskPermission(ctx, catalogID, op any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckTaskPermission", reflect.TypeOf((*MockCatalogService)(nil).CheckTaskPermission), ctx, catalogID, op)
 }
 
 // Create mocks base method.
@@ -176,21 +146,6 @@ func (mr *MockCatalogServiceMockRecorder) GetDeletionImpact(ctx, id any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeletionImpact", reflect.TypeOf((*MockCatalogService)(nil).GetDeletionImpact), ctx, id)
 }
 
-// InternalCatalogIDSet mocks base method.
-func (m *MockCatalogService) InternalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalCatalogIDSet", ctx)
-	ret0, _ := ret[0].(map[string]struct{})
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// InternalCatalogIDSet indicates an expected call of InternalCatalogIDSet.
-func (mr *MockCatalogServiceMockRecorder) InternalCatalogIDSet(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalCatalogIDSet", reflect.TypeOf((*MockCatalogService)(nil).InternalCatalogIDSet), ctx)
-}
-
 // InternalGetByID mocks base method.
 func (m *MockCatalogService) InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
 	m.ctrl.T.Helper()
@@ -252,20 +207,20 @@ func (mr *MockCatalogServiceMockRecorder) List(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockCatalogService)(nil).List), ctx, params)
 }
 
-// ListAuthResources mocks base method.
-func (m *MockCatalogService) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
+// ListAuthResourceEntries mocks base method.
+func (m *MockCatalogService) ListAuthResourceEntries(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListAuthResources", ctx, params)
+	ret := m.ctrl.Call(m, "ListAuthResourceEntries", ctx, params)
 	ret0, _ := ret[0].([]*interfaces.AuthResourceEntry)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
-// ListAuthResources indicates an expected call of ListAuthResources.
-func (mr *MockCatalogServiceMockRecorder) ListAuthResources(ctx, params any) *gomock.Call {
+// ListAuthResourceEntries indicates an expected call of ListAuthResourceEntries.
+func (mr *MockCatalogServiceMockRecorder) ListAuthResourceEntries(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockCatalogService)(nil).ListAuthResources), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResourceEntries", reflect.TypeOf((*MockCatalogService)(nil).ListAuthResourceEntries), ctx, params)
 }
 
 // ListConnectorTypeStats mocks base method.
@@ -283,33 +238,35 @@ func (mr *MockCatalogServiceMockRecorder) ListConnectorTypeStats(ctx, params any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConnectorTypeStats", reflect.TypeOf((*MockCatalogService)(nil).ListConnectorTypeStats), ctx, params)
 }
 
-// ListInternalIDs mocks base method.
-func (m *MockCatalogService) ListInternalIDs(ctx context.Context) ([]string, error) {
+// ListPermittedCatalogIDs mocks base method.
+func (m *MockCatalogService) ListPermittedCatalogIDs(ctx context.Context, ops []string, visibilityMatch string, allowOperation bool, params interfaces.CatalogsQueryParams) ([]string, map[string]interfaces.PermissionResourceOps, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListInternalIDs", ctx)
+	ret := m.ctrl.Call(m, "ListPermittedCatalogIDs", ctx, ops, visibilityMatch, allowOperation, params)
 	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(map[string]interfaces.PermissionResourceOps)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListPermittedCatalogIDs indicates an expected call of ListPermittedCatalogIDs.
+func (mr *MockCatalogServiceMockRecorder) ListPermittedCatalogIDs(ctx, ops, visibilityMatch, allowOperation, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPermittedCatalogIDs", reflect.TypeOf((*MockCatalogService)(nil).ListPermittedCatalogIDs), ctx, ops, visibilityMatch, allowOperation, params)
+}
+
+// SetEnabled mocks base method.
+func (m *MockCatalogService) SetEnabled(ctx context.Context, id string, enabled bool) (*interfaces.Catalog, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetEnabled", ctx, id, enabled)
+	ret0, _ := ret[0].(*interfaces.Catalog)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListInternalIDs indicates an expected call of ListInternalIDs.
-func (mr *MockCatalogServiceMockRecorder) ListInternalIDs(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListInternalIDs", reflect.TypeOf((*MockCatalogService)(nil).ListInternalIDs), ctx)
-}
-
-// SetEnabled mocks base method.
-func (m *MockCatalogService) SetEnabled(ctx context.Context, catalog *interfaces.Catalog, enabled bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetEnabled", ctx, catalog, enabled)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
 // SetEnabled indicates an expected call of SetEnabled.
-func (mr *MockCatalogServiceMockRecorder) SetEnabled(ctx, catalog, enabled any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) SetEnabled(ctx, id, enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockCatalogService)(nil).SetEnabled), ctx, catalog, enabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockCatalogService)(nil).SetEnabled), ctx, id, enabled)
 }
 
 // TestConnection mocks base method.
@@ -343,17 +300,17 @@ func (mr *MockCatalogServiceMockRecorder) TestConnectionConfig(ctx, req any) *go
 }
 
 // Update mocks base method.
-func (m *MockCatalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
+func (m *MockCatalogService) Update(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, catalog, req, allowUnhealthy)
+	ret := m.ctrl.Call(m, "Update", ctx, req, allowUnhealthy)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockCatalogServiceMockRecorder) Update(ctx, catalog, req, allowUnhealthy any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) Update(ctx, req, allowUnhealthy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogService)(nil).Update), ctx, catalog, req, allowUnhealthy)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogService)(nil).Update), ctx, req, allowUnhealthy)
 }
 
 // UpdateMetadata mocks base method.

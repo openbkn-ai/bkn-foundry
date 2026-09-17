@@ -115,12 +115,14 @@ func (c *safeClient) CheckGrants(ctx context.Context, proxyAccountID, grantorID 
 	return result, err
 }
 
-func (c *safeClient) SyncGrants(ctx context.Context, proxyAccountID, grantorID string,
-	sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
+func (c *safeClient) SyncGrants(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64,
+	snapshotVersion string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	var result interfaces.ProxyGrantSyncResult
 	_, err := c.do(ctx, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources/sync", map[string]any{
 		"proxy_account_id": proxyAccountID,
 		"grantor_id":       grantorID,
+		"sync_generation":  syncGeneration,
+		"snapshot_version": snapshotVersion,
 		"sources":          sources,
 	}, &result)
 	return result, err

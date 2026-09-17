@@ -32,6 +32,16 @@ data:
   SAFE_DB_CONN_MAX_LIFETIME: {{ if kindIs "invalid" .Values.config.db.connMaxLifetime }}"30m"{{ else }}{{ .Values.config.db.connMaxLifetime | toString | quote }}{{ end }}
   {{- $authz := .Values.config.authz | default dict }}
   SAFE_AUTHZ_POLICY_REFRESH_INTERVAL: {{ if kindIs "invalid" $authz.policyRefreshInterval }}"10m"{{ else }}{{ $authz.policyRefreshInterval | toString | quote }}{{ end }}
+  {{- $upstreams := .Values.config.upstreams | default dict }}
+  {{- $bknBackend := $upstreams.bknBackend | default dict }}
+  SAFE_BKN_BACKEND_BASE_URL: {{ $bknBackend.baseURL | default "http://bkn-backend-svc:13014" | quote }}
+  SAFE_BKN_BACKEND_TIMEOUT: {{ $bknBackend.timeout | default "3s" | quote }}
+  {{- $executionFactory := $upstreams.executionFactory | default dict }}
+  SAFE_EXECUTION_FACTORY_BASE_URL: {{ $executionFactory.baseURL | default "http://agent-operator-integration:9000" | quote }}
+  SAFE_EXECUTION_FACTORY_TIMEOUT: {{ $executionFactory.timeout | default "3s" | quote }}
+  {{- $vegaBackend := $upstreams.vegaBackend | default dict }}
+  SAFE_VEGA_BACKEND_BASE_URL: {{ $vegaBackend.baseURL | default "http://vega-backend-svc:13014" | quote }}
+  SAFE_VEGA_BACKEND_TIMEOUT: {{ $vegaBackend.timeout | default "3s" | quote }}
   SAFE_HYDRA_ADMIN_URL: {{ .Values.config.hydra.adminURL | quote }}
   SAFE_HYDRA_PUBLIC_URL: {{ .Values.config.hydra.publicURL | quote }}
   SAFE_LDAP_URL: {{ .Values.config.ldap.url | quote }}

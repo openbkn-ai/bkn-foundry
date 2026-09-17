@@ -1129,7 +1129,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			params := &interfaces.ResourceDataQueryParams{
 				NeedTotal: viewQuery.NeedTotal,
 				Paging: interfaces.ResourceDataPagingRequest{
-					Mode:  "single",
+					Mode:  interfaces.ResourceDataPagingModeSingle,
 					Limit: viewQuery.Limit,
 				},
 				Sort:            viewQuery.Sort,

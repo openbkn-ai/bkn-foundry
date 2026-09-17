@@ -220,8 +220,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		}
 
 		apiV1.GET("/index-capabilities", r.GetIndexCapabilitiesByEx)
-
-		apiV1.GET("/auth-resources", r.ListAuthResources)
 	}
 
 	// Internal API
@@ -315,6 +313,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			semanticUnderstandingTasks.GET("/:id", r.GetSemanticUnderstandingTaskByIn)
 			semanticUnderstandingTasks.DELETE("/:ids", r.DeleteSemanticUnderstandingTasksByIn)
 		}
+
+		apiInV1.GET("/authorization-resources", r.ListAuthorizationResourcesByIn)
 	}
 
 	logger.Info("RestHandler RegisterPublic")

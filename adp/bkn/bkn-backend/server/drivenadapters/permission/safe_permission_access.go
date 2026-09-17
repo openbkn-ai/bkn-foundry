@@ -59,7 +59,7 @@ type safeResource struct {
 // One round trip regardless of resource or operation count — the per-resource,
 // per-operation loop it replaces made list pages scale as N x M (#357).
 func (c *safeClient) filterResources(ctx context.Context, accessorID string,
-	resources []safeResource, visibility, candidates []string) (map[string][]string, error) {
+	resources []safeResource, visibility, candidates []string, includeOperations bool) (map[string][]string, error) {
 
 	out := map[string][]string{}
 	if len(resources) == 0 {
@@ -76,6 +76,7 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 		"resources":             resources,
 		"visibility_operations": visibility,
 		"candidate_operations":  candidates,
+		"include_operations":    includeOperations,
 	}, &resp); err != nil {
 		return nil, err
 	}
@@ -173,23 +174,17 @@ func (s *safePermissionAccess) ResolvePropertyLevels(ctx context.Context,
 	return response, nil
 }
 
-// filterBatch is the shared body of FilterResources and GetResourcesOperations:
-// both project the candidate operations onto a set of resources; they differ
-// only in whether the visibility operations filter the result.
+// filterBatch is the shared body of FilterResources and GetResourcesOperations.
 func (s *safePermissionAccess) filterBatch(ctx context.Context,
-	filter interfaces.PermissionResourcesFilter, visibility []string) (map[string]interfaces.PermissionResourceOps, error) {
+	filter interfaces.PermissionResourcesFilter, visibility []string,
+	includeOperations bool) (map[string]interfaces.PermissionResourceOps, error) {
 
 	resources := make([]safeResource, 0, len(filter.Resources))
 	for _, r := range filter.Resources {
 		resources = append(resources, safeResource{Type: r.Type, ID: r.ID})
 	}
-	// Callers that only pass a visibility list keep the old behaviour: the
-	// operations they asked about are also the ones projected back.
-	candidates := filter.CandidateOperations
-	if len(candidates) == 0 {
-		candidates = filter.Operations
-	}
-	ops, err := s.safe.filterResources(ctx, filter.Accessor.ID, resources, visibility, candidates)
+	ops, err := s.safe.filterResources(ctx, filter.Accessor.ID, resources, visibility,
+		filter.CandidateOperations, includeOperations)
 	if err != nil {
 		return nil, err
 	}
@@ -201,14 +196,14 @@ func (s *safePermissionAccess) filterBatch(ctx context.Context,
 }
 
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	return s.filterBatch(ctx, filter, filter.Operations)
+	return s.filterBatch(ctx, filter, filter.Operations, filter.AllowOperation)
 }
 
 // GetResourcesOperations answers "what may I do on each of these", so no
 // visibility filter — every requested resource comes back, possibly with an
 // empty operation set.
 func (s *safePermissionAccess) GetResourcesOperations(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	return s.filterBatch(ctx, filter, nil)
+	return s.filterBatch(ctx, filter, nil, true)
 }
 
 func (s *safePermissionAccess) CreateResources(ctx context.Context, policies []interfaces.PermissionPolicy) error {

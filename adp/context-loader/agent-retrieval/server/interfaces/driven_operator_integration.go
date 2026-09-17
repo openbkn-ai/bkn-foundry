@@ -264,6 +264,7 @@ type ListPublishedToolboxesResponse struct {
 // and the tool itself is enabled. Both are read from the execution factory's own records.
 type ToolBoxLifecycle struct {
 	Published    bool
+	MetadataType string
 	EnabledTools map[string]struct{}
 	// EnabledKnown is false when the enabled-tools walk hit its page bound before the listing
 	// ended. The set is then a prefix, not the answer, and a tool missing from it is unknown

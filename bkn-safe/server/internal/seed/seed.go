@@ -85,7 +85,7 @@ const AdminUserID = adminUserID
 //go:embed data/roles.json
 var rolesJSON []byte
 
-//go:embed data/catalog.json
+//go:embed data/authorization-registry.json
 var catalogJSON []byte
 
 //go:embed data/grants.json
@@ -115,8 +115,10 @@ type catalogResourceType struct {
 }
 
 type catalogOperation struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Grantable   *bool  `json:"grantable"`
 	// ParentOperation is the operation checked on the parent instance when this
 	// one is not granted on the instance itself. Empty = no inheritance.
 	ParentOperation string `json:"parent_operation"`
@@ -427,8 +429,12 @@ func reconcileSeedRoles(enforcer *authz.Enforcer) error {
 }
 
 func seedCatalog(db *gorm.DB) error {
+	return seedCatalogData(db, catalogJSON)
+}
+
+func seedCatalogData(db *gorm.DB, data []byte) error {
 	var c catalog
-	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+	if err := json.Unmarshal(data, &c); err != nil {
 		return err
 	}
 	// The hierarchy is validated BEFORE anything is written: a typo'd parent type
@@ -452,14 +458,31 @@ func seedCatalog(db *gorm.DB) error {
 		declared := make([]string, 0, len(rt.Operations))
 		for _, op := range rt.Operations {
 			declared = append(declared, op.ID)
+			grantable := true
+			if op.Grantable != nil {
+				grantable = *op.Grantable
+			}
 			opRow := model.Operation{
-				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name,
+				ResourceTypeID:       rt.ID,
+				ID:                   op.ID,
+				Name:                 op.Name,
+				Description:          op.Description,
+				Grantable:            &grantable,
 				ParentOperationID:    op.ParentOperation,
 				RequiredOperationIDs: strings.Join(op.Requires, ","),
 			}
 			if err := db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "resource_type_id"}, {Name: "id"}},
-				DoUpdates: clause.AssignmentColumns([]string{"name", "parent_operation_id", "implied_operation_ids"}),
+				Columns: []clause.Column{
+					{Name: "resource_type_id"},
+					{Name: "id"},
+				},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"name",
+					"description",
+					"grantable",
+					"parent_operation_id",
+					"implied_operation_ids",
+				}),
 			}).Create(&opRow).Error; err != nil {
 				return err
 			}
@@ -491,7 +514,7 @@ func deleteUndeclaredOperations(db *gorm.DB, resourceTypeID string, declared []s
 	return q.Delete(&model.Operation{}).Error
 }
 
-// validateHierarchy checks the type-level hierarchy declared in catalog.json:
+// validateHierarchy checks the type-level hierarchy declared in authorization-registry.json:
 // every parent_type resolves to a declared type, every parent_operation resolves
 // to an operation the parent actually defines, an operation may not inherit from
 // a type with no parent, and the parent chain is acyclic. All four are authoring
@@ -546,7 +569,7 @@ func validateHierarchy(c catalog) error {
 }
 
 // validateRequirements checks the same-type prerequisites declared in
-// catalog.json: every requirement is declared on the same type, is not the
+// authorization-registry.json: every requirement is declared on the same type, is not the
 // target itself, and does not itself declare requirements. The last rule keeps
 // the first implementation strictly one layer instead of silently calculating
 // only part of a dependency graph.

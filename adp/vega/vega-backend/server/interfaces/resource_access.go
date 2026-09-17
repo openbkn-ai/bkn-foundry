@@ -25,8 +25,6 @@ type ResourceAccess interface {
 	GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*ResourceSummary, error)
 	// GetPermissionRefsByIDs retrieves resource-to-catalog relations keyed by resource ID.
 	GetPermissionRefsByIDs(ctx context.Context, ids []string) (map[string]ResourcePermissionRef, error)
-	// GetByName retrieves a Resource by catalog and name.
-	GetByName(ctx context.Context, catalogID string, name string) (*Resource, error)
 	// GetByCatalogID retrieves all Resources under a Catalog.
 	GetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// List lists resource summaries with filters.
@@ -53,8 +51,8 @@ type ResourceAccess interface {
 	// DeleteByIDs deletes Resources by IDs.
 	DeleteByIDs(ctx context.Context, ids []string) error
 
-	// ListAuthResources lists resource auth resources with filters.
-	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, error)
+	// ListAuthResourceEntries lists resource authorization entries with filters.
+	ListAuthResourceEntries(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 
 	// CheckExistByCategories checks if Resources exists by catalog ID and categories.
 	CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error)

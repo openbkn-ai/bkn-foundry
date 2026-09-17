@@ -38,7 +38,7 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckExecutePermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxExecutePermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}
@@ -63,6 +63,9 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotFound,
 			fmt.Sprintf("tool %s not found", req.ToolID))
+		return
+	}
+	if err = validateToolBoxMembership(ctx, tool, req.BoxID); err != nil {
 		return
 	}
 	resp, err = s.executeTool(ctx, req, tool, toolBox.ServerURL)
@@ -153,7 +156,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		}
 		return
 	}
-	err = s.AuthService.CheckExecutePermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxExecutePermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		if actionEnabled {
 			decision, _ := action.AfterPermission(err)
@@ -162,6 +165,19 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 				s.Logger.WithContext(ctx).Errorf("bkn trace rejected evidence emit failed: %T", emitErr)
 			}
 		}
+		return
+	}
+	// Validate the concrete tool before returning an Action replay from another box.
+	exists, requestedTool, lookupErr := s.ToolDB.SelectTool(ctx, req.ToolID)
+	if lookupErr != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "load tool for execution")
+		return
+	}
+	if !exists {
+		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolNotFound, "tool not found")
+		return
+	}
+	if err = validateToolBoxMembership(ctx, requestedTool, req.BoxID); err != nil {
 		return
 	}
 	if actionEnabled {
@@ -233,6 +249,9 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotFound,
 			fmt.Sprintf("tool %s not found", req.ToolID))
+		return
+	}
+	if err = validateToolBoxMembership(ctx, tool, req.BoxID); err != nil {
 		return
 	}
 	// Check if the tool is available.
@@ -327,6 +346,9 @@ func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.E
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotFound,
 			fmt.Sprintf("tool %s not found", req.ToolID))
+		return
+	}
+	if err = validateToolBoxMembership(ctx, tool, req.BoxID); err != nil {
 		return
 	}
 	// Check if the tool is available.
@@ -455,25 +477,52 @@ func isPlatformFunctionTarget(rawURL string) bool {
 // other address is a third party, and the sanitizer above is what keeps
 // platform identity away from it.
 //
-// All three values must be present. A partial context means the call did not
-// come through a managed Interaction, and a credential without the lifecycle
-// guard it belongs to is exactly what must not reach a pooled sandbox.
+// On a direct Toolbox call all three values must be present. A partial context
+// means the call did not come through a managed Interaction, and a credential
+// without the lifecycle guard it belongs to is exactly what must not reach a
+// pooled sandbox.
+//
+// A trusted proxy call from ontology-query is different: a logic property or
+// action backed by a Function is evaluated by a Studio trial or a plain property
+// query just as often as inside an Interaction, and without the caller's
+// credential the Function cannot read BKN at all. The execution itself is still
+// authorized as the knowledge network's proxy account; the credential only
+// decides what the Function can read, which is what the caller could read
+// anyway. The Interaction is forwarded when the caller was in one.
 //
 // Server-captured values win over anything in the body: a Tool that could state
 // them would be stating whose credential it runs under.
+//
+// A body-supplied Authorization is always dropped for this target. The Function
+// runtime accepts a bare token, so a Tool body that could state one would decide
+// whose credential the Function runs under; only the server-captured value may.
 func functionRuntimeHeaders(headers map[string]any, req *interfaces.ExecuteToolReq) map[string]any {
-	if req == nil || req.RequestAuthorization == "" ||
-		req.BKNConversationID == "" || req.BKNInteractionID == "" {
-		return headers
-	}
 	forwarded := make(map[string]any, len(headers)+4)
 	for key, value := range headers {
+		if strings.EqualFold(strings.TrimSpace(key), "Authorization") {
+			continue
+		}
 		forwarded[key] = value
 	}
+	if req == nil || req.RequestAuthorization == "" {
+		return forwarded
+	}
+	managed := req.BKNConversationID != "" && req.BKNInteractionID != ""
+	if !managed && !req.TrustedProxyCall {
+		return forwarded
+	}
 	forwarded["Authorization"] = req.RequestAuthorization
-	forwarded[string(interfaces.HeaderBKNConversationID)] = req.BKNConversationID
-	forwarded[string(interfaces.HeaderBKNInteractionID)] = req.BKNInteractionID
-	forwarded[string(interfaces.HeaderBKNParentOperationID)] = req.BKNParentOperationID
+	for _, key := range []interfaces.HeaderKey{
+		interfaces.HeaderBKNConversationID, interfaces.HeaderBKNInteractionID, interfaces.HeaderBKNParentOperationID,
+	} {
+		// Never let a body-supplied Interaction sit beside the caller's token.
+		delete(forwarded, string(key))
+	}
+	if managed {
+		forwarded[string(interfaces.HeaderBKNConversationID)] = req.BKNConversationID
+		forwarded[string(interfaces.HeaderBKNInteractionID)] = req.BKNInteractionID
+		forwarded[string(interfaces.HeaderBKNParentOperationID)] = req.BKNParentOperationID
+	}
 	return forwarded
 }
 

@@ -63,6 +63,32 @@ func MockNewKNAccess(appSetting *common.AppSetting) (*knowledgeNetworkAccess, sq
 	return kna, smock
 }
 
+func Test_knowledgeNetworkAccess_ListAuthorizationResources(t *testing.T) {
+	Convey("List authorization resources only reads knowledge-network IDs and names", t, func() {
+		kna, smock := MockNewKNAccess(&common.AppSetting{})
+		query := interfaces.AuthorizationResourcesQuery{
+			PaginationQueryParameters: interfaces.PaginationQueryParameters{
+				Offset: 1, Limit: 2, Sort: "f_name", Direction: interfaces.ASC_DIRECTION,
+			},
+			Name:   "supply",
+			Branch: interfaces.MAIN_BRANCH,
+		}
+
+		smock.ExpectQuery("SELECT COUNT(f_id) FROM t_knowledge_network WHERE (f_branch = ? AND instr(f_name, ?) > 0)").
+			WithArgs(interfaces.MAIN_BRANCH, "supply").
+			WillReturnRows(sqlmock.NewRows([]string{"COUNT(f_id)"}).AddRow(3))
+		smock.ExpectQuery("SELECT f_id, f_name FROM t_knowledge_network WHERE (f_branch = ? AND instr(f_name, ?) > 0) ORDER BY f_name asc, f_id asc LIMIT 2 OFFSET 1").
+			WithArgs(interfaces.MAIN_BRANCH, "supply").
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("kn-2", "Supply B"))
+
+		resources, total, err := kna.ListAuthorizationResources(testCtx, query)
+		So(err, ShouldBeNil)
+		So(total, ShouldEqual, 3)
+		So(resources, ShouldResemble, []*interfaces.AuthorizationResource{{ID: "kn-2", Name: "Supply B"}})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 func Test_knowledgeNetworkAccess_CheckKNExistByID(t *testing.T) {
 	Convey("test CheckKNExistByID\n", t, func() {
 		appSetting := &common.AppSetting{}

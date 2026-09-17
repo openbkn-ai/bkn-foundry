@@ -25,7 +25,7 @@ type SemanticUnderstandingTaskAccess interface {
 	MarkCompleted(ctx context.Context, tx *sql.Tx, id string, resultJSON string, confidence float64, confidenceDetailJSON string, finishTime int64) (bool, error)
 	MarkFailed(ctx context.Context, id string, failureDetail string, finishTime int64) (bool, error)
 	MarkCancelled(ctx context.Context, id string, failureDetail string, finishTime int64) (bool, error)
-	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, failureDetail string, finishTime int64) error
+	DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error
 
 	SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error)
 	SetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error)

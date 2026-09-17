@@ -100,6 +100,8 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 		Type: string(visitor.Type),
 	}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	// A Function-backed action reads BKN as this caller.
+	ctx = interfaces.WithCallerRuntimeCredential(ctx, callerRuntimeCredentialFromRequest(c))
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 	otellog.LogInfo(ctx, fmt.Sprintf("Action execution request: [%s]", c.Request.RequestURI))

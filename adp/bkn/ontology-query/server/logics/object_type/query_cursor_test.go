@@ -91,3 +91,31 @@ func TestQueryCursorExpires(t *testing.T) {
 		t.Fatal("expired cursor must fail closed")
 	}
 }
+
+func TestResourceQueryCursorIsEncryptedAndCannotBeUsedAsSearchAfter(t *testing.T) {
+	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	codec := testQueryCursorCodec(t, now)
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "user-1", Type: "user"})
+	query := &interfaces.ObjectQueryBaseOnObjectType{KNID: "kn-1", Branch: "main", ObjectTypeID: "orders"}
+	vegaExpiry := now.Add(5 * time.Minute).Unix()
+	token, err := codec.encodeResource(ctx, query, "model-v1", "vega-secret-cursor", &vegaExpiry)
+	if err != nil {
+		t.Fatalf("encodeResource() error = %v", err)
+	}
+	decodedToken, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || strings.Contains(string(decodedToken), "vega-secret-cursor") {
+		t.Fatalf("cursor exposes plaintext Vega cursor: %q", decodedToken)
+	}
+	got, err := codec.decodeResource(ctx, query, "model-v1", token)
+	if err != nil || got != "vega-secret-cursor" {
+		t.Fatalf("decodeResource() = %q, %v", got, err)
+	}
+	if _, err := codec.decode(ctx, query, "model-v1", token); err == nil {
+		t.Fatal("resource cursor must not be accepted as a search-after cursor")
+	}
+	codec.now = func() time.Time { return now.Add(5 * time.Minute) }
+	if _, err := codec.decodeResource(ctx, query, "model-v1", token); err == nil {
+		t.Fatal("resource cursor must expire when the Vega cursor expires")
+	}
+}

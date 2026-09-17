@@ -49,7 +49,8 @@ func TestRiskTypeSingleResourceAuthorization(t *testing.T) {
 			}
 			if tt.name == "detail" {
 				ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
-					[]string{"kn-1/risk-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).Return(nil, denied)
+					[]string{"kn-1/risk-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true).
+					Return(nil, denied)
 			} else {
 				ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 					Type: interfaces.RESOURCE_TYPE_RISK_TYPE, ID: "kn-1/risk-1",

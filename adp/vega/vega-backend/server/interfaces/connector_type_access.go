@@ -24,8 +24,8 @@ type ConnectorTypeAccess interface {
 	GetByName(ctx context.Context, name string) (*ConnectorType, error)
 	// List the connector types
 	List(ctx context.Context, params ConnectorTypesQueryParams) ([]*ConnectorType, int64, error)
-	// ListAuthResources lists connector type auth resources with filters.
-	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, error)
+	// ListAuthResourceEntries lists connector type authorization entries with filters.
+	ListAuthResourceEntries(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 	// SetEnabled enables/disables the connector type
 	SetEnabled(ctx context.Context, tp string, enabled bool) error
 }

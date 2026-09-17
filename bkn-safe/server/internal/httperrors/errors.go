@@ -33,6 +33,7 @@ const (
 	AdminWriteNoUpdatableFields               = "BknSafe.AdminWrite.NoUpdatableFields"
 	AdminWriteWildcardGrantForbidden          = "BknSafe.AdminWrite.WildcardGrantForbidden"
 	AdminWriteAdminConsolePermissionForbidden = "BknSafe.AdminWrite.AdminConsolePermissionForbidden"
+	ResourceExisted                           = "RESOURCE_EXISTED"
 )
 
 var (
@@ -52,6 +53,7 @@ var (
 		AdminWriteNoUpdatableFields,
 		AdminWriteWildcardGrantForbidden,
 		AdminWriteAdminConsolePermissionForbidden,
+		ResourceExisted,
 	}
 )
 

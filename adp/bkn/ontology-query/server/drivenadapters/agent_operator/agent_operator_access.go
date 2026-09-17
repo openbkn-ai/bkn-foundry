@@ -95,7 +95,35 @@ func (aoa *agentOperatorAccess) proxyHeaders(
 	if proxy.ExecutionID != "" {
 		headers[interfaces.HTTPHeaderBKNExecutionID] = proxy.ExecutionID
 	}
-	return common.MergeTraceHeadersForChildOperation(ctx, headers, "action.proxy.execute", 1), nil
+	headers = common.MergeTraceHeadersForChildOperation(ctx, headers, "action.proxy.execute", 1)
+	addFunctionRuntimeCredential(ctx, headers, binding.TargetType)
+	return headers, nil
+}
+
+// addFunctionRuntimeCredential lets a Function reached through the proxy read
+// BKN as the caller who invoked it. Execution Factory authorizes the execution
+// as the proxy account, keeps this credential off every third-party Tool, and
+// hands it only to its own Function runtime. It is sent for Function targets
+// only, so an OpenAPI Tool or MCP route never receives it at all.
+//
+// The Conversation travels only beside an Interaction, so the Function's reads
+// join the Interaction that asked for them. Their parent is the operation the
+// caller already registered with the trace core (Context Loader's tool call):
+// ontology-query's own child operation ids are never registered, and a read
+// declaring one as its parent is rejected as parent_operation_not_found.
+func addFunctionRuntimeCredential(ctx context.Context, headers map[string]string, targetType string) {
+	if targetType != interfaces.ProxyTargetTypeFunction {
+		return
+	}
+	credential, ok := interfaces.CallerRuntimeCredentialFromContext(ctx)
+	if !ok {
+		return
+	}
+	headers["Authorization"] = credential.Authorization
+	if credential.ConversationID != "" && headers[common.HeaderBKNInteractionID] != "" {
+		headers[common.HeaderBKNConversationID] = credential.ConversationID
+		headers[common.HeaderBKNParentOperationID] = credential.ParentOperationID
+	}
 }
 
 func directCallerHeaders(ctx context.Context, operation string) map[string]string {
@@ -105,6 +133,41 @@ func directCallerHeaders(ctx context.Context, operation string) map[string]strin
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   account.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: account.Type,
 	}, operation, 1)
+}
+
+func (aoa *agentOperatorAccess) GetBoxMetadataType(ctx context.Context, boxID, toolID string) (string, error) {
+	boxURL := fmt.Sprintf("%s/%s", aoa.appSetting.ToolBoxUrl, boxID)
+	status, data, err := aoa.httpClient.GetNoUnmarshal(ctx, boxURL, nil, nil)
+	if err != nil || status != http.StatusOK {
+		return "", fmt.Errorf("load toolbox kind failed: status %d: %w", status, err)
+	}
+	var box struct {
+		MetadataType string `json:"metadata_type"`
+		Tools        []struct {
+			ToolID string `json:"tool_id"`
+		} `json:"tools"`
+	}
+	if err := sonic.Unmarshal(data, &box); err != nil {
+		return "", err
+	}
+	found := false
+	for _, tool := range box.Tools {
+		if tool.ToolID == toolID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("tool %s is not in toolbox %s", toolID, boxID)
+	}
+	switch box.MetadataType {
+	case "openapi":
+		return interfaces.ProxyTargetTypeToolBox, nil
+	case "function":
+		return interfaces.ProxyTargetTypeFunction, nil
+	default:
+		return "", fmt.Errorf("unsupported toolbox kind")
+	}
 }
 
 // ExecuteTool executes a tool via tool-box API
@@ -117,7 +180,11 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 
 func (aoa *agentOperatorAccess) ExecuteToolAsProxy(ctx context.Context, boxID string,
 	toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
-	headers, err := aoa.proxyHeaders(ctx, interfaces.ProxyTargetTypeToolBox, boxID)
+	proxy, ok := interfaces.TrustedProxyContextFromContext(ctx)
+	if !ok || (proxy.Binding.TargetType != interfaces.ProxyTargetTypeToolBox && proxy.Binding.TargetType != interfaces.ProxyTargetTypeFunction) {
+		return nil, fmt.Errorf("trusted toolbox proxy target is invalid")
+	}
+	headers, err := aoa.proxyHeaders(ctx, proxy.Binding.TargetType, boxID)
 	if err != nil {
 		return nil, err
 	}

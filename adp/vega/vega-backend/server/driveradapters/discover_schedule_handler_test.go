@@ -198,8 +198,8 @@ func Test_DiscoverScheduleRestHandler_ListDiscoverSchedules(t *testing.T) {
 			DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
-				assert.Equal(t, "f_update_time", params.Sort)
-				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
+				assert.Equal(t, "update_time", params.Sort)
+				assert.Equal(t, "DESC", params.Direction)
 				return []*interfaces.DiscoverSchedule{}, int64(0), nil
 			})
 
@@ -215,8 +215,8 @@ func Test_DiscoverScheduleRestHandler_ListDiscoverSchedules(t *testing.T) {
 		engine, dss := setup(t)
 		dss.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
-				assert.Equal(t, "f_next_run", params.Sort)
-				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				assert.Equal(t, "next_run", params.Sort)
+				assert.Equal(t, "ASC", params.Direction)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
 				return []*interfaces.DiscoverSchedule{}, int64(0), nil
@@ -346,7 +346,7 @@ func Test_DiscoverScheduleRestHandler_DeleteDiscoverSchedule(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
 		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true}
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(current, nil)
-		dss.EXPECT().Delete(gomock.Any(), "schedule-1").Return(nil)
+		dss.EXPECT().Delete(gomock.Any(), current).Return(nil)
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/discover-schedules/schedule-1", nil)
 		w := httptest.NewRecorder()
 

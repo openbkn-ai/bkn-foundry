@@ -185,6 +185,7 @@ func TestToolLogicPropertyUsesPublishedProxyBinding(t *testing.T) {
 	}
 	ctrl := gomock.NewController(t)
 	agentOperator := omock.NewMockAgentOperatorAccess(ctrl)
+	agentOperator.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 	proxy := &objectTypeProxyResolverStub{}
 	service := &objectTypeService{aoAccess: agentOperator, proxy: proxy}
 	logicProperty := &interfaces.LogicProperty{
@@ -220,6 +221,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 		osa := omock.NewMockOpenSearchAccess(mockCtrl)
 		mfa := omock.NewMockModelFactoryAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 
 		logics.OMA = omAccess
 		logics.OSA = osa
@@ -1280,6 +1282,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		mqs := omock.NewMockMetricQueryService(mockCtrl)
 		mfa := omock.NewMockModelFactoryAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
 
 		logics.OMA = omAccess
 		logics.OSA = osa
@@ -2045,15 +2048,29 @@ func TestObjectTypeProxyFailureStopsVegaRead(t *testing.T) {
 
 // vegaStubForOTQuery implements interfaces.VegaBackendAccess for tests.
 type vegaStubForOTQuery struct {
-	resp       *interfaces.DatasetQueryResponse
-	err        error
-	lastParams *interfaces.ResourceDataQueryParams
+	resp          *interfaces.DatasetQueryResponse
+	responses     []*interfaces.DatasetQueryResponse
+	err           error
+	errors        []error
+	lastParams    *interfaces.ResourceDataQueryParams
+	paramsHistory []*interfaces.ResourceDataQueryParams
 }
 
 func (v *vegaStubForOTQuery) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 	v.lastParams = params
+	v.paramsHistory = append(v.paramsHistory, params)
+	if len(v.errors) > 0 {
+		err := v.errors[0]
+		v.errors = v.errors[1:]
+		return nil, err
+	}
 	if v.err != nil {
 		return nil, v.err
+	}
+	if len(v.responses) > 0 {
+		response := v.responses[0]
+		v.responses = v.responses[1:]
+		return response, nil
 	}
 	return v.resp, nil
 }

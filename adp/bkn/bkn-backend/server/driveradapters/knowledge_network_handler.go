@@ -583,6 +583,107 @@ func (r *restHandler) ListKNsByIn(c *gin.Context) {
 	r.ListKNs(c, visitor)
 }
 
+// ListAuthorizationResources returns the main-branch knowledge-network catalog
+// for internal authorization configuration. It does not authenticate or apply
+// user-resource filtering; callers must be constrained by deployment topology.
+func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	offset := c.DefaultQuery("offset", interfaces.DEFAULT_OFFEST)
+	limit := c.DefaultQuery("limit", interfaces.DEFAULT_LIMIT)
+	sort := c.DefaultQuery("sort", "name")
+	direction := c.DefaultQuery("direction", interfaces.ASC_DIRECTION)
+	page, err := validatePaginationQueryParameters(ctx, offset, limit, sort, direction, interfaces.AUTHORIZATION_RESOURCE_SORT)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	resourceType := strings.TrimSpace(c.Query("resource_type"))
+	if resourceType == "" || resourceType == "knowledge_network" {
+		resources, total, err := r.kns.ListAuthorizationResources(ctx, interfaces.AuthorizationResourcesQuery{
+			PaginationQueryParameters: page,
+			Name:                      strings.TrimSpace(c.Query("name")),
+			Branch:                    interfaces.MAIN_BRANCH,
+		})
+		if err != nil {
+			httpErr := err.(*rest.HTTPError)
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+		rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": resources, "total": total})
+		return
+	}
+
+	parentType := strings.TrimSpace(c.Query("parent_type"))
+	parentID := strings.TrimSpace(c.Query("parent_id"))
+	if parentType != "knowledge_network" || parentID == "" {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("parent_type=knowledge_network and parent_id are required for child authorization resources")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	name := strings.TrimSpace(c.Query("name"))
+	ctx = interfaces.WithAuthorizationResourceCatalog(ctx)
+	entries := make([]*interfaces.AuthorizationResource, 0)
+	var total int
+	switch resourceType {
+	case "object_type":
+		items, count, listErr := r.ots.ListObjectTypes(ctx, nil, interfaces.ObjectTypesQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
+		for _, item := range items {
+			entries = append(entries, &interfaces.AuthorizationResource{ID: parentID + "/" + item.OTID, Name: item.OTName})
+		}
+		total, err = count, listErr
+	case "relation_type":
+		items, count, listErr := r.rts.ListRelationTypes(ctx, interfaces.RelationTypesQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
+		for _, item := range items {
+			entries = append(entries, &interfaces.AuthorizationResource{ID: parentID + "/" + item.RTID, Name: item.RTName})
+		}
+		total, err = count, listErr
+	case "action_type":
+		items, count, listErr := r.ats.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
+		for _, item := range items {
+			entries = append(entries, &interfaces.AuthorizationResource{ID: parentID + "/" + item.ATID, Name: item.ATName})
+		}
+		total, err = count, listErr
+	case "concept_group":
+		items, count, listErr := r.cgs.ListConceptGroups(ctx, interfaces.ConceptGroupsQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
+		for _, item := range items {
+			entries = append(entries, &interfaces.AuthorizationResource{ID: parentID + "/" + item.CGID, Name: item.CGName})
+		}
+		total, err = count, listErr
+	case "metric":
+		items, listErr := r.ms.ListMetrics(ctx, interfaces.MetricsListQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
+		if items != nil {
+			total = int(items.TotalCount)
+			for _, item := range items.Entries {
+				entries = append(entries, &interfaces.AuthorizationResource{ID: parentID + "/" + item.ID, Name: item.Name})
+			}
+		}
+		err = listErr
+	default:
+		err = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("resource_type is invalid")
+	}
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": entries, "total": total})
+}
+
 // List knowledge networks with pagination (external).
 func (r *restHandler) ListKNsByEx(c *gin.Context) {
 	logger.Debug("Handler ListKNsByEx Start")

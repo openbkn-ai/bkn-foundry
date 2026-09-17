@@ -5,6 +5,7 @@
 package knowledge_network
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,14 +27,14 @@ type proxyModelBinding struct {
 // buildProxyGrantSources derives the complete least-privilege source set from
 // one candidate or freshly reloaded main model. It does not accept targets from
 // request-specific proxy fields; every target comes from persisted BKN bindings.
-func buildProxyGrantSources(kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpec, string, error) {
-	return buildProxyGrantSourcesWithCapabilities(kn, nil)
+func buildProxyGrantSources(kn *interfaces.KN, boxTypes ...map[string]string) ([]interfaces.ProxyGrantSourceSpec, string, error) {
+	return buildProxyGrantSourcesWithCapabilities(kn, nil, boxTypes...)
 }
 
 // buildProxyGrantSourcesWithCapabilities includes explicit capability mounts
 // in the same canonical projection as model-derived dependencies.
 func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
-	capabilities []*interfaces.CapabilityBinding) ([]interfaces.ProxyGrantSourceSpec, string, error) {
+	capabilities []*interfaces.CapabilityBinding, boxTypes ...map[string]string) ([]interfaces.ProxyGrantSourceSpec, string, error) {
 	if kn == nil || strings.TrimSpace(kn.KNID) == "" {
 		return nil, "", fmt.Errorf("knowledge network is required")
 	}
@@ -60,10 +61,16 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 	bindings := make([]proxyModelBinding, 0)
 	seen := make(map[string]struct{})
 	seenBindings := make(map[string]struct{})
+	boxType := func(boxID string) string {
+		if len(boxTypes) == 0 {
+			return "tool_box"
+		}
+		return boxTypes[0][boxID]
+	}
 
 	// addSource records one grant source. inVersion says whether the binding
-	// also enters the model version digest; see the Skill case below for the
-	// one kind that does not.
+	// also enters the planning projection digest; the published authorization
+	// snapshot has its own digest after materialization.
 	addSource := func(inVersion bool, bindingType, bindingID, resourceType, resourceID, operation, detail string) error {
 		bindingID = strings.TrimSpace(bindingID)
 		resourceID = strings.TrimSpace(resourceID)
@@ -141,7 +148,7 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 			}
 			propertyBindingID := stableProxySourceID(kn.KNID, "logic_property",
 				strings.Join([]string{objectTypeID, property.Name}, "\x00"))
-			if err := add("logic_property", propertyBindingID, "tool_box", boxID,
+			if err := add("logic_property", propertyBindingID, boxType(boxID), boxID,
 				interfaces.OPERATION_TYPE_EXECUTE,
 				strings.Join([]string{objectTypeID, property.Name, toolID}, ":")); err != nil {
 				return nil, "", err
@@ -225,7 +232,7 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 				strings.TrimSpace(actionType.ActionSource.ToolID) == "" {
 				continue
 			}
-			if err := add(interfaces.MODULE_TYPE_ACTION_TYPE, actionType.ATID, "tool_box",
+			if err := add(interfaces.MODULE_TYPE_ACTION_TYPE, actionType.ATID, boxType(actionType.ActionSource.BoxID),
 				actionType.ActionSource.BoxID, interfaces.OPERATION_TYPE_EXECUTE,
 				"tool:"+actionType.ActionSource.ToolID); err != nil {
 				return nil, "", err
@@ -254,10 +261,9 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 		case interfaces.CAPABILITY_TYPE_SKILL:
 			// The proxy reads a mounted Skill for callers who may view the network
 			// (#1550); running one stays caller-scoped. The source is resolvable and
-			// synchronized like any other, but it stays out of the model version:
-			// that version gates every proxied read of the network, and a Skill
-			// grant is best effort, so a Skill must never be what holds a network's
-			// data and execution bindings back.
+			// synchronized like any other, but it stays out of the planning projection
+			// digest because it is best effort. A materialized Skill enters the published
+			// authorization snapshot digest after synchronization succeeds.
 			// Unlike a tool, an incomplete Skill row is skipped rather than rejected:
 			// rejecting it would fail the whole projection, and with it the network.
 			if strings.TrimSpace(capability.CapabilityID) == "" || strings.TrimSpace(capability.ID) == "" {
@@ -272,7 +278,7 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 			if strings.TrimSpace(capability.CapabilityID) == "" {
 				return nil, "", fmt.Errorf("capability binding %s has no tool id", capability.ID)
 			}
-			if err := add(interfaces.KNProxyBindingTypeCapability, capability.ID, "tool_box", capability.OwnerID,
+			if err := add(interfaces.KNProxyBindingTypeCapability, capability.ID, boxType(capability.OwnerID), capability.OwnerID,
 				interfaces.OPERATION_TYPE_EXECUTE, detail); err != nil {
 				return nil, "", err
 			}
@@ -308,6 +314,86 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 	return sources, "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
+// buildTypedProxyGrantSources resolves toolbox kinds from execution factory data.
+func (kns *knowledgeNetworkService) buildTypedProxyGrantSources(ctx context.Context, kn *interfaces.KN) ([]interfaces.ProxyGrantSourceSpec, string, error) {
+	return kns.buildTypedProxyGrantSourcesWithCapabilities(ctx, kn, nil)
+}
+
+func (kns *knowledgeNetworkService) buildTypedProxyGrantSourcesWithCapabilities(ctx context.Context, kn *interfaces.KN, capabilities []*interfaces.CapabilityBinding) ([]interfaces.ProxyGrantSourceSpec, string, error) {
+	if kn == nil {
+		return nil, "", fmt.Errorf("knowledge network is required")
+	}
+	boxTools := map[string]map[string]bool{}
+	addTool := func(boxID, toolID string) {
+		if boxID == "" || toolID == "" {
+			return
+		}
+		if boxTools[boxID] == nil {
+			boxTools[boxID] = map[string]bool{}
+		}
+		boxTools[boxID][toolID] = true
+	}
+	objects := append([]*interfaces.ObjectType(nil), kn.ObjectTypes...)
+	actions := append([]*interfaces.ActionType(nil), kn.ActionTypes...)
+	for _, group := range kn.ConceptGroups {
+		if group != nil {
+			objects = append(objects, group.ObjectTypes...)
+			actions = append(actions, group.ActionTypes...)
+		}
+	}
+	for _, objectType := range objects {
+		if objectType == nil {
+			continue
+		}
+		for _, property := range objectType.LogicProperties {
+			if property != nil && property.DataSource != nil && property.DataSource.Type == interfaces.LOGIC_PROPERTY_TYPE_TOOL && property.DataSource.BoxID != "" && property.DataSource.ToolID != "" {
+				addTool(property.DataSource.BoxID, property.DataSource.ToolID)
+			}
+		}
+	}
+	for _, action := range actions {
+		if action != nil && action.ActionSource.Type == interfaces.ACTION_SOURCE_TYPE_TOOL && action.ActionSource.BoxID != "" && action.ActionSource.ToolID != "" {
+			addTool(action.ActionSource.BoxID, action.ActionSource.ToolID)
+		}
+	}
+	for _, capability := range capabilities {
+		if capability != nil && capability.KNID == kn.KNID && capability.Branch == interfaces.MAIN_BRANCH && capability.CapabilityType == interfaces.CAPABILITY_TYPE_FUNCTION {
+			addTool(capability.OwnerID, capability.CapabilityID)
+		}
+	}
+	if len(boxTools) == 0 {
+		return buildProxyGrantSourcesWithCapabilities(kn, capabilities, map[string]string{})
+	}
+	if kns.aoa == nil {
+		return nil, "", fmt.Errorf("execution factory access is unavailable")
+	}
+	boxTypes := map[string]string{}
+	for boxID, expectedTools := range boxTools {
+		tools, err := kns.aoa.ListBoxTools(ctx, boxID)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, tool := range tools {
+			if tool == nil || !expectedTools[tool.ToolID] {
+				continue
+			}
+			switch tool.BoxMetadataType {
+			case interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI:
+				boxTypes[boxID] = "tool_box"
+			case interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION:
+				boxTypes[boxID] = "function"
+			default:
+				return nil, "", fmt.Errorf("box %s has unsupported metadata type", boxID)
+			}
+			delete(expectedTools, tool.ToolID)
+		}
+		if len(expectedTools) > 0 {
+			return nil, "", fmt.Errorf("box %s has missing bound tools", boxID)
+		}
+	}
+	return buildProxyGrantSourcesWithCapabilities(kn, capabilities, boxTypes)
+}
+
 func indirectRelationProxyResource(mappingRules any) (*interfaces.ResourceInfo, bool, error) {
 	switch rules := mappingRules.(type) {
 	case *interfaces.InDirectMapping:
@@ -338,4 +424,30 @@ func indirectRelationProxyResource(mappingRules any) (*interfaces.ResourceInfo, 
 func stableProxySourceID(knID, bindingType, bindingID string) string {
 	digest := sha256.Sum256([]byte(strings.Join([]string{knID, bindingType, bindingID}, "\x00")))
 	return hex.EncodeToString(digest[:])
+}
+
+// proxyGrantSnapshotVersion returns the stable identifier of the exact source
+// set handed to bkn-safe. Query authorization always reads the persisted source
+// rows, never recomputes this value from the current model.
+func proxyGrantSnapshotVersion(sources []interfaces.ProxyGrantSourceSpec) (string, error) {
+	canonicalSources := append([]interfaces.ProxyGrantSourceSpec(nil), sources...)
+	sort.Slice(canonicalSources, func(i, j int) bool {
+		left := strings.Join([]string{
+			canonicalSources[i].SourceType, canonicalSources[i].SourceID, canonicalSources[i].KNID,
+			canonicalSources[i].BindingType, canonicalSources[i].BindingID, canonicalSources[i].ResourceType,
+			canonicalSources[i].ResourceID, canonicalSources[i].Operation,
+		}, "\x00")
+		right := strings.Join([]string{
+			canonicalSources[j].SourceType, canonicalSources[j].SourceID, canonicalSources[j].KNID,
+			canonicalSources[j].BindingType, canonicalSources[j].BindingID, canonicalSources[j].ResourceType,
+			canonicalSources[j].ResourceID, canonicalSources[j].Operation,
+		}, "\x00")
+		return left < right
+	})
+	canonical, err := json.Marshal(canonicalSources)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(canonical)
+	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }

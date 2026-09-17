@@ -281,6 +281,13 @@ func TestSourceSliceReplayPreservesStableGrantIdentity(t *testing.T) {
 	if err != nil || len(before) != 2 {
 		t.Fatalf("initial source slice = %+v, %v; want two", before, err)
 	}
+	for _, record := range before {
+		wantID := deterministicGrantID("u-1", "resource:r-1", record.Operation, EffectAllow,
+			PolicySourceProfessionalRule, AuthoritySourceAdminAuthz)
+		if record.GrantID != wantID {
+			t.Fatalf("compatibility grant id = %q; want original stable id %q", record.GrantID, wantID)
+		}
+	}
 	mustNoErr(t, e.SetProfessionalObjectPermissions(
 		"u-1", "resource", "r-1", []string{"modify", "view_detail"}, EffectAllow, AuthoritySourceAdminAuthz,
 	))

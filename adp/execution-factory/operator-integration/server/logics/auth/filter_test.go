@@ -82,33 +82,54 @@ func TestFilterViewableIDs(t *testing.T) {
 	})
 }
 
-func TestProjectAuthorizeOperations(t *testing.T) {
-	Convey("ProjectAuthorizeOperations", t, func() {
+func TestProjectResourceOperations(t *testing.T) {
+	Convey("ProjectResourceOperations", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ids := []string{"a", "b"}
 
 		Convey("内部调用不投影实例权限", func() {
 			authService := mocks.NewMockIAuthorizationService(ctrl)
-			got, err := ProjectAuthorizeOperations(context.Background(), authService, nil, ids, interfaces.AuthResourceTypeSkill)
+			got, err := ProjectResourceOperations(context.Background(), authService, nil, ids, interfaces.AuthResourceTypeSkill)
 			So(err, ShouldBeNil)
 			So(got, ShouldBeEmpty)
 		})
 
-		Convey("公有管理列表批量投影 authorize", func() {
+		Convey("公有管理列表批量投影有效记录操作", func() {
 			authService := mocks.NewMockIAuthorizationService(ctrl)
 			accessor := &interfaces.AuthAccessor{ID: "user-1"}
 			authService.EXPECT().ResourceFilterOperations(
 				gomock.Any(), accessor, ids, interfaces.AuthResourceTypeSkill,
 				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+				[]interfaces.AuthOperationType{
+					interfaces.AuthOperationTypeView,
+					interfaces.AuthOperationTypeModify,
+					interfaces.AuthOperationTypePublish,
+					interfaces.AuthOperationTypeUnpublish,
+					interfaces.AuthOperationTypeDelete,
+					interfaces.AuthOperationTypeAuthorize,
+				},
 			).Return(map[string][]interfaces.AuthOperationType{
-				"a": {interfaces.AuthOperationTypeAuthorize},
+				"a": {
+					interfaces.AuthOperationTypeView,
+					interfaces.AuthOperationTypeModify,
+					interfaces.AuthOperationTypePublish,
+					interfaces.AuthOperationTypeUnpublish,
+					interfaces.AuthOperationTypeDelete,
+					interfaces.AuthOperationTypeAuthorize,
+				},
 				"b": {},
 			}, nil)
-			got, err := ProjectAuthorizeOperations(publicCtx(), authService, accessor, ids, interfaces.AuthResourceTypeSkill)
+			got, err := ProjectResourceOperations(publicCtx(), authService, accessor, ids, interfaces.AuthResourceTypeSkill)
 			So(err, ShouldBeNil)
-			So(got["a"], ShouldResemble, []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize})
+			So(got["a"], ShouldResemble, []interfaces.AuthOperationType{
+				interfaces.AuthOperationTypeView,
+				interfaces.AuthOperationTypeModify,
+				interfaces.AuthOperationTypePublish,
+				interfaces.AuthOperationTypeUnpublish,
+				interfaces.AuthOperationTypeDelete,
+				interfaces.AuthOperationTypeAuthorize,
+			})
 			So(got["b"], ShouldBeEmpty)
 		})
 	})

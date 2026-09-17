@@ -32,15 +32,16 @@ type queryCursorCodec struct {
 }
 
 type queryCursorPayload struct {
-	Version      string                      `json:"v"`
-	CallerID     string                      `json:"caller_id"`
-	CallerType   string                      `json:"caller_type"`
-	KNID         string                      `json:"kn_id"`
-	ObjectTypeID string                      `json:"object_type_id"`
-	QueryDigest  string                      `json:"query_digest"`
-	ModelVersion string                      `json:"model_version"`
-	SearchAfter  interfaces.SearchAfterArray `json:"search_after"`
-	ExpiresAt    time.Time                   `json:"expires_at"`
+	Version        string                      `json:"v"`
+	CallerID       string                      `json:"caller_id"`
+	CallerType     string                      `json:"caller_type"`
+	KNID           string                      `json:"kn_id"`
+	ObjectTypeID   string                      `json:"object_type_id"`
+	QueryDigest    string                      `json:"query_digest"`
+	ModelVersion   string                      `json:"model_version"`
+	SearchAfter    interfaces.SearchAfterArray `json:"search_after"`
+	ResourceCursor string                      `json:"resource_cursor,omitempty"`
+	ExpiresAt      time.Time                   `json:"expires_at"`
 }
 
 func newQueryCursorCodec() *queryCursorCodec {
@@ -68,6 +69,38 @@ func (codec *queryCursorCodec) encode(ctx context.Context, query *interfaces.Obj
 	if len(searchAfter) == 0 {
 		return "", nil
 	}
+	return codec.encodePayload(ctx, query, modelVersion, interfaces.SearchAfterArray(searchAfter), "", nil)
+}
+
+func (codec *queryCursorCodec) encodeResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
+	modelVersion, resourceCursor string, resourceCursorExpiry *int64) (string, error) {
+	if resourceCursor == "" {
+		return "", nil
+	}
+	expiresAt, err := codec.cursorExpiresAt(resourceCursorExpiry)
+	if err != nil {
+		return "", err
+	}
+	return codec.encodePayload(ctx, query, modelVersion, nil, resourceCursor, &expiresAt)
+}
+
+func (codec *queryCursorCodec) cursorExpiresAt(resourceCursorExpiry *int64) (time.Time, error) {
+	now := codec.now()
+	expiresAt := now.Add(queryCursorTTL)
+	if resourceCursorExpiry != nil {
+		vegaExpiresAt := time.Unix(*resourceCursorExpiry, 0)
+		if !vegaExpiresAt.After(now) {
+			return time.Time{}, fmt.Errorf("Vega resource cursor is already expired")
+		}
+		if vegaExpiresAt.Before(expiresAt) {
+			expiresAt = vegaExpiresAt
+		}
+	}
+	return expiresAt.UTC(), nil
+}
+
+func (codec *queryCursorCodec) encodePayload(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
+	modelVersion string, searchAfter interfaces.SearchAfterArray, resourceCursor string, expiresAtOverride *time.Time) (string, error) {
 	account, ok := queryCursorAccount(ctx)
 	if !ok || codec == nil || codec.aead == nil {
 		return "", fmt.Errorf("query cursor is unavailable")
@@ -76,12 +109,16 @@ func (codec *queryCursorCodec) encode(ctx context.Context, query *interfaces.Obj
 	if err != nil {
 		return "", err
 	}
+	expiresAt := codec.now().Add(queryCursorTTL).UTC()
+	if expiresAtOverride != nil {
+		expiresAt = expiresAtOverride.UTC()
+	}
 	payload := queryCursorPayload{
 		Version: queryCursorVersion, CallerID: account.ID, CallerType: account.Type,
 		KNID: query.KNID, ObjectTypeID: query.ObjectTypeID,
 		QueryDigest: digest, ModelVersion: modelVersion,
-		SearchAfter: interfaces.SearchAfterArray(searchAfter),
-		ExpiresAt:   codec.now().Add(queryCursorTTL).UTC(),
+		SearchAfter: searchAfter, ResourceCursor: resourceCursor,
+		ExpiresAt: expiresAt,
 	}
 	plaintext, err := json.Marshal(payload)
 	if err != nil {
@@ -98,6 +135,24 @@ func (codec *queryCursorCodec) encode(ctx context.Context, query *interfaces.Obj
 
 func (codec *queryCursorCodec) decode(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	modelVersion, token string) (interfaces.SearchAfterArray, error) {
+	payload, err := codec.decodePayload(ctx, query, modelVersion, token)
+	if err != nil || len(payload.SearchAfter) == 0 {
+		return nil, fmt.Errorf("query cursor is invalid")
+	}
+	return payload.SearchAfter, nil
+}
+
+func (codec *queryCursorCodec) decodeResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
+	modelVersion, token string) (string, error) {
+	payload, err := codec.decodePayload(ctx, query, modelVersion, token)
+	if err != nil || payload.ResourceCursor == "" {
+		return "", fmt.Errorf("query cursor is invalid")
+	}
+	return payload.ResourceCursor, nil
+}
+
+func (codec *queryCursorCodec) decodePayload(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
+	modelVersion, token string) (*queryCursorPayload, error) {
 	account, ok := queryCursorAccount(ctx)
 	if !ok || codec == nil || codec.aead == nil {
 		return nil, fmt.Errorf("query cursor is unavailable")
@@ -121,10 +176,11 @@ func (codec *queryCursorCodec) decode(ctx context.Context, query *interfaces.Obj
 	}
 	if payload.Version != queryCursorVersion || payload.CallerID != account.ID || payload.CallerType != account.Type ||
 		payload.KNID != query.KNID || payload.ObjectTypeID != query.ObjectTypeID || payload.QueryDigest != digest ||
-		payload.ModelVersion != modelVersion || !codec.now().Before(payload.ExpiresAt) || len(payload.SearchAfter) == 0 {
+		payload.ModelVersion != modelVersion || !codec.now().Before(payload.ExpiresAt) ||
+		(len(payload.SearchAfter) == 0 && payload.ResourceCursor == "") {
 		return nil, fmt.Errorf("query cursor is invalid")
 	}
-	return payload.SearchAfter, nil
+	return &payload, nil
 }
 
 func objectQueryDigest(query *interfaces.ObjectQueryBaseOnObjectType) (string, error) {

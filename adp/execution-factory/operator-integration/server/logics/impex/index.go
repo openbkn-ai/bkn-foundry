@@ -113,13 +113,23 @@ func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *int
 		if err != nil {
 			return
 		}
-		err = m.AuthService.CheckCreatePermission(ctx, accessor, resourceType)
-		if err != nil {
-			return
+		if resourceType != interfaces.AuthResourceTypeToolBox {
+			err = m.AuthService.CheckCreatePermission(ctx, accessor, resourceType)
+			if err != nil {
+				return
+			}
 		}
 		switch resourceType {
 		case interfaces.AuthResourceTypeOperator:
 		case interfaces.AuthResourceTypeToolBox:
+			if data.Toolbox == nil {
+				err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "toolbox import data is missing")
+				return
+			}
+			err = checkToolboxImportCreatePermissions(ctx, m.AuthService, accessor, data.Toolbox.Configs)
+			if err != nil {
+				return
+			}
 			if data.Operator != nil && len(data.Operator.Configs) > 0 {
 				err = m.AuthService.CheckCreatePermission(ctx, accessor, interfaces.AuthResourceTypeOperator)
 				if err != nil {
@@ -134,7 +144,7 @@ func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *int
 				}
 			}
 			if data.Toolbox != nil && len(data.Toolbox.Configs) > 0 {
-				err = m.AuthService.CheckCreatePermission(ctx, accessor, interfaces.AuthResourceTypeToolBox)
+				err = checkToolboxImportCreatePermissions(ctx, m.AuthService, accessor, data.Toolbox.Configs)
 				if err != nil {
 					return
 				}
@@ -157,6 +167,28 @@ func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *int
 		}
 	}
 	return
+}
+
+func checkToolboxImportCreatePermissions(ctx context.Context, authorization interfaces.IAuthorizationService,
+	accessor *interfaces.AuthAccessor, items []*interfaces.ToolBoxImpexItem) error {
+	checked := map[interfaces.AuthResourceType]bool{}
+	for _, item := range items {
+		if item == nil {
+			return errors.DefaultHTTPError(ctx, http.StatusBadRequest, "toolbox import item is missing")
+		}
+		resourceType, err := interfaces.ToolboxAuthResourceType(item.MetadataType)
+		if err != nil {
+			return errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
+		}
+		if checked[resourceType] {
+			continue
+		}
+		if err = authorization.CheckCreatePermission(ctx, accessor, resourceType); err != nil {
+			return err
+		}
+		checked[resourceType] = true
+	}
+	return nil
 }
 
 // Transaction import.

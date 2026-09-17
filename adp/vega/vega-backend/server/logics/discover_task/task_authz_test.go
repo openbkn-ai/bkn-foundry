@@ -7,15 +7,11 @@ package discover_task
 
 import (
 	"context"
-	"errors"
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
@@ -30,14 +26,12 @@ func TestDiscoverTaskCreateRequiresCatalogTaskManage(t *testing.T) {
 	dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 	svc := &discoverTaskService{cs: cs, dta: dta}
 
-	denied := errors.New("forbidden")
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
 	// dta.Create 未被期望——拒了就不该落库。
 
 	id, err := svc.Create(context.Background(), &interfaces.CreateDiscoverTaskRequest{CatalogID: "cat-1"})
 	assert.Empty(t, id)
-	assert.Same(t, denied, err)
+	assert.True(t, interfaces.IsPermissionRefusal(err))
 }
 
 func TestDiscoverTaskReadRequiresCatalogViewDetail(t *testing.T) {
@@ -46,16 +40,14 @@ func TestDiscoverTaskReadRequiresCatalogViewDetail(t *testing.T) {
 	dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 	svc := &discoverTaskService{cs: cs, dta: dta}
 
-	denied := errors.New("forbidden")
 	dta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", CatalogID: "cat-1",
 	}, nil)
-	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
 	require.Nil(t, task)
-	assert.Same(t, denied, err)
+	assert.True(t, interfaces.IsPermissionRefusal(err))
 }
 
 // TestDiscoverTaskListPushesTheVisibleCatalogsIntoTheQuery: 与构建任务同一口径
@@ -75,8 +67,8 @@ func TestDiscoverTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
-			Return([]string{"cat-1"}, false, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL, false, interfaces.CatalogsQueryParams{}).
+			Return([]string{"cat-1"}, nil, nil)
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 				assert.Equal(t, []string{"cat-1"}, params.CatalogIDs)
@@ -93,8 +85,8 @@ func TestDiscoverTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).
-			Return(nil, false, nil, nil)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, nil, nil)
 		_ = dta
 
 		tasks, total, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
@@ -107,8 +99,8 @@ func TestDiscoverTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-other", interfaces.OPERATION_TYPE_TASK_MANAGE).
-			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-other", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(false, nil, nil)
 		_ = dta
 
 		tasks, total, err := svc.List(context.Background(),

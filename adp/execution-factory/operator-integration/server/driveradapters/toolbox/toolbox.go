@@ -633,6 +633,11 @@ func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 	req.BKNConversationID = c.GetHeader(string(interfaces.HeaderBKNConversationID))
 	req.BKNInteractionID = c.GetHeader(string(interfaces.HeaderBKNInteractionID))
 	req.BKNParentOperationID = c.GetHeader(string(interfaces.HeaderBKNParentOperationID))
+	if _, ok := interfaces.ProxyExecutionContextFromContext(c.Request.Context()); ok {
+		// The proxy boundary already removed Authorization from the headers.
+		req.TrustedProxyCall = true
+		req.RequestAuthorization = interfaces.ProxyCallerAuthorizationFromContext(c.Request.Context())
+	}
 	resp, err := h.ToolService.ExecuteTool(c.Request.Context(), req)
 	rest.ReplyWithExecutionMode(c, resp, err)
 }

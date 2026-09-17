@@ -301,6 +301,58 @@ paths:
                 $ref: "#/components/schemas/KnowledgeNetworkDetail"
         "404":
           description: Projection reads are disabled, the grant is invalid or does not authorize this network, or the network does not exist.
+  /api/bkn-backend/in/v1/authorization-resources:
+    get:
+      summary: List knowledge-network identities for authorization configuration
+      description: |
+        Internal, tokenless resource catalog for authorization configuration.
+        It intentionally bypasses user-resource visibility filtering and returns
+        only knowledge-network IDs and names from the main branch. It must not
+        be exposed through an external ingress; cluster network reachability is
+        the access boundary.
+      security: []
+      parameters:
+        - name: name
+          description: Optional fuzzy match against the knowledge-network name.
+          schema:
+            type: string
+          in: query
+        - name: sort
+          description: Only name is supported. Defaults to name.
+          schema:
+            type: string
+            enum: [name]
+            default: name
+          in: query
+        - name: direction
+          description: Sort direction. Defaults to asc.
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+          in: query
+        - name: offset
+          description: Offset of the first returned item. Defaults to 0.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          in: query
+        - name: limit
+          description: Maximum number of returned items. Defaults to 10.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+          in: query
+      responses:
+        "200":
+          description: Authorization resource identities.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizationResourceList"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/validation:
     post:
       summary: Validate a business knowledge network
@@ -371,6 +423,25 @@ components:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
+    AuthorizationResourceList:
+      type: object
+      required: [entries, total]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthorizationResource"
+        total:
+          type: integer
+          minimum: 0
+    AuthorizationResource:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
     ValidateKNRequestBody:
       type: object
       description: Knowledge network structure including child concepts such as object_types, relation_types, action_types, and concept_groups

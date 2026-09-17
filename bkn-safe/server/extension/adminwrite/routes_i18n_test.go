@@ -38,6 +38,11 @@ func TestWriteErrUsesStableLocalizedResponse(t *testing.T) {
 			description: map[string]string{"zh-CN": "请求的资源不存在。", "en-US": "The requested resource was not found."},
 		},
 		{
+			name: "role name existed", err: errors.Join(ErrRoleNameExisted, errors.New("duplicate detail")),
+			status: http.StatusConflict, code: httperrors.ResourceExisted,
+			description: map[string]string{"zh-CN": "角色标识已存在。", "en-US": "The role identifier already exists."},
+		},
+		{
 			name: "forbidden", err: ErrForbidden,
 			status: http.StatusForbidden, code: httperrors.Forbidden,
 			description: map[string]string{"zh-CN": "没有执行此操作的权限。", "en-US": "You are not permitted to perform this operation."},

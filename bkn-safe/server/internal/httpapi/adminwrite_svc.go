@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -31,6 +32,16 @@ type adminWriteServices struct {
 }
 
 var errModelAuthorizationManagedBySystem = fmt.Errorf("%w: model authorization is managed by the platform", adminwrite.ErrForbidden)
+
+type roleNameConflictError struct{ existingID string }
+
+func (e *roleNameConflictError) Error() string          { return adminwrite.ErrRoleNameExisted.Error() }
+func (e *roleNameConflictError) Unwrap() error          { return adminwrite.ErrRoleNameExisted }
+func (e *roleNameConflictError) ExistingRoleID() string { return e.existingID }
+
+func normalizeRoleName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
 
 // newAdminWriteServices builds the core service surface passed to the ee
 // write-route mounter.
@@ -63,16 +74,21 @@ func (s *adminWriteServices) RequireAnyPermission(points ...adminwrite.Permissio
 // CreateRole creates a custom role. Source is forced to custom — the API can
 // never mint a system or business role, whichever id or name is asked for.
 func (s *adminWriteServices) CreateRole(ctx context.Context, spec adminwrite.RoleSpec) (string, error) {
+	name := strings.TrimSpace(spec.Name)
+	nameKey := normalizeRoleName(name)
+	if err := s.rejectRoleNameConflict(ctx, nameKey, ""); err != nil {
+		return "", err
+	}
 	id := spec.ID
 	if id == "" {
 		id = auth.NewID()
 	}
 	role := model.Role{
-		ID: id, Name: spec.Name, Description: spec.Description,
+		ID: id, Name: name, NameKey: &nameKey, Description: spec.Description,
 		Source: model.RoleSourceCustom,
 	}
 	if err := s.db.WithContext(ctx).Create(&role).Error; err != nil {
-		return "", err
+		return "", s.translateRoleNameUniqueError(ctx, nameKey, "", err)
 	}
 	return role.ID, nil
 }
@@ -85,7 +101,13 @@ func (s *adminWriteServices) UpdateRole(ctx context.Context, id string, patch ad
 	}
 	fields := map[string]any{}
 	if patch.Name != nil {
-		fields["name"] = *patch.Name
+		name := strings.TrimSpace(*patch.Name)
+		nameKey := normalizeRoleName(name)
+		if err := s.rejectRoleNameConflict(ctx, nameKey, role.ID); err != nil {
+			return err
+		}
+		fields["name"] = name
+		fields["name_key"] = nameKey
 	}
 	if patch.Description != nil {
 		fields["description"] = *patch.Description
@@ -93,7 +115,41 @@ func (s *adminWriteServices) UpdateRole(ctx context.Context, id string, patch ad
 	if len(fields) == 0 {
 		return adminwrite.ErrNoUpdatableFields
 	}
-	return s.db.WithContext(ctx).Model(&model.Role{}).Where("id = ?", role.ID).Updates(fields).Error
+	err = s.db.WithContext(ctx).Model(&model.Role{}).Where("id = ?", role.ID).Updates(fields).Error
+	if patch.Name != nil {
+		return s.translateRoleNameUniqueError(ctx, normalizeRoleName(*patch.Name), role.ID, err)
+	}
+	return err
+}
+
+// rejectRoleNameConflict covers both migrated roles (name_key) and legacy rows
+// whose nullable key has not yet been safely backfilled.
+func (s *adminWriteServices) rejectRoleNameConflict(ctx context.Context, nameKey, excludeID string) error {
+	var role model.Role
+	query := s.db.WithContext(ctx).Where("(name_key = ? OR (name_key IS NULL AND LOWER(TRIM(name)) = ?))", nameKey, nameKey)
+	if excludeID != "" {
+		query = query.Where("id <> ?", excludeID)
+	}
+	err := query.First(&role).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return &roleNameConflictError{existingID: role.ID}
+}
+
+func (s *adminWriteServices) translateRoleNameUniqueError(ctx context.Context, nameKey, excludeID string, err error) error {
+	if err == nil {
+		return nil
+	}
+	// The unique index is the concurrency guarantee. Re-querying also returns
+	// the winning role ID without exposing a database-specific duplicate error.
+	if conflict := s.rejectRoleNameConflict(ctx, nameKey, excludeID); conflict != nil {
+		return conflict
+	}
+	return err
 }
 
 // DeleteRole deletes a custom role and purges its casbin bindings and grants.
@@ -135,6 +191,12 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	// verb it can never reach.
 	ops, err := s.e.NormalizeOperations(ctx, resourceType, []string{op})
 	if err != nil {
+		return err
+	}
+	if err := s.e.ValidateGrantableOperations(ctx, resourceType, ops); err != nil {
+		if errors.Is(err, authz.ErrOperationNotGrantable) {
+			return fmt.Errorf("%w: operation is not grantable", adminwrite.ErrInvalid)
+		}
 		return err
 	}
 	return s.e.GrantNormalizedRolePermissions(ctx, role.ID, resourceType, resourceID, ops)

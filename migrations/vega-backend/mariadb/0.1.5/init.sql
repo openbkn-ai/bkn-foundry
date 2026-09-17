@@ -69,9 +69,10 @@ CREATE TABLE IF NOT EXISTS t_resource (
     f_description             VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '数据资源描述',
 
     f_category                VARCHAR(20) NOT NULL DEFAULT '' COMMENT '数据资源类型: table, file, fileset, api, metric, topic, index, logicview, dataset',
+    f_internal                BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否为内置资源',
 
     -- 状态管理
-    f_enabled                 TINYINT(1) NOT NULL DEFAULT 1 COMMENT '资源是否启用',
+    f_enabled                 BOOLEAN NOT NULL DEFAULT TRUE COMMENT '资源是否启用',
     f_status                  VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '数据资源状态: active, deprecated, stale',
     f_status_message          VARCHAR(500) NOT NULL DEFAULT '' COMMENT '状态说明',
     f_last_discover_status    VARCHAR(32) NOT NULL DEFAULT '' COMMENT '最近一次扫描观察状态',
@@ -300,7 +301,7 @@ CREATE TABLE IF NOT EXISTS t_semantic_understanding_task (
     f_confidence                 DECIMAL(5,4) NOT NULL DEFAULT 0.0000 COMMENT '任务级语义置信度',
     f_confidence_detail_json     MEDIUMTEXT NOT NULL COMMENT '字段、逻辑视图、stale 建议等细粒度置信分(JSON)',
     f_apply_detail_json          MEDIUMTEXT NOT NULL COMMENT '应用明细(JSON)',
-    f_applied                    TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'agent 结果是否已应用: 0-否, 1-是',
+    f_applied                    BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'agent 结果是否已应用: 0-否, 1-是',
     f_failure_detail             TEXT NOT NULL COMMENT '失败详情',
 
     -- 审计字段
@@ -339,7 +340,7 @@ CREATE TABLE IF NOT EXISTS t_discover_schedule (
     f_end_time                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '结束时间（Unix毫秒时间戳），0表示无结束时间',
 
     -- 调度状态
-    f_enabled                 TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用: 0-禁用, 1-启用',
+    f_enabled                 BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否启用: 0-禁用, 1-启用',
     f_strategy                VARCHAR(32) NOT NULL DEFAULT 'full_sync' COMMENT '发现策略: full_sync, create_only, cleanup_only',
 
     f_last_run                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最后执行时间（Unix毫秒时间戳）',

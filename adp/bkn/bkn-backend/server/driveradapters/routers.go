@@ -250,6 +250,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	bknApiInV1.POST("/knowledge-networks/:kn_id/proxy-account/sync", r.RetryKNProxySync)
 	bknApiInV1.POST("/knowledge-networks/:kn_id/proxy-account/deletion/finalize", r.FinalizeKNProxyDeletion)
 	bknApiInV1.POST("/proxy-accounts/reconcile", r.ReconcileKNProxies)
+	bknApiInV1.GET("/authorization-resources", r.ListAuthorizationResources)
 
 	for _, apiInV1 := range []*gin.RouterGroup{bknApiInV1, otlApiInV1} {
 		// Knowledge networks.

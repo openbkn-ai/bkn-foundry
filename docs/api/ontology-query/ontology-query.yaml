@@ -142,7 +142,11 @@ paths:
                     type: array
                     items: { type: object, additionalProperties: true }
                   total_count: { type: integer, format: int64 }
-                  cursor: { type: string }
+                  cursor:
+                    description: Compatibility field; equal to paging.next_cursor. New callers should use paging.next_cursor.
+                    type: string
+                  paging:
+                    $ref: '#/components/schemas/ObjectPagingResponse'
         '403': { description: "Caller query_data is denied, or the managed proxy lacks resource query_data (`OntologyQuery.Proxy.PermissionDenied`)." }
         '404': { description: The published object type or proxy mapping does not exist (`OntologyQuery.Proxy.MappingNotFound` for the latter). }
         '503': { description: "Proxy binding is invalid, disabled, pending, failed, or unavailable; see the stable `OntologyQuery.Proxy.*` error code." }
@@ -4281,8 +4285,24 @@ components:
           description: 总条数
           type: integer
         cursor:
-          description: 下一页使用的不透明且经过认证的分页游标
+          description: 兼容字段；值等同于 paging.next_cursor。新调用方应使用 paging.next_cursor。
           type: string
+        paging:
+          $ref: '#/components/schemas/ObjectPagingResponse'
+    ObjectPagingResponse:
+      description: 对象查询分页状态。末页时两个字段均为 null。
+      type: object
+      required:
+      - next_cursor
+      - expires_at_sec
+      properties:
+        next_cursor:
+          type: [string, 'null']
+          description: 下一页使用的不透明且经过认证的对象查询游标；为空表示已到末页。
+        expires_at_sec:
+          type: [integer, 'null']
+          format: int64
+          description: cursor 的 Unix 到期时间戳（秒），取 ontology-query 与下游分页租约中较早者。
     ObjectPropertiesValuesResponse:
       description: 节点（对象类）信息
       required:
@@ -4296,6 +4316,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ObjectPropertyValue'
+        paging:
+          $ref: '#/components/schemas/ObjectPagingResponse'
+        cursor:
+          description: 兼容字段；值等同于 paging.next_cursor。新调用方应使用 paging.next_cursor。
+          type: string
     ActionParam:
       description: 行动参数
       required:
@@ -5680,7 +5705,7 @@ components:
             type: object
             additionalProperties: true
         status:
-          description: 执行状态
+          description: 执行状态。函数类行动的沙箱退出码非 0 时记为 failed。
           enum:
             - pending
             - success
@@ -5692,11 +5717,11 @@ components:
           type: object
           additionalProperties: true
         result:
-          description: 执行结果
+          description: 执行结果。函数类行动执行失败时仍保留沙箱返回（含 exit_code、stderr），便于排查。
           type: object
           additionalProperties: true
         error_message:
-          description: 错误消息
+          description: 错误消息。函数退出码非 0 时为退出码及 stderr 最后一行。
           type: string
         duration_ms:
           description: 执行耗时（毫秒）

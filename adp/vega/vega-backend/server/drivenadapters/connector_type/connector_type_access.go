@@ -240,11 +240,7 @@ func (cta *connectorTypeAccess) List(ctx context.Context, params interfaces.Conn
 
 	// Pagination is applied in service after permission filtering.
 	// Sorting
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_name ASC")
-	}
+	builder = builder.OrderBy(connectorTypeOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -279,41 +275,49 @@ func (cta *connectorTypeAccess) List(ctx context.Context, params interfaces.Conn
 	return connectorTypes, total, nil
 }
 
-// ListAuthResources lists connector type auth resources with filters.
-func (cta *connectorTypeAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResources")
+// ListAuthResourceEntries lists connector type authorization entries with filters.
+func (cta *connectorTypeAccess) ListAuthResourceEntries(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResourceEntries")
 	defer span.End()
 
 	builder := sq.Select(
 		"f_type",
 		"f_name",
 	).From(CONNECTOR_TYPE_TABLE_NAME)
+	countBuilder := sq.Select("COUNT(*)").From(CONNECTOR_TYPE_TABLE_NAME)
 
-	if params.ID != "" {
-		builder = builder.Where(sq.Eq{"f_type": params.ID})
-	}
-
-	if params.Keyword != "" {
-		keyword := "%" + common.EscapeLikePattern(params.Keyword) + "%"
+	if params.Name != "" {
+		keyword := "%" + common.EscapeLikePattern(params.Name) + "%"
 		builder = builder.Where(sq.Like{"f_name": keyword})
+		countBuilder = countBuilder.Where(sq.Like{"f_name": keyword})
+	}
+	countSQL, countVals, err := countBuilder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build count sql failed")
+		return nil, 0, err
+	}
+	var total int64
+	if err := cta.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&total); err != nil {
+		span.SetStatus(codes.Error, "Count failed")
+		return nil, 0, err
 	}
 
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_name ASC")
+	builder = builder.OrderBy(connectorTypeOrderByClause(params.Sort, params.Direction))
+	if params.Limit > 0 {
+		// #nosec G115 -- handler validates non-negative offset and positive limit.
+		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
+		return nil, 0, err
 	}
 
 	rows, err := cta.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -322,19 +326,18 @@ func (cta *connectorTypeAccess) ListAuthResources(ctx context.Context, params in
 		entry := &interfaces.AuthResourceEntry{}
 		if err := rows.Scan(&entry.ID, &entry.Name); err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
+			return nil, 0, err
 		}
-		entry.Type = interfaces.AuthResourceTypeConnectorType
 		entries = append(entries, entry)
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate connector_type authorization resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, err
+		return nil, 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return entries, nil
+	return entries, total, nil
 }
 
 // Update updates a ConnectorType.
@@ -413,4 +416,11 @@ func (cta *connectorTypeAccess) SetEnabled(ctx context.Context, tp string, enabl
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func connectorTypeOrderByClause(_ string, direction string) string {
+	if direction == interfaces.ASC_DIRECTION {
+		return "f_name ASC"
+	}
+	return "f_name DESC"
 }

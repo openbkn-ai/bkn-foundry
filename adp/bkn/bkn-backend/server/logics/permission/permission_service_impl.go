@@ -386,7 +386,7 @@ func (ps *PermissionServiceImpl) DeleteResourceParents(ctx context.Context, reso
 
 // Filter the resource list.
 func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceType string, ids []string,
-	ops []string, allowOperation bool, fullOps []string) (map[string]interfaces.PermissionResourceOps, error) {
+	ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "FilterPermissionResources")
 	defer span.End()
 
@@ -409,17 +409,14 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 		})
 	}
 
-	// The access filter and fullOps both need to be sent to preserve the operation candidates returned to Studio.
-	// bkn-safe intersects the requested operation list, so omitting fullOps hides edit and delete actions.
 	matchResouces, err := ps.pa.FilterResources(ctx, interfaces.PermissionResourcesFilter{
 		Accessor: interfaces.PermissionAccessor{
 			ID:   accountInfo.ID,
 			Type: accountInfo.Type,
 		},
-		Resources:           resources,
-		Operations:          ops,
-		CandidateOperations: fullOps,
-		AllowOperation:      allowOperation,
+		Resources:      resources,
+		Operations:     ops,
+		AllowOperation: allowOperation,
 	})
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,

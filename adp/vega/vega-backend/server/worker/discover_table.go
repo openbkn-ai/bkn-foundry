@@ -46,7 +46,7 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context,
 	logger.Infof("Discovered %d tables from source", len(sourceTables))
 
 	// Step 2: Obtain the existing Resources
-	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
+	existingResources, err := dtw.rs.InternalGetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
@@ -186,6 +186,7 @@ func (dtw *DiscoverTaskWorker) createTableResource(ctx context.Context, catalog 
 
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
+		Internal:         &catalog.Internal,
 		Name:             sourceIdentifier,
 		Description:      table.Description,
 		Category:         interfaces.ResourceCategoryTable,

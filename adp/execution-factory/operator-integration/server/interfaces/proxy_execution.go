@@ -26,6 +26,7 @@ const (
 	ProxyManagedResourceTypeKN = "knowledge_network"
 	ProxyLifecycleActive       = "active"
 	ProxyTargetTypeToolBox     = "tool_box"
+	ProxyTargetTypeFunction    = "function"
 	ProxyTargetTypeMCP         = "mcp"
 	ProxyChildTypeAction       = "action_type"
 	ProxyChildTypeLogic        = "logic_property"
@@ -69,6 +70,30 @@ func ProxyExecutionContextFromContext(ctx context.Context) (ProxyExecutionContex
 	}
 	request, ok := ctx.Value(proxyExecutionContextKey{}).(ProxyExecutionContext)
 	return request, ok
+}
+
+type proxyCallerAuthorizationKey struct{}
+
+// WithProxyCallerAuthorization keeps the invoking caller's own platform
+// credential beside a route-validated proxy context. The boundary strips it
+// from the request headers so no third-party Tool or MCP can receive it; it is
+// kept apart from ProxyExecutionContext so audit and log paths that read the
+// context never see it. Only this deployment's Function runtime may use it.
+func WithProxyCallerAuthorization(ctx context.Context, authorization string) context.Context {
+	if authorization == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, proxyCallerAuthorizationKey{}, authorization)
+}
+
+// ProxyCallerAuthorizationFromContext returns the credential captured by the
+// proxy boundary, if any.
+func ProxyCallerAuthorizationFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	authorization, _ := ctx.Value(proxyCallerAuthorizationKey{}).(string)
+	return authorization
 }
 
 // ManagedProxyAccount is the current managed proxy state returned by bkn-safe.

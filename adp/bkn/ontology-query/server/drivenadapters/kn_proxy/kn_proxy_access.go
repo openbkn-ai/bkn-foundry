@@ -29,7 +29,7 @@ type knowledgeNetworkProxyAccess struct {
 type resolveProxyBindingRequest struct {
 	ChildType  string `json:"child_type"`
 	ChildID    string `json:"child_id"`
-	TargetType string `json:"target_type"`
+	TargetType string `json:"target_type,omitempty"`
 	TargetID   string `json:"target_id"`
 	Operation  string `json:"operation"`
 }

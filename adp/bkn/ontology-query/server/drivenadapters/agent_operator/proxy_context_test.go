@@ -39,6 +39,100 @@ func TestExecuteToolUsesProxyAsEffectivePrincipal(t *testing.T) {
 	}
 }
 
+func TestFunctionToolUsesFunctionProxyTarget(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+	ctx := actionProxyContext(interfaces.ProxyTargetTypeFunction, "box-fn")
+	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://operator/tool-box/box-fn/proxy/fn-1", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
+			if headers[interfaces.HTTPHeaderBKNTargetType] != interfaces.ProxyTargetTypeFunction { t.Fatalf("proxy headers = %#v", headers) }
+			return http.StatusOK, []byte(`{"status_code":200,"body":{"ok":true}}`), nil
+		})
+	if _, err := access.ExecuteToolAsProxy(ctx, "box-fn", "fn-1", interfaces.ToolExecutionRequest{}); err != nil { t.Fatal(err) }
+}
+
+// A Function backing a logic property reads BKN as its caller, so the caller's
+// credential travels beside the proxy identity to the Function runtime.
+func TestFunctionToolCarriesCallerRuntimeCredential(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+	ctx := interfaces.WithCallerRuntimeCredential(
+		actionProxyContext(interfaces.ProxyTargetTypeFunction, "box-fn"),
+		interfaces.CallerRuntimeCredential{Authorization: "Bearer caller-token", ConversationID: "conv_1"})
+	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://operator/tool-box/box-fn/proxy/fn-1", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
+			if headers[interfaces.HTTP_HEADER_ACCOUNT_ID] != "proxy-1" || headers["Authorization"] != "Bearer caller-token" {
+				t.Fatalf("function proxy headers = %#v", headers)
+			}
+			// No Interaction in the context: the Conversation must not travel alone.
+			if headers[common.HeaderBKNConversationID] != "" || headers[common.HeaderBKNParentOperationID] != "" {
+				t.Fatalf("conversation travelled without an interaction: %#v", headers)
+			}
+			return http.StatusOK, []byte(`{"status_code":200,"body":{"ok":true}}`), nil
+		})
+	if _, err := access.ExecuteToolAsProxy(ctx, "box-fn", "fn-1", interfaces.ToolExecutionRequest{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Inside an Interaction the Function's reads join it, under the operation the
+// caller registered.
+func TestFunctionToolCarriesCallerInteraction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+	ctx := common.SetTraceContextToCtx(actionProxyContext(interfaces.ProxyTargetTypeFunction, "box-fn"),
+		common.TraceContext{InteractionID: "int_1", OperationID: "op_parent"})
+	ctx = interfaces.WithCallerRuntimeCredential(ctx, interfaces.CallerRuntimeCredential{
+		Authorization: "Bearer caller-token", ConversationID: "conv_1", ParentOperationID: "op_registered"})
+	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://operator/tool-box/box-fn/proxy/fn-1", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
+			if headers[common.HeaderBKNConversationID] != "conv_1" || headers[common.HeaderBKNInteractionID] != "int_1" ||
+				// The registered caller operation, never ontology-query's own unregistered child.
+				headers[common.HeaderBKNParentOperationID] != "op_registered" {
+				t.Fatalf("function interaction headers = %#v", headers)
+			}
+			return http.StatusOK, []byte(`{"status_code":200,"body":{"ok":true}}`), nil
+		})
+	if _, err := access.ExecuteToolAsProxy(ctx, "box-fn", "fn-1", interfaces.ToolExecutionRequest{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An OpenAPI Tool is a third party: the caller's credential never leaves for it.
+func TestOpenAPIToolNeverCarriesCallerCredential(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+	ctx := interfaces.WithCallerRuntimeCredential(
+		actionProxyContext(interfaces.ProxyTargetTypeToolBox, "box-1"),
+		interfaces.CallerRuntimeCredential{Authorization: "Bearer caller-token"})
+	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://operator/tool-box/box-1/proxy/tool-1", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
+			if _, ok := headers["Authorization"]; ok {
+				t.Fatalf("OpenAPI tool received the caller credential: %#v", headers)
+			}
+			return http.StatusOK, []byte(`{"status_code":200,"body":{"ok":true}}`), nil
+		})
+	if _, err := access.ExecuteToolAsProxy(ctx, "box-1", "tool-1", interfaces.ToolExecutionRequest{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBoxMetadataTypeRequiresToolMembership(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+	httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://operator/tool-box/box-fn", nil, nil).
+		Return(http.StatusOK, []byte(`{"metadata_type":"function","tools":[{"tool_id":"fn-1"}]}`), nil).Times(2)
+	if kind, err := access.GetBoxMetadataType(t.Context(), "box-fn", "fn-1"); err != nil || kind != interfaces.ProxyTargetTypeFunction {
+		t.Fatalf("box kind = %q, %v", kind, err)
+	}
+	if _, err := access.GetBoxMetadataType(t.Context(), "box-fn", "other-tool"); err == nil { t.Fatal("tool outside box was accepted") }
+}
+
 func TestExecuteLogicPropertyToolUsesProxyAsEffectivePrincipal(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	httpClient := rmock.NewMockHTTPClient(ctrl)

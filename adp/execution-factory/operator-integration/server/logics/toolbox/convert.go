@@ -28,7 +28,7 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 	if err != nil {
 		return
 	}
-	err = s.AuthService.CheckModifyPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
+	err = s.checkBoxModifyPermission(ctx, accessor, req.BoxID)
 	if err != nil {
 		return
 	}

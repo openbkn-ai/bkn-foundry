@@ -73,6 +73,64 @@ func TestResourceFilterEndpoint(t *testing.T) {
 	}
 }
 
+func TestResourceFilterEndpointVisibilityMatchAny(t *testing.T) {
+	r, e, db := newTestServer(t)
+	const user = "u-any"
+	seedEnabledUser(t, db, user)
+	seedCatalogOps(t, db, "knowledge_network", "view_detail", "query_data")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-detail", "view_detail")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-query", "query_data")
+
+	got := postFilter(t, r, map[string]any{
+		"accessor_id":           user,
+		"resource_type":         "knowledge_network",
+		"resource_ids":          []string{"kn-detail", "kn-query", "kn-hidden"},
+		"visibility_operations": []string{"view_detail", "query_data"},
+		"visibility_match":      "any",
+		"candidate_operations":  []string{"view_detail", "query_data"},
+	})
+
+	if len(got) != 2 || got[0].ResourceID != "kn-detail" || got[1].ResourceID != "kn-query" {
+		t.Fatalf("visibility_match:any = %+v, want kn-detail and kn-query", got)
+	}
+	byID := make(map[string][]string, len(got))
+	for _, entry := range got {
+		byID[entry.ResourceID] = entry.Operations
+	}
+	if want := []string{"view_detail"}; !reflect.DeepEqual(byID["kn-detail"], want) {
+		t.Errorf("kn-detail operations = %v, want %v", byID["kn-detail"], want)
+	}
+	if want := []string{"query_data"}; !reflect.DeepEqual(byID["kn-query"], want) {
+		t.Errorf("kn-query operations = %v, want %v", byID["kn-query"], want)
+	}
+}
+
+func TestResourceFilterEndpointVisibilityMatchDefaultsToAll(t *testing.T) {
+	r, e, db := newTestServer(t)
+	const user = "u-default-all"
+	seedEnabledUser(t, db, user)
+	seedCatalogOps(t, db, "knowledge_network", "view_detail", "query_data")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-detail", "view_detail")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-query", "query_data")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-both", "view_detail")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-both", "query_data")
+
+	got := postFilter(t, r, map[string]any{
+		"accessor_id":           user,
+		"resource_type":         "knowledge_network",
+		"resource_ids":          []string{"kn-detail", "kn-query", "kn-both"},
+		"visibility_operations": []string{"view_detail", "query_data"},
+		"candidate_operations":  []string{"view_detail", "query_data"},
+	})
+
+	if len(got) != 1 || got[0].ResourceID != "kn-both" {
+		t.Fatalf("default visibility_match = %+v, want only kn-both", got)
+	}
+	if want := []string{"view_detail", "query_data"}; !reflect.DeepEqual(got[0].Operations, want) {
+		t.Errorf("kn-both operations = %v, want %v", got[0].Operations, want)
+	}
+}
+
 // TestResourceFilterEndpointMixedTypes covers the resources[] form with more
 // than one type in a single request.
 func TestResourceFilterEndpointMixedTypes(t *testing.T) {
@@ -213,6 +271,31 @@ func TestResourceFilterEndpointCatalogFallback(t *testing.T) {
 	}
 	if want := []string{"view_detail"}; !reflect.DeepEqual(got[0].Operations, want) {
 		t.Errorf("ops = %v, want %v", got[0].Operations, want)
+	}
+}
+
+func TestResourceFilterEndpointVisibilityOnlyDoesNotProjectOperations(t *testing.T) {
+	r, e, db := newTestServer(t)
+	const user = "u-visibility-only"
+	seedEnabledUser(t, db, user)
+	seedCatalogOps(t, db, "knowledge_network", "view_detail", "modify", "delete")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "view_detail")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "modify")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "delete")
+
+	got := postFilter(t, r, map[string]any{
+		"accessor_id":           user,
+		"resource_type":         "knowledge_network",
+		"resource_ids":          []string{"kn-1"},
+		"visibility_operations": []string{"view_detail"},
+		"candidate_operations":  []string{"modify", "delete"},
+		"include_operations":    false,
+	})
+	if len(got) != 1 {
+		t.Fatalf("got %v, want one visible resource", got)
+	}
+	if len(got[0].Operations) != 0 {
+		t.Errorf("operations = %v, want no operation projection", got[0].Operations)
 	}
 }
 

@@ -9,65 +9,52 @@ package driveradapters
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"go.opentelemetry.io/otel/trace"
 
 	"vega-backend/common"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 )
 
-// ListAuthResources handles GET /api/vega-backend/v1/auth-resources.
-func (r *restHandler) ListAuthResources(c *gin.Context) {
-	logger.Debug("ListAuthResources Start")
-
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
-	if err != nil {
-		return
-	}
+// ListAuthorizationResourcesByIn 处理 bkn-safe 权限配置使用的内部资源目录。
+// 它不做认证或调用方业务资源授权过滤，由 /in/v1 的网络边界控制访问。
+func (r *restHandler) ListAuthorizationResourcesByIn(c *gin.Context) {
+	logger.Debug("ListAuthorizationResourcesByIn Start")
 
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
-
-	accountInfo := interfaces.AccountInfo{
-		ID:   visitor.ID,
-		Type: string(visitor.Type),
-	}
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
-
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	resourceType := strings.TrimSpace(c.Query("resource_type"))
+	query, err := parseInternalAuthorizationResourceQuery(ctx, c)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	var (
+		entries []*interfaces.AuthResourceEntry
+		total   int64
+	)
 	switch resourceType {
 	case interfaces.AUTH_RESOURCE_TYPE_CATALOG:
-		r.listCatalogAuthResources(ctx, span, c)
+		entries, total, err = r.cs.ListAuthResourceEntries(ctx, query)
 	case interfaces.AUTH_RESOURCE_TYPE_RESOURCE:
-		r.listResourceAuthResources(ctx, span, c)
-	case interfaces.AuthResourceTypeConnectorType:
-		r.listConnectorTypeAuthResources(ctx, span, c)
+		entries, total, err = r.rs.ListAuthResourceEntries(ctx, query)
+	case interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE:
+		entries, total, err = r.cts.ListAuthResourceEntries(ctx, query)
 	default:
-		err := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("resource_type is invalid; valid values: %s", strings.Join(interfaces.AuthResourceTypes(), ", ")))
-		rest.ReplyError(c, err)
-		return
+		err = rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("resource_type is invalid; valid values: catalog, resource, connector_type")
 	}
-}
-
-func (r *restHandler) listCatalogAuthResources(ctx context.Context, span trace.Span, c *gin.Context) {
-	query, ok := parseAuthResourceQuery(ctx, span, c)
-	if !ok {
-		return
-	}
-
-	entries, total, err := r.cs.ListAuthResources(ctx, query)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -75,78 +62,31 @@ func (r *restHandler) listCatalogAuthResources(ctx context.Context, span trace.S
 		return
 	}
 
-	logger.Debug("Handler ListAuthResources Success")
+	if entries == nil {
+		entries = []*interfaces.AuthResourceEntry{}
+	}
+
+	logger.Debug("ListAuthorizationResourcesByIn Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, map[string]any{
-		"entries":     entries,
-		"total_count": total,
+		"entries": entries,
+		"total":   total,
 	})
 }
 
-func (r *restHandler) listResourceAuthResources(ctx context.Context, span trace.Span, c *gin.Context) {
-	query, ok := parseAuthResourceQuery(ctx, span, c)
-	if !ok {
-		return
-	}
-
-	entries, total, err := r.rs.ListAuthResources(ctx, query)
-	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	logger.Debug("Handler ListAuthResources Success")
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	rest.ReplyOK(c, http.StatusOK, map[string]any{
-		"entries":     entries,
-		"total_count": total,
-	})
-}
-
-func (r *restHandler) listConnectorTypeAuthResources(ctx context.Context, span trace.Span, c *gin.Context) {
-	query, ok := parseAuthResourceQuery(ctx, span, c)
-	if !ok {
-		return
-	}
-
-	entries, total, err := r.cts.ListAuthResources(ctx, query)
-	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	logger.Debug("Handler ListConnectorTypeAuthResources Success")
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	rest.ReplyOK(c, http.StatusOK, map[string]any{
-		"entries":     entries,
-		"total_count": total,
-	})
-}
-
-func parseAuthResourceQuery(ctx context.Context, span trace.Span, c *gin.Context) (interfaces.AuthResourceQueryParams, bool) {
+func parseInternalAuthorizationResourceQuery(ctx context.Context, c *gin.Context) (interfaces.AuthResourceQueryParams, error) {
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
-	limit := common.GetQueryOrDefault(c, "limit", "50")
-	sort := common.GetQueryOrDefault(c, "sort", "name")
-	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
+	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
+	sort := common.GetQueryOrDefault(c, "sort", interfaces.AuthResourceSortName)
+	direction := common.GetQueryOrDefault(c, "direction", interfaces.ASC_DIRECTION)
 
 	pageParam, err := validatePaginationQueryParams(ctx, offset, limit, sort, direction, interfaces.AuthResourceSort)
 	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return interfaces.AuthResourceQueryParams{}, false
+		return interfaces.AuthResourceQueryParams{}, err
 	}
-	pageParam.Sort = interfaces.AuthResourceSort[sort]
-
 	return interfaces.AuthResourceQueryParams{
 		PaginationQueryParams: pageParam,
-		ID:                    c.Query("id"),
-		Keyword:               strings.TrimSpace(c.Query("keyword")),
-	}, true
+		Name:                  strings.TrimSpace(c.Query("name")),
+		CatalogID:             strings.TrimSpace(c.Query("parent_id")),
+	}, nil
 }

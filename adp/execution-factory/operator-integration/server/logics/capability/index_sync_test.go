@@ -270,6 +270,26 @@ func TestRebuildReasonCatchesAnUnwritableDataset(t *testing.T) {
 	})
 }
 
+func TestCreateDatasetMarksResourceInternal(t *testing.T) {
+	Convey("内置能力索引与内置 Catalog 保持相同的 internal 属性", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		vega := mocks.NewMockVegaBackendClient(ctrl)
+		vega.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
+				So(req.Internal, ShouldBeTrue)
+				return &interfaces.VegaResource{ID: req.ID}, nil
+			})
+		sync := &capabilityIndexSync{vegaClient: vega, logger: logger.DefaultLogger()}
+
+		err := sync.createDataset(context.Background(), executionFactoryCatalogID,
+			&interfaces.EmbeddingModel{ModelID: "m-1", EmbeddingDim: 8}, defaultFulltextAnalyzer)
+
+		So(err, ShouldBeNil)
+	})
+}
+
 // TestInitIsSerialised covers what three reconcilers calling EnsureInitialized at once can do to a
 // rebuild.
 //
