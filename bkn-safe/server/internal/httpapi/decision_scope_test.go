@@ -318,9 +318,12 @@ func TestChecksLocalScopeValidatesExactResourceOperationPairs(t *testing.T) {
 }
 
 func TestLocalResourceFilterExcludesOutOfBoundaryCatalogOperations(t *testing.T) {
-	r, _, db := newTestServer(t)
+	r, enforcer, db := newTestServer(t)
 	seedEnabledUser(t, db, "filter-local-user")
 	seedCatalogOps(t, db, "resource", "modify")
+	if err := enforcer.GrantObjectPermission("filter-local-user", "resource", "resource-1", "modify"); err != nil {
+		t.Fatal(err)
+	}
 	body := map[string]any{
 		"accessor_id":        "filter-local-user",
 		"resources":          []map[string]string{{"type": "resource", "id": "resource-1"}},
@@ -331,7 +334,28 @@ func TestLocalResourceFilterExcludesOutOfBoundaryCatalogOperations(t *testing.T)
 	if response.Code != http.StatusOK {
 		t.Fatalf("local full projection = %d %s, want 200", response.Code, response.Body.String())
 	}
-	if strings.Contains(response.Body.String(), `"operations":["modify"]`) {
+	var decoded struct {
+		Resources []struct {
+			Operations []string `json:"operations"`
+			Decisions  []struct {
+				Operation string `json:"operation"`
+			} `json:"decisions"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil || len(decoded.Resources) != 1 {
+		t.Fatalf("decode local response: %v body=%s", err, response.Body.String())
+	}
+	for _, operation := range decoded.Resources[0].Operations {
+		if operation == "modify" {
+			t.Fatalf("local operations leaked out-of-bound modify: %s", response.Body.String())
+		}
+	}
+	for _, decision := range decoded.Resources[0].Decisions {
+		if decision.Operation == "modify" {
+			t.Fatalf("local decisions leaked out-of-bound modify: %s", response.Body.String())
+		}
+	}
+	if strings.Contains(response.Body.String(), `"modify"`) {
 		t.Fatalf("local response leaked an out-of-bound operation: %s", response.Body.String())
 	}
 }

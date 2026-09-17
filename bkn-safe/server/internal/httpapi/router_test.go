@@ -157,6 +157,38 @@ func TestAuthzCheckEndpoint(t *testing.T) {
 	}
 }
 
+func TestAuthzChecksRejectMalformedItems(t *testing.T) {
+	r, _, _ := newTestServer(t)
+	tests := []struct {
+		name  string
+		check map[string]any
+	}{
+		{
+			name:  "missing resource type",
+			check: map[string]any{"resource": map[string]string{"id": "probe"}, "operation": "use"},
+		},
+		{
+			name:  "missing resource id",
+			check: map[string]any{"resource": map[string]string{"type": "agent"}, "operation": "use"},
+		},
+		{
+			name:  "missing operation",
+			check: map[string]any{"resource": map[string]string{"type": "agent", "id": "probe"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := do(t, r, http.MethodPost, "/api/safe/v1/authz/checks", map[string]any{
+				"accessor_id": "u-1",
+				"checks":      []map[string]any{tt.check},
+			})
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("malformed check = %d %s, want 400", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestAuthzEndpointsApplyDenyWithoutChangingBusinessRequests(t *testing.T) {
 	r, e, db := newTestServer(t)
 	const user, role = "alice", "reader-role"

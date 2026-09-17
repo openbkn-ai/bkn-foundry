@@ -137,20 +137,22 @@ paths:
         `visibility_match` selects whether every visibility operation (`all`,
         the default) or any visibility operation (`any`) is sufficient.
         `include_operations=false` performs pure visibility filtering and
-        omits `operations` from every response resource. With
-        `include_operations=true`, each response resource includes its complete
-        effective operation set from the registered catalog. An empty
-        visibility list returns every requested resource.
+        omits both `operations` and `decisions` from every response resource.
+        With `include_operations=true` in the default effective scope, each
+        response resource includes its complete effective operation set from
+        the registered catalog. An empty visibility list returns every
+        requested resource.
 
         `evaluation_scope=local` is available only on the platform-internal
         network face. It accepts only concrete Resource/Catalog references and
-        their approved operations, returns every requested resource regardless
-        of visibility, and adds one `decisions` entry for every visibility or
-        catalog operation and every direct requirement, including explicit
-        `deny` and `none`. Each target entry also lists its `requires`. Vega uses
-        those entries to perform the parent fallback it owns; it must not treat
-        local `allowed` as final. Out-of-bound local shapes return 400 and never
-        fall back to effective evaluation.
+        their approved operations and returns every requested resource
+        regardless of visibility. When `include_operations=true`, it adds one
+        `decisions` entry for every visibility or approved catalog operation
+        and every direct requirement, including explicit `deny` and `none`.
+        Each target entry also lists its `requires`. Vega uses those entries to
+        perform the parent fallback it owns; it must not treat local `allowed`
+        as final. Out-of-bound local shapes return 400 and never fall back to
+        effective evaluation.
         Omitting the scope keeps the historical effective response shape.
 
         The response preserves first-seen resource order and de-duplicates
@@ -593,8 +595,14 @@ components:
       required: [resource, operation]
       properties:
         resource:
-          $ref: '#/components/schemas/ResourceRef'
-        operation: {type: string}
+          allOf:
+            - $ref: '#/components/schemas/ResourceRef'
+            - type: object
+              required: [type, id]
+              properties:
+                type: {type: string, minLength: 1}
+                id: {type: string, minLength: 1}
+        operation: {type: string, minLength: 1}
     CheckResponse:
       type: object
       required: [allowed, evaluation_scope, results]

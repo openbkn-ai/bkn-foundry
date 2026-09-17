@@ -75,6 +75,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		}
 		checks := make([]authz.ResourceOperationCheck, 0, len(req.Checks))
 		for _, check := range req.Checks {
+			if check.Resource.Type == "" || check.Resource.ID == "" || check.Operation == "" {
+				replyPublicError(c, http.StatusBadRequest)
+				return
+			}
 			resource := authz.ResourceRef{Type: check.Resource.Type, ID: check.Resource.ID}
 			if scope == authz.ScopeLocal && !validateLocalScope(c, []authz.ResourceRef{resource}, []string{check.Operation}) {
 				return
