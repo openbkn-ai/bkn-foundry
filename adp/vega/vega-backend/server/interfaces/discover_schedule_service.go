@@ -20,8 +20,8 @@ type DiscoverScheduleService interface {
 	List(ctx context.Context, params DiscoverScheduleQueryParams) ([]*DiscoverSchedule, int64, error)
 	// Update updates a discover schedule.
 	Update(ctx context.Context, current *DiscoverSchedule, req *DiscoverScheduleRequest) error
-	// Delete deletes a discover schedule by ID.
-	Delete(ctx context.Context, id string) error
+	// Delete deletes a discover schedule that has already been resolved by the caller.
+	Delete(ctx context.Context, schedule *DiscoverSchedule) error
 	// UpdateEnabled updates the enabled state of a discover schedule.
 	UpdateEnabled(ctx context.Context, schedule *DiscoverSchedule, enabled bool) error
 	// UpdateRunMetadata atomically advances run metadata when the schedule has not changed.

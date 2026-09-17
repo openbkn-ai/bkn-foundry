@@ -77,6 +77,9 @@ func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.
 		otellog.LogError(ctx, "Cron expression is required", nil)
 		return "", fmt.Errorf("cron_expr is required")
 	}
+	if err := dss.requireTaskManage(ctx, req.CatalogID); err != nil {
+		return "", err
+	}
 
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
@@ -133,6 +136,9 @@ func (dss *discoverScheduleService) GetByID(ctx context.Context, id string) (*in
 			WithErrorDetails(err.Error())
 	}
 	if schedule != nil {
+		if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+			return nil, err
+		}
 		if err := dss.populateDiscoverScheduleReferences(ctx, []*interfaces.DiscoverSchedule{schedule}); err != nil {
 			span.RecordError(err)
 			logger.Warnf("Failed to populate discover schedule references: %v", err)
@@ -150,6 +156,25 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.List")
 	defer span.End()
 
+	if params.CatalogID != "" {
+		allowed, _, err := dss.cs.CheckCatalogPermission(ctx, params.CatalogID,
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !allowed {
+			return []*interfaces.DiscoverSchedule{}, 0, nil
+		}
+	} else {
+		visible, _, err := dss.cs.ListPermittedCatalogIDs(ctx, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, false, interfaces.CatalogsQueryParams{})
+		if err != nil {
+			return nil, 0, err
+		}
+		if len(visible) == 0 {
+			return []*interfaces.DiscoverSchedule{}, 0, nil
+		}
+		params.CatalogIDs = visible
+	}
 	schedules, total, err := dss.dsa.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List discover schedules failed")
@@ -209,6 +234,10 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 	if schedule == nil {
 		return fmt.Errorf("discover schedule not found")
 	}
+	// The handler has already resolved the schedule; use it for authorization.
+	if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+		return err
+	}
 
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
@@ -244,18 +273,25 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 	return nil
 }
 
-// Delete deletes a discover schedule by ID.
-func (dss *discoverScheduleService) Delete(ctx context.Context, id string) error {
+// Delete deletes a discover schedule that has already been resolved by the caller.
+func (dss *discoverScheduleService) Delete(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.Delete")
 	defer span.End()
 
+	if schedule == nil {
+		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverSchedule_NotFound)
+	}
+	// The handler has already resolved the schedule; use it for authorization.
+	if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+		return err
+	}
 	// Delete schedule
-	if err := dss.dsa.Delete(ctx, id); err != nil {
+	if err := dss.dsa.Delete(ctx, schedule.ID); err != nil {
 		otellog.LogError(ctx, "Failed to delete discover schedule", err)
 		return err
 	}
 
-	logger.Infof("Deleted discover schedule: id=%s", id)
+	logger.Infof("Deleted discover schedule: id=%s", schedule.ID)
 	return nil
 }
 
@@ -267,6 +303,10 @@ func (dss *discoverScheduleService) UpdateEnabled(ctx context.Context,
 
 	if schedule == nil {
 		return fmt.Errorf("discover schedule not found")
+	}
+	// The handler has already resolved the schedule; use it for authorization.
+	if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+		return err
 	}
 
 	nowTime := time.Now()
@@ -291,6 +331,18 @@ func (dss *discoverScheduleService) UpdateEnabled(ctx context.Context,
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
 	}
 
+	return nil
+}
+
+func (dss *discoverScheduleService) requireTaskManage(ctx context.Context, catalogID string) error {
+	allowed, _, err := dss.cs.CheckCatalogPermission(ctx, catalogID,
+		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	}
 	return nil
 }
 
@@ -322,6 +374,7 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		return fmt.Errorf("DiscoverTaskService not set")
 	}
 
+	// The scheduler supplies the persisted schedule. Only the catalog's current state is rechecked.
 	catalogInfo, err := dss.cs.InternalGetByID(ctx, schedule.CatalogID, false)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to get catalog before executing discover schedule", err)

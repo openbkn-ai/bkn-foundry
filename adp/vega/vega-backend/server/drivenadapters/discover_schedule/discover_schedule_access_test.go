@@ -95,6 +95,26 @@ func TestDiscoverScheduleAccessList(t *testing.T) {
 		assert.Zero(t, total)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("filters schedules by permitted catalog IDs", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
+		defer cleanup()
+
+		params := interfaces.DiscoverScheduleQueryParams{CatalogIDs: []string{"catalog-1", "catalog-2"}}
+		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_schedule WHERE f_catalog_id IN (?,?)").
+			WithArgs("catalog-1", "catalog-2").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_catalog_id IN (?,?) ORDER BY f_update_time DESC").
+			WithArgs("catalog-1", "catalog-2").
+			WillReturnRows(discoverScheduleRows())
+
+		got, total, err := access.List(context.Background(), params)
+
+		require.NoError(t, err)
+		assert.Zero(t, total)
+		assert.Empty(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestDiscoverScheduleAccessCreate(t *testing.T) {

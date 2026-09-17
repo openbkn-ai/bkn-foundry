@@ -30,8 +30,18 @@ func newTestDiscoverScheduleService(t *testing.T) (*discoverScheduleService, *vm
 	dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	cs.EXPECT().
+		CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(true, nil, nil)
+	cs.EXPECT().
+		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return([]string{"catalog-1"}, nil, nil)
 
 	return &discoverScheduleService{
+		cs:  cs,
 		dsa: dsa,
 		dts: dts,
 		ums: ums,
@@ -76,6 +86,22 @@ func TestCalculateScheduleNextRun(t *testing.T) {
 }
 
 func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
+	t.Run("create denies a catalog without task-manage permission", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cs := vmock.NewMockCatalogService(ctrl)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
+		service := &discoverScheduleService{cs: cs}
+
+		_, err := service.Create(context.Background(), &interfaces.DiscoverScheduleRequest{
+			CatalogID: "catalog-1",
+			CronExpr:  "0 0 * * *",
+		})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+	})
+
 	t.Run("create rejects empty cron", func(t *testing.T) {
 		service, _, _, _ := newTestDiscoverScheduleService(t)
 
@@ -248,7 +274,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 			{ID: "s2", Creator: interfaces.AccountInfo{ID: "u3"}, Updater: interfaces.AccountInfo{ID: "u4"}},
 		}
 
-		dsa.EXPECT().List(gomock.Any(), params).Return(schedules, int64(2), nil)
+		dsa.EXPECT().List(gomock.Any(), gomock.Any()).Return(schedules, int64(2), nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(4)).Return(nil)
 
 		got, total, err := service.List(context.Background(), params)
@@ -276,6 +302,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		service, dsa, _, _ := newTestDiscoverScheduleService(t)
 		schedule := &interfaces.DiscoverSchedule{
 			ID:         "schedule-1",
+			CatalogID:  "catalog-1",
 			CronExpr:   "0 * * * *",
 			UpdateTime: 100,
 		}
@@ -289,7 +316,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		rowsAffected, err := service.UpdateRunMetadata(context.Background(), "schedule-1", 100, 110, 123, 456)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), rowsAffected)
-		require.NoError(t, service.Delete(context.Background(), "schedule-1"))
+		require.NoError(t, service.Delete(context.Background(), schedule))
 	})
 
 	t.Run("returns conflict when enabled state was based on a stale schedule", func(t *testing.T) {
@@ -320,6 +347,14 @@ func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
 	dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
+	cs.EXPECT().
+		CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(true, nil, nil)
+	cs.EXPECT().
+		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return([]string{"catalog-1"}, nil, nil)
 	service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
 
 	t.Run("list batches current page catalog ids", func(t *testing.T) {
@@ -354,6 +389,7 @@ func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
+		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return([]string{"catalog-3"}, nil, nil)
 		ums := vmock.NewMockUserMgmtService(ctrl)
 		service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
 		schedules := []*interfaces.DiscoverSchedule{{ID: "schedule-4", CatalogID: "catalog-3"}}

@@ -353,7 +353,7 @@ func (r *restHandler) deleteDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	if err := r.dss.Delete(ctx, id); err != nil {
+	if err := r.dss.Delete(ctx, current); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_DeleteFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

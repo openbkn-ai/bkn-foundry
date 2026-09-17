@@ -346,7 +346,7 @@ func Test_DiscoverScheduleRestHandler_DeleteDiscoverSchedule(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
 		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true}
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(current, nil)
-		dss.EXPECT().Delete(gomock.Any(), "schedule-1").Return(nil)
+		dss.EXPECT().Delete(gomock.Any(), current).Return(nil)
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/discover-schedules/schedule-1", nil)
 		w := httptest.NewRecorder()
 

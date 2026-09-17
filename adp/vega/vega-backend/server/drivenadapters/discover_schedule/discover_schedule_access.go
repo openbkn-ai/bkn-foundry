@@ -92,6 +92,22 @@ func scanDiscoverSchedule(scanner discoverScheduleScanner) (*interfaces.Discover
 	return schedule, nil
 }
 
+func applyDiscoverScheduleFilters(builder sq.SelectBuilder,
+	params interfaces.DiscoverScheduleQueryParams) sq.SelectBuilder {
+	if params.Name != "" {
+		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
+	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	} else if len(params.CatalogIDs) > 0 {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogIDs})
+	}
+	if params.Enabled != nil {
+		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
+	}
+	return builder
+}
+
 // NewDiscoverScheduleAccess creates a new DiscoverScheduleAccess.
 func NewDiscoverScheduleAccess(appSetting *common.AppSetting) interfaces.DiscoverScheduleAccess {
 	dsAccessOnce.Do(func() {
@@ -265,30 +281,10 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 	builder := sq.Select(discoverScheduleColumns()...).
 		From(DISCOVER_SCHEDULE_TABLE_NAME)
 
-	// Apply filters
-	if params.Name != "" {
-		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{"f_name": name})
-	}
-	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if params.Enabled != nil {
-		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
-	}
+	builder = applyDiscoverScheduleFilters(builder, params)
 
-	// Get total count
 	countBuilder := sq.Select("COUNT(*)").From(DISCOVER_SCHEDULE_TABLE_NAME)
-	if params.Name != "" {
-		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		countBuilder = countBuilder.Where(sq.Like{"f_name": name})
-	}
-	if params.CatalogID != "" {
-		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if params.Enabled != nil {
-		countBuilder = countBuilder.Where(sq.Eq{"f_enabled": *params.Enabled})
-	}
+	countBuilder = applyDiscoverScheduleFilters(countBuilder, params)
 
 	countSql, countVals, err := countBuilder.ToSql()
 	if err != nil {

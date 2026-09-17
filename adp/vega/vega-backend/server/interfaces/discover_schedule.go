@@ -45,9 +45,10 @@ type DiscoverSchedule struct {
 // DiscoverScheduleQueryParams holds query parameters for scheduled discover tasks.
 type DiscoverScheduleQueryParams struct {
 	PaginationQueryParams
-	Name      string `json:"name"`
-	CatalogID string `json:"catalog_id"`
-	Enabled   *bool  `json:"enabled"`
+	Name       string   `json:"name"`
+	CatalogID  string   `json:"catalog_id"`
+	CatalogIDs []string `json:"-"`
+	Enabled    *bool    `json:"enabled"`
 }
 
 // DiscoverScheduleRequest represents a scheduled discover request.
