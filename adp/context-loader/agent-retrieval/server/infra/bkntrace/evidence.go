@@ -841,7 +841,7 @@ func BuildSchemaSnapshotEvents(ctx context.Context, kind, knID string, ids []str
 	}
 	payload := map[string]any{
 		"network_ref": "kn:" + strings.TrimSpace(knID), "schema_kind": kind,
-		"definition_refs": refs, "definition_count": schemaDefinitionCount(kind, definition), "complete": complete,
+		"definition_refs": refs, "definition_count": schemaDefinitionCount(kind, definition), "complete": schemaSnapshotComplete(kind, definition, complete),
 		"definition": definition, "source_refs": refs,
 	}
 	event := buildEvent(ec, "ontology.schema.snapshot", "context.get_"+kind+"_schema", payload, "", ec.causationEventID)
@@ -854,7 +854,8 @@ func schemaDefinitionCount(kind string, definition any) int {
 		return 0
 	}
 	if kind == "network" {
-		return mountedCapabilityTotal(definition)
+		count, _ := mountedCapabilityTotal(definition)
+		return count
 	}
 	value := reflect.ValueOf(definition)
 	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
@@ -871,10 +872,18 @@ func schemaDefinitionCount(kind string, definition any) int {
 	}
 }
 
-func mountedCapabilityTotal(definition any) int {
+func schemaSnapshotComplete(kind string, definition any, complete bool) bool {
+	if kind != "network" {
+		return complete
+	}
+	_, known := mountedCapabilityTotal(definition)
+	return complete && known
+}
+
+func mountedCapabilityTotal(definition any) (int, bool) {
 	raw, err := json.Marshal(definition)
 	if err != nil {
-		return 0
+		return 0, false
 	}
 	var snapshot struct {
 		MountedCapabilities *struct {
@@ -882,9 +891,9 @@ func mountedCapabilityTotal(definition any) int {
 		} `json:"mounted_capabilities"`
 	}
 	if err := json.Unmarshal(raw, &snapshot); err != nil || snapshot.MountedCapabilities == nil || snapshot.MountedCapabilities.Total < 0 {
-		return 0
+		return 0, false
 	}
-	return snapshot.MountedCapabilities.Total
+	return snapshot.MountedCapabilities.Total, true
 }
 
 func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidateCount int, truncated bool, refs []map[string]any) []Event {

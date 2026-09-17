@@ -61,6 +61,17 @@ func (s *stubMetricBknBackend) GetObjectTypeDetail(_ context.Context, _ string, 
 	return matched, nil
 }
 
+func TestSchemaSnapshotDefinitionIDsUseReturnedCanonicalIDs(t *testing.T) {
+	objects := []*interfaces.ObjectType{{ID: "product", Name: "产品:主数据"}, {ID: "inventory", Name: "库存"}, nil}
+	if got := schemaObjectTypeIDs(objects); len(got) != 2 || got[0] != "product" || got[1] != "inventory" {
+		t.Fatalf("object schema refs must use returned IDs, got %#v", got)
+	}
+	relations := []*interfaces.RelationType{{ID: "uses_material", Name: "使用:物料"}, nil}
+	if got := schemaRelationTypeIDs(relations); len(got) != 1 || got[0] != "uses_material" {
+		t.Fatalf("relation schema refs must use returned IDs, got %#v", got)
+	}
+}
+
 type stubMetricOntologyQuery struct {
 	interfaces.DrivenOntologyQuery
 	resp      *interfaces.MetricQueryDownstreamResp

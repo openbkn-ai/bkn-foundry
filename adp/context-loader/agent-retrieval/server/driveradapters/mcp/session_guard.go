@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
-	"strings"
 
 	"github.com/bytedance/sonic"
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -321,15 +320,9 @@ func observedToolBusinessRefs(toolName string, arguments map[string]any, current
 	case toolKeyGetKnDetail:
 		return refs
 	case toolKeyGetObjectTypes, toolKeyGetRelationTypes:
-		refType, prefix := "object_type", "object"
-		if toolName == toolKeyGetRelationTypes {
-			refType, prefix = "relation_type", "relation"
-		}
-		for _, id := range stringSliceValue(arguments["ids"]) {
-			if id = strings.TrimSpace(id); id != "" {
-				refs = append(refs, bkntrace.BusinessRef{RefType: refType, RefID: prefix + ":" + currentKnID + ":" + id, Version: "unversioned"})
-			}
-		}
+		// These tools accept a display name as well as a canonical ID. The
+		// operation scope records the known network; the schema snapshot records
+		// the actual returned type IDs after lookup and permission filtering.
 		return refs
 	case toolKeyQueryMetric:
 		metricID := stringValue(arguments["metric_id"])

@@ -1130,9 +1130,7 @@ func TestObservedToolBusinessRefsAddsSchemaScopeFromValidatedInputs(t *testing.T
 				"kn_id": "network-any", "ids": []any{"product", "inventory"},
 			},
 			want: map[string]bool{
-				"knowledge_network\x00kn:network-any":         true,
-				"object_type\x00object:network-any:product":   true,
-				"object_type\x00object:network-any:inventory": true,
+				"knowledge_network\x00kn:network-any": true,
 			},
 		},
 		{
@@ -1142,25 +1140,23 @@ func TestObservedToolBusinessRefsAddsSchemaScopeFromValidatedInputs(t *testing.T
 				"kn_id": "network-any", "ids": []any{"uses_material"},
 			},
 			want: map[string]bool{
-				"knowledge_network\x00kn:network-any":                 true,
-				"relation_type\x00relation:network-any:uses_material": true,
+				"knowledge_network\x00kn:network-any": true,
 			},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			want := make(map[string]bool, len(tc.want))
-			for key := range tc.want {
-				want[key] = true
+			refs := observedToolBusinessRefs(tc.toolName, tc.arguments, "network-any")
+			if len(refs) != len(tc.want) {
+				t.Fatalf("derived refs = %#v, want %d refs", refs, len(tc.want))
 			}
-			for _, ref := range observedToolBusinessRefs(tc.toolName, tc.arguments, "network-any") {
-				delete(want, ref.RefType+"\x00"+ref.RefID)
+			for _, ref := range refs {
+				if !tc.want[ref.RefType+"\x00"+ref.RefID] {
+					t.Fatalf("unexpected derived ref: %#v", ref)
+				}
 				if ref.Version != "unversioned" {
 					t.Fatalf("derived ref version = %q", ref.Version)
 				}
-			}
-			if len(want) != 0 {
-				t.Fatalf("derived refs missing: %v", want)
 			}
 		})
 	}

@@ -163,6 +163,17 @@ func TestBuildSchemaSnapshotEventsCountsMountedNetworkCapabilities(t *testing.T)
 	}
 }
 
+func TestBuildSchemaSnapshotEventsMarksUnknownNetworkCapabilitiesPartial(t *testing.T) {
+	events := BuildSchemaSnapshotEvents(testTraceContext(), "network", "kn-unknown", nil, map[string]any{"id": "kn-unknown"}, true)
+	if len(events) != 1 {
+		t.Fatalf("schema events = %d", len(events))
+	}
+	payload := events[0]["payload"].(map[string]any)
+	if payload["definition_count"] != 0 || payload["complete"] != false {
+		t.Fatalf("unknown capability bindings must remain partial: %#v", payload)
+	}
+}
+
 func TestCoreHTTPErrorOmitsEmptyDetail(t *testing.T) {
 	got := (&CoreHTTPError{StatusCode: http.StatusServiceUnavailable}).Error()
 	if got != "BKN Trace Core HTTP 503" {
