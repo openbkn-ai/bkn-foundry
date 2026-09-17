@@ -651,6 +651,49 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	if len(resourceOps) != 5 {
 		t.Errorf("resource declares %d operations, want view_detail/query_data/data_write/modify/delete", len(resourceOps))
 	}
+
+	for _, tc := range []struct {
+		resourceType string
+		operation    string
+		name         string
+		description  string
+	}{
+		{"catalog", "data_write", "写入", "仅可写入或删除数据集文档，不支持操作 MariaDB/MySQL 等物理表数据。当目录下数据资源未显式授予写入权限时，可回退到数据目录的写入权限。"},
+		{"resource", "data_write", "写入", "仅可写入或删除数据集文档；物理表不支持数据写入。未显式授予时，可回退到所属数据目录的写入权限。"},
+	} {
+		var operation model.Operation
+		if err := db.First(&operation, "resource_type_id = ? AND id = ?", tc.resourceType, tc.operation).Error; err != nil {
+			t.Fatalf("load %s/%s: %v", tc.resourceType, tc.operation, err)
+		}
+		if operation.Name != tc.name || operation.Description != tc.description {
+			t.Errorf("%s/%s = (%q, %q), want (%q, %q)", tc.resourceType, tc.operation,
+				operation.Name, operation.Description, tc.name, tc.description)
+		}
+	}
+}
+
+func TestSeededOperationsHaveDescriptions(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	var operations []model.Operation
+	if err := db.Find(&operations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(operations) == 0 {
+		t.Fatal("seed did not create any operations")
+	}
+	for _, operation := range operations {
+		if operation.Description == "" {
+			t.Errorf("%s/%s has no description", operation.ResourceTypeID, operation.ID)
+		}
+	}
 }
 
 func TestKnowledgeNetworkDeclaresExecuteOperation(t *testing.T) {

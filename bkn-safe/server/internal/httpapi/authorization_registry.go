@@ -58,6 +58,7 @@ func authorizationRegistryHandler(db *gorm.DB) gin.HandlerFunc {
 				authorizationRegistryOperation{
 					ID:              operation.ID,
 					Name:            operation.Name,
+					Description:     operation.Description,
 					ParentOperation: operation.ParentOperationID,
 					Requires:        operationRequirements(operation.RequiredOperationIDs),
 				},
@@ -87,6 +88,7 @@ type authorizationRegistryResourceType struct {
 type authorizationRegistryOperation struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name"`
+	Description     string   `json:"description,omitempty"`
 	ParentOperation string   `json:"parent_operation,omitempty"`
 	Requires        []string `json:"requires"`
 }

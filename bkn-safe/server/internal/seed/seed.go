@@ -115,8 +115,9 @@ type catalogResourceType struct {
 }
 
 type catalogOperation struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 	// ParentOperation is the operation checked on the parent instance when this
 	// one is not granted on the instance itself. Empty = no inheritance.
 	ParentOperation string `json:"parent_operation"`
@@ -453,13 +454,13 @@ func seedCatalog(db *gorm.DB) error {
 		for _, op := range rt.Operations {
 			declared = append(declared, op.ID)
 			opRow := model.Operation{
-				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name,
+				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name, Description: op.Description,
 				ParentOperationID:    op.ParentOperation,
 				RequiredOperationIDs: strings.Join(op.Requires, ","),
 			}
 			if err := db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "resource_type_id"}, {Name: "id"}},
-				DoUpdates: clause.AssignmentColumns([]string{"name", "parent_operation_id", "implied_operation_ids"}),
+				DoUpdates: clause.AssignmentColumns([]string{"name", "description", "parent_operation_id", "implied_operation_ids"}),
 			}).Create(&opRow).Error; err != nil {
 				return err
 			}

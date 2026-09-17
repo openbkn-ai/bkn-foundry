@@ -562,6 +562,9 @@ components:
         name:
           type: string
           description: Display name registered for the operation.
+        description:
+          type: string
+          description: Optional explanation of the operation's scope and limitations.
         parent_operation:
           type: string
           description: Compatible operation on `parent_type` used for parent-resource inheritance; omitted when none is declared.
