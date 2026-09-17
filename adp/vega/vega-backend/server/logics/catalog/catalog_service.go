@@ -119,8 +119,8 @@ func (cs *catalogService) filterCatalogPermissionsInBatches(ctx context.Context,
 		if end > len(ids) {
 			end = len(ids)
 		}
-		matched, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids[start:end], ops,
-			allowOperation)
+		matched, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ids[start:end], ops, interfaces.VISIBILITY_MATCH_ANY, allowOperation)
 		if err != nil {
 			return nil, err
 		}
@@ -409,7 +409,7 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	}
 
 	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{catalog.ID},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -538,7 +538,7 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		}
 	}
 	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -571,7 +571,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 	defer span.End()
 
 	ids, matchResourceOpsMap, err := cs.ListPermittedCatalogIDs(ctx,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, params)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_SUMMARY}, true, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return []*interfaces.CatalogSummary{}, 0, err
@@ -671,7 +671,7 @@ func (cs *catalogService) ListConnectorTypeStats(ctx context.Context, params int
 		ids = append(ids, ref.CatalogID)
 	}
 	allowed, err := cs.filterCatalogPermissionsInBatches(ctx, ids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false)
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_VIEW_SUMMARY}, false)
 	if err != nil {
 		return nil, err
 	}

@@ -136,7 +136,8 @@ paths:
       summary: Filter trusted candidates and project their allowed operations
       description: |
         `visibility_operations` and `candidate_operations` are independent.
-        A resource is returned only when every visibility operation is allowed.
+        `visibility_match` selects whether every visibility operation (`all`,
+        the default) or any visibility operation (`any`) is sufficient.
         Its `operations` value is the allowed subset of candidate operations.
         `include_operations=false` performs visibility filtering only and
         returns every visible resource with an empty `operations` list.
@@ -639,6 +640,11 @@ components:
         visibility_operations:
           type: array
           items: {type: string}
+        visibility_match:
+          type: string
+          enum: [all, any]
+          default: all
+          description: Controls whether all or any visibility_operations are required. It affects filtering only, not operation projection.
         candidate_operations:
           type: array
           items: {type: string}

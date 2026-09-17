@@ -232,7 +232,7 @@ func TestLocalDecisionReportsButDoesNotExecuteRequirements(t *testing.T) {
 	}
 
 	batch, err := e.FilterResourceOpsScoped(t.Context(), user,
-		[]ResourceRef{{Type: "catalog", ID: resource}}, nil, []string{"resource_manage"}, ScopeLocal)
+		[]ResourceRef{{Type: "catalog", ID: resource}}, nil, []string{"resource_manage"}, VisibilityMatchAll, ScopeLocal)
 	if err != nil {
 		t.Fatal(err)
 	}

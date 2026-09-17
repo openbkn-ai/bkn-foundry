@@ -314,8 +314,8 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 			WithErrorDetails("internal resources are restricted to the built-in administrator")
 	}
 
-	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		[]string{resource.ID}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{resource.ID},
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -445,7 +445,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 		}
 	}
 	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		ids, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+		ids, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -570,7 +570,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		var batchMatchResources map[string]interfaces.PermissionResourceOps
 		// Verify the operation permissions of the permission management
 		batchMatchResources, err = rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			batchIDs, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+			batchIDs, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
 			return []*interfaces.ResourceSummary{}, 0, err
@@ -1057,7 +1057,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	// existence before authorization. With ignoreMissing, unmatched IDs are
 	// resolved after loading and are accepted only when they are actually absent.
 	matchResourcesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		ids, []string{interfaces.OPERATION_TYPE_DELETE}, false)
+		ids, []string{interfaces.OPERATION_TYPE_DELETE}, interfaces.VISIBILITY_MATCH_ALL, false)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return err

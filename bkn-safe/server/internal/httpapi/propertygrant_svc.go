@@ -64,7 +64,7 @@ func (services *propertyGrantManagementServices) EffectivePropertyLevels(
 ) (map[string]propertyaccess.Level, error) {
 	allowed, err := services.enforcer.FilterResourceOpsScoped(ctx, operatorID,
 		[]authz.ResourceRef{{Type: "object_type", ID: objectTypeRef}}, nil,
-		[]string{"view_detail", "query_data"}, authz.ScopeEffective)
+		[]string{"view_detail", "query_data"}, authz.VisibilityMatchAll, authz.ScopeEffective)
 	if err != nil {
 		return nil, err
 	}

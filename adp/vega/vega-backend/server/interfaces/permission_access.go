@@ -15,6 +15,10 @@ import (
 )
 
 const (
+	// Visibility matching mode for PermissionResourcesFilter.
+	VISIBILITY_MATCH_ALL = "all"
+	VISIBILITY_MATCH_ANY = "any"
+
 	// Visitor type
 	ACCESSOR_TYPE_USER = "user"
 	ACCESSOR_TYPE_APP  = "app"
@@ -28,12 +32,13 @@ const (
 	AUTH_RESOURCE_TYPE_CONNECTOR_TYPE = "connector_type"
 
 	// Resource operation type
-	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
-	OPERATION_TYPE_CREATE      = "create"
-	OPERATION_TYPE_MODIFY      = "modify"
-	OPERATION_TYPE_DELETE      = "delete"
-	OPERATION_TYPE_AUTHORIZE   = "authorize"
-	OPERATION_TYPE_TASK_MANAGE = "task_manage"
+	OPERATION_TYPE_VIEW_DETAIL  = "view_detail"
+	OPERATION_TYPE_VIEW_SUMMARY = "view_summary"
+	OPERATION_TYPE_CREATE       = "create"
+	OPERATION_TYPE_MODIFY       = "modify"
+	OPERATION_TYPE_DELETE       = "delete"
+	OPERATION_TYPE_AUTHORIZE    = "authorize"
+	OPERATION_TYPE_TASK_MANAGE  = "task_manage"
 
 	// Data access is independent from view_detail: query_data reads resource data,
 	// while data_write creates, replaces, or deletes Dataset documents.
@@ -121,6 +126,8 @@ type PermissionResourcesFilter struct {
 	// CandidateOperations optionally narrows the reported operations for trusted
 	// callers. bkn-safe derives the complete type-specific set when this is empty.
 	CandidateOperations []string `json:"candidate_operations,omitempty"`
+	// VisibilityMatch selects how Operations determine visibility.
+	VisibilityMatch string `json:"visibility_match,omitempty"`
 	// AllowOperation selects the independent operation-projection axis. False
 	// returns visible resources only; true returns each resource's effective ops.
 	AllowOperation bool   `json:"allow_operation"`

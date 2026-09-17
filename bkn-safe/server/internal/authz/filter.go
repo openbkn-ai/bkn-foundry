@@ -30,6 +30,14 @@ type FilteredResource struct {
 	Decisions  []OperationDecision
 }
 
+// VisibilityMatch controls how visibility operations are combined.
+type VisibilityMatch string
+
+const (
+	VisibilityMatchAll VisibilityMatch = "all"
+	VisibilityMatchAny VisibilityMatch = "any"
+)
+
 // FilterResourceOps answers, for a batch of resource instances at once: which
 // of them the accessor may see, and which of the candidate operations it holds
 // on each.
@@ -52,8 +60,10 @@ type FilteredResource struct {
 // list pages this endpoint exists for would time out exactly as they did before
 // (#357). Instead the accessor's grants are resolved once and projected onto
 // each resource; TestFilterResourceOpsMatchesCheck pins the two paths together.
-func (en *Enforcer) FilterResourceOps(accessorID string, resources []ResourceRef, visibility, candidates []string) ([]FilteredResource, error) {
-	return en.filterResourceOps(context.Background(), accessorID, resources, visibility, candidates, ScopeEffective, true)
+func (en *Enforcer) FilterResourceOps(accessorID string, resources []ResourceRef,
+	visibility, candidates []string) ([]FilteredResource, error) {
+	return en.filterResourceOps(context.Background(), accessorID, resources,
+		visibility, candidates, VisibilityMatchAll, ScopeEffective, true)
 }
 
 // FilterResourceOpsScoped is the structured variant used by the HTTP API.
@@ -61,19 +71,24 @@ func (en *Enforcer) FilterResourceOps(accessorID string, resources []ResourceRef
 // every requested resource and one decision for every requested operation, so
 // a caller can distinguish an explicit deny from absence before doing its own
 // trusted parent fallback.
-func (en *Enforcer) FilterResourceOpsScoped(ctx context.Context, accessorID string, resources []ResourceRef,
-	visibility, candidates []string, scope EvaluationScope) ([]FilteredResource, error) {
-	return en.filterResourceOps(ctx, accessorID, resources, visibility, candidates, scope, true)
+func (en *Enforcer) FilterResourceOpsScoped(ctx context.Context,
+	accessorID string, resources []ResourceRef, visibility, candidates []string,
+	visibilityMatch VisibilityMatch, scope EvaluationScope) ([]FilteredResource, error) {
+	return en.filterResourceOps(ctx, accessorID, resources, visibility, candidates, visibilityMatch, scope, true)
 }
 
 // filterResourceOps performs the batched Casbin and hierarchy projection. The
 // provenance flag is disabled only while validating the human delegators that
 // back a managed proxy source; those checks must never recurse through proxy
 // provenance.
-func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, resources []ResourceRef,
-	visibility, candidates []string, scope EvaluationScope, validateProvenance bool) ([]FilteredResource, error) {
+func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string,
+	resources []ResourceRef, visibility, candidates []string, visibilityMatch VisibilityMatch,
+	scope EvaluationScope, validateProvenance bool) ([]FilteredResource, error) {
 	if scope != ScopeEffective && scope != ScopeLocal {
 		return nil, fmt.Errorf("unsupported evaluation scope %q", scope)
+	}
+	if visibilityMatch != VisibilityMatchAll && visibilityMatch != VisibilityMatchAny {
+		return nil, fmt.Errorf("unsupported visibility match %q", visibilityMatch)
 	}
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
@@ -172,9 +187,17 @@ func (en *Enforcer) filterResourceOps(ctx context.Context, accessorID string, re
 			out = append(out, item)
 			continue
 		}
-		visible := true
+		visible := visibilityMatch == VisibilityMatchAll
+		if len(visibility) == 0 {
+			visible = true
+		}
 		for _, op := range visibility {
-			if !resourceDecisions[op].Allowed() {
+			allowed := resourceDecisions[op].Allowed()
+			if visibilityMatch == VisibilityMatchAny && allowed {
+				visible = true
+				break
+			}
+			if visibilityMatch == VisibilityMatchAll && !allowed {
 				visible = false
 				break
 			}

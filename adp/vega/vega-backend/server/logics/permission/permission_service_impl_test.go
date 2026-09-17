@@ -243,7 +243,7 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 		svc := &PermissionServiceImpl{pa: access}
 
 		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
-			interfaces.AUTH_RESOURCE_TYPE_CATALOG, nil, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true,
+			interfaces.AUTH_RESOURCE_TYPE_CATALOG, nil, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true,
 		)
 
 		require.NoError(t, err)
@@ -267,7 +267,7 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 
 		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
 			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"catalog-1", "catalog-2"},
-			[]string{interfaces.OPERATION_TYPE_MODIFY}, false)
+			[]string{interfaces.OPERATION_TYPE_MODIFY}, interfaces.VISIBILITY_MATCH_ANY, false)
 
 		require.NoError(t, err)
 		assert.Equal(t, map[string]interfaces.PermissionResourceOps{
@@ -280,6 +280,7 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 			{ID: "catalog-2", Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG},
 		}, filter.Resources)
 		assert.Equal(t, []string{interfaces.OPERATION_TYPE_MODIFY}, filter.Operations)
+		assert.Equal(t, interfaces.VISIBILITY_MATCH_ANY, filter.VisibilityMatch)
 		assert.False(t, filter.AllowOperation)
 	})
 
@@ -291,7 +292,7 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 
 		got, err := svc.FilterResources(context.Background(),
 			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"catalog-1"},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
 
 		assertHTTPStatus(t, err, http.StatusForbidden)
 		assert.Nil(t, got)
@@ -306,7 +307,7 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 
 		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
 			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"catalog-1"},
-			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL, true)
 
 		assertHTTPStatus(t, err, http.StatusInternalServerError)
 		assert.Nil(t, got)

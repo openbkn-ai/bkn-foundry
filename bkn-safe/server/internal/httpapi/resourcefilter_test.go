@@ -73,6 +73,28 @@ func TestResourceFilterEndpoint(t *testing.T) {
 	}
 }
 
+func TestResourceFilterEndpointVisibilityMatchAny(t *testing.T) {
+	r, e, db := newTestServer(t)
+	const user = "u-any"
+	seedEnabledUser(t, db, user)
+	seedCatalogOps(t, db, "knowledge_network", "view_detail", "query_data")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-detail", "view_detail")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-query", "query_data")
+
+	got := postFilter(t, r, map[string]any{
+		"accessor_id":           user,
+		"resource_type":         "knowledge_network",
+		"resource_ids":          []string{"kn-detail", "kn-query", "kn-hidden"},
+		"visibility_operations": []string{"view_detail", "query_data"},
+		"visibility_match":      "any",
+		"candidate_operations":  []string{"view_detail", "query_data"},
+	})
+
+	if len(got) != 2 || got[0].ResourceID != "kn-detail" || got[1].ResourceID != "kn-query" {
+		t.Fatalf("visibility_match:any = %+v, want kn-detail and kn-query", got)
+	}
+}
+
 // TestResourceFilterEndpointMixedTypes covers the resources[] form with more
 // than one type in a single request.
 func TestResourceFilterEndpointMixedTypes(t *testing.T) {

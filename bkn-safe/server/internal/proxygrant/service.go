@@ -381,7 +381,7 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 		validCurrent := map[string]bool{}
 		if mappingErr == nil {
 			var err error
-			validCurrent, err = tx.CurrentProxySourceIDs(req.ProxyAccountID)
+			validCurrent, err = tx.CurrentProxySourceIDs(ctx, req.ProxyAccountID)
 			if err != nil {
 				return err
 			}
@@ -439,7 +439,7 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 			for operation := range operationSet {
 				operations = append(operations, operation)
 			}
-			filtered, err := tx.FilterResourceOpsRaw(req.GrantorID, resources, operations)
+			filtered, err := tx.FilterResourceOpsRaw(ctx, req.GrantorID, resources, operations)
 			if err != nil {
 				return err
 			}
@@ -587,7 +587,7 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 			current[keyForModel(row)] = row
 		}
 
-		validCurrent, err := tx.CurrentProxySourceIDs(req.ProxyAccountID)
+		validCurrent, err := tx.CurrentProxySourceIDs(ctx, req.ProxyAccountID)
 		if err != nil {
 			return err
 		}

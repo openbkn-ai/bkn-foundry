@@ -66,7 +66,8 @@ type safeFilteredResource struct {
 // of concrete grants when an operation has same-resource prerequisites: the
 // operation may be type-wide while its prerequisite is instance-specific.
 func (c *safeClient) filterResources(ctx context.Context, accessorID string,
-	resources []interfaces.PermissionResource, visibility, candidates []string, includeOperations bool) ([]safeFilteredResource, error) {
+	resources []interfaces.PermissionResource, visibility, candidates []string,
+	visibilityMatch string, includeOperations bool) ([]safeFilteredResource, error) {
 	var out struct {
 		Resources *[]safeFilteredResource `json:"resources"`
 	}
@@ -74,6 +75,7 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 		"accessor_id":           accessorID,
 		"resources":             resources,
 		"visibility_operations": visibility,
+		"visibility_match":      visibilityMatch,
 		"candidate_operations":  candidates,
 		"include_operations":    includeOperations,
 	}, &out); err != nil {
@@ -145,33 +147,11 @@ func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interf
 
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
-		filter.Operations, filter.CandidateOperations, filter.AllowOperation)
+		filter.Operations, filter.CandidateOperations, filter.VisibilityMatch, filter.AllowOperation)
 	if err != nil {
 		return nil, err
 	}
 	out := map[string]interfaces.PermissionResourceOps{}
-	for _, r := range resources {
-		out[r.ResourceID] = interfaces.PermissionResourceOps{
-			ResourceID: r.ResourceID,
-			Operations: r.Operations,
-		}
-	}
-	return out, nil
-}
-
-func (s *safePermissionAccess) GetResourcesOperations(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
-		nil, filter.CandidateOperations, true)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]interfaces.PermissionResourceOps, len(filter.Resources))
-	for _, r := range filter.Resources {
-		out[r.ID] = interfaces.PermissionResourceOps{
-			ResourceID: r.ID,
-			Operations: []string{},
-		}
-	}
 	for _, r := range resources {
 		out[r.ResourceID] = interfaces.PermissionResourceOps{
 			ResourceID: r.ResourceID,

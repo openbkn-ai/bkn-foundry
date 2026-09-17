@@ -12,7 +12,7 @@ import "context"
 type PermissionService interface {
 	CheckPermission(ctx context.Context, resource PermissionResource, ops []string) error
 	FilterResources(ctx context.Context, resourceType string, ids []string,
-		ops []string, allowOperation bool) (map[string]PermissionResourceOps, error)
+		ops []string, visibilityMatch string, allowOperation bool) (map[string]PermissionResourceOps, error)
 
 	CreateResources(ctx context.Context, resources []PermissionResource, ops []string) error
 	DeleteResources(ctx context.Context, resourceType string, ids []string) error

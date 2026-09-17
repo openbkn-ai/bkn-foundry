@@ -55,17 +55,18 @@ func (en *Enforcer) currentProxySourceIDs(ctx context.Context, proxyID string) (
 
 // CurrentProxySourceIDs exposes the batched validity projection to provenance
 // services already running inside the same authorization transaction.
-func (tx *PolicyTransaction) CurrentProxySourceIDs(proxyID string) (map[string]bool, error) {
-	_, valid, err := tx.enforcer.currentProxySourceIDs(context.Background(), proxyID)
+func (tx *PolicyTransaction) CurrentProxySourceIDs(ctx context.Context, proxyID string) (map[string]bool, error) {
+	_, valid, err := tx.enforcer.currentProxySourceIDs(ctx, proxyID)
 	return valid, err
 }
 
 // FilterResourceOpsRaw evaluates a non-managed delegator without applying
 // managed-proxy provenance. Callers must validate that the accessor is an
 // enabled, non-managed identity before using it.
-func (tx *PolicyTransaction) FilterResourceOpsRaw(accessorID string, resources []ResourceRef,
-	candidates []string) ([]FilteredResource, error) {
-	return tx.enforcer.filterResourceOps(context.Background(), accessorID, resources, nil, candidates, ScopeEffective, false)
+func (tx *PolicyTransaction) FilterResourceOpsRaw(ctx context.Context, accessorID string,
+	resources []ResourceRef, candidates []string) ([]FilteredResource, error) {
+	return tx.enforcer.filterResourceOps(ctx, accessorID, resources,
+		nil, candidates, VisibilityMatchAll, ScopeEffective, false)
 }
 
 func (en *Enforcer) validProxySourceIDs(ctx context.Context, sources []safemodel.ProxyGrantSource) (map[string]bool, error) {
@@ -142,7 +143,7 @@ func (en *Enforcer) validProxySourceIDs(ctx context.Context, sources []safemodel
 			continue
 		}
 		allowed, err := en.filterResourceOps(ctx, delegator, resources, nil,
-			sortedKeys(candidateSet), ScopeEffective, false)
+			sortedKeys(candidateSet), VisibilityMatchAll, ScopeEffective, false)
 		if err != nil {
 			return nil, err
 		}
