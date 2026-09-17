@@ -518,3 +518,35 @@ func TestBuildProxyGrantSourcesSkipsIncompleteSkillMount(t *testing.T) {
 		t.Fatalf("incomplete skill mount = (%#v, %v), want skipped without failing the projection", sources, err)
 	}
 }
+
+func TestProxyGrantSnapshotVersionIsCanonicalAndCoversAuthorizationFields(t *testing.T) {
+	first := interfaces.ProxyGrantSourceSpec{
+		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-a", KNID: "kn-1",
+		BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+		ResourceType: "resource", ResourceID: "resource-1", Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+	}
+	second := interfaces.ProxyGrantSourceSpec{
+		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-b", KNID: "kn-1",
+		BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-2",
+		ResourceType: "resource", ResourceID: "resource-2", Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+	}
+	version, err := proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reordered, err := proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{second, first})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reordered != version {
+		t.Fatalf("reordered snapshot version = %s, want %s", reordered, version)
+	}
+	second.Operation = interfaces.OPERATION_TYPE_QUERY_DATA
+	changed, err := proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == version {
+		t.Fatal("changing an authorization field did not change the snapshot version")
+	}
+}

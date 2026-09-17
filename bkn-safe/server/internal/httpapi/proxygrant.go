@@ -111,6 +111,8 @@ func writeProxyGrantError(c *gin.Context, err error) bool {
 		replyPublicError(c, http.StatusConflict)
 	case errors.Is(err, proxygrant.ErrSourceRequired):
 		replyPublicError(c, http.StatusConflict)
+	case errors.Is(err, proxygrant.ErrStaleSync):
+		replyPublicError(c, http.StatusConflict)
 	default:
 		serverError(c, err)
 	}

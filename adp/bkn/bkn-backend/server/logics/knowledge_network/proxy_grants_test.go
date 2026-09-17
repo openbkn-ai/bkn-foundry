@@ -206,16 +206,19 @@ func TestFinishProxyPublishDecidesAnUnseenSkillBeforeSync(t *testing.T) {
 		allowed: true, deniedResources: map[string]bool{"skill-1": true},
 	}}
 	service := newProjectionService(t, fixture, kpa, safe)
-	version := fixtureVersion(t, fixture)
 	// The preflight saw the model before the skill was mounted, as an import
 	// that mounts capabilities inside its transaction does.
 	sourcesWithoutSkill, _, err := buildProxyGrantSourcesWithCapabilities(fixture.kn, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	version, err := proxyGrantSnapshotVersion(sourcesWithoutSkill)
+	if err != nil {
+		t.Fatal(err)
+	}
 	plan := &proxyPublishPlan{
 		mapping:     &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"},
-		delegatorID: "grantor-1", modelVersion: version, grants: newProxyGrantSelection(sourcesWithoutSkill),
+		delegatorID: "grantor-1", modelVersion: version, grants: newProxyGrantSelection(sourcesWithoutSkill), lockOwner: "worker-1",
 	}
 
 	if err := service.finishProxyPublish(t.Context(), plan); err != nil {
@@ -237,7 +240,11 @@ func TestFinishProxyPublishSynchronizesAGrantableSkill(t *testing.T) {
 	kpa := &proxyAccessStub{}
 	safe := &skillAwareSafeStub{managedProxyAccessStub: &managedProxyAccessStub{allowed: true}}
 	service := newProjectionService(t, fixture, kpa, safe)
-	sources, version, err := buildProxyGrantSourcesWithCapabilities(fixture.kn, fixture.bindings)
+	sources, _, err := buildProxyGrantSourcesWithCapabilities(fixture.kn, fixture.bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := proxyGrantSnapshotVersion(sources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +254,7 @@ func TestFinishProxyPublishSynchronizesAGrantableSkill(t *testing.T) {
 	}
 	plan := &proxyPublishPlan{
 		mapping:     &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"},
-		delegatorID: "grantor-1", modelVersion: version, grants: grants,
+		delegatorID: "grantor-1", modelVersion: version, grants: grants, lockOwner: "worker-1",
 	}
 	if err := service.finishProxyPublish(t.Context(), plan); err != nil {
 		t.Fatal(err)
@@ -266,14 +273,23 @@ func TestFinishProxyPublishSynchronizesAGrantableSkill(t *testing.T) {
 	}
 }
 
-func TestResolveKNProxyBindingCacheFollowsSkillMountsThroughMappingVersion(t *testing.T) {
-	fixture := newSkillProjectionFixture()
-	version := fixtureVersion(t, fixture)
+func TestResolveKNProxyBindingFollowsPublishedSkillSnapshot(t *testing.T) {
+	source := func(bindingID, skillID string) interfaces.ProxyGrantSourceSpec {
+		return interfaces.ProxyGrantSourceSpec{
+			KNID: "kn-1", BindingType: interfaces.KNProxyBindingTypeCapability, BindingID: bindingID,
+			ResourceType: interfaces.KNProxyTargetTypeSkill, ResourceID: skillID, Operation: interfaces.OPERATION_TYPE_EXECUTE,
+		}
+	}
+	version, err := proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{source("binding-skill-1", "skill-1")})
+	if err != nil {
+		t.Fatal(err)
+	}
 	mapping := &interfaces.KNProxyAccount{
 		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
 		SyncStatus: interfaces.KNProxySyncReady, PublishedModelVersion: version, SyncedModelVersion: version, Version: 5,
 	}
-	service := newProjectionService(t, fixture, &proxyAccessStub{mapping: mapping}, nil)
+	proxyAccess := &proxyAccessStub{mapping: mapping, published: []interfaces.ProxyGrantSourceSpec{source("binding-skill-1", "skill-1")}}
+	service := &knowledgeNetworkService{kpa: proxyAccess}
 	skill := func(bindingID, skillID string) interfaces.KNProxyBinding {
 		return interfaces.KNProxyBinding{
 			ChildType: interfaces.KNProxyBindingTypeCapability, ChildID: bindingID,
@@ -281,29 +297,24 @@ func TestResolveKNProxyBindingCacheFollowsSkillMountsThroughMappingVersion(t *te
 		}
 	}
 
-	for range 2 {
-		if _, err := service.ResolveKNProxyBinding(t.Context(), "kn-1", skill("binding-skill-1", "skill-1")); err != nil {
-			t.Fatalf("mounted skill was refused: %v", err)
-		}
-	}
-	if fixture.exports != 1 {
-		t.Fatalf("exports = %d, want the second resolve served from the cache", fixture.exports)
+	if _, err := service.ResolveKNProxyBinding(t.Context(), "kn-1", skill("binding-skill-1", "skill-1")); err != nil {
+		t.Fatalf("published skill was refused: %v", err)
 	}
 
-	// Another replica releases skill-1 and mounts skill-2. The model version is
-	// unchanged; the synchronization that did it advanced the mapping's version.
-	fixture.bindings = []*interfaces.CapabilityBinding{{
-		ID: "binding-skill-2", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
-		CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-2",
-	}}
-	if fixtureVersion(t, fixture) != version {
-		t.Fatal("remounting a skill changed the model version")
+	// Another replica replaces the ready snapshot. No current-model export is
+	// needed to see the new binding and reject the removed one.
+	proxyAccess.published = []interfaces.ProxyGrantSourceSpec{source("binding-skill-2", "skill-2")}
+	version, err = proxyGrantSnapshotVersion(proxyAccess.published)
+	if err != nil {
+		t.Fatal(err)
 	}
 	mapping.Version = 7
+	mapping.PublishedModelVersion = version
+	mapping.SyncedModelVersion = version
 	if _, err := service.ResolveKNProxyBinding(t.Context(), "kn-1", skill("binding-skill-2", "skill-2")); err != nil {
 		t.Fatalf("newly mounted skill was refused: %v", err)
 	}
-	_, err := service.ResolveKNProxyBinding(t.Context(), "kn-1", skill("binding-skill-1", "skill-1"))
+	_, err = service.ResolveKNProxyBinding(t.Context(), "kn-1", skill("binding-skill-1", "skill-1"))
 	var httpErr *rest.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid {
 		t.Fatalf("released skill resolve error = %v, want ProxyBindingInvalid", err)

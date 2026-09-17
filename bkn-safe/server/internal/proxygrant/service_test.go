@@ -1081,6 +1081,48 @@ func TestAuditFailureRollsBackSourceAndPolicy(t *testing.T) {
 	assertAllowed(t, f, false)
 }
 
+func TestSyncRejectsLateGenerationWithoutRestoringRevokedSources(t *testing.T) {
+	f := newFixture(t)
+	f.authorize(t, "r-old", "query_data")
+	f.authorize(t, "r-new", "query_data")
+	oldSource := f.request("source-old", "ot-1", "r-old").Source
+	newSource := f.request("source-new", "ot-1", "r-new").Source
+
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, SyncGeneration: 2,
+		SnapshotVersion: "sha256:new", Sources: []proxygrant.SourceSpec{newSource},
+	}); err != nil {
+		t.Fatalf("newer Sync() error = %v", err)
+	}
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, SyncGeneration: 2,
+		SnapshotVersion: "sha256:different", Sources: []proxygrant.SourceSpec{oldSource},
+	}); !errors.Is(err, proxygrant.ErrStaleSync) {
+		t.Fatalf("same-generation, different snapshot Sync() error = %v, want ErrStaleSync", err)
+	}
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, SyncGeneration: 1,
+		SnapshotVersion: "sha256:old", Sources: []proxygrant.SourceSpec{oldSource},
+	}); !errors.Is(err, proxygrant.ErrStaleSync) {
+		t.Fatalf("late Sync() error = %v, want ErrStaleSync", err)
+	}
+	oldAllowed, err := f.enforcer.Check(f.proxyID, "resource", "r-old", "query_data")
+	if err != nil || oldAllowed {
+		t.Fatalf("old source allowed = %v, err = %v", oldAllowed, err)
+	}
+	newAllowed, err := f.enforcer.Check(f.proxyID, "resource", "r-new", "query_data")
+	if err != nil || !newAllowed {
+		t.Fatalf("new source allowed = %v, err = %v", newAllowed, err)
+	}
+	var mapping model.ManagedProxyAccount
+	if err := f.db.First(&mapping, "proxy_account_id = ?", f.proxyID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if mapping.GrantSyncGeneration != 2 || mapping.GrantSnapshotVersion != "sha256:new" {
+		t.Fatalf("fence = (%d, %q), want (2, sha256:new)", mapping.GrantSyncGeneration, mapping.GrantSnapshotVersion)
+	}
+}
+
 func TestFullSyncAndReconcileAreIdempotent(t *testing.T) {
 	f := newFixture(t)
 	f.authorize(t, "r-1", "query_data")

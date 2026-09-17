@@ -6,6 +6,7 @@ package kn_proxy
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -52,6 +53,18 @@ func TestResolveKnowledgeNetworkProxyUsesCallerAndCanonicalEndpoint(t *testing.T
 	}
 	if mapping.ProxyAccountID != "proxy-1" || mapping.Version != 2 {
 		t.Fatalf("unexpected mapping: %#v", mapping)
+	}
+}
+
+func TestResolveProxyBindingRequestOmitsUnknownTargetType(t *testing.T) {
+	body, err := json.Marshal(resolveProxyBindingRequest{
+		ChildType: "action_type", ChildID: "at-1", TargetID: "box-1", Operation: "execute",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != `{"child_type":"action_type","child_id":"at-1","target_id":"box-1","operation":"execute"}` {
+		t.Fatalf("request body = %s", body)
 	}
 }
 

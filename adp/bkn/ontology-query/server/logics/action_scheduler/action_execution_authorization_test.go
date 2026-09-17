@@ -22,8 +22,9 @@ type actionPermissionStub struct {
 }
 
 type actionProxyResolverStub struct {
-	err      error
-	bindings []interfaces.TrustedProxyBinding
+	err        error
+	targetType string
+	bindings   []interfaces.TrustedProxyBinding
 }
 
 func attachTestActionProxySnapshot(t *testing.T, execution *interfaces.ActionExecution,
@@ -61,12 +62,19 @@ func (s *actionProxyResolverStub) Resolve(ctx context.Context,
 	if caller.ID == "" {
 		caller = interfaces.AccountInfo{ID: "test-caller", Type: "user"}
 	}
+	resolved := binding
+	if resolved.TargetType == "" {
+		resolved.TargetType = s.targetType
+		if resolved.TargetType == "" {
+			resolved.TargetType = interfaces.ProxyTargetTypeToolBox
+		}
+	}
 	return &interfaces.TrustedProxyContext{
 		Caller:                caller,
 		Proxy:                 interfaces.AccountInfo{ID: "test-proxy", Type: interfaces.ProxyAccountTypeApp},
 		ProxyVersion:          2,
 		PublishedModelVersion: "model-v2",
-		Binding:               binding,
+		Binding:               resolved,
 	}, nil
 }
 
@@ -166,8 +174,6 @@ func TestExecuteActionProxyFailureStopsInstanceRead(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	objects := omock.NewMockObjectTypeService(ctrl)
-	aoAccess := omock.NewMockAgentOperatorAccess(ctrl)
-	aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), "box-1", "tool-1").Return(interfaces.ProxyTargetTypeToolBox, nil)
 	models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").Return(
 		interfaces.ActionType{
 			ATID:         "at-1",
@@ -176,7 +182,6 @@ func TestExecuteActionProxyFailureStopsInstanceRead(t *testing.T) {
 	proxyErr := errors.New("proxy unavailable")
 	service := &actionSchedulerService{
 		omAccess:    models,
-		aoAccess:    aoAccess,
 		ots:         objects,
 		permissions: &actionPermissionStub{},
 		proxy:       &actionProxyResolverStub{err: proxyErr},
@@ -194,10 +199,7 @@ func TestExecuteActionProxyFailureStopsInstanceRead(t *testing.T) {
 
 func TestResolveActionProxyContextKeepsDownstreamPermissionSeparate(t *testing.T) {
 	resolver := &actionProxyResolverStub{}
-	ctrl := gomock.NewController(t)
-	aoAccess := omock.NewMockAgentOperatorAccess(ctrl)
-	aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), "box-1", "tool-1").Return(interfaces.ProxyTargetTypeToolBox, nil)
-	service := &actionSchedulerService{proxy: resolver, aoAccess: aoAccess}
+	service := &actionSchedulerService{proxy: resolver}
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: "caller-1", Type: "user"})
 	proxy, requirements, err := service.resolveActionProxyContext(ctx, "kn-1", &interfaces.ActionType{
@@ -219,11 +221,8 @@ func TestResolveActionProxyContextKeepsDownstreamPermissionSeparate(t *testing.T
 }
 
 func TestResolveFunctionActionProxyContextUsesFunctionGrant(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	aoAccess := omock.NewMockAgentOperatorAccess(ctrl)
-	aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), "box-fn", "fn-1").Return(interfaces.ProxyTargetTypeFunction, nil)
-	resolver := &actionProxyResolverStub{}
-	service := &actionSchedulerService{proxy: resolver, aoAccess: aoAccess}
+	resolver := &actionProxyResolverStub{targetType: interfaces.ProxyTargetTypeFunction}
+	service := &actionSchedulerService{proxy: resolver}
 	_, requirements, err := service.resolveActionProxyContext(t.Context(), "kn-1", &interfaces.ActionType{
 		ATID: "at-fn", ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-fn", ToolID: "fn-1"},
 	})
@@ -231,7 +230,7 @@ func TestResolveFunctionActionProxyContextUsesFunctionGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(requirements) != 1 || requirements[0].ResourceType != interfaces.PermissionResourceTypeFunction ||
-		len(resolver.bindings) != 1 || resolver.bindings[0].TargetType != interfaces.ProxyTargetTypeFunction {
+		len(resolver.bindings) != 1 || resolver.bindings[0].TargetType != "" {
 		t.Fatalf("function proxy requirements=%#v bindings=%#v", requirements, resolver.bindings)
 	}
 }

@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	proxyLockLease = 5 * time.Minute
-	proxyLockWait  = 30 * time.Second
+	proxyLockLease             = 5 * time.Minute
+	proxyLockWait              = 30 * time.Second
+	proxyDeleteSnapshotVersion = "deleted"
 )
 
 type proxyPublishPlan struct {
@@ -36,17 +37,8 @@ type proxyPublishPlan struct {
 	// sources it checked and which best-effort sources it left out.
 	grants         *proxyGrantSelection
 	lockOwner      string
+	syncGeneration int64
 	createdMapping bool
-}
-
-// publishedProxyBindingCacheEntry caches one network's derived sources. Skill
-// sources are outside the model version, so the entry is also keyed by the
-// mapping's own version, which every synchronization advances: a Skill mounted
-// or released on another replica still invalidates this one's entry.
-type publishedProxyBindingCacheEntry struct {
-	modelVersion   string
-	mappingVersion int64
-	sources        []interfaces.ProxyGrantSourceSpec
 }
 
 type missingProxyPermission struct {
@@ -99,7 +91,7 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 		}
 		candidate = mergeProxyMutationChanges(current, kn, mergeMode)
 	}
-	sources, version, err := kns.buildProxyGrantSources(ctx, candidate, nil)
+	sources, _, err := kns.buildProxyGrantSources(ctx, candidate, nil)
 	if err != nil {
 		return nil, invalidProxyTargetError(ctx, err)
 	}
@@ -113,7 +105,10 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 	}
 	plan.grants = grants
 	plan.resolvedSources = grants.resolved
-	plan.modelVersion = version
+	plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
+	if err != nil {
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
+	}
 	releaseOnError = false
 	return plan, nil
 }
@@ -375,7 +370,7 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		return err
 	}
 	candidate := mergeProxyMutationChanges(current, changes, mergeMode)
-	sources, version, err := kns.buildProxyGrantSources(ctx, candidate, nil)
+	sources, _, err := kns.buildProxyGrantSources(ctx, candidate, nil)
 	if err != nil {
 		return invalidProxyTargetError(ctx, err)
 	}
@@ -389,7 +384,10 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	}
 	plan.grants = grants
 	plan.resolvedSources = grants.resolved
-	plan.modelVersion = version
+	plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
+	if err != nil {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
+	}
 
 	mutationCtx := interfaces.WithVerifiedDependencySources(ctx, plan.resolvedSources)
 	mutationCtx, parentTracker, parentTrackerOwner := permission.WithResourceParentTracker(mutationCtx)
@@ -491,7 +489,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 		result = &interfaces.KNCapabilityMutationResult{}
 	}
 	desiredBindings := mergeProxyCapabilityBindings(currentBindings, result.Bindings, removedBindingIDs)
-	sources, version, err := kns.buildTypedProxyGrantSourcesWithCapabilities(ctx, latest, desiredBindings)
+	sources, _, err := kns.buildTypedProxyGrantSourcesWithCapabilities(ctx, latest, desiredBindings)
 	if err != nil {
 		rollback()
 		return nil, invalidProxyTargetError(ctx, err)
@@ -510,7 +508,11 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 	}
 	plan.grants = grants
 	plan.resolvedSources = grants.resolved
-	plan.modelVersion = version
+	plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
+	if err != nil {
+		rollback()
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
+	}
 	if err := kns.markProxyPending(ctx, tx, plan); err != nil {
 		rollback()
 		return nil, err
@@ -703,9 +705,12 @@ func (kns *knowledgeNetworkService) markProxyPending(ctx context.Context, tx *sq
 	if plan == nil {
 		return nil
 	}
-	if err := kns.kpa.SetPending(ctx, tx, plan.mapping.KNID, plan.modelVersion, plan.delegatorID, time.Now().UnixMilli()); err != nil {
+	generation, err := kns.kpa.SetPending(ctx, tx, plan.mapping.KNID, plan.modelVersion, plan.delegatorID,
+		plan.lockOwner, time.Now().UnixMilli())
+	if err != nil {
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "mark proxy synchronization pending")
 	}
+	plan.syncGeneration = generation
 	return nil
 }
 
@@ -715,19 +720,13 @@ func (kns *knowledgeNetworkService) finishProxyPublish(ctx context.Context, plan
 	}
 	latest, err := kns.ExportKNForProjection(ctx, plan.mapping.KNID)
 	if err != nil {
-		kns.recordProxySyncFailure(ctx, plan, plan.modelVersion, err)
+		kns.recordProxySyncFailure(ctx, plan, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "reload latest published main model")
 	}
-	sources, latestVersion, err := kns.buildProxyGrantSources(ctx, latest, nil)
+	sources, _, err := kns.buildProxyGrantSources(ctx, latest, nil)
 	if err != nil {
-		kns.recordProxySyncFailure(ctx, plan, plan.modelVersion, err)
+		kns.recordProxySyncFailure(ctx, plan, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "derive latest proxy permissions")
-	}
-	if latestVersion != plan.modelVersion {
-		if err := kns.markProxyPendingInNewTransaction(ctx, plan, latestVersion); err != nil {
-			return err
-		}
-		plan.modelVersion = latestVersion
 	}
 	// The latest model can carry a Skill the preflight never saw, such as one an
 	// import mounted inside its transaction. Sync is all-or-nothing, so decide
@@ -735,20 +734,39 @@ func (kns *knowledgeNetworkService) finishProxyPublish(ctx context.Context, plan
 	if plan.grants.needsRecheck(sources) {
 		grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
 		if err != nil {
-			kns.recordProxySyncFailure(ctx, plan, latestVersion, err)
+			kns.recordProxySyncFailure(ctx, plan, err)
 			return err
 		}
 		plan.grants = grants
 	}
 	sources = plan.grants.materialized(sources)
+	latestVersion, err := proxyGrantSnapshotVersion(sources)
+	if err != nil {
+		kns.recordProxySyncFailure(ctx, plan, err)
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash latest proxy grant snapshot")
+	}
+	if latestVersion != plan.modelVersion {
+		if err := kns.markProxyPendingInNewTransaction(ctx, plan, latestVersion); err != nil {
+			return err
+		}
+		plan.modelVersion = latestVersion
+	}
+	// Renew immediately before the external write. bkn-safe also rejects an
+	// older generation, so a publisher that loses this lease cannot overwrite a
+	// newer grant snapshot even if its request arrives late.
+	if err := kns.renewProxyLock(ctx, plan); err != nil {
+		kns.recordProxySyncFailure(ctx, plan, err)
+		return err
+	}
 	plan.grants.logSkipped(ctx, plan.mapping.KNID)
-	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources); err != nil {
-		kns.recordProxySyncFailure(ctx, plan, latestVersion, err)
+	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration,
+		latestVersion, sources); err != nil {
+		kns.recordProxySyncFailure(ctx, plan, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "synchronize latest proxy permissions")
 	}
-	updated, err := kns.kpa.SetSyncResult(ctx, plan.mapping.KNID, latestVersion,
-		interfaces.KNProxySyncReady, latestVersion, "", time.Now().UnixMilli())
-	if err != nil || !updated {
+	if err := kns.kpa.ReplacePublishedSnapshotAndMarkReady(ctx, plan.mapping.KNID, plan.syncGeneration,
+		plan.lockOwner, latestVersion, sources, time.Now().UnixMilli()); err != nil {
+		kns.recordProxySyncFailure(ctx, plan, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "record proxy synchronization result")
 	}
 	return nil
@@ -768,10 +786,11 @@ func (kns *knowledgeNetworkService) markProxyPendingInNewTransaction(ctx context
 	if err := tx.Commit(); err != nil {
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "commit proxy synchronization state update")
 	}
+	plan.syncGeneration = copy.syncGeneration
 	return nil
 }
 
-func (kns *knowledgeNetworkService) recordProxySyncFailure(ctx context.Context, plan *proxyPublishPlan, modelVersion string, cause error) {
+func (kns *knowledgeNetworkService) recordProxySyncFailure(ctx context.Context, plan *proxyPublishPlan, cause error) {
 	detail := fmt.Sprintf("%T", cause)
 	if cause != nil {
 		detail = cause.Error()
@@ -779,8 +798,8 @@ func (kns *knowledgeNetworkService) recordProxySyncFailure(ctx context.Context, 
 			detail = detail[:1024]
 		}
 	}
-	if _, err := kns.kpa.SetSyncResult(context.WithoutCancel(ctx), plan.mapping.KNID, modelVersion,
-		interfaces.KNProxySyncFailed, "", detail, time.Now().UnixMilli()); err != nil {
+	if _, err := kns.kpa.MarkSyncFailed(context.WithoutCancel(ctx), plan.mapping.KNID, plan.syncGeneration,
+		plan.lockOwner, detail, time.Now().UnixMilli()); err != nil {
 		otellog.LogError(ctx, "Record proxy synchronization failure failed", err)
 	}
 }
@@ -807,6 +826,22 @@ func (kns *knowledgeNetworkService) acquireProxyLock(ctx context.Context, knID, 
 		case <-timer.C:
 		}
 	}
+}
+
+func (kns *knowledgeNetworkService) renewProxyLock(ctx context.Context, plan *proxyPublishPlan) error {
+	if plan == nil || plan.lockOwner == "" {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "knowledge network publication lock is unavailable")
+	}
+	now := time.Now()
+	acquired, err := kns.kpa.RenewLock(ctx, plan.mapping.KNID, plan.lockOwner,
+		now.UnixMilli(), now.Add(proxyLockLease).UnixMilli())
+	if err != nil {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "renew knowledge network publish lock")
+	}
+	if !acquired {
+		return proxyHTTPError(ctx, http.StatusConflict, "knowledge network publication lock expired")
+	}
+	return nil
 }
 
 func (kns *knowledgeNetworkService) releaseProxyLock(ctx context.Context, plan *proxyPublishPlan) {
@@ -865,9 +900,16 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "record disabled knowledge network proxy")
 		}
 	}
-	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID,
+	if err := kns.renewProxyLock(ctx, plan); err != nil {
+		return err
+	}
+	generation, err := kns.kpa.ReserveSyncGeneration(ctx, plan.mapping.KNID, plan.lockOwner, time.Now().UnixMilli())
+	if err != nil {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "reserve proxy deletion synchronization generation")
+	}
+	plan.syncGeneration = generation
+	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration, proxyDeleteSnapshotVersion,
 		[]interfaces.ProxyGrantSourceSpec{}); err != nil {
-		kns.recordProxySyncFailure(ctx, plan, plan.mapping.PublishedModelVersion, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grants")
 	}
 	if !alreadyArchived {
@@ -1013,129 +1055,111 @@ func (kns *knowledgeNetworkService) ListGovernedKNProxies(ctx context.Context) (
 }
 
 // ResolveKNProxyBinding validates a server-derived runtime target against the
-// latest published main model and returns the proxy mapping only when that
-// exact model version has finished permission synchronization.
+// grant snapshot that was synchronized to bkn-safe and returns the proxy
+// mapping only when that snapshot is ready.
 func (kns *knowledgeNetworkService) ResolveKNProxyBinding(ctx context.Context, knID string,
 	binding interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, error) {
-	mapping, sources, err := kns.readyPublishedProxyBindings(ctx, knID)
+	mapping, err := kns.readyPublishedProxyMapping(ctx, knID)
 	if err != nil {
 		return nil, err
 	}
-	if !containsProxyBinding(sources, knID, binding) {
+	if !validProxyBindingLookup(binding) {
 		return nil, proxyStateHTTPError(ctx, http.StatusForbidden,
-			berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid, "target is not a current published binding")
+			berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid, "proxy binding is invalid")
 	}
-	return mapping, nil
+	resolved, err := kns.kpa.ResolvePublishedBinding(ctx, knID, binding)
+	if err != nil {
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "load published proxy grant binding")
+	}
+	if resolved == nil {
+		return nil, proxyStateHTTPError(ctx, http.StatusForbidden,
+			berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid, "target is not a published proxy grant binding")
+	}
+	result := *mapping
+	result.ResolvedBinding = resolved
+	return &result, nil
 }
 
 // ResolveKNProxyBindings is the batch form of ResolveKNProxyBinding for BKN's
-// own reads: the mapping state and the published projection are checked once,
-// with the same errors, and every binding is then matched against that
-// projection. It returns only the bindings that are current published
-// bindings; a binding that is not one is left out rather than failing the
-// others, because each belongs to a different child.
+// own reads: the mapping state is checked once and every valid request binding
+// is matched against the synchronized snapshot. It returns only the bindings
+// that were actually published; a binding that is not one is left out rather
+// than failing the others, because each belongs to a different child.
 func (kns *knowledgeNetworkService) ResolveKNProxyBindings(ctx context.Context, knID string,
 	bindings []interfaces.KNProxyBinding) (*interfaces.KNProxyAccount, []interfaces.KNProxyBinding, error) {
-	mapping, sources, err := kns.readyPublishedProxyBindings(ctx, knID)
+	mapping, err := kns.readyPublishedProxyMapping(ctx, knID)
 	if err != nil {
 		return nil, nil, err
 	}
-	resolved := make([]interfaces.KNProxyBinding, 0, len(bindings))
+	valid := make([]interfaces.KNProxyBinding, 0, len(bindings))
 	for _, binding := range bindings {
-		if containsProxyBinding(sources, knID, binding) {
-			resolved = append(resolved, binding)
+		if validProxyBinding(binding) {
+			valid = append(valid, binding)
 		}
+	}
+	resolved, err := kns.kpa.ResolvePublishedBindings(ctx, knID, valid)
+	if err != nil {
+		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "load published proxy grant bindings")
 	}
 	return mapping, resolved, nil
 }
 
-// readyPublishedProxyBindings returns the proxy mapping of a knowledge network
-// together with the bindings of its latest published main model, only when that
-// exact model version has finished permission synchronization.
-func (kns *knowledgeNetworkService) readyPublishedProxyBindings(ctx context.Context,
-	knID string) (*interfaces.KNProxyAccount, []interfaces.ProxyGrantSourceSpec, error) {
+// readyPublishedProxyMapping returns the proxy mapping only when its persisted
+// grant snapshot has finished synchronization. It intentionally does not load
+// the current knowledge-network projection or execution-factory metadata.
+func (kns *knowledgeNetworkService) readyPublishedProxyMapping(ctx context.Context,
+	knID string) (*interfaces.KNProxyAccount, error) {
 	if kns.kpa == nil {
-		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "proxy orchestration is disabled")
 	}
 	mapping, err := kns.kpa.Get(ctx, knID)
 	if err != nil {
-		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable, "load knowledge network proxy mapping")
 	}
 	if mapping == nil {
-		return nil, nil, proxyStateHTTPError(ctx, http.StatusNotFound,
+		return nil, proxyStateHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound, "knowledge network proxy mapping not found")
 	}
 	if mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive {
-		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_KnowledgeNetwork_ProxyDisabled, "knowledge network proxy is not active")
 	}
 	if mapping.SyncStatus == interfaces.KNProxySyncFailed {
-		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_KnowledgeNetwork_ProxySyncFailed, "knowledge network proxy synchronization failed")
 	}
 	if mapping.SyncStatus != interfaces.KNProxySyncReady ||
 		mapping.PublishedModelVersion == "" || mapping.SyncedModelVersion != mapping.PublishedModelVersion {
-		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
-			"knowledge network proxy is not synchronized with the current published model")
+			"knowledge network proxy grant snapshot is not ready")
 	}
-	sources, modelVersion, err := kns.loadPublishedProxyBindings(ctx, knID, mapping.PublishedModelVersion, mapping.Version)
-	if err != nil {
-		return nil, nil, err
-	}
-	// loadPublishedProxyBindings already refuses any other version; this keeps
-	// the guarantee local to the function that hands out the mapping.
-	if mapping.PublishedModelVersion != modelVersion || mapping.SyncedModelVersion != modelVersion {
-		return nil, nil, proxyStateHTTPError(ctx, http.StatusServiceUnavailable,
-			berrors.BknBackend_KnowledgeNetwork_ProxySyncPending,
-			"knowledge network proxy is not synchronized with the current published model")
-	}
-	return mapping, sources, nil
+	return mapping, nil
 }
 
-func (kns *knowledgeNetworkService) loadPublishedProxyBindings(ctx context.Context, knID,
-	expectedVersion string, mappingVersion int64) ([]interfaces.ProxyGrantSourceSpec, string, error) {
-	if cached, ok := kns.proxyBindingCache.Load(knID); ok {
-		entry, valid := cached.(publishedProxyBindingCacheEntry)
-		if valid && entry.modelVersion == expectedVersion && entry.mappingVersion == mappingVersion {
-			return entry.sources, entry.modelVersion, nil
-		}
-	}
-	latest, err := kns.ExportKNForProjection(ctx, knID)
-	if err != nil {
-		return nil, "", proxyHTTPError(ctx, http.StatusServiceUnavailable, "load current published proxy bindings")
-	}
-	sources, modelVersion, err := kns.buildProxyGrantSources(ctx, latest, nil)
-	if err != nil {
-		return nil, "", invalidProxyTargetError(ctx, err)
-	}
-	if modelVersion != expectedVersion {
-		return nil, "", proxyHTTPError(ctx, http.StatusServiceUnavailable,
-			"knowledge network proxy is not synchronized with the current published model")
-	}
-	entry := publishedProxyBindingCacheEntry{modelVersion: modelVersion, mappingVersion: mappingVersion, sources: sources}
-	kns.proxyBindingCache.Store(knID, entry)
-	return entry.sources, entry.modelVersion, nil
-}
-
-func containsProxyBinding(sources []interfaces.ProxyGrantSourceSpec, knID string,
-	binding interfaces.KNProxyBinding) bool {
+func validProxyBinding(binding interfaces.KNProxyBinding) bool {
 	values := []string{binding.ChildType, binding.ChildID, binding.TargetType, binding.TargetID, binding.Operation}
 	for _, value := range values {
 		if strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value || strings.ContainsAny(value, "*\r\n") {
 			return false
 		}
 	}
-	for _, source := range sources {
-		if source.KNID == knID && source.BindingType == binding.ChildType && source.BindingID == binding.ChildID &&
-			source.ResourceType == binding.TargetType && source.ResourceID == binding.TargetID &&
-			source.Operation == binding.Operation {
-			return true
+	return true
+}
+
+func validProxyBindingLookup(binding interfaces.KNProxyBinding) bool {
+	values := []string{binding.ChildType, binding.ChildID, binding.TargetID, binding.Operation}
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value || strings.ContainsAny(value, "*\r\n") {
+			return false
 		}
 	}
-	return false
+	return binding.TargetType == "" ||
+		(strings.TrimSpace(binding.TargetType) == binding.TargetType && !strings.ContainsAny(binding.TargetType, "*\r\n"))
 }
 
 // PlanKNProxySync is a side-effect-free backfill and publication dry run. It

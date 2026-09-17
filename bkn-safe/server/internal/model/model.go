@@ -73,8 +73,12 @@ type ManagedProxyAccount struct {
 	ManagedResourceID   string `gorm:"size:128;uniqueIndex:uidx_managed_proxy_resource,priority:3"`
 	LifecycleStatus     string `gorm:"size:16;index"`
 	Version             uint64
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	// GrantSyncGeneration fences full grant-set replacement requests from BKN.
+	// A lower generation must never restore sources removed by a newer publish.
+	GrantSyncGeneration  uint64 `gorm:"not null;default:0"`
+	GrantSnapshotVersion string `gorm:"size:80;not null;default:''"`
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 const (

@@ -37,7 +37,7 @@ func TestResolveKNProxyBindingEndpointUsesServerMapping(t *testing.T) {
 			if account.ID != "caller-1" || account.Type != "user" {
 				t.Fatalf("unexpected caller context: %#v", account)
 			}
-			return &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"}, nil
+			return &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1", ResolvedBinding: &binding}, nil
 		})
 
 	req := httptest.NewRequest(http.MethodPost,
@@ -50,6 +50,9 @@ func TestResolveKNProxyBindingEndpointUsesServerMapping(t *testing.T) {
 	engine.ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"resolved_binding"`) {
+		t.Fatalf("response does not include the resolved snapshot binding: %s", recorder.Body.String())
 	}
 }
 

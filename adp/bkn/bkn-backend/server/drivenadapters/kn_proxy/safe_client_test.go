@@ -66,13 +66,16 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 	})
 	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/sync", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			ProxyID string `json:"proxy_account_id"`
-			Grantor string `json:"grantor_id"`
+			ProxyID         string `json:"proxy_account_id"`
+			Grantor         string `json:"grantor_id"`
+			SyncGeneration  int64  `json:"sync_generation"`
+			SnapshotVersion string `json:"snapshot_version"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body.ProxyID != "proxy-1" || body.Grantor != "grantor-1" {
+		if body.ProxyID != "proxy-1" || body.Grantor != "grantor-1" ||
+			body.SyncGeneration != 7 || body.SnapshotVersion != "sha256:snapshot-7" {
 			t.Fatalf("sync body = %#v", body)
 		}
 		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantSyncResult{Transferred: 1})
@@ -124,7 +127,7 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 		len(batchResult.ResolvedSources) != 1 || batchResult.ResolvedSources[0].GrantedBy != "historical-grantor" {
 		t.Fatalf("CheckGrants() = %#v, %v", batchResult, err)
 	}
-	syncResult, err := client.SyncGrants(t.Context(), "proxy-1", "grantor-1", nil)
+	syncResult, err := client.SyncGrants(t.Context(), "proxy-1", "grantor-1", 7, "sha256:snapshot-7", nil)
 	if err != nil || syncResult.Transferred != 1 {
 		t.Fatalf("SyncGrants() = %#v, %v", syncResult, err)
 	}

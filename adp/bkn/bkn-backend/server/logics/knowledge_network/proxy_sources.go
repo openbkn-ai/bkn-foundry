@@ -69,8 +69,8 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 	}
 
 	// addSource records one grant source. inVersion says whether the binding
-	// also enters the model version digest; see the Skill case below for the
-	// one kind that does not.
+	// also enters the planning projection digest; the published authorization
+	// snapshot has its own digest after materialization.
 	addSource := func(inVersion bool, bindingType, bindingID, resourceType, resourceID, operation, detail string) error {
 		bindingID = strings.TrimSpace(bindingID)
 		resourceID = strings.TrimSpace(resourceID)
@@ -261,10 +261,9 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 		case interfaces.CAPABILITY_TYPE_SKILL:
 			// The proxy reads a mounted Skill for callers who may view the network
 			// (#1550); running one stays caller-scoped. The source is resolvable and
-			// synchronized like any other, but it stays out of the model version:
-			// that version gates every proxied read of the network, and a Skill
-			// grant is best effort, so a Skill must never be what holds a network's
-			// data and execution bindings back.
+			// synchronized like any other, but it stays out of the planning projection
+			// digest because it is best effort. A materialized Skill enters the published
+			// authorization snapshot digest after synchronization succeeds.
 			// Unlike a tool, an incomplete Skill row is skipped rather than rejected:
 			// rejecting it would fail the whole projection, and with it the network.
 			if strings.TrimSpace(capability.CapabilityID) == "" || strings.TrimSpace(capability.ID) == "" {
@@ -425,4 +424,30 @@ func indirectRelationProxyResource(mappingRules any) (*interfaces.ResourceInfo, 
 func stableProxySourceID(knID, bindingType, bindingID string) string {
 	digest := sha256.Sum256([]byte(strings.Join([]string{knID, bindingType, bindingID}, "\x00")))
 	return hex.EncodeToString(digest[:])
+}
+
+// proxyGrantSnapshotVersion returns the stable identifier of the exact source
+// set handed to bkn-safe. Query authorization always reads the persisted source
+// rows, never recomputes this value from the current model.
+func proxyGrantSnapshotVersion(sources []interfaces.ProxyGrantSourceSpec) (string, error) {
+	canonicalSources := append([]interfaces.ProxyGrantSourceSpec(nil), sources...)
+	sort.Slice(canonicalSources, func(i, j int) bool {
+		left := strings.Join([]string{
+			canonicalSources[i].SourceType, canonicalSources[i].SourceID, canonicalSources[i].KNID,
+			canonicalSources[i].BindingType, canonicalSources[i].BindingID, canonicalSources[i].ResourceType,
+			canonicalSources[i].ResourceID, canonicalSources[i].Operation,
+		}, "\x00")
+		right := strings.Join([]string{
+			canonicalSources[j].SourceType, canonicalSources[j].SourceID, canonicalSources[j].KNID,
+			canonicalSources[j].BindingType, canonicalSources[j].BindingID, canonicalSources[j].ResourceType,
+			canonicalSources[j].ResourceID, canonicalSources[j].Operation,
+		}, "\x00")
+		return left < right
+	})
+	canonical, err := json.Marshal(canonicalSources)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(canonical)
+	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }

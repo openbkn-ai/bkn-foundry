@@ -22,7 +22,7 @@ info:
     proxy.
 
     Accepted resource type and operation pairs: `resource` with `view_detail` or `query_data`;
-    `tool_box`, `mcp` and `skill` with `execute`. Any other pair is rejected with 400. A `skill`
+    `tool_box`, `function`, `mcp` and `skill` with `execute`. Any other pair is rejected with 400. A `skill`
     source lets Context Loader read a Skill mounted on the network as the network's proxy; the
     execution factory's Skill read accepts `execute`. Context Loader never runs a Skill as the proxy.
 servers:
@@ -181,7 +181,9 @@ paths:
         historical delegator is preserved; an invalid one is transferred to the sync actor only
         when that actor holds the exact downstream operation. If one source cannot be established
         or transferred, the entire synchronization is rejected without changing sources or
-        policies. Removed entries do not affect manual sources or other active sources.
+        policies. Removed entries do not affect manual sources or other active sources. A positive
+        `sync_generation` is a per-proxy fencing token: bkn-safe rejects a lower generation so a
+        delayed publisher cannot restore an older source set.
       requestBody:
         required: true
         content:
@@ -257,7 +259,7 @@ components:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Conflict:
-      description: The proxy account is inactive, or the requested source is still required by another active operation
+      description: The proxy account is inactive, the requested source is still required by another active operation, or a synchronization generation is stale
       content:
         application/json:
           schema:
@@ -315,7 +317,7 @@ components:
     SyncRequest:
       type: object
       additionalProperties: false
-      required: [proxy_account_id, grantor_id, sources]
+      required: [proxy_account_id, grantor_id, sync_generation, snapshot_version, sources]
       properties:
         proxy_account_id:
           type: string
@@ -325,6 +327,15 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+        sync_generation:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Per-proxy monotonic fencing token. `0` is reserved for legacy cleanup before a fenced publication exists.
+        snapshot_version:
+          type: string
+          maxLength: 80
+          description: Immutable digest of the source set for this generation; required when sync_generation is positive.
         sources:
           type: array
           items:
@@ -356,7 +367,7 @@ components:
       properties:
         resource_type:
           type: string
-          enum: [resource, tool_box, mcp, skill]
+          enum: [resource, tool_box, function, mcp, skill]
         resource_id:
           type: string
           minLength: 1

@@ -103,6 +103,21 @@ func (mr *MockKNProxyAccessMockRecorder) ListProxyConflicts(ctx any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProxyConflicts", reflect.TypeOf((*MockKNProxyAccess)(nil).ListProxyConflicts), ctx)
 }
 
+// MarkSyncFailed mocks base method.
+func (m *MockKNProxyAccess) MarkSyncFailed(ctx context.Context, knID string, generation int64, lockOwner, lastError string, updatedAt int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkSyncFailed", ctx, knID, generation, lockOwner, lastError, updatedAt)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MarkSyncFailed indicates an expected call of MarkSyncFailed.
+func (mr *MockKNProxyAccessMockRecorder) MarkSyncFailed(ctx, knID, generation, lockOwner, lastError, updatedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkSyncFailed", reflect.TypeOf((*MockKNProxyAccess)(nil).MarkSyncFailed), ctx, knID, generation, lockOwner, lastError, updatedAt)
+}
+
 // ReleaseLock mocks base method.
 func (m *MockKNProxyAccess) ReleaseLock(ctx context.Context, knID, owner string, updatedAt int64) error {
 	m.ctrl.T.Helper()
@@ -115,6 +130,80 @@ func (m *MockKNProxyAccess) ReleaseLock(ctx context.Context, knID, owner string,
 func (mr *MockKNProxyAccessMockRecorder) ReleaseLock(ctx, knID, owner, updatedAt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseLock", reflect.TypeOf((*MockKNProxyAccess)(nil).ReleaseLock), ctx, knID, owner, updatedAt)
+}
+
+// RenewLock mocks base method.
+func (m *MockKNProxyAccess) RenewLock(ctx context.Context, knID, owner string, now, lockUntil int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenewLock", ctx, knID, owner, now, lockUntil)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RenewLock indicates an expected call of RenewLock.
+func (mr *MockKNProxyAccessMockRecorder) RenewLock(ctx, knID, owner, now, lockUntil any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenewLock", reflect.TypeOf((*MockKNProxyAccess)(nil).RenewLock), ctx, knID, owner, now, lockUntil)
+}
+
+// ReplacePublishedSnapshotAndMarkReady mocks base method.
+func (m *MockKNProxyAccess) ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID string, generation int64, lockOwner, snapshotVersion string, sources []interfaces.ProxyGrantSourceSpec, updatedAt int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplacePublishedSnapshotAndMarkReady", ctx, knID, generation, lockOwner, snapshotVersion, sources, updatedAt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReplacePublishedSnapshotAndMarkReady indicates an expected call of ReplacePublishedSnapshotAndMarkReady.
+func (mr *MockKNProxyAccessMockRecorder) ReplacePublishedSnapshotAndMarkReady(ctx, knID, generation, lockOwner, snapshotVersion, sources, updatedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplacePublishedSnapshotAndMarkReady", reflect.TypeOf((*MockKNProxyAccess)(nil).ReplacePublishedSnapshotAndMarkReady), ctx, knID, generation, lockOwner, snapshotVersion, sources, updatedAt)
+}
+
+// ReserveSyncGeneration mocks base method.
+func (m *MockKNProxyAccess) ReserveSyncGeneration(ctx context.Context, knID, lockOwner string, updatedAt int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReserveSyncGeneration", ctx, knID, lockOwner, updatedAt)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReserveSyncGeneration indicates an expected call of ReserveSyncGeneration.
+func (mr *MockKNProxyAccessMockRecorder) ReserveSyncGeneration(ctx, knID, lockOwner, updatedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveSyncGeneration", reflect.TypeOf((*MockKNProxyAccess)(nil).ReserveSyncGeneration), ctx, knID, lockOwner, updatedAt)
+}
+
+// ResolvePublishedBinding mocks base method.
+func (m *MockKNProxyAccess) ResolvePublishedBinding(ctx context.Context, knID string, binding interfaces.KNProxyBinding) (*interfaces.KNProxyBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolvePublishedBinding", ctx, knID, binding)
+	ret0, _ := ret[0].(*interfaces.KNProxyBinding)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolvePublishedBinding indicates an expected call of ResolvePublishedBinding.
+func (mr *MockKNProxyAccessMockRecorder) ResolvePublishedBinding(ctx, knID, binding any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolvePublishedBinding", reflect.TypeOf((*MockKNProxyAccess)(nil).ResolvePublishedBinding), ctx, knID, binding)
+}
+
+// ResolvePublishedBindings mocks base method.
+func (m *MockKNProxyAccess) ResolvePublishedBindings(ctx context.Context, knID string, bindings []interfaces.KNProxyBinding) ([]interfaces.KNProxyBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolvePublishedBindings", ctx, knID, bindings)
+	ret0, _ := ret[0].([]interfaces.KNProxyBinding)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolvePublishedBindings indicates an expected call of ResolvePublishedBindings.
+func (mr *MockKNProxyAccessMockRecorder) ResolvePublishedBindings(ctx, knID, bindings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolvePublishedBindings", reflect.TypeOf((*MockKNProxyAccess)(nil).ResolvePublishedBindings), ctx, knID, bindings)
 }
 
 // SetLifecycle mocks base method.
@@ -132,32 +221,18 @@ func (mr *MockKNProxyAccessMockRecorder) SetLifecycle(ctx, knID, lifecycleStatus
 }
 
 // SetPending mocks base method.
-func (m *MockKNProxyAccess) SetPending(ctx context.Context, tx *sql.Tx, knID, modelVersion, grantorID string, updatedAt int64) error {
+func (m *MockKNProxyAccess) SetPending(ctx context.Context, tx *sql.Tx, knID, modelVersion, grantorID, lockOwner string, updatedAt int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetPending", ctx, tx, knID, modelVersion, grantorID, updatedAt)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetPending indicates an expected call of SetPending.
-func (mr *MockKNProxyAccessMockRecorder) SetPending(ctx, tx, knID, modelVersion, grantorID, updatedAt any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPending", reflect.TypeOf((*MockKNProxyAccess)(nil).SetPending), ctx, tx, knID, modelVersion, grantorID, updatedAt)
-}
-
-// SetSyncResult mocks base method.
-func (m *MockKNProxyAccess) SetSyncResult(ctx context.Context, knID, modelVersion, syncStatus, syncedVersion, lastError string, updatedAt int64) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetSyncResult", ctx, knID, modelVersion, syncStatus, syncedVersion, lastError, updatedAt)
-	ret0, _ := ret[0].(bool)
+	ret := m.ctrl.Call(m, "SetPending", ctx, tx, knID, modelVersion, grantorID, lockOwner, updatedAt)
+	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// SetSyncResult indicates an expected call of SetSyncResult.
-func (mr *MockKNProxyAccessMockRecorder) SetSyncResult(ctx, knID, modelVersion, syncStatus, syncedVersion, lastError, updatedAt any) *gomock.Call {
+// SetPending indicates an expected call of SetPending.
+func (mr *MockKNProxyAccessMockRecorder) SetPending(ctx, tx, knID, modelVersion, grantorID, lockOwner, updatedAt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSyncResult", reflect.TypeOf((*MockKNProxyAccess)(nil).SetSyncResult), ctx, knID, modelVersion, syncStatus, syncedVersion, lastError, updatedAt)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPending", reflect.TypeOf((*MockKNProxyAccess)(nil).SetPending), ctx, tx, knID, modelVersion, grantorID, lockOwner, updatedAt)
 }
 
 // TryAcquireLock mocks base method.
@@ -346,16 +421,16 @@ func (mr *MockManagedProxyAccessMockRecorder) Restore(ctx, proxyAccountID any) *
 }
 
 // SyncGrants mocks base method.
-func (m *MockManagedProxyAccess) SyncGrants(ctx context.Context, proxyAccountID, grantorID string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
+func (m *MockManagedProxyAccess) SyncGrants(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64, snapshotVersion string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SyncGrants", ctx, proxyAccountID, grantorID, sources)
+	ret := m.ctrl.Call(m, "SyncGrants", ctx, proxyAccountID, grantorID, syncGeneration, snapshotVersion, sources)
 	ret0, _ := ret[0].(interfaces.ProxyGrantSyncResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SyncGrants indicates an expected call of SyncGrants.
-func (mr *MockManagedProxyAccessMockRecorder) SyncGrants(ctx, proxyAccountID, grantorID, sources any) *gomock.Call {
+func (mr *MockManagedProxyAccessMockRecorder) SyncGrants(ctx, proxyAccountID, grantorID, syncGeneration, snapshotVersion, sources any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncGrants", reflect.TypeOf((*MockManagedProxyAccess)(nil).SyncGrants), ctx, proxyAccountID, grantorID, sources)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncGrants", reflect.TypeOf((*MockManagedProxyAccess)(nil).SyncGrants), ctx, proxyAccountID, grantorID, syncGeneration, snapshotVersion, sources)
 }

@@ -73,7 +73,6 @@ type knowledgeNetworkService struct {
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
 
-	proxyBindingCache sync.Map // kn_id -> publishedProxyBindingCacheEntry
 }
 
 func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMutation {

@@ -41,14 +41,15 @@ type proxyContextKey struct{}
 // KnowledgeNetworkProxyAccount is the runtime subset of BKN's authoritative
 // knowledge-network-to-proxy mapping.
 type KnowledgeNetworkProxyAccount struct {
-	KNID                  string `json:"kn_id"`
-	ProxyAccountID        string `json:"proxy_account_id"`
-	ProxyAccountType      string `json:"proxy_account_type"`
-	LifecycleStatus       string `json:"lifecycle_status"`
-	Version               int64  `json:"version"`
-	SyncStatus            string `json:"sync_status"`
-	PublishedModelVersion string `json:"published_model_version"`
-	SyncedModelVersion    string `json:"synced_model_version"`
+	KNID                  string               `json:"kn_id"`
+	ProxyAccountID        string               `json:"proxy_account_id"`
+	ProxyAccountType      string               `json:"proxy_account_type"`
+	LifecycleStatus       string               `json:"lifecycle_status"`
+	Version               int64                `json:"version"`
+	SyncStatus            string               `json:"sync_status"`
+	PublishedModelVersion string               `json:"published_model_version"`
+	SyncedModelVersion    string               `json:"synced_model_version"`
+	ResolvedBinding       *TrustedProxyBinding `json:"resolved_binding,omitempty"`
 }
 
 // KnowledgeNetworkProxyResolveError preserves only the stable status and code

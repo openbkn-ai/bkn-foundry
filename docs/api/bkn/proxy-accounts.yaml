@@ -111,12 +111,12 @@ paths:
         '503': { description: Proxy orchestration is unavailable. }
   /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/proxy-account/resolve:
     post:
-      summary: Resolve a runtime proxy only for an exact current published binding
+      summary: Resolve a runtime proxy only for an exact published grant snapshot binding
       description: |
         Cluster-internal endpoint for ontology-query after caller authorization.
-        BKN rebuilds the authoritative source set from the latest main model and
-        returns the managed proxy only when the requested tuple exists and that
-        exact model version is fully synchronized.
+        BKN reads the synchronized grant snapshot and returns the managed proxy
+        together with the resolved binding. For action and logic-property lookups,
+        target_type is omitted and is returned from the snapshot.
       parameters:
         - $ref: '#/components/parameters/KnowledgeNetworkID'
       requestBody:
@@ -127,7 +127,7 @@ paths:
               $ref: '#/components/schemas/ProxyRuntimeBinding'
       responses:
         '200':
-          description: Active mapping synchronized with the current published binding.
+          description: Active mapping synchronized with the published grant snapshot binding.
           content:
             application/json:
               schema:
@@ -210,11 +210,11 @@ components:
     ProxyRuntimeBinding:
       type: object
       additionalProperties: false
-      required: [child_type, child_id, target_type, target_id, operation]
+      required: [child_type, child_id, target_id, operation]
       properties:
         child_type: { type: string, enum: [object_type, relation_type, metric, action_type, logic_property] }
         child_id: { type: string }
-        target_type: { type: string, enum: [resource, tool_box, mcp] }
+        target_type: { type: string, enum: [resource, tool_box, function, mcp] }
         target_id: { type: string }
         operation: { type: string, enum: [view_detail, query_data, execute] }
     KnowledgeNetworkProxyAccount:
@@ -229,9 +229,20 @@ components:
         sync_status: { type: string, enum: [pending, ready, failed] }
         published_model_version: { type: string }
         synced_model_version: { type: string }
+        resolved_binding:
+          $ref: '#/components/schemas/ProxyResolvedBinding'
         last_error: { type: string, maxLength: 1024 }
         created_at: { type: integer, format: int64 }
         updated_at: { type: integer, format: int64 }
+    ProxyResolvedBinding:
+      type: object
+      required: [child_type, child_id, target_type, target_id, operation]
+      properties:
+        child_type: { type: string, enum: [object_type, relation_type, metric, action_type, logic_property] }
+        child_id: { type: string }
+        target_type: { type: string, enum: [resource, tool_box, function, mcp, skill] }
+        target_id: { type: string }
+        operation: { type: string, enum: [view_detail, query_data, execute] }
     KnowledgeNetworkProxyGovernanceView:
       type: object
       description: OAuth governance projection. Internal last-error, grantor, and lock details are omitted.

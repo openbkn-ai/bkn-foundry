@@ -39,6 +39,7 @@ var (
 	ErrNotFound       = errors.New("proxy grant source not found")
 	ErrProxyInactive  = errors.New("managed proxy is not active")
 	ErrSourceRequired = errors.New("proxy grant source is required by another active source")
+	ErrStaleSync      = errors.New("proxy grant synchronization generation is stale")
 )
 
 // SourceSpec is one published-model binding's need for one concrete operation.
@@ -64,9 +65,11 @@ type RevokeRequest struct {
 }
 
 type SyncRequest struct {
-	ProxyAccountID string       `json:"proxy_account_id"`
-	GrantorID      string       `json:"grantor_id"`
-	Sources        []SourceSpec `json:"sources"`
+	ProxyAccountID  string       `json:"proxy_account_id"`
+	GrantorID       string       `json:"grantor_id"`
+	SyncGeneration  uint64       `json:"sync_generation"`
+	SnapshotVersion string       `json:"snapshot_version"`
+	Sources         []SourceSpec `json:"sources"`
 }
 
 type BatchCheckRequest struct {
@@ -508,8 +511,10 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) {
 	req.ProxyAccountID = strings.TrimSpace(req.ProxyAccountID)
 	req.GrantorID = strings.TrimSpace(req.GrantorID)
+	req.SnapshotVersion = strings.TrimSpace(req.SnapshotVersion)
 	if req.ProxyAccountID == "" || req.GrantorID == "" ||
-		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 {
+		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 ||
+		len(req.SnapshotVersion) > 80 || (req.SyncGeneration > 0 && req.SnapshotVersion == "") {
 		return SyncResult{}, ErrInvalidRequest
 	}
 	explicit := make([]SourceSpec, 0, len(req.Sources))
@@ -549,6 +554,16 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 		mapping, err := loadProxy(tx.DB(), req.ProxyAccountID)
 		if err != nil {
 			return err
+		}
+		if req.SyncGeneration == 0 {
+			if mapping.GrantSyncGeneration > 0 {
+				return ErrStaleSync
+			}
+		} else {
+			if req.SyncGeneration < mapping.GrantSyncGeneration ||
+				(req.SyncGeneration == mapping.GrantSyncGeneration && req.SnapshotVersion != mapping.GrantSnapshotVersion) {
+				return ErrStaleSync
+			}
 		}
 		if err := validateGrantorIdentity(tx.DB(), req.GrantorID); err != nil {
 			return err
@@ -669,6 +684,14 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 				result.Revoked++
 			}
 			if err := recordAudit(tx.DB(), "sync_revoke", "allow", "absent from full source set", req.GrantorID, req.ProxyAccountID, specFromModel(revoked)); err != nil {
+				return err
+			}
+		}
+		if req.SyncGeneration > mapping.GrantSyncGeneration {
+			if err := tx.DB().Model(&mapping).Updates(map[string]any{
+				"grant_sync_generation":  req.SyncGeneration,
+				"grant_snapshot_version": req.SnapshotVersion,
+			}).Error; err != nil {
 				return err
 			}
 		}
