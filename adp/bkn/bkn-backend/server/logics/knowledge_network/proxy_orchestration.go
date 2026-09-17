@@ -883,6 +883,9 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 		return nil
 	}
 	if plan.mapping.LifecycleStatus == interfaces.KNProxyLifecycleArchived {
+		if err := kns.kpa.DeletePublishedSnapshot(ctx, plan.mapping.KNID); err != nil {
+			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear archived knowledge network proxy grant snapshot")
+		}
 		return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID})
 	}
 	account, err := kns.mpa.Disable(ctx, plan.mapping.ProxyAccountID)
@@ -911,6 +914,9 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration, proxyDeleteSnapshotVersion,
 		[]interfaces.ProxyGrantSourceSpec{}); err != nil {
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grants")
+	}
+	if err := kns.kpa.DeletePublishedSnapshot(ctx, plan.mapping.KNID); err != nil {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grant snapshot")
 	}
 	if !alreadyArchived {
 		if _, err := kns.mpa.Archive(ctx, plan.mapping.ProxyAccountID); err != nil {

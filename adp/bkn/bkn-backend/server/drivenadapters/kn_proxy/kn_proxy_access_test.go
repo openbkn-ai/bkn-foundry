@@ -67,13 +67,34 @@ func TestReplacePublishedSnapshotAndMarkReadyIsAtomic(t *testing.T) {
 		ResourceType: "resource", ResourceID: "resource-1", Operation: "query_data",
 		SourceType: "kn_proxy_binding", SourceID: "source-1",
 	}
+	second := source
+	second.BindingID = "ot-2"
+	second.SourceID = "source-2"
 	mock.ExpectBegin()
 	mock.ExpectExec("DELETE FROM t_kn_proxy_published_grant_source").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO t_kn_proxy_published_grant_source").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("UPDATE t_kn_proxy_account SET").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	if err := access.ReplacePublishedSnapshotAndMarkReady(t.Context(), "kn-1", 7, "worker-1", "sha256:ready", []interfaces.ProxyGrantSourceSpec{source}, 1); err != nil {
+	if err := access.ReplacePublishedSnapshotAndMarkReady(t.Context(), "kn-1", 7, "worker-1", "sha256:ready", []interfaces.ProxyGrantSourceSpec{source, second}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeletePublishedSnapshot(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	access := &access{db: db}
+	mock.ExpectExec("DELETE FROM t_kn_proxy_published_grant_source").WithArgs("kn-1").
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	if err := access.DeletePublishedSnapshot(t.Context(), "kn-1"); err != nil {
 		t.Fatal(err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

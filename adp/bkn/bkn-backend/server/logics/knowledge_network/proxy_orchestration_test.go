@@ -37,6 +37,7 @@ type proxyAccessStub struct {
 	pendingVersion  string
 	generation      int64
 	published       []interfaces.ProxyGrantSourceSpec
+	deletedSnapshot bool
 	events          *[]string
 }
 
@@ -72,6 +73,14 @@ func (s *proxyAccessStub) ReplacePublishedSnapshotAndMarkReady(_ context.Context
 	s.published = append([]interfaces.ProxyGrantSourceSpec(nil), sources...)
 	s.syncStatus = interfaces.KNProxySyncReady
 	s.syncedVersion = version
+	return nil
+}
+func (s *proxyAccessStub) DeletePublishedSnapshot(_ context.Context, _ string) error {
+	s.published = nil
+	s.deletedSnapshot = true
+	if s.events != nil {
+		*s.events = append(*s.events, "snapshot:delete")
+	}
 	return nil
 }
 func (s *proxyAccessStub) ResolvePublishedBinding(_ context.Context, knID string,
@@ -1605,7 +1614,7 @@ func TestProxyDeletionLifecycleIsOrdered(t *testing.T) {
 	if err := service.finalizeProxyDelete(ctx, plan); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"business:delete", "proxy:disable", "mapping:disabling", "grants:sync", "proxy:archive", "mapping:archived", "policy:delete"}
+	want := []string{"business:delete", "proxy:disable", "mapping:disabling", "grants:sync", "snapshot:delete", "proxy:archive", "mapping:archived", "policy:delete"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("deletion events = %#v, want %#v", events, want)
 	}
@@ -1613,6 +1622,9 @@ func TestProxyDeletionLifecycleIsOrdered(t *testing.T) {
 		len(mpa.syncVersions) != 1 || mpa.syncVersions[0] != proxyDeleteSnapshotVersion {
 		t.Fatalf("deletion grant fence = (%#v, %#v), want positive generation and %q",
 			mpa.syncGenerations, mpa.syncVersions, proxyDeleteSnapshotVersion)
+	}
+	if !kpa.deletedSnapshot {
+		t.Fatal("deletion did not remove the published grant snapshot")
 	}
 }
 
@@ -1653,7 +1665,7 @@ func TestFinalizeProxyDeleteRepairsAlreadyArchivedManagedProxy(t *testing.T) {
 	if err := service.finalizeProxyDelete(t.Context(), plan); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"proxy:disable", "grants:sync", "mapping:archived", "policy:delete"}
+	want := []string{"proxy:disable", "grants:sync", "snapshot:delete", "mapping:archived", "policy:delete"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("recovery events = %#v, want %#v", events, want)
 	}

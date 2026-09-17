@@ -42,6 +42,20 @@ func (m *MockKNProxyAccess) EXPECT() *MockKNProxyAccessMockRecorder {
 	return m.recorder
 }
 
+// DeletePublishedSnapshot mocks base method.
+func (m *MockKNProxyAccess) DeletePublishedSnapshot(ctx context.Context, knID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePublishedSnapshot", ctx, knID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePublishedSnapshot indicates an expected call of DeletePublishedSnapshot.
+func (mr *MockKNProxyAccessMockRecorder) DeletePublishedSnapshot(ctx, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePublishedSnapshot", reflect.TypeOf((*MockKNProxyAccess)(nil).DeletePublishedSnapshot), ctx, knID)
+}
+
 // Ensure mocks base method.
 func (m *MockKNProxyAccess) Ensure(ctx context.Context, mapping *interfaces.KNProxyAccount) (*interfaces.KNProxyAccount, bool, error) {
 	m.ctrl.T.Helper()

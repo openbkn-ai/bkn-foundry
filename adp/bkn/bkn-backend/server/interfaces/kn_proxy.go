@@ -262,6 +262,7 @@ type KNProxyAccess interface {
 	MarkSyncFailed(ctx context.Context, knID string, generation int64, lockOwner, lastError string, updatedAt int64) (bool, error)
 	ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID string, generation int64,
 		lockOwner, snapshotVersion string, sources []ProxyGrantSourceSpec, updatedAt int64) error
+	DeletePublishedSnapshot(ctx context.Context, knID string) error
 	ResolvePublishedBinding(ctx context.Context, knID string, binding KNProxyBinding) (*KNProxyBinding, error)
 	ResolvePublishedBindings(ctx context.Context, knID string, bindings []KNProxyBinding) ([]KNProxyBinding, error)
 	SetLifecycle(ctx context.Context, knID, lifecycleStatus string, updatedAt int64) error

@@ -18,6 +18,7 @@ import (
 const (
 	tableName                 = "t_kn_proxy_account"
 	publishedGrantSourceTable = "t_kn_proxy_published_grant_source"
+	maxSnapshotInsertRows     = 500
 )
 
 type access struct {
@@ -209,14 +210,19 @@ func (a *access) ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID 
 	if _, err := tx.ExecContext(ctx, deleteQuery, deleteArgs...); err != nil {
 		return err
 	}
-	for _, source := range sources {
-		insertQuery, insertArgs, err := sq.Insert(publishedGrantSourceTable).Columns(
+	for start := 0; start < len(sources); start += maxSnapshotInsertRows {
+		end := min(start+maxSnapshotInsertRows, len(sources))
+		insert := sq.Insert(publishedGrantSourceTable).Columns(
 			"f_kn_id", "f_binding_type", "f_binding_id", "f_resource_type", "f_resource_id", "f_operation",
 			"f_source_type", "f_source_id", "f_created_at", "f_updated_at",
-		).Values(
-			source.KNID, source.BindingType, source.BindingID, source.ResourceType, source.ResourceID, source.Operation,
-			source.SourceType, source.SourceID, updatedAt, updatedAt,
-		).ToSql()
+		)
+		for _, source := range sources[start:end] {
+			insert = insert.Values(
+				source.KNID, source.BindingType, source.BindingID, source.ResourceType, source.ResourceID, source.Operation,
+				source.SourceType, source.SourceID, updatedAt, updatedAt,
+			)
+		}
+		insertQuery, insertArgs, err := insert.ToSql()
 		if err != nil {
 			return err
 		}
@@ -248,6 +254,18 @@ func (a *access) ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID 
 		return err
 	}
 	return tx.Commit()
+}
+
+// DeletePublishedSnapshot removes the persisted authorization source snapshot
+// after bkn-safe has successfully revoked a proxy's full grant set. Keeping it
+// would permit a later restore to resolve stale bindings before republishing.
+func (a *access) DeletePublishedSnapshot(ctx context.Context, knID string) error {
+	query, args, err := sq.Delete(publishedGrantSourceTable).Where(sq.Eq{"f_kn_id": knID}).ToSql()
+	if err != nil {
+		return err
+	}
+	_, err = a.db.ExecContext(ctx, query, args...)
+	return err
 }
 
 func (a *access) ResolvePublishedBinding(ctx context.Context, knID string,
