@@ -91,6 +91,34 @@ func TestFunctionRuntimeHeadersForwardsATrustedProxyCallWithoutInteraction(t *te
 	})
 }
 
+// The Function runtime accepts a bare token, so a Tool body must never be able
+// to choose the credential a Function runs under, in any casing, whether or not
+// a server-captured credential replaces it.
+func TestFunctionRuntimeHeadersDropsBodySuppliedAuthorization(t *testing.T) {
+	Convey("A body Authorization never reaches the Function runtime", t, func() {
+		for _, req := range []*interfaces.ExecuteToolReq{
+			nil,
+			{},
+			{RequestAuthorization: "Bearer caller-token"},
+			{RequestAuthorization: "Bearer caller-token", TrustedProxyCall: true},
+		} {
+			headers := functionRuntimeHeaders(map[string]any{
+				"Authorization": "Bearer body-token",
+				"authorization": "Bearer body-token",
+				"X-Api-Key":     "tool-own-key",
+			}, req)
+
+			So(headers["authorization"], ShouldBeNil)
+			So(headers["X-Api-Key"], ShouldEqual, "tool-own-key")
+			if req != nil && req.TrustedProxyCall {
+				So(headers["Authorization"], ShouldEqual, "Bearer caller-token")
+			} else {
+				So(headers["Authorization"], ShouldBeNil)
+			}
+		}
+	})
+}
+
 // The captured values are server-owned. A Tool body that names them would be
 // naming whose credential and whose Interaction the Function runs under.
 func TestFunctionRuntimeHeadersOverridesBodySuppliedValues(t *testing.T) {

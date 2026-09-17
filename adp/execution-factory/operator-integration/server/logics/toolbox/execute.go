@@ -492,17 +492,24 @@ func isPlatformFunctionTarget(rawURL string) bool {
 //
 // Server-captured values win over anything in the body: a Tool that could state
 // them would be stating whose credential it runs under.
+//
+// A body-supplied Authorization is always dropped for this target. The Function
+// runtime accepts a bare token, so a Tool body that could state one would decide
+// whose credential the Function runs under; only the server-captured value may.
 func functionRuntimeHeaders(headers map[string]any, req *interfaces.ExecuteToolReq) map[string]any {
+	forwarded := make(map[string]any, len(headers)+4)
+	for key, value := range headers {
+		if strings.EqualFold(strings.TrimSpace(key), "Authorization") {
+			continue
+		}
+		forwarded[key] = value
+	}
 	if req == nil || req.RequestAuthorization == "" {
-		return headers
+		return forwarded
 	}
 	managed := req.BKNConversationID != "" && req.BKNInteractionID != ""
 	if !managed && !req.TrustedProxyCall {
-		return headers
-	}
-	forwarded := make(map[string]any, len(headers)+4)
-	for key, value := range headers {
-		forwarded[key] = value
+		return forwarded
 	}
 	forwarded["Authorization"] = req.RequestAuthorization
 	for _, key := range []interfaces.HeaderKey{
