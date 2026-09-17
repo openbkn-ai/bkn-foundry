@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -210,6 +211,16 @@ func TestCatalogSummaryDerivationChunksDirectChildCandidates(t *testing.T) {
 	if err := db.Create(&parents).Error; err != nil {
 		t.Fatal(err)
 	}
+	var parentQueries atomic.Int64
+	const callback = "test:derived-summary-child-id-chunking"
+	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "resource_parents" {
+			parentQueries.Add(1)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callback) })
 
 	derived, err := e.derivedDecisionsWithIndex(t.Context(), "summary-reader", newGrantIndex(grants, false),
 		map[ResourceRef][]string{{Type: "catalog", ID: "cat-1"}: {"view_summary"}}, false)
@@ -218,6 +229,9 @@ func TestCatalogSummaryDerivationChunksDirectChildCandidates(t *testing.T) {
 	}
 	if decision := derived[ResourceRef{Type: "catalog", ID: "cat-1"}]["view_summary"]; decision.Basis != BasisDerived {
 		t.Fatalf("derived catalog summary = %+v, want BasisDerived", decision)
+	}
+	if got := parentQueries.Load(); got != 2 {
+		t.Fatalf("resource parent queries = %d, want 2 for %d child candidates", got, childIDChunk+1)
 	}
 }
 
