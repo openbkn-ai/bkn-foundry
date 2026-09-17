@@ -420,6 +420,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 				ObjectSystemInfo: req.Instances[i],
 				Status:           interfaces.ObjectStatusFailed,
 				Parameters:       params,
+				Result:           result,
 				ErrorMessage:     execErr.Error(),
 				StartTime:        startTime,
 				EndTime:          endTime,
@@ -568,6 +569,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 		result.Parameters = sentParams
 		if execErr != nil {
 			result.Status = interfaces.ObjectStatusFailed
+			result.Result = invokeResult
 			result.ErrorMessage = execErr.Error()
 			failedCount = 1
 		} else {

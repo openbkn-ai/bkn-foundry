@@ -45,8 +45,58 @@ func ExecuteTool(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, a
 		return nil, fmt.Errorf("tool execution failed: %w", err)
 	}
 
+	if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok &&
+		proxy.Binding.TargetType == interfaces.ProxyTargetTypeFunction {
+		if err := functionExitError(result); err != nil {
+			logger.Errorf("Function execution failed: %v", err)
+			// The sandbox outcome is kept beside the error: its stderr is what explains the failure.
+			return result, err
+		}
+	}
+
 	logger.Debugf("Tool execution completed successfully")
 	return result, nil
+}
+
+// functionExitError reports a Function that ran but exited non-zero.
+//
+// Execution Factory's Function runtime answers HTTP 200 whatever the sandbox outcome is and
+// carries that outcome in the body, so a successful transport says nothing about the Function
+// itself. Only Function targets are inspected: an exit_code field in an OpenAPI Tool's own
+// response body belongs to that Tool and keeps its meaning.
+func functionExitError(result any) error {
+	body, ok := result.(map[string]any)
+	if !ok {
+		return nil
+	}
+	exitCode, ok := body["exit_code"]
+	if !ok || exitCode == nil {
+		return nil
+	}
+	code := strings.TrimSpace(fmt.Sprint(exitCode))
+	if code == "0" || code == "" {
+		return nil
+	}
+	if detail := lastLine(body["stderr"]); detail != "" {
+		return fmt.Errorf("function exited with code %s: %s", code, detail)
+	}
+	return fmt.Errorf("function exited with code %s", code)
+}
+
+// lastLine returns the last non-empty line of a stderr value, bounded so a runaway trace cannot
+// flood the execution record. A Python traceback ends with the exception itself.
+func lastLine(value any) string {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	line := strings.TrimSpace(lines[len(lines)-1])
+	const maxLen = 500
+	if runes := []rune(line); len(runes) > maxLen {
+		line = string(runes[:maxLen]) + "..."
+	}
+	return line
 }
 
 // buildToolExecutionRequest builds ToolExecutionRequest based on ActionType.Parameters configuration

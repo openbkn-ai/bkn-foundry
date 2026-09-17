@@ -5705,7 +5705,7 @@ components:
             type: object
             additionalProperties: true
         status:
-          description: 执行状态
+          description: 执行状态。函数类行动的沙箱退出码非 0 时记为 failed。
           enum:
             - pending
             - success
@@ -5717,11 +5717,11 @@ components:
           type: object
           additionalProperties: true
         result:
-          description: 执行结果
+          description: 执行结果。函数类行动执行失败时仍保留沙箱返回（含 exit_code、stderr），便于排查。
           type: object
           additionalProperties: true
         error_message:
-          description: 错误消息
+          description: 错误消息。函数退出码非 0 时为退出码及 stderr 最后一行。
           type: string
         duration_ms:
           description: 执行耗时（毫秒）
