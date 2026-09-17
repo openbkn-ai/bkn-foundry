@@ -14,7 +14,9 @@ info:
     A platform authorization administrator may manage user grants without a
     property ceiling. A caller holding `authorize` on the concrete object type
     may manage user grants only up to their own effective, base-clamped level.
-    Role targets require the platform `admin-role:permissions` permission.
+    Role targets require the platform `admin-role:permissions` permission. The
+    stable level value `masked` means Column Masking: the configured rule is
+    applied to that property's query result and never modifies source data.
 servers:
   - url: /api/safe/v1/admin
 security:
@@ -124,9 +126,11 @@ components:
           maxLength: 128
     StoredLevel:
       type: string
+      description: '`masked` is the stable wire value for Column Masking.'
       enum: [none, schema, masked, full]
     ChangeLevel:
       type: string
+      description: '`masked` selects Column Masking; `inherit` removes the explicit property grant.'
       enum: [inherit, none, schema, masked, full]
     GrantEntry:
       type: object

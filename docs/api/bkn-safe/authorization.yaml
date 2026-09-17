@@ -195,7 +195,10 @@ paths:
       summary: Resolve effective access levels for requested object properties
       description: |
         Resolves `none < schema < masked < full` in one call for the exact
-        object types and properties supplied by a trusted workload. The
+        object types and properties supplied by a trusted workload. `masked`
+        is the stable wire value for Column Masking: a configured rule is
+        applied only to the requested property's query result, and never
+        modifies source data. The
         workload derives `accessor_id` from its already-authenticated public
         request; it must never copy an accessor supplied by an end user.
 
@@ -203,7 +206,7 @@ paths:
         `schema`, and no applicable operation to `none`. A registered Enterprise
         resolver may only narrow that base level. Community builds and
         unavailable Enterprise capability return the core mapping and cannot
-        produce `masked`.
+        produce `masked` (Column Masking).
 
         Entries and properties preserve request order. Unknown or disabled
         accessors receive `none` for every requested property. Invalid object
@@ -458,7 +461,7 @@ paths:
         hold `admin-authz:view`. It returns matching user/role/public Core
         grants, wildcard and parent fallback, Community bundle expansion, and
         each direct runtime requirement. The response never includes property
-        names, masking rules, or data values and does not persist a proof chain.
+        names, Column Masking rules, or data values and does not persist a proof chain.
       security:
         - BearerAuth: []
       requestBody:
@@ -705,7 +708,10 @@ components:
     PropertyAccessLevel:
       type: string
       enum: [none, schema, masked, full]
-      description: Ordered effective visibility; unknown values are invalid and fail closed.
+      description: |
+        Effective property access level. `masked` is Column Masking: a configured
+        rule is applied to the property's query result only; source data is not modified.
+        Ordered effective visibility; unknown values are invalid and fail closed.
     PropertyLevelsRequest:
       type: object
       additionalProperties: false

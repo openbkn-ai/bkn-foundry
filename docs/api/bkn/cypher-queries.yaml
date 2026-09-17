@@ -29,10 +29,10 @@ paths:
         must have the effective property access level full for the caller. A property at
         level none does not exist for the caller: naming it is a 400
         BknBackend.Cypher.InvalidQuery "unknown property", exactly as for a property outside
-        the model, and it is never offered as a suggestion. A masked or schema-only property is
+        the model, and it is never offered as a suggestion. A Column Masking (`masked`) or schema-only property is
         refused with 403 BknBackend.Cypher.PropertyForbidden naming it as
         object_type_id.property. Join keys that a relation type maps are not checked unless
-        the query names them. Masking is not applied to Cypher results.
+        the query names them. Column Masking is not applied to Cypher results.
 
         The caller needs no grant on the vega resources behind those object types. The
         compiled statement runs through vega-backend's raw query under the caller's own
@@ -109,7 +109,7 @@ paths:
             error_code distinguishes the reason:
             Public.Forbidden (the caller may query nothing in this knowledge network, or carries
             no identity),
-            BknBackend.Cypher.PropertyForbidden (the query names a masked or schema-only
+            BknBackend.Cypher.PropertyForbidden (the query names a Column Masking (`masked`) or schema-only
             property; error_details lists them as object_type_id.property),
             BknBackend.Cypher.Forbidden (vega-backend refused a resource the compiled statement
             reads to the caller, and the knowledge network's proxy account could not be used or
