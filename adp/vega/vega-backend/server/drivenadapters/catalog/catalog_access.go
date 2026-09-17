@@ -74,6 +74,7 @@ var catalogSummaryColumns = []string{
 	"f_enabled",
 	"f_internal",
 	"f_connector_type",
+	"f_metadata",
 	"f_health_check_status",
 	"f_last_check_time",
 	"f_health_check_result",
@@ -130,8 +131,8 @@ func scanCatalog(scanner catalogRowScanner) (*interfaces.Catalog, error) {
 }
 
 func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, error) {
-	summary := &interfaces.CatalogSummary{}
-	var tagsStr string
+	summary := &interfaces.CatalogSummary{Schemas: []string{}}
+	var tagsStr, metadataStr string
 	if err := scanner.Scan(
 		&summary.ID,
 		&summary.Name,
@@ -141,6 +142,7 @@ func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, 
 		&summary.Enabled,
 		&summary.Internal,
 		&summary.ConnectorType,
+		&metadataStr,
 		&summary.HealthCheckStatus,
 		&summary.LastCheckTime,
 		&summary.HealthCheckResult,
@@ -154,6 +156,17 @@ func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, 
 		return nil, err
 	}
 	summary.Tags = libCommon.TagString2TagSlice(tagsStr)
+	if metadataStr != "" {
+		var metadata struct {
+			Schemas []string `json:"schemas"`
+		}
+		if err := sonic.UnmarshalString(metadataStr, &metadata); err != nil {
+			return nil, err
+		}
+		if metadata.Schemas != nil {
+			summary.Schemas = metadata.Schemas
+		}
+	}
 	return summary, nil
 }
 

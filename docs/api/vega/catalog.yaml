@@ -827,7 +827,8 @@ components:
     CatalogSummary:
       description: |
         Catalog 列表摘要。为避免在列表中返回连接配置与扩展元数据，不包含
-        `connector_config`、`metadata`；详情请使用 `GET /catalogs/{id}`。
+        `connector_config`、`metadata`；仅输出从 metadata 提取的 schema 名称列表。
+        详情请使用 `GET /catalogs/{id}`。
       type: object
       required:
         - id
@@ -863,6 +864,11 @@ components:
         connector_type:
           description: 连接器类型标识
           type: string
+        schemas:
+          description: 从 catalog metadata 提取的 schema 名称列表，不包含其他 metadata。
+          type: array
+          items:
+            type: string
         health_check_status:
           description: 最近一次健康检查状态
           type: string

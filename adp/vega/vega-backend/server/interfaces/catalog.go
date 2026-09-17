@@ -88,7 +88,8 @@ type Catalog struct {
 }
 
 // CatalogSummary contains the fields returned by catalog list operations.
-// Connection configuration and metadata are loaded only for catalog details.
+// Connection configuration and metadata are loaded only for catalog details;
+// Schemas is the sole metadata-derived field exposed in a summary.
 type CatalogSummary struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
@@ -99,7 +100,8 @@ type CatalogSummary struct {
 	Enabled  bool   `json:"enabled"`
 	Internal bool   `json:"internal"`
 
-	ConnectorType string `json:"connector_type"`
+	ConnectorType string   `json:"connector_type"`
+	Schemas       []string `json:"schemas"`
 
 	CatalogHealthCheckStatus
 

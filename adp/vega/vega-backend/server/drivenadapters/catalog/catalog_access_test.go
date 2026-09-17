@@ -179,6 +179,7 @@ func TestCatalogAccessList(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, "catalog-1", got[0].ID)
+		assert.Equal(t, []string{"public", "analytics"}, got[0].Schemas)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -304,6 +305,7 @@ func TestCatalogAccessGetSummariesByIDs(t *testing.T) {
 	assert.Equal(t, "catalog-1", got["catalog-1"].ID)
 	assert.Equal(t, "catalog-2", got["catalog-2"].ID)
 	assert.Equal(t, []string{"tag-a", "tag-b"}, got["catalog-1"].Tags)
+	assert.Equal(t, []string{"public", "analytics"}, got["catalog-1"].Schemas)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -546,12 +548,13 @@ func catalogSelectSQL(where string) string {
 }
 
 func catalogSummarySelectSQL(where string) string {
-	return "SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE " + where
+	return "SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_metadata, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE " + where
 }
 
 func catalogSummaryRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"f_id", "f_name", "f_tags", "f_description", "f_type", "f_enabled", "f_internal", "f_connector_type",
+		"f_metadata",
 		"f_health_check_status", "f_last_check_time", "f_health_check_result",
 		"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
 	})
@@ -560,6 +563,7 @@ func catalogSummaryRows() *sqlmock.Rows {
 func catalogSummaryRowValues(catalog *interfaces.Catalog) []driver.Value {
 	return []driver.Value{
 		catalog.ID, catalog.Name, "tag-a,tag-b", catalog.Description, catalog.Type, catalog.Enabled, catalog.Internal, catalog.ConnectorType,
+		`{"schemas":["public","analytics"],"region":"cn"}`,
 		catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult,
 		catalog.Creator.ID, catalog.Creator.Type, catalog.CreateTime, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime,
 	}
