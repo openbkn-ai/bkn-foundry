@@ -225,14 +225,15 @@ func (ps *permissionService) RequireQueryData(ctx context.Context, resources []i
 	if err != nil {
 		return permissionDenied(ctx, err.Error())
 	}
-	allowed, err := ps.FilterQueryData(ctx, normalized)
-	if err != nil {
-		return err
+	requirements := make([]interfaces.PermissionRequirement, 0, len(normalized))
+	for _, resource := range normalized {
+		requirements = append(requirements, interfaces.PermissionRequirement{
+			ResourceType: resource.Type,
+			ResourceID:   resource.ID,
+			Operation:    interfaces.PermissionOperationQueryData,
+		})
 	}
-	if len(allowed) != len(normalized) {
-		return permissionDenied(ctx, "query_data was not granted for every required resource")
-	}
-	return nil
+	return ps.RequirePermissions(ctx, requirements)
 }
 
 func (ps *permissionService) RequirePermissions(ctx context.Context,
@@ -355,15 +356,6 @@ func normalizeRequirements(requirements []interfaces.PermissionRequirement) ([]i
 
 func resourceKey(resourceType, resourceID string) string {
 	return resourceType + "\x00" + resourceID
-}
-
-func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func permissionDenied(ctx context.Context, detail string) error {

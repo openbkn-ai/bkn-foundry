@@ -74,6 +74,62 @@ func (s *safeAuthorization) OperationCheck(ctx context.Context, req *interfaces.
 	return &interfaces.AuthOperationCheckResponse{Result: ok}, nil
 }
 
+func (s *safeAuthorization) OperationChecks(ctx context.Context,
+	req *interfaces.AuthOperationChecksRequest) (*interfaces.AuthOperationChecksResponse, error) {
+	if req == nil || req.Accessor == nil {
+		return nil, fmt.Errorf("authorization checks request requires an accessor")
+	}
+	checks := make([]map[string]any, 0, len(req.Checks))
+	for _, requirement := range req.Checks {
+		if requirement == nil || requirement.Resource == nil {
+			return nil, fmt.Errorf("authorization checks request contains an invalid requirement")
+		}
+		checks = append(checks, map[string]any{
+			"resource":  map[string]string{"type": requirement.Resource.Type, "id": requirement.Resource.ID},
+			"operation": string(requirement.Operation),
+		})
+	}
+	var response struct {
+		Allowed *bool `json:"allowed"`
+		Results []struct {
+			ResourceType string                       `json:"resource_type"`
+			ResourceID   string                       `json:"resource_id"`
+			Operation    interfaces.AuthOperationType `json:"operation"`
+			Allowed      bool                         `json:"allowed"`
+		} `json:"results"`
+	}
+	if err := s.post(ctx, "/api/safe/v1/authz/checks", map[string]any{
+		"accessor_id":      req.Accessor.ID,
+		"checks":           checks,
+		"evaluation_scope": "effective",
+	}, &response); err != nil {
+		return nil, err
+	}
+	if response.Allowed == nil || len(response.Results) != len(req.Checks) {
+		return nil, fmt.Errorf("invalid bkn-safe checks response")
+	}
+	decisions := make([]*interfaces.AuthOperationCheckDecision, 0, len(response.Results))
+	allAllowed := true
+	for index, result := range response.Results {
+		requirement := req.Checks[index]
+		if result.ResourceType != requirement.Resource.Type || result.ResourceID != requirement.Resource.ID ||
+			result.Operation != requirement.Operation {
+			return nil, fmt.Errorf("invalid bkn-safe checks response")
+		}
+		decisions = append(decisions, &interfaces.AuthOperationCheckDecision{
+			ResourceType: result.ResourceType,
+			ResourceID:   result.ResourceID,
+			Operation:    result.Operation,
+			Allowed:      result.Allowed,
+		})
+		allAllowed = allAllowed && result.Allowed
+	}
+	if *response.Allowed != allAllowed {
+		return nil, fmt.Errorf("invalid bkn-safe checks response")
+	}
+	return &interfaces.AuthOperationChecksResponse{Result: *response.Allowed, Decisions: decisions}, nil
+}
+
 // ResourceFilter keeps the resources the accessor is allowed all the visibility operations on
 // and returns every effective operation for each surviving resource in one
 // bkn-safe request. Do not replace this with one check per list row: list pages

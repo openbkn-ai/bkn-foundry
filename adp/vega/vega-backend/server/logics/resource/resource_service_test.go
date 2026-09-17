@@ -1421,18 +1421,19 @@ func TestResourceServiceInternalCreateRequiresParentTracker(t *testing.T) {
 }
 
 // expectDeleteGrantedByCatalog 通过 bkn-safe 的 resource 判定装配删除授权。
-func expectDeleteGrantedByCatalog(mockRA *vmock.MockResourceAccess,
-	mockPS *vmock.MockPermissionService, ids []string, catalogID string) {
+func expectDeleteGrantedByCatalog(_ *vmock.MockResourceAccess,
+	mockPS *vmock.MockPermissionService, ids []string, _ string) {
 
-	granted := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	granted := make([]interfaces.PermissionCheckResult, 0, len(ids))
 	for _, id := range ids {
-		granted[id] = interfaces.PermissionResourceOps{
-			ResourceID: id,
-			Operations: []string{interfaces.OPERATION_TYPE_DELETE},
-		}
+		granted = append(granted, interfaces.PermissionCheckResult{
+			ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ResourceID:   id,
+			Operation:    interfaces.OPERATION_TYPE_DELETE,
+			Allowed:      true,
+		})
 	}
-	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		ids, []string{interfaces.OPERATION_TYPE_DELETE}, interfaces.VISIBILITY_MATCH_ALL, false).
+	mockPS.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).
 		Return(granted, nil)
 }
 
@@ -1462,9 +1463,11 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("rejects before loading resources when delete permission is missing", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, _ := newTestService(t)
-		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			[]string{"probe"}, []string{interfaces.OPERATION_TYPE_DELETE}, interfaces.VISIBILITY_MATCH_ALL, false).
-			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+		mockPS.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).
+			Return([]interfaces.PermissionCheckResult{{
+				ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ResourceID: "probe",
+				Operation: interfaces.OPERATION_TYPE_DELETE, Allowed: false,
+			}}, nil)
 
 		httpErr := requireResourceHTTPError(t,
 			rs.DeleteByIDs(context.Background(), []string{"probe"}, false),
@@ -1473,10 +1476,10 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("ignores missing resources after authorizing existing resources", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
-		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			[]string{"r1", "missing"}, []string{interfaces.OPERATION_TYPE_DELETE}, interfaces.VISIBILITY_MATCH_ALL, false).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"r1": {ResourceID: "r1", Operations: []string{interfaces.OPERATION_TYPE_DELETE}},
+		mockPS.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).
+			Return([]interfaces.PermissionCheckResult{
+				{ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ResourceID: "r1", Operation: interfaces.OPERATION_TYPE_DELETE, Allowed: true},
+				{ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ResourceID: "missing", Operation: interfaces.OPERATION_TYPE_DELETE, Allowed: false},
 			}, nil)
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "missing"}).Return(map[string]*interfaces.Resource{
 			"r1": {ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable},

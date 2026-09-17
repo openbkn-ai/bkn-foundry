@@ -24,10 +24,9 @@ const ctxDecisionLog = "authz_decision_log"
 
 // Decision sources: which entry point produced the row.
 const (
-	decisionSourceCheck      = "check"
-	decisionSourceOperations = "operations"
-	decisionSourceFilter     = "resource-filter"
-	decisionSourceAdmin      = "admin"
+	decisionSourceCheck  = "check"
+	decisionSourceFilter = "resource-filter"
+	decisionSourceAdmin  = "admin"
 )
 
 // basisInactiveAccount marks a deny that came from the local account state

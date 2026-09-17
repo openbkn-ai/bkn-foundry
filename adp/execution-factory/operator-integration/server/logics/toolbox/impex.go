@@ -564,9 +564,16 @@ func (s *ToolServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Ex
 		idsByType[resourceType] = append(idsByType[resourceType], box.BoxID)
 	}
 	for resourceType, ids := range idsByType {
-		allowed, filterErr := s.AuthService.ResourceFilterIDs(ctx, accessor, ids, resourceType, interfaces.AuthOperationTypeView)
-		if filterErr != nil {
-			return nil, filterErr
+		decisions, checkErr := s.AuthService.CheckResourceOperations(ctx, accessor, ids, resourceType,
+			interfaces.AuthOperationTypeView)
+		if checkErr != nil {
+			return nil, checkErr
+		}
+		allowed := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if decisions[id] {
+				allowed = append(allowed, id)
+			}
 		}
 		clist := utils.FindMissingElements(ids, allowed)
 		if len(clist) > 0 {

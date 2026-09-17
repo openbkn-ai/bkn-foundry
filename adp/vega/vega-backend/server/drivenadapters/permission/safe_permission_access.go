@@ -52,21 +52,43 @@ func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid stri
 	if len(ops) == 0 {
 		return true, nil
 	}
-	checks := make([]map[string]any, 0, len(ops))
+	checks := make([]interfaces.PermissionRequirement, 0, len(ops))
 	for _, op := range ops {
-		checks = append(checks, map[string]any{
-			"resource":  map[string]string{"type": rtype, "id": rid},
-			"operation": op,
+		checks = append(checks, interfaces.PermissionRequirement{
+			Resource:  interfaces.PermissionResource{Type: rtype, ID: rid},
+			Operation: op,
 		})
 	}
-	var out struct {
-		Allowed bool `json:"allowed"`
-	}
-	err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/checks", map[string]any{
-		"accessor_id": accessorID,
-		"checks":      checks,
-	}, &out)
+	out, err := c.checkPermissions(ctx, interfaces.PermissionChecksRequest{AccessorID: accessorID, Checks: checks})
 	return out.Allowed, err
+}
+
+func (c *safeClient) checkPermissions(ctx context.Context,
+	request interfaces.PermissionChecksRequest) (interfaces.PermissionChecksResponse, error) {
+
+	response := interfaces.PermissionChecksResponse{Allowed: true, Results: []interfaces.PermissionCheckResult{}}
+	if len(request.Checks) == 0 {
+		return response, nil
+	}
+	if err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/checks", request, &response); err != nil {
+		return response, err
+	}
+	if response.Results == nil || len(response.Results) != len(request.Checks) {
+		return response, fmt.Errorf("invalid bkn-safe checks response")
+	}
+	allAllowed := true
+	for index, check := range request.Checks {
+		result := response.Results[index]
+		if result.ResourceType != check.Resource.Type || result.ResourceID != check.Resource.ID ||
+			result.Operation != check.Operation {
+			return response, fmt.Errorf("invalid bkn-safe checks response")
+		}
+		allAllowed = allAllowed && result.Allowed
+	}
+	if response.Allowed != allAllowed {
+		return response, fmt.Errorf("invalid bkn-safe checks response")
+	}
+	return response, nil
 }
 
 type safeFilteredResource struct {
@@ -144,6 +166,11 @@ func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interf
 	return s.safe.allowedAll(ctx, check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations)
 }
 
+func (s *safePermissionAccess) CheckPermissions(ctx context.Context,
+	request interfaces.PermissionChecksRequest) (interfaces.PermissionChecksResponse, error) {
+	return s.safe.checkPermissions(ctx, request)
+}
+
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
 		filter.Operations, filter.VisibilityMatch, filter.AllowOperation)
@@ -151,27 +178,6 @@ func (s *safePermissionAccess) FilterResources(ctx context.Context, filter inter
 		return nil, err
 	}
 	out := map[string]interfaces.PermissionResourceOps{}
-	for _, r := range resources {
-		out[r.ResourceID] = interfaces.PermissionResourceOps{
-			ResourceID: r.ResourceID,
-			Operations: r.Operations,
-		}
-	}
-	return out, nil
-}
-
-func (s *safePermissionAccess) GetResourcesOperations(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources, nil, "", true)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]interfaces.PermissionResourceOps, len(filter.Resources))
-	for _, r := range filter.Resources {
-		out[r.ID] = interfaces.PermissionResourceOps{
-			ResourceID: r.ID,
-			Operations: []string{},
-		}
-	}
 	for _, r := range resources {
 		out[r.ResourceID] = interfaces.PermissionResourceOps{
 			ResourceID: r.ResourceID,

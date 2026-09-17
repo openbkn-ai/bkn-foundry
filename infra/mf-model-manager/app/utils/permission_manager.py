@@ -1,7 +1,7 @@
 import aiohttp
-from typing import List, Dict, Optional
+from typing import Optional
 
-from app.core.config import authz_settings, base_config
+from app.core.config import bkn_safe_url
 from app.dao.small_model_dao import small_model_dao
 from app.commons.locale import internal_request_headers
 from app.logs.stand_log import StandLogger
@@ -9,104 +9,21 @@ from app.logs.stand_log import StandLogger
 
 class PermissionManager:
     def __init__(self):
-        self.base_url = f"http://{base_config.AUTHORIZATIONPRIVATEHOST}:{base_config.AUTHORIZATIONPRIVATEPORT}"
-        self.auth_url = f"{self.base_url}/api/authorization/v1/policy"
-        self.check_single_auth_url = f"{self.base_url}/api/authorization/v1/operation-check"
-        # self.check_resource_list_url = f"{self.base_url}/api/authorization/v1/resource-list"
-        self.resource_filter_url = f"{self.base_url}/api/authorization/v1/resource-filter"
-        self.delete_resource_url = f"{self.base_url}/api/authorization/v1/policy-delete"
+        self.bkn_safe_url = bkn_safe_url()
         self.session: Optional[aiohttp.ClientSession] = None
-        # bkn-safe authz cutover (revertible, env-gated):
-        #   AUTHZ_PROVIDER=shadow   -> ISF authoritative, bkn-safe queried in
-        #                              parallel, diffs logged (decision path only)
-        #   AUTHZ_PROVIDER=bkn-safe -> bkn-safe AUTHORITATIVE for all methods
-        #                              (ISF not consulted)
-        # Unset falls back to ISF and warns at startup. BKN_SAFE_URL points at bkn-safe.
-        # Same normalisation the startup check uses, so a provider that was
-        # accepted at boot is the one compared here.
-        self.authz_provider, self.bkn_safe_url = authz_settings()
-
-    def _bkn_safe_authoritative(self) -> bool:
-        return self.authz_provider == "bkn-safe" and bool(self.bkn_safe_url)
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False))
         return self.session
 
-    async def add_permission(self, user_id: str, resource_id: str, resource_name: str, resource_type: str,
-                             user_name: str, role: str) -> bool:
-        # Administrators do not require object-level authorization.
-        if user_id == "266c6a42-6131-4d62-8f39-853e7093701c":
-            return True
-        # bkn-safe authoritative: model use is a platform baseline and model
-        # lifecycle comes from the network_builder role. Do not recreate the
-        # retired per-creator, per-model ACL when a model is added.
-        if self._bkn_safe_authoritative():
-            return True
-        """Add a permission."""
-        payload = [{
-            "accessor": {
-                "id": user_id,
-                "type": role,
-                "name": user_name
-            },
-            "resource": {
-                "id": resource_id,
-                "type": resource_type,
-                "name": resource_name
-            },
-            "operation": {
-                "allow": [
-                    {"id": "display"},
-                    {"id": "modify"},
-                    {"id": "delete"},
-                    {"id": "execute"}
-                ],
-                "deny": []
-            },
-            "condition": "{}",
-            "expires_at": "1970-01-01T08:00:00+08:00"
-        }]
-        # The filter endpoint now applies permissions without manual expansion.
-        # admin_user_id = "266c6a42-6131-4d62-8f39-853e7093701c"
-        # if user_id != admin_user_id:
-        #     payload.append({
-        #         "accessor": {
-        #             "id": admin_user_id,
-        #             "type": "user",
-        #             "name": "admin"
-        #         },
-        #         "resource": {
-        #             "id": resource_id,
-        #             "type": resource_type,
-        #             "name": resource_name
-        #         },
-        #         "operation": {
-        #             "allow": [
-        #                 {"id": "display"},
-        #                 {"id": "modify"},
-        #                 {"id": "delete"},
-        #                 {"id": "execute"},
-        #                 {"id": "authorize"}
-        #             ],
-        #             "deny": []
-        #         },
-        #         "condition": "{}",
-        #         "expires_at": "1970-01-01T08:00:00+08:00"
-        #     })
-        try:
-            session = await self.get_session()
-            async with session.post(
-                    self.auth_url,
-                    json=payload,
-                    headers=internal_request_headers({'Content-Type': 'application/json'})
-            ) as response:
-                if response.status == 204:
-                    return True
-        except Exception as e:
-            StandLogger.error(e.args)
-        return False
+    async def add_permission(self, user_id: str, resource_id: str, resource_name: str,
+                             resource_type: str, user_name: str, role: str) -> bool:
+        """Model access is derived from bkn-safe's baseline roles.
+
+        Creating a model must not recreate the retired per-creator ACL.
+        """
+        return True
 
     async def close(self):
         if self.session and not self.session.closed:
@@ -114,57 +31,11 @@ class PermissionManager:
 
     async def check_single_permission(self, user_id: str, resource_id: str, operations: str,
                                       resource_type: str, role: str) -> bool:
-        # bkn-safe authoritative: return its decision directly.
-        if self._bkn_safe_authoritative():
-            try:
-                return await self._bkn_safe_check(user_id, resource_type, resource_id, operations)
-            except Exception as e:
-                StandLogger.error(e.args)
-                return False
-        """Check the user's permission for a resource."""
-        payload = {
-            "method": "GET",
-            "accessor": {
-                "id": user_id,
-                "type": role
-            },
-            "resource": {
-                "id": resource_id,
-                "type": resource_type
-            },
-            "operation": [operations]
-        }
-
-        isf_allowed = False
         try:
-            session = await self.get_session()
-            async with session.post(
-                    self.check_single_auth_url,
-                    json=payload,
-                    headers=internal_request_headers({'Content-Type': 'application/json'})
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    isf_allowed = result.get('result', False)
-        except Exception as e:
-            StandLogger.error(e.args)
-            isf_allowed = False
-
-        # Shadow: also query bkn-safe and log any divergence; ISF authoritative.
-        await self._maybe_shadow(user_id, role, resource_id, resource_type, operations, isf_allowed)
-        return isf_allowed
-
-    async def _maybe_shadow(self, user_id, role, resource_id, resource_type, operations, isf_allowed):
-        if self.authz_provider != "shadow" or not self.bkn_safe_url:
-            return
-        try:
-            safe_allowed = await self._bkn_safe_check(user_id, resource_type, resource_id, operations)
-            if safe_allowed != isf_allowed:
-                StandLogger.warn(
-                    f"[authz-shadow] DIFF: accessor={user_id} {resource_type}:{resource_id} "
-                    f"op={operations} isf={isf_allowed} bkn-safe={safe_allowed}")
-        except Exception as e:
-            StandLogger.warn(f"[authz-shadow] bkn-safe error (ISF authoritative): {e}")
+            return await self._bkn_safe_check(user_id, resource_type, resource_id, operations)
+        except Exception as exc:
+            StandLogger.error(exc.args)
+            return False
 
     async def _bkn_safe_check(self, user_id, resource_type, resource_id, operation) -> bool:
         session = await self.get_session()
@@ -174,27 +45,13 @@ class PermissionManager:
                       "checks": [{"resource": {"type": resource_type, "id": str(resource_id)},
                                   "operation": operation}],
                       "evaluation_scope": "effective"},
-                headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
-            if resp.status < 200 or resp.status >= 300:
-                raise RuntimeError(f"bkn-safe check returned status {resp.status}")
-            data = await resp.json()
+                headers=internal_request_headers({'Content-Type': 'application/json'})) as response:
+            if response.status < 200 or response.status >= 300:
+                raise RuntimeError(f"bkn-safe check returned status {response.status}")
+            data = await response.json()
             if not isinstance(data, dict) or not isinstance(data.get('allowed'), bool):
                 raise RuntimeError("bkn-safe check returned an invalid decision")
             return data['allowed']
-
-    async def _bkn_safe_add(self, user_id, resource_type, resource_id, operations) -> bool:
-        try:
-            session = await self.get_session()
-            async with session.post(
-                    f"{self.bkn_safe_url}/api/safe/v1/authz/policies",
-                    json={"accessor_id": user_id,
-                          "resource": {"type": resource_type, "id": resource_id},
-                          "operations": operations},
-                    headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
-                return resp.status == 204
-        except Exception as e:
-            StandLogger.error(e.args)
-            return False
 
     async def _bkn_safe_filter_ids(self, user_id, operation, resource_type,
                                    candidate_ids=None) -> list:
@@ -218,10 +75,10 @@ class PermissionManager:
         async with session.post(
                 f"{self.bkn_safe_url}/api/safe/v1/authz/resource-filter",
                 json=payload,
-                headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
-            if resp.status < 200 or resp.status >= 300:
-                raise RuntimeError(f"bkn-safe resource-filter returned status {resp.status}")
-            data = await resp.json()
+                headers=internal_request_headers({'Content-Type': 'application/json'})) as response:
+            if response.status < 200 or response.status >= 300:
+                raise RuntimeError(f"bkn-safe resource-filter returned status {response.status}")
+            data = await response.json()
             if not isinstance(data, dict) or not isinstance(data.get('resources'), list):
                 raise RuntimeError("bkn-safe resource-filter returned an invalid result")
             allowed = {item.get('resource_id') for item in data['resources']
@@ -237,144 +94,33 @@ class PermissionManager:
                 async with session.delete(
                         f"{self.bkn_safe_url}/api/safe/v1/authz/policies",
                         json={"resource": {"type": resource_type, "id": resource_id}},
-                        headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
-                    if resp.status != 204:
+                        headers=internal_request_headers({'Content-Type': 'application/json'})) as response:
+                    if response.status != 204:
                         ok = False
-            except Exception as e:
-                StandLogger.error(e.args)
+            except Exception as exc:
+                StandLogger.error(exc.args)
                 ok = False
         return ok
 
     async def get_permission_ids(self, user_id: str, operation: str,
                                  resource_type: str, resource_name: str, role: str) -> list:
-        # bkn-safe authoritative: filter the concrete model set in one batch.
-        if self._bkn_safe_authoritative():
-            return await self._bkn_safe_filter_ids(user_id, operation, resource_type)
-        """Return the resource list."""
-        payload = {
-            "method": "GET",
-            "accessor": {
-                "id": user_id,
-                "type": role
-            },
-            "resource":
-                {
-                    "type": resource_type,
-                    "name": resource_name
-                }
-            ,
-            "operation": [
-                operation
-            ]
-        }
-        model_ids = small_model_dao.get_all_ids()
-        resources = []
-        for model_id in model_ids:
-            resources.append({
-                "id": model_id['f_model_id'],
-                "type": "small_model",
-                "name": "小模型"
-            })
-        payload = {
-            "method": "GET",
-            "accessor": {
-                "id": user_id,
-                "type": role
-            },
-            "resources": resources,
-            "operation": [
-                operation
-            ]
-        }
-        operation_ids = []
-        try:
-            session = await self.get_session()
-            async with session.post(
-                    self.resource_filter_url,
-                    json=payload,
-                    headers=internal_request_headers({'Content-Type': 'application/json'})
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    operation_ids = [item['id'] for item in result if operation != "*"]
-                    return operation_ids
-        except Exception as e:
-            StandLogger.error(e.args)
-        return operation_ids
+        return await self._bkn_safe_filter_ids(user_id, operation, resource_type)
 
     async def filter_authorized_ids(self, user_id: str, role: str, candidate_ids: list,
                                     resource_type: str, resource_name: str,
                                     operation: str = "display") -> list:
-        """Generic per-caller resource filter: keep only the candidate ids the
-        user is authorized for. Unlike get_permission_ids (which is coupled to
-        small_model_dao), the candidate id set is passed in, so it works for any
-        resource type — large_model list uses it, and it does not disturb the
-        existing small_model path.
+        """Keep candidate ids for which the caller has the requested operation."""
+        return await self._bkn_safe_filter_ids(
+            user_id, operation, resource_type, candidate_ids=candidate_ids)
 
-        A "*" operation yields none (matches the ISF filter dropping it). Both
-        authoritative bkn-safe and legacy ISF
-        decide the concrete candidate set with one batch resource-filter request.
-
-        Fail-closed on error: an authorization request failure is NOT swallowed into
-        "not authorized" — that would silently drop models from the list on a
-        transient blip and show the user an incomplete set with no error. The
-        exception propagates so the caller returns 500 instead of a plausible
-        short list.
-        """
-        if operation == "*":
-            return []
-        if self._bkn_safe_authoritative():
-            return await self._bkn_safe_filter_ids(
-                user_id, operation, resource_type, candidate_ids=candidate_ids)
-        # ISF legacy: batch resource-filter.
-        resources = [{"id": mid, "type": resource_type, "name": resource_name} for mid in candidate_ids]
-        payload = {
-            "method": "GET",
-            "accessor": {"id": user_id, "type": role},
-            "resources": resources,
-            "operation": [operation],
-        }
-        try:
-            session = await self.get_session()
-            async with session.post(
-                    self.resource_filter_url,
-                    json=payload,
-                    headers=internal_request_headers({'Content-Type': 'application/json'})
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return [item['id'] for item in result]
-        except Exception as e:
-            StandLogger.error(e.args)
-        return []
-
-    async def check_display(self, user_id: str, role: str, resource_type: str, resource_id: str) -> bool:
-        """Single-resource display check, for endpoints keyed by one model id
-        (e.g. model statistics)."""
+    async def check_display(self, user_id: str, role: str, resource_type: str,
+                            resource_id: str) -> bool:
         return await self.check_single_permission(
             user_id=user_id, resource_id=resource_id, operations="display",
             resource_type=resource_type, role=role)
 
     async def delete_permission(self, resource_type: str, resource_ids: list) -> bool:
-        # bkn-safe authoritative: drop each resource's policies directly.
-        if self._bkn_safe_authoritative():
-            return await self._bkn_safe_delete(resource_type, resource_ids)
-        """Delete permissions."""
-        session = await self.get_session()
-        resources = [{"id": resource_id, "type": resource_type} for resource_id in resource_ids]
-        payload = {"resources": resources,
-                   "method": "DELETE"}
-        try:
-            async with session.post(
-                    self.delete_resource_url,
-                    json=payload,
-                    headers=internal_request_headers({"Content-Type": "application/json"})
-            ) as response:
-                if response.status == 204:
-                    return True
-        except Exception as e:
-            StandLogger.error(e.args)
-        return False
+        return await self._bkn_safe_delete(resource_type, resource_ids)
 
 
 permission_manager = PermissionManager()

@@ -251,6 +251,48 @@ func TestSafeAuthorizationBatchesMultipleOperationChecks(t *testing.T) {
 	}
 }
 
+func TestSafeAuthorizationOperationChecksPreservesOrderedDecisions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			AccessorID      string `json:"accessor_id"`
+			EvaluationScope string `json:"evaluation_scope"`
+			Checks          []struct {
+				Resource  interfaces.AuthResource      `json:"resource"`
+				Operation interfaces.AuthOperationType `json:"operation"`
+			} `json:"checks"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.AccessorID != "user-1" || body.EvaluationScope != "effective" || len(body.Checks) != 2 {
+			t.Fatalf("checks request = %+v", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"allowed": false,
+			"results": []map[string]any{
+				{"resource_type": "operator", "resource_id": "op-1", "operation": "delete", "allowed": true},
+				{"resource_type": "operator", "resource_id": "op-2", "operation": "delete", "allowed": false},
+			},
+		})
+	}))
+	defer server.Close()
+
+	response, err := newSafeAuthorization(server.URL, testLogger{}).OperationChecks(
+		context.Background(), &interfaces.AuthOperationChecksRequest{
+			Accessor: &interfaces.AuthAccessor{ID: "user-1"},
+			Checks: []*interfaces.AuthOperationRequirement{
+				{Resource: &interfaces.AuthResource{Type: "operator", ID: "op-1"}, Operation: interfaces.AuthOperationTypeDelete},
+				{Resource: &interfaces.AuthResource{Type: "operator", ID: "op-2"}, Operation: interfaces.AuthOperationTypeDelete},
+			},
+		})
+	if err != nil {
+		t.Fatalf("OperationChecks: %v", err)
+	}
+	if response.Result || len(response.Decisions) != 2 || !response.Decisions[0].Allowed || response.Decisions[1].Allowed {
+		t.Fatalf("OperationChecks = %+v", response)
+	}
+}
+
 func TestSafeAuthorizationResourceFilterCanSkipOperationProjection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {

@@ -62,6 +62,31 @@ type PermissionCheck struct {
 	Operations []string           `json:"operation"`
 }
 
+// PermissionRequirement is one exact resource-operation authorization
+// requirement. Multiple requirements are evaluated atomically by bkn-safe's
+// /checks endpoint.
+type PermissionRequirement struct {
+	Resource  PermissionResource `json:"resource"`
+	Operation string             `json:"operation"`
+}
+
+type PermissionChecksRequest struct {
+	AccessorID string                  `json:"accessor_id"`
+	Checks     []PermissionRequirement `json:"checks"`
+}
+
+type PermissionCheckResult struct {
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Operation    string `json:"operation"`
+	Allowed      bool   `json:"allowed"`
+}
+
+type PermissionChecksResponse struct {
+	Allowed bool                    `json:"allowed"`
+	Results []PermissionCheckResult `json:"results"`
+}
+
 // PermissionAccessor identifies an accessor.
 type PermissionAccessor struct {
 	Type string `json:"type,omitempty"` // user for a named user, app for an application account
@@ -201,6 +226,7 @@ type PropertyAccessDecision struct {
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go
 type PermissionAccess interface {
 	CheckPermission(ctx context.Context, check PermissionCheck) (bool, error)
+	CheckPermissions(ctx context.Context, request PermissionChecksRequest) (PermissionChecksResponse, error)
 	FilterResources(ctx context.Context, filter PermissionResourcesFilter) (map[string]PermissionResourceOps, error)
 	ResolvePropertyLevels(ctx context.Context, request PropertyLevelsRequest) (PropertyLevelsResponse, error)
 

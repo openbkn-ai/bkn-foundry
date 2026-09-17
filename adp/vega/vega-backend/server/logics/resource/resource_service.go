@@ -1053,21 +1053,35 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 		return nil
 	}
 
-	// Ask bkn-safe first so the normal delete path cannot probe Resource
-	// existence before authorization. With ignoreMissing, unmatched IDs are
-	// resolved after loading and are accepted only when they are actually absent.
-	matchResourcesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		ids, []string{interfaces.OPERATION_TYPE_DELETE}, interfaces.VISIBILITY_MATCH_ALL, false)
+	// Ask bkn-safe for explicit per-ID delete decisions before loading rows. With
+	// ignoreMissing, denied IDs are resolved after loading and accepted only when
+	// they are actually absent.
+	requirements := make([]interfaces.PermissionRequirement, 0, len(ids))
+	for _, id := range ids {
+		requirements = append(requirements, interfaces.PermissionRequirement{
+			Resource: interfaces.PermissionResource{
+				Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+				ID:   id,
+			},
+			Operation: interfaces.OPERATION_TYPE_DELETE,
+		})
+	}
+	decisions, err := rs.ps.CheckPermissions(ctx, requirements)
 	if err != nil {
-		span.SetStatus(codes.Error, "Filter resources error")
+		span.SetStatus(codes.Error, "Check resource permissions error")
 		return err
 	}
-	if !ignoreMissing && len(ids) != len(matchResourcesMap) {
+	allowedByID := make(map[string]bool, len(decisions))
+	for _, decision := range decisions {
+		allowedByID[decision.ResourceID] = decision.Allowed
+	}
+	if !ignoreMissing {
 		for _, id := range ids {
-			if _, exists := matchResourcesMap[id]; !exists {
-				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-					WithErrorDetails("Access denied: insufficient permissions for resource's delete operation.")
+			if allowedByID[id] {
+				continue
 			}
+			return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+				WithErrorDetails("Access denied: insufficient permissions for resource's delete operation.")
 		}
 	}
 
@@ -1090,7 +1104,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 
 	if ignoreMissing {
 		for _, id := range existingIDs {
-			if _, exists := matchResourcesMap[id]; !exists {
+			if !allowedByID[id] {
 				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 					WithErrorDetails("Access denied: insufficient permissions for resource's delete operation.")
 			}

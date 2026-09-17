@@ -21,7 +21,6 @@ import (
 type MockPermissionAccess struct {
 	ctrl     *gomock.Controller
 	recorder *MockPermissionAccessMockRecorder
-	isgomock struct{}
 }
 
 // MockPermissionAccessMockRecorder is the mock recorder for MockPermissionAccess.
@@ -54,6 +53,21 @@ func (m *MockPermissionAccess) CheckPermission(ctx context.Context, check interf
 func (mr *MockPermissionAccessMockRecorder) CheckPermission(ctx, check any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPermission", reflect.TypeOf((*MockPermissionAccess)(nil).CheckPermission), ctx, check)
+}
+
+// CheckPermissions mocks base method.
+func (m *MockPermissionAccess) CheckPermissions(ctx context.Context, request interfaces.PermissionChecksRequest) (interfaces.PermissionChecksResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckPermissions", ctx, request)
+	ret0, _ := ret[0].(interfaces.PermissionChecksResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckPermissions indicates an expected call of CheckPermissions.
+func (mr *MockPermissionAccessMockRecorder) CheckPermissions(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPermissions", reflect.TypeOf((*MockPermissionAccess)(nil).CheckPermissions), ctx, request)
 }
 
 // CreateResources mocks base method.

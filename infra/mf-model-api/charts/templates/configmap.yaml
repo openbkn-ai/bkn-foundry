@@ -52,9 +52,6 @@ data:
   USERMANAGEMENTPUBLICPORT: {{ .Values.depServices.user_management.publicPort | quote }}
   USERMANAGEMENTPRIVATEHOST: {{ .Values.depServices.user_management.privateHost | quote }}
   USERMANAGEMENTPRIVATEPORT: {{ .Values.depServices.user_management.privatePort | quote }}
-  # Authorization service.
-  AUTHORIZATIONPRIVATEHOST: {{ .Values.depServices.authorization.privateHost | quote }}
-  AUTHORIZATIONPRIVATEPORT: {{ .Values.depServices.authorization.privatePort | quote }}
   dm_svc.conf: |
     TIME_ZON=(480)
     LANGUAGE=(cn)

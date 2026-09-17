@@ -102,7 +102,9 @@ func TestSafeCheckPermissionBatchesOperations(t *testing.T) {
 			request.Checks[1].Operation != interfaces.OPERATION_TYPE_QUERY_DATA {
 			t.Errorf("checks request = %+v", request)
 		}
-		_, _ = w.Write([]byte(`{"allowed":true,"evaluation_scope":"effective","results":[]}`))
+		_, _ = w.Write([]byte(`{"allowed":true,"evaluation_scope":"effective","results":[` +
+			`{"resource_type":"object_type","resource_id":"kn-1/orders","operation":"view_detail","allowed":true},` +
+			`{"resource_type":"object_type","resource_id":"kn-1/orders","operation":"query_data","allowed":true}]}`))
 	}))
 	t.Cleanup(srv.Close)
 

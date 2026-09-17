@@ -44,15 +44,17 @@ func (m *operatorManager) DeleteOperator(ctx context.Context, req interfaces.Ope
 	if err != nil {
 		return
 	}
-	checkOperatorIDs, err := m.AuthService.ResourceFilterIDs(ctx, accessor, operatorIDs, interfaces.AuthResourceTypeOperator,
-		interfaces.AuthOperationTypeDelete)
+	deleteAllowed, err := m.AuthService.CheckResourceOperations(ctx, accessor, operatorIDs,
+		interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeDelete)
 	if err != nil {
 		return
 	}
-	if len(checkOperatorIDs) != len(operatorList) {
-		err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtOperatorDeleteForbidden,
-			fmt.Sprintf("current user %s has no permission to delete operator %v", userID, operatorIDs))
-		return
+	for _, operatorID := range operatorIDs {
+		if !deleteAllowed[operatorID] {
+			err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtOperatorDeleteForbidden,
+				fmt.Sprintf("current user %s has no permission to delete operator %v", userID, operatorIDs))
+			return
+		}
 	}
 	for _, operator := range operatorList {
 		// Only unpublished and removed operators can be deleted.

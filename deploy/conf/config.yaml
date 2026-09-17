@@ -8,7 +8,6 @@ image:
   registry: swr.cn-east-3.myhuaweicloud.com/openbkn-ai
 # Route service authorization and directory lookups to bkn-safe.
 bknSafe:
-  authzProvider: bkn-safe
   directoryProvider: bkn-safe
   url: http://bkn-safe:3000
 # accessAddress: sudo deploy.sh writes the real URL to $HOME/.openbkn-ai/config.yaml by default.

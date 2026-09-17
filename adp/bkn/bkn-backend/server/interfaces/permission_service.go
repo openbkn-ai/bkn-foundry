@@ -11,6 +11,7 @@ import "context"
 //go:generate mockgen -source ../interfaces/permission_service.go -destination ../interfaces/mock/mock_permission_service.go
 type PermissionService interface {
 	CheckPermission(ctx context.Context, resource PermissionResource, ops []string) error
+	RequirePermissions(ctx context.Context, requirements []PermissionRequirement) error
 	FilterFullPropertyAccess(ctx context.Context, objectTypeRef string, properties []string) ([]string, error)
 	// FilterVisiblePropertyAccess returns properties whose effective access level is not none.
 	FilterVisiblePropertyAccess(ctx context.Context, objectTypeRef string, properties []string) ([]string, error)

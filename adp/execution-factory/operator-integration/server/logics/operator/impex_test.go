@@ -475,15 +475,15 @@ func TestExport(t *testing.T) {
 		})
 		Convey("检查是否有查看权限:请求过滤权限报错", func() {
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(),
-				gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(nil, mocks.MockFuncErr("ResourceFilterIDs"))
+			mockAuthService.EXPECT().CheckResourceOperations(gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(nil, mocks.MockFuncErr("CheckResourceOperations"))
 			_, err := operator.Export(context.TODO(), req)
 			So(err, ShouldNotBeNil)
 		})
 		Convey("检查是否有查看权限:没有查看权限", func() {
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(),
-				gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return([]string{}, nil)
+			mockAuthService.EXPECT().CheckResourceOperations(gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(map[string]bool{"1": false}, nil)
 			_, err := operator.Export(context.TODO(), req)
 			So(err, ShouldNotBeNil)
 			httpErr, ok := err.(*myErr.HTTPError)
@@ -492,8 +492,8 @@ func TestExport(t *testing.T) {
 		})
 		Convey("查询算子信息报错（DB）", func() {
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
-				ids, nil)
+			mockAuthService.EXPECT().CheckResourceOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
+				map[string]bool{"1": true}, nil)
 			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("SelectByOperatorIDs"))
 			_, err := operator.Export(context.TODO(), req)
 			So(err, ShouldNotBeNil)
@@ -503,8 +503,8 @@ func TestExport(t *testing.T) {
 		})
 		Convey("请求导出算子不存在", func() {
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
-				ids, nil)
+			mockAuthService.EXPECT().CheckResourceOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
+				map[string]bool{"1": true}, nil)
 			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return([]*model.OperatorRegisterDB{}, nil)
 			_, err := operator.Export(context.TODO(), req)
 			So(err, ShouldNotBeNil)

@@ -48,10 +48,6 @@ class BaseConfig(object):
     USERMANAGEMENTPRIVATEHOSTDEFAULT = DIPHOSTDEFAULT
     USERMANAGEMENTPRIVATEPORTDEFAULT = 30980
 
-    # Resource authorization service.
-    AUTHORIZATIONPRIVATEHOSTDEFAULT = DIPHOSTDEFAULT
-    AUTHORIZATIONPRIVATEPORTDEFAULT = 30920
-
     # Kafka defaults.
     KAFKAHOSTDEFAULT = DIPHOSTDEFAULT
     KAFKAPORTDEFAULT = 9097
@@ -91,10 +87,6 @@ class BaseConfig(object):
     OAUTHADMINPORT = os.getenv("OAUTHADMINPORT", OAUTHADMINPORTDEFAULT)
     USERMANAGEMENTPRIVATEHOST = os.getenv("USERMANAGEMENTPRIVATEHOST", USERMANAGEMENTPRIVATEHOSTDEFAULT)
     USERMANAGEMENTPRIVATEPORT = os.getenv("USERMANAGEMENTPRIVATEPORT", USERMANAGEMENTPRIVATEPORTDEFAULT)
-    # Resource authorization settings.
-    AUTHORIZATIONPRIVATEHOST = os.getenv("AUTHORIZATIONPRIVATEHOST", AUTHORIZATIONPRIVATEHOSTDEFAULT)
-    AUTHORIZATIONPRIVATEPORT = os.getenv("AUTHORIZATIONPRIVATEPORT", AUTHORIZATIONPRIVATEPORTDEFAULT)
-
     # Kafka settings.
     KAFKAHOST = os.getenv('KAFKAHOST', KAFKAHOSTDEFAULT)
     KAFKAPORT = os.getenv('KAFKAPORT', KAFKAPORTDEFAULT)
@@ -122,29 +114,9 @@ def resolve_metering_backend():
 
 base_config = BaseConfig()
 
-# Authorization backends this service can talk to. bkn-safe and shadow both
-# reach bkn-safe and therefore need BKN_SAFE_URL; isf is retired and stays
-# reachable only for environments that have not finished the cutover.
-AUTHZ_PROVIDERS_REQUIRING_SAFE_URL = ('bkn-safe', 'shadow')
-AUTHZ_PROVIDER_ISF = 'isf'
-SUPPORTED_AUTHZ_PROVIDERS = AUTHZ_PROVIDERS_REQUIRING_SAFE_URL + (AUTHZ_PROVIDER_ISF,)
-
-
 def _stripped_env(name):
-    """Read one bkn-safe cutover variable, whitespace removed.
-
-    Every reader of these variables goes through here. Normalising in only
-    some of them would let "bkn-safe " pass the startup check and then miss
-    the equality comparisons that select the backend, which is the silent ISF
-    fallback this validation exists to remove.
-    """
+    """Read one service setting with surrounding whitespace removed."""
     return os.getenv(name, '').strip()
-
-
-def authz_settings():
-    """Authorization backend selection, shared by the startup check and
-    PermissionManager."""
-    return _stripped_env('AUTHZ_PROVIDER'), _stripped_env('BKN_SAFE_URL')
 
 
 def directory_settings():
@@ -158,37 +130,9 @@ def bkn_safe_url():
 
 
 def validate_authz_config():
-    """Refuse to start when the authorization backend cannot be honoured.
-
-    A misspelled AUTHZ_PROVIDER, or bkn-safe selected while BKN_SAFE_URL is
-    empty, used to print one line and fall back to ISF. ISF is retired, so
-    that fallback turned a typo into an authorization surface whose answers
-    are unpredictable, and the single log line made it invisible at runtime.
-
-    An unset provider keeps working: existing deployments carry an explicit
-    empty value in their own values overrides, and refusing to start would
-    turn an upgrade into a CrashLoopBackOff. It warns loudly instead, and the
-    flip to a hard failure waits until those deployments are counted.
-    """
-    provider, safe_url = authz_settings()
-    if provider in AUTHZ_PROVIDERS_REQUIRING_SAFE_URL:
-        if not safe_url:
-            raise RuntimeError(
-                f'AUTHZ_PROVIDER={provider} requires BKN_SAFE_URL to be set')
-        return
-    if provider == '':
-        logging.getLogger(__name__).warning(
-            'AUTHZ_PROVIDER is unset, so authorization falls back to the '
-            'retired ISF; set it to bkn-safe')
-        return
-    if provider == AUTHZ_PROVIDER_ISF:
-        logging.getLogger(__name__).warning(
-            'AUTHZ_PROVIDER=isf selects the retired authorization service; '
-            'migrate the deployment to bkn-safe')
-        return
-    raise RuntimeError(
-        f'AUTHZ_PROVIDER={provider!r} is not a supported authorization '
-        f'backend; set it to one of {", ".join(SUPPORTED_AUTHZ_PROVIDERS)}')
+    """Authorization always uses bkn-safe and therefore requires its URL."""
+    if not bkn_safe_url():
+        raise RuntimeError('BKN_SAFE_URL must be set')
 
 
 server_info = ServerInfo(

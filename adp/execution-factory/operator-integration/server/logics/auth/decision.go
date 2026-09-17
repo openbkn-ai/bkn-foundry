@@ -208,6 +208,48 @@ func (s *authServiceImpl) OperationCheckAny(
 	return false, nil
 }
 
+// OperationCheckBatch evaluates exact resource-operation requirements in one
+// authorization request. Denials are returned as decisions; transport or
+// malformed-response failures are surfaced as authorization-unavailable errors.
+func (s *authServiceImpl) OperationCheckBatch(ctx context.Context, accessor *interfaces.AuthAccessor,
+	requirements []*interfaces.AuthOperationRequirement) ([]*interfaces.AuthOperationCheckDecision, error) {
+	if len(requirements) == 0 {
+		return []*interfaces.AuthOperationCheckDecision{}, nil
+	}
+	response, err := s.authorization.OperationChecks(ctx, &interfaces.AuthOperationChecksRequest{
+		Accessor: accessor,
+		Checks:   requirements,
+	})
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("[OperationCheckBatch] authorization checks failed: %v", err)
+		return nil, oerrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.ErrExtCommonAuthorizationUnavailable, nil)
+	}
+	return response.Decisions, nil
+}
+
+func (s *authServiceImpl) CheckResourceOperations(ctx context.Context, accessor *interfaces.AuthAccessor,
+	resourceIDs []string, resourceType interfaces.AuthResourceType,
+	operation interfaces.AuthOperationType) (map[string]bool, error) {
+
+	requirements := make([]*interfaces.AuthOperationRequirement, 0, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		requirements = append(requirements, &interfaces.AuthOperationRequirement{
+			Resource:  &interfaces.AuthResource{ID: resourceID, Type: string(resourceType)},
+			Operation: operation,
+		})
+	}
+	decisions, err := s.OperationCheckBatch(ctx, accessor, requirements)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]bool, len(decisions))
+	for _, decision := range decisions {
+		allowed[decision.ResourceID] = decision.Allowed
+	}
+	return allowed, nil
+}
+
 // ResourceFilterIDs resource filtering.
 func (s *authServiceImpl) ResourceFilterIDs(
 	ctx context.Context,

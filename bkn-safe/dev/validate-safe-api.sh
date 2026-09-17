@@ -54,8 +54,8 @@ echo "== health =="
 echo "== authz: seeded 超级管理员 wildcard + deny (internal, tokenless) =="
 [ "$(chk "$SUPER" anything z whatever)" = "True" ]  && ok "超级管理员 wildcard (any/any)" || bad "super wildcard"
 [ "$(chk "nobody-$$" catalog c1 create)" = "False" ] && ok "unbound accessor denied" || bad "deny leak"
-api POST /api/safe/v1/authz/operations "{\"accessor_id\":\"$SUPER\",\"resource\":{\"type\":\"agent\",\"id\":\"probe\"}}" >/dev/null
-jget "'use' in d['operations']" </tmp/safe_body | grep -q True && ok "operations returns allowed set" || bad "operations"
+api POST /api/safe/v1/authz/resource-filter "{\"accessor_id\":\"$SUPER\",\"resources\":[{\"type\":\"agent\",\"id\":\"probe\"}],\"include_operations\":true}" >/dev/null
+jget "'use' in d['resources'][0]['operations']" </tmp/safe_body | grep -q True && ok "resource-filter returns allowed set" || bad "resource-filter projection"
 
 echo "== authz: per-object grant + revoke (internal) =="
 OBJU="objtest-$$"

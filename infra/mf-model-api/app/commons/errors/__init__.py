@@ -1248,7 +1248,7 @@ DeletePermissionResuorceError = {
     "code": "DeletePermissionResuorceError",
     "description": "删除权限资源失败",
     "detail": "删除权限资源失败",
-    "solution": "请检查服务：authorization-private是否正常",
+    "solution": "请检查服务：bkn-safe是否正常",
     "link": ""
 }
 ModelQuotaControllerUserModelConfigNoLeftSpaceError = {

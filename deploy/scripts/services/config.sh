@@ -502,7 +502,6 @@ DEP_EOF
     bkn_safe_block=$(cat <<'BKNSAFE_ON'
 # Services route authorization and directory lookups to bkn-safe.
 bknSafe:
-  authzProvider: bkn-safe
   directoryProvider: bkn-safe
   url: http://bkn-safe:3000
 BKNSAFE_ON

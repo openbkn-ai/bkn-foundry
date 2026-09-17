@@ -93,7 +93,9 @@ func TestSafeCheckUsesDefaultEffectiveDecision(t *testing.T) {
 			checks[1].Operation != interfaces.OPERATION_TYPE_VIEW_DETAIL {
 			t.Fatalf("checks = %#v, want execute and view_detail", checks)
 		}
-		_, _ = w.Write([]byte(`{"allowed":true,"evaluation_scope":"effective","results":[]}`))
+		_, _ = w.Write([]byte(`{"allowed":true,"evaluation_scope":"effective","results":[` +
+			`{"resource_type":"action_type","resource_id":"kn-1/action-1","operation":"execute","allowed":true},` +
+			`{"resource_type":"action_type","resource_id":"kn-1/action-1","operation":"view_detail","allowed":true}]}`))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -343,31 +345,6 @@ func TestSafeFilterResourcesVisibilityOnly(t *testing.T) {
 	}
 	if len(got) != 1 || len(got["kn-1"].Operations) != 0 {
 		t.Fatalf("got %v, want visible resource without projected operations", got)
-	}
-}
-
-// TestSafeGetResourcesOperationsHasNoVisibilityFilter checks the other adapter
-// method keeps its "every requested resource comes back" contract, which the
-// endpoint expresses as an empty visibility list.
-func TestSafeGetResourcesOperationsHasNoVisibilityFilter(t *testing.T) {
-	access, calls := newFilterStub(t, map[string][]string{"kn-1": {"view_detail"}, "kn-2": {}})
-
-	got, err := access.GetResourcesOperations(context.Background(),
-		knFilter([]string{"kn-1", "kn-2"}, []string{"view_detail"}, []string{"view_detail", "modify"}))
-	if err != nil {
-		t.Fatalf("get operations: %v", err)
-	}
-	if len((*calls)[0].VisibilityOperations) != 0 {
-		t.Errorf("visibility = %v, want empty", (*calls)[0].VisibilityOperations)
-	}
-	if !(*calls)[0].IncludeOperations {
-		t.Error("include_operations = false, want true")
-	}
-	if len(got) != 2 {
-		t.Fatalf("got %v, want both resources", got)
-	}
-	if len(got["kn-2"].Operations) != 0 {
-		t.Errorf("kn-2 ops = %v, want empty", got["kn-2"].Operations)
 	}
 }
 

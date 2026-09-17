@@ -82,10 +82,6 @@ spec:
           env:
             - name: DEVICE_CODE
               value: {{ .Values.env.devicecode }}
-            # bkn-safe (ISF replacement) cutover. Accepted: bkn-safe, shadow, isf.
-            # A misspelled value refuses to start; an unset one warns and falls back to ISF.
-            - name: AUTHZ_PROVIDER
-              value: {{ .Values.bknSafe.authzProvider | quote }}
             - name: DIRECTORY_PROVIDER
               value: {{ .Values.bknSafe.directoryProvider | quote }}
             - name: BKN_SAFE_URL
@@ -319,16 +315,6 @@ spec:
                 configMapKeyRef:
                   name: {{ .Release.Name }}-yaml
                   key: USERMANAGEMENTPRIVATEPORT
-            - name: AUTHORIZATIONPRIVATEHOST
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ .Release.Name }}-yaml
-                  key: AUTHORIZATIONPRIVATEHOST
-            - name: AUTHORIZATIONPRIVATEPORT
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ .Release.Name }}-yaml
-                  key: AUTHORIZATIONPRIVATEPORT
             # Observability configuration.
             - name: LOG_ENABLED
               value: {{ .Values.observability.logEnabled | quote }}

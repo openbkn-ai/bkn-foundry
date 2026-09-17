@@ -30,14 +30,14 @@ func TestPermissionServiceRequireQueryData(t *testing.T) {
 	t.Run("requires every dependency and deduplicates the request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		access := omock.NewMockPermissionAccess(ctrl)
-		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, request interfaces.PermissionFilterRequest) (interfaces.PermissionFilterResponse, error) {
-				if request.AccessorID != "account-1" || len(request.Resources) != 2 {
+		access.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, request interfaces.PermissionChecksRequest) (interfaces.PermissionChecksResponse, error) {
+				if request.AccessorID != "account-1" || len(request.Checks) != 2 {
 					t.Fatalf("request = %#v", request)
 				}
-				return interfaces.PermissionFilterResponse{Resources: []interfaces.PermissionFilterResult{
-					{ResourceType: "metric", ResourceID: "kn-a/m-1", Operations: []string{"query_data"}},
-					{ResourceType: "object_type", ResourceID: "kn-a/ot-1", Operations: []string{"query_data"}},
+				return interfaces.PermissionChecksResponse{Allowed: true, Results: []interfaces.PermissionCheckResult{
+					{ResourceType: "metric", ResourceID: "kn-a/m-1", Operation: "query_data", Allowed: true},
+					{ResourceType: "object_type", ResourceID: "kn-a/ot-1", Operation: "query_data", Allowed: true},
 				}}, nil
 			})
 
@@ -50,9 +50,11 @@ func TestPermissionServiceRequireQueryData(t *testing.T) {
 	t.Run("denies when bkn-safe omits one dependency", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		access := omock.NewMockPermissionAccess(ctrl)
-		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(interfaces.PermissionFilterResponse{
-			Resources: []interfaces.PermissionFilterResult{
-				{ResourceType: "metric", ResourceID: "kn-a/m-1", Operations: []string{"query_data"}},
+		access.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).Return(interfaces.PermissionChecksResponse{
+			Allowed: false,
+			Results: []interfaces.PermissionCheckResult{
+				{ResourceType: "metric", ResourceID: "kn-a/m-1", Operation: "query_data", Allowed: true},
+				{ResourceType: "object_type", ResourceID: "kn-a/ot-1", Operation: "query_data", Allowed: false},
 			},
 		}, nil)
 
@@ -63,8 +65,8 @@ func TestPermissionServiceRequireQueryData(t *testing.T) {
 	t.Run("fails closed when bkn-safe is unavailable", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		access := omock.NewMockPermissionAccess(ctrl)
-		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(
-			interfaces.PermissionFilterResponse{}, errors.New("timeout"))
+		access.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).Return(
+			interfaces.PermissionChecksResponse{}, errors.New("timeout"))
 
 		err := (&permissionService{access: access}).RequireQueryData(ctx, resources)
 		assertHTTPStatus(t, err, http.StatusServiceUnavailable)

@@ -99,7 +99,7 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 ## HTTP 接口（节选）
 
 - 认证（hydra 重定向到这里）：`GET/POST /login`、`GET /consent`、`GET/POST /device`
-- 鉴权 `/api/safe/v1/authz`：`POST /check`、`POST /operations`、`POST /resource-filter`、
+- 鉴权 `/api/safe/v1/authz`：`POST /checks`、`POST /resource-filter`、
   `POST /property-levels`、`POST|DELETE /policies`、`POST /role-bindings`
 - Managed KN proxies (ClusterIP-internal surface) `/api/safe/in/v1/managed-proxy-accounts`:
   create, get, disable, and archive one-to-one proxy apps; these accounts cannot log in, use

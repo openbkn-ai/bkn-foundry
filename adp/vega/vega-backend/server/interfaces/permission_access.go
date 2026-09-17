@@ -100,9 +100,26 @@ type PermissionCheck struct {
 	Method     string             `json:"method"`
 }
 
-// Check the permission result
+type PermissionRequirement struct {
+	Resource  PermissionResource `json:"resource"`
+	Operation string             `json:"operation"`
+}
+
+type PermissionChecksRequest struct {
+	AccessorID string                  `json:"accessor_id"`
+	Checks     []PermissionRequirement `json:"checks"`
+}
+
 type PermissionCheckResult struct {
-	Result bool `json:"result"`
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Operation    string `json:"operation"`
+	Allowed      bool   `json:"allowed"`
+}
+
+type PermissionChecksResponse struct {
+	Allowed bool                    `json:"allowed"`
+	Results []PermissionCheckResult `json:"results"`
 }
 
 // Visitor Information
@@ -164,6 +181,7 @@ type PermissionResourceParent struct {
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go
 type PermissionAccess interface {
 	CheckPermission(ctx context.Context, check PermissionCheck) (bool, error)
+	CheckPermissions(ctx context.Context, request PermissionChecksRequest) (PermissionChecksResponse, error)
 	FilterResources(ctx context.Context, filter PermissionResourcesFilter) (map[string]PermissionResourceOps, error)
 
 	CreateResources(ctx context.Context, policies []PermissionPolicy) error

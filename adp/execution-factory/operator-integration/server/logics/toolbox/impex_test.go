@@ -533,16 +533,16 @@ func TestExport(t *testing.T) {
 			Convey("检查权限失败", func() {
 				mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
-				mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
-					interfaces.AuthOperationTypeView).Return(nil, mocks.MockFuncErr("ResourceFilterIDs"))
+				mockAuthService.EXPECT().CheckResourceOperations(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
+					interfaces.AuthOperationTypeView).Return(nil, mocks.MockFuncErr("CheckResourceOperations"))
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
 			})
 			Convey("没有查看权限", func() {
 				mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
-				mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
-					interfaces.AuthOperationTypeView).Return([]string{}, nil)
+				mockAuthService.EXPECT().CheckResourceOperations(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
+					interfaces.AuthOperationTypeView).Return(map[string]bool{"box_id_1": false}, nil)
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
 				httpErr, ok := err.(*myErr.HTTPError)
@@ -570,8 +570,8 @@ func TestExport(t *testing.T) {
 		})
 		Convey("批量获取工具箱内工具信息", func() {
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
-				interfaces.AuthOperationTypeView).Return(ids, nil)
+			mockAuthService.EXPECT().CheckResourceOperations(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
+				interfaces.AuthOperationTypeView).Return(map[string]bool{"box_id_1": true}, nil)
 			Convey("内置工具箱不允许导出", func() {
 				toolBoxDB.IsInternal = true
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)

@@ -40,30 +40,51 @@ func NewPermissionServiceImpl(appSetting *common.AppSetting) interfaces.Permissi
 }
 
 func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource interfaces.PermissionResource, ops []string) error {
+	requirements := make([]interfaces.PermissionRequirement, 0, len(ops))
+	for _, operation := range ops {
+		requirements = append(requirements, interfaces.PermissionRequirement{Resource: resource, Operation: operation})
+	}
+	return ps.RequirePermissions(ctx, requirements)
+}
+
+func (ps *PermissionServiceImpl) CheckPermissions(ctx context.Context,
+	requirements []interfaces.PermissionRequirement) ([]interfaces.PermissionCheckResult, error) {
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 			WithErrorDetails("Access denied: missing account ID or type")
 	}
+	if len(requirements) == 0 {
+		return []interfaces.PermissionCheckResult{}, nil
+	}
 
-	ok, err := ps.pa.CheckPermission(ctx, interfaces.PermissionCheck{
-		Accessor: interfaces.PermissionAccessor{
-			ID:   accountInfo.ID,
-			Type: accountInfo.Type,
-		},
-		Resource:   resource,
-		Operations: ops,
+	response, err := ps.pa.CheckPermissions(ctx, interfaces.PermissionChecksRequest{
+		AccessorID: accountInfo.ID,
+		Checks:     requirements,
 	})
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_CheckPermissionFailed).WithErrorDetails(err)
 	}
-	if !ok {
+	return response.Results, nil
+}
+
+func (ps *PermissionServiceImpl) RequirePermissions(ctx context.Context,
+	requirements []interfaces.PermissionRequirement) error {
+	results, err := ps.CheckPermissions(ctx, requirements)
+	if err != nil {
+		return err
+	}
+	for _, result := range results {
+		if result.Allowed {
+			continue
+		}
 		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", ops))
+			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for %s on %s:%s",
+				result.Operation, result.ResourceType, result.ResourceID))
 	}
 	return nil
 }

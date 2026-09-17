@@ -62,14 +62,21 @@ func CheckKNChildBatchPermission(ctx context.Context, ps interfaces.PermissionSe
 	}
 
 	resourceIDs := interfaces.KNChildResourceIDs(knID, childIDs)
-	matched, err := FilterKNChildResourceIDs(ctx, ps, resourceType, resourceIDs, childOperation)
-	if err != nil {
-		return err
-	}
-	for _, resourceID := range resourceIDs {
-		if _, ok := matched[resourceID]; !ok {
-			return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-				WithErrorDetails(localizedPermissionDetail(ctx, "PermissionDenied"))
+	chunkSize := resourceFilterChunkSize(len(resourceIDs))
+	for start := 0; start < len(resourceIDs); start += chunkSize {
+		end := start + chunkSize
+		if end > len(resourceIDs) {
+			end = len(resourceIDs)
+		}
+		requirements := make([]interfaces.PermissionRequirement, 0, end-start)
+		for _, resourceID := range resourceIDs[start:end] {
+			requirements = append(requirements, interfaces.PermissionRequirement{
+				Resource:  interfaces.PermissionResource{Type: resourceType, ID: resourceID},
+				Operation: childOperation,
+			})
+		}
+		if err := ps.RequirePermissions(ctx, requirements); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -273,10 +280,7 @@ func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 	resourceType string, resourceIDs, visibilityOperations []string,
 	allowOperation, requireAnyOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 
-	chunkSize := len(resourceIDs)
-	if configured, err := strconv.Atoi(strings.TrimSpace(os.Getenv(knChildResourceFilterChunkSizeEnv))); err == nil && configured > 0 && configured < chunkSize {
-		chunkSize = configured
-	}
+	chunkSize := resourceFilterChunkSize(len(resourceIDs))
 	matched := make(map[string]interfaces.PermissionResourceOps, len(resourceIDs))
 	for start := 0; start < len(resourceIDs); start += chunkSize {
 		end := start + chunkSize
@@ -300,6 +304,14 @@ func filterKNChildResourceIDs(ctx context.Context, ps interfaces.PermissionServi
 		}
 	}
 	return matched, nil
+}
+
+func resourceFilterChunkSize(resourceCount int) int {
+	chunkSize := resourceCount
+	if configured, err := strconv.Atoi(strings.TrimSpace(os.Getenv(knChildResourceFilterChunkSizeEnv))); err == nil && configured > 0 && configured < chunkSize {
+		chunkSize = configured
+	}
+	return chunkSize
 }
 
 func validateFilterResponse(ctx context.Context, requestedIDs []string,

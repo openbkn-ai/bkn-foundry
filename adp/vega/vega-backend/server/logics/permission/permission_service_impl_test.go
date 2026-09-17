@@ -56,27 +56,31 @@ func TestPermissionServiceImplCheckPermission(t *testing.T) {
 		svc := &PermissionServiceImpl{pa: access}
 		ctx := contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER)
 		resource := interfaces.PermissionResource{ID: "catalog-1", Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG}
-		var check interfaces.PermissionCheck
+		var request interfaces.PermissionChecksRequest
 		access.EXPECT().
-			CheckPermission(gomock.Any(), gomock.AssignableToTypeOf(interfaces.PermissionCheck{})).
-			DoAndReturn(func(_ context.Context, got interfaces.PermissionCheck) (bool, error) {
-				check = got
-				return true, nil
+			CheckPermissions(gomock.Any(), gomock.AssignableToTypeOf(interfaces.PermissionChecksRequest{})).
+			DoAndReturn(func(_ context.Context, got interfaces.PermissionChecksRequest) (interfaces.PermissionChecksResponse, error) {
+				request = got
+				return interfaces.PermissionChecksResponse{Allowed: true, Results: []interfaces.PermissionCheckResult{{
+					ResourceType: resource.Type, ResourceID: resource.ID,
+					Operation: interfaces.OPERATION_TYPE_MODIFY, Allowed: true,
+				}}}, nil
 			})
 
 		err := svc.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 
 		require.NoError(t, err)
-		assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}, check.Accessor)
-		assert.Equal(t, resource, check.Resource)
-		assert.Equal(t, []string{interfaces.OPERATION_TYPE_MODIFY}, check.Operations)
+		assert.Equal(t, "user-1", request.AccessorID)
+		require.Len(t, request.Checks, 1)
+		assert.Equal(t, resource, request.Checks[0].Resource)
+		assert.Equal(t, interfaces.OPERATION_TYPE_MODIFY, request.Checks[0].Operation)
 	})
 
 	t.Run("wraps access error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		access := vmock.NewMockPermissionAccess(ctrl)
-		access.EXPECT().CheckPermission(gomock.Any(), gomock.Any()).Return(false, errors.New("safe unavailable"))
+		access.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).Return(interfaces.PermissionChecksResponse{}, errors.New("safe unavailable"))
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.CheckPermission(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
@@ -90,7 +94,12 @@ func TestPermissionServiceImplCheckPermission(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		access := vmock.NewMockPermissionAccess(ctrl)
-		access.EXPECT().CheckPermission(gomock.Any(), gomock.Any()).Return(false, nil)
+		access.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).Return(interfaces.PermissionChecksResponse{
+			Allowed: false, Results: []interfaces.PermissionCheckResult{{
+				ResourceType: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ResourceID: "catalog-1",
+				Operation: interfaces.OPERATION_TYPE_AUTHORIZE, Allowed: false,
+			}},
+		}, nil)
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.CheckPermission(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),

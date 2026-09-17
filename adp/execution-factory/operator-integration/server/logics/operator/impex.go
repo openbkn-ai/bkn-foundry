@@ -501,10 +501,16 @@ func (m *operatorManager) exportPreCheck(ctx context.Context, req *interfaces.Ex
 		return
 	}
 	// Check viewing permissions.
-	checkOperatorIDs, err := m.AuthService.ResourceFilterIDs(ctx, accessor, req.IDs,
+	viewAllowed, err := m.AuthService.CheckResourceOperations(ctx, accessor, req.IDs,
 		interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeView)
 	if err != nil {
 		return
+	}
+	checkOperatorIDs := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if viewAllowed[id] {
+			checkOperatorIDs = append(checkOperatorIDs, id)
+		}
 	}
 	if len(checkOperatorIDs) != len(req.IDs) {
 		clist := utils.FindMissingElements(req.IDs, checkOperatorIDs)

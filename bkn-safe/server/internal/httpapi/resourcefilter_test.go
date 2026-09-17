@@ -91,7 +91,7 @@ func TestResourceFilterEndpointVisibilityMatchAny(t *testing.T) {
 		"resource_ids":          []string{"kn-detail", "kn-query", "kn-hidden"},
 		"visibility_operations": []string{"view_detail", "query_data"},
 		"visibility_match":      "any",
-		"candidate_operations":  []string{"view_detail", "query_data"},
+		"include_operations":    true,
 	})
 
 	if len(got) != 2 || got[0].ResourceID != "kn-detail" || got[1].ResourceID != "kn-query" {
@@ -124,13 +124,14 @@ func TestResourceFilterEndpointVisibilityMatchDefaultsToAll(t *testing.T) {
 		"resource_type":         "knowledge_network",
 		"resource_ids":          []string{"kn-detail", "kn-query", "kn-both"},
 		"visibility_operations": []string{"view_detail", "query_data"},
-		"candidate_operations":  []string{"view_detail", "query_data"},
+		"include_operations":    true,
 	})
 
 	if len(got) != 1 || got[0].ResourceID != "kn-both" {
 		t.Fatalf("default visibility_match = %+v, want only kn-both", got)
 	}
-	if want := []string{"view_detail", "query_data"}; !reflect.DeepEqual(got[0].Operations, want) {
+	sort.Strings(got[0].Operations)
+	if want := []string{"query_data", "view_detail"}; !reflect.DeepEqual(got[0].Operations, want) {
 		t.Errorf("kn-both operations = %v, want %v", got[0].Operations, want)
 	}
 }
@@ -244,7 +245,7 @@ func TestResourceFilterEndpointEdges(t *testing.T) {
 }
 
 // TestResourceFilterEndpointProjectsCatalog checks that enabling projection
-// returns the resource type's catalog ops, matching POST /operations.
+// returns the resource type's complete catalog-backed effective operations.
 func TestResourceFilterEndpointProjectsCatalog(t *testing.T) {
 	r, e, db := newTestServer(t)
 	const user = "u-1"

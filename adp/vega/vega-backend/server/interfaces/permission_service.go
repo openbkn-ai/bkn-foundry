@@ -11,6 +11,8 @@ import "context"
 //go:generate mockgen -source ../interfaces/permission_service.go -destination ../interfaces/mock/mock_permission_service.go
 type PermissionService interface {
 	CheckPermission(ctx context.Context, resource PermissionResource, ops []string) error
+	CheckPermissions(ctx context.Context, requirements []PermissionRequirement) ([]PermissionCheckResult, error)
+	RequirePermissions(ctx context.Context, requirements []PermissionRequirement) error
 	FilterResources(ctx context.Context, resourceType string, ids []string,
 		ops []string, visibilityMatch string, allowOperation bool) (map[string]PermissionResourceOps, error)
 

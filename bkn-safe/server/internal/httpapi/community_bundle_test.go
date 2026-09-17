@@ -42,12 +42,6 @@ func TestCommunityBundleHTTPReadPathsAgree(t *testing.T) {
 		t.Fatalf("check = %d %s; want allowed", check.Code, check.Body.String())
 	}
 
-	operations := do(t, r, http.MethodPost, "/api/safe/v1/authz/operations", map[string]any{
-		"accessor_id": user,
-		"resource":    map[string]string{"type": "knowledge_network", "id": "kn-1"},
-	})
-	assertJSONOperations(t, operations.Code, operations.Body.Bytes(), approved)
-
 	filtered := postFilter(t, r, map[string]any{
 		"accessor_id":           user,
 		"resource_type":         "knowledge_network",
@@ -147,12 +141,6 @@ func TestAgentBundleHTTPReadPathsAgree(t *testing.T) {
 		t.Fatalf("check = %d %s; want allowed", check.Code, check.Body.String())
 	}
 
-	operations := do(t, r, http.MethodPost, "/api/safe/v1/authz/operations", map[string]any{
-		"accessor_id": user,
-		"resource":    map[string]string{"type": "agent", "id": "agent-1"},
-	})
-	assertJSONOperations(t, operations.Code, operations.Body.Bytes(), approved)
-
 	filtered := postFilter(t, r, map[string]any{
 		"accessor_id":           user,
 		"resource_type":         "agent",
@@ -208,20 +196,6 @@ func TestAgentBundleHTTPReadPathsAgree(t *testing.T) {
 		t.Fatalf("me permissions = %+v, %v", meResponse, err)
 	}
 	assertSameOperations(t, meResponse.Permissions[0].Operations, approved)
-}
-
-func assertJSONOperations(t *testing.T, status int, body []byte, want []string) {
-	t.Helper()
-	if status != http.StatusOK {
-		t.Fatalf("operations = %d %s", status, body)
-	}
-	var response struct {
-		Operations []string `json:"operations"`
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		t.Fatal(err)
-	}
-	assertSameOperations(t, response.Operations, want)
 }
 
 func assertSameOperations(t *testing.T, got, want []string) {

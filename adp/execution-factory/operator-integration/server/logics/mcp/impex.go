@@ -420,10 +420,16 @@ func (s *mcpServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Exp
 		return
 	}
 	// Check viewing permissions.
-	checkMCPIDs, err := s.AuthService.ResourceFilterIDs(ctx, accessor, req.IDs,
+	viewAllowed, err := s.AuthService.CheckResourceOperations(ctx, accessor, req.IDs,
 		interfaces.AuthResourceTypeMCP, interfaces.AuthOperationTypeView)
 	if err != nil {
 		return
+	}
+	checkMCPIDs := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if viewAllowed[id] {
+			checkMCPIDs = append(checkMCPIDs, id)
+		}
 	}
 	if len(checkMCPIDs) != len(req.IDs) {
 		clist := utils.FindMissingElements(req.IDs, checkMCPIDs)

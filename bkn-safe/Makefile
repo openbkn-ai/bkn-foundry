@@ -3,7 +3,7 @@
 .PHONY: help lint test
 
 WORKSPACE_MODULES := server
-STANDALONE_MODULES := contract cmd/authz-shadow
+STANDALONE_MODULES := contract
 
 help:
 	@echo "bkn-safe - available commands:"

@@ -142,6 +142,8 @@ type IAuthorizationService interface {
 	OperationCheckAll(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType, operations ...AuthOperationType) (bool, error)
 	// OperationCheckAny OR relationship, only needs to satisfy any one operation permission.
 	OperationCheckAny(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType, operations ...AuthOperationType) (bool, error)
+	OperationCheckBatch(ctx context.Context, accessor *AuthAccessor, requirements []*AuthOperationRequirement) ([]*AuthOperationCheckDecision, error)
+	CheckResourceOperations(ctx context.Context, accessor *AuthAccessor, resourceIDs []string, resourceType AuthResourceType, operation AuthOperationType) (map[string]bool, error)
 	// CreatePolicy creates a policy.
 	CreatePolicy(ctx context.Context, accessor *AuthAccessor, authResource *AuthResource, allow []AuthOperationType, deny []AuthOperationType) error
 	// DeletePolicy delete policy.

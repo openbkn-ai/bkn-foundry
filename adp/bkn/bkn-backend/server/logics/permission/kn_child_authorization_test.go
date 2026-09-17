@@ -362,11 +362,10 @@ func TestFilterKNChildIDsSkipsHistoricalInvalidIDs(t *testing.T) {
 func TestCheckKNChildBatchPermissionRequiresEveryCanonicalChild(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-		[]string{"kn-1/one", "kn-1/two"}, []string{interfaces.OPERATION_TYPE_DELETE}, false).
-		Return(map[string]interfaces.PermissionResourceOps{
-			"kn-1/one": {ResourceID: "kn-1/one", Operations: []string{interfaces.OPERATION_TYPE_DELETE}},
-		}, nil)
+	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{
+		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_METRIC, ID: "kn-1/one"}, Operation: interfaces.OPERATION_TYPE_DELETE},
+		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_METRIC, ID: "kn-1/two"}, Operation: interfaces.OPERATION_TYPE_DELETE},
+	}).Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 
 	err := CheckKNChildBatchPermission(context.Background(), ps,
 		interfaces.RESOURCE_TYPE_METRIC, "kn-1", []string{"one", "two"},
@@ -377,13 +376,14 @@ func TestCheckKNChildBatchPermissionRequiresEveryCanonicalChild(t *testing.T) {
 	}
 }
 
-func TestCheckKNChildBatchPermissionPropagatesFilterFailure(t *testing.T) {
+func TestCheckKNChildBatchPermissionPropagatesCheckFailure(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := interfacemock.NewMockPermissionService(ctrl)
 	wantErr := errors.New("bkn-safe unavailable")
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
-		[]string{"kn-1/one", "kn-1/two"}, []string{interfaces.OPERATION_TYPE_DELETE}, false).
-		Return(nil, wantErr)
+	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{
+		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_RISK_TYPE, ID: "kn-1/one"}, Operation: interfaces.OPERATION_TYPE_DELETE},
+		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_RISK_TYPE, ID: "kn-1/two"}, Operation: interfaces.OPERATION_TYPE_DELETE},
+	}).Return(wantErr)
 
 	err := CheckKNChildBatchPermission(context.Background(), ps,
 		interfaces.RESOURCE_TYPE_RISK_TYPE, "kn-1", []string{"one", "two"},

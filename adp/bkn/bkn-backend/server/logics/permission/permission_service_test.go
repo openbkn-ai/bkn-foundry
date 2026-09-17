@@ -70,7 +70,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 
 		Convey("Success: pa returns true\n", func() {
 			ctx := withAccountInfo(context.Background(), "u1", "user")
-			pa.EXPECT().CheckPermission(gomock.Any(), gomock.Any()).Return(true, nil)
+			pa.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).Return(interfaces.PermissionChecksResponse{Allowed: true}, nil)
 
 			err := svc.CheckPermission(ctx, resource, ops)
 			So(err, ShouldBeNil)
@@ -78,7 +78,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 
 		Convey("Failed: pa returns false uses the English permission detail", func() {
 			ctx := rest.WithLanguage(withAccountInfo(context.Background(), "u1", "user"), rest.AmericanEnglish)
-			pa.EXPECT().CheckPermission(gomock.Any(), gomock.Any()).Return(false, nil)
+			pa.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).Return(interfaces.PermissionChecksResponse{Allowed: false}, nil)
 
 			err := svc.CheckPermission(ctx, resource, ops)
 
@@ -89,7 +89,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 
 		Convey("Failed: pa returns error\n", func() {
 			ctx := withAccountInfo(context.Background(), "u1", "user")
-			pa.EXPECT().CheckPermission(gomock.Any(), gomock.Any()).Return(false, errors.New("access error"))
+			pa.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).Return(interfaces.PermissionChecksResponse{}, errors.New("access error"))
 
 			err := svc.CheckPermission(ctx, resource, ops)
 			So(err, ShouldNotBeNil)

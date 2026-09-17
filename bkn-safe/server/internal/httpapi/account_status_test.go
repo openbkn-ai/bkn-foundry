@@ -49,29 +49,19 @@ func TestAuthorizationDecisionsRequireActiveAccounts(t *testing.T) {
 				t.Fatalf("check = %d %s, want allowed=%v", check.Code, check.Body.String(), tc.allowed)
 			}
 
-			operations := do(t, r, http.MethodPost, "/api/safe/v1/authz/operations", map[string]any{
-				"accessor_id": tc.accessor,
-				"resource":    map[string]string{"type": "agent", "id": "a-1"},
-			})
-			var operationsBody struct {
-				Operations []string `json:"operations"`
-			}
-			if operations.Code != http.StatusOK || json.Unmarshal(operations.Body.Bytes(), &operationsBody) != nil {
-				t.Fatalf("operations = %d %s", operations.Code, operations.Body.String())
-			}
-			if got := len(operationsBody.Operations) > 0; got != tc.allowed {
-				t.Errorf("operations = %v, want non-empty=%v", operationsBody.Operations, tc.allowed)
-			}
-
 			filter := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
-				"accessor_id": tc.accessor,
-				"resources":   []map[string]string{{"type": "agent", "id": "a-1"}},
+				"accessor_id":        tc.accessor,
+				"resources":          []map[string]string{{"type": "agent", "id": "a-1"}},
+				"include_operations": true,
 			})
 			var filterBody struct {
 				Resources []filterEntry `json:"resources"`
 			}
 			if filter.Code != http.StatusOK || json.Unmarshal(filter.Body.Bytes(), &filterBody) != nil {
 				t.Fatalf("resource-filter = %d %s", filter.Code, filter.Body.String())
+			}
+			if got := len(filterBody.Resources) > 0 && len(filterBody.Resources[0].Operations) > 0; got != tc.allowed {
+				t.Errorf("resource-filter = %v, want non-empty operations=%v", filterBody.Resources, tc.allowed)
 			}
 			if got := len(filterBody.Resources) > 0; got != tc.allowed {
 				t.Errorf("resource-filter = %v, want non-empty=%v", filterBody.Resources, tc.allowed)

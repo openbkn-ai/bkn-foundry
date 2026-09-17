@@ -106,29 +106,6 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/AuthorizationUnavailable'
-  /operations:
-    post:
-      operationId: listAllowedOperations
-      summary: List allowed operations for one resource
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OperationsRequest'
-      responses:
-        '200':
-          description: Allowed operations from the registered resource catalog.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OperationsResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalError'
-        '503':
-          $ref: '#/components/responses/AuthorizationUnavailable'
   /resource-filter:
     post:
       operationId: filterAuthorizedResources
@@ -632,20 +609,6 @@ components:
         denied_requirement: {type: string}
         requirement_basis:
           $ref: '#/components/schemas/DecisionBasis'
-    OperationsRequest:
-      type: object
-      required: [accessor_id, resource]
-      properties:
-        accessor_id: {type: string}
-        resource:
-          $ref: '#/components/schemas/ResourceRef'
-    OperationsResponse:
-      type: object
-      required: [operations]
-      properties:
-        operations:
-          type: array
-          items: {type: string}
     ResourceFilterRequest:
       type: object
       required: [accessor_id]

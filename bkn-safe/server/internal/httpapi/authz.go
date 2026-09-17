@@ -154,40 +154,6 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		c.JSON(http.StatusOK, gin.H{"allowed": allAllowed, "evaluation_scope": scope, "results": results})
 	})
 
-	// POST /operations — which ops the accessor may perform on a resource.
-	// Candidate ops come from the resource type's catalog. -> { operations:[...] }
-	g.POST("/operations", func(c *gin.Context) {
-		var req struct {
-			AccessorID string      `json:"accessor_id" binding:"required"`
-			Resource   resourceRef `json:"resource" binding:"required"`
-		}
-		if !bind(c, &req) {
-			return
-		}
-		active, err := activeAccount(c, db, req.AccessorID)
-		if err != nil {
-			replyPublicError(c, http.StatusServiceUnavailable)
-			return
-		}
-		if !active {
-			recordInactiveDeny(c, decisionSourceOperations, req.AccessorID, req.Resource.Type, req.Resource.ID, "*")
-			c.JSON(http.StatusOK, gin.H{"operations": []string{}})
-			return
-		}
-		candidates, err := catalogOps(db, req.Resource.Type)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		allowed, err := e.AllowedOpsContext(c.Request.Context(), req.AccessorID, req.Resource.Type, req.Resource.ID, candidates)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		recordOperationsDecision(c, req.AccessorID, req.Resource.Type, req.Resource.ID, allowed)
-		c.JSON(http.StatusOK, gin.H{"operations": allowed})
-	})
-
 	// POST /resource-filter filters a caller-supplied resource list. It either
 	// returns resource identities only, or returns each visible resource with its
 	// complete registry-backed effective operation set.
@@ -542,20 +508,6 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 	}
 }
 
-// recordOperationsDecision records one row for a POST /operations call: the
-// projected operation set as a whole, not one row per candidate.
-func recordOperationsDecision(c *gin.Context, accessorID, resourceType, resourceID string, allowed []string) {
-	decision := decisionlog.DecisionDeny
-	if len(allowed) > 0 {
-		decision = decisionlog.DecisionAllow
-	}
-	recordDecision(c, decisionlog.Entry{
-		AccessorID: accessorID, ResourceType: resourceType, ResourceID: resourceID, Operation: "*",
-		Scope: string(authz.ScopeEffective), Decision: decision, Source: decisionSourceOperations,
-		Detail: decisionDetail(map[string]any{"operations": capStrings(allowed, 32)}),
-	})
-}
-
 // recordFilterDecision records one row for a POST /resource-filter call. A
 // list page asks about tens or hundreds of resources at once; one row per
 // resource would make the decision log larger than the data it describes, so
@@ -590,13 +542,6 @@ func filterResourceType(refs []authz.ResourceRef) string {
 		}
 	}
 	return first
-}
-
-func capStrings(values []string, n int) []string {
-	if len(values) <= n {
-		return values
-	}
-	return values[:n]
 }
 
 // registerAuthzExplain mounts the authenticated administrator-only diagnostic

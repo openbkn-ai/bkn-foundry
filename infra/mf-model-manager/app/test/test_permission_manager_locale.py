@@ -58,7 +58,7 @@ class TestPermissionManagerLocale(unittest.IsolatedAsyncioTestCase):
         session = _Session({"allowed": True})
         with mock.patch.dict(
                 "os.environ",
-                {"AUTHZ_PROVIDER": "bkn-safe", "BKN_SAFE_URL": "http://bkn-safe"},
+                {"BKN_SAFE_URL": "http://bkn-safe"},
                 clear=False):
             manager = PermissionManager()
         manager.get_session = mock.AsyncMock(return_value=session)

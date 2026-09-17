@@ -21,7 +21,6 @@ import (
 type MockPermissionService struct {
 	ctrl     *gomock.Controller
 	recorder *MockPermissionServiceMockRecorder
-	isgomock struct{}
 }
 
 // MockPermissionServiceMockRecorder is the mock recorder for MockPermissionService.
@@ -154,6 +153,20 @@ func (m *MockPermissionService) RequireFullPropertyAccess(ctx context.Context, o
 func (mr *MockPermissionServiceMockRecorder) RequireFullPropertyAccess(ctx, objectTypeRef, properties any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequireFullPropertyAccess", reflect.TypeOf((*MockPermissionService)(nil).RequireFullPropertyAccess), ctx, objectTypeRef, properties)
+}
+
+// RequirePermissions mocks base method.
+func (m *MockPermissionService) RequirePermissions(ctx context.Context, requirements []interfaces.PermissionRequirement) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequirePermissions", ctx, requirements)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RequirePermissions indicates an expected call of RequirePermissions.
+func (mr *MockPermissionServiceMockRecorder) RequirePermissions(ctx, requirements any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequirePermissions", reflect.TypeOf((*MockPermissionService)(nil).RequirePermissions), ctx, requirements)
 }
 
 // ResolvePropertyAccessLevels mocks base method.

@@ -29,7 +29,7 @@ info:
     - **Access log** (`/admin/access-logs`): login and logout facts.
     - **Authorization decision log** (`/admin/authz-decisions`): one row per
       authorization evaluation — `/authz/checks`, one summary row per
-      `/authz/operations` and `/authz/resource-filter` call, the admin console
+      `/authz/resource-filter` call, the admin console
       gate and every admin permission point — with the decision and the basis
       that produced it. Rows are written asynchronously off the request path
       and may be dropped under pressure (`dropped` in the list response);
@@ -407,8 +407,8 @@ components:
           description: '`limit` stopped the walk before `to_seq`; resume from `to_seq + 1`.'
     DecisionSource:
       type: string
-      enum: [check, operations, resource-filter, admin]
-      description: '`check`: one row per item in `POST /authz/checks`. `operations`: one row per `POST /authz/operations` call. `resource-filter`: one summary row per `POST /authz/resource-filter` call. `admin`: the admin console gate (`safe_admin` / `console` / `manage`) and admin permission points.'
+      enum: [check, resource-filter, admin]
+      description: '`check`: one row per item in `POST /authz/checks`. `resource-filter`: one summary row per `POST /authz/resource-filter` call. `admin`: the admin console gate (`safe_admin` / `console` / `manage`) and admin permission points.'
     AuthzDecision:
       type: object
       properties:
@@ -422,7 +422,7 @@ components:
           description: '`*` for a permission point; empty for a resource-filter batch.'
         operation:
           type: string
-          description: '`*` for an operations projection; the comma-joined visibility operations for a resource-filter batch.'
+          description: 'The comma-joined visibility operations for a resource-filter batch, or the permission-point operation for an admin decision.'
         scope:
           type: string
           enum: [effective, local]
