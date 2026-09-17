@@ -303,7 +303,6 @@ func Test_PermissionServiceImpl_FilterResources(t *testing.T) {
 				func(_ context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 					So(filter.Operations, ShouldResemble, []string{"read"})
 					So(filter.AllowOperation, ShouldBeTrue)
-					So(filter.CandidateOperations, ShouldBeEmpty)
 					return paResult, nil
 				})
 

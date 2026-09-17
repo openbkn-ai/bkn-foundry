@@ -34,13 +34,27 @@ func newSafeAuthorization(baseURL string, logger interfaces.Logger) *safeAuthori
 
 // checkOne queries bkn-safe for a single (accessor, type:id, op) decision.
 func (s *safeAuthorization) checkOne(ctx context.Context, accessorID, rtype, rid, op string) (bool, error) {
+	return s.allowedAll(ctx, accessorID, rtype, rid, []interfaces.AuthOperationType{interfaces.AuthOperationType(op)})
+}
+
+// allowedAll checks all requested operations in one sparse bkn-safe batch.
+func (s *safeAuthorization) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []interfaces.AuthOperationType) (bool, error) {
+	if len(ops) == 0 {
+		return true, nil
+	}
+	checks := make([]map[string]any, 0, len(ops))
+	for _, op := range ops {
+		checks = append(checks, map[string]any{
+			"resource":  map[string]string{"type": rtype, "id": rid},
+			"operation": string(op),
+		})
+	}
 	var out struct {
 		Allowed *bool `json:"allowed"`
 	}
-	err := s.post(ctx, "/api/safe/v1/authz/check", map[string]any{
+	err := s.post(ctx, "/api/safe/v1/authz/checks", map[string]any{
 		"accessor_id":      accessorID,
-		"resource":         map[string]string{"type": rtype, "id": rid},
-		"operation":        op,
+		"checks":           checks,
 		"evaluation_scope": "effective",
 	}, &out)
 	if err != nil {
@@ -52,20 +66,6 @@ func (s *safeAuthorization) checkOne(ctx context.Context, accessorID, rtype, rid
 	return *out.Allowed, nil
 }
 
-// allowedAll returns true if the accessor is allowed every operation.
-func (s *safeAuthorization) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []interfaces.AuthOperationType) (bool, error) {
-	for _, op := range ops {
-		ok, err := s.checkOne(ctx, accessorID, rtype, rid, string(op))
-		if err != nil {
-			return false, err
-		}
-		if !ok {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
 func (s *safeAuthorization) OperationCheck(ctx context.Context, req *interfaces.AuthOperationCheckRequest) (*interfaces.AuthOperationCheckResponse, error) {
 	ok, err := s.allowedAll(ctx, req.Accessor.ID, req.Resource.Type, req.Resource.ID, req.Operation)
 	if err != nil {
@@ -75,8 +75,9 @@ func (s *safeAuthorization) OperationCheck(ctx context.Context, req *interfaces.
 }
 
 // ResourceFilter keeps the resources the accessor is allowed all the visibility operations on
-// and projects the requested candidate operations for each surviving resource in one bkn-safe
-// request. Do not replace this with one check per list row: list pages must remain batch PEPs.
+// and returns every effective operation for each surviving resource in one
+// bkn-safe request. Do not replace this with one check per list row: list pages
+// must remain batch PEPs.
 func (s *safeAuthorization) ResourceFilter(ctx context.Context, req *interfaces.AuthResourceFilterRequest) ([]*interfaces.AuthResourceResult, error) {
 	if req == nil || req.Accessor == nil {
 		return []*interfaces.AuthResourceResult{}, nil
@@ -101,15 +102,11 @@ func (s *safeAuthorization) ResourceFilter(ctx context.Context, req *interfaces.
 	for _, operation := range req.Operations {
 		visibilityOperations = append(visibilityOperations, string(operation))
 	}
-	candidateOperations := make([]string, 0, len(req.CandidateOperations))
-	for _, operation := range req.CandidateOperations {
-		candidateOperations = append(candidateOperations, string(operation))
-	}
 	if err := s.post(ctx, "/api/safe/v1/authz/resource-filter", map[string]any{
 		"accessor_id":           req.Accessor.ID,
 		"resources":             resources,
 		"visibility_operations": visibilityOperations,
-		"candidate_operations":  candidateOperations,
+		"include_operations":    req.IncludeOperations,
 		"evaluation_scope":      "effective",
 	}, &response); err != nil {
 		return nil, err

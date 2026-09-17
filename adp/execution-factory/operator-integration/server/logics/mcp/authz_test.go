@@ -82,10 +82,6 @@ func TestProjectMCPOperations(t *testing.T) {
 		authService.EXPECT().ResourceFilterOperations(
 			gomock.Any(), accessor, []string{"mcp-1", "mcp-2"}, interfaces.AuthResourceTypeMCP,
 			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-			[]interfaces.AuthOperationType{
-				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypeModify, interfaces.AuthOperationTypePublish,
-				interfaces.AuthOperationTypeUnpublish, interfaces.AuthOperationTypeDelete, interfaces.AuthOperationTypeAuthorize,
-			},
 		).Return(map[string][]interfaces.AuthOperationType{
 			"mcp-1": {interfaces.AuthOperationTypeAuthorize},
 		}, nil)

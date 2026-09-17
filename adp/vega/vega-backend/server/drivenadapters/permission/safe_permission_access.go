@@ -45,13 +45,26 @@ func uniqueStrings(values []string) []string {
 }
 
 func (c *safeClient) checkOne(ctx context.Context, accessorID, rtype, rid, op string) (bool, error) {
+	return c.allowedAll(ctx, accessorID, rtype, rid, []string{op})
+}
+
+func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
+	if len(ops) == 0 {
+		return true, nil
+	}
+	checks := make([]map[string]any, 0, len(ops))
+	for _, op := range ops {
+		checks = append(checks, map[string]any{
+			"resource":  map[string]string{"type": rtype, "id": rid},
+			"operation": op,
+		})
+	}
 	var out struct {
 		Allowed bool `json:"allowed"`
 	}
-	err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+	err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/checks", map[string]any{
 		"accessor_id": accessorID,
-		"resource":    map[string]string{"type": rtype, "id": rid},
-		"operation":   op,
+		"checks":      checks,
 	}, &out)
 	return out.Allowed, err
 }
@@ -66,7 +79,7 @@ type safeFilteredResource struct {
 // of concrete grants when an operation has same-resource prerequisites: the
 // operation may be type-wide while its prerequisite is instance-specific.
 func (c *safeClient) filterResources(ctx context.Context, accessorID string,
-	resources []interfaces.PermissionResource, visibility, candidates []string, includeOperations bool) ([]safeFilteredResource, error) {
+	resources []interfaces.PermissionResource, visibility []string, includeOperations bool) ([]safeFilteredResource, error) {
 	var out struct {
 		Resources *[]safeFilteredResource `json:"resources"`
 	}
@@ -74,7 +87,6 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 		"accessor_id":           accessorID,
 		"resources":             resources,
 		"visibility_operations": visibility,
-		"candidate_operations":  candidates,
 		"include_operations":    includeOperations,
 	}, &out); err != nil {
 		return nil, err
@@ -83,19 +95,6 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 		return nil, fmt.Errorf("bkn-safe resource-filter response is missing a non-null resources field")
 	}
 	return *out.Resources, nil
-}
-
-func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
-	for _, op := range ops {
-		ok, err := c.checkOne(ctx, accessorID, rtype, rid, op)
-		if err != nil {
-			return false, err
-		}
-		if !ok {
-			return false, nil
-		}
-	}
-	return true, nil
 }
 
 func (c *safeClient) do(ctx context.Context, method, path string, body, out any) error {
@@ -145,7 +144,7 @@ func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interf
 
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
-		filter.Operations, filter.CandidateOperations, filter.AllowOperation)
+		filter.Operations, filter.AllowOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -160,8 +159,7 @@ func (s *safePermissionAccess) FilterResources(ctx context.Context, filter inter
 }
 
 func (s *safePermissionAccess) GetResourcesOperations(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources,
-		nil, filter.CandidateOperations, true)
+	resources, err := s.safe.filterResources(ctx, filter.Accessor.ID, filter.Resources, nil, true)
 	if err != nil {
 		return nil, err
 	}

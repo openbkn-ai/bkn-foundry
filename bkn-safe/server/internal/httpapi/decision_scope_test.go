@@ -39,7 +39,7 @@ func TestCheckReturnsOperationRequirementReason(t *testing.T) {
 		"resource":    map[string]string{"type": "catalog", "id": "catalog-1"},
 		"operation":   "resource_manage",
 	}
-	response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
+	response := doSingleCheck(t, r, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("effective check = %d %s", response.Code, response.Body.String())
 	}
@@ -51,7 +51,7 @@ func TestCheckReturnsOperationRequirementReason(t *testing.T) {
 	}
 
 	request["evaluation_scope"] = "local"
-	response = do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
+	response = doSingleCheck(t, r, request)
 	got = decodeCheckDecision(t, response.Body.Bytes())
 	if !got.Allowed || got.Decision != "allow" || got.Basis != "direct" ||
 		len(got.Requires) != 1 || got.Requires[0] != "view_detail" || got.DeniedRequirement != "" {
@@ -59,10 +59,10 @@ func TestCheckReturnsOperationRequirementReason(t *testing.T) {
 	}
 
 	filterResponse := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
-		"accessor_id":          user,
-		"resources":            []map[string]string{{"type": "catalog", "id": "catalog-1"}},
-		"candidate_operations": []string{"resource_manage"},
-		"evaluation_scope":     "local",
+		"accessor_id":        user,
+		"resources":          []map[string]string{{"type": "catalog", "id": "catalog-1"}},
+		"include_operations": true,
+		"evaluation_scope":   "local",
 	})
 	if filterResponse.Code != http.StatusOK {
 		t.Fatalf("local filter = %d %s", filterResponse.Code, filterResponse.Body.String())
@@ -103,10 +103,18 @@ func TestCheckReturnsOperationRequirementReason(t *testing.T) {
 
 func decodeCheckDecision(t *testing.T, body []byte) checkDecisionResponse {
 	t.Helper()
-	var got checkDecisionResponse
-	if err := json.Unmarshal(body, &got); err != nil {
+	var response struct {
+		EvaluationScope string                  `json:"evaluation_scope"`
+		Results         []checkDecisionResponse `json:"results"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
 		t.Fatalf("decode check decision: %v (%s)", err, body)
 	}
+	if len(response.Results) != 1 {
+		t.Fatalf("expected exactly one check result (%s)", body)
+	}
+	got := response.Results[0]
+	got.EvaluationScope = response.EvaluationScope
 	return got
 }
 
@@ -114,6 +122,7 @@ func TestCheckEvaluationScopes(t *testing.T) {
 	r, enforcer, db := newTestServer(t)
 	const user, role = "scope-user", "scope-reader"
 	seedEnabledUser(t, db, user)
+	seedCatalogOps(t, db, "resource", "view_detail", "query_data")
 	if err := enforcer.GrantRolePermission(role, "resource", "*", "view_detail"); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +135,7 @@ func TestCheckEvaluationScopes(t *testing.T) {
 		"resource":    map[string]string{"type": "resource", "id": "r-1"},
 		"operation":   "view_detail",
 	}
-	response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
+	response := doSingleCheck(t, r, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("default check = %d %s", response.Code, response.Body.String())
 	}
@@ -137,21 +146,21 @@ func TestCheckEvaluationScopes(t *testing.T) {
 
 	request["operation"] = "query_data"
 	request["evaluation_scope"] = "local"
-	response = do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
+	response = doSingleCheck(t, r, request)
 	got = decodeCheckDecision(t, response.Body.Bytes())
 	if got.Allowed || got.EvaluationScope != "local" || got.Decision != "none" || got.Basis != "none" {
 		t.Fatalf("local miss = %+v", got)
 	}
 
 	delete(request, "evaluation_scope")
-	response = do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
+	response = doSingleCheck(t, r, request)
 	got = decodeCheckDecision(t, response.Body.Bytes())
 	if got.Allowed || got.Decision != "deny" || got.Basis != "default" {
 		t.Fatalf("effective miss = %+v", got)
 	}
 
 	request["evaluation_scope"] = "unknown"
-	response = do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
+	response = doSingleCheck(t, r, request)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("unknown scope = %d, want 400 (%s)", response.Code, response.Body.String())
 	}
@@ -161,6 +170,7 @@ func TestResourceFilterLocalReturnsEveryDecision(t *testing.T) {
 	r, enforcer, db := newTestServer(t)
 	const user, role = "filter-scope-user", "filter-scope-reader"
 	seedEnabledUser(t, db, user)
+	seedCatalogOps(t, db, "resource", "view_detail", "query_data")
 	if err := enforcer.GrantRolePermission(role, "resource", "*", "view_detail"); err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +186,7 @@ func TestResourceFilterLocalReturnsEveryDecision(t *testing.T) {
 		"resource_type":         "resource",
 		"resource_ids":          []string{"r-1", "r-2"},
 		"visibility_operations": []string{"view_detail"},
-		"candidate_operations":  []string{"view_detail", "query_data"},
+		"include_operations":    true,
 		"evaluation_scope":      "local",
 	}
 	response := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", body)
@@ -243,8 +253,8 @@ func TestLocalScopeUsesInternalTrustBoundaryAndValidatesShape(t *testing.T) {
 		"evaluation_scope": "local",
 	}
 
-	withoutHeader := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request)
-	withForgedHeader := doWithCallerService(t, r, http.MethodPost, "/api/safe/v1/authz/check", request, "not-vega")
+	withoutHeader := doSingleCheck(t, r, request)
+	withForgedHeader := doSingleCheckWithCaller(t, r, request, "not-vega")
 	if withoutHeader.Code != http.StatusOK || withForgedHeader.Code != http.StatusOK ||
 		withoutHeader.Body.String() != withForgedHeader.Body.String() {
 		t.Fatalf("caller-service header changed local decision: missing=%d %s forged=%d %s",
@@ -253,42 +263,75 @@ func TestLocalScopeUsesInternalTrustBoundaryAndValidatesShape(t *testing.T) {
 
 	request["resource"] = map[string]string{"type": "catalog", "id": "catalog-1"}
 	request["operation"] = "resource_manage"
-	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusOK {
+	if response := doSingleCheck(t, r, request); response.Code != http.StatusOK {
 		t.Fatalf("approved Catalog operation = %d %s, want 200", response.Code, response.Body.String())
 	}
 
 	request["resource"] = map[string]string{"type": "object_type", "id": "kn-1/type-1"}
 	request["operation"] = "view_detail"
-	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusBadRequest {
+	if response := doSingleCheck(t, r, request); response.Code != http.StatusBadRequest {
 		t.Fatalf("non-Vega resource = %d %s, want 400", response.Code, response.Body.String())
 	}
 	request["resource"] = map[string]string{"type": "resource", "id": "*"}
-	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusBadRequest {
+	if response := doSingleCheck(t, r, request); response.Code != http.StatusBadRequest {
 		t.Fatalf("wildcard Resource id = %d %s, want 400", response.Code, response.Body.String())
 	}
 	request["resource"] = map[string]string{"type": "resource", "id": "resource-1"}
 	request["operation"] = "modify"
-	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusBadRequest {
+	if response := doSingleCheck(t, r, request); response.Code != http.StatusBadRequest {
 		t.Fatalf("unapproved Resource operation = %d %s, want 400", response.Code, response.Body.String())
 	}
 
 	delete(request, "evaluation_scope")
-	if response := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", request); response.Code != http.StatusOK {
+	if response := doSingleCheck(t, r, request); response.Code != http.StatusOK {
 		t.Fatalf("effective compatibility = %d %s, want 200", response.Code, response.Body.String())
 	}
 }
 
-func TestLocalResourceFilterRejectsAnyOutOfBoundaryDecision(t *testing.T) {
+func TestChecksLocalScopeValidatesExactResourceOperationPairs(t *testing.T) {
+	r, _, db := newTestServer(t)
+	seedEnabledUser(t, db, "local-batch-user")
+	response := do(t, r, http.MethodPost, "/api/safe/v1/authz/checks", map[string]any{
+		"accessor_id": "local-batch-user",
+		"checks": []map[string]any{
+			{"resource": map[string]string{"type": "resource", "id": "resource-1"}, "operation": "query_data"},
+			{"resource": map[string]string{"type": "catalog", "id": "catalog-1"}, "operation": "resource_manage"},
+		},
+		"evaluation_scope": "local",
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("sparse local checks = %d %s, want 200", response.Code, response.Body.String())
+	}
+	var body struct {
+		Results []struct {
+			ResourceType string `json:"resource_type"`
+			Operation    string `json:"operation"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Results) != 2 || body.Results[0].ResourceType != "resource" || body.Results[0].Operation != "query_data" ||
+		body.Results[1].ResourceType != "catalog" || body.Results[1].Operation != "resource_manage" {
+		t.Fatalf("sparse local results = %+v", body.Results)
+	}
+}
+
+func TestLocalResourceFilterExcludesOutOfBoundaryCatalogOperations(t *testing.T) {
 	r, _, db := newTestServer(t)
 	seedEnabledUser(t, db, "filter-local-user")
+	seedCatalogOps(t, db, "resource", "modify")
 	body := map[string]any{
-		"accessor_id":          "filter-local-user",
-		"resources":            []map[string]string{{"type": "resource", "id": "resource-1"}},
-		"candidate_operations": []string{"view_detail", "modify"},
-		"evaluation_scope":     "local",
+		"accessor_id":        "filter-local-user",
+		"resources":          []map[string]string{{"type": "resource", "id": "resource-1"}},
+		"include_operations": true,
+		"evaluation_scope":   "local",
 	}
 	response := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", body)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("mixed approved/unapproved local batch = %d %s, want 400", response.Code, response.Body.String())
+	if response.Code != http.StatusOK {
+		t.Fatalf("local full projection = %d %s, want 200", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), `"operations":["modify"]`) {
+		t.Fatalf("local response leaked an out-of-bound operation: %s", response.Body.String())
 	}
 }

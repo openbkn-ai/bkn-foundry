@@ -46,7 +46,7 @@ aapi() { # admin METHOD PATH [BODY] -> token-gated /api/safe/v1/admin call
 }
 
 # chk ACCESSOR TYPE ID OP -> prints True/False
-chk() { api POST /api/safe/v1/authz/check "{\"accessor_id\":\"$1\",\"resource\":{\"type\":\"$2\",\"id\":\"$3\"},\"operation\":\"$4\"}" >/dev/null; jget "d['allowed']" </tmp/safe_body; }
+chk() { api POST /api/safe/v1/authz/checks "{\"accessor_id\":\"$1\",\"checks\":[{\"resource\":{\"type\":\"$2\",\"id\":\"$3\"},\"operation\":\"$4\"}]}" >/dev/null; jget "d['allowed']" </tmp/safe_body; }
 
 echo "== health =="
 [ "$(api GET /health/ready)" = "200" ] && ok "health ready" || bad "health"

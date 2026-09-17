@@ -54,7 +54,7 @@ func TestOperationCheckAllSeparatesDenialFromDependencyFailure(t *testing.T) {
 		})
 
 		Convey("fails closed as 503 when bkn-safe is unreachable, and keeps the cause server-side", func() {
-			cause := errors.New(`bkn-safe POST /api/safe/v1/authz/check: dial tcp 10.43.0.17:8080: i/o timeout`)
+			cause := errors.New("bkn-safe POST /api/safe/v1/authz/checks: dial tcp 10.43.0.17:8080: i/o timeout")
 			authorization.EXPECT().OperationCheck(gomock.Any(), gomock.Any()).Return(nil, cause)
 			var logged string
 			logger.EXPECT().Errorf(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -70,7 +70,7 @@ func TestOperationCheckAllSeparatesDenialFromDependencyFailure(t *testing.T) {
 			So(strings.HasSuffix(httpErr.Code, "."+oerrors.ErrExtCommonAuthorizationUnavailable.String()), ShouldBeTrue)
 			So(httpErr.ErrorDetails, ShouldBeNil)
 			So(err.Error(), ShouldNotContainSubstring, "10.43.0.17")
-			So(err.Error(), ShouldNotContainSubstring, "/api/safe/v1/authz/check")
+			So(err.Error(), ShouldNotContainSubstring, "/api/safe/v1/authz/checks")
 			So(logged, ShouldContainSubstring, cause.Error())
 		})
 	})

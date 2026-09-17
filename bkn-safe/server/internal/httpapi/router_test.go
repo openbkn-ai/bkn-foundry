@@ -74,6 +74,38 @@ func do(t *testing.T, r *gin.Engine, method, path string, body any) *httptest.Re
 	return w
 }
 
+func doSingleCheck(t *testing.T, r *gin.Engine, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	return do(t, r, http.MethodPost, "/api/safe/v1/authz/checks", singleCheckRequest(body))
+}
+
+func doSingleCheckWithCaller(t *testing.T, r *gin.Engine, body any, caller string) *httptest.ResponseRecorder {
+	t.Helper()
+	return doWithCallerService(t, r, http.MethodPost, "/api/safe/v1/authz/checks", singleCheckRequest(body), caller)
+}
+
+// singleCheckRequest constructs the current one-item /checks wire shape for
+// authorization-behavior tests that do not exercise batching itself.
+func singleCheckRequest(body any) any {
+	request, ok := body.(map[string]any)
+	if !ok || request["checks"] != nil {
+		return body
+	}
+	resource, hasResource := request["resource"]
+	operation, hasOperation := request["operation"]
+	if !hasResource || !hasOperation {
+		return body
+	}
+	batched := make(map[string]any, len(request))
+	for key, value := range request {
+		if key != "resource" && key != "operation" {
+			batched[key] = value
+		}
+	}
+	batched["checks"] = []map[string]any{{"resource": resource, "operation": operation}}
+	return batched
+}
+
 func TestHealth(t *testing.T) {
 	r, _, _ := newTestServer(t)
 	w := do(t, r, http.MethodGet, "/health/ready", nil)
@@ -92,10 +124,12 @@ func TestAuthzCheckEndpoint(t *testing.T) {
 
 	body := map[string]any{
 		"accessor_id": user,
-		"resource":    map[string]string{"type": "agent", "id": "probe"},
-		"operation":   "use",
+		"checks": []map[string]any{
+			{"resource": map[string]string{"type": "agent", "id": "probe"}, "operation": "use"},
+			{"resource": map[string]string{"type": "agent", "id": "probe"}, "operation": "delete"},
+		},
 	}
-	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", body)
+	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/checks", body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("check = %d body=%s", w.Code, w.Body.String())
 	}
@@ -103,16 +137,23 @@ func TestAuthzCheckEndpoint(t *testing.T) {
 		Allowed bool `json:"allowed"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-	if !resp.Allowed {
-		t.Error("expected allowed=true")
-	}
-
-	// a denied op
-	body["operation"] = "delete"
-	w = do(t, r, http.MethodPost, "/api/safe/v1/authz/check", body)
-	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Allowed {
-		t.Error("expected allowed=false for delete")
+		t.Error("expected allowed=false when one batched check is denied")
+	}
+	var results []struct {
+		Operation string `json:"operation"`
+		Allowed   bool   `json:"allowed"`
+	}
+	var batched struct {
+		Results []struct {
+			Operation string `json:"operation"`
+			Allowed   bool   `json:"allowed"`
+		} `json:"results"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &batched)
+	results = batched.Results
+	if len(results) != 2 || !results[0].Allowed || results[1].Allowed || results[0].Operation != "use" || results[1].Operation != "delete" {
+		t.Errorf("results = %+v, want ordered allow/deny decisions", results)
 	}
 }
 
@@ -133,7 +174,7 @@ func TestAuthzEndpointsApplyDenyWithoutChangingBusinessRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	check := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+	check := doSingleCheck(t, r, map[string]any{
 		"accessor_id": user,
 		"resource":    map[string]string{"type": "resource", "id": "r-1"},
 		"operation":   "view_detail",
@@ -150,7 +191,6 @@ func TestAuthzEndpointsApplyDenyWithoutChangingBusinessRequests(t *testing.T) {
 		"resource_type":         "resource",
 		"resource_ids":          []string{"r-1", "r-2"},
 		"visibility_operations": []string{"view_detail"},
-		"candidate_operations":  []string{"view_detail"},
 	})
 	var filtered struct {
 		Resources []struct {
@@ -232,7 +272,7 @@ func TestSelfServiceChangePassword(t *testing.T) {
 func TestAuthzBadRequest(t *testing.T) {
 	r, _, _ := newTestServer(t)
 	// missing required fields -> 400
-	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{"accessor_id": "x"})
+	w := doSingleCheck(t, r, map[string]any{"accessor_id": "x"})
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}

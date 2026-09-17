@@ -97,7 +97,7 @@ func TestManagedProxyStatusControlsAuthorizationDecisions(t *testing.T) {
 		"resource":    map[string]any{"type": "resource", "id": "r-1"},
 		"operation":   "query_data",
 	}
-	w = do(t, r, http.MethodPost, "/api/safe/v1/authz/check", check)
+	w = doSingleCheck(t, r, check)
 	var decision struct {
 		Allowed bool `json:"allowed"`
 	}
@@ -107,7 +107,7 @@ func TestManagedProxyStatusControlsAuthorizationDecisions(t *testing.T) {
 	}
 
 	do(t, r, http.MethodPost, "/api/safe/in/v1/managed-proxy-accounts/"+account.ProxyAccountID+"/disable", nil)
-	w = do(t, r, http.MethodPost, "/api/safe/v1/authz/check", check)
+	w = doSingleCheck(t, r, check)
 	_ = json.Unmarshal(w.Body.Bytes(), &decision)
 	if decision.Allowed {
 		t.Fatalf("disabled proxy remained allowed: %s", w.Body.String())

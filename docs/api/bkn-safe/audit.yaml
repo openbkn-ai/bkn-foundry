@@ -28,7 +28,7 @@ info:
       no `seq` and are reported as `unchained_rows`, never verified.
     - **Access log** (`/admin/access-logs`): login and logout facts.
     - **Authorization decision log** (`/admin/authz-decisions`): one row per
-      authorization evaluation — `/authz/check`, one summary row per
+      authorization evaluation — `/authz/checks`, one summary row per
       `/authz/operations` and `/authz/resource-filter` call, the admin console
       gate and every admin permission point — with the decision and the basis
       that produced it. Rows are written asynchronously off the request path
@@ -408,7 +408,7 @@ components:
     DecisionSource:
       type: string
       enum: [check, operations, resource-filter, admin]
-      description: '`check`: `POST /authz/check`. `operations`: one row per `POST /authz/operations` call. `resource-filter`: one summary row per `POST /authz/resource-filter` call. `admin`: the admin console gate (`safe_admin` / `console` / `manage`) and admin permission points.'
+      description: '`check`: one row per item in `POST /authz/checks`. `operations`: one row per `POST /authz/operations` call. `resource-filter`: one summary row per `POST /authz/resource-filter` call. `admin`: the admin console gate (`safe_admin` / `console` / `manage`) and admin permission points.'
     AuthzDecision:
       type: object
       properties:
@@ -444,5 +444,5 @@ components:
         client_ip: { type: string }
         detail:
           type: string
-          description: 'Small JSON object with source-specific facts: `operations` (projected set), `requested` / `visible` / `candidate_operations` (batch sizes), `fallback` / `fallback_allowed` (owner fallback at the directory gate).'
+          description: 'Small JSON object with source-specific facts: `operations` (projected set), `requested` / `visible` (batch sizes), `fallback` / `fallback_allowed` (owner fallback at the directory gate).'
         created_at: { type: string, format: date-time }

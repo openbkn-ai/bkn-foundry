@@ -34,13 +34,5 @@ func ProjectResourceOperations(
 		resourceIDs,
 		resourceType,
 		[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-		[]interfaces.AuthOperationType{
-			interfaces.AuthOperationTypeView,
-			interfaces.AuthOperationTypeModify,
-			interfaces.AuthOperationTypePublish,
-			interfaces.AuthOperationTypeUnpublish,
-			interfaces.AuthOperationTypeDelete,
-			interfaces.AuthOperationTypeAuthorize,
-		},
 	)
 }

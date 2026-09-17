@@ -17,12 +17,13 @@ import (
 )
 
 type fakePermissionAccess struct {
-	allowed                 map[string]bool
-	requests                []interfaces.PermissionFilterRequest
-	err                     error
-	errAt                   int
-	mutate                  func(*[]interfaces.PermissionFilterResult)
-	echoRequestedOperations bool
+	allowed       map[string]bool
+	requests      []interfaces.PermissionFilterRequest
+	checkRequests []interfaces.PermissionChecksRequest
+	err           error
+	errAt         int
+	mutate        func(*[]interfaces.PermissionFilterResult)
+	mutateChecks  func(*[]interfaces.PermissionCheckResult)
 }
 
 func (f *fakePermissionAccess) FilterResources(_ context.Context,
@@ -35,14 +36,9 @@ func (f *fakePermissionAccess) FilterResources(_ context.Context,
 	results := make([]interfaces.PermissionFilterResult, 0)
 	for _, resource := range request.Resources {
 		if f.allowed[resource.ID] {
-			operations := []string{interfaces.PermissionOperationQueryData}
-			if f.echoRequestedOperations {
-				operations = append([]string(nil), request.CandidateOperations...)
-			}
 			results = append(results, interfaces.PermissionFilterResult{
 				ResourceType: resource.Type,
 				ResourceID:   resource.ID,
-				Operations:   operations,
 			})
 		}
 	}
@@ -50,6 +46,31 @@ func (f *fakePermissionAccess) FilterResources(_ context.Context,
 		f.mutate(&results)
 	}
 	return interfaces.PermissionFilterResponse{Resources: &results}, nil
+}
+
+func (f *fakePermissionAccess) CheckPermissions(_ context.Context,
+	request interfaces.PermissionChecksRequest,
+) (interfaces.PermissionChecksResponse, error) {
+	f.checkRequests = append(f.checkRequests, request)
+	if f.err != nil && (f.errAt == 0 || len(f.checkRequests) == f.errAt) {
+		return interfaces.PermissionChecksResponse{}, f.err
+	}
+	results := make([]interfaces.PermissionCheckResult, 0, len(request.Checks))
+	allAllowed := true
+	for _, check := range request.Checks {
+		allowed := f.allowed[check.Resource.ID]
+		if !allowed {
+			allAllowed = false
+		}
+		results = append(results, interfaces.PermissionCheckResult{
+			ResourceType: check.Resource.Type, ResourceID: check.Resource.ID,
+			Operation: check.Operation, Allowed: allowed,
+		})
+	}
+	if f.mutateChecks != nil {
+		f.mutateChecks(&results)
+	}
+	return interfaces.PermissionChecksResponse{Allowed: allAllowed, Results: results}, nil
 }
 
 func TestFilterObjectTypeIDsFailsWholeRequestWhenLaterChunkFails(t *testing.T) {
@@ -95,7 +116,7 @@ func TestFilterObjectTypeIDsChunksDeduplicatesAndPreservesOrder(t *testing.T) {
 	}
 	for _, request := range access.requests {
 		if request.AccessorID != "user-1" || !reflect.DeepEqual(request.VisibilityOperations, []string{"query_data"}) ||
-			!reflect.DeepEqual(request.CandidateOperations, []string{"query_data"}) {
+			request.IncludeOperations {
 			t.Fatalf("request contract = %#v", request)
 		}
 	}
@@ -137,8 +158,8 @@ func TestFilterObjectTypeIDsFailsClosedOnSafeErrorsAndInvalidRows(t *testing.T) 
 		{name: "wrong type", access: &fakePermissionAccess{allowed: map[string]bool{"kn-a/ot-a": true}, mutate: func(rows *[]interfaces.PermissionFilterResult) {
 			(*rows)[0].ResourceType = "relation_type"
 		}}},
-		{name: "missing operation", access: &fakePermissionAccess{allowed: map[string]bool{"kn-a/ot-a": true}, mutate: func(rows *[]interfaces.PermissionFilterResult) {
-			(*rows)[0].Operations = nil
+		{name: "missing resource id", access: &fakePermissionAccess{allowed: map[string]bool{"kn-a/ot-a": true}, mutate: func(rows *[]interfaces.PermissionFilterResult) {
+			(*rows)[0].ResourceID = ""
 		}}},
 		{name: "duplicate row", access: &fakePermissionAccess{allowed: map[string]bool{"kn-a/ot-a": true}, mutate: func(rows *[]interfaces.PermissionFilterResult) {
 			*rows = append(*rows, (*rows)[0])
@@ -169,10 +190,7 @@ func TestFilterObjectTypeIDsKeepsSameChildSeparateAcrossNetworks(t *testing.T) {
 }
 
 func TestKnowledgeNetworkAuthorizerChecksReadAndExecuteSeparately(t *testing.T) {
-	access := &fakePermissionAccess{
-		allowed:                 map[string]bool{"kn-a": true},
-		echoRequestedOperations: true,
-	}
+	access := &fakePermissionAccess{allowed: map[string]bool{"kn-a": true}}
 	authorizer := NewKnowledgeNetworkAuthorizerWith(access)
 
 	if err := authorizer.AuthorizeRead(authorizedContext(), "kn-a"); err != nil {
@@ -182,33 +200,30 @@ func TestKnowledgeNetworkAuthorizerChecksReadAndExecuteSeparately(t *testing.T) 
 	if err := executeAuthorizer.AuthorizeExecute(authorizedContext(), "kn-a"); err != nil {
 		t.Fatal(err)
 	}
-	if len(access.requests) != 2 ||
-		!reflect.DeepEqual(access.requests[0].CandidateOperations, []string{interfaces.PermissionOperationViewDetail}) ||
-		!reflect.DeepEqual(access.requests[1].CandidateOperations, []string{interfaces.PermissionOperationExecute}) {
-		t.Fatalf("knowledge-network permission requests = %#v", access.requests)
+	if len(access.checkRequests) != 2 ||
+		access.checkRequests[0].Checks[0].Operation != interfaces.PermissionOperationViewDetail ||
+		access.checkRequests[1].Checks[0].Operation != interfaces.PermissionOperationExecute {
+		t.Fatalf("knowledge-network permission requests = %#v", access.checkRequests)
 	}
 }
 
 // The action-type check asks Safe about the canonical child resource bkn-backend guards the
 // action type's detail with, for view_detail and nothing broader.
 func TestActionTypeViewAuthorizerChecksTheCanonicalChild(t *testing.T) {
-	access := &fakePermissionAccess{
-		allowed:                 map[string]bool{"kn-a/at-1": true},
-		echoRequestedOperations: true,
-	}
+	access := &fakePermissionAccess{allowed: map[string]bool{"kn-a/at-1": true}}
 	authorizer := NewActionTypeViewAuthorizerWith(access)
 
 	if err := authorizer.AuthorizeActionTypeView(authorizedContext(), "kn-a", "at-1"); err != nil {
 		t.Fatal(err)
 	}
-	want := interfaces.PermissionFilterRequest{
-		AccessorID:           "user-1",
-		Resources:            []interfaces.PermissionResource{{Type: "action_type", ID: "kn-a/at-1"}},
-		VisibilityOperations: []string{"view_detail"},
-		CandidateOperations:  []string{"view_detail"},
+	want := interfaces.PermissionChecksRequest{
+		AccessorID: "user-1",
+		Checks: []interfaces.PermissionCheck{{
+			Resource: interfaces.PermissionResource{Type: "action_type", ID: "kn-a/at-1"}, Operation: "view_detail",
+		}},
 	}
-	if len(access.requests) != 1 || !reflect.DeepEqual(access.requests[0], want) {
-		t.Fatalf("action-type permission request = %#v", access.requests)
+	if len(access.checkRequests) != 1 || !reflect.DeepEqual(access.checkRequests[0], want) {
+		t.Fatalf("action-type permission request = %#v", access.checkRequests)
 	}
 
 	// The same action type id in another network is a different resource.
@@ -237,21 +252,22 @@ func TestActionTypeViewAuthorizerFailsClosed(t *testing.T) {
 		{name: "no grant", ctx: authorizedContext(), knID: "kn-a", atID: "at-1",
 			access: &fakePermissionAccess{allowed: map[string]bool{}}, wantStatus: http.StatusForbidden, wantCalls: 1},
 		{name: "query_data only", ctx: authorizedContext(), knID: "kn-a", atID: "at-1",
-			access:     &fakePermissionAccess{allowed: map[string]bool{"kn-a/at-1": true}},
+			access: &fakePermissionAccess{allowed: map[string]bool{"kn-a/at-1": true},
+				mutateChecks: func(rows *[]interfaces.PermissionCheckResult) { (*rows)[0].Allowed = false }},
 			wantStatus: http.StatusForbidden, wantCalls: 1},
 		{name: "Safe unavailable", ctx: authorizedContext(), knID: "kn-a", atID: "at-1",
 			access: &fakePermissionAccess{err: errors.New("timeout")}, wantStatus: http.StatusServiceUnavailable, wantCalls: 1},
 		{name: "unexpected resource", ctx: authorizedContext(), knID: "kn-a", atID: "at-1",
-			access: &fakePermissionAccess{allowed: map[string]bool{"kn-a/at-1": true}, echoRequestedOperations: true,
-				mutate: func(rows *[]interfaces.PermissionFilterResult) { (*rows)[0].ResourceType = "object_type" }},
+			access: &fakePermissionAccess{allowed: map[string]bool{"kn-a/at-1": true},
+				mutateChecks: func(rows *[]interfaces.PermissionCheckResult) { (*rows)[0].ResourceType = "object_type" }},
 			wantStatus: http.StatusServiceUnavailable, wantCalls: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := NewActionTypeViewAuthorizerWith(tt.access).AuthorizeActionTypeView(tt.ctx, tt.knID, tt.atID)
 			status, ok := infraerrors.HTTPStatus(err)
-			if !ok || status != tt.wantStatus || len(tt.access.requests) != tt.wantCalls {
-				t.Fatalf("error = %v calls = %d, want %d after %d calls", err, len(tt.access.requests),
+			if !ok || status != tt.wantStatus || len(tt.access.checkRequests) != tt.wantCalls {
+				t.Fatalf("error = %v calls = %d, want %d after %d calls", err, len(tt.access.checkRequests),
 					tt.wantStatus, tt.wantCalls)
 			}
 		})

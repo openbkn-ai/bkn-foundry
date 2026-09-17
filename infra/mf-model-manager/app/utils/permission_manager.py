@@ -169,10 +169,10 @@ class PermissionManager:
     async def _bkn_safe_check(self, user_id, resource_type, resource_id, operation) -> bool:
         session = await self.get_session()
         async with session.post(
-                f"{self.bkn_safe_url}/api/safe/v1/authz/check",
+                f"{self.bkn_safe_url}/api/safe/v1/authz/checks",
                 json={"accessor_id": user_id,
-                      "resource": {"type": resource_type, "id": str(resource_id)},
-                      "operation": operation,
+                      "checks": [{"resource": {"type": resource_type, "id": str(resource_id)},
+                                  "operation": operation}],
                       "evaluation_scope": "effective"},
                 headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
             if resp.status < 200 or resp.status >= 300:
@@ -212,7 +212,7 @@ class PermissionManager:
             "accessor_id": user_id,
             "resources": [{"type": resource_type, "id": model_id} for model_id in normalized_ids],
             "visibility_operations": [operation],
-            "candidate_operations": [operation],
+            "include_operations": False,
             "evaluation_scope": "effective",
         }
         async with session.post(

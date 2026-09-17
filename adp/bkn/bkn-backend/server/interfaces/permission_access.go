@@ -129,9 +129,8 @@ func IsValidAuthorizationID(id string) bool {
 // PermissionResourcesFilter is used for filtering and deletion.
 //
 // Operations determine visibility: a resource must hold all listed operations
-// to be returned. CandidateOperations optionally narrows the projected
-// operations for trusted transport callers; when empty, bkn-safe derives the
-// complete resource-type operation set from its authorization catalog.
+// to be returned. When operation projection is enabled, bkn-safe returns the
+// complete effective operation set from its authorization catalog.
 type PermissionResourcesFilter struct {
 	Accessor   PermissionAccessor   `json:"accessor,omitempty"`
 	Resources  []PermissionResource `json:"resources,omitempty"`
@@ -139,8 +138,6 @@ type PermissionResourcesFilter struct {
 	// AllowOperation selects the independent operation-projection axis. False
 	// returns visible resources only; true returns each resource's effective ops.
 	AllowOperation bool `json:"allow_operation"`
-	// CandidateOperations is an optional adapter-only projection hint.
-	CandidateOperations []string `json:"-"`
 }
 
 // PermissionPolicy describes a policy to apply.

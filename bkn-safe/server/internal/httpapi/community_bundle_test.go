@@ -33,7 +33,7 @@ func TestCommunityBundleHTTPReadPathsAgree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	check := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+	check := doSingleCheck(t, r, map[string]any{
 		"accessor_id": user,
 		"resource":    map[string]string{"type": "knowledge_network", "id": "kn-1"},
 		"operation":   "execute",
@@ -53,7 +53,6 @@ func TestCommunityBundleHTTPReadPathsAgree(t *testing.T) {
 		"resource_type":         "knowledge_network",
 		"resource_ids":          []string{"kn-1", "kn-2"},
 		"visibility_operations": []string{"view_detail"},
-		"candidate_operations":  []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage", "execute"},
 	})
 	if len(filtered) != 1 || filtered[0].ResourceID != "kn-1" {
 		t.Fatalf("resource-filter = %+v; want only kn-1", filtered)
@@ -139,7 +138,7 @@ func TestAgentBundleHTTPReadPathsAgree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	check := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+	check := doSingleCheck(t, r, map[string]any{
 		"accessor_id": user,
 		"resource":    map[string]string{"type": "agent", "id": "agent-1"},
 		"operation":   "use",
@@ -159,7 +158,6 @@ func TestAgentBundleHTTPReadPathsAgree(t *testing.T) {
 		"resource_type":         "agent",
 		"resource_ids":          []string{"agent-1", "agent-2"},
 		"visibility_operations": []string{"use"},
-		"candidate_operations":  allCatalogOperations,
 	})
 	if len(filtered) != 1 || filtered[0].ResourceID != "agent-1" {
 		t.Fatalf("resource-filter = %+v; want only agent-1", filtered)

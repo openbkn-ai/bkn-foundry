@@ -346,18 +346,18 @@ func (mr *MockIAuthorizationServiceMockRecorder) ResourceFilterIDs(ctx, accessor
 }
 
 // ResourceFilterOperations mocks base method.
-func (m *MockIAuthorizationService) ResourceFilterOperations(ctx context.Context, accessor *interfaces.AuthAccessor, resourceIDs []string, resourceType interfaces.AuthResourceType, visibilityOperations, candidateOperations []interfaces.AuthOperationType) (map[string][]interfaces.AuthOperationType, error) {
+func (m *MockIAuthorizationService) ResourceFilterOperations(ctx context.Context, accessor *interfaces.AuthAccessor, resourceIDs []string, resourceType interfaces.AuthResourceType, visibilityOperations []interfaces.AuthOperationType) (map[string][]interfaces.AuthOperationType, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResourceFilterOperations", ctx, accessor, resourceIDs, resourceType, visibilityOperations, candidateOperations)
+	ret := m.ctrl.Call(m, "ResourceFilterOperations", ctx, accessor, resourceIDs, resourceType, visibilityOperations)
 	ret0, _ := ret[0].(map[string][]interfaces.AuthOperationType)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ResourceFilterOperations indicates an expected call of ResourceFilterOperations.
-func (mr *MockIAuthorizationServiceMockRecorder) ResourceFilterOperations(ctx, accessor, resourceIDs, resourceType, visibilityOperations, candidateOperations any) *gomock.Call {
+func (mr *MockIAuthorizationServiceMockRecorder) ResourceFilterOperations(ctx, accessor, resourceIDs, resourceType, visibilityOperations any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourceFilterOperations", reflect.TypeOf((*MockIAuthorizationService)(nil).ResourceFilterOperations), ctx, accessor, resourceIDs, resourceType, visibilityOperations, candidateOperations)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourceFilterOperations", reflect.TypeOf((*MockIAuthorizationService)(nil).ResourceFilterOperations), ctx, accessor, resourceIDs, resourceType, visibilityOperations)
 }
 
 // ResourceListIDs mocks base method.

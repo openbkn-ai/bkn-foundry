@@ -24,7 +24,7 @@ import (
 // /api/safe/v1/me (GET "" and GET /permissions). Token-gated by RequireUser:
 // the accessor id comes from the verified bearer token, never from the request.
 // Frontends call these once after login to drive menu/button visibility; the
-// backend still enforces every request via /authz/check.
+// backend still enforces every request via /authz/checks.
 //
 // These two are the endpoints the login burst hits in parallel, so the caller
 // mounts them behind the introspection cache. Mutating /me endpoints (profile

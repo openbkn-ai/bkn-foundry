@@ -101,14 +101,6 @@ func TestProjectResourceOperations(t *testing.T) {
 			authService.EXPECT().ResourceFilterOperations(
 				gomock.Any(), accessor, ids, interfaces.AuthResourceTypeSkill,
 				[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-				[]interfaces.AuthOperationType{
-					interfaces.AuthOperationTypeView,
-					interfaces.AuthOperationTypeModify,
-					interfaces.AuthOperationTypePublish,
-					interfaces.AuthOperationTypeUnpublish,
-					interfaces.AuthOperationTypeDelete,
-					interfaces.AuthOperationTypeAuthorize,
-				},
 			).Return(map[string][]interfaces.AuthOperationType{
 				"a": {
 					interfaces.AuthOperationTypeView,

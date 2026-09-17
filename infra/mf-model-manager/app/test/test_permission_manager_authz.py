@@ -50,11 +50,13 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
             "user-1", 1234567890123456789, "execute", "large_model", "user")
 
         self.assertTrue(allowed)
-        self.assertEqual(session.calls[0]["url"], "http://bkn-safe/api/safe/v1/authz/check")
+        self.assertEqual(session.calls[0]["url"], "http://bkn-safe/api/safe/v1/authz/checks")
         self.assertEqual(session.calls[0]["json"], {
             "accessor_id": "user-1",
-            "resource": {"type": "large_model", "id": "1234567890123456789"},
-            "operation": "execute",
+            "checks": [{
+                "resource": {"type": "large_model", "id": "1234567890123456789"},
+                "operation": "execute",
+            }],
             "evaluation_scope": "effective",
         })
 
@@ -75,6 +77,7 @@ class TestPermissionManagerAuthz(unittest.IsolatedAsyncioTestCase):
             {"type": "large_model", "id": "84"},
         ])
         self.assertEqual(session.calls[0]["json"]["visibility_operations"], ["display"])
+        self.assertFalse(session.calls[0]["json"]["include_operations"])
         self.assertEqual(session.calls[0]["json"]["evaluation_scope"], "effective")
 
     async def test_invalid_or_failed_safe_response_fails_closed(self):

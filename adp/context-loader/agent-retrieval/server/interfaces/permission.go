@@ -26,7 +26,7 @@ type PermissionFilterRequest struct {
 	AccessorID           string               `json:"accessor_id"`
 	Resources            []PermissionResource `json:"resources"`
 	VisibilityOperations []string             `json:"visibility_operations"`
-	CandidateOperations  []string             `json:"candidate_operations"`
+	IncludeOperations    bool                 `json:"include_operations"`
 }
 
 // PermissionFilterResult is one allowed resource returned by bkn-safe.
@@ -43,9 +43,32 @@ type PermissionFilterResponse struct {
 	Resources *[]PermissionFilterResult `json:"resources"`
 }
 
+type PermissionCheck struct {
+	Resource  PermissionResource `json:"resource"`
+	Operation string             `json:"operation"`
+}
+
+type PermissionChecksRequest struct {
+	AccessorID string            `json:"accessor_id"`
+	Checks     []PermissionCheck `json:"checks"`
+}
+
+type PermissionCheckResult struct {
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Operation    string `json:"operation"`
+	Allowed      bool   `json:"allowed"`
+}
+
+type PermissionChecksResponse struct {
+	Allowed bool                    `json:"allowed"`
+	Results []PermissionCheckResult `json:"results"`
+}
+
 // PermissionAccess is the outbound bkn-safe resource-filter boundary.
 type PermissionAccess interface {
 	FilterResources(ctx context.Context, request PermissionFilterRequest) (PermissionFilterResponse, error)
+	CheckPermissions(ctx context.Context, request PermissionChecksRequest) (PermissionChecksResponse, error)
 }
 
 // QueryCandidateAuthorizer filters server-generated Object Type candidates

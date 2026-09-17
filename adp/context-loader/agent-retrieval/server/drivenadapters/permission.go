@@ -70,7 +70,40 @@ func (a *permissionAccess) FilterResources(ctx context.Context,
 	return response, nil
 }
 
+func (a *permissionAccess) CheckPermissions(ctx context.Context,
+	request interfaces.PermissionChecksRequest,
+) (interfaces.PermissionChecksResponse, error) {
+	var response interfaces.PermissionChecksResponse
+	endpoint, err := a.endpoint("/api/safe/v1/authz/checks")
+	if err != nil {
+		return response, err
+	}
+	headers := common.GetHeaderForChildOperation(ctx, "safe.permissions.check", 1)
+	headers[infrarest.ContentTypeKey] = infrarest.ContentTypeJSON
+	status, body, err := a.httpClient.PostNoUnmarshal(ctx, endpoint, headers, request)
+	if err != nil {
+		return response, fmt.Errorf("call bkn-safe checks: %w", err)
+	}
+	if status != http.StatusOK {
+		return response, fmt.Errorf("bkn-safe checks returned status %d", status)
+	}
+	if len(body) == 0 {
+		return response, fmt.Errorf("bkn-safe checks returned an empty response")
+	}
+	if err := sonic.Unmarshal(body, &response); err != nil {
+		return response, fmt.Errorf("decode bkn-safe checks response: %w", err)
+	}
+	if response.Results == nil {
+		return response, fmt.Errorf("bkn-safe checks response omitted results")
+	}
+	return response, nil
+}
+
 func (a *permissionAccess) resourceFilterEndpoint() (string, error) {
+	return a.endpoint("/api/safe/v1/authz/resource-filter")
+}
+
+func (a *permissionAccess) endpoint(path string) (string, error) {
 	if a == nil || a.httpClient == nil {
 		return "", fmt.Errorf("bkn-safe permission client is not configured")
 	}
@@ -78,5 +111,5 @@ func (a *permissionAccess) resourceFilterEndpoint() (string, error) {
 	if err != nil || parsed == nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return "", fmt.Errorf("bkn-safe URL is missing or invalid")
 	}
-	return a.baseURL + "/api/safe/v1/authz/resource-filter", nil
+	return a.baseURL + path, nil
 }

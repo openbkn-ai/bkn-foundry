@@ -116,15 +116,16 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 
 ### `POST /api/safe/v1/authz/resource-filter`（列表页批量判定）
 
-一次请求判完一页资源：既回**哪些可见**，也回**每个资源上持有哪些操作**。业务服务的
-列表/详情响应据此填 `operations` 字段，无需按资源、按操作逐次调 `/check`。
+一次请求判完一页资源。它有两种明确模式：纯筛选只回答**哪些可见**；完整投影回答
+**哪些可见**以及**每个资源完整的有效操作集**。业务服务的列表/详情响应据此填
+`operations` 字段；需要判断指定资源×操作时调用 `/checks`，而不是借筛选接口投影。
 
 ```json
 {
   "accessor_id": "u-1",
   "resources": [{ "type": "knowledge_network", "id": "kn-1" }],
   "visibility_operations": ["view_detail"],
-  "candidate_operations": ["view_detail", "create", "modify", "delete"]
+  "include_operations": true
 }
 ```
 
@@ -140,12 +141,13 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 }
 ```
 
-**两个操作列表是彼此独立的两个维度，这正是本端点存在的理由：**
+**筛选与投影是两个明确的维度：**
 
 | 字段 | 作用 | 留空时 |
 | --- | --- | --- |
-| `visibility_operations` | 过滤：资源需**全部**持有这些操作才返回 | 不过滤，请求的资源全部返回（各自带操作集，可能为空） |
-| `candidate_operations` | 投影：返回的 `operations` 从该候选集中取子集，与资源因何可见无关 | 回落到该资源类型的操作目录（与 `POST /operations` 一致） |
+| `visibility_operations` | 过滤：资源需**全部**持有这些操作才返回 | 不过滤，请求的资源全部返回 |
+| `include_operations=false` | 纯筛选 | 返回资源标识，不返回 `operations` 字段 |
+| `include_operations=true` | 完整权限投影 | 返回资源标识和该资源类型注册表中的完整有效操作集 |
 
 资源可用 `resources: [{type,id}]` 给出，也可用 `resource_type` + `resource_ids`
 的单类型形式；两者可同时出现，一次请求内允许混合资源类型。重复资源和操作会按首次
@@ -155,7 +157,7 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 超限返回 413。调用方可以按实时负载动态分块；任一分块超时、失败或返回不完整时，
 上层业务必须整体失败，不能返回部分列表或部分查询结果。
 
-判定语义与单条 `POST /check` 完全一致：直接授权、角色继承（含角色间传递）、
+判定语义与 `POST /checks` 完全一致：直接授权、角色继承（含角色间传递）、
 根部门公共授权、超管通配、`act` 通配一视同仁。内部不逐 (资源 × 操作) 调用引擎，
 而是先解析该访问者的授权集再在内存中投影，故耗时与资源数近似线性；两条路径由
 `TestFilterResourceOpsMatchesCheck` 钉住一致性。

@@ -49,15 +49,23 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		writes.Use(auditMiddleware(auditStore, dir, db))
 	}
 
-	// POST /check — single decision. { accessor_id, resource{type,id}, operation } -> { allowed }
-	g.POST("/check", func(c *gin.Context) {
+	// POST /checks evaluates one or more explicit resource-operation checks in
+	// one batched decision pass. Unlike resource-filter, this endpoint returns
+	// decisions only; it never projects a resource's operation list.
+	g.POST("/checks", func(c *gin.Context) {
 		var req struct {
-			AccessorID      string      `json:"accessor_id" binding:"required"`
-			Resource        resourceRef `json:"resource" binding:"required"`
-			Operation       string      `json:"operation" binding:"required"`
-			EvaluationScope string      `json:"evaluation_scope"`
+			AccessorID string `json:"accessor_id" binding:"required"`
+			Checks     []struct {
+				Resource  resourceRef `json:"resource" binding:"required"`
+				Operation string      `json:"operation" binding:"required"`
+			} `json:"checks" binding:"required"`
+			EvaluationScope string `json:"evaluation_scope"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		if len(req.Checks) == 0 {
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		scope, err := authz.ParseEvaluationScope(req.EvaluationScope)
@@ -65,9 +73,13 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		if scope == authz.ScopeLocal && !validateLocalScope(c,
-			[]authz.ResourceRef{{Type: req.Resource.Type, ID: req.Resource.ID}}, []string{req.Operation}) {
-			return
+		checks := make([]authz.ResourceOperationCheck, 0, len(req.Checks))
+		for _, check := range req.Checks {
+			resource := authz.ResourceRef{Type: check.Resource.Type, ID: check.Resource.ID}
+			if scope == authz.ScopeLocal && !validateLocalScope(c, []authz.ResourceRef{resource}, []string{check.Operation}) {
+				return
+			}
+			checks = append(checks, authz.ResourceOperationCheck{Resource: resource, Operations: []string{check.Operation}})
 		}
 		active, err := activeAccount(c, db, req.AccessorID)
 		if err != nil {
@@ -75,37 +87,67 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			return
 		}
 		if !active {
-			recordInactiveDeny(c, decisionSourceCheck, req.AccessorID, req.Resource.Type, req.Resource.ID, req.Operation)
-			c.JSON(http.StatusOK, gin.H{"allowed": false})
+			results := make([]gin.H, 0, len(req.Checks))
+			for _, check := range req.Checks {
+				recordInactiveDeny(c, decisionSourceCheck, req.AccessorID, check.Resource.Type, check.Resource.ID, check.Operation)
+				results = append(results, gin.H{
+					"resource_type": check.Resource.Type,
+					"resource_id":   check.Resource.ID,
+					"operation":     check.Operation,
+					"allowed":       false,
+				})
+			}
+			c.JSON(http.StatusOK, gin.H{"allowed": false, "evaluation_scope": scope, "results": results})
 			return
 		}
-		var decision authz.Evaluation
-		if scope == authz.ScopeLocal {
-			decision, err = e.LocalDecision(c.Request.Context(), req.AccessorID,
-				req.Resource.Type, req.Resource.ID, req.Operation)
-		} else {
-			decision, err = e.OperationDecision(c.Request.Context(), req.AccessorID,
-				req.Resource.Type, req.Resource.ID, req.Operation)
-		}
+		decided, err := e.CheckResourceOpsScoped(c.Request.Context(), req.AccessorID, checks, scope)
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		recordEvaluation(c, decisionSourceCheck, req.AccessorID, req.Resource.Type, req.Resource.ID, req.Operation, decision, "")
-		response := gin.H{
-			"allowed":          decision.Allowed(),
-			"evaluation_scope": decision.Scope,
-			"decision":         decision.Decision,
-			"basis":            decision.Basis,
+		byResource := make(map[authz.ResourceRef]map[string]authz.OperationDecision, len(decided))
+		for _, resource := range decided {
+			key := authz.ResourceRef{Type: resource.Type, ID: resource.ID}
+			byResource[key] = make(map[string]authz.OperationDecision, len(resource.Decisions))
+			for _, decision := range resource.Decisions {
+				byResource[key][decision.Operation] = decision
+			}
 		}
-		if len(decision.Requirements) > 0 {
-			response["requires"] = decision.Requirements
+		results := make([]gin.H, 0, len(req.Checks))
+		allAllowed := true
+		for _, check := range req.Checks {
+			decision, ok := byResource[authz.ResourceRef{Type: check.Resource.Type, ID: check.Resource.ID}][check.Operation]
+			if !ok {
+				serverError(c, errors.New("batched authorization decision is missing"))
+				return
+			}
+			evaluation := authz.Evaluation{
+				Scope: scope, Decision: decision.Decision, Basis: decision.Basis,
+				Requirements: decision.Requirements, DeniedRequirement: decision.DeniedRequirement,
+				RequirementBasis: decision.RequirementBasis,
+			}
+			recordEvaluation(c, decisionSourceCheck, req.AccessorID, check.Resource.Type, check.Resource.ID, check.Operation, evaluation, "")
+			entry := gin.H{
+				"resource_type": check.Resource.Type,
+				"resource_id":   check.Resource.ID,
+				"operation":     check.Operation,
+				"allowed":       evaluation.Allowed(),
+				"decision":      evaluation.Decision,
+				"basis":         evaluation.Basis,
+			}
+			if len(evaluation.Requirements) > 0 {
+				entry["requires"] = evaluation.Requirements
+			}
+			if evaluation.DeniedRequirement != "" {
+				entry["denied_requirement"] = evaluation.DeniedRequirement
+				entry["requirement_basis"] = evaluation.RequirementBasis
+			}
+			if !evaluation.Allowed() {
+				allAllowed = false
+			}
+			results = append(results, entry)
 		}
-		if decision.DeniedRequirement != "" {
-			response["denied_requirement"] = decision.DeniedRequirement
-			response["requirement_basis"] = decision.RequirementBasis
-		}
-		c.JSON(http.StatusOK, response)
+		c.JSON(http.StatusOK, gin.H{"allowed": allAllowed, "evaluation_scope": scope, "results": results})
 	})
 
 	// POST /operations — which ops the accessor may perform on a resource.
@@ -142,27 +184,22 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		c.JSON(http.StatusOK, gin.H{"operations": allowed})
 	})
 
-	// POST /resource-filter — batched decision for a whole list page: which of
-	// the given resources the accessor may see, and which of the candidate
-	// operations it holds on each. include_operations separates operation
-	// projection from visibility filtering: false returns visible resources with
-	// an empty operations list; omitted keeps the historical projection behavior.
+	// POST /resource-filter filters a caller-supplied resource list. It either
+	// returns resource identities only, or returns each visible resource with its
+	// complete registry-backed effective operation set.
 	//
-	//	{ accessor_id, resources:[{type,id}], visibility_operations:[...], include_operations:true, candidate_operations:[...] }
+	//	{ accessor_id, resources:[{type,id}], visibility_operations:[...], include_operations:true }
 	//	-> { resources:[ {resource_type, resource_id, operations:[...]} ] }
 	//
 	// Resources may also be given as resource_type + resource_ids (the
 	// single-type list-page form); both forms may be combined, and types may be
 	// mixed within one request.
 	//
-	// The two operation lists are separate axes on purpose. visibility_operations
-	// filters — a resource is returned only if the accessor holds every one of
-	// them; an empty list returns each requested resource. candidate_operations
-	// projects — when include_operations is true, the returned operations are the
-	// subset held, regardless of what made the resource visible. Omitting
-	// candidate_operations falls back to the resource type's catalog ops, as
-	// POST /operations does. include_operations defaults to true for existing
-	// callers.
+	// visibility_operations filters: a resource is returned only if the accessor
+	// holds every listed operation. An empty list returns every requested
+	// resource. include_operations selects whether the response omits operations
+	// entirely, or returns every operation registered for that resource type that
+	// the accessor effectively holds.
 	//
 	// Duplicate resources and operations are collapsed in first-seen order.
 	// Errors: 400 on malformed input, 503 when account state cannot be read, and
@@ -175,8 +212,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			ResourceType         string        `json:"resource_type"`
 			ResourceIDs          []string      `json:"resource_ids"`
 			VisibilityOperations []string      `json:"visibility_operations"`
-			CandidateOperations  []string      `json:"candidate_operations"`
-			IncludeOperations    *bool         `json:"include_operations"`
+			IncludeOperations    bool          `json:"include_operations"`
 			EvaluationScope      string        `json:"evaluation_scope"`
 		}
 		if !bind(c, &req) {
@@ -188,8 +224,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			return
 		}
 		req.VisibilityOperations = uniqueStrings(req.VisibilityOperations)
-		req.CandidateOperations = uniqueStrings(req.CandidateOperations)
-		includeOperations := req.IncludeOperations == nil || *req.IncludeOperations
+		includeOperations := req.IncludeOperations
 		refs := make([]authz.ResourceRef, 0, len(req.Resources)+len(req.ResourceIDs))
 		for _, r := range req.Resources {
 			refs = append(refs, authz.ResourceRef{Type: r.Type, ID: r.ID})
@@ -204,12 +239,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			}
 		}
 		refs = uniqueResourceRefs(refs)
-		requestedOperations := append([]string{}, req.VisibilityOperations...)
-		if includeOperations {
-			requestedOperations = append(requestedOperations, req.CandidateOperations...)
-		}
-		requestedOperations = uniqueStrings(requestedOperations)
-		if scope == authz.ScopeLocal && !validateLocalScope(c, refs, requestedOperations) {
+		if scope == authz.ScopeLocal && !validateLocalScope(c, refs, req.VisibilityOperations) {
 			return
 		}
 		active, err := activeAccount(c, db, req.AccessorID)
@@ -223,19 +253,19 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			return
 		}
 
-		// One evaluation pass for the whole batch — including mixed types — when
-		// the caller states the candidate operations, which is the list-page
-		// case. Only the catalog fallback has to split by type, because there
-		// the candidate set is a property of the type rather than the request.
+		// Full operation projection is catalog-backed, so mixed resource types
+		// are evaluated in type groups.
 		out := make([]gin.H, 0, len(refs))
 		appendResults := func(results []authz.FilteredResource) {
 			for _, r := range results {
 				entry := gin.H{
 					"resource_type": r.Type,
 					"resource_id":   r.ID,
-					"operations":    r.Operations,
 				}
-				if scope == authz.ScopeLocal {
+				if includeOperations {
+					entry["operations"] = r.Operations
+				}
+				if includeOperations && scope == authz.ScopeLocal {
 					decisions := make([]gin.H, 0, len(r.Decisions))
 					for _, decision := range r.Decisions {
 						item := gin.H{
@@ -257,8 +287,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 				out = append(out, entry)
 			}
 		}
-		// A visibility-only caller must not trigger an operation projection. Keep
-		// the candidate set empty so the engine evaluates only the visibility axis.
+		// A visibility-only caller must not trigger an operation projection.
 		if !includeOperations {
 			results, err := e.FilterResourceOpsScoped(c.Request.Context(), req.AccessorID,
 				refs, req.VisibilityOperations, nil, scope)
@@ -267,23 +296,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 				return
 			}
 			appendResults(results)
-			recordFilterDecision(c, req.AccessorID, refs, req.VisibilityOperations, nil, scope, len(out))
+			recordFilterDecision(c, req.AccessorID, refs, req.VisibilityOperations, scope, len(out))
 			c.JSON(http.StatusOK, gin.H{"resources": out})
 			return
 		}
-		if len(req.CandidateOperations) > 0 {
-			results, err := e.FilterResourceOpsScoped(c.Request.Context(), req.AccessorID,
-				refs, req.VisibilityOperations, req.CandidateOperations, scope)
-			if err != nil {
-				serverError(c, err)
-				return
-			}
-			appendResults(results)
-			recordFilterDecision(c, req.AccessorID, refs, req.VisibilityOperations, req.CandidateOperations, scope, len(out))
-			c.JSON(http.StatusOK, gin.H{"resources": out})
-			return
-		}
-
 		byType := map[string][]authz.ResourceRef{}
 		order := make([]string, 0, 4)
 		for _, r := range refs {
@@ -322,7 +338,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 				appendResults([]authz.FilteredResource{result})
 			}
 		}
-		recordFilterDecision(c, req.AccessorID, refs, req.VisibilityOperations, nil, scope, len(out))
+		recordFilterDecision(c, req.AccessorID, refs, req.VisibilityOperations, scope, len(out))
 		c.JSON(http.StatusOK, gin.H{"resources": out})
 	})
 
@@ -523,7 +539,7 @@ func recordOperationsDecision(c *gin.Context, accessorID, resourceType, resource
 // list page asks about tens or hundreds of resources at once; one row per
 // resource would make the decision log larger than the data it describes, so
 // the batch is summarised: how many were asked about, how many came back.
-func recordFilterDecision(c *gin.Context, accessorID string, refs []authz.ResourceRef, visibility, candidates []string, scope authz.EvaluationScope, visible int) {
+func recordFilterDecision(c *gin.Context, accessorID string, refs []authz.ResourceRef, visibility []string, scope authz.EvaluationScope, visible int) {
 	decision := decisionlog.DecisionDeny
 	switch {
 	case len(refs) == 0:
@@ -535,7 +551,7 @@ func recordFilterDecision(c *gin.Context, accessorID string, refs []authz.Resour
 		AccessorID: accessorID, ResourceType: filterResourceType(refs), Operation: strings.Join(visibility, ","),
 		Scope: string(scope), Decision: decision, Source: decisionSourceFilter,
 		Detail: decisionDetail(map[string]any{
-			"requested": len(refs), "visible": visible, "candidate_operations": capStrings(candidates, 32),
+			"requested": len(refs), "visible": visible,
 		}),
 	})
 }

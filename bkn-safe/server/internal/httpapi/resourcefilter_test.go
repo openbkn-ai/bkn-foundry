@@ -23,6 +23,9 @@ type filterEntry struct {
 
 func postFilter(t *testing.T, r *gin.Engine, body any) []filterEntry {
 	t.Helper()
+	if request, ok := body.(map[string]any); ok && request["include_operations"] == nil {
+		request["include_operations"] = true
+	}
 	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("resource-filter = %d body=%s", w.Code, w.Body.String())
@@ -42,6 +45,7 @@ func TestResourceFilterEndpoint(t *testing.T) {
 	r, e, db := newTestServer(t)
 	const user, role = "u-1", "role-builder"
 	seedEnabledUser(t, db, user)
+	seedCatalogOps(t, db, "knowledge_network", "view_detail", "create", "modify", "delete")
 	_ = e.GrantRolePermission(role, "knowledge_network", "*", "view_detail")
 	_ = e.AssignRole(user, role)
 	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "modify")
@@ -52,7 +56,6 @@ func TestResourceFilterEndpoint(t *testing.T) {
 		"resource_type":         "knowledge_network",
 		"resource_ids":          []string{"kn-1", "kn-2"},
 		"visibility_operations": []string{"view_detail"},
-		"candidate_operations":  []string{"view_detail", "create", "modify", "delete"},
 	})
 
 	if len(got) != 2 {
@@ -65,7 +68,8 @@ func TestResourceFilterEndpoint(t *testing.T) {
 		}
 		byID[r.ResourceID] = r.Operations
 	}
-	if want := []string{"view_detail", "modify", "delete"}; !reflect.DeepEqual(byID["kn-1"], want) {
+	sort.Strings(byID["kn-1"])
+	if want := []string{"delete", "modify", "view_detail"}; !reflect.DeepEqual(byID["kn-1"], want) {
 		t.Errorf("kn-1 = %v, want %v", byID["kn-1"], want)
 	}
 	if want := []string{"view_detail"}; !reflect.DeepEqual(byID["kn-2"], want) {
@@ -91,7 +95,6 @@ func TestResourceFilterEndpointMixedTypes(t *testing.T) {
 			{"type": "resource", "id": "r-2"},
 		},
 		"visibility_operations": []string{"view_detail"},
-		"candidate_operations":  []string{"view_detail", "modify"},
 	})
 
 	if len(got) != 2 {
@@ -105,27 +108,28 @@ func TestResourceFilterEndpointMixedTypes(t *testing.T) {
 }
 
 // TestResourceFilterEndpointSuperAdmin pins the reported regression: a wildcard
-// accessor must get the whole candidate set back, not just the visibility op.
+// accessor must get the whole registered operation set back, not just the
+// visibility operation.
 func TestResourceFilterEndpointSuperAdmin(t *testing.T) {
 	r, e, db := newTestServer(t)
 	const admin, role = "admin-1", "role-super"
 	seedEnabledUser(t, db, admin)
+	seedCatalogOps(t, db, "knowledge_network", "view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage")
 	_ = e.Grant(role, "*", "*")
 	_ = e.AssignRole(admin, role)
 
-	candidates := []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage"}
+	allOperations := []string{"authorize", "create", "delete", "modify", "query_data", "task_manage", "view_detail"}
 	got := postFilter(t, r, map[string]any{
 		"accessor_id":           admin,
 		"resource_type":         "knowledge_network",
 		"resource_ids":          []string{"kn-1"},
 		"visibility_operations": []string{"view_detail"},
-		"candidate_operations":  candidates,
 	})
 	if len(got) != 1 {
 		t.Fatalf("got %v, want 1 entry", got)
 	}
-	if !reflect.DeepEqual(got[0].Operations, candidates) {
-		t.Errorf("ops = %v, want %v", got[0].Operations, candidates)
+	if !reflect.DeepEqual(got[0].Operations, allOperations) {
+		t.Errorf("ops = %v, want %v", got[0].Operations, allOperations)
 	}
 }
 
@@ -143,7 +147,6 @@ func TestResourceFilterEndpointEdges(t *testing.T) {
 		got := postFilter(t, r, map[string]any{
 			"accessor_id":           "u-1",
 			"visibility_operations": []string{"view_detail"},
-			"candidate_operations":  []string{"view_detail"},
 		})
 		if len(got) != 0 {
 			t.Fatalf("got %v, want empty", got)
@@ -170,21 +173,11 @@ func TestResourceFilterEndpointEdges(t *testing.T) {
 		}
 	})
 
-	t.Run("empty operation is not treated as omission", func(t *testing.T) {
+	t.Run("empty visibility operation is not treated as omission", func(t *testing.T) {
 		got := postFilter(t, r, map[string]any{
-			"accessor_id":          "u-1",
-			"resources":            []map[string]string{{"type": "agent", "id": "a-1"}},
-			"candidate_operations": []string{""},
-		})
-		if len(got) != 1 || len(got[0].Operations) != 0 {
-			t.Fatalf("empty candidate result = %v, want one resource with no operations", got)
-		}
-
-		got = postFilter(t, r, map[string]any{
 			"accessor_id":           "u-1",
 			"resources":             []map[string]string{{"type": "agent", "id": "a-1"}},
 			"visibility_operations": []string{""},
-			"candidate_operations":  []string{"use"},
 		})
 		if len(got) != 0 {
 			t.Fatalf("empty visibility operation result = %v, want empty", got)
@@ -192,10 +185,9 @@ func TestResourceFilterEndpointEdges(t *testing.T) {
 	})
 }
 
-// TestResourceFilterEndpointCatalogFallback checks that omitting
-// candidate_operations projects the resource type's catalog ops, matching what
-// POST /operations returns for the same resource.
-func TestResourceFilterEndpointCatalogFallback(t *testing.T) {
+// TestResourceFilterEndpointProjectsCatalog checks that enabling projection
+// returns the resource type's catalog ops, matching POST /operations.
+func TestResourceFilterEndpointProjectsCatalog(t *testing.T) {
 	r, e, db := newTestServer(t)
 	const user = "u-1"
 	seedEnabledUser(t, db, user)
@@ -225,26 +217,35 @@ func TestResourceFilterEndpointVisibilityOnlyDoesNotProjectOperations(t *testing
 	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "modify")
 	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "delete")
 
-	got := postFilter(t, r, map[string]any{
+	body := map[string]any{
 		"accessor_id":           user,
 		"resource_type":         "knowledge_network",
 		"resource_ids":          []string{"kn-1"},
 		"visibility_operations": []string{"view_detail"},
-		"candidate_operations":  []string{"modify", "delete"},
 		"include_operations":    false,
-	})
+	}
+	got := postFilter(t, r, body)
 	if len(got) != 1 {
 		t.Fatalf("got %v, want one visible resource", got)
 	}
 	if len(got[0].Operations) != 0 {
 		t.Errorf("operations = %v, want no operation projection", got[0].Operations)
 	}
+	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", body)
+	var raw struct {
+		Resources []map[string]any `json:"resources"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &raw) != nil || len(raw.Resources) != 1 {
+		t.Fatalf("visibility-only response = %d %s", w.Code, w.Body.String())
+	}
+	if _, found := raw.Resources[0]["operations"]; found {
+		t.Errorf("visibility-only response must omit operations: %v", raw.Resources[0])
+	}
 }
 
-// TestResourceFilterEndpointCatalogFallbackMixedTypes covers the one case where
-// the batch has to be split: without candidate_operations each type projects its
-// own catalog, so the two types must not borrow each other's operations.
-func TestResourceFilterEndpointCatalogFallbackMixedTypes(t *testing.T) {
+// TestResourceFilterEndpointCatalogMixedTypes verifies each type uses its own
+// catalog, so operations cannot leak between resource types.
+func TestResourceFilterEndpointCatalogMixedTypes(t *testing.T) {
 	r, e, db := newTestServer(t)
 	const user = "u-1"
 	seedEnabledUser(t, db, user)
@@ -315,7 +316,6 @@ func TestResourceFilterDeduplicatesAndPreservesFirstSeenOrder(t *testing.T) {
 			{"type": "type-a", "id": "a-1"},
 			{"type": "type-a", "id": "a-1"},
 		},
-		"candidate_operations": []string{"view_detail", "view_detail"},
 	})
 	if len(got) != 1 || !reflect.DeepEqual(got[0].Operations, []string{"view_detail"}) {
 		t.Fatalf("deduplicated result = %v", got)
@@ -329,7 +329,6 @@ func TestResourceFilterDeduplicatesAndPreservesFirstSeenOrder(t *testing.T) {
 		"accessor_id":           user,
 		"resources":             duplicateResources,
 		"visibility_operations": []string{"view_detail", "query_data", "modify", "delete"},
-		"candidate_operations":  []string{"view_detail", "query_data", "modify", "delete", "authorize"},
 	})
 	if w.Code != http.StatusOK {
 		t.Fatalf("large duplicate input should be accepted after deduplication: %d %s", w.Code, w.Body.String())
@@ -350,9 +349,8 @@ func TestResourceFilterDoesNotRejectLargeBatch(t *testing.T) {
 		operations = append(operations, "op-"+strconv.Itoa(i+1))
 	}
 	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
-		"accessor_id":          user,
-		"resources":            resources,
-		"candidate_operations": operations,
+		"accessor_id": user,
+		"resources":   resources,
 	})
 	if w.Code != http.StatusOK {
 		t.Fatalf("large batch status = %d, want 200: %s", w.Code, w.Body.String())

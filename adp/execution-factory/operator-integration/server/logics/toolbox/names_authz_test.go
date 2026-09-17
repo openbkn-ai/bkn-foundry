@@ -125,10 +125,6 @@ func TestProjectToolBoxOperations(t *testing.T) {
 		authService.EXPECT().ResourceFilterOperations(
 			gomock.Any(), accessor, []string{"box-1", "box-2"}, interfaces.AuthResourceTypeToolBox,
 			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-			[]interfaces.AuthOperationType{
-				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypeModify, interfaces.AuthOperationTypePublish,
-				interfaces.AuthOperationTypeUnpublish, interfaces.AuthOperationTypeDelete, interfaces.AuthOperationTypeAuthorize,
-			},
 		).Return(map[string][]interfaces.AuthOperationType{
 			"box-1": {interfaces.AuthOperationTypeAuthorize},
 		}, nil)

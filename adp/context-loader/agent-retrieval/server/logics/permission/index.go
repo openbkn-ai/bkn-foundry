@@ -95,7 +95,7 @@ func (a *queryCandidateAuthorizer) FilterObjectTypeIDs(ctx context.Context,
 			AccessorID:           account.AccountID,
 			Resources:            resources,
 			VisibilityOperations: []string{interfaces.PermissionOperationQueryData},
-			CandidateOperations:  []string{interfaces.PermissionOperationQueryData},
+			IncludeOperations:    false,
 		})
 		if err != nil || response.Resources == nil {
 			return nil, permissionUnavailable(ctx)
@@ -109,9 +109,6 @@ func (a *queryCandidateAuthorizer) FilterObjectTypeIDs(ctx context.Context,
 				return nil, permissionUnavailable(ctx)
 			}
 			if _, duplicate := returned[result.ResourceID]; duplicate {
-				return nil, permissionUnavailable(ctx)
-			}
-			if !contains(result.Operations, interfaces.PermissionOperationQueryData) {
 				return nil, permissionUnavailable(ctx)
 			}
 			returned[result.ResourceID] = struct{}{}
@@ -238,22 +235,21 @@ func (a *knowledgeNetworkAuthorizer) authorizeResource(ctx context.Context, acco
 		return permissionUnavailable(ctx)
 	}
 
-	response, err := a.access.FilterResources(ctx, interfaces.PermissionFilterRequest{
-		AccessorID:           account.AccountID,
-		Resources:            []interfaces.PermissionResource{resource},
-		VisibilityOperations: []string{operation},
-		CandidateOperations:  []string{operation},
+	response, err := a.access.CheckPermissions(ctx, interfaces.PermissionChecksRequest{
+		AccessorID: account.AccountID,
+		Checks: []interfaces.PermissionCheck{{
+			Resource: resource, Operation: operation,
+		}},
 	})
-	if err != nil || response.Resources == nil {
+	if err != nil || len(response.Results) != 1 {
 		return permissionUnavailable(ctx)
 	}
-	for _, result := range *response.Resources {
-		if result.ResourceType != resource.Type || result.ResourceID != resource.ID {
-			return permissionUnavailable(ctx)
-		}
-		if contains(result.Operations, operation) {
-			return nil
-		}
+	result := response.Results[0]
+	if result.ResourceType != resource.Type || result.ResourceID != resource.ID || result.Operation != operation {
+		return permissionUnavailable(ctx)
+	}
+	if result.Allowed {
+		return nil
 	}
 	return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden,
 		infraerrors.LocalizedDetail(ctx, deniedDetailKey))
