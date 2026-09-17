@@ -116,6 +116,28 @@ type Authorizer interface {
 	Decide(ctx context.Context, req Request) (LocalOpinion, error)
 }
 
+// DirectResourceIDsAuthorizer is an optional capability for providers that
+// need to contribute exact-resource candidates to Core's child-to-parent
+// derivation. The returned IDs are candidates only: Core still evaluates every
+// matching child through Decide before deriving a parent operation.
+//
+// It is deliberately separate from Authorizer so an older Enterprise provider
+// remains compatible with a newer Core binary. Such a provider simply
+// contributes no additional derived candidates.
+type DirectResourceIDsAuthorizer interface {
+	DirectResourceIDs(ctx context.Context, req DirectResourceIDsRequest) ([]string, error)
+}
+
+// DirectResourceIDsRequest identifies the direct child operation for which a
+// provider should enumerate exact-resource candidates. AccessorIDs has the
+// same expanded Core subject vocabulary as Request.
+type DirectResourceIDsRequest struct {
+	AccessorID   string
+	AccessorIDs  []string
+	ResourceType string
+	Op           string
+}
+
 // impl holds the registered implementation. atomic.Value keeps the read path
 // lock-free; it is written once during assembly and only read afterwards.
 var impl atomic.Value // Authorizer
@@ -201,6 +223,23 @@ func Decide(ctx context.Context, req Request) (LocalOpinion, error) {
 		return LocalOpinion{Direct: Deny, Wildcard: Deny}, err
 	}
 	return d, nil
+}
+
+// DirectResourceIDs asks an Enterprise provider for exact-resource candidates
+// that could allow req.Op. It is only an optimization for derived parent
+// decisions: callers must still use Decide as the final authorization check.
+// Community and providers that do not implement the optional capability return
+// no candidates.
+func DirectResourceIDs(ctx context.Context, req DirectResourceIDsRequest) ([]string, error) {
+	a := load()
+	if a == nil || !entitlement.AtLeast(minEdition) {
+		return nil, nil
+	}
+	candidates, ok := a.(DirectResourceIDsAuthorizer)
+	if !ok {
+		return nil, nil
+	}
+	return candidates.DirectResourceIDs(ctx, req)
 }
 
 func load() Authorizer {

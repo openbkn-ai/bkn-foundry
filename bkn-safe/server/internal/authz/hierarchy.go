@@ -13,6 +13,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -334,6 +335,69 @@ func derivedSourceIDs(idx *grantIndex, rules []derivedRule) map[string]map[strin
 	return out
 }
 
+// derivedCandidateIDs combines the finite direct Core grant set with exact
+// candidates supplied by the optional Enterprise object-rule provider. Both
+// are only candidate sets: localDecisionsWithIndex remains the authority for
+// the final allow/deny result and its provenance.
+func derivedCandidateIDs(ctx context.Context, accessorID string, idx *grantIndex,
+	rules []derivedRule) (map[string]map[string][]string, error) {
+	ids := map[string]map[string]map[string]struct{}{}
+	for resourceType, byOperation := range derivedSourceIDs(idx, rules) {
+		ids[resourceType] = map[string]map[string]struct{}{}
+		for operation, resourceIDs := range byOperation {
+			ids[resourceType][operation] = map[string]struct{}{}
+			for _, resourceID := range resourceIDs {
+				ids[resourceType][operation][resourceID] = struct{}{}
+			}
+		}
+	}
+
+	required := map[string]map[string]struct{}{}
+	for _, rule := range rules {
+		if required[rule.childType] == nil {
+			required[rule.childType] = map[string]struct{}{}
+		}
+		required[rule.childType][rule.childOp] = struct{}{}
+	}
+	for resourceType, operations := range required {
+		for operation := range operations {
+			resourceIDs, err := permobject.DirectResourceIDs(ctx, permobject.DirectResourceIDsRequest{
+				AccessorID: accessorID, AccessorIDs: append([]string(nil), idx.subjects...),
+				ResourceType: resourceType, Op: operation,
+			})
+			if err != nil {
+				return nil, err
+			}
+			if len(resourceIDs) == 0 {
+				continue
+			}
+			if ids[resourceType] == nil {
+				ids[resourceType] = map[string]map[string]struct{}{}
+			}
+			if ids[resourceType][operation] == nil {
+				ids[resourceType][operation] = map[string]struct{}{}
+			}
+			for _, resourceID := range resourceIDs {
+				if resourceID != "" {
+					ids[resourceType][operation][resourceID] = struct{}{}
+				}
+			}
+		}
+	}
+
+	out := map[string]map[string][]string{}
+	for resourceType, byOperation := range ids {
+		out[resourceType] = map[string][]string{}
+		for operation, resourceIDs := range byOperation {
+			for resourceID := range resourceIDs {
+				out[resourceType][operation] = append(out[resourceType][operation], resourceID)
+			}
+			sort.Strings(out[resourceType][operation])
+		}
+	}
+	return out, nil
+}
+
 // derivedRulesByParent loads static registry metadata once per enforcer.
 // Startup primes it after seeding, so policy checks do not pay for registry
 // discovery on every request. Failed loads are deliberately not cached: a
@@ -414,12 +478,16 @@ func (en *Enforcer) derivedDecisionsWithIndex(ctx context.Context, accessorID st
 	if len(rulesByParent) == 0 {
 		return nil, nil
 	}
-	// The direct Core grant index provides the only finite candidate set for a
-	// derived decision. Do this before reading resource_parents so a request for
-	// many catalogs does not first materialize every child below them.
+	// Direct Core grants and optional Enterprise exact-object rules provide the
+	// finite candidate set. Do this before reading resource_parents so a request
+	// for many catalogs does not first materialize every child below them.
 	candidateIDsByTypeAndOperation := map[string]map[string][]string{}
 	for _, rules := range rulesByParent {
-		for resourceType, byOperation := range derivedSourceIDs(idx, rules) {
+		candidates, err := derivedCandidateIDs(ctx, accessorID, idx, rules)
+		if err != nil {
+			return nil, err
+		}
+		for resourceType, byOperation := range candidates {
 			if candidateIDsByTypeAndOperation[resourceType] == nil {
 				candidateIDsByTypeAndOperation[resourceType] = map[string][]string{}
 			}
@@ -453,20 +521,23 @@ func (en *Enforcer) derivedDecisionsWithIndex(ctx context.Context, accessorID st
 			if len(candidateIDs) == 0 {
 				continue
 			}
-			var parents []model.ResourceParent
-			if err := en.db.WithContext(ctx).
-				Where("parent_type_id = ? AND parent_id IN ? AND resource_type_id = ? AND resource_id IN ?",
-					parentType, parentIDs, rule.childType, candidateIDs).
-				Find(&parents).Error; err != nil {
-				return nil, err
-			}
-			for _, parent := range parents {
-				source := ResourceRef{Type: parent.ResourceTypeID, ID: parent.ResourceID}
-				target := ResourceRef{Type: parent.ParentTypeID, ID: parent.ParentID}
-				sourceWant[source] = append(sourceWant[source], rule.childOp)
-				bindings = append(bindings, binding{
-					source: source, target: target, sourceOp: rule.childOp, targetOp: rule.parentOp,
-				})
+			for start := 0; start < len(candidateIDs); start += childIDChunk {
+				end := min(start+childIDChunk, len(candidateIDs))
+				var parents []model.ResourceParent
+				if err := en.db.WithContext(ctx).
+					Where("parent_type_id = ? AND parent_id IN ? AND resource_type_id = ? AND resource_id IN ?",
+						parentType, parentIDs, rule.childType, candidateIDs[start:end]).
+					Find(&parents).Error; err != nil {
+					return nil, err
+				}
+				for _, parent := range parents {
+					source := ResourceRef{Type: parent.ResourceTypeID, ID: parent.ResourceID}
+					target := ResourceRef{Type: parent.ParentTypeID, ID: parent.ParentID}
+					sourceWant[source] = append(sourceWant[source], rule.childOp)
+					bindings = append(bindings, binding{
+						source: source, target: target, sourceOp: rule.childOp, targetOp: rule.parentOp,
+					})
+				}
 			}
 		}
 	}

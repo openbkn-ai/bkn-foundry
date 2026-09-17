@@ -33,14 +33,22 @@ func TestPublicSubjectVocabularyIsStable(t *testing.T) {
 // fake stands in for the ee implementation. Core must be testable with a fake
 // in the socket — that is the point of depending on the interface, not on ee.
 type fake struct {
-	decision LocalOpinion
-	err      error
-	seen     Request
+	decision   LocalOpinion
+	err        error
+	seen       Request
+	directIDs  []string
+	directErr  error
+	directSeen DirectResourceIDsRequest
 }
 
 func (f *fake) Decide(_ context.Context, req Request) (LocalOpinion, error) {
 	f.seen = req
 	return f.decision, f.err
+}
+
+func (f *fake) DirectResourceIDs(_ context.Context, req DirectResourceIDsRequest) ([]string, error) {
+	f.directSeen = req
+	return f.directIDs, f.directErr
 }
 
 // licensed installs a gate that swings between enterprise and community, and
@@ -74,6 +82,26 @@ func TestCommunityBuildAbstains(t *testing.T) {
 	}
 	if Available() {
 		t.Fatal("Available() must be false with an empty socket")
+	}
+}
+
+func TestDirectResourceIDsUsesOptionalProviderCapability(t *testing.T) {
+	on := true
+	licensed(t, &on)
+	provider := &fake{directIDs: []string{"resource-2", "resource-1"}}
+	register(provider)
+
+	ids, err := DirectResourceIDs(context.Background(), DirectResourceIDsRequest{
+		AccessorID: "u1", AccessorIDs: []string{"u1", "role-1"}, ResourceType: "resource", Op: "view_detail",
+	})
+	if err != nil {
+		t.Fatalf("DirectResourceIDs error = %v", err)
+	}
+	if !reflect.DeepEqual(ids, provider.directIDs) {
+		t.Fatalf("DirectResourceIDs = %v, want %v", ids, provider.directIDs)
+	}
+	if provider.directSeen.ResourceType != "resource" || provider.directSeen.Op != "view_detail" {
+		t.Fatalf("provider request = %+v", provider.directSeen)
 	}
 }
 

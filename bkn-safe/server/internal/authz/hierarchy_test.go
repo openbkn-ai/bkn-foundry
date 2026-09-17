@@ -16,7 +16,11 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/licverify"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // declareCatalogHierarchy registers the shipped catalog/resource shape: a data
@@ -123,6 +127,47 @@ func TestCatalogSummaryIsDerivedFromConcreteResourceView(t *testing.T) {
 	}
 }
 
+type derivedCandidateEEFake struct{}
+
+func (derivedCandidateEEFake) Decide(_ context.Context, req permobject.Request) (permobject.LocalOpinion, error) {
+	if req.ResourceType == "resource" && req.ResourceID == "ee-res-1" && req.Op == "view_detail" {
+		return permobject.LocalOpinion{Direct: permobject.Allow}, nil
+	}
+	return permobject.LocalOpinion{}, nil
+}
+
+func (derivedCandidateEEFake) DirectResourceIDs(_ context.Context,
+	req permobject.DirectResourceIDsRequest) ([]string, error) {
+	if req.ResourceType == "resource" && req.Op == "view_detail" {
+		return []string{"ee-res-1"}, nil
+	}
+	return nil, nil
+}
+
+func TestCatalogSummaryDerivesFromEnterpriseExactChildCandidate(t *testing.T) {
+	permobject.ResetForTest()
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Licensed: true, Edition: licverify.EditionEnterprise}
+	}))
+	t.Cleanup(func() {
+		permobject.ResetForTest()
+		entitlement.ResetForTest()
+	})
+	permobject.Register(licverify.EditionEnterprise, derivedCandidateEEFake{})
+
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "ee-res-1", "cat-1")
+
+	decision, err := e.OperationDecision(t.Context(), "ee-reader", "catalog", "cat-1", "view_summary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Basis != BasisDerived || !decision.Allowed() {
+		t.Fatalf("enterprise derived catalog summary = %+v, want derived allow", decision)
+	}
+}
+
 func TestDerivedSourceIDsOnlyIncludesExactDirectCoreAllowCandidates(t *testing.T) {
 	idx := newGrantIndex([][]string{
 		{"user", "resource:res-view", "view_detail", EffectAllow},
@@ -145,6 +190,34 @@ func TestDerivedSourceIDsOnlyIncludesExactDirectCoreAllowCandidates(t *testing.T
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("derivedSourceIDs = %#v, want %#v", got, want)
+	}
+}
+
+func TestCatalogSummaryDerivationChunksDirectChildCandidates(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	parents := make([]model.ResourceParent, 0, childIDChunk+1)
+	grants := make([][]string, 0, childIDChunk+1)
+	for i := 0; i <= childIDChunk; i++ {
+		resourceID := "res-" + strconv.Itoa(i)
+		parents = append(parents, model.ResourceParent{
+			ResourceTypeID: "resource", ResourceID: resourceID,
+			ParentTypeID: "catalog", ParentID: "cat-1",
+		})
+		grants = append(grants, []string{"summary-reader", obj("resource", resourceID), "view_detail", EffectAllow})
+	}
+	if err := db.Create(&parents).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	derived, err := e.derivedDecisionsWithIndex(t.Context(), "summary-reader", newGrantIndex(grants, false),
+		map[ResourceRef][]string{{Type: "catalog", ID: "cat-1"}: {"view_summary"}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision := derived[ResourceRef{Type: "catalog", ID: "cat-1"}]["view_summary"]; decision.Basis != BasisDerived {
+		t.Fatalf("derived catalog summary = %+v, want BasisDerived", decision)
 	}
 }
 
