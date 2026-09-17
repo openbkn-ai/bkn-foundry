@@ -46,7 +46,6 @@ func TestRoleResourceMatrix(t *testing.T) {
 		networkBuilder: {
 			"catalog":           "create",
 			"knowledge_network": "create",
-			"operator":          "execute",
 			"small_model":       "execute",
 			"large_model":       "execute",
 		},
