@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -53,6 +54,52 @@ type Entry struct {
 	ClientIP          string
 }
 
+type requestOperationContextKey struct{}
+
+// RequestOperation carries immutable request facts into the transaction that
+// changes a sensitive resource. Handlers mark it handled only after that
+// transaction commits its pending audit event.
+type RequestOperation struct {
+	entry   Entry
+	mu      sync.RWMutex
+	handled bool
+}
+
+func NewRequestOperation(entry Entry) *RequestOperation { return &RequestOperation{entry: entry} }
+
+func WithRequestOperation(ctx context.Context, operation *RequestOperation) context.Context {
+	return context.WithValue(ctx, requestOperationContextKey{}, operation)
+}
+
+func RequestOperationFromContext(ctx context.Context) (*RequestOperation, bool) {
+	op, ok := ctx.Value(requestOperationContextKey{}).(*RequestOperation)
+	return op, ok && op != nil
+}
+
+// Enqueue persists the operation event in tx without marking it handled. The
+// caller must MarkHandled only after its enclosing transaction committed.
+func (o *RequestOperation) Enqueue(tx *gorm.DB, targetID, targetName string, status int) error {
+	o.mu.RLock()
+	entry := o.entry
+	o.mu.RUnlock()
+	entry.TargetID = targetID
+	entry.TargetName = targetName
+	entry.Status = status
+	return New(tx).Enqueue(tx, entry)
+}
+
+func (o *RequestOperation) MarkHandled() {
+	o.mu.Lock()
+	o.handled = true
+	o.mu.Unlock()
+}
+
+func (o *RequestOperation) Handled() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.handled
+}
+
 // Record persists one audit entry as the next link of the tamper-evidence
 // chain (see chain.go). The returned error is for logging only — auditing must
 // never break the request it is recording, so callers swallow it.
@@ -67,6 +114,45 @@ func (s *Store) RecordBatch(ctx context.Context, entries []Entry) error {
 	if len(entries) == 0 {
 		return nil
 	}
+	rows := rowsForEntries(entries, model.AuditChainStateChained)
+	chainMu.Lock()
+	defer chainMu.Unlock()
+	var err error
+	for attempt := 0; attempt < chainAppendAttempts; attempt++ {
+		err = s.appendBatch(ctx, rows)
+		if err == nil || !isDuplicateKey(err) {
+			return err
+		}
+		// Another replica took this seq between our head read and insert:
+		// re-read the head and link behind it instead.
+	}
+	return fmt.Errorf("audit chain append lost the sequence race %d times: %w", chainAppendAttempts, err)
+}
+
+// Enqueue stores an audit event in the caller's database transaction. The
+// event is immediately queryable even when a chain append must be retried.
+// tx must be the business mutation's transaction, so that mutation and audit
+// fact commit or roll back together.
+func (s *Store) Enqueue(tx *gorm.DB, entry Entry) error {
+	return s.EnqueueBatch(tx, []Entry{entry})
+}
+
+// EnqueueBatch is Enqueue for one request that has multiple auditable targets.
+func (s *Store) EnqueueBatch(tx *gorm.DB, entries []Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	if tx == nil {
+		return fmt.Errorf("enqueue audit event: nil transaction")
+	}
+	rows := rowsForEntries(entries, model.AuditChainStatePending)
+	if err := tx.CreateInBatches(&rows, 20).Error; err != nil {
+		return fmt.Errorf("enqueue audit event: %w", err)
+	}
+	return nil
+}
+
+func rowsForEntries(entries []Entry, chainState model.AuditChainState) []model.AuditLog {
 	rows := make([]model.AuditLog, 0, len(entries))
 	for _, e := range entries {
 		rows = append(rows, model.AuditLog{
@@ -87,20 +173,10 @@ func (s *Store) RecordBatch(ctx context.Context, entries []Entry) error {
 			Status:            e.Status,
 			ClientIP:          e.ClientIP,
 			CreatedAt:         chainTimestamp(),
+			ChainState:        chainState,
 		})
 	}
-	chainMu.Lock()
-	defer chainMu.Unlock()
-	var err error
-	for attempt := 0; attempt < chainAppendAttempts; attempt++ {
-		err = s.appendBatch(ctx, rows)
-		if err == nil || !isDuplicateKey(err) {
-			return err
-		}
-		// Another replica took this seq between our head read and insert:
-		// re-read the head and link behind it instead.
-	}
-	return fmt.Errorf("audit chain append lost the sequence race %d times: %w", chainAppendAttempts, err)
+	return rows
 }
 
 // Filter narrows a List query. Zero-value fields are not applied. From/To bound

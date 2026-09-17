@@ -190,6 +190,107 @@ func (s *Store) appendBatch(ctx context.Context, rows []model.AuditLog) error {
 	return nil
 }
 
+// AppendPending appends a bounded, oldest-first batch of committed audit
+// events to the tamper-evidence chain. Pending rows already exist in the
+// database, so a failed append leaves the source audit event queryable for a
+// later retry.
+func (s *Store) AppendPending(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	chainMu.Lock()
+	defer chainMu.Unlock()
+
+	var err error
+	for attempt := 0; attempt < chainAppendAttempts; attempt++ {
+		appended, appendErr := s.appendPendingBatch(ctx, limit)
+		if appendErr == nil || !isDuplicateKey(appendErr) {
+			return appended, appendErr
+		}
+		err = appendErr
+	}
+	return 0, fmt.Errorf("audit pending chain append lost the sequence race %d times: %w", chainAppendAttempts, err)
+}
+
+// RunPendingAppender keeps committed audit events moving into the
+// tamper-evidence chain. A failed append is deliberately retried later: the
+// event has already been stored atomically with the business mutation and is
+// visible through the audit API while it is pending.
+func (s *Store) RunPendingAppender(ctx context.Context, interval time.Duration) {
+	if s == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = time.Second
+	}
+	appendOnce := func() {
+		if _, err := s.AppendPending(ctx, 100); err != nil && ctx.Err() == nil {
+			slog.Warn("failed to append pending audit events to chain", "error", err)
+		}
+	}
+	appendOnce()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			appendOnce()
+		}
+	}
+}
+
+func (s *Store) appendPendingBatch(ctx context.Context, limit int) (int, error) {
+	head := s.cachedHead
+	var rows []model.AuditLog
+	var nextHead Head
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("chain_state = ? AND seq IS NULL", model.AuditChainStatePending).
+			Order("created_at ASC").Order("id ASC").Limit(limit).Find(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		if head == nil {
+			var current []model.AuditLog
+			if err := tx.Where("seq IS NOT NULL").Order("seq DESC").Limit(1).Find(&current).Error; err != nil {
+				return err
+			}
+			if len(current) == 0 || current[0].Seq == nil {
+				head = &Head{}
+			} else {
+				head = &Head{Seq: *current[0].Seq, RowHash: current[0].RowHash, CreatedAt: current[0].CreatedAt}
+			}
+		}
+		seq, prev := head.Seq, head.RowHash
+		for i := range rows {
+			seq++
+			rowSeq := seq
+			rows[i].Seq = &rowSeq
+			rows[i].PrevHash = prev
+			rows[i].RowHash = rowHash(rows[i], seq, prev)
+			rows[i].ChainState = model.AuditChainStateChained
+			prev = rows[i].RowHash
+		}
+		if err := tx.Save(&rows).Error; err != nil {
+			return err
+		}
+		nextHead = Head{Seq: seq, RowHash: prev, CreatedAt: rows[len(rows)-1].CreatedAt}
+		return nil
+	})
+	if err != nil {
+		s.cachedHead = nil
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	s.cachedHead = &nextHead
+	return len(rows), nil
+}
+
 // isDuplicateKey recognises the unique-index violation of every backend this
 // service runs on (MySQL wire via openbkn-rds, sqlite in tests) without
 // enabling GORM's error translation globally.

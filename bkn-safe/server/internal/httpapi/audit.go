@@ -81,8 +81,24 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			targetID = auditDetailTargetID(resource, detail)
 		}
 		beforeName := auditTargetName(c.Request.Context(), dir, db, resource, targetID, detail)
+		actorID := c.GetString(ctxAccessorID)
+		actorType, authMethod, sourceChannel := "user", "oauth", "api"
+		if actorID == "" {
+			actorType, authMethod, sourceChannel = "service", "network", "internal"
+			detail = withAuditCallerService(detail, c)
+		}
+		requestOperation := audit.NewRequestOperation(audit.Entry{
+			ActorID: actorID, ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
+			ActorType: actorType, AuthMethod: authMethod, RequestID: requestID, SourceChannel: sourceChannel,
+			Method: c.Request.Method, Resource: resource, Action: action, TargetID: targetID, TargetName: beforeName,
+			Detail: detail, ClientIP: c.ClientIP(),
+		})
+		c.Request = c.Request.WithContext(audit.WithRequestOperation(c.Request.Context(), requestOperation))
 		c.Next()
 		if !isMutating(c.Request.Method) {
+			return
+		}
+		if requestOperation.Handled() {
 			return
 		}
 		explicitTargetName := ""
@@ -105,8 +121,8 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 				targetName = name
 			}
 		}
-		actorID := c.GetString(ctxAccessorID)
-		actorType, authMethod, sourceChannel := "user", "oauth", "api"
+		actorID = c.GetString(ctxAccessorID)
+		actorType, authMethod, sourceChannel = "user", "oauth", "api"
 		if actorID == "" {
 			// Tokenless service face (/authz policy and hierarchy writes): the
 			// platform network boundary is the credential, so there is no

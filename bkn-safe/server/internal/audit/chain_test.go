@@ -262,3 +262,72 @@ func TestRecordRetriesWhenAnotherWriterTookTheSeq(t *testing.T) {
 		t.Fatal("unrelated error treated as duplicate key")
 	}
 }
+
+func TestAppendPendingRetainsEventAfterChainFailure(t *testing.T) {
+	s, db := chainTestStore(t)
+	record(t, s, "first")
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		return s.Enqueue(tx, Entry{
+			ActorID: "security-user", ActorType: "user", AuthMethod: "oauth", RequestID: "role-write-1",
+			Method: "POST", Resource: "roles", Action: "create", TargetID: "role-1", Status: 201,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A second replica appends after s cached seq=1. The first pending append
+	// must lose its seq=2 race, re-read the head, and retain the source event.
+	other := New(db)
+	record(t, other, "other-replica")
+	appended, err := s.AppendPending(context.Background(), 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appended != 1 {
+		t.Fatalf("appended = %d, want 1", appended)
+	}
+
+	var pending model.AuditLog
+	if err := db.Where("request_id = ?", "role-write-1").First(&pending).Error; err != nil {
+		t.Fatal(err)
+	}
+	if pending.ChainState != model.AuditChainStateChained || pending.Seq == nil || *pending.Seq != 3 {
+		t.Fatalf("pending event after retry = %+v, want chained seq 3", pending)
+	}
+	res, err := s.Verify(context.Background(), 0, 0, 0)
+	if err != nil || !res.OK || res.Checked != 3 {
+		t.Fatalf("chain after pending retry = %+v err=%v", res, err)
+	}
+}
+
+func TestRunPendingAppenderChainsCommittedEvent(t *testing.T) {
+	s, db := chainTestStore(t)
+	// SQLite :memory: creates one schema per connection. The worker runs in a
+	// goroutine, so pin this focused test to the single schema connection.
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		return s.Enqueue(tx, Entry{ActorID: "security-user", RequestID: "pending-worker-1", Method: "POST", Resource: "roles", Action: "create", Status: 201})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.RunPendingAppender(ctx, time.Millisecond)
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		var row model.AuditLog
+		if err := db.Where("request_id = ?", "pending-worker-1").First(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+		if row.ChainState == model.AuditChainStateChained {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("pending audit event was not chained by the worker")
+}

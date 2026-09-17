@@ -95,3 +95,34 @@ func TestRecordPreservesOperationAuditIdentityAndCorrelationFacts(t *testing.T) 
 		t.Fatalf("operation audit facts were not preserved: %+v", got)
 	}
 }
+
+func TestEnqueueMakesPendingAuditEventQueryable(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
+		t.Fatal(err)
+	}
+	store := New(db)
+	entry := Entry{
+		ActorID: "security-user", ActorType: "user", AuthMethod: "oauth", RequestID: "role-create-1",
+		SourceChannel: "api", Method: "POST", Resource: "roles", Action: "create", TargetID: "role-1", Status: 201,
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		return store.Enqueue(tx, entry)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	logs, total, err := store.List(context.Background(), Filter{RequestID: entry.RequestID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(logs) != 1 {
+		t.Fatalf("pending audit event: total=%d logs=%+v, want one event", total, logs)
+	}
+	if logs[0].ChainState != model.AuditChainStatePending || logs[0].Seq != nil {
+		t.Fatalf("pending audit event state = %+v, want pending with no sequence", logs[0])
+	}
+}

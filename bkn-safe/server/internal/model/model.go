@@ -318,6 +318,16 @@ type ResourceParent struct {
 	UpdatedAt      time.Time
 }
 
+type AuditChainState string
+
+const (
+	// AuditChainStatePending means the event committed with its business mutation
+	// and is waiting for the asynchronous tamper-evidence chain append.
+	AuditChainStatePending AuditChainState = "pending"
+	// AuditChainStateChained means Seq, PrevHash, and RowHash were assigned.
+	AuditChainStateChained AuditChainState = "chained"
+)
+
 // AuditLog records a user or admin management mutation: who (ActorID, the verified
 // token subject), what (Method + Resource + Action + TargetID + Detail), and the
 // outcome (Status). One row is normally written for each mutating request on an
@@ -357,6 +367,10 @@ type AuditLog struct {
 	Seq      *uint64 `json:"seq,omitempty" gorm:"uniqueIndex"`
 	PrevHash string  `json:"prev_hash,omitempty" gorm:"size:64"`
 	RowHash  string  `json:"row_hash,omitempty" gorm:"size:64"`
+	// ChainState is empty for pre-chain legacy rows, pending when the business
+	// transaction committed the audit fact but its chain append is outstanding,
+	// and chained after a successful append.
+	ChainState AuditChainState `json:"chain_state,omitempty" gorm:"size:16;index"`
 }
 
 // AuthzDecision is one recorded authorization decision (#334): which accessor

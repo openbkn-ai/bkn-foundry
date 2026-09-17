@@ -107,12 +107,17 @@ func (en *Enforcer) RequiringOperations(ctx context.Context, resourceType string
 // revoke a set do not repeat the same resource-type query per operation.
 func (en *Enforcer) RequiringOperationsByRequirement(ctx context.Context, resourceType string,
 	operations []string) (map[string][]string, error) {
-	result := make(map[string][]string, len(operations))
 	if en.db == nil || len(operations) == 0 {
-		return result, nil
+		return make(map[string][]string, len(operations)), nil
 	}
+	return requiringOperationsByRequirement(en.db.WithContext(ctx), resourceType, operations)
+}
+
+func requiringOperationsByRequirement(db *gorm.DB, resourceType string,
+	operations []string) (map[string][]string, error) {
+	result := make(map[string][]string, len(operations))
 	var rows []model.Operation
-	if err := en.db.WithContext(ctx).
+	if err := db.
 		Where("resource_type_id = ? AND implied_operation_ids <> ''", resourceType).
 		Find(&rows).Error; err != nil {
 		return nil, err

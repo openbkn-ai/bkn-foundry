@@ -122,6 +122,50 @@ func (tx *PolicyTransaction) RevokeObjectPermission(accessorID, resourceType, re
 		PolicySourceSystemDerived, AuthoritySourceSystem)
 }
 
+// AssignRole and RemoveRole update grouping policies inside the caller's
+// policy transaction, so role membership and its audit event can share one
+// commit boundary.
+func (tx *PolicyTransaction) AssignRole(accessorID, roleID string) error {
+	_, err := tx.enforcer.e.AddGroupingPolicy(accessorID, roleID)
+	return err
+}
+
+func (tx *PolicyTransaction) RemoveRole(accessorID, roleID string) error {
+	_, err := tx.enforcer.e.RemoveGroupingPolicy(accessorID, roleID)
+	return err
+}
+
+func (tx *PolicyTransaction) RemoveRoleCompletely(roleID string) error {
+	if _, err := tx.enforcer.e.RemoveFilteredGroupingPolicy(1, roleID); err != nil {
+		return err
+	}
+	_, err := tx.enforcer.removePolicyGrants(PolicyFilter{AccessorID: roleID})
+	return err
+}
+
+func (tx *PolicyTransaction) GrantNormalizedRolePermissions(roleID, resourceType, idPattern string, operations []string) error {
+	for _, operation := range operations {
+		if err := tx.enforcer.addPolicy(roleID, obj(resourceType, idPattern), operation, EffectAllow,
+			PolicySourceRolePermission, AuthoritySourceAdminAuthz); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (tx *PolicyTransaction) RevokeRolePermission(roleID, resourceType, idPattern, operation string) error {
+	return tx.enforcer.removePolicy(roleID, obj(resourceType, idPattern), operation, EffectAllow,
+		PolicySourceRolePermission, AuthoritySourceAdminAuthz)
+}
+
+func (tx *PolicyTransaction) RolePermissions(roleID string) ([]RoleGrant, error) {
+	return tx.enforcer.RolePermissions(roleID)
+}
+
+func (tx *PolicyTransaction) RequiringOperationsByRequirement(ctx context.Context, resourceType string, operations []string) (map[string][]string, error) {
+	return requiringOperationsByRequirement(tx.db.WithContext(ctx), resourceType, operations)
+}
+
 // acquireWrite takes the single policy-write slot. It honours ctx while queued
 // and checks it again once admitted: a caller that has already given up must
 // not start a transaction whose result nobody will read.

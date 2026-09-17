@@ -215,10 +215,12 @@ func (a *App) Run() error {
 	entitlement.Freeze()
 	slog.Info("extensions assembled", "assembled", entitlement.Assembled())
 
-	// Background audit work lives for as long as the listener: the chain head
-	// anchor export and the decision-log retention purge.
+	// Background audit work lives for as long as the listener: committed audit
+	// events are chained asynchronously, the chain head is anchored externally,
+	// and decision logs are retained.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	go a.deps.Audit.RunPendingAppender(ctx, time.Second)
 	go a.deps.Audit.LogHead(ctx, a.cfg.Audit.ChainHeadLogInterval)
 	go a.decisions.RunRetention(ctx, a.cfg.Audit.DecisionLog.RetentionDays, 24*time.Hour)
 	go a.enforcer.RunPolicyRefresh(ctx, a.cfg.Authz.PolicyRefreshInterval)
