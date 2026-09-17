@@ -145,3 +145,32 @@ func TestAuthorizationResourcesForwardsVegaResourceQuery(t *testing.T) {
 		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestAuthorizationResourcesForwardsChildParentQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("resource_type"); got != "action_type" {
+			t.Fatalf("resource_type = %q", got)
+		}
+		if got := r.URL.Query().Get("parent_type"); got != "knowledge_network" {
+			t.Fatalf("parent_type = %q", got)
+		}
+		if got := r.URL.Query().Get("parent_id"); got != "kn-1" {
+			t.Fatalf("parent_id = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1/run","name":"Run"}],"total":1}`))
+	}))
+	defer backend.Close()
+	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	registerAuthorizationResources(r.Group("/api/safe/v1/admin"), catalog)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/authorization-resources?resource_type=action_type&parent_type=knowledge_network&parent_id=kn-1", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+}

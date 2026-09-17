@@ -87,5 +87,6 @@ func parseInternalAuthorizationResourceQuery(ctx context.Context, c *gin.Context
 	return interfaces.AuthResourceQueryParams{
 		PaginationQueryParams: pageParam,
 		Name:                  strings.TrimSpace(c.Query("name")),
+		CatalogID:             strings.TrimSpace(c.Query("parent_id")),
 	}, nil
 }
