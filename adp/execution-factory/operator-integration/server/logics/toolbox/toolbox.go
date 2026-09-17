@@ -222,14 +222,14 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	if err != nil {
 		return
 	}
-	if err = projectToolBoxAuthorizeOperations(ctx, s.AuthService, accessor, toolBoxInfoList); err != nil {
+	if err = projectToolBoxOperations(ctx, s.AuthService, accessor, toolBoxInfoList); err != nil {
 		return
 	}
 	resp.Data = toolBoxInfoList
 	return
 }
 
-func projectToolBoxAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, toolBoxes []*interfaces.ToolBoxInfo) error {
+func projectToolBoxOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, toolBoxes []*interfaces.ToolBoxInfo) error {
 	idsByType := map[interfaces.AuthResourceType][]string{}
 	for _, toolBox := range toolBoxes {
 		resourceType, err := toolboxAuthorizationType(string(toolBox.MetadataType))
@@ -240,7 +240,7 @@ func projectToolBoxAuthorizeOperations(ctx context.Context, authorization interf
 	}
 	operationsByID := map[string][]interfaces.AuthOperationType{}
 	for resourceType, ids := range idsByType {
-		projected, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, ids, resourceType)
+		projected, err := auth.ProjectResourceOperations(ctx, authorization, accessor, ids, resourceType)
 		if err != nil {
 			return err
 		}

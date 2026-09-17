@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -73,15 +74,16 @@ func fakeAuthz(t *testing.T) *httptest.Server {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		wantCandidates := []string{"view", "modify", "publish", "unpublish", "delete", "authorize"}
 		if req.AccessorID != "u1" || len(req.Resources) != 2 || req.Resources[0].Type != "skill" || req.Resources[0].ID != "s1" ||
 			len(req.VisibilityOperations) != 1 || req.VisibilityOperations[0] != "view" ||
-			len(req.CandidateOperations) != 1 || req.CandidateOperations[0] != "authorize" ||
+			!reflect.DeepEqual(req.CandidateOperations, wantCandidates) ||
 			req.EvaluationScope != "effective" {
 			http.Error(w, "unexpected resource filter request", http.StatusBadRequest)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"resources": []map[string]any{
-			{"resource_id": "s1", "resource_type": "skill", "operations": []string{"authorize"}},
+			{"resource_id": "s1", "resource_type": "skill", "operations": []string{"view", "modify", "authorize"}},
 			{"resource_id": "s2", "resource_type": "skill", "operations": []string{}},
 		}})
 	})
@@ -98,16 +100,27 @@ func TestSafeAuthorizationResourceFilterProjectsCandidateOperations(t *testing.T
 			{ID: "s1", Type: "skill"},
 			{ID: "s2", Type: "skill"},
 		},
-		Operations:          []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-		CandidateOperations: []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+		Operations: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+		CandidateOperations: []interfaces.AuthOperationType{
+			interfaces.AuthOperationTypeView,
+			interfaces.AuthOperationTypeModify,
+			interfaces.AuthOperationTypePublish,
+			interfaces.AuthOperationTypeUnpublish,
+			interfaces.AuthOperationTypeDelete,
+			interfaces.AuthOperationTypeAuthorize,
+		},
 	})
 	if err != nil {
 		t.Fatalf("ResourceFilter: %v", err)
 	}
 	if len(resources) != 2 || resources[0].ID != "s1" || resources[0].Type != "skill" ||
-		len(resources[0].Operations) != 1 || resources[0].Operations[0] != interfaces.AuthOperationTypeAuthorize ||
+		!reflect.DeepEqual(resources[0].Operations, []interfaces.AuthOperationType{
+			interfaces.AuthOperationTypeView,
+			interfaces.AuthOperationTypeModify,
+			interfaces.AuthOperationTypeAuthorize,
+		}) ||
 		len(resources[1].Operations) != 0 {
-		t.Fatalf("ResourceFilter = %+v, want authorize only for s1", resources)
+		t.Fatalf("ResourceFilter = %+v, want the projected operation subset for s1", resources)
 	}
 }
 

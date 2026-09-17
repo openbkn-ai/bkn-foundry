@@ -553,7 +553,7 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		config.UpdateUser = utils.GetValueOrDefault(userMap, config.UpdateUser, interfaces.UnknownUser)
 		config.ToolConfigs = toolConfigMap[s.genToolConfigMapKey(config.MCPID, config.Version)]
 	}
-	if err = projectMCPAuthorizeOperations(ctx, s.AuthService, accessor, data); err != nil {
+	if err = projectMCPOperations(ctx, s.AuthService, accessor, data); err != nil {
 		return nil, err
 	}
 
@@ -572,12 +572,12 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 	return
 }
 
-func projectMCPAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, configs []*interfaces.MCPServerConfigInfo) error {
+func projectMCPOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, configs []*interfaces.MCPServerConfigInfo) error {
 	mcpIDs := make([]string, 0, len(configs))
 	for _, config := range configs {
 		mcpIDs = append(mcpIDs, config.MCPID)
 	}
-	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, mcpIDs, interfaces.AuthResourceTypeMCP)
+	operationsByID, err := auth.ProjectResourceOperations(ctx, authorization, accessor, mcpIDs, interfaces.AuthResourceTypeMCP)
 	if err != nil {
 		return err
 	}

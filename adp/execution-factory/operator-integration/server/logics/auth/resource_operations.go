@@ -12,10 +12,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// ProjectAuthorizeOperations obtains the per-record authorize operation for a public management
-// list. Internal callers keep their existing response contract because they do not render the
-// Studio object-grant control.
-func ProjectAuthorizeOperations(
+// ProjectResourceOperations obtains the effective per-record operations needed by a public
+// management list. Internal callers keep their existing response contract because they do not
+// render Studio object-level controls.
+func ProjectResourceOperations(
 	ctx context.Context,
 	authorization interfaces.IAuthorizationService,
 	accessor *interfaces.AuthAccessor,
@@ -34,6 +34,13 @@ func ProjectAuthorizeOperations(
 		resourceIDs,
 		resourceType,
 		[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-		[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+		[]interfaces.AuthOperationType{
+			interfaces.AuthOperationTypeView,
+			interfaces.AuthOperationTypeModify,
+			interfaces.AuthOperationTypePublish,
+			interfaces.AuthOperationTypeUnpublish,
+			interfaces.AuthOperationTypeDelete,
+			interfaces.AuthOperationTypeAuthorize,
+		},
 	)
 }

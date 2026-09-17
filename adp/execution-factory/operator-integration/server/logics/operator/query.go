@@ -175,18 +175,18 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 		operatorInfo.UpdateUser = utils.GetValueOrDefault(userMap, operatorInfo.UpdateUser, interfaces.UnknownUser)
 		result.Data = append(result.Data, operatorInfo)
 	}
-	if err = projectOperatorAuthorizeOperations(ctx, m.AuthService, accessor, result.Data); err != nil {
+	if err = projectOperatorOperations(ctx, m.AuthService, accessor, result.Data); err != nil {
 		return nil, err
 	}
 	return
 }
 
-func projectOperatorAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, operators []*interfaces.OperatorDataInfo) error {
+func projectOperatorOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, operators []*interfaces.OperatorDataInfo) error {
 	operatorIDs := make([]string, 0, len(operators))
 	for _, operator := range operators {
 		operatorIDs = append(operatorIDs, operator.OperatorID)
 	}
-	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, operatorIDs, interfaces.AuthResourceTypeOperator)
+	operationsByID, err := auth.ProjectResourceOperations(ctx, authorization, accessor, operatorIDs, interfaces.AuthResourceTypeOperator)
 	if err != nil {
 		return err
 	}

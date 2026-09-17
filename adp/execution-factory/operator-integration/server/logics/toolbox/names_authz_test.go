@@ -115,8 +115,8 @@ func TestGetToolBoxNamesByIDsAuthz(t *testing.T) {
 	})
 }
 
-func TestProjectToolBoxAuthorizeOperations(t *testing.T) {
-	Convey("Toolbox list projects authorize with the existing accessor", t, func() {
+func TestProjectToolBoxOperations(t *testing.T) {
+	Convey("Toolbox list projects record operations with the existing accessor", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		authService := mocks.NewMockIAuthorizationService(ctrl)
@@ -125,12 +125,15 @@ func TestProjectToolBoxAuthorizeOperations(t *testing.T) {
 		authService.EXPECT().ResourceFilterOperations(
 			gomock.Any(), accessor, []string{"box-1", "box-2"}, interfaces.AuthResourceTypeToolBox,
 			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
-			[]interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize},
+			[]interfaces.AuthOperationType{
+				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypeModify, interfaces.AuthOperationTypePublish,
+				interfaces.AuthOperationTypeUnpublish, interfaces.AuthOperationTypeDelete, interfaces.AuthOperationTypeAuthorize,
+			},
 		).Return(map[string][]interfaces.AuthOperationType{
 			"box-1": {interfaces.AuthOperationTypeAuthorize},
 		}, nil)
 
-		err := projectToolBoxAuthorizeOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, toolBoxes)
+		err := projectToolBoxOperations(common.SetPublicAPIToCtx(context.Background(), true), authService, accessor, toolBoxes)
 
 		So(err, ShouldBeNil)
 		So(toolBoxes[0].Operations, ShouldResemble, []interfaces.AuthOperationType{interfaces.AuthOperationTypeAuthorize})

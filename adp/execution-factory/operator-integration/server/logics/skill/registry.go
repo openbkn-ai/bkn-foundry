@@ -927,19 +927,19 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 	if err != nil {
 		return nil, err
 	}
-	if err = projectSkillAuthorizeOperations(ctx, r.AuthService, accessor, skillInfos); err != nil {
+	if err = projectSkillOperations(ctx, r.AuthService, accessor, skillInfos); err != nil {
 		return nil, err
 	}
 	resp.Data = skillInfos
 	return resp, nil
 }
 
-func projectSkillAuthorizeOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, skills []*interfaces.SkillInfo) error {
+func projectSkillOperations(ctx context.Context, authorization interfaces.IAuthorizationService, accessor *interfaces.AuthAccessor, skills []*interfaces.SkillInfo) error {
 	skillIDs := make([]string, 0, len(skills))
 	for _, skill := range skills {
 		skillIDs = append(skillIDs, skill.SkillID)
 	}
-	operationsByID, err := auth.ProjectAuthorizeOperations(ctx, authorization, accessor, skillIDs, interfaces.AuthResourceTypeSkill)
+	operationsByID, err := auth.ProjectResourceOperations(ctx, authorization, accessor, skillIDs, interfaces.AuthResourceTypeSkill)
 	if err != nil {
 		return err
 	}
