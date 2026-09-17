@@ -96,3 +96,28 @@ class TestPathDispatch:
     def test_only_chat_completions_is_compat_face(self, path, expected):
         from app.routers import _is_openai_compat
         assert _is_openai_compat(path) is expected
+
+
+class TestSmallModelEmptyInput:
+    """bkn-sdk#124: empty input used to reach the provider and come back as a
+    generic ExternalSmallModel.UnknownError. It is now a FormatError that names
+    the empty field."""
+
+    @pytest.mark.parametrize("path,body,detail", [
+        ("/api/mf-model-api/v1/small-model/embeddings",
+         {"model": "m", "input": []}, "input must not be empty"),
+        ("/api/private/mf-model-api/v1/small-model/embeddings",
+         {"model": "m", "input": []}, "input must not be empty"),
+        ("/api/mf-model-api/v1/small-model/reranker",
+         {"model": "m", "query": "", "documents": ["d"]}, "query must not be empty"),
+        ("/api/mf-model-api/v1/small-model/reranker",
+         {"model": "m", "query": "  ", "documents": ["d"]}, "query must not be empty"),
+        ("/api/mf-model-api/v1/small-model/reranker",
+         {"model": "m", "query": "q", "documents": []}, "documents must not be empty"),
+    ])
+    def test_empty_field_is_named(self, client, path, body, detail):
+        response = client.post(path, json=body)
+        assert response.status_code == 400
+        result = _body(response)
+        assert result["code"] == "ModelFactory.Router.ParamError.FormatError"
+        assert result["detail"] == detail

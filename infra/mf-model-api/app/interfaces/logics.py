@@ -303,11 +303,31 @@ class UsedReranker(BaseModel):
     documents: list = Field(description="Documents to rank")
     model_id: Optional[StrictStr] = Field(description="Model ID", default="")
 
+    # An empty query or document list used to reach the provider and come back
+    # as a generic ExternalSmallModel.UnknownError; name the empty field instead.
+    @validator('query')
+    def query_not_empty(cls, v):
+        if not v.strip():
+            raise ValueError("query must not be empty")
+        return v
+
+    @validator('documents')
+    def documents_not_empty(cls, v):
+        if not v:
+            raise ValueError("documents must not be empty")
+        return v
+
 
 class UsedEmbedding(BaseModel):
     model: Optional[StrictStr] = Field(description="Model name")
     input: list = Field(description="Content to embed")
     model_id: Optional[StrictStr] = Field(description="Model ID", default="")
+
+    @validator('input')
+    def input_not_empty(cls, v):
+        if not v:
+            raise ValueError("input must not be empty")
+        return v
 
 class AuthInfo(BaseModel):
     userid: Optional[str]

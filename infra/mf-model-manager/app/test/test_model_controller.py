@@ -496,6 +496,42 @@ class TestEditModel(TestCase):
             llm_controller.edit_model(request, "111", "zh"))
         self.assertEqual(json.loads(res.body)["status"], "ok")
 
+    def test_edit_model_without_quota_keeps_stored_quota(self):
+        # bkn-sdk#123: an edit without quota raised KeyError and returned HTTP 500.
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        redis_mock = mock.MagicMock()
+        redis_mock.delete_str = mock.AsyncMock(return_value=None)
+        llm_controller.redis_util = redis_mock
+        request = {
+            "model_id": "111",
+            "model_name": "renamed",
+            "model_series": "qwen",
+            "model_type": "llm",
+            "max_model_len": 256,
+            "model_config": {
+                "api_model": "renamed",
+                "api_url": "http://127.0.0.1:9/v1/chat/completions",
+                "api_key": "placeholder"
+            }
+        }
+        llm_model_dao.get_all_model_list = mock.Mock(return_value=[{"f_model_id": "111", "f_model_name": "111"}])
+        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
+            "f_model_id": "111", "f_create_by": "111", "f_is_delete": 0,
+            "f_model_config": '{"api_key": "111", "api_model": "old"}',
+            "f_model_series": "qwen", "f_model_name": "111", "f_quota": True}])
+        llm_model_dao.edit_model = mock.Mock(return_value=None)
+        with mock.patch.object(llm_controller.permission_manager, "check_single_permission",
+                               mock.AsyncMock(return_value=True)), \
+                mock.patch.object(llm_controller.model_quota_dao, "delete_model_quota_by_model_id") as delete_quota:
+            res = loop.run_until_complete(
+                llm_controller.edit_model(request, "111", "zh"))
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(json.loads(res.body)["status"], "ok")
+        # positional quota argument of llm_model_dao.edit_model
+        self.assertIs(llm_model_dao.edit_model.call_args.args[5], True)
+        delete_quota.assert_not_called()
+
     def test_edit_model_fail1(self):
         # Invalid model_type makes llm_edit_verify return LLMEdit.ParameterError.
         loop = asyncio.new_event_loop()
