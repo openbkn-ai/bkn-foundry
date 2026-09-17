@@ -274,8 +274,19 @@ func (s *Store) appendPendingBatch(ctx context.Context, limit int) (int, error) 
 			rows[i].ChainState = model.AuditChainStateChained
 			prev = rows[i].RowHash
 		}
-		if err := tx.Save(&rows).Error; err != nil {
-			return err
+		// Update only the pending rows selected above. Save on a slice uses
+		// GORM's batch upsert path on MySQL, which can turn a sequence race
+		// into an unrelated row update instead of surfacing the unique-key
+		// conflict that AppendPending must retry from the fresh chain head.
+		for _, row := range rows {
+			if err := tx.Model(&model.AuditLog{}).Where("id = ?", row.ID).Updates(map[string]any{
+				"seq":         row.Seq,
+				"prev_hash":   row.PrevHash,
+				"row_hash":    row.RowHash,
+				"chain_state": row.ChainState,
+			}).Error; err != nil {
+				return err
+			}
 		}
 		nextHead = Head{Seq: seq, RowHash: prev, CreatedAt: rows[len(rows)-1].CreatedAt}
 		return nil

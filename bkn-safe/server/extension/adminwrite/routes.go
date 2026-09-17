@@ -98,11 +98,9 @@ func Routes(g *gin.RouterGroup, svc Services) {
 		if !ok {
 			return
 		}
-		for _, op := range req.Operations {
-			if err := svc.GrantRolePermission(c.Request.Context(), c.Param("id"), req.Resource.Type, req.Resource.ID, op); err != nil {
-				writeErr(c, err)
-				return
-			}
+		if err := grantRolePermissions(c.Request.Context(), svc, c.Param("id"), req.Resource.Type, req.Resource.ID, req.Operations); err != nil {
+			writeErr(c, err)
+			return
 		}
 		c.Status(http.StatusNoContent)
 	})

@@ -175,6 +175,26 @@ type RoleSetRevoker interface {
 	RevokeRolePermissions(ctx context.Context, roleID, resourceType, resourceID string, ops []string) error
 }
 
+// RolePermissionSetGranter is an OPTIONAL extension of Services for one
+// request that grants multiple operations. The core implementation uses it so
+// the entire request and its audit event share one transaction; legacy service
+// implementations retain the original per-operation fallback.
+type RolePermissionSetGranter interface {
+	GrantRolePermissions(ctx context.Context, roleID, resourceType, resourceID string, ops []string) error
+}
+
+func grantRolePermissions(ctx context.Context, svc Services, roleID, resourceType, resourceID string, ops []string) error {
+	if granter, ok := svc.(RolePermissionSetGranter); ok {
+		return granter.GrantRolePermissions(ctx, roleID, resourceType, resourceID, ops)
+	}
+	for _, op := range ops {
+		if err := svc.GrantRolePermission(ctx, roleID, resourceType, resourceID, op); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Mounter registers the rbac_basic write routes onto g using svc. The ee build
 // provides one; the community build leaves it nil, so the routes never exist.
 type Mounter func(g *gin.RouterGroup, svc Services)

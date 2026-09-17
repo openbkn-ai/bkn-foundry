@@ -95,10 +95,10 @@ func (s *adminWriteServices) CreateRole(ctx context.Context, spec adminwrite.Rol
 		}
 		return enqueueRoleAudit(ctx, tx.DB(), role.ID, role.Name, http.StatusCreated)
 	})
+	markRoleAuditHandledIfCommitted(ctx, err)
 	if err != nil {
 		return "", err
 	}
-	markRoleAuditHandled(ctx)
 	return role.ID, nil
 }
 
@@ -136,9 +136,7 @@ func (s *adminWriteServices) UpdateRole(ctx context.Context, id string, patch ad
 		}
 		return enqueueRoleAudit(ctx, tx.DB(), role.ID, role.Name, http.StatusNoContent)
 	})
-	if err == nil {
-		markRoleAuditHandled(ctx)
-	}
+	markRoleAuditHandledIfCommitted(ctx, err)
 	return err
 }
 
@@ -191,9 +189,7 @@ func (s *adminWriteServices) DeleteRole(ctx context.Context, id string) error {
 		}
 		return enqueueRoleAudit(ctx, tx.DB(), role.ID, role.Name, http.StatusNoContent)
 	})
-	if err == nil {
-		markRoleAuditHandled(ctx)
-	}
+	markRoleAuditHandledIfCommitted(ctx, err)
 	return err
 }
 
@@ -203,14 +199,21 @@ func (s *adminWriteServices) DeleteRole(ctx context.Context, id string) error {
 // comes from a seeded role binding, never from a grant handed out at runtime,
 // or this route becomes an admin-promotion route.
 func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error {
+	return s.GrantRolePermissions(ctx, roleID, resourceType, resourceID, []string{op})
+}
+
+// GrantRolePermissions validates and commits one permission request in one
+// policy transaction, yielding exactly one durable audit event for the HTTP
+// request even when it contains several operations.
+func (s *adminWriteServices) GrantRolePermissions(ctx context.Context, roleID, resourceType, resourceID string, requestedOps []string) error {
 	role, err := s.loadCustomRole(ctx, roleID)
 	if err != nil {
 		return err
 	}
-	if err := rejectWildcardGrant(resourceType, []string{op}); err != nil {
+	if err := rejectWildcardGrant(resourceType, requestedOps); err != nil {
 		return fmt.Errorf("%w: %s", adminwrite.ErrWildcardGrant, err.Error())
 	}
-	if err := rejectTypeWideActionExecute(resourceType, resourceID, []string{op}); err != nil {
+	if err := rejectTypeWideActionExecute(resourceType, resourceID, requestedOps); err != nil {
 		return fmt.Errorf("%w: %s", adminwrite.ErrTypeWideActionExecute, err.Error())
 	}
 	if resourceType == adminConsoleResourceType {
@@ -222,25 +225,27 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	// A role granted resource_manage gets its required view_detail (#1121): the
 	// management routes load their target first, so without it the role holds a
 	// verb it can never reach.
-	ops, err := s.e.NormalizeOperations(ctx, resourceType, []string{op})
-	if err != nil {
-		return err
-	}
-	if err := s.e.ValidateGrantableOperations(ctx, resourceType, ops); err != nil {
-		if errors.Is(err, authz.ErrOperationNotGrantable) {
-			return fmt.Errorf("%w: operation is not grantable", adminwrite.ErrInvalid)
+	operations := make([]string, 0, len(requestedOps))
+	for _, op := range requestedOps {
+		ops, err := s.e.NormalizeOperations(ctx, resourceType, []string{op})
+		if err != nil {
+			return err
 		}
-		return err
+		if err := s.e.ValidateGrantableOperations(ctx, resourceType, ops); err != nil {
+			if errors.Is(err, authz.ErrOperationNotGrantable) {
+				return fmt.Errorf("%w: operation is not grantable", adminwrite.ErrInvalid)
+			}
+			return err
+		}
+		operations = append(operations, ops...)
 	}
 	err = s.e.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
-		if err := tx.GrantNormalizedRolePermissions(role.ID, resourceType, resourceID, ops); err != nil {
+		if err := tx.GrantNormalizedRolePermissions(role.ID, resourceType, resourceID, operations); err != nil {
 			return err
 		}
 		return enqueueRoleAudit(ctx, tx.DB(), role.ID, role.Name, http.StatusNoContent)
 	})
-	if err == nil {
-		markRoleAuditHandled(ctx)
-	}
+	markRoleAuditHandledIfCommitted(ctx, err)
 	return err
 }
 
@@ -319,19 +324,12 @@ func (s *adminWriteServices) RevokeRolePermissions(ctx context.Context,
 		}
 		return enqueueRoleAudit(ctx, tx.DB(), role.ID, role.Name, http.StatusNoContent)
 	})
-	if err == nil {
-		markRoleAuditHandled(ctx)
-	}
+	markRoleAuditHandledIfCommitted(ctx, err)
 	return err
 }
 
 // roleOperationsOn returns the operations the role holds on exactly one
 // resource pattern, as a set.
-func (s *adminWriteServices) roleOperationsOn(roleID, resourceType, resourceID string) (map[string]bool, error) {
-	grants, err := s.e.RolePermissions(roleID)
-	return roleOperationsFromGrants(grants, err, resourceType, resourceID)
-}
-
 func roleOperationsOn(tx *authz.PolicyTransaction, roleID, resourceType, resourceID string) (map[string]bool, error) {
 	grants, err := tx.RolePermissions(roleID)
 	return roleOperationsFromGrants(grants, err, resourceType, resourceID)
@@ -387,5 +385,11 @@ func enqueueRoleAudit(ctx context.Context, tx *gorm.DB, targetID, targetName str
 func markRoleAuditHandled(ctx context.Context) {
 	if operation, ok := audit.RequestOperationFromContext(ctx); ok {
 		operation.MarkHandled()
+	}
+}
+
+func markRoleAuditHandledIfCommitted(ctx context.Context, err error) {
+	if err == nil || errors.Is(err, authz.ErrPolicyReloadAfterCommit) {
+		markRoleAuditHandled(ctx)
 	}
 }
