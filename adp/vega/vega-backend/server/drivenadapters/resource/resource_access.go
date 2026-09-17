@@ -1053,6 +1053,10 @@ func (ra *resourceAccess) ListAuthResourceEntries(ctx context.Context, params in
 		builder = builder.Where(sq.Like{"f_name": keyword})
 		countBuilder = countBuilder.Where(sq.Like{"f_name": keyword})
 	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	}
 
 	countSQL, countVals, err := countBuilder.ToSql()
 	if err != nil {

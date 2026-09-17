@@ -22,6 +22,11 @@ const (
 	knowledgeNetworkResourceType = "knowledge_network"
 	catalogResourceType          = "catalog"
 	resourceResourceType         = "resource"
+	objectTypeResourceType       = "object_type"
+	relationTypeResourceType     = "relation_type"
+	actionTypeResourceType       = "action_type"
+	metricResourceType           = "metric"
+	conceptGroupResourceType     = "concept_group"
 	toolBoxResourceType          = "tool_box"
 	functionResourceType         = "function"
 	mcpResourceType              = "mcp"
@@ -39,11 +44,13 @@ type AuthorizationResourceList struct {
 }
 
 type AuthorizationResourceQuery struct {
-	Name      string
-	Sort      string
-	Direction string
-	Offset    int
-	Limit     int
+	Name       string
+	ParentType string
+	ParentID   string
+	Sort       string
+	Direction  string
+	Offset     int
+	Limit      int
 }
 
 type AuthorizationResourceProvider interface {
@@ -59,7 +66,7 @@ type authorizationResourceCatalog struct {
 }
 
 func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
-	knowledgeNetworks, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend")
+	knowledgeNetworks, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", knowledgeNetworkResourceType)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +75,26 @@ func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend c
 		return nil, err
 	}
 	resources, err := newAuthorizationResourceProvider(vegaBackend, "/api/vega-backend/in/v1/authorization-resources", "vega backend", resourceResourceType)
+	if err != nil {
+		return nil, err
+	}
+	objectTypes, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", objectTypeResourceType)
+	if err != nil {
+		return nil, err
+	}
+	relationTypes, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", relationTypeResourceType)
+	if err != nil {
+		return nil, err
+	}
+	actionTypes, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", actionTypeResourceType)
+	if err != nil {
+		return nil, err
+	}
+	metrics, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", metricResourceType)
+	if err != nil {
+		return nil, err
+	}
+	conceptGroups, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", conceptGroupResourceType)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +118,11 @@ func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend c
 		knowledgeNetworkResourceType: knowledgeNetworks,
 		catalogResourceType:          catalogs,
 		resourceResourceType:         resources,
+		objectTypeResourceType:       objectTypes,
+		relationTypeResourceType:     relationTypes,
+		actionTypeResourceType:       actionTypes,
+		metricResourceType:           metrics,
+		conceptGroupResourceType:     conceptGroups,
 		toolBoxResourceType:          toolBoxes,
 		functionResourceType:         functions,
 		mcpResourceType:              mcp,
@@ -103,10 +135,24 @@ func (c *authorizationResourceCatalog) List(ctx context.Context, resourceType st
 	if !ok {
 		return AuthorizationResourceList{}, errUnsupportedResourceType
 	}
+	if query.ParentType != "" {
+		expectedParentType := map[string]string{
+			resourceResourceType:     catalogResourceType,
+			objectTypeResourceType:   knowledgeNetworkResourceType,
+			relationTypeResourceType: knowledgeNetworkResourceType,
+			actionTypeResourceType:   knowledgeNetworkResourceType,
+			metricResourceType:       knowledgeNetworkResourceType,
+			conceptGroupResourceType: knowledgeNetworkResourceType,
+		}[resourceType]
+		if expectedParentType == "" || query.ParentType != expectedParentType {
+			return AuthorizationResourceList{}, errInvalidAuthorizationResourceParent
+		}
+	}
 	return provider.List(ctx, query)
 }
 
 var errUnsupportedResourceType = errors.New("unsupported authorization resource type")
+var errInvalidAuthorizationResourceParent = errors.New("invalid authorization resource parent")
 
 type authorizationResourceProvider struct {
 	endpoint     string
@@ -147,6 +193,10 @@ func (p *authorizationResourceProvider) List(ctx context.Context, query Authoriz
 	if query.Name != "" {
 		values.Set("name", query.Name)
 	}
+	if query.ParentType != "" {
+		values.Set("parent_type", query.ParentType)
+		values.Set("parent_id", query.ParentID)
+	}
 	u.RawQuery = values.Encode()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -180,7 +230,7 @@ func registerAuthorizationResources(g *gin.RouterGroup, catalog AuthorizationRes
 		}
 		result, err := catalog.List(c.Request.Context(), c.Query("resource_type"), query)
 		if err != nil {
-			if errors.Is(err, errUnsupportedResourceType) {
+			if errors.Is(err, errUnsupportedResourceType) || errors.Is(err, errInvalidAuthorizationResourceParent) {
 				replyPublicError(c, http.StatusBadRequest)
 			} else {
 				replyPublicError(c, http.StatusServiceUnavailable)
@@ -205,5 +255,11 @@ func parseAuthorizationResourceQuery(c *gin.Context) (AuthorizationResourceQuery
 		replyPublicError(c, http.StatusBadRequest)
 		return AuthorizationResourceQuery{}, false
 	}
-	return AuthorizationResourceQuery{Name: strings.TrimSpace(c.Query("name")), Sort: sort, Direction: direction, Offset: offset, Limit: limit}, true
+	parentType := strings.TrimSpace(c.Query("parent_type"))
+	parentID := strings.TrimSpace(c.Query("parent_id"))
+	if (parentType == "") != (parentID == "") {
+		replyPublicError(c, http.StatusBadRequest)
+		return AuthorizationResourceQuery{}, false
+	}
+	return AuthorizationResourceQuery{Name: strings.TrimSpace(c.Query("name")), ParentType: parentType, ParentID: parentID, Sort: sort, Direction: direction, Offset: offset, Limit: limit}, true
 }
