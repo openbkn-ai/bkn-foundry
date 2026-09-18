@@ -22,7 +22,7 @@ BKN 步骤不再删除或重建 caller 权限，也不会写入 `task_manage`。
 - Python 3.9+、PyMySQL 1.1.0；
 - `mariadb-dump` 或 `mysqldump`，以及足够保存 BKN、Safe 完整逻辑备份的空间；
 - 目标集群的 `kubectl` 权限；
-- Go 1.25+，用于构建 deploy 自带的授权迁移程序；发行制品已携带预编译程序时不需要 Go；
+- 仓库内置的、适用于 Linux 部署环境的 `authz_migrate/authz-migrate` 可执行程序；
 - BKN 和 Safe 数据库访问权限。
 
 BKN 步骤优先读取 `BKN_DB_*`、`SAFE_DB_*`，其次读取标准 `MARIADB_*`，最后使用本地默认值。密码文件可通过 `BKN_DB_PASSWORD_FILE`、`SAFE_DB_PASSWORD_FILE` 及对应 MariaDB 环境变量提供。如脚本旁目录不适合保存备份，设置 `OPENBKN_MIGRATION_BACKUP_DIR`。
@@ -31,7 +31,7 @@ BKN 步骤优先读取 `BKN_DB_*`、`SAFE_DB_*`，其次读取标准 `MARIADB_*`
 
 复制 `manifest.example.json` 到受保护的工作目录，并把全部占位内容替换为权威的发行、生命周期和 Enterprise 证据。
 
-如果发行制品没有携带预编译程序，先构建 deploy 自带的授权迁移步骤：
+发行内容已携带授权迁移程序，执行迁移不需要 Go。仅在有意修改其 Go 源码时才重新构建：
 
 ```bash
 ./authz_migrate/build.sh

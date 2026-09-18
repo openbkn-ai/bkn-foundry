@@ -459,6 +459,11 @@ class ProxyPlanTest(unittest.TestCase):
 
         self.assertEqual(1, report["managed_proxies"]["skipped_skill_grants"])
         self.assertEqual(
+            migration.proxy_grant_snapshot_version([]),
+            report["managed_proxies"]["planned"][0]["snapshot_version"],
+        )
+        self.assertNotIn("model_version", report["managed_proxies"]["planned"][0])
+        self.assertEqual(
             [
                 {
                     "resource_type": "skill",

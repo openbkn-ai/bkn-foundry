@@ -4,6 +4,7 @@
 
 import argparse
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,12 @@ import migrate
 
 
 class StepRegistryTest(unittest.TestCase):
+    def test_bundled_authorization_migrator_is_executable(self):
+        executable = migrate.SCRIPT_DIRECTORY / "authz_migrate" / "authz-migrate"
+
+        self.assertTrue(executable.is_file())
+        self.assertTrue(os.access(executable, os.X_OK))
+
     def test_registers_bkn_before_authorization(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -2183,7 +2183,7 @@ def migration_report(
                     "knowledge_network_id": network.kn_id,
                     "proxy_account_id": network.proxy_account_id,
                     "create_account": network.create_account,
-                    "model_version": network.model_version,
+                    "snapshot_version": proxy_grant_snapshot_version(network.sources),
                     "permissions": [
                         {
                             "resource_type": source.resource_type,

@@ -39,8 +39,8 @@ explicit step in `migrate.py`; it must not create a second operator command.
 - `mariadb-dump` or `mysqldump` and enough space for complete BKN and Safe
   logical backups;
 - `kubectl` access to the target cluster;
-- Go 1.25+ to build the release-owned authorization migration executable, or
-  the prebuilt executable supplied with the release artifact;
+- the checked-in `authz_migrate/authz-migrate` executable for the Linux
+  deployment environment;
 - MariaDB/MySQL access to the BKN and Safe databases.
 
 The BKN step resolves `BKN_DB_*` and `SAFE_DB_*` variables first, then standard
@@ -54,8 +54,8 @@ directory beside this script is not an appropriate backup volume.
 Copy `manifest.example.json` to a protected working location and replace every
 placeholder with authoritative release, lifecycle, and Enterprise evidence.
 
-Build the release-owned authorization step when the release artifact does not
-already contain it:
+The release includes the authorization executable, so Go is not required to
+run this migration. Rebuild it only when intentionally changing its Go source:
 
 ```bash
 ./authz_migrate/build.sh
