@@ -86,6 +86,11 @@ func managedProxyHeaders(ctx context.Context, proxy *interfaces.KNProxyExecution
 	header[headerBKNTargetType] = binding.TargetType
 	header[headerBKNTargetID] = binding.TargetID
 	header[headerBKNOperation] = binding.Operation
+	if binding.TargetType == interfaces.KNProxyTargetTypeFunction {
+		if token, ok := common.GetRawTokenFromCtx(ctx); ok {
+			header["Authorization"] = "Bearer " + token
+		}
+	}
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	return header, nil
 }
@@ -279,7 +284,10 @@ const toolBoxToolsURI = "/internal-v1/tool-box/%s/tools/list"
 // version walked page/page_size here; the server ignores both under all=true, so that walk made
 // five identical full queries and then wrongly reported a large box's set as a prefix.
 func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID string) (*interfaces.ToolBoxLifecycle, error) {
-	out := &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}, EnabledKnown: true}
+	out := &interfaces.ToolBoxLifecycle{
+		EnabledTools: map[string]struct{}{}, EnabledToolDescriptors: map[string]interfaces.ManagedFunctionDescriptor{},
+		EnabledKnown: true,
+	}
 	if strings.TrimSpace(boxID) == "" {
 		return out, nil
 	}
@@ -314,7 +322,12 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 	}
 	var listed struct {
 		Tools []struct {
-			ToolID string `json:"tool_id"`
+			ToolID      string `json:"tool_id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Metadata    struct {
+				Version string `json:"version"`
+			} `json:"metadata"`
 		} `json:"tools"`
 	}
 	if err = sonic.Unmarshal(utils.ObjectToByte(body), &listed); err != nil {
@@ -324,6 +337,10 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 	for _, tool := range listed.Tools {
 		if id := strings.TrimSpace(tool.ToolID); id != "" {
 			out.EnabledTools[id] = struct{}{}
+			out.EnabledToolDescriptors[id] = interfaces.ManagedFunctionDescriptor{
+				ToolID: id, Name: strings.TrimSpace(tool.Name), Description: strings.TrimSpace(tool.Description),
+				Version: strings.TrimSpace(tool.Metadata.Version),
+			}
 		}
 	}
 	return out, nil

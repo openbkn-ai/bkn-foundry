@@ -209,6 +209,43 @@ func TestManagedCapabilityExecutionCarriesDualPrincipalContext(t *testing.T) {
 	}
 }
 
+func TestManagedFunctionExecutionCarriesCallerTokenForInternalBKNReads(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	logger := mocks.NewMockLogger(ctrl)
+	httpClient := mocks.NewMockHTTPClient(ctrl)
+	logger.EXPECT().WithContext(gomock.Any()).Return(logger).AnyTimes()
+	client := &operatorIntegrationClient{
+		logger: logger, baseURL: "http://operator/api/agent-operator-integration", httpClient: httpClient,
+	}
+	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+	})
+	ctx = common.SetRawTokenToCtx(ctx, "caller-token")
+	proxy := &interfaces.KNProxyExecution{
+		Mapping: &interfaces.KNProxyAccount{
+			KNID: "kn-1", ProxyAccountID: "proxy-1", ProxyAccountType: "app", Version: 7,
+		},
+		Binding: interfaces.KNProxyBinding{
+			KNID: "kn-1", ChildType: "capability_binding", ChildID: "binding-1",
+			TargetType: "function", TargetID: "box-1", Operation: "execute",
+		},
+	}
+
+	httpClient.EXPECT().Post(gomock.Any(), client.baseURL+"/internal-v1/tool-box/box-1/proxy/tool-1",
+		gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, headers map[string]string, _ interface{}) (int, interface{}, error) {
+			if headers["Authorization"] != "Bearer caller-token" {
+				t.Fatalf("managed Function Authorization = %q", headers["Authorization"])
+			}
+			return http.StatusOK, map[string]any{"ok": true}, nil
+		})
+	if _, err := client.ExecutePublishedToolAsProxy(ctx, &interfaces.ExecutePublishedToolRequest{
+		ToolboxID: "box-1", ToolID: "tool-1",
+	}, proxy); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPublicArbitraryFunctionExecutionStillRequiresCallerToken(t *testing.T) {
 	client := &operatorIntegrationClient{}
 	ctx := common.SetPublicAPIToCtx(context.Background(), true)

@@ -215,7 +215,7 @@ func newMCPServerForLocaleAtSandboxPort(
 	// The published Function tool surface. A Skill is a reusable procedure a
 	// model reads and runs; a published Function is a business operation someone
 	// registered and published, so discovery and execution are separate tools.
-	toolsService := kntools.NewKnToolsService()
+	toolsService := kntools.NewManagedKnToolsService(lifecycleClient)
 	// One entry over every kind the network mounted. find_skills and search_tools were this call
 	// with types pinned and were removed once callers moved (#1401).
 	b.add(toolKeySearchCapabilities, handleSearchCapabilities(toolsService))

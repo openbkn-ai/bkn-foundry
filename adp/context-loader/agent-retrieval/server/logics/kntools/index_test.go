@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -37,6 +38,7 @@ type fakeOperator struct {
 	mcpDetailCalls []string
 	gotMCPCall     *interfaces.CallMCPToolRequest
 	gotProxy       *interfaces.KNProxyExecution
+	gotOperationID string
 	mcpUnusable    map[string]bool
 	mcpStatusErr   map[string]error
 	skillNames     map[string]string
@@ -74,7 +76,11 @@ func (f *fakeOperator) ToolBoxLifecycle(_ context.Context, boxID string) (*inter
 	if t, ok := f.boxMetadataType[boxID]; ok {
 		metadataType = t
 	}
-	out := &interfaces.ToolBoxLifecycle{Published: !f.boxUnpublished[boxID], MetadataType: metadataType, EnabledTools: map[string]struct{}{}, EnabledKnown: !f.boxEnabledUnknown[boxID]}
+	out := &interfaces.ToolBoxLifecycle{
+		Published: !f.boxUnpublished[boxID], MetadataType: metadataType,
+		EnabledTools: map[string]struct{}{}, EnabledToolDescriptors: map[string]interfaces.ManagedFunctionDescriptor{},
+		EnabledKnown: !f.boxEnabledUnknown[boxID],
+	}
 	pages := append([][]interfaces.CapabilityHit{f.hits}, f.hitsByCall...)
 	for _, page := range pages {
 		for _, h := range page {
@@ -87,6 +93,9 @@ func (f *fakeOperator) ToolBoxLifecycle(_ context.Context, boxID string) (*inter
 		for _, tool := range listed.Tools {
 			if !f.boxDisabledTools[boxID][tool.ToolID] {
 				out.EnabledTools[tool.ToolID] = struct{}{}
+				out.EnabledToolDescriptors[tool.ToolID] = interfaces.ManagedFunctionDescriptor{
+					ToolID: tool.ToolID, Name: tool.Name, Description: tool.Description,
+				}
 			}
 		}
 	}
@@ -202,7 +211,30 @@ func (f *fakeOperator) ExecutePublishedTool(
 func (f *fakeOperator) ExecutePublishedToolAsProxy(ctx context.Context,
 	req *interfaces.ExecutePublishedToolRequest, proxy *interfaces.KNProxyExecution) (map[string]any, error) {
 	f.gotProxy = proxy
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	f.gotOperationID = traceContext.OperationID
 	return f.ExecutePublishedTool(ctx, req)
+}
+
+type fakeManagedFunctionTrace struct {
+	calls int
+	input ManagedFunctionTraceInput
+	err   error
+}
+
+func (f *fakeManagedFunctionTrace) Execute(
+	ctx context.Context,
+	input ManagedFunctionTraceInput,
+	run func(context.Context) (map[string]any, error),
+) (map[string]any, error) {
+	f.calls++
+	f.input = input
+	if f.err != nil {
+		return nil, f.err
+	}
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.OperationID = "op-function-1"
+	return run(common.SetTraceContextToCtx(ctx, traceContext))
 }
 
 // fakeBkn answers the capability listing.
@@ -608,6 +640,126 @@ func TestExecutePassesOnlyBusinessArguments(t *testing.T) {
 	if len(op.listedToolbox) != 0 {
 		t.Fatalf("managed execution consulted caller-scoped catalogue: %v", op.listedToolbox)
 	}
+}
+
+func TestManagedFunctionExecutionGetsItsOwnTraceBoundary(t *testing.T) {
+	bkn := &fakeBkn{refs: functionRefs("box-1/material_where_used")}
+	op := &fakeOperator{
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{
+			"box-1": {ToolboxID: "box-1", Tools: []interfaces.PublishedToolSummary{{
+				ToolID: "material_where_used", Name: "物料反查产品", Description: "查询使用指定物料的产品",
+			}}},
+		},
+		execResp: map[string]any{"products": []any{"P-1", "P-2"}},
+	}
+	tracer := &fakeManagedFunctionTrace{}
+	svc := NewKnToolsServiceWithManagedTrace(op, bkn, &fakeKnAuthz{}, tracer)
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		RequestID: "req_12345678", ConversationID: "conv-1", InteractionID: "int-1",
+		OperationID: "op-execute-tool", Attempt: 1,
+	})
+
+	result, err := svc.ExecuteTool(ctx, &ExecuteToolReq{
+		KnID: "supply", ToolboxID: "box-1", ToolID: "material_where_used",
+		Arguments: map[string]any{"material_code": "606-000989"},
+	})
+
+	if err != nil {
+		t.Fatalf("execute managed function: %v", err)
+	}
+	if tracer.calls != 1 || tracer.input.Descriptor.Name != "物料反查产品" ||
+		tracer.input.Arguments["material_code"] != "606-000989" {
+		t.Fatalf("managed trace input = %#v calls=%d", tracer.input, tracer.calls)
+	}
+	if op.gotOperationID != "op-function-1" {
+		t.Fatalf("proxy parent operation = %q, want Function Operation", op.gotOperationID)
+	}
+	if len(result["products"].([]any)) != 2 {
+		t.Fatalf("public function result changed: %#v", result)
+	}
+}
+
+func TestManagedFunctionTraceFailurePreventsUntracedExecution(t *testing.T) {
+	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
+	op := &fakeOperator{toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")}}
+	tracer := &fakeManagedFunctionTrace{err: errors.New("trace unavailable")}
+	svc := NewKnToolsServiceWithManagedTrace(op, bkn, &fakeKnAuthz{}, tracer)
+
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		ConversationID: "conv-1", InteractionID: "int-1",
+	})
+	if _, err := svc.ExecuteTool(ctx, &ExecuteToolReq{
+		KnID: "kn1", ToolboxID: "box-1", ToolID: "t1",
+	}); err == nil {
+		t.Fatal("expected managed function execution to fail closed")
+	}
+	if op.executionCount != 0 {
+		t.Fatal("function ran without its trace boundary")
+	}
+}
+
+func TestAdHocRESTFunctionExecutionKeepsExistingUntracedContract(t *testing.T) {
+	bkn := &fakeBkn{refs: functionRefs("box-1/t1")}
+	op := &fakeOperator{
+		toolsByBox: map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
+		execResp:   map[string]any{"ok": true},
+	}
+	tracer := &fakeManagedFunctionTrace{err: errors.New("trace must not be called")}
+	svc := NewKnToolsServiceWithManagedTrace(op, bkn, &fakeKnAuthz{}, tracer)
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "req-rest-only"})
+
+	result, err := svc.ExecuteTool(ctx, &ExecuteToolReq{
+		KnID: "kn1", ToolboxID: "box-1", ToolID: "t1",
+	})
+	if err != nil || result["ok"] != true {
+		t.Fatalf("ad-hoc REST execution = %#v, %v", result, err)
+	}
+	if tracer.calls != 0 || op.executionCount != 1 {
+		t.Fatalf("ad-hoc REST trace calls=%d executions=%d", tracer.calls, op.executionCount)
+	}
+}
+
+func TestManagedFunctionTraceDoesNotWrapOtherToolTransports(t *testing.T) {
+	t.Run("third-party MCP", func(t *testing.T) {
+		op := &fakeOperator{
+			mcpTools: map[string]*interfaces.GetMCPToolDetailResponse{
+				"mcp-1/expedite": {Name: "expedite"},
+			},
+			execResp: map[string]any{"ok": true},
+		}
+		tracer := &fakeManagedFunctionTrace{}
+		svc := NewKnToolsServiceWithManagedTrace(
+			op, &fakeBkn{refs: mcpToolRefs("mcp-1/expedite")}, &fakeKnAuthz{}, tracer,
+		)
+		if _, err := svc.ExecuteTool(context.Background(), &ExecuteToolReq{
+			KnID: "kn1", ToolboxID: "mcp-1", ToolID: "expedite",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if tracer.calls != 0 {
+			t.Fatalf("third-party MCP created %d Function traces", tracer.calls)
+		}
+	})
+
+	t.Run("OpenAPI toolbox", func(t *testing.T) {
+		op := &fakeOperator{
+			toolsByBox:      map[string]*interfaces.ListPublishedToolsResponse{"box-1": tools("box-1", "t1")},
+			boxMetadataType: map[string]string{"box-1": "openapi"},
+			execResp:        map[string]any{"ok": true},
+		}
+		tracer := &fakeManagedFunctionTrace{}
+		svc := NewKnToolsServiceWithManagedTrace(
+			op, &fakeBkn{refs: functionRefs("box-1/t1")}, &fakeKnAuthz{}, tracer,
+		)
+		if _, err := svc.ExecuteTool(context.Background(), &ExecuteToolReq{
+			KnID: "kn1", ToolboxID: "box-1", ToolID: "t1",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if tracer.calls != 0 {
+			t.Fatalf("OpenAPI toolbox created %d Function traces", tracer.calls)
+		}
+	})
 }
 
 // An OpenAPI box is published as a tool_box grant source, so its proxy is resolved as tool_box;

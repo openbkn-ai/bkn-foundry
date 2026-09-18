@@ -206,7 +206,7 @@ def test_shipped_artifact_is_importable_and_versioned():
     assert callable(_bkn_tools._configure)
     # Spot-check several capabilities: changes to the signature manifest must not silently remove functions.
     for name in ("list_knowledge_networks", "query_object_instance",
-                 "run_sql", "list_resources"):
+                 "run_sql", "run_cypher", "list_resources"):
         assert callable(getattr(_bkn_tools, name)), name
 
 
@@ -233,8 +233,13 @@ def test_internal_queries_carry_parent_without_reusing_operation_id(monkeypatch)
     for parent in ("op_function_a", "op_function_b", ""):
         monkeypatch.setenv("BKN_PARENT_OPERATION_ID", parent)
         bkn.configure_runtime({})
-        for ot in ("bom", "inventory"):
-            bkn.query_object_instance(kn_id="kn_test", ot_id=ot)
+        calls_to_make = (
+            lambda: bkn.query_object_instance(kn_id="kn_test", ot_id="inventory"),
+            lambda: bkn.run_sql(sql="select * from inventory"),
+            lambda: bkn.run_cypher(kn_id="kn_test", query="MATCH (n) RETURN n LIMIT 1"),
+        )
+        for make_call in calls_to_make:
+            make_call()
             ctx = calls[-1]["arguments"]["bkn_context"]
             assert ctx.get("parent_operation_id", "") == parent
             assert ctx["interaction_id"] == "int_test"

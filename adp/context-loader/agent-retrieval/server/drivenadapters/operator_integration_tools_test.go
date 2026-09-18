@@ -6,6 +6,7 @@ package drivenadapters
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"strconv"
 	"testing"
@@ -17,6 +18,30 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
+
+func TestToolBoxLifecycleKeepsEnabledFunctionDescriptor(t *testing.T) {
+	convey.Convey("the authoritative lifecycle read also carries the business function label", t, func() {
+		client, httpClient := toolsTestClient(t)
+		gomock.InOrder(
+			httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(http.StatusOK, map[string]any{"status": "published", "metadata_type": "function"}, nil),
+			httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(http.StatusOK, map[string]any{"tools": []any{map[string]any{
+					"tool_id": "material_where_used", "name": "物料反查产品",
+					"description": "查询使用指定物料的产品", "metadata": map[string]any{"version": "1.2.3"},
+				}}}, nil),
+		)
+
+		state, err := client.ToolBoxLifecycle(managedCallContext(), "supply-functions")
+
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(state.Published, convey.ShouldBeTrue)
+		descriptor := state.EnabledToolDescriptors["material_where_used"]
+		convey.So(descriptor.Name, convey.ShouldEqual, "物料反查产品")
+		convey.So(descriptor.Description, convey.ShouldEqual, "查询使用指定物料的产品")
+		convey.So(descriptor.Version, convey.ShouldEqual, "1.2.3")
+	})
+}
 
 func toolsTestClient(t *testing.T) (*operatorIntegrationClient, *mocks.MockHTTPClient) {
 	t.Helper()

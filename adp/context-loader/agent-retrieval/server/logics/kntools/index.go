@@ -19,8 +19,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
@@ -74,10 +74,11 @@ type KnToolsService interface {
 }
 
 type knToolsService struct {
-	logger     interfaces.Logger
-	operator   interfaces.DrivenOperatorIntegration
-	bknBackend interfaces.BknBackendAccess
-	knAuthz    interfaces.KnowledgeNetworkAuthorizer
+	logger               interfaces.Logger
+	operator             interfaces.DrivenOperatorIntegration
+	bknBackend           interfaces.BknBackendAccess
+	knAuthz              interfaces.KnowledgeNetworkAuthorizer
+	managedFunctionTrace ManagedFunctionTrace
 }
 
 var (
@@ -88,13 +89,7 @@ var (
 // NewKnToolsService creates the KnToolsService singleton.
 func NewKnToolsService() KnToolsService {
 	once.Do(func() {
-		conf := config.NewConfigLoader()
-		service = &knToolsService{
-			logger:     conf.GetLogger(),
-			operator:   drivenadapters.NewOperatorIntegrationClient(),
-			bknBackend: drivenadapters.NewBknBackendAccess(),
-			knAuthz:    permission.NewKnowledgeNetworkAuthorizer(conf),
-		}
+		service = NewManagedKnToolsService(bkntrace.NewLifecycleClientFromEnv())
 	})
 	return service
 }
@@ -104,6 +99,17 @@ func NewKnToolsServiceWith(operator interfaces.DrivenOperatorIntegration,
 	bknBackend interfaces.BknBackendAccess,
 	knAuthz interfaces.KnowledgeNetworkAuthorizer) KnToolsService {
 	return &knToolsService{operator: operator, bknBackend: bknBackend, knAuthz: knAuthz}
+}
+
+// NewKnToolsServiceWithManagedTrace builds an execution surface over explicit adapters.
+func NewKnToolsServiceWithManagedTrace(operator interfaces.DrivenOperatorIntegration,
+	bknBackend interfaces.BknBackendAccess,
+	knAuthz interfaces.KnowledgeNetworkAuthorizer,
+	managedTrace ManagedFunctionTrace) KnToolsService {
+	return &knToolsService{
+		operator: operator, bknBackend: bknBackend, knAuthz: knAuthz,
+		managedFunctionTrace: managedTrace,
+	}
 }
 
 // warnf logs when a logger is configured. A service built without one — tests, and any other
@@ -593,11 +599,35 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
-	return proxyOperator.ExecutePublishedToolAsProxy(ctx, &interfaces.ExecutePublishedToolRequest{
-		ToolboxID:  toolboxID,
-		ToolID:     toolID,
-		Parameters: req.Arguments,
-	}, proxy)
+	run := func(executionContext context.Context) (map[string]any, error) {
+		return proxyOperator.ExecutePublishedToolAsProxy(executionContext, &interfaces.ExecutePublishedToolRequest{
+			ToolboxID:  toolboxID,
+			ToolID:     toolID,
+			Parameters: req.Arguments,
+		}, proxy)
+	}
+	if state.MetadataType != "function" || s.managedFunctionTrace == nil {
+		return run(ctx)
+	}
+	traceContext, hasTraceContext := common.GetTraceContextFromCtx(ctx)
+	if !hasTraceContext || (traceContext.ConversationID == "" && traceContext.InteractionID == "" && traceContext.OperationID == "") {
+		// The REST execute_tool contract also serves ad-hoc calls outside a managed
+		// Interaction. Keep those calls executable without inventing a provenance
+		// parent; once any managed identity is present, the guard below remains
+		// fail-closed and validates the complete outer Operation context.
+		return run(ctx)
+	}
+	descriptor := state.EnabledToolDescriptors[toolID]
+	if descriptor.ToolID == "" {
+		descriptor.ToolID = toolID
+	}
+	if descriptor.Name == "" {
+		descriptor.Name = toolID
+	}
+	return s.managedFunctionTrace.Execute(ctx, ManagedFunctionTraceInput{
+		KnowledgeNetworkID: knID, ToolboxID: toolboxID, ToolID: toolID,
+		Descriptor: descriptor, Arguments: req.Arguments,
+	}, run)
 }
 
 func (s *knToolsService) resolveCapabilityProxy(ctx context.Context, knID, bindingID,
