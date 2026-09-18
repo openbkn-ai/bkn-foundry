@@ -16,7 +16,7 @@
 
 BKN 步骤不再删除或重建 caller 权限，也不会写入 `task_manage`。历史 Core allow/deny 全部交给授权步骤分类和保留。
 
-Vega 步骤只写 bkn-safe，其改动由前置 BKN 步骤生成的 Safe 备份覆盖；Vega 数据库只读。创建者存在部分直接权限或 deny 时，本步骤会阻断，不会擅自扩展为完整创建者权限包。
+Vega 步骤只写 bkn-safe，其改动由前置 BKN 步骤生成的 Safe 备份覆盖；Vega 数据库只读。
 
 ## 环境要求
 

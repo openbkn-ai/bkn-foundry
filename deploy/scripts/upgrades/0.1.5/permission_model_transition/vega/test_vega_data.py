@@ -65,46 +65,6 @@ class BuildPlanTest(unittest.TestCase):
         self.assertEqual("system_derived", authorize.policy_source)
         self.assertEqual("system", authorize.created_by)
 
-    def test_partial_or_denied_creator_policy_blocks_privilege_expansion(self):
-        catalog = migration.Catalog("catalog-1", "user-1", "user", False)
-        key = ("user-1", "catalog:catalog-1")
-
-        partial = migration.build_plan(
-            [catalog],
-            [],
-            {"user-1"},
-            existing_creator_policies={key: [("view_detail", "allow", "legacy")]},
-        )
-        denied = migration.build_plan(
-            [catalog],
-            [],
-            {"user-1"},
-            existing_creator_policies={
-                key: [("view_detail", "deny", "professional_rule")]
-            },
-        )
-
-        self.assertEqual(["partial_creator_policy"], [item.code for item in partial.failures])
-        self.assertEqual(["partial_creator_policy"], [item.code for item in denied.failures])
-
-    def test_complete_legacy_creator_policy_can_be_upgraded(self):
-        catalog = migration.Catalog("catalog-1", "user-1", "user", False)
-        key = ("user-1", "catalog:catalog-1")
-        policies = [
-            (operation, "allow", "legacy")
-            for operation in migration.LEGACY_CATALOG_CREATOR_OPERATIONS
-        ]
-
-        plan = migration.build_plan(
-            [catalog],
-            [],
-            {"user-1"},
-            existing_creator_policies={key: policies},
-        )
-
-        self.assertEqual([], plan.failures)
-        self.assertEqual(2, len(plan.grants))
-
     def test_rejects_wildcard_and_whitespace_resource_ids(self):
         catalogs = [migration.Catalog("catalog-*", "user-1", "user", False)]
         parents = [migration.ResourceParent(" resource-1", "catalog-*")]
