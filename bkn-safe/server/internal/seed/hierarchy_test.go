@@ -250,9 +250,13 @@ func TestSeedDeclaresVegaAuthorizationHierarchy(t *testing.T) {
 		if operation.ID == "view_detail" {
 			wantDerived = "view_summary"
 		}
-		if operation.ParentOperationID != wantParent || operation.RequiredOperationIDs != "" || operation.DerivedToOperationID != wantDerived {
-			t.Errorf("resource/%s parent=%q requires=%q derived=%q, want parent=%q no prerequisite derived=%q",
-				operation.ID, operation.ParentOperationID, operation.RequiredOperationIDs, operation.DerivedToOperationID, wantParent, wantDerived)
+		wantRequires := ""
+		if operation.ID != "view_detail" {
+			wantRequires = "view_detail"
+		}
+		if operation.ParentOperationID != wantParent || operation.RequiredOperationIDs != wantRequires || operation.DerivedToOperationID != wantDerived {
+			t.Errorf("resource/%s parent=%q requires=%q derived=%q, want parent=%q requires=%q derived=%q",
+				operation.ID, operation.ParentOperationID, operation.RequiredOperationIDs, operation.DerivedToOperationID, wantParent, wantRequires, wantDerived)
 		}
 	}
 
@@ -271,8 +275,8 @@ func TestSeedDeclaresVegaAuthorizationHierarchy(t *testing.T) {
 		if err := db.First(&operation, "resource_type_id = ? AND id = ?", "catalog", operationID).Error; err != nil {
 			t.Fatal(err)
 		}
-		if operation.RequiredOperationIDs != "" {
-			t.Errorf("catalog/%s requires=%q, want independent operation", operationID, operation.RequiredOperationIDs)
+		if operation.RequiredOperationIDs != "view_detail" {
+			t.Errorf("catalog/%s requires=%q, want view_detail", operationID, operation.RequiredOperationIDs)
 		}
 	}
 }
@@ -443,6 +447,7 @@ func TestSeedMigratesLegacyOperationSpelling(t *testing.T) {
 	mustNoErrSeed(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "data_query"))
 	// 同名但不同类型的授权不该被动到：catalog 侧从来就叫 query_data。
 	mustNoErrSeed(t, e.GrantObjectPermission(user, "catalog", "c-1", "query_data"))
+	mustNoErrSeed(t, e.GrantObjectPermission(user, "catalog", "c-1", "view_detail"))
 
 	if err := Apply(db, e); err != nil {
 		t.Fatal(err)

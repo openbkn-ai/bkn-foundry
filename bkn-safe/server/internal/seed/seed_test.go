@@ -716,8 +716,8 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 		name         string
 		description  string
 	}{
-		{"catalog", "data_write", "写入", "仅可写入或删除数据集文档，不支持操作 MariaDB/MySQL 等物理表数据。当目录下数据资源未显式授予写入权限时，可回退到数据目录的写入权限。"},
-		{"resource", "data_write", "写入", "仅可写入或删除数据集文档；物理表不支持数据写入。未显式授予时，可回退到所属数据目录的写入权限。"},
+		{"catalog", "data_write", "写入", "仅可写入或删除数据集文档，不支持操作 MariaDB/MySQL 等物理表数据。当目录下数据资源未显式授予写入权限时，可回退到数据目录的写入权限。需要同时具有查看数据目录权限。"},
+		{"resource", "data_write", "写入", "仅可写入或删除数据集文档；物理表不支持数据写入。未显式授予时，可回退到所属数据目录的写入权限。需要同时具有查看数据资源权限。"},
 	} {
 		var operation model.Operation
 		if err := db.First(&operation, "resource_type_id = ? AND id = ?", tc.resourceType, tc.operation).Error; err != nil {

@@ -1,5 +1,5 @@
 {
-  "_comment": "Authorization resource-and-operation contract. Exact operation ids are the seed source of truth. name is a concise display label; description is optional explanatory text. grantable is optional and defaults to true; false reserves an operation for computed/read-only decisions and forbids persisted allow or deny policies. parent_type + parent_operation are an explicit bkn-safe generic fallback mapping only: an empty parent_operation means no generic inheritance, never same-name inheritance by convention. requires contains same-resource prerequisites that bkn-safe normalizes into allow grants and enforces at runtime. Business services may retain separately documented checks on another resource; do not encode those as parent_operation unless bkn-safe owns the fallback. NOTE: view (execution factory / flow automation) and view_detail (Vega / BKN) are distinct operation ids. Role-to-permission grants are maintained in grants.json.",
+  "_comment": "Authorization resource-and-operation contract. Exact operation ids are the seed source of truth. name is a concise display label; description is optional explanatory text. grantable is optional and defaults to true; false reserves an operation for computed/read-only decisions and forbids persisted allow or deny policies. parent_type + parent_operation are an explicit bkn-safe generic fallback mapping only: an empty parent_operation means no generic inheritance, never same-name inheritance by convention. requires contains same-resource prerequisites that bkn-safe normalizes into allow grants when an authorization is registered; it does not alter final runtime decisions for existing grants. Business services may retain separately documented checks on another resource; do not encode those as parent_operation unless bkn-safe owns the fallback. NOTE: view (execution factory / flow automation) and view_detail (Vega / BKN) are distinct operation ids. Role-to-permission grants are maintained in grants.json.",
   "resource_types": [
     {
       "id": "agent",
@@ -89,7 +89,7 @@
       "id": "catalog",
       "name": "数据目录",
       "_source": "vega",
-      "_note": "create/modify/delete 只针对目录本身；modify/delete/authorize/task_manage/resource_manage 要求本目录 view_detail；query_data/data_write 与 view_detail 独立。管理目录下的资源用 resource_manage。",
+      "_note": "create/modify/delete 只针对目录本身；除 create 外的所有目录操作都要求本目录 view_detail。管理目录下的资源用 resource_manage。",
       "operations": [
         {
           "id": "view_detail",
@@ -150,12 +150,14 @@
         {
           "id": "query_data",
           "name": "查询",
-          "description": "查询数据目录下资源的数据，支持数据集和物理表。当目录下数据资源未显式授予查询权限时，可回退到数据目录的查询权限。"
+          "description": "查询数据目录下资源的数据，支持数据集和物理表。当目录下数据资源未显式授予查询权限时，可回退到数据目录的查询权限。需要同时具有查看数据目录权限。",
+          "requires": ["view_detail"]
         },
         {
           "id": "data_write",
           "name": "写入",
-          "description": "仅可写入或删除数据集文档，不支持操作 MariaDB/MySQL 等物理表数据。当目录下数据资源未显式授予写入权限时，可回退到数据目录的写入权限。"
+          "description": "仅可写入或删除数据集文档，不支持操作 MariaDB/MySQL 等物理表数据。当目录下数据资源未显式授予写入权限时，可回退到数据目录的写入权限。需要同时具有查看数据目录权限。",
+          "requires": ["view_detail"]
         }
       ]
     },
@@ -163,7 +165,7 @@
       "id": "resource",
       "name": "数据资源",
       "_source": "vega",
-      "_note": "数据资源的所有实例级操作均由 bkn-safe 直接判定。modify/delete 通过父子关系继承 catalog 的 resource_manage；Vega 不再翻译或回退权限操作。",
+      "_note": "数据资源的所有实例级操作均由 bkn-safe 直接判定。除 view_detail 外的操作都要求本资源 view_detail；modify/delete 通过父子关系继承 catalog 的 resource_manage；Vega 不再翻译或回退权限操作。",
       "_parent_note": "声明 Resource 操作到 Catalog 操作的映射。实例注册 ResourceParent 后，bkn-safe 按此映射继承父目录授权。",
       "parent_type": "catalog",
       "operations": [
@@ -177,25 +179,29 @@
         {
           "id": "modify",
           "name": "修改",
-          "description": "修改数据资源配置。未显式授予时，可回退到所属数据目录的资源管理权限。",
+          "description": "修改数据资源配置。未显式授予时，可回退到所属数据目录的资源管理权限。需要同时具有查看数据资源权限。",
+          "requires": ["view_detail"],
           "parent_operation": "resource_manage"
         },
         {
           "id": "delete",
           "name": "删除",
-          "description": "删除数据资源。未显式授予时，可回退到所属数据目录的资源管理权限。",
+          "description": "删除数据资源。未显式授予时，可回退到所属数据目录的资源管理权限。需要同时具有查看数据资源权限。",
+          "requires": ["view_detail"],
           "parent_operation": "resource_manage"
         },
         {
           "id": "query_data",
           "name": "查询",
-          "description": "查询数据资源的数据。未显式授予时，可回退到所属数据目录的查询权限。",
+          "description": "查询数据资源的数据。未显式授予时，可回退到所属数据目录的查询权限。需要同时具有查看数据资源权限。",
+          "requires": ["view_detail"],
           "parent_operation": "query_data"
         },
         {
           "id": "data_write",
           "name": "写入",
-          "description": "仅可写入或删除数据集文档；物理表不支持数据写入。未显式授予时，可回退到所属数据目录的写入权限。",
+          "description": "仅可写入或删除数据集文档；物理表不支持数据写入。未显式授予时，可回退到所属数据目录的写入权限。需要同时具有查看数据资源权限。",
+          "requires": ["view_detail"],
           "parent_operation": "data_write"
         }
       ]
