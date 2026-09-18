@@ -181,7 +181,9 @@ def highest_semver(tags):
 
 # <semver>-main.<YYYYMMDDHHMMSS>.sha<7hex> — CI embeds the commit time, so the
 # fixed-width date sorts lexicographically == chronologically (no local git).
-MAIN_BUILD=re.compile(r'.*-main\.(\d{14})\.sha[0-9a-f]{7}$')
+# Anchor the semver prefix as well: branch names can themselves end in "-main"
+# (for example, feature/foo-main) and must not enter the main-only channel.
+MAIN_BUILD=re.compile(r'^\d+\.\d+\.\d+-main\.(\d{14})\.sha[0-9a-f]{7}$')
 
 def newest_main_build(tags):
     """Among tags of the form <semver>-main.<date>.sha<7hex>, the one with the
