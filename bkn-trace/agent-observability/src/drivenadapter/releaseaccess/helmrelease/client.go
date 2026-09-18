@@ -103,7 +103,7 @@ func (client *Client) WaitReady(ctx context.Context, service traceconfig.Service
 		} `json:"info"`
 	}
 	if err := json.Unmarshal(output, &status); err != nil || status.Info.Status != "deployed" {
-		return fmt.Errorf("Helm release %s is not deployed", managed.Release)
+		return fmt.Errorf("helm release %s is not deployed", managed.Release)
 	}
 	return nil
 }

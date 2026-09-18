@@ -47,7 +47,7 @@ func (store *Store) Update(ctx context.Context, update func(*traceconfig.Configu
 	return result, err
 }
 
-func (store *Store) withLock(ctx context.Context, exclusive bool, action func() error) error {
+func (store *Store) withLock(ctx context.Context, exclusive bool, action func() error) (resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -58,7 +58,11 @@ func (store *Store) withLock(ctx context.Context, exclusive bool, action func() 
 	if err != nil {
 		return fmt.Errorf("open trace configuration lock: %w", err)
 	}
-	defer lock.Close()
+	defer func() {
+		if err := lock.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close trace configuration lock: %w", err))
+		}
+	}()
 	mode := syscall.LOCK_SH
 	if exclusive {
 		mode = syscall.LOCK_EX
@@ -66,7 +70,11 @@ func (store *Store) withLock(ctx context.Context, exclusive bool, action func() 
 	if err := syscall.Flock(int(lock.Fd()), mode); err != nil {
 		return fmt.Errorf("lock trace configuration: %w", err)
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) //nolint:errcheck
+	defer func() {
+		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("unlock trace configuration: %w", err))
+		}
+	}()
 	return action()
 }
 
