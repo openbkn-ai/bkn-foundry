@@ -31,6 +31,7 @@ KN_RESOURCE_TYPE = "knowledge_network"
 MIGRATION_GRANTOR_ID = "266c6a42-6131-4d62-8f39-853e7093701c"
 PUBLIC_ACCESSOR_ID = "00000000-0000-0000-0000-000000000000"
 PROXY_SOURCE_TYPE = "kn_proxy_binding"
+PUBLISHED_PROXY_GRANT_SOURCE_TABLE = "t_kn_proxy_published_grant_source"
 BACKUP_ROOT_ENV = "OPENBKN_MIGRATION_BACKUP_DIR"
 EFFECT_ALLOW = "allow"
 POLICY_SOURCE_SYSTEM_DERIVED = "system_derived"
@@ -223,6 +224,52 @@ def stable_proxy_account_id(kn_id: str) -> str:
     """Derive the same new proxy identity in dry-run and apply."""
     raw = f"openbkn-0.1.5-bkn-proxy\x00{kn_id}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:32]
+
+
+def canonical_json_bytes(value: Any) -> bytes:
+    """Match Go's encoding/json output for the migration's stable digests."""
+    canonical_text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    # encoding/json escapes these characters even when it otherwise emits UTF-8.
+    for literal, escaped in (
+        ("&", "\\u0026"),
+        ("<", "\\u003c"),
+        (">", "\\u003e"),
+        ("\u2028", "\\u2028"),
+        ("\u2029", "\\u2029"),
+    ):
+        canonical_text = canonical_text.replace(literal, escaped)
+    return canonical_text.encode("utf-8")
+
+
+def proxy_grant_snapshot_version(sources: Sequence[ProxySource]) -> str:
+    """Match the current BKN published-proxy snapshot version contract."""
+    ordered = sorted(
+        sources,
+        key=lambda item: (
+            PROXY_SOURCE_TYPE,
+            item.source_id,
+            item.kn_id,
+            item.binding_type,
+            item.binding_id,
+            item.resource_type,
+            item.resource_id,
+            item.operation,
+        ),
+    )
+    payload = [
+        {
+            "resource_type": item.resource_type,
+            "resource_id": item.resource_id,
+            "operation": item.operation,
+            "source_type": PROXY_SOURCE_TYPE,
+            "source_id": item.source_id,
+            "kn_id": item.kn_id,
+            "binding_type": item.binding_type,
+            "binding_id": item.binding_id,
+        }
+        for item in ordered
+    ]
+    return "sha256:" + hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
 
 
 def derive_proxy_sources(
@@ -500,21 +547,7 @@ def derive_proxy_sources(
             item.get("detail", ""),
         )
     )
-    canonical_text = json.dumps(
-        bindings, ensure_ascii=False, separators=(",", ":")
-    )
-    # encoding/json escapes these characters even when it otherwise emits UTF-8.
-    # Keep the digest identical to BKN Backend for every valid persisted ID.
-    for literal, escaped in (
-        ("&", "\\u0026"),
-        ("<", "\\u003c"),
-        (">", "\\u003e"),
-        ("\u2028", "\\u2028"),
-        ("\u2029", "\\u2029"),
-    ):
-        canonical_text = canonical_text.replace(literal, escaped)
-    canonical = canonical_text.encode("utf-8")
-    return sources, "sha256:" + hashlib.sha256(canonical).hexdigest()
+    return sources, "sha256:" + hashlib.sha256(canonical_json_bytes(bindings)).hexdigest()
 
 
 def key_match(value: str, pattern: str) -> bool:
@@ -876,7 +909,11 @@ def load_proxy_plan(
 ) -> ProxyMigrationPlan:
     """Build a complete, side-effect-free managed-proxy backfill plan."""
     require_safe_proxy_schema(safe_connection)
-    required_bkn_tables = ("t_kn_proxy_account", "t_kn_capability_binding")
+    required_bkn_tables = (
+        "t_kn_proxy_account",
+        "t_kn_capability_binding",
+        PUBLISHED_PROXY_GRANT_SOURCE_TABLE,
+    )
     missing_bkn_tables = [
         table for table in required_bkn_tables if not table_exists(bkn_connection, table)
     ]
@@ -1538,6 +1575,75 @@ def sync_proxy_sources(
     }
 
 
+def replace_published_proxy_snapshot(cursor, network: ProxyNetworkPlan, epoch_ms: int) -> str:
+    """Persist the exact source set that the ready mapping authorizes."""
+    snapshot_version = proxy_grant_snapshot_version(network.sources)
+    cursor.execute(
+        f"DELETE FROM {PUBLISHED_PROXY_GRANT_SOURCE_TABLE} WHERE f_kn_id = %s",
+        (network.kn_id,),
+    )
+    if network.sources:
+        cursor.executemany(
+            f"INSERT INTO {PUBLISHED_PROXY_GRANT_SOURCE_TABLE} "
+            "(f_kn_id, f_binding_type, f_binding_id, f_resource_type, f_resource_id, "
+            "f_operation, f_source_type, f_source_id, f_created_at, f_updated_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            [
+                (
+                    source.kn_id,
+                    source.binding_type,
+                    source.binding_id,
+                    source.resource_type,
+                    source.resource_id,
+                    source.operation,
+                    PROXY_SOURCE_TYPE,
+                    source.source_id,
+                    epoch_ms,
+                    epoch_ms,
+                )
+                for source in network.sources
+            ],
+        )
+    return snapshot_version
+
+
+def verify_published_proxy_snapshot(cursor, network: ProxyNetworkPlan) -> str:
+    """Verify the persisted BKN snapshot before marking the migration complete."""
+    cursor.execute(
+        f"SELECT f_binding_type, f_binding_id, f_resource_type, f_resource_id, "
+        "f_operation, f_source_type, f_source_id "
+        f"FROM {PUBLISHED_PROXY_GRANT_SOURCE_TABLE} WHERE f_kn_id = %s",
+        (network.kn_id,),
+    )
+    actual = sorted(
+        (
+            normalize_text(row["f_binding_type"]),
+            normalize_text(row["f_binding_id"]),
+            normalize_text(row["f_resource_type"]),
+            normalize_text(row["f_resource_id"]),
+            normalize_text(row["f_operation"]),
+            normalize_text(row["f_source_type"]),
+            normalize_text(row["f_source_id"]),
+        )
+        for row in cursor.fetchall()
+    )
+    expected = sorted(
+        (
+            source.binding_type,
+            source.binding_id,
+            source.resource_type,
+            source.resource_id,
+            source.operation,
+            PROXY_SOURCE_TYPE,
+            source.source_id,
+        )
+        for source in network.sources
+    )
+    if actual != expected:
+        raise MigrationError(f"proxy snapshot verification failed for {network.kn_id}")
+    return proxy_grant_snapshot_version(network.sources)
+
+
 def apply_proxy_plan(
     bkn_connection,
     safe_connection,
@@ -1584,6 +1690,9 @@ def apply_proxy_plan(
             totals.update(
                 sync_proxy_sources(safe_cursor, network, grantor_id, timestamp)
             )
+            snapshot_version = replace_published_proxy_snapshot(
+                bkn_cursor, network, epoch_ms
+            )
             bkn_cursor.execute(
                 "INSERT INTO t_kn_proxy_account "
                 "(f_kn_id, f_proxy_account_id, f_proxy_account_type, "
@@ -1603,8 +1712,8 @@ def apply_proxy_plan(
                 (
                     network.kn_id,
                     network.proxy_account_id,
-                    network.model_version,
-                    network.model_version,
+                    snapshot_version,
+                    snapshot_version,
                     grantor_id,
                     epoch_ms,
                     epoch_ms,
@@ -1655,6 +1764,7 @@ def verify_proxy_plan(
                     raise MigrationError(
                         f"proxy policy verification failed for {network.kn_id}"
                     )
+            snapshot_version = verify_published_proxy_snapshot(bkn_cursor, network)
             bkn_cursor.execute(
                 "SELECT f_proxy_account_id, f_lifecycle_status, f_sync_status, "
                 "f_published_model_version, f_synced_model_version "
@@ -1669,9 +1779,9 @@ def verify_proxy_plan(
                 or normalize_text(mapping["f_lifecycle_status"]) != "active"
                 or normalize_text(mapping["f_sync_status"]) != "ready"
                 or normalize_text(mapping["f_published_model_version"])
-                != network.model_version
+                != snapshot_version
                 or normalize_text(mapping["f_synced_model_version"])
-                != network.model_version
+                != snapshot_version
             ):
                 raise MigrationError(f"proxy mapping verification failed for {network.kn_id}")
 

@@ -199,7 +199,7 @@ class ProxyPlanTest(unittest.TestCase):
     def test_proxy_plan_requires_the_installed_0_1_5_schema(
         self, require_safe_proxy_schema, table_exists
     ):
-        table_exists.side_effect = [False, True]
+        table_exists.side_effect = [False, True, True]
         with self.assertRaisesRegex(
             migration.MigrationError,
             "missing tables: t_kn_proxy_account",
@@ -207,7 +207,7 @@ class ProxyPlanTest(unittest.TestCase):
             load_proxy_plan(MagicMock(), MagicMock(), "grantor-1")
 
         require_safe_proxy_schema.assert_called_once()
-        self.assertEqual(2, table_exists.call_count)
+        self.assertEqual(3, table_exists.call_count)
 
     def test_derives_resource_toolbox_and_mcp_sources(self):
         sources, model_version = derive_proxy_sources(
@@ -740,6 +740,111 @@ class ProxyPlanTest(unittest.TestCase):
             ("allow", "system_derived", "system"),
             deletion.args[1][-3:],
         )
+
+    def test_snapshot_version_matches_the_published_proxy_source_contract(self):
+        source = ProxySource(
+            resource_type="resource",
+            resource_id="resource-1",
+            operation="query_data",
+            source_id="source-1",
+            kn_id="kn-1",
+            binding_type="object_type",
+            binding_id="object-1",
+        )
+
+        self.assertEqual(
+            "sha256:1c6faadce25b8379e10e4bc2a058dda393943841ea0c16b8c788e4aa0dfa97dd",
+            migration.proxy_grant_snapshot_version([source]),
+        )
+
+    def test_apply_writes_the_published_snapshot_before_ready_mapping(self):
+        safe_connection = MagicMock()
+        bkn_connection = MagicMock()
+        bkn_cursor = bkn_connection.cursor.return_value.__enter__.return_value
+        source = ProxySource(
+            resource_type="resource",
+            resource_id="resource-1",
+            operation="query_data",
+            source_id="source-1",
+            kn_id="kn-1",
+            binding_type="object_type",
+            binding_id="object-1",
+        )
+        network = ProxyNetworkPlan(
+            kn_id="kn-1",
+            kn_name="Network 1",
+            proxy_account_id="proxy-1",
+            model_version="sha256:planning-model",
+            sources=[source],
+            create_account=False,
+        )
+
+        with patch.object(migration, "sync_proxy_sources", return_value={}):
+            migration.apply_proxy_plan(
+                bkn_connection,
+                safe_connection,
+                ProxyMigrationPlan(networks=[network]),
+                "grantor-1",
+            )
+
+        statements = [call.args[0] for call in bkn_cursor.execute.call_args_list]
+        self.assertIn(
+            "DELETE FROM t_kn_proxy_published_grant_source WHERE f_kn_id = %s",
+            statements,
+        )
+        self.assertIn("INSERT INTO t_kn_proxy_account ", statements[-1])
+        snapshot_rows = bkn_cursor.executemany.call_args.args[1]
+        self.assertEqual(
+            (
+                "kn-1",
+                "object_type",
+                "object-1",
+                "resource",
+                "resource-1",
+                "query_data",
+                "kn_proxy_binding",
+                "source-1",
+            ),
+            snapshot_rows[0][:8],
+        )
+        snapshot_version = migration.proxy_grant_snapshot_version([source])
+        self.assertEqual(snapshot_version, bkn_cursor.execute.call_args_list[-1].args[1][2])
+        self.assertEqual(snapshot_version, bkn_cursor.execute.call_args_list[-1].args[1][3])
+
+    def test_verify_rejects_a_snapshot_that_does_not_match_the_sources(self):
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            {
+                "f_binding_type": "object_type",
+                "f_binding_id": "object-1",
+                "f_resource_type": "resource",
+                "f_resource_id": "resource-other",
+                "f_operation": "query_data",
+                "f_source_type": "kn_proxy_binding",
+                "f_source_id": "source-1",
+            }
+        ]
+        network = ProxyNetworkPlan(
+            kn_id="kn-1",
+            kn_name="Network 1",
+            proxy_account_id="proxy-1",
+            model_version="sha256:planning-model",
+            sources=[
+                ProxySource(
+                    resource_type="resource",
+                    resource_id="resource-1",
+                    operation="query_data",
+                    source_id="source-1",
+                    kn_id="kn-1",
+                    binding_type="object_type",
+                    binding_id="object-1",
+                )
+            ],
+            create_account=False,
+        )
+
+        with self.assertRaisesRegex(migration.MigrationError, "snapshot verification failed"):
+            migration.verify_published_proxy_snapshot(cursor, network)
 
 
 class DatabaseConfigurationTest(unittest.TestCase):
