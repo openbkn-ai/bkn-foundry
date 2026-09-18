@@ -11,6 +11,8 @@ bknSafe:
   url: "http://bkn-safe:3000"
 
 replicaCount: 1
+traceEvidence:
+  revision: "0"
 
 # Node selector.
 nodeSelector: {}

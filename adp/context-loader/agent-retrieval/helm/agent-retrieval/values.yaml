@@ -1,4 +1,6 @@
 replicaCount: 1
+traceEvidence:
+  revision: "0"
 
 nodeSelector: {}
 

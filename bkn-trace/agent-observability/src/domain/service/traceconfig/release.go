@@ -24,8 +24,10 @@ type Snapshot struct {
 }
 
 type Request struct {
-	Revision int
-	Enabled  bool
+	Revision       int
+	Enabled        bool
+	Snapshots      map[string]Snapshot
+	RecordSnapshot func(context.Context, Snapshot) error
 }
 
 type Result struct {
@@ -49,20 +51,33 @@ func NewReleaseRunner(client ReleaseClient, services []Service) *ReleaseRunner {
 	return &ReleaseRunner{client: client, services: append([]Service(nil), services...)}
 }
 
+func (runner *ReleaseRunner) ManagedServices() []Service {
+	return append([]Service(nil), runner.services...)
+}
+
 func (runner *ReleaseRunner) Run(ctx context.Context, request Request) Result {
 	changed := make([]Snapshot, 0, len(runner.services))
 	for _, service := range runner.services {
 		if !service.Critical {
 			continue
 		}
-		snapshot, err := runner.client.Snapshot(ctx, service)
-		if err != nil {
-			return runner.rollback(ctx, changed, fmt.Errorf("snapshot %s: %w", service.Name, err))
+		snapshot, recorded := request.Snapshots[service.Name]
+		if !recorded {
+			var err error
+			snapshot, err = runner.client.Snapshot(ctx, service)
+			if err != nil {
+				return runner.rollback(ctx, changed, fmt.Errorf("snapshot %s: %w", service.Name, err))
+			}
+			if request.RecordSnapshot != nil {
+				if err := request.RecordSnapshot(ctx, snapshot); err != nil {
+					return runner.rollback(ctx, changed, fmt.Errorf("record snapshot %s: %w", service.Name, err))
+				}
+			}
 		}
+		changed = append(changed, snapshot)
 		if err := runner.client.Apply(ctx, service, request.Revision, request.Enabled); err != nil {
 			return runner.rollback(ctx, changed, fmt.Errorf("apply %s: %w", service.Name, err))
 		}
-		changed = append(changed, snapshot)
 		if err := runner.client.WaitReady(ctx, service, request.Revision, request.Enabled); err != nil {
 			return runner.rollback(ctx, changed, fmt.Errorf("wait ready %s: %w", service.Name, err))
 		}

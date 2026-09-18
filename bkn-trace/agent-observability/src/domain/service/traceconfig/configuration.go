@@ -7,6 +7,7 @@ type Configuration struct {
 	EffectiveEnabled   bool            `json:"effective_enabled"`
 	LastStableRevision uint64          `json:"last_stable_revision"`
 	Operation          *Operation      `json:"operation,omitempty"`
+	History            []Operation     `json:"history"`
 	Revision           uint64          `json:"revision"`
 	Services           []ServiceStatus `json:"services"`
 }
@@ -16,6 +17,8 @@ type Operation struct {
 	Phase       ConfigurationPhase `json:"phase"`
 	RequestedAt time.Time          `json:"requested_at"`
 	RequestedBy string             `json:"requested_by"`
+	Error       string             `json:"error,omitempty"`
+	CompletedAt *time.Time         `json:"completed_at,omitempty"`
 }
 
 type ServiceStatus struct {
@@ -25,15 +28,17 @@ type ServiceStatus struct {
 	Phase            string `json:"phase"`
 	ReadyReplicas    int    `json:"ready_replicas"`
 	RequiredReplicas int    `json:"required_replicas"`
+	SnapshotRevision int    `json:"snapshot_revision,omitempty"`
 }
 
 type ConfigurationPhase string
 
 const (
-	PhasePending     ConfigurationPhase = "pending"
-	PhaseRollingOut  ConfigurationPhase = "rolling_out"
-	PhaseEnabled     ConfigurationPhase = "enabled"
-	PhaseDisabled    ConfigurationPhase = "disabled"
-	PhaseRollingBack ConfigurationPhase = "rolling_back"
-	PhaseFailed      ConfigurationPhase = "failed"
+	PhasePending             ConfigurationPhase = "pending"
+	PhaseRollingOut          ConfigurationPhase = "rolling_out"
+	PhaseEnabled             ConfigurationPhase = "enabled"
+	PhaseDisabled            ConfigurationPhase = "disabled"
+	PhaseRollingBack         ConfigurationPhase = "rolling_back"
+	PhaseFailed              ConfigurationPhase = "failed"
+	PhaseRollbackFailedState ConfigurationPhase = "rollback_failed"
 )

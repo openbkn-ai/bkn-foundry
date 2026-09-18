@@ -11,6 +11,8 @@ env:
   actionExecutionDuplicateWindowSeconds: 60
 
 replicaCount: 1
+traceEvidence:
+  revision: "0"
 
 # Node selector
 nodeSelector: {}

@@ -10,6 +10,9 @@ env:
 bknSafe:
   url: "http://bkn-safe:3000"
 
+traceEvidence:
+  revision: "0"
+
 # 节点选择器
 nodeSelector: {}
 

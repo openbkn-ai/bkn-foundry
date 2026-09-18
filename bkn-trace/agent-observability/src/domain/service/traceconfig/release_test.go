@@ -70,10 +70,27 @@ func TestReleaseRunnerRollsBackChangedServicesInReverseOrder(t *testing.T) {
 	want := []string{
 		"snapshot:bkn-backend", "apply:bkn-backend:true", "ready:bkn-backend:true",
 		"snapshot:ontology-query", "apply:ontology-query:true",
-		"rollback:bkn-backend",
+		"rollback:ontology-query", "rollback:bkn-backend",
 	}
 	if !reflect.DeepEqual(client.calls, want) {
 		t.Fatalf("calls = %#v, want %#v", client.calls, want)
+	}
+}
+
+func TestReleaseRunnerReusesPersistedSnapshotsAfterControllerRestart(t *testing.T) {
+	client := &fakeReleaseClient{}
+	runner := NewReleaseRunner(client, []Service{{Name: "bkn-backend", Critical: true}})
+
+	result := runner.Run(context.Background(), Request{
+		Revision: 5, Enabled: true,
+		Snapshots: map[string]Snapshot{"bkn-backend": {Service: "bkn-backend", Revision: 2}},
+	})
+	if result.Phase != PhaseSucceeded {
+		t.Fatalf("phase = %s, want %s", result.Phase, PhaseSucceeded)
+	}
+	want := []string{"apply:bkn-backend:true", "ready:bkn-backend:true"}
+	if !reflect.DeepEqual(client.calls, want) {
+		t.Fatalf("restart must not replace original snapshot: calls=%#v want=%#v", client.calls, want)
 	}
 }
 

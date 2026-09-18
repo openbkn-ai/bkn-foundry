@@ -28,6 +28,8 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      securityContext:
+        fsGroup: 65532
       serviceAccountName: {{ include "agent-observability.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -187,6 +189,8 @@ spec:
               value: {{ .Values.observability.sourceTimeout | quote }}
             - name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
               value: {{ .Values.observability.maxConcurrentSources | quote }}
+            - name: BKN_TRACE_RELEASE_STATE_PATH
+              value: /var/lib/openbkn/trace-evidence/state.json
             {{- $archive := default (dict) .Values.observability.archive }}
             {{- if and $archive.ossGatewayURL $archive.storageID }}
             - name: BKN_OBSERVABILITY_ARCHIVE_OSS_GATEWAY_URL
@@ -218,6 +222,17 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.traceEvidenceReleaseController.enabled }}
+          volumeMounts:
+            - name: trace-evidence-release-state
+              mountPath: /var/lib/openbkn/trace-evidence
+          {{- end }}
+      {{- if .Values.traceEvidenceReleaseController.enabled }}
+      volumes:
+        - name: trace-evidence-release-state
+          persistentVolumeClaim:
+            claimName: {{ include "agent-observability.fullname" . }}-trace-evidence-state
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

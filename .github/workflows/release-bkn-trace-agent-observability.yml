@@ -7,6 +7,11 @@ on:
     branches: ['**']
     paths:
       - 'bkn-trace/agent-observability/**'
+      - 'deploy/trace-evidence-switch/**'
+      - 'adp/bkn/bkn-backend/helm/bkn-backend/**'
+      - 'adp/bkn/ontology-query/helm/ontology-query/**'
+      - 'adp/vega/vega-backend/helm/vega-backend/**'
+      - 'adp/context-loader/agent-retrieval/helm/agent-retrieval/**'
       - '.github/workflows/release-bkn-trace-agent-observability.yml'
       - '.github/workflows/reusable-*.yml'
       # 版本冻结提交（release/<x.y.z> 分支）触发全量重建
@@ -41,8 +46,20 @@ jobs:
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
+  build-release-controller:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
+    with:
+      service-path: .
+      dockerfile: deploy/trace-evidence-switch/Dockerfile
+      context: '.'
+      image-name: trace-evidence-release-controller
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
   chart:
-    needs: [test, build]
+    needs: [test, build, build-release-controller]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: bkn-trace/agent-observability

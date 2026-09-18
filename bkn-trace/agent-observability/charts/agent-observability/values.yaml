@@ -138,6 +138,21 @@ observability:
     deploymentID: observability/otelcol-contrib
     interval: 30s
 
+traceEvidenceReleaseController:
+  enabled: true
+  image:
+    # Empty inherits image.registry so GHCR, SWR, and offline installs stay aligned.
+    registry: ""
+    repository: trace-evidence-release-controller
+    tag: "__VERSION__"
+    pullPolicy: IfNotPresent
+  # Empty means the Helm release namespace. Cross-namespace release control is intentionally unsupported.
+  namespace: ""
+  pollInterval: 1s
+  persistence:
+    storageClass: ""
+    size: 1Gi
+
 core:
   # Keep existing trace/evidence reads available after an upgrade. Enable
   # MariaDB explicitly only after its Secret and database are ready.

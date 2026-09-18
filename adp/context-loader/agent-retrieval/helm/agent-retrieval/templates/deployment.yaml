@@ -54,6 +54,8 @@ spec:
           imagePullPolicy: {{ .Values.image.service.pullPolicy }}
 
           env:
+              - name: BKN_TRACE_CONFIG_REVISION
+                value: {{ .Values.traceEvidence.revision | quote }}
             {{- if .Values.service.loggerOutput}}
               - name: LOGOUT
                 value: {{ .Values.service.loggerOutput }}

@@ -420,6 +420,20 @@ helm upgrade --install agent-observability charts/agent-observability \
   -n observability --create-namespace
 ```
 
+### Trace / Evidence 受管发布边界
+
+统一开关默认关闭；API 只写入期望状态和持久化操作账本，不直接执行 Helm。独立的
+`trace-evidence-release-controller` 只接受镜像内固定 manifest 中的 release、chart、namespace
+和布尔 values，并按固定顺序升级或回滚四个受管服务。调用方不能注入 release 名、chart 路径、
+namespace 或任意 Helm 参数。
+
+controller 的 ServiceAccount 仅绑定到当前 release namespace，并只授予固定 charts 实际使用的
+Kubernetes 资源类型。需要注意：Kubernetes 原生 RBAC 无法把 `create` 按资源名限制，Helm 的
+revision Secret 也需要创建权限，因此该 ServiceAccount 在该 namespace 的这些资源类型上仍是
+namespace-wide 权限。这里的“受管”边界来自独立镜像、固定 manifest、非 root 容器和不可注入的
+命令构造，不应被表述为资源名级的强隔离。要求更强安全边界的部署应为这四个 release 使用独立
+namespace，或配置准入策略限制该 ServiceAccount 可写的资源标签/名称。
+
 启用 OpenSearch Basic Auth：
 
 ```bash

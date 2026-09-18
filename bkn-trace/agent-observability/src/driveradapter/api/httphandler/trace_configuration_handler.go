@@ -39,7 +39,12 @@ func (handler *TraceEvidenceConfigurationHandler) ServeHTTP(w http.ResponseWrite
 			writeJSON(w, r, http.StatusForbidden, configurationError{Code: "OBSERVABILITY_CONFIGURATION_FORBIDDEN", Message: "configuration read is not authorized"})
 			return
 		}
-		writeJSON(w, r, http.StatusOK, traceConfigurationResponse(handler.service.Current(r.Context())))
+		configuration, err := handler.service.CurrentResult(r.Context())
+		if err != nil {
+			writeJSON(w, r, http.StatusServiceUnavailable, configurationError{Code: "RELEASE_ORCHESTRATOR_UNAVAILABLE", Message: "release state is unavailable"})
+			return
+		}
+		writeJSON(w, r, http.StatusOK, traceConfigurationResponse(configuration))
 	case http.MethodPut:
 		if !capabilities.TraceEvidenceConfigurationWrite {
 			writeJSON(w, r, http.StatusForbidden, configurationError{Code: "OBSERVABILITY_CONFIGURATION_FORBIDDEN", Message: "configuration change is not authorized"})

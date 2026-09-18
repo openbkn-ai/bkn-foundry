@@ -83,6 +83,8 @@ spec:
           timeoutSeconds: 30
           failureThreshold: 3
         env:
+          - name: BKN_TRACE_CONFIG_REVISION
+            value: {{ .Values.traceEvidence.revision | quote }}
           - name: TZ
             value: {{ .Values.env.timezone }}
           - name: LANG

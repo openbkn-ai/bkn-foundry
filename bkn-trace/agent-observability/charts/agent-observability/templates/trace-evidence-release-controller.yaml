@@ -1,0 +1,135 @@
+{{- if .Values.traceEvidenceReleaseController.enabled }}
+{{- if and .Values.traceEvidenceReleaseController.namespace (ne .Values.traceEvidenceReleaseController.namespace .Release.Namespace) }}
+{{- fail "traceEvidenceReleaseController.namespace must match the Helm release namespace" }}
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-trace-evidence-state
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.traceEvidenceReleaseController.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.traceEvidenceReleaseController.persistence.size | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-trace-evidence-manifest
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+data:
+  services.yaml: |
+{{ .Files.Get "files/trace-evidence-services.yaml" | indent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-release-controller
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-release-controller
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # The fixed bkn-backend and ontology-query charts may already have outbox
+  # cleanup enabled. --reuse-values must therefore be able to retain, update,
+  # or remove their CronJobs while toggling the unified switch.
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-release-controller
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agent-observability.fullname" . }}-release-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "agent-observability.fullname" . }}-release-controller
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-release-controller
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-observability.name" . }}-release-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "agent-observability.name" . }}-release-controller
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      securityContext:
+        fsGroup: 65532
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "agent-observability.selectorLabels" . | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      serviceAccountName: {{ include "agent-observability.fullname" . }}-release-controller
+      containers:
+        - name: release-controller
+          image: {{ printf "%s/%s:%s" (default .Values.image.registry .Values.traceEvidenceReleaseController.image.registry) .Values.traceEvidenceReleaseController.image.repository .Values.traceEvidenceReleaseController.image.tag | quote }}
+          imagePullPolicy: {{ .Values.traceEvidenceReleaseController.image.pullPolicy }}
+          env:
+            - name: BKN_TRACE_RELEASE_STATE_PATH
+              value: /var/lib/openbkn/trace-evidence/state.json
+            - name: BKN_TRACE_RELEASE_MANIFEST_PATH
+              value: /etc/openbkn/trace-evidence/services.yaml
+            - name: BKN_TRACE_RELEASE_NAMESPACE
+              value: {{ default .Release.Namespace .Values.traceEvidenceReleaseController.namespace | quote }}
+            - name: BKN_TRACE_RELEASE_POLL_INTERVAL
+              value: {{ .Values.traceEvidenceReleaseController.pollInterval | quote }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/openbkn/trace-evidence
+            - name: manifest
+              mountPath: /etc/openbkn/trace-evidence
+              readOnly: true
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ include "agent-observability.fullname" . }}-trace-evidence-state
+        - name: manifest
+          configMap:
+            name: {{ include "agent-observability.fullname" . }}-trace-evidence-manifest
+{{- end }}

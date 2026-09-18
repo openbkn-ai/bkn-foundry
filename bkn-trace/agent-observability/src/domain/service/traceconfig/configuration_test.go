@@ -42,3 +42,20 @@ func TestServiceRejectsStaleRevisionAndIsIdempotentForSameTarget(t *testing.T) {
 		t.Fatalf("expected revision conflict, got %v", err)
 	}
 }
+
+func TestServiceUsesSharedStoreAcrossAPIAndControllerInstances(t *testing.T) {
+	store := NewMemoryConfigurationStore()
+	api := NewConfigurationServiceWithStore(store)
+	accepted, err := api.Request(context.Background(), ConfigurationRequest{Enabled: true, ExpectedRevision: 0, RequestedBy: "admin-a"})
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	controller := NewConfigurationServiceWithStore(store)
+	if err := controller.MarkSucceeded(context.Background(), accepted.Operation.ID); err != nil {
+		t.Fatalf("controller completion: %v", err)
+	}
+	current := api.Current(context.Background())
+	if !current.EffectiveEnabled || current.LastStableRevision != 1 || current.Operation != nil {
+		t.Fatalf("controller result was not persisted for API reader: %+v", current)
+	}
+}
