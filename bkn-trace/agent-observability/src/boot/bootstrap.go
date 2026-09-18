@@ -31,10 +31,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectorsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sourcecoveragesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/traceconfig"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/archivestore"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
+	filetraceconfigstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/fileaccess/traceconfigstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknbackendaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaudit"
@@ -252,6 +254,9 @@ func NewApp() (*App, error) {
 		assemblysvc.NewQueryServiceWithBusinessResolver(sessionStore, ledgerStore, resolver),
 	)
 	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgersvc.NewWithMetrics(ledgerStore, metrics))
+	traceReleaseConfig := conf.NewTraceReleaseConfig()
+	traceConfigurationService := traceconfig.NewConfigurationServiceWithStore(filetraceconfigstore.New(traceReleaseConfig.StatePath))
+	traceConfigurationHandler := httphandler.NewTraceEvidenceConfigurationHandler(traceConfigurationService, evidenceHandler)
 
 	var captureInput func(context.Context, string, evidencevo.QueryScope) (json.RawMessage, string, bool, error)
 	if snapshots, ok := sessionStore.(isessionstore.EvidenceSnapshotReader); ok {
@@ -270,7 +275,7 @@ func NewApp() (*App, error) {
 	enterpriseReader := httphandler.NewEnterpriseInteractionFactsReader(evidenceService, sessionService, captureInput)
 	app := newAppWithArchive(
 		httpServerConfig, traceHandler, evidenceHandler, logHandler, archiveHandler,
-		sessionHandler, ledgerHandler, metrics, enterpriseReader,
+		sessionHandler, ledgerHandler, traceConfigurationHandler, metrics, enterpriseReader,
 	)
 	app.closeDatabase = closeDatabase
 	workerContext, stopWorkers := context.WithCancel(context.Background())
@@ -493,7 +498,7 @@ func newApp(
 	metrics http.Handler,
 	enterpriseReaders ...enterpriseroute.Reader,
 ) *App {
-	return newAppWithArchive(httpServerConfig, traceHandler, evidenceHandler, logHandler, nil, sessionHandler, ledgerHandler, metrics, enterpriseReaders...)
+	return newAppWithArchive(httpServerConfig, traceHandler, evidenceHandler, logHandler, nil, sessionHandler, ledgerHandler, nil, metrics, enterpriseReaders...)
 }
 
 func newAppWithArchive(
@@ -504,6 +509,7 @@ func newAppWithArchive(
 	archiveHandler *httphandler.ArchiveHandler,
 	sessionHandler *httphandler.SessionHandler,
 	ledgerHandler *httphandler.LedgerHandler,
+	traceConfigurationHandler *httphandler.TraceEvidenceConfigurationHandler,
 	metrics http.Handler,
 	enterpriseReaders ...enterpriseroute.Reader,
 ) *App {
@@ -553,6 +559,9 @@ func newAppWithArchive(
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs/", readAuth(logHandler.GetLog))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-policies", readAuth(logHandler.ListLogPolicies))
+	if traceConfigurationHandler != nil {
+		mux.Handle(ObservabilityAPIBasePath+"/trace-evidence-configuration", readAuth(traceConfigurationHandler.ServeHTTP))
+	}
 	if archiveHandler != nil {
 		mux.HandleFunc(ObservabilityAPIBasePath+"/log-archive-overview", readAuth(archiveHandler.Overview(observabilityvo.ArchiveKindLog)))
 		mux.HandleFunc(ObservabilityAPIBasePath+"/trace-archive-overview", readAuth(archiveHandler.Overview(observabilityvo.ArchiveKindTrace)))

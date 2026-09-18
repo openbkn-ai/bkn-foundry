@@ -1,0 +1,28 @@
+version: 1
+services:
+  - name: bkn-backend
+    chart: adp/bkn/bkn-backend/helm/bkn-backend
+    release: bkn-backend
+    critical: true
+    traceValue: config.otel.trace.enabled
+    evidenceValues:
+      - bknTrace.producerOutbox.enabled
+      - bknTrace.producerOutbox.workerEnabled
+  - name: ontology-query
+    chart: adp/bkn/ontology-query/helm/ontology-query
+    release: ontology-query
+    critical: true
+    traceValue: config.otel.trace.enabled
+    evidenceValues:
+      - bknTrace.producerOutbox.enabled
+      - bknTrace.producerOutbox.workerEnabled
+  - name: vega-backend
+    chart: adp/vega/vega-backend/helm/vega-backend
+    release: vega-backend
+    critical: true
+    traceValue: config.otel.trace.enabled
+  - name: agent-retrieval
+    chart: adp/context-loader/agent-retrieval/helm/agent-retrieval
+    release: agent-retrieval
+    critical: true
+    traceValue: observability.trace.enabled

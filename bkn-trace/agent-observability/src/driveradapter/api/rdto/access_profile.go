@@ -17,5 +17,7 @@ type AccessProfileResponse struct {
 	LogExport                         bool     `json:"log_export"`
 	LogPolicyRead                     bool     `json:"log_policy_read"`
 	ObservabilityArchiveManage        bool     `json:"observability_archive_manage"`
+	TraceEvidenceConfigurationRead    bool     `json:"trace_evidence_configuration_read"`
+	TraceEvidenceConfigurationWrite   bool     `json:"trace_evidence_configuration_write"`
 	AccessScopeFingerprint            string   `json:"access_scope_fingerprint"`
 }

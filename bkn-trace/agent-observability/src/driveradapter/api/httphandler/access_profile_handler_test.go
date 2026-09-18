@@ -22,6 +22,8 @@ func TestAccessProfileResponseUsesTheR62RoleMatrix(t *testing.T) {
 		sensitiveFields   bool
 		export            bool
 		policyRead        bool
+		traceConfigRead   bool
+		traceConfigWrite  bool
 		managedProvenance bool
 	}{
 		{name: "normal user", categories: []string{}},
@@ -33,7 +35,7 @@ func TestAccessProfileResponseUsesTheR62RoleMatrix(t *testing.T) {
 		{
 			name: "admin", roles: []string{"admin"}, globalSearch: true,
 			categories:      []string{"runtime.system", "runtime.business", "runtime.model"},
-			sensitiveFields: true, export: true, policyRead: true,
+			sensitiveFields: true, export: true, policyRead: true, traceConfigRead: true,
 		},
 		{
 			name: "security", roles: []string{"security"}, globalSearch: true,
@@ -51,7 +53,7 @@ func TestAccessProfileResponseUsesTheR62RoleMatrix(t *testing.T) {
 				"access.user", "audit.admin", "audit.security",
 				"runtime.system", "runtime.business", "runtime.model",
 			},
-			sensitiveFields: true, export: true, policyRead: true,
+			sensitiveFields: true, export: true, policyRead: true, traceConfigRead: true, traceConfigWrite: true,
 		},
 	}
 
@@ -70,7 +72,9 @@ func TestAccessProfileResponseUsesTheR62RoleMatrix(t *testing.T) {
 				response.GlobalLogSearch != test.globalSearch ||
 				!reflect.DeepEqual(response.AllowedLogCategories, test.categories) ||
 				response.LogSensitiveFields != test.sensitiveFields || response.LogExport != test.export ||
-				response.LogPolicyRead != test.policyRead {
+				response.LogPolicyRead != test.policyRead ||
+				response.TraceEvidenceConfigurationRead != test.traceConfigRead ||
+				response.TraceEvidenceConfigurationWrite != test.traceConfigWrite {
 				t.Fatalf("unexpected R6.2 profile: %+v", response)
 			}
 		})
@@ -82,7 +86,7 @@ func TestAccessProfileResponseFailsClosedForInactiveIdentity(t *testing.T) {
 		Roles: []string{"super_admin"}, AccountActive: false})
 	if response.BusinessProvenanceOwn || response.TechnicalTrace || response.GlobalLogSearch ||
 		len(response.AllowedLogCategories) != 0 || response.LogSensitiveFields || response.LogExport ||
-		response.LogPolicyRead {
+		response.LogPolicyRead || response.TraceEvidenceConfigurationRead || response.TraceEvidenceConfigurationWrite {
 		t.Fatalf("inactive identity received capabilities: %+v", response)
 	}
 }

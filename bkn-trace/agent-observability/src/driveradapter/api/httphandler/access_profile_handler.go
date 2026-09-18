@@ -59,6 +59,8 @@ func accessProfileResponse(profile evidencevo.AccessProfile) rdto.AccessProfileR
 		LogExport:                         capabilities.LogExport,
 		LogPolicyRead:                     capabilities.LogPolicyRead,
 		ObservabilityArchiveManage:        capabilities.ObservabilityArchiveManage,
+		TraceEvidenceConfigurationRead:    capabilities.TraceEvidenceConfigurationRead,
+		TraceEvidenceConfigurationWrite:   capabilities.TraceEvidenceConfigurationWrite,
 		AccessScopeFingerprint:            profile.Fingerprint,
 	}
 }

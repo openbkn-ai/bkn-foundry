@@ -515,6 +515,9 @@ namespace: ${cfg_namespace}
 env:
   language: ${cfg_lang}
   timezone: ${cfg_tz}
+observability:
+  traceEvidence:
+    enabled: false
 image:
   registry: ${IMAGE_REGISTRY}
 ${storage_section}

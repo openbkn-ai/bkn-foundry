@@ -444,6 +444,26 @@ OPENBKN_TRACE_EVIDENCE_INGEST_URL="${OPENBKN_TRACE_EVIDENCE_INGEST_URL:-http://a
 OPENBKN_TRACE_ARTIFACT_INGEST_URL="${OPENBKN_TRACE_ARTIFACT_INGEST_URL:-http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts}"
 OPENBKN_TRACE_OPENSEARCH_SECRET="${OPENBKN_TRACE_OPENSEARCH_SECRET:-bkn-trace-opensearch}"
 
+# One platform-wide switch drives Trace and Evidence. Missing configuration is
+# deliberately false so a fresh installation cannot enable either implicitly.
+_openbkn_trace_evidence_enabled() {
+    [[ -n "${CONFIG_YAML_PATH:-}" && -f "${CONFIG_YAML_PATH}" ]] || {
+        printf 'false\n'
+        return 0
+    }
+    awk '
+        /^observability:[[:space:]]*$/ {in_observability=1; next}
+        in_observability && /^[[:space:]]+traceEvidence:[[:space:]]*$/ {in_trace_evidence=1; next}
+        in_trace_evidence && /^[[:space:]]+enabled:[[:space:]]*(true|false)[[:space:]]*$/ {
+            value=$2
+            print value
+            exit
+        }
+        in_observability && /^[^[:space:]#]/ {exit}
+        END {if (value == "") print "false"}
+    ' "${CONFIG_YAML_PATH}"
+}
+
 _openbkn_trace_opensearch_protocol() {
     local protocol="${1:-}"
     protocol="${protocol:-$(config_yaml_dep_field opensearch protocol)}"
@@ -919,6 +939,7 @@ _secret_is_owned_by_release() {
 _openbkn_release_extra_sets() {
     local release_name="$1"
     local namespace="${2:-${CORE_NAMESPACE}}"
+    local trace_evidence_enabled
     CORE_RELEASE_EXTRA_SETS=()
     CORE_RELEASE_EXTRA_SET_STRINGS=()
     if [[ "${release_name}" == "agent-observability" ]]; then
@@ -962,6 +983,41 @@ _openbkn_release_extra_sets() {
             log_warn "Could not derive a hardware instance identity from any node (status.nodeInfo.systemUUID / machineID) — commercial licenses cannot be activated on this cluster until config.license.instanceId is set to a host-derived, stable value."
         fi
     fi
+
+    trace_evidence_enabled="$(_openbkn_trace_evidence_enabled)"
+    case "${release_name}" in
+        bkn-backend|ontology-query)
+            CORE_RELEASE_EXTRA_SETS+=("config.otel.trace.enabled=${trace_evidence_enabled}")
+            CORE_RELEASE_EXTRA_SETS+=("bknTrace.producerOutbox.enabled=${trace_evidence_enabled}")
+            CORE_RELEASE_EXTRA_SETS+=("bknTrace.producerOutbox.workerEnabled=${trace_evidence_enabled}")
+            ;;
+        vega-backend)
+            CORE_RELEASE_EXTRA_SETS+=("config.otel.trace.enabled=${trace_evidence_enabled}")
+            ;;
+        agent-retrieval)
+            CORE_RELEASE_EXTRA_SETS+=("observability.trace.enabled=${trace_evidence_enabled}")
+            ;;
+    esac
+}
+
+_openbkn_is_trace_evidence_managed_release() {
+    case "$1" in
+        bkn-backend|ontology-query|vega-backend|agent-retrieval) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_openbkn_reject_managed_trace_evidence_overrides() {
+    local value key
+    for value in "${CORE_SET_VALUES[@]}"; do
+        key="${value%%=*}"
+        case "${key}" in
+            config.otel.trace.enabled|bknTrace.producerOutbox.enabled|bknTrace.producerOutbox.workerEnabled|observability.trace.enabled)
+                log_error "Trace/Evidence values are managed by observability.traceEvidence.enabled; do not override ${key} with --set"
+                return 1
+                ;;
+        esac
+    done
 }
 
 # Chart version equality alone is not sufficient for agent-observability: the
@@ -1059,6 +1115,9 @@ _openbkn_should_skip_upgrade() {
     local target_version="$4"
 
     if ! should_skip_upgrade_same_chart_version "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+        return 1
+    fi
+    if _openbkn_is_trace_evidence_managed_release "${release_name}"; then
         return 1
     fi
     if [[ "${release_name}" == "agent-observability" ]]; then
@@ -1443,6 +1502,7 @@ install_openbkn() {
 
     _openbkn_require_version_manifest || return 1
     _openbkn_apply_default_set_values
+    _openbkn_reject_managed_trace_evidence_overrides || return 1
 
     if ! ensure_platform_prerequisites; then
         log_error "Failed to ensure platform prerequisites for BKN Foundry"

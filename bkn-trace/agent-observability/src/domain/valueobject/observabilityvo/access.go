@@ -60,6 +60,8 @@ type AccessCapabilities struct {
 	LogExport                         bool
 	LogPolicyRead                     bool
 	ObservabilityArchiveManage        bool
+	TraceEvidenceConfigurationRead    bool
+	TraceEvidenceConfigurationWrite   bool
 }
 
 func CapabilitiesFor(profile evidencevo.AccessProfile) AccessCapabilities {
@@ -106,6 +108,8 @@ func CapabilitiesFor(profile evidencevo.AccessProfile) AccessCapabilities {
 		LogExport:                         globalLogSearch,
 		LogPolicyRead:                     controlledLogAccess,
 		ObservabilityArchiveManage:        hasRole("admin", "audit", "super_admin"),
+		TraceEvidenceConfigurationRead:    hasRole("admin", "super_admin"),
+		TraceEvidenceConfigurationWrite:   hasRole("super_admin"),
 	}
 }
 
