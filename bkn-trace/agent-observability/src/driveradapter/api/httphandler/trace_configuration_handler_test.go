@@ -14,7 +14,7 @@ import (
 
 func TestTraceEvidenceConfigurationHandlerReturnsDefaultDisabledAndQueuesAuthorizedChange(t *testing.T) {
 	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
-		TenantID: "tenant-a", ActorID: "admin-a", EffectiveSubjectID: "admin-a", Roles: []string{"super_admin"}, AccountActive: true, TenantActive: true,
+		ActorID: "admin-a", EffectiveSubjectID: "admin-a", Roles: []string{"super_admin"}, AccountActive: true,
 	}}
 	authorizer := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
 		AllowUnauthenticatedQuery: true, AuthorizationScopeResolver: resolver,
@@ -38,7 +38,7 @@ func TestTraceEvidenceConfigurationHandlerReturnsDefaultDisabledAndQueuesAuthori
 
 func TestTraceEvidenceConfigurationHandlerFailsClosedWithoutWriteCapability(t *testing.T) {
 	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
-		TenantID: "tenant-a", ActorID: "user-a", EffectiveSubjectID: "user-a", AccountActive: true, TenantActive: true,
+		ActorID: "user-a", EffectiveSubjectID: "user-a", AccountActive: true,
 	}}
 	authorizer := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
 		AllowUnauthenticatedQuery: true, AuthorizationScopeResolver: resolver,
