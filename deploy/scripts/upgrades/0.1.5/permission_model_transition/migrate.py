@@ -125,7 +125,8 @@ def build_steps(args: argparse.Namespace, report_dir: Path) -> list[Step]:
         )
 
     bkn_report = report_dir / "01-bkn-data.json"
-    authz_report = report_dir / "02-authorization.json"
+    vega_report = report_dir / "02-vega-data.json"
+    authz_report = report_dir / "03-authorization.json"
     authz_command = [
         str(authz_migrator),
         "--mode",
@@ -145,6 +146,16 @@ def build_steps(args: argparse.Namespace, report_dir: Path) -> list[Step]:
                 args.command,
             ),
             bkn_report,
+        ),
+        Step(
+            "vega-data",
+            (
+                sys.executable,
+                str(SCRIPT_DIRECTORY / "vega" / "vega_data.py"),
+                "--mode",
+                args.command,
+            ),
+            vega_report,
         ),
         Step("authorization", tuple(authz_command), authz_report),
     ]

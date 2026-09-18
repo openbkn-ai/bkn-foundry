@@ -22,7 +22,10 @@ The entry runs a fixed, fail-fast sequence:
    grants are best effort: a mounted Skill the grantor cannot execute is listed
    under `skipped_skill_grants` in the report instead of failing the network,
    and Skill mounts never change a network's model version.
-2. `authorization` invokes this directory's `authz_migrate` executable to
+2. `vega-data` reads authoritative Catalog and Resource metadata, reconciles
+   every `resource -> catalog` parent row, and registers each non-built-in
+   Catalog's canonical creator bundle and authorization grant.
+3. `authorization` invokes this directory's `authz_migrate` executable to
    classify Core provenance and stable grants, reconcile Enterprise rules,
    apply explicitly confirmed activation, and persist the checksummed marker.
 
@@ -30,8 +33,8 @@ The BKN step never deletes or rebuilds caller authorization policies. In
 particular, it never writes `task_manage`. Historical Core allow/deny rows are
 classified by the authorization step instead of being replaced.
 
-A future Vega migration for this same target release must be added as another
-explicit step in `migrate.py`; it must not create a second operator command.
+The Vega step writes only bkn-safe. Its changes are covered by the Safe backup
+created by the preceding BKN step; the Vega database is read-only.
 
 ## Requirements
 
@@ -41,13 +44,14 @@ explicit step in `migrate.py`; it must not create a second operator command.
 - `kubectl` access to the target cluster;
 - the checked-in `authz_migrate/authz-migrate` executable for the Linux
   deployment environment;
-- MariaDB/MySQL access to the BKN and Safe databases.
+- MariaDB/MySQL access to the BKN, Vega, and Safe databases.
 
-The BKN step resolves `BKN_DB_*` and `SAFE_DB_*` variables first, then standard
-`MARIADB_*` variables, and finally local defaults. Password files are supported
-through `BKN_DB_PASSWORD_FILE`, `SAFE_DB_PASSWORD_FILE`, and the corresponding
-MariaDB password-file variables. Set `OPENBKN_MIGRATION_BACKUP_DIR` when the
-directory beside this script is not an appropriate backup volume.
+The data steps resolve `BKN_DB_*`, `VEGA_DB_*`, and `SAFE_DB_*` variables first,
+then standard `MARIADB_*` variables, and finally local defaults. Password files
+are supported through each database prefix's `*_PASSWORD_FILE` variable and the
+corresponding MariaDB password-file variables. Set
+`OPENBKN_MIGRATION_BACKUP_DIR` when the directory beside this script is not an
+appropriate backup volume.
 
 ## Workflow
 
@@ -71,10 +75,13 @@ Run both read-only plans and preserve their reports:
   --report-dir /work/reports/dry-run
 ```
 
-Review `01-bkn-data.json`, `02-authorization.json`, and `summary.json`. Add the
+Review `01-bkn-data.json`, `02-vega-data.json`, `03-authorization.json`, and
+`summary.json`. The Vega creator bundle is derived only from authoritative
+`t_catalog.f_creator` lifecycle metadata, never from historical access. Add the
 exact Enterprise inventory digest and activation confirmation to the manifest
-when historical EE rules are intentionally activated. No historical operation
-set may be inferred as `full_business_access`, and no operation may be added.
+when historical EE rules are intentionally activated. The authorization step
+must not infer `full_business_access` from a historical operation set or add an
+operation to one.
 
 Close external gateways and disable relevant CronJobs/workers, then stop the
 registered application Deployments:
@@ -123,7 +130,7 @@ manually or continue on a partially migrated database.
 ## Focused tests
 
 ```bash
-python3 -m unittest -v test_bkn_data.py test_migrate.py
+python3 -m unittest -v test_bkn_data.py vega/test_vega_data.py test_migrate.py
 ./test_service_control.sh
 (cd authz_migrate && go test -p=1 ./...)
 ```

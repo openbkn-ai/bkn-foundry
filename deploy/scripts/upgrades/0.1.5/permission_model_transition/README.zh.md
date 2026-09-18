@@ -11,11 +11,12 @@
 统一入口按顺序执行并在首个失败处停止：
 
 1. `bkn-data`：校验或迁移空分支、权威资源父级关系、托管代理账号、Resource/Tool Box/MCP/Skill 授权来源、物化代理策略、BKN 代理映射与同步版本。Skill 授权按尽力而为处理：授权人无权执行的已挂载 Skill 列入报告的 `skipped_skill_grants`，不会导致该网络迁移失败；Skill 挂载也不改变网络的模型版本。
-2. `authorization`：调用本目录下的 `authz_migrate`，完成 Core 来源与稳定 grant 分类、Enterprise 规则对账和显式激活，并在全部成功后写入带校验和的迁移标记。
+2. `vega-data`：读取权威的 Catalog 与 Resource 元数据，对账全部 `resource → catalog` 父子关系，并为每个非内置 Catalog 登记规范的创建者业务权限包与授权权限。
+3. `authorization`：调用本目录下的 `authz_migrate`，完成 Core 来源与稳定 grant 分类、Enterprise 规则对账和显式激活，并在全部成功后写入带校验和的迁移标记。
 
 BKN 步骤不再删除或重建 caller 权限，也不会写入 `task_manage`。历史 Core allow/deny 全部交给授权步骤分类和保留。
 
-如果 Vega 在同一个目标版本需要一次性迁移，必须作为 `migrate.py` 中新的显式步骤加入，不得再提供第二套用户命令。
+Vega 步骤只写 bkn-safe，其改动由前置 BKN 步骤生成的 Safe 备份覆盖；Vega 数据库只读。
 
 ## 环境要求
 
@@ -23,9 +24,9 @@ BKN 步骤不再删除或重建 caller 权限，也不会写入 `task_manage`。
 - `mariadb-dump` 或 `mysqldump`，以及足够保存 BKN、Safe 完整逻辑备份的空间；
 - 目标集群的 `kubectl` 权限；
 - 仓库内置的、适用于 Linux 部署环境的 `authz_migrate/authz-migrate` 可执行程序；
-- BKN 和 Safe 数据库访问权限。
+- BKN、Vega 和 Safe 数据库访问权限。
 
-BKN 步骤优先读取 `BKN_DB_*`、`SAFE_DB_*`，其次读取标准 `MARIADB_*`，最后使用本地默认值。密码文件可通过 `BKN_DB_PASSWORD_FILE`、`SAFE_DB_PASSWORD_FILE` 及对应 MariaDB 环境变量提供。如脚本旁目录不适合保存备份，设置 `OPENBKN_MIGRATION_BACKUP_DIR`。
+数据步骤优先读取 `BKN_DB_*`、`VEGA_DB_*`、`SAFE_DB_*`，其次读取标准 `MARIADB_*`，最后使用本地默认值。密码文件可通过各数据库前缀的 `*_PASSWORD_FILE` 及对应 MariaDB 环境变量提供。如脚本旁目录不适合保存备份，设置 `OPENBKN_MIGRATION_BACKUP_DIR`。
 
 ## 执行流程
 
@@ -47,7 +48,7 @@ BKN 步骤优先读取 `BKN_DB_*`、`SAFE_DB_*`，其次读取标准 `MARIADB_*`
   --report-dir /work/reports/dry-run
 ```
 
-审核 `01-bkn-data.json`、`02-authorization.json` 和 `summary.json`。需要激活 EE 历史规则时，把精确的 inventory digest 和管理员确认写入 manifest。不得根据历史 operation 集合推断 `full_business_access`，也不得自动增加 operation。
+审核 `01-bkn-data.json`、`02-vega-data.json`、`03-authorization.json` 和 `summary.json`。Vega 创建者权限包只能依据权威的 `t_catalog.f_creator` 生命周期元数据生成，不能从历史访问权限推断。需要激活 EE 历史规则时，把精确的 inventory digest 和管理员确认写入 manifest。authorization 步骤不得根据历史 operation 集合推断 `full_business_access`，也不得自动增加 operation。
 
 关闭外部网关并停用相关 CronJob/Worker，然后停止已登记的业务 Deployment：
 
@@ -86,7 +87,7 @@ BKN 步骤优先读取 `BKN_DB_*`、`SAFE_DB_*`，其次读取标准 `MARIADB_*`
 ## 聚焦测试
 
 ```bash
-python3 -m unittest -v test_bkn_data.py test_migrate.py
+python3 -m unittest -v test_bkn_data.py vega/test_vega_data.py test_migrate.py
 ./test_service_control.sh
 (cd authz_migrate && go test -p=1 ./...)
 ```

@@ -20,7 +20,7 @@ class StepRegistryTest(unittest.TestCase):
         self.assertTrue(executable.is_file())
         self.assertTrue(os.access(executable, os.X_OK))
 
-    def test_registers_bkn_before_authorization(self):
+    def test_registers_data_steps_before_authorization(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = root / "manifest.json"
@@ -37,9 +37,13 @@ class StepRegistryTest(unittest.TestCase):
 
             steps = migrate.build_steps(args, root / "reports")
 
-        self.assertEqual(["bkn-data", "authorization"], [step.name for step in steps])
+        self.assertEqual(
+            ["bkn-data", "vega-data", "authorization"],
+            [step.name for step in steps],
+        )
         self.assertIn("bkn_data.py", steps[0].command[1])
-        self.assertEqual("dry-run", steps[1].command[2])
+        self.assertTrue(steps[1].command[1].endswith("vega/vega_data.py"))
+        self.assertEqual("dry-run", steps[2].command[2])
 
 
 class OrchestrationTest(unittest.TestCase):
@@ -66,7 +70,8 @@ class OrchestrationTest(unittest.TestCase):
             report_dir = root / "reports"
             steps = [
                 migrate.Step("bkn-data", ("bkn",), report_dir / "01.json"),
-                migrate.Step("authorization", ("safe",), report_dir / "02.json"),
+                migrate.Step("vega-data", ("vega",), report_dir / "02.json"),
+                migrate.Step("authorization", ("safe",), report_dir / "03.json"),
             ]
             args = argparse.Namespace(
                 command="apply",
@@ -86,7 +91,7 @@ class OrchestrationTest(unittest.TestCase):
                 self.assertEqual(0, migrate.run_migration(args))
 
             stopped.assert_called_once_with(args)
-            self.assertEqual(["bkn-data", "authorization"], calls)
+            self.assertEqual(["bkn-data", "vega-data", "authorization"], calls)
             summary = json.loads((report_dir / "summary.json").read_text())
             self.assertTrue(all(step["completed"] for step in summary["steps"]))
 
@@ -96,7 +101,8 @@ class OrchestrationTest(unittest.TestCase):
             report_dir = root / "reports"
             steps = [
                 migrate.Step("bkn-data", ("bkn",), report_dir / "01.json"),
-                migrate.Step("authorization", ("safe",), report_dir / "02.json"),
+                migrate.Step("vega-data", ("vega",), report_dir / "02.json"),
+                migrate.Step("authorization", ("safe",), report_dir / "03.json"),
             ]
             args = argparse.Namespace(
                 command="dry-run",
