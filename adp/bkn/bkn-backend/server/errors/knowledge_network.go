@@ -16,6 +16,7 @@ const (
 	BknBackend_KnowledgeNetwork_InvalidParameter_IncludeStatistics = "BknBackend.KnowledgeNetwork.InvalidParameter.IncludeStatistics"
 	BknBackend_KnowledgeNetwork_InvalidParameter_IncludeTypeInfo   = "BknBackend.KnowledgeNetwork.InvalidParameter.IncludeTypeInfo"
 	BknBackend_KnowledgeNetwork_InvalidParameter_PathLength        = "BknBackend.KnowledgeNetwork.InvalidParameter.PathLength"
+	BknBackend_KnowledgeNetwork_ProxyTargetInvalid                 = "BknBackend.KnowledgeNetwork.Proxy.TargetInvalid"
 	BknBackend_KnowledgeNetwork_KNIDExisted                        = "BknBackend.KnowledgeNetwork.KNIDExisted"
 	BknBackend_KnowledgeNetwork_KNNameExisted                      = "BknBackend.KnowledgeNetwork.KNNameExisted"
 	BknBackend_KnowledgeNetwork_LengthExceeded_Name                = "BknBackend.KnowledgeNetwork.LengthExceeded.Name"
@@ -69,6 +70,7 @@ var (
 		BknBackend_KnowledgeNetwork_InvalidParameter_IncludeStatistics,
 		BknBackend_KnowledgeNetwork_InvalidParameter_IncludeTypeInfo,
 		BknBackend_KnowledgeNetwork_InvalidParameter_PathLength,
+		BknBackend_KnowledgeNetwork_ProxyTargetInvalid,
 		BknBackend_KnowledgeNetwork_KNIDExisted,
 		BknBackend_KnowledgeNetwork_KNNameExisted,
 		BknBackend_KnowledgeNetwork_LengthExceeded_Name,

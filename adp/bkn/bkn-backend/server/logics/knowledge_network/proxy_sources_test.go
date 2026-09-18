@@ -66,6 +66,47 @@ func TestBuildTypedProxyGrantSourcesSeparatesFunctionAndAPI(t *testing.T) {
 	}
 }
 
+func TestBuildTypedProxyGrantSourcesReportsMissingToolIDs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "box-1").Return([]*interfaces.ToolBrief{{
+		ToolID: "present-tool", BoxMetadataType: interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI,
+	}}, nil)
+	kn := &interfaces.KN{KNID: "kn-1", ActionTypes: []*interfaces.ActionType{
+		{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "action-1", ActionSource: interfaces.ActionSource{
+			Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-1", ToolID: "missing-b",
+		}}},
+		{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "action-2", ActionSource: interfaces.ActionSource{
+			Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-1", ToolID: "missing-a",
+		}}},
+	}}
+
+	_, _, err := (&knowledgeNetworkService{aoa: aoa}).buildTypedProxyGrantSources(t.Context(), kn)
+	if err == nil || err.Error() != "missing bound tools in toolbox box-1: missing-a, missing-b" {
+		t.Fatalf("missing tool error = %v", err)
+	}
+}
+
+func TestBuildTypedProxyGrantSourcesReportsMissingToolsFromEveryToolbox(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	aoa := bmock.NewMockAgentOperatorAccess(ctrl)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "box-a").Return(nil, nil)
+	aoa.EXPECT().ListBoxTools(gomock.Any(), "box-b").Return(nil, nil)
+	kn := &interfaces.KN{KNID: "kn-1", ActionTypes: []*interfaces.ActionType{
+		{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "action-a", ActionSource: interfaces.ActionSource{
+			Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-a", ToolID: "tool-a",
+		}}},
+		{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "action-b", ActionSource: interfaces.ActionSource{
+			Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-b", ToolID: "tool-b",
+		}}},
+	}}
+
+	_, _, err := (&knowledgeNetworkService{aoa: aoa}).buildTypedProxyGrantSources(t.Context(), kn)
+	if err == nil || err.Error() != "missing bound tools in toolbox box-a: tool-a; toolbox box-b: tool-b" {
+		t.Fatalf("missing tool error = %v", err)
+	}
+}
+
 func TestBuildProxyGrantSourcesDerivesCompletePublishedSet(t *testing.T) {
 	kn := &interfaces.KN{
 		KNID: "kn-1",

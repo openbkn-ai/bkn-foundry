@@ -24,6 +24,24 @@ type proxyModelBinding struct {
 	Detail     string `json:"detail,omitempty"`
 }
 
+type missingBoundToolsError struct {
+	toolIDsByBox map[string][]string
+}
+
+func (e *missingBoundToolsError) Error() string {
+	boxIDs := make([]string, 0, len(e.toolIDsByBox))
+	for boxID := range e.toolIDsByBox {
+		boxIDs = append(boxIDs, boxID)
+	}
+	sort.Strings(boxIDs)
+
+	missing := make([]string, 0, len(boxIDs))
+	for _, boxID := range boxIDs {
+		missing = append(missing, fmt.Sprintf("toolbox %s: %s", boxID, strings.Join(e.toolIDsByBox[boxID], ", ")))
+	}
+	return "missing bound tools in " + strings.Join(missing, "; ")
+}
+
 // buildProxyGrantSources derives the complete least-privilege source set from
 // one candidate or freshly reloaded main model. It does not accept targets from
 // request-specific proxy fields; every target comes from persisted BKN bindings.
@@ -368,7 +386,14 @@ func (kns *knowledgeNetworkService) buildTypedProxyGrantSourcesWithCapabilities(
 		return nil, "", fmt.Errorf("execution factory access is unavailable")
 	}
 	boxTypes := map[string]string{}
-	for boxID, expectedTools := range boxTools {
+	boxIDs := make([]string, 0, len(boxTools))
+	for boxID := range boxTools {
+		boxIDs = append(boxIDs, boxID)
+	}
+	sort.Strings(boxIDs)
+	missingToolIDsByBox := map[string][]string{}
+	for _, boxID := range boxIDs {
+		expectedTools := boxTools[boxID]
 		tools, err := kns.aoa.ListBoxTools(ctx, boxID)
 		if err != nil {
 			return nil, "", err
@@ -388,8 +413,16 @@ func (kns *knowledgeNetworkService) buildTypedProxyGrantSourcesWithCapabilities(
 			delete(expectedTools, tool.ToolID)
 		}
 		if len(expectedTools) > 0 {
-			return nil, "", fmt.Errorf("box %s has missing bound tools", boxID)
+			missingToolIDs := make([]string, 0, len(expectedTools))
+			for toolID := range expectedTools {
+				missingToolIDs = append(missingToolIDs, toolID)
+			}
+			sort.Strings(missingToolIDs)
+			missingToolIDsByBox[boxID] = missingToolIDs
 		}
+	}
+	if len(missingToolIDsByBox) > 0 {
+		return nil, "", &missingBoundToolsError{toolIDsByBox: missingToolIDsByBox}
 	}
 	return buildProxyGrantSourcesWithCapabilities(kn, capabilities, boxTypes)
 }

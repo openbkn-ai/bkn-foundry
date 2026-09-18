@@ -44,6 +44,11 @@ Description = "路径长度不合法"
 Solution = "请检查参数是否正确。"
 ErrorLink = ""
 
+[BknBackend.KnowledgeNetwork.Proxy.TargetInvalid]
+Description = "知识网络引用的工具绑定不完整"
+Solution = "请补齐错误详情中列出的工具，或在导入时选择“脱离绑定”并在目标环境重新配置。"
+ErrorLink = ""
+
 [BknBackend.KnowledgeNetwork.KNIDExisted]
 Description = "业务知识网络ID已经存在"
 Solution = "请检查参数是否正确。"
