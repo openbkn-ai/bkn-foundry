@@ -108,6 +108,13 @@ jobs:
 
   chart-vega-backend:
     needs: [test, build-vega-backend]
+    # build-python-base is deliberately skipped when its context is unchanged.
+    # Do not let that normal skipped ancestor suppress chart packaging after the
+    # main image build has succeeded.
+    if: >-
+      always() &&
+      needs.test.result == 'success' &&
+      needs.build-vega-backend.result == 'success'
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: adp/vega/vega-backend
