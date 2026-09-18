@@ -1303,5 +1303,5 @@ func invalidProxyTargetError(ctx context.Context, cause error) *rest.HTTPError {
 	if errors.As(cause, &upstream) {
 		return upstream
 	}
-	return proxyHTTPError(ctx, http.StatusInternalServerError, detail)
+	return proxyHTTPError(ctx, http.StatusBadRequest, detail)
 }

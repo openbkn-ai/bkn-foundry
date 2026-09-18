@@ -56,10 +56,10 @@ func TestInvalidProxyTargetErrorUsesValidationCode(t *testing.T) {
 	}
 }
 
-func TestInvalidProxyTargetErrorKeepsUnexpectedFailuresInternal(t *testing.T) {
-	err := invalidProxyTargetError(t.Context(), errors.New("execution factory is unavailable"))
-	if err.HTTPCode != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", err.HTTPCode, http.StatusInternalServerError)
+func TestInvalidProxyTargetErrorKeepsModelValidationFailuresAsBadRequests(t *testing.T) {
+	err := invalidProxyTargetError(t.Context(), errors.New("action source type is invalid"))
+	if err.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", err.HTTPCode, http.StatusBadRequest)
 	}
 	if err.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_InternalError {
 		t.Fatalf("error code = %s", err.BaseError.ErrorCode)
