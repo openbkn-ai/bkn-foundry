@@ -95,6 +95,8 @@ class MigrationPlan:
     parents: list[ResourceParent] = field(default_factory=list)
     grants: list[Grant] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
+    skipped_creator_accounts: list[Catalog] = field(default_factory=list)
+    hidden_resources: int = 0
     existing_parents: int = 0
     existing_grants: int = 0
 
@@ -248,19 +250,21 @@ def build_plan(
             )
             continue
         if catalog.creator_id not in users:
-            plan.failures.append(
-                Failure(
-                    "missing_creator_account",
-                    CATALOG_TYPE,
-                    catalog.catalog_id,
-                    f"creator {catalog.creator_id!r} is absent from bkn-safe users",
-                )
-            )
+            # A deleted account has no Safe subject to receive a grant. It must
+            # not prevent the release upgrade from reconciling other catalogs
+            # and all resource-parent rows.
+            plan.skipped_creator_accounts.append(catalog)
             continue
         plan.grants.extend(creator_grants(catalog))
 
     seen_resources: dict[str, str] = {}
-    for parent in plan.parents:
+    plan.parents = []
+    for parent in sorted(set(parents)):
+        # Resource rows without a Catalog are hidden data, not standalone
+        # Resources. They are intentionally outside the authorization model.
+        if not parent.catalog_id:
+            plan.hidden_resources += 1
+            continue
         if not is_valid_resource_id(RESOURCE_TYPE, parent.resource_id):
             plan.failures.append(
                 Failure(
@@ -280,9 +284,9 @@ def build_plan(
                     parent.resource_id,
                     f"catalogs {previous!r} and {parent.catalog_id!r}",
                 )
-            )
+        )
         seen_resources[parent.resource_id] = parent.catalog_id
-        if not parent.catalog_id or parent.catalog_id not in catalog_ids:
+        if parent.catalog_id not in catalog_ids:
             plan.failures.append(
                 Failure(
                     "missing_parent",
@@ -291,6 +295,8 @@ def build_plan(
                     f"catalog {parent.catalog_id!r} does not exist",
                 )
             )
+            continue
+        plan.parents.append(parent)
 
     existing = existing_grant_ids or set()
     plan.existing_grants = sum(grant.grant_id in existing for grant in plan.grants)
@@ -411,10 +417,18 @@ def migration_report(mode: str, plan: MigrationPlan) -> dict[str, Any]:
             "builtin_skipped": sum(catalog.builtin for catalog in plan.catalogs),
             "creator_grants": len(plan.grants),
             "existing_creator_grants": plan.existing_grants,
+            "creator_accounts_skipped": [
+                {
+                    "catalog_id": catalog.catalog_id,
+                    "creator_id": catalog.creator_id,
+                }
+                for catalog in plan.skipped_creator_accounts
+            ],
         },
         "resource_parents": {
             "existing": plan.existing_parents,
             "planned": len(plan.parents),
+            "hidden_resources_skipped": plan.hidden_resources,
         },
         "failures": [asdict(failure) for failure in plan.failures],
         "failure_summary": dict(sorted(Counter(item.code for item in plan.failures).items())),

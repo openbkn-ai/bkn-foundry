@@ -36,14 +36,32 @@ class BuildPlanTest(unittest.TestCase):
         self.assertEqual([], plan.failures)
         self.assertEqual(2, len(plan.grants))
 
+    def test_skips_deleted_creator_account_and_hidden_resource(self):
+        catalogs = [migration.Catalog("catalog-1", "deleted-user", "user", False)]
+        parents = [migration.ResourceParent("hidden/resource-1", "")]
+
+        plan = migration.build_plan(catalogs, parents, set())
+
+        self.assertEqual([], plan.failures)
+        self.assertEqual([], plan.grants)
+        self.assertEqual([], plan.parents)
+        self.assertEqual([catalogs[0]], plan.skipped_creator_accounts)
+        self.assertEqual(1, plan.hidden_resources)
+        report = migration.migration_report("dry-run", plan)
+        self.assertEqual(
+            [{"catalog_id": "catalog-1", "creator_id": "deleted-user"}],
+            report["catalogs"]["creator_accounts_skipped"],
+        )
+        self.assertEqual(1, report["resource_parents"]["hidden_resources_skipped"])
+
     def test_rejects_missing_creator_and_orphan_resource(self):
-        catalogs = [migration.Catalog("catalog-1", "missing-user", "user", False)]
+        catalogs = [migration.Catalog("catalog-1", "", "user", False)]
         parents = [migration.ResourceParent("resource-1", "missing-catalog")]
 
         plan = migration.build_plan(catalogs, parents, set())
 
         self.assertEqual(
-            ["missing_creator_account", "missing_parent"],
+            ["missing_creator", "missing_parent"],
             [failure.code for failure in plan.failures],
         )
 

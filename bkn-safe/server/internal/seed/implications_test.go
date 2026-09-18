@@ -236,6 +236,16 @@ func TestCatalogManagementRequirementsDoNotChangeReadDecisions(t *testing.T) {
 			if decision.Decision != authz.DecisionAllow || decision.Basis != authz.BasisDirect {
 				t.Fatalf("catalog/%s decision = %+v, want direct allow", operation, decision)
 			}
+			ids, err := e.AccessibleResources(user, "catalog", operation)
+			if err != nil || !reflect.DeepEqual(ids, []string{resource}) {
+				t.Fatalf("AccessibleResources(catalog/%s) = %v, %v; want [%s]", operation, ids, err, resource)
+			}
+			filtered, err := e.FilterResourceOps(user,
+				[]authz.ResourceRef{{Type: "catalog", ID: resource}}, nil, []string{operation})
+			if err != nil || len(filtered) != 1 || !reflect.DeepEqual(filtered[0].Operations, []string{operation}) ||
+				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisDirect {
+				t.Fatalf("FilterResourceOps(catalog/%s) = %+v, %v; want direct allow", operation, filtered, err)
+			}
 		})
 	}
 
@@ -245,7 +255,15 @@ func TestCatalogManagementRequirementsDoNotChangeReadDecisions(t *testing.T) {
 	if allowed, err := e.Check(queryUser, "catalog", resource, "query_data"); err != nil || !allowed {
 		t.Fatalf("catalog/query_data = %v, %v; want independent allow", allowed, err)
 	}
-
+	ids, err := e.AccessibleResources(queryUser, "catalog", "query_data")
+	if err != nil || !reflect.DeepEqual(ids, []string{resource}) {
+		t.Fatalf("AccessibleResources(catalog/query_data) = %v, %v; want [%s]", ids, err, resource)
+	}
+	filtered, err := e.FilterResourceOps(queryUser,
+		[]authz.ResourceRef{{Type: "catalog", ID: resource}}, nil, []string{"query_data"})
+	if err != nil || len(filtered) != 1 || len(filtered[0].Operations) != 1 || filtered[0].Operations[0] != "query_data" {
+		t.Fatalf("FilterResourceOps(catalog/query_data) = %+v, %v; want independent allow", filtered, err)
+	}
 }
 
 func TestConnectorTypeRequirementsDoNotChangeChecksAndLists(t *testing.T) {
@@ -283,6 +301,16 @@ func TestConnectorTypeRequirementsDoNotChangeChecksAndLists(t *testing.T) {
 	if decision.Decision != authz.DecisionAllow || decision.Basis != authz.BasisDirect {
 		t.Fatalf("modify decision = %+v; want direct allow", decision)
 	}
+	ids, err := e.AccessibleResources(user, "connector_type", "modify")
+	if err != nil || !reflect.DeepEqual(ids, []string{"remote-api"}) {
+		t.Fatalf("AccessibleResources(modify) = %v, %v; want [remote-api]", ids, err)
+	}
+	filtered, err := e.FilterResourceOps(user,
+		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}}, nil, []string{"modify"})
+	if err != nil || len(filtered) != 1 || !reflect.DeepEqual(filtered[0].Operations, []string{"modify"}) ||
+		len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisDirect {
+		t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
+	}
 
 	// Legacy grants are immutable snapshots, so startup deliberately does not
 	// add view_detail beside a type-wide modify grant. Effective evaluation must
@@ -297,7 +325,7 @@ func TestConnectorTypeRequirementsDoNotChangeChecksAndLists(t *testing.T) {
 	if allowed, err := e.Check(legacyUser, "connector_type", "remote-api", "modify"); err != nil || !allowed {
 		t.Fatalf("legacy Check(remote-api, modify) = %v, %v; want true", allowed, err)
 	}
-	filtered, err := e.FilterResourceOps(legacyUser,
+	filtered, err = e.FilterResourceOps(legacyUser,
 		[]authz.ResourceRef{{Type: "connector_type", ID: "remote-api"}},
 		[]string{"view_detail"}, []string{"view_detail", "modify"})
 	if err != nil || len(filtered) != 1 ||
@@ -403,6 +431,16 @@ func TestIndependentResourceRequirementsDoNotChangeChecksAndLists(t *testing.T) 
 			}
 			if decision.Decision != authz.DecisionAllow || decision.Basis != authz.BasisDirect {
 				t.Fatalf("modify decision = %+v; want direct allow", decision)
+			}
+			ids, err := e.AccessibleResources(user, resourceType, "modify")
+			if err != nil || !reflect.DeepEqual(ids, []string{resourceID}) {
+				t.Fatalf("AccessibleResources(modify) = %v, %v; want [%s]", ids, err, resourceID)
+			}
+			filtered, err := e.FilterResourceOps(user,
+				[]authz.ResourceRef{{Type: resourceType, ID: resourceID}}, nil, []string{"modify"})
+			if err != nil || len(filtered) != 1 || !reflect.DeepEqual(filtered[0].Operations, []string{"modify"}) ||
+				len(filtered[0].Decisions) != 1 || filtered[0].Decisions[0].Basis != authz.BasisDirect {
+				t.Fatalf("FilterResourceOps(modify) = %+v, %v", filtered, err)
 			}
 		})
 	}
