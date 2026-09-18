@@ -686,7 +686,7 @@ func TestManagedFunctionTraceFailurePreventsUntracedExecution(t *testing.T) {
 	svc := NewKnToolsServiceWithManagedTrace(op, bkn, &fakeKnAuthz{}, tracer)
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		ConversationID: "conv-1", InteractionID: "int-1",
+		ConversationID: "conv-1", InteractionID: "int-1", OperationID: "op-execute-tool",
 	})
 	if _, err := svc.ExecuteTool(ctx, &ExecuteToolReq{
 		KnID: "kn1", ToolboxID: "box-1", ToolID: "t1",
@@ -706,7 +706,9 @@ func TestAdHocRESTFunctionExecutionKeepsExistingUntracedContract(t *testing.T) {
 	}
 	tracer := &fakeManagedFunctionTrace{err: errors.New("trace must not be called")}
 	svc := NewKnToolsServiceWithManagedTrace(op, bkn, &fakeKnAuthz{}, tracer)
-	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "req-rest-only"})
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		RequestID: "req-rest-only", ConversationID: "conv-header", InteractionID: "int-header",
+	})
 
 	result, err := svc.ExecuteTool(ctx, &ExecuteToolReq{
 		KnID: "kn1", ToolboxID: "box-1", ToolID: "t1",

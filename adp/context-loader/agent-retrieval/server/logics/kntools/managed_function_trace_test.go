@@ -142,6 +142,62 @@ func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 	}
 }
 
+func TestManagedFunctionGuardPreservesBusinessResultWhenFinalizationFails(t *testing.T) {
+	client := bkntrace.NewLifecycleClient("http://trace.test", &http.Client{
+		Transport: managedFunctionRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			switch {
+			case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/interactions/int-1"):
+				return managedFunctionJSONResponse(http.StatusOK, bkntrace.Interaction{
+					InteractionID: "int-1", ConversationID: "conv-1", ExecutionStatus: "active",
+					LeaseToken: "lease-1", LeaseEpoch: 1,
+				}), nil
+			case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/operations:ensure"):
+				return managedFunctionJSONResponse(http.StatusCreated, bkntrace.OperationResult{
+					Created: true, Execute: true,
+					Operation: bkntrace.Operation{
+						OperationID: "op-function-1", ConversationID: "conv-1", InteractionID: "int-1",
+						Attempt: 1, AttemptStatus: "pending", CreatedAt: time.Now().UTC(),
+					},
+					Receipt: bkntrace.Receipt{ReceiptID: "receipt-function-1", ReceiptStatus: "pending"},
+				}), nil
+			case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/attempts/1:complete"):
+				return managedFunctionJSONResponse(http.StatusBadRequest, map[string]any{
+					"error": map[string]any{
+						"code": "trace_finalization_failed", "message": "trace core unavailable",
+						"retryable": false,
+					},
+				}), nil
+			default:
+				return managedFunctionJSONResponse(http.StatusNotFound, map[string]any{}), nil
+			}
+		}),
+	})
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		RequestID: "req_12345678", ConversationID: "conv-1", InteractionID: "int-1",
+		OperationID: "op-execute-tool", Attempt: 1,
+	})
+	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+		TokenInfo: &interfaces.TokenInfo{ClientID: "app-1"},
+	})
+	guard := &managedFunctionGuard{guard: bkntrace.NewGuard(client), enabled: true}
+
+	result, err := guard.Execute(ctx, ManagedFunctionTraceInput{
+		KnowledgeNetworkID: "supply", ToolboxID: "box-1", ToolID: "material_where_used",
+		Descriptor: interfaces.ManagedFunctionDescriptor{ToolID: "material_where_used", Name: "物料反查产品"},
+		Arguments:  map[string]any{"material_code": "606-000989"},
+	}, func(context.Context) (map[string]any, error) {
+		return map[string]any{"products": []any{"P-1", "P-2"}}, nil
+	})
+
+	if err != nil {
+		t.Fatalf("successful function was changed into an error: %v", err)
+	}
+	if !reflect.DeepEqual(result["products"], []any{"P-1", "P-2"}) {
+		t.Fatalf("business result was lost after trace finalization failure: %#v", result)
+	}
+}
+
 func TestManagedFunctionIdentityIncludesToolboxScope(t *testing.T) {
 	trace := common.TraceContext{OperationID: "op-execute", Attempt: 1}
 	left := managedFunctionOperationKey(trace, ManagedFunctionTraceInput{

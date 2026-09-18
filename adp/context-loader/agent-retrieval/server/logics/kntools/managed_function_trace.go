@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
@@ -130,10 +131,16 @@ func (m *managedFunctionGuard) Execute(
 		return nil, runErr
 	}
 	if finishErr != nil {
-		return nil, fmt.Errorf("finalize managed function trace: %w", finishErr)
+		logger.DefaultLogger().WithContext(ctx).Errorf(
+			"[BKN Trace] failed to finalize managed function %q: %v", input.ToolID, finishErr,
+		)
+		return result, nil
 	}
 	if finishAPIErr != nil {
-		return nil, fmt.Errorf("finalize managed function trace: %s: %s", finishAPIErr.Code, finishAPIErr.Message)
+		logger.DefaultLogger().WithContext(ctx).Errorf(
+			"[BKN Trace] failed to finalize managed function %q: %s", input.ToolID, finishAPIErr.Code,
+		)
+		return result, nil
 	}
 	return result, nil
 }
