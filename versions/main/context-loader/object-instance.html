@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf8" />
+  <title>对象实例查询</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.5.0/bundles/redoc.standalone.js"></script><style data-styled="true" data-styled-version="6.4.1">.eQypqI{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.eQypqI{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hKgHXU"]{content:"eQypqI,"}/*!sc*/
+.bKZuAK{padding:40px 0;}/*!sc*/
+.bKZuAK:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.bKZuAK>.bKZuAK:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.bKZuAK{padding:0;}}/*!sc*/
+.hxxgNd{padding:40px 0;position:relative;}/*!sc*/
+.hxxgNd:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.hxxgNd>.hxxgNd:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.hxxgNd{padding:0;}}/*!sc*/
+.hxxgNd:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eCsseJ"]{content:"bKZuAK,hxxgNd,"}/*!sc*/
+.kWQHAp{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.kWQHAp{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jSgsbC"]{content:"kWQHAp,"}/*!sc*/
+.jYdWFY{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gKscir"]{content:"jYdWFY,"}/*!sc*/
+.cOCikg{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cOCikg{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iBPUmU"]{content:"cOCikg,"}/*!sc*/
+.edtrWC{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-fubEtJ"]{content:"edtrWC,"}/*!sc*/
+.bwjsfx{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-pGbXd"]{content:"bwjsfx,"}/*!sc*/
+.hgYAAF{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kEjckD"]{content:"hgYAAF,"}/*!sc*/
+.iFTCOQ{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.5);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-iqHZue"]{content:"iFTCOQ,"}/*!sc*/
+.itgZBm{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.itgZBm:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.itgZBm::before,h2:hover>.itgZBm::before,.itgZBm:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-crrrsl"]{content:"itgZBm,"}/*!sc*/
+.cWjMmC{height:18px;width:18px;min-width:18px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.dHiXwH{height:1.3em;width:1.3em;min-width:1.3em;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.iTiSfO{height:18px;width:18px;min-width:18px;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs polygon{fill:#1d8127;}/*!sc*/
+.djPqdM{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.djPqdM polygon{fill:#d41f1c;}/*!sc*/
+.dvMtUQ{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.dvMtUQ polygon{fill:white;}/*!sc*/
+data-styled.g16[id="sc-dQoBM"]{content:"cWjMmC,dHiXwH,iTiSfO,idFXFs,djPqdM,dvMtUQ,"}/*!sc*/
+.DPwQp{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.DPwQp{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.DPwQp,tr.last>.DPwQp{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.DPwQp{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.DPwQp{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hBFaCF"]{content:"DPwQp,"}/*!sc*/
+.hUqyua{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.hUqyua.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFubTW"]{content:"hUqyua,"}/*!sc*/
+.gNQdZ{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .gNQdZ{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.gNQdZ{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.gNQdZ{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bkAakD"]{content:"gNQdZ,"}/*!sc*/
+.iNiPzl{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.iNiPzl::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.iNiPzl::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-idOkdQ"]{content:"iNiPzl,"}/*!sc*/
+.juzVUC{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.juzVUC >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.juzVUC{display:block;}.juzVUC >tr,.juzVUC >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.juzVUC td{float:left;width:100%;}}/*!sc*/
+.juzVUC .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.juzVUC .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hHfrpe"]{content:"juzVUC,"}/*!sc*/
+.hqsuVf >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.hqsuVf >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.hqsuVf >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.hqsuVf >ul >li.tab-success{color:#1d8127;}/*!sc*/
+.hqsuVf >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.hqsuVf >ul >li.tab-info{color:#87ceeb;}/*!sc*/
+.hqsuVf >ul >li.tab-error{color:#d41f1c;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div,.hqsuVf >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxFMaL"]{content:"hqsuVf,"}/*!sc*/
+.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.iNuSsz pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.iNuSsz .token.comment,.iNuSsz .token.prolog,.iNuSsz .token.doctype,.iNuSsz .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.iNuSsz .token.punctuation{opacity:0.7;}/*!sc*/
+.iNuSsz .namespace{opacity:0.7;}/*!sc*/
+.iNuSsz .token.property,.iNuSsz .token.tag,.iNuSsz .token.number,.iNuSsz .token.constant,.iNuSsz .token.symbol{color:#4a8bb3;}/*!sc*/
+.iNuSsz .token.boolean{color:#e64441;}/*!sc*/
+.iNuSsz .token.selector,.iNuSsz .token.attr-name,.iNuSsz .token.string,.iNuSsz .token.char,.iNuSsz .token.builtin,.iNuSsz .token.inserted{color:#a0fbaa;}/*!sc*/
+.iNuSsz .token.selector+a,.iNuSsz .token.attr-name+a,.iNuSsz .token.string+a,.iNuSsz .token.char+a,.iNuSsz .token.builtin+a,.iNuSsz .token.inserted+a,.iNuSsz .token.selector+a:visited,.iNuSsz .token.attr-name+a:visited,.iNuSsz .token.string+a:visited,.iNuSsz .token.char+a:visited,.iNuSsz .token.builtin+a:visited,.iNuSsz .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.iNuSsz .token.property.string{color:white;}/*!sc*/
+.iNuSsz .token.operator,.iNuSsz .token.entity,.iNuSsz .token.url,.iNuSsz .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.iNuSsz .token.atrule,.iNuSsz .token.attr-value,.iNuSsz .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.iNuSsz .token.regex,.iNuSsz .token.important{color:#e90;}/*!sc*/
+.iNuSsz .token.important,.iNuSsz .token.bold{font-weight:bold;}/*!sc*/
+.iNuSsz .token.italic{font-style:italic;}/*!sc*/
+.iNuSsz .token.entity{cursor:help;}/*!sc*/
+.iNuSsz .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iJuXkV"]{content:"iNuSsz,"}/*!sc*/
+.ldPDIU{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.ldPDIU:focus-within{opacity:1;}/*!sc*/
+.ldPDIU >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.ldPDIU >button :hover,.ldPDIU >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-giIpqw"]{content:"ldPDIU,"}/*!sc*/
+.bsUDpT{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLgmGd"]{content:"bsUDpT,"}/*!sc*/
+.lgCKWg{position:absolute;pointer-events:none;z-index:1;top:50%;-webkit-transform:translateY(-50%);-ms-transform:translateY(-50%);transform:translateY(-50%);right:8px;margin:auto;text-align:center;}/*!sc*/
+.lgCKWg polyline{color:white;}/*!sc*/
+data-styled.g39[id="sc-iktELE"]{content:"lgCKWg,"}/*!sc*/
+.ekMQOb{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.5);vertical-align:bottom;padding:2px 0px 2px 6px;position:relative;width:auto;background:white;color:#263238;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;cursor:pointer;transition:border 0.25s ease,color 0.25s ease,box-shadow 0.25s ease;}/*!sc*/
+.ekMQOb label{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;font-family:Montserrat,sans-serif;color:#333333;vertical-align:bottom;width:auto;text-transform:none;padding:0 22px 0 4px;font-size:0.929em;line-height:1.5em;font-family:inherit;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}/*!sc*/
+.ekMQOb .dropdown-select{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;border:none;appearance:none;cursor:pointer;color:#333333;line-height:inherit;font-family:inherit;}/*!sc*/
+.ekMQOb:hover,.ekMQOb:focus-within{border:1px solid #32329f;color:#32329f;box-shadow:0px 0px 0px 1px #32329f;}/*!sc*/
+data-styled.g40[id="sc-jJEKGn"]{content:"ekMQOb,"}/*!sc*/
+.eBDHRN{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gWHgjU"]{content:"eBDHRN,"}/*!sc*/
+.jtfGmi{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.jtfGmi p:last-child{margin-bottom:0;}/*!sc*/
+.jtfGmi h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.jtfGmi h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.jtfGmi code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.jtfGmi pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.jtfGmi pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.jtfGmi pre code:before,.jtfGmi pre code:after{content:none;}/*!sc*/
+.jtfGmi blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.jtfGmi img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.jtfGmi ul,.jtfGmi ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.jtfGmi ul ul,.jtfGmi ol ul,.jtfGmi ul ol,.jtfGmi ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.jtfGmi table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.jtfGmi table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.jtfGmi table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.jtfGmi table th,.jtfGmi table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.jtfGmi table th{text-align:left;font-weight:bold;}/*!sc*/
+.jtfGmi .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.jtfGmi .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.jtfGmi h1:hover>.share-link::before,.jtfGmi h2:hover>.share-link::before,.jtfGmi .share-link:hover::before{visibility:visible;}/*!sc*/
+.jtfGmi a{text-decoration:auto;color:#32329f;}/*!sc*/
+.jtfGmi a:visited{color:#32329f;}/*!sc*/
+.jtfGmi a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.dyntKg{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg p:first-child{margin-top:0;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.dyntKg h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.dyntKg code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.dyntKg pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.dyntKg pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.dyntKg pre code:before,.dyntKg pre code:after{content:none;}/*!sc*/
+.dyntKg blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.dyntKg img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.dyntKg ul,.dyntKg ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.dyntKg ul ul,.dyntKg ol ul,.dyntKg ul ol,.dyntKg ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.dyntKg table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.dyntKg table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.dyntKg table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.dyntKg table th,.dyntKg table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.dyntKg table th{text-align:left;font-weight:bold;}/*!sc*/
+.dyntKg .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.dyntKg .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.dyntKg h1:hover>.share-link::before,.dyntKg h2:hover>.share-link::before,.dyntKg .share-link:hover::before{visibility:visible;}/*!sc*/
+.dyntKg a{text-decoration:auto;color:#32329f;}/*!sc*/
+.dyntKg a:visited{color:#32329f;}/*!sc*/
+.dyntKg a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.eBjiEo{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p:first-child{margin-top:0;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p{display:inline-block;}/*!sc*/
+.eBjiEo h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.eBjiEo h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.eBjiEo code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.eBjiEo pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.eBjiEo pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.eBjiEo pre code:before,.eBjiEo pre code:after{content:none;}/*!sc*/
+.eBjiEo blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.eBjiEo img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.eBjiEo ul,.eBjiEo ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.eBjiEo ul ul,.eBjiEo ol ul,.eBjiEo ul ol,.eBjiEo ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.eBjiEo table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.eBjiEo table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.eBjiEo table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.eBjiEo table th,.eBjiEo table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.eBjiEo table th{text-align:left;font-weight:bold;}/*!sc*/
+.eBjiEo .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.eBjiEo .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.eBjiEo h1:hover>.share-link::before,.eBjiEo h2:hover>.share-link::before,.eBjiEo .share-link:hover::before{visibility:visible;}/*!sc*/
+.eBjiEo a{text-decoration:auto;color:#32329f;}/*!sc*/
+.eBjiEo a:visited{color:#32329f;}/*!sc*/
+.eBjiEo a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g43[id="sc-cBNeAB"]{content:"jtfGmi,dyntKg,eBjiEo,"}/*!sc*/
+.hynizp{display:inline;}/*!sc*/
+data-styled.g44[id="sc-cittYi"]{content:"hynizp,"}/*!sc*/
+.hiQxbu{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jcVbNL"]{content:"hiQxbu,"}/*!sc*/
+.fRRakq:hover>.sc-giIpqw{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cTkvqA"]{content:"fRRakq,"}/*!sc*/
+.cCicSb{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.cCicSb .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.cCicSb .callback-function{color:gray;}/*!sc*/
+.cCicSb .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.cCicSb .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.cCicSb .ellipsis:after{content:' … ';}/*!sc*/
+.cCicSb .collapsible{margin-left:2em;}/*!sc*/
+.cCicSb .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.cCicSb .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.cCicSb .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.cCicSb .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.cCicSb ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.cCicSb li{position:relative;display:block;}/*!sc*/
+.cCicSb .hoverable{display:inline-block;}/*!sc*/
+.cCicSb .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.cCicSb .collapsed>.collapsible{display:none;}/*!sc*/
+.cCicSb .ellipsis{display:none;}/*!sc*/
+.cCicSb .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNMdgd"]{content:"cCicSb,"}/*!sc*/
+.ilXydl{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dOSQqJ"]{content:"ilXydl,"}/*!sc*/
+.fLqWfi{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBrNAk"]{content:"fLqWfi,"}/*!sc*/
+.jyrVDw{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cOahfn"]{content:"jyrVDw,"}/*!sc*/
+.dMpNQv{margin:0 0 10px 0;display:block;background-color:rgba(38,50,56,0.4);border:none;padding:0.9em 1.6em 0.9em 0.9em;box-shadow:none;}/*!sc*/
+.dMpNQv label{color:#ffffff;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;font-size:1em;text-transform:none;border:none;}/*!sc*/
+.dMpNQv:hover,.dMpNQv:focus-within{border:none;box-shadow:none;background-color:rgba(38,50,56,0.7);}/*!sc*/
+data-styled.g55[id="sc-AzeoO"]{content:"dMpNQv,"}/*!sc*/
+.icbUjL{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hTZjHc"]{content:"icbUjL,"}/*!sc*/
+.bvJPfa.deprecated span.property-name{text-decoration:line-through;color:#707070;}/*!sc*/
+.bvJPfa button{background-color:transparent;border:0;outline:0;font-size:13px;font-family:Courier,monospace;cursor:pointer;padding:0;color:#333333;}/*!sc*/
+.bvJPfa button:focus{font-weight:600;}/*!sc*/
+.bvJPfa .sc-dQoBM{height:1.1em;width:1.1em;}/*!sc*/
+.bvJPfa .sc-dQoBM polygon{fill:#666;}/*!sc*/
+data-styled.g58[id="sc-jgHDmf"]{content:"bvJPfa,"}/*!sc*/
+.gCMUGw{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gTgAvG"]{content:"gCMUGw,"}/*!sc*/
+.dCeeDp{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-laROWl"]{content:"dCeeDp,"}/*!sc*/
+.cxjEEA{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNqMfM"]{content:"cxjEEA,"}/*!sc*/
+.jJMDiT{color:#666;word-break:break-word;}/*!sc*/
+data-styled.g62[id="sc-jeGQnC"]{content:"jJMDiT,"}/*!sc*/
+.egFobb{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eJMOEj"]{content:"egFobb,"}/*!sc*/
+.jzGNYG{border-radius:2px;word-break:break-word;background-color:rgba(51,51,51,0.05);color:rgba(51,51,51,0.9);padding:0 5px;border:1px solid rgba(51,51,51,0.1);font-family:Courier,monospace;}/*!sc*/
+.sc-lcukLb+.sc-lcukLb{margin-left:0;}/*!sc*/
+data-styled.g67[id="sc-lcukLb"]{content:"jzGNYG,"}/*!sc*/
+.gAOGaI{border-radius:2px;background-color:rgba(104,104,207,0.05);color:rgba(50,50,159,0.9);margin:0 5px;padding:0 5px;border:1px solid rgba(50,50,159,0.1);}/*!sc*/
+.sc-clsJvZ+.sc-clsJvZ{margin-left:0;}/*!sc*/
+data-styled.g69[id="sc-clsJvZ"]{content:"gAOGaI,"}/*!sc*/
+.ewkFZw:after{content:' and ';font-weight:normal;}/*!sc*/
+.ewkFZw:last-child:after{content:none;}/*!sc*/
+.ewkFZw a{text-decoration:auto;color:#32329f;}/*!sc*/
+.ewkFZw a:visited{color:#32329f;}/*!sc*/
+.ewkFZw a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g82[id="sc-hOqsyU"]{content:"ewkFZw,"}/*!sc*/
+.gXVZLC{white-space:nowrap;}/*!sc*/
+.gXVZLC:after{content:' or ';white-space:pre;}/*!sc*/
+.gXVZLC:last-child:after,.gXVZLC:only-child:after{content:none;}/*!sc*/
+.gXVZLC a{text-decoration:auto;color:#32329f;}/*!sc*/
+.gXVZLC a:visited{color:#32329f;}/*!sc*/
+.gXVZLC a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g83[id="sc-dtwqPB"]{content:"gXVZLC,"}/*!sc*/
+.hnzXSU{flex:1 1 auto;cursor:pointer;}/*!sc*/
+data-styled.g84[id="sc-dacGni"]{content:"hnzXSU,"}/*!sc*/
+.jnRUlI{width:75%;text-overflow:ellipsis;border-radius:4px;overflow:hidden;}/*!sc*/
+@media screen and (max-width: 50rem){.jnRUlI{margin-top:10px;}}/*!sc*/
+data-styled.g85[id="sc-jUEocL"]{content:"jnRUlI,"}/*!sc*/
+.htSlhJ{display:inline-block;margin:0;}/*!sc*/
+data-styled.g86[id="sc-jQbHUc"]{content:"htSlhJ,"}/*!sc*/
+.bhICnb{width:100%;display:flex;margin:1em 0;flex-direction:row;}/*!sc*/
+@media screen and (max-width: 50rem){.bhICnb{flex-direction:column;}}/*!sc*/
+data-styled.g87[id="sc-fvhGkJ"]{content:"bhICnb,"}/*!sc*/
+.eSPXsI{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-ctaZPk"]{content:"eSPXsI,"}/*!sc*/
+.kdqpyX{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.kdqpyX.get{background-color:#2F8132;}/*!sc*/
+.kdqpyX.post{background-color:#186FAF;}/*!sc*/
+.kdqpyX.put{background-color:#95507c;}/*!sc*/
+.kdqpyX.options{background-color:#947014;}/*!sc*/
+.kdqpyX.patch{background-color:#bf581d;}/*!sc*/
+.kdqpyX.delete{background-color:#cc3333;}/*!sc*/
+.kdqpyX.basic{background-color:#707070;}/*!sc*/
+.kdqpyX.link{background-color:#07818F;}/*!sc*/
+.kdqpyX.head{background-color:#A23DAD;}/*!sc*/
+.kdqpyX.hook{background-color:#32329f;}/*!sc*/
+.kdqpyX.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-XhXdA"]{content:"kdqpyX,"}/*!sc*/
+.eqhvhc{margin:0;padding:0;}/*!sc*/
+.eqhvhc:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+.eGBeQN{margin:0;padding:0;display:none;}/*!sc*/
+.eGBeQN:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ikPCzd"]{content:"eqhvhc,eGBeQN,"}/*!sc*/
+.hNMAOR{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-tYrig"]{content:"hNMAOR,"}/*!sc*/
+.kYHuni{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;font-size:0.929em;text-transform:none;background-color:#fafafa;}/*!sc*/
+.kYHuni:hover{color:#32329f;background-color:#e1e1e1;}/*!sc*/
+.kYHuni .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.kYHuni .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+.ehmZgs{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.ehmZgs:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.ehmZgs .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.ehmZgs .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-biBsFP"]{content:"kYHuni,ehmZgs,"}/*!sc*/
+.dYJaHY{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eHfQNO"]{content:"dYJaHY,"}/*!sc*/
+.icnaqS{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.icnaqS a,.icnaqS a:visited,.icnaqS a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.icnaqS img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.icnaqS{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hzMLOJ"]{content:"icnaqS,"}/*!sc*/
+.gnyOsi{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fXozIE"]{content:"gnyOsi,"}/*!sc*/
+.kmRXcZ{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-FyhMp"]{content:"kmRXcZ,"}/*!sc*/
+.eJFCKx{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.eJFCKx ..sc-FyhMp{color:#ffffff;}/*!sc*/
+.eJFCKx:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jXkukm"]{content:"eJFCKx,"}/*!sc*/
+.kcqnuN{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eFucnX"]{content:"kcqnuN,"}/*!sc*/
+.AnL{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmlIYk"]{content:"AnL,"}/*!sc*/
+.gjZMty{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljRaAR"]{content:"gjZMty,"}/*!sc*/
+.eFxVeO{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.eFxVeO >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jmhDzS"]{content:"eFxVeO,"}/*!sc*/
+.eEdthm{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dUrlDD"]{content:"eEdthm,"}/*!sc*/
+.ciHfuN{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.ciHfuN:focus{outline:auto #1d8127;}/*!sc*/
+.iagvZz{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);}/*!sc*/
+.iagvZz:focus{outline:auto #d41f1c;}/*!sc*/
+data-styled.g121[id="sc-cbDJdZ"]{content:"ciHfuN,iagvZz,"}/*!sc*/
+.mtsUp{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fWPeRB"]{content:"mtsUp,"}/*!sc*/
+.ihqrCS{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fHYzZk"]{content:"ihqrCS,"}/*!sc*/
+.iTRatv{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iGcuFr"]{content:"iTRatv,"}/*!sc*/
+.iDYPDd{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-irlPNa"]{content:"iDYPDd,"}/*!sc*/
+.lkswgW{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.lkswgW{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.lkswgW{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eWvQxi"]{content:"lkswgW,"}/*!sc*/
+.fsqnbI{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.fsqnbI{display:flex;}}/*!sc*/
+.fsqnbI svg{color:#0065FB;}/*!sc*/
+@media print{.fsqnbI{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kUbhZP"]{content:"fsqnbI,"}/*!sc*/
+.iABphV{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.iABphV *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dwcwXc"]{content:"iABphV,"}/*!sc*/
+.JaJkD{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.JaJkD{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jtHOzJ"]{content:"JaJkD,"}/*!sc*/
+.dQcVAt{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.dQcVAt{display:none;}}/*!sc*/
+data-styled.g136[id="sc-elsZMO"]{content:"dQcVAt,"}/*!sc*/
+.heVKiz{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kiYrpv"]{content:"heVKiz,"}/*!sc*/
+.gyVKdy{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cKZGmI"]{content:"gyVKdy,"}/*!sc*/
+.eIwqum{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.eIwqum path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iIEXPp"]{content:"eIwqum,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dwcwXc iABphV redoc-wrap"><div class="sc-eWvQxi lkswgW menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kiYrpv heVKiz"><svg class="sc-iIEXPp eIwqum search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cKZGmI gyVKdy search-input" value=""/></div><div class="sc-kLgmGd bsUDpT scrollbar-container undefined"><ul role="menu" class="sc-ikPCzd eqhvhc"><li tabindex="0" depth="1" data-item-id="tag/ObjectInstance" role="menuitem" aria-label="ObjectInstance" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="ObjectInstance" class="sc-eHfQNO dYJaHY">ObjectInstance</span><svg class="sc-dQoBM cWjMmC" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></label><ul class="sc-ikPCzd eGBeQN"><li tabindex="0" depth="2" data-item-id="tag/ObjectInstance/operation/queryObjectInstance" role="menuitem" aria-label="查询对象实例" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">查询对象实例</span></label></li><li tabindex="0" depth="2" data-item-id="tag/ObjectInstance/operation/searchInstance" role="menuitem" aria-label="语义召回实例" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">语义召回实例</span></label></li></ul></li></ul><div class="sc-hzMLOJ icnaqS"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kUbhZP fsqnbI"><div class="sc-irlPNa iDYPDd"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jtHOzJ JaJkD api-content"><div class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI api-info"><h1 class="sc-fubEtJ sc-ctaZPk edtrWC eSPXsI">对象实例查询<!-- --> <span>(<!-- -->0.1.3<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-summary" html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-description" html="&lt;p&gt;按对象类查询实例数据。Context Loader（服务名 &lt;code&gt;agent-retrieval&lt;/code&gt;）在这里做的是
+&lt;strong&gt;面向 Agent 的收口&lt;/strong&gt;：接受结构化条件，转发给 ontology-query，再把结果按 Agent
+能直接消费的形态返回。&lt;/p&gt;
+&lt;p&gt;典型链路：&lt;code&gt;search_schema&lt;/code&gt; 拿到对象类与可用算子 → 本接口取实例 → 从每条记录的
+&lt;code&gt;_instance_identity&lt;/code&gt; 取标识 → 喂给 &lt;a href=&quot;action.yaml&quot;&gt;action.yaml&lt;/a&gt; 的 &lt;code&gt;get_action_info&lt;/code&gt;
+或 &lt;a href=&quot;logic-property.yaml&quot;&gt;logic-property.yaml&lt;/a&gt; 的 &lt;code&gt;logic-property-resolver&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;翻页两条路，互斥&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;search_after&lt;/code&gt; 游标翻页：适用于对象索引 / 数据视图路径，只能顺翻，不能跳页；
+把上一页响应里的 &lt;code&gt;search_after&lt;/code&gt; 原样回传即可，响应里没有该字段就是没有下一页。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;offset&lt;/code&gt; 偏移翻页：适用于资源（vega 表源）路径，可跳任意页。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;认证&lt;/strong&gt;：&lt;code&gt;Authorization: Bearer &amp;lt;token&amp;gt;&lt;/code&gt;（OAuth access token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey）。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>按对象类查询实例数据。Context Loader（服务名 <code>agent-retrieval</code>）在这里做的是
+<strong>面向 Agent 的收口</strong>：接受结构化条件，转发给 ontology-query，再把结果按 Agent
+能直接消费的形态返回。</p>
+<p>典型链路：<code>search_schema</code> 拿到对象类与可用算子 → 本接口取实例 → 从每条记录的
+<code>_instance_identity</code> 取标识 → 喂给 <a href="action.yaml">action.yaml</a> 的 <code>get_action_info</code>
+或 <a href="logic-property.yaml">logic-property.yaml</a> 的 <code>logic-property-resolver</code>。</p>
+<p><strong>翻页两条路，互斥</strong>：</p>
+<ul>
+<li><code>search_after</code> 游标翻页：适用于对象索引 / 数据视图路径，只能顺翻，不能跳页；
+把上一页响应里的 <code>search_after</code> 原样回传即可，响应里没有该字段就是没有下一页。</li>
+<li><code>offset</code> 偏移翻页：适用于资源（vega 表源）路径，可跳任意页。</li>
+</ul>
+<p><strong>认证</strong>：<code>Authorization: Bearer &lt;token&gt;</code>（OAuth access token 或 <code>bak_</code> AppKey）。</p>
+</div></div></div></div><div id="tag/ObjectInstance" data-section-id="tag/ObjectInstance" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/ObjectInstance" aria-label="tag/ObjectInstance"></a>ObjectInstance</h2></div></div></div><div id="tag/ObjectInstance/operation/queryObjectInstance" data-section-id="tag/ObjectInstance/operation/queryObjectInstance" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/queryObjectInstance" id="operation/queryObjectInstance" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/ObjectInstance/operation/queryObjectInstance" aria-label="tag/ObjectInstance/operation/queryObjectInstance"></a>查询对象实例<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;按单个对象类查询实例。&lt;code&gt;kn_id&lt;/code&gt; / &lt;code&gt;ot_id&lt;/code&gt; 走 &lt;strong&gt;query 参数&lt;/strong&gt;，过滤与分页走请求体。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;条件两种写法&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;filters&lt;/code&gt;：扁平简写，多个条件按 AND 组合，&lt;code&gt;value_from&lt;/code&gt; 自动取 &lt;code&gt;const&lt;/code&gt;。
+覆盖「字段 op 值 [AND ...]」这类绝大多数场景。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;condition&lt;/code&gt;：完整嵌套结构，需要 OR / 多层嵌套时用。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;两者同传时 &lt;code&gt;condition&lt;/code&gt; 优先，&lt;code&gt;filters&lt;/code&gt; 被忽略。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;算子白名单以对象类为准&lt;/strong&gt;：可用算子看 &lt;code&gt;get_object_types&lt;/code&gt; 返回的
+&lt;code&gt;condition_operations&lt;/code&gt;，不要照抄本文档的枚举全集。对绑定 Vega 资源的对象类，
+这份清单由 BKN 按资源上&lt;strong&gt;真实建成的索引&lt;/strong&gt;派生：字段建了全文索引才出现
+&lt;code&gt;match&lt;/code&gt; / &lt;code&gt;multi_match&lt;/code&gt;，建了向量索引且 embedding 模型可解析才出现 &lt;code&gt;knn&lt;/code&gt;。
+没建索引的字段只保留按属性类型推导的比较算子。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;文本检索选哪个&lt;/strong&gt;：&lt;code&gt;match&lt;/code&gt; 走全文索引，按分析器分词后词法命中；&lt;code&gt;knn&lt;/code&gt; 走向量
+索引，能召回字面不重合的表述（换个说法、跨语言）。两者是独立算子，没有隐式
+融合；要同时用就放进 &lt;code&gt;or&lt;/code&gt; 的 &lt;code&gt;sub_conditions&lt;/code&gt;。&lt;code&gt;knn&lt;/code&gt; 另需 &lt;code&gt;limit_key: k&lt;/code&gt; 与
+&lt;code&gt;limit_value: &amp;lt;近邻数&amp;gt;&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;条件里用了字段不支持的算子时，ontology-query 返回 400 并原样透传错误详情
+（如 &lt;code&gt;OntologyQuery.InvalidParameter.Condition&lt;/code&gt;）。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;_score&lt;/code&gt; 的取舍&lt;/strong&gt;：纯结构化过滤在底层落成常量打分查询，每条命中分数相同，
+没有相关度语义，因此响应里的 &lt;code&gt;_score&lt;/code&gt; 会被剥掉，避免调用方误以为结果按相关度
+排序。只有查询里含 &lt;code&gt;knn&lt;/code&gt; 或 &lt;code&gt;match&lt;/code&gt; 这类真正打分的算子时才保留 &lt;code&gt;_score&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;排序&lt;/strong&gt;：&lt;code&gt;sort&lt;/code&gt; 可选，多字段按数组顺序依次比较（前一个相等才看后一个）。
+不传时的默认序&lt;strong&gt;不保证语义&lt;/strong&gt;——既不是「最新」也不是「最相关」，因此
+「最近的 N 条」「金额最高的 N 个」必须显式传 &lt;code&gt;sort&lt;/code&gt;，不能靠 &lt;code&gt;limit&lt;/code&gt; 截默认序。
+&lt;code&gt;field&lt;/code&gt; 是否属于该对象类由 ontology-query 校验，非法字段或非法 &lt;code&gt;direction&lt;/code&gt;
+返回 400 并透传原因。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;总数&lt;/strong&gt;：响应的 &lt;code&gt;total_count&lt;/code&gt; 为满足过滤条件的实例总数，不受 &lt;code&gt;limit&lt;/code&gt; 限制，
+无需请求方开启。判断「一共多少条」读它即可，不必翻页累加。三态要分清：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;有值且大于 0：真实总数。&lt;/li&gt;
+&lt;li&gt;值为 &lt;code&gt;0&lt;/code&gt;：真实零命中（字段存在）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;字段缺失&lt;/strong&gt;：本次没有计算总数，不能推断为 0。用 &lt;code&gt;search_after&lt;/code&gt; 翻页时
+第二页起即如此（下游在游标非空时强制关闭总数计算）。要总数就回到不带
+&lt;code&gt;search_after&lt;/code&gt; 的首次查询。&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>按单个对象类查询实例。<code>kn_id</code> / <code>ot_id</code> 走 <strong>query 参数</strong>，过滤与分页走请求体。</p>
+<p><strong>条件两种写法</strong>：</p>
+<ul>
+<li><code>filters</code>：扁平简写，多个条件按 AND 组合，<code>value_from</code> 自动取 <code>const</code>。
+覆盖「字段 op 值 [AND ...]」这类绝大多数场景。</li>
+<li><code>condition</code>：完整嵌套结构，需要 OR / 多层嵌套时用。</li>
+</ul>
+<p>两者同传时 <code>condition</code> 优先，<code>filters</code> 被忽略。</p>
+<p><strong>算子白名单以对象类为准</strong>：可用算子看 <code>get_object_types</code> 返回的
+<code>condition_operations</code>，不要照抄本文档的枚举全集。对绑定 Vega 资源的对象类，
+这份清单由 BKN 按资源上<strong>真实建成的索引</strong>派生：字段建了全文索引才出现
+<code>match</code> / <code>multi_match</code>，建了向量索引且 embedding 模型可解析才出现 <code>knn</code>。
+没建索引的字段只保留按属性类型推导的比较算子。</p>
+<p><strong>文本检索选哪个</strong>：<code>match</code> 走全文索引，按分析器分词后词法命中；<code>knn</code> 走向量
+索引，能召回字面不重合的表述（换个说法、跨语言）。两者是独立算子，没有隐式
+融合；要同时用就放进 <code>or</code> 的 <code>sub_conditions</code>。<code>knn</code> 另需 <code>limit_key: k</code> 与
+<code>limit_value: &lt;近邻数&gt;</code>。</p>
+<p>条件里用了字段不支持的算子时，ontology-query 返回 400 并原样透传错误详情
+（如 <code>OntologyQuery.InvalidParameter.Condition</code>）。</p>
+<p><strong><code>_score</code> 的取舍</strong>：纯结构化过滤在底层落成常量打分查询，每条命中分数相同，
+没有相关度语义，因此响应里的 <code>_score</code> 会被剥掉，避免调用方误以为结果按相关度
+排序。只有查询里含 <code>knn</code> 或 <code>match</code> 这类真正打分的算子时才保留 <code>_score</code>。</p>
+<p><strong>排序</strong>：<code>sort</code> 可选，多字段按数组顺序依次比较（前一个相等才看后一个）。
+不传时的默认序<strong>不保证语义</strong>——既不是「最新」也不是「最相关」，因此
+「最近的 N 条」「金额最高的 N 个」必须显式传 <code>sort</code>，不能靠 <code>limit</code> 截默认序。
+<code>field</code> 是否属于该对象类由 ontology-query 校验，非法字段或非法 <code>direction</code>
+返回 400 并透传原因。</p>
+<p><strong>总数</strong>：响应的 <code>total_count</code> 为满足过滤条件的实例总数，不受 <code>limit</code> 限制，
+无需请求方开启。判断「一共多少条」读它即可，不必翻页累加。三态要分清：</p>
+<ul>
+<li>有值且大于 0：真实总数。</li>
+<li>值为 <code>0</code>：真实零命中（字段存在）。</li>
+<li><strong>字段缺失</strong>：本次没有计算总数，不能推断为 0。用 <code>search_after</code> 翻页时
+第二页起即如此（下游在游标非空时强制关闭总数计算）。要总数就回到不带
+<code>search_after</code> 的首次查询。</li>
+</ul>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td kind="field" title="kn_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">kn_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;知识网络 ID。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>知识网络 ID。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="ot_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">ot_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;对象类 ID。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>对象类 ID。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="include_logic_params" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">include_logic_params</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">boolean</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">false</span></div> <div><div html="&lt;p&gt;是否返回逻辑属性的计算参数。默认 false，结果不含逻辑属性字段与值；
+逻辑属性求值请用 &lt;a href=&quot;logic-property.yaml&quot;&gt;logic-property.yaml&lt;/a&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>是否返回逻辑属性的计算参数。默认 false，结果不含逻辑属性字段与值；
+逻辑属性求值请用 <a href="logic-property.yaml">logic-property.yaml</a>。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.&lt;/p&gt;
+&lt;p&gt;Both required child fields are server-issued handles and must not be
+invented by the caller:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; on the first turn&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;: obtained from the Context Loader MCP tool
+&lt;code&gt;bkn_start_interaction&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under &lt;code&gt;/api/agent-observability/v1&lt;/code&gt;
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or &lt;code&gt;bak_&lt;/code&gt; AppKeys; direct external calls
+receive &lt;code&gt;401 permission_denied&lt;/code&gt;.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit &lt;code&gt;operation_key&lt;/code&gt;. Network retries should reuse
+&lt;code&gt;bkn-request-id&lt;/code&gt; or provide a stable
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace business-provenance context identifying the business
+conversation and interaction to which this call belongs. Required on
+REST APIs.</p>
+<p>Both required child fields are server-issued handles and must not be
+invented by the caller:</p>
+<ul>
+<li><code>conversation_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code> on the first turn</li>
+<li><code>interaction_id</code>: obtained from the Context Loader MCP tool
+<code>bkn_start_interaction</code></li>
+</ul>
+<p>These handles are available only through the provenance MCP tool above.
+The BKN Trace Core session APIs under <code>/api/agent-observability/v1</code>
+accept gateway credentials only from trusted in-cluster services. They
+do not accept OAuth tokens or <code>bak_</code> AppKeys; direct external calls
+receive <code>401 permission_denied</code>.
+Context Loader derives the Operation idempotency identity on the server
+from request correlation, tool name, and normalized input. Callers must
+not submit <code>operation_key</code>. Network retries should reuse
+<code>bkn-request-id</code> or provide a stable
+<code>X-OpenBKN-Client-Invocation-Id</code> for the same logical call. This hint is
+used only for idempotency and has no role in identity, authorization, or
+data-isolation decisions.</p>
+</div></div></div></td></tr><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="condition"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand condition"><span class="property-name">condition</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->Condition<!-- -->) </span></div> <div><div html="&lt;p&gt;过滤条件。逻辑算子（&lt;code&gt;and&lt;/code&gt; / &lt;code&gt;or&lt;/code&gt;）用 &lt;code&gt;sub_conditions&lt;/code&gt; 组合子条件；
+叶子条件用 &lt;code&gt;field&lt;/code&gt; + &lt;code&gt;operation&lt;/code&gt; + &lt;code&gt;value&lt;/code&gt; + &lt;code&gt;value_from&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;value&lt;/code&gt; 与 &lt;code&gt;value_from&lt;/code&gt; 必须成对出现&lt;/strong&gt;，且 &lt;code&gt;value_from&lt;/code&gt; 目前只支持 &lt;code&gt;const&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>过滤条件。逻辑算子（<code>and</code> / <code>or</code>）用 <code>sub_conditions</code> 组合子条件；
+叶子条件用 <code>field</code> + <code>operation</code> + <code>value</code> + <code>value_from</code>。</p>
+<p><strong><code>value</code> 与 <code>value_from</code> 必须成对出现</strong>，且 <code>value_from</code> 目前只支持 <code>const</code>。</p>
+</div></div></div></td></tr><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="filters"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand filters"><span class="property-name">filters</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">objects</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->FlatFilter<!-- -->) </span></div> <div><div html="&lt;p&gt;扁平过滤简写，多个条件按 AND 组合。与 &lt;code&gt;condition&lt;/code&gt; 互斥，同传时
+&lt;code&gt;condition&lt;/code&gt; 优先。需要 OR 或嵌套时改用 &lt;code&gt;condition&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>扁平过滤简写，多个条件按 AND 组合。与 <code>condition</code> 互斥，同传时
+<code>condition</code> 优先。需要 OR 或嵌套时改用 <code>condition</code>。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="limit" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">limit</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->[ 1 .. 10000 ]<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">10</span></div> <div><div html="&lt;p&gt;返回条数。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>返回条数。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="properties" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">properties</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">strings</span></div> <div><div html="&lt;p&gt;指定返回的属性字段；不传返回全部属性。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>指定返回的属性字段；不传返回全部属性。</p>
+</div></div></div></td></tr><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="sort"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand sort"><span class="property-name">sort</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">objects</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->SortSpec<!-- -->) </span></div> <div><div html="&lt;p&gt;排序字段，按数组顺序依次比较。不传时默认序不保证语义，需要「最新 /
+最大 / 最小的前 N 条」时必须显式指定。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>排序字段，按数组顺序依次比较。不传时默认序不保证语义，需要「最新 /
+最大 / 最小的前 N 条」时必须显式指定。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="search_after" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">search_after</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">any</span></div> <div><div html="&lt;p&gt;游标翻页：上一页响应返回的 &lt;code&gt;search_after&lt;/code&gt; 原样回传。首次查询留空。
+与 &lt;code&gt;offset&lt;/code&gt; 互斥。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>游标翻页：上一页响应返回的 <code>search_after</code> 原样回传。首次查询留空。
+与 <code>offset</code> 互斥。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="offset" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">offset</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span></div> <div><div html="&lt;p&gt;偏移翻页：适用于资源（vega 表源）路径，可跳页。与 &lt;code&gt;search_after&lt;/code&gt; 互斥。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>偏移翻页：适用于资源（vega 表源）路径，可跳页。与 <code>search_after</code> 互斥。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;对象实例数据&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>对象实例数据</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;参数错误；条件不合法时携带下游 ontology-query 的具体原因&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>参数错误；条件不合法时携带下游 ontology-query 的具体原因</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;知识网络或对象类不存在（下游状态码原样保留，不塌陷成 400）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>知识网络或对象类不存在（下游状态码原样保留，不塌陷成 400）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误，或下游依赖故障&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误，或下游依赖故障</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/query_object_instance</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/query_object_instance</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_4kmq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4kmq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4kmq_0" aria-labelledby="tab_R_4kmq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="filters 简写（等价于 status == Running AND replicas &gt; 1）" selected="">filters 简写（等价于 status == Running AND replicas &gt; 1）</option><option value="condition 完整写法（OR 组合）">condition 完整写法（OR 组合）</option><option value="游标翻下一页">游标翻下一页</option></select><label>filters 简写（等价于 status == Running AND replicas &gt; 1）</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"filters"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"field"</span>: <span class="token string">&quot;status&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"op"</span>: <span class="token string">&quot;==&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"value"</span>: <span class="token string">&quot;Running&quot;</span></div></li></ul><span class="token punctuation">}</span>,</div></li><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"field"</span>: <span class="token string">&quot;replicas&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"op"</span>: <span class="token string">&quot;&gt;&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"value"</span>: <span class="token number">1</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"limit"</span>: <span class="token number">20</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"properties"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;pod_name&quot;</span>,</div></li><li><div class="hoverable collapsed"><span class="token string">&quot;status&quot;</span></div></li></ul><span class="token punctuation">]</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4smq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4smq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4smq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_4smq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_4smq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_3" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_4smq_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_4" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4smq_0" aria-labelledby="tab_R_4smq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"datas"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"_instance_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"_instance_identity"</span>: <span class="token punctuation">{ }</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"_display"</span>: <span class="token keyword">null</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"_score"</span>: <span class="token number">0.1</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_count"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"search_after"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token keyword">null</span></div></li></ul><span class="token punctuation">]</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_1" aria-labelledby="tab_R_4smq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_2" aria-labelledby="tab_R_4smq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_3" aria-labelledby="tab_R_4smq_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_4" aria-labelledby="tab_R_4smq_4"></div></div></div></div></div></div><div id="tag/ObjectInstance/operation/searchInstance" data-section-id="tag/ObjectInstance/operation/searchInstance" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/searchInstance" id="operation/searchInstance" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/ObjectInstance/operation/searchInstance" aria-label="tag/ObjectInstance/operation/searchInstance"></a>语义召回实例<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;用一句自然语言直接召回实例，&lt;strong&gt;不需要先知道对象类和字段名&lt;/strong&gt;——这是
+&lt;code&gt;search_schema&lt;/code&gt;（只回 Schema）与 &lt;code&gt;query_object_instance&lt;/code&gt;（要先给出结构化条件）
+之间缺的那一步。&lt;/p&gt;
+&lt;p&gt;执行两段：先按 &lt;code&gt;query&lt;/code&gt; 锁定相关对象类，再在这些对象类上做语义实例召回；
+向量（&lt;code&gt;knn&lt;/code&gt;）与全文（&lt;code&gt;match&lt;/code&gt;）两路并发发出后按名次融合，因此两种命中都能进入结果。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;自足&lt;/strong&gt;：除实例行外，还附带读懂它们所需的对象类精简定义（&lt;code&gt;object_types&lt;/code&gt;，
+只含真正出了实例的那几个），单次调用就够用，不必再回头查 Schema。
+只有 &lt;code&gt;condition_operations&lt;/code&gt; 含 &lt;code&gt;match&lt;/code&gt; / &lt;code&gt;knn&lt;/code&gt; 的属性参与召回，
+&lt;strong&gt;没建索引的对象类不会出实例&lt;/strong&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;无命中不是错误&lt;/strong&gt;：返回空 &lt;code&gt;nodes&lt;/code&gt; 加一句 &lt;code&gt;message&lt;/code&gt;，不返回 5xx。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>用一句自然语言直接召回实例，<strong>不需要先知道对象类和字段名</strong>——这是
+<code>search_schema</code>（只回 Schema）与 <code>query_object_instance</code>（要先给出结构化条件）
+之间缺的那一步。</p>
+<p>执行两段：先按 <code>query</code> 锁定相关对象类，再在这些对象类上做语义实例召回；
+向量（<code>knn</code>）与全文（<code>match</code>）两路并发发出后按名次融合，因此两种命中都能进入结果。</p>
+<p><strong>自足</strong>：除实例行外，还附带读懂它们所需的对象类精简定义（<code>object_types</code>，
+只含真正出了实例的那几个），单次调用就够用，不必再回头查 Schema。
+只有 <code>condition_operations</code> 含 <code>match</code> / <code>knn</code> 的属性参与召回，
+<strong>没建索引的对象类不会出实例</strong>。</p>
+<p><strong>无命中不是错误</strong>：返回空 <code>nodes</code> 加一句 <code>message</code>，不返回 5xx。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td kind="field" title="kn_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">kn_id</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;知识网络 ID。也可改用 &lt;code&gt;X-Kn-ID&lt;/code&gt; 请求头传入。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>知识网络 ID。也可改用 <code>X-Kn-ID</code> 请求头传入。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="query" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">query</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;自然语言问题或关键词。整句直接传，不必拆成字段条件——向量通道吃整句，
+全文通道由分析器分词。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>自然语言问题或关键词。整句直接传，不必拆成字段条件——向量通道吃整句，
+全文通道由分析器分词。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="concept_groups" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">concept_groups</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">strings</span></div> <div><div html="&lt;p&gt;限定召回范围到指定的 BKN 概念分组；不传则在整个知识网络内召回。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>限定召回范围到指定的 BKN 概念分组；不传则在整个知识网络内召回。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="object_types" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">object_types</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">strings</span></div> <div><div html="&lt;p&gt;把召回范围钉死在这几个对象类上，只取对象类 id（例如 &lt;code&gt;material&lt;/code&gt;），不接受名称。
+id 来自 &lt;code&gt;search_schema&lt;/code&gt; 响应的 &lt;code&gt;concept_id&lt;/code&gt;、本接口响应的 &lt;code&gt;object_type_id&lt;/code&gt;
+或 &lt;code&gt;get_kn_detail&lt;/code&gt; 的 &lt;code&gt;object_types[].id&lt;/code&gt;。不传则不限。
+过滤发生在相关性排序与 &lt;code&gt;max_object_types&lt;/code&gt; 截断之前，因此点名的对象类不会因为
+排名靠后被挤掉。列表里的 id 一个都不存在时返回空 &lt;code&gt;nodes&lt;/code&gt;，并在 &lt;code&gt;message&lt;/code&gt; 里
+列出这些 id。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>把召回范围钉死在这几个对象类上，只取对象类 id（例如 <code>material</code>），不接受名称。
+id 来自 <code>search_schema</code> 响应的 <code>concept_id</code>、本接口响应的 <code>object_type_id</code>
+或 <code>get_kn_detail</code> 的 <code>object_types[].id</code>。不传则不限。
+过滤发生在相关性排序与 <code>max_object_types</code> 截断之前，因此点名的对象类不会因为
+排名靠后被挤掉。列表里的 id 一个都不存在时返回空 <code>nodes</code>，并在 <code>message</code> 里
+列出这些 id。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="exclude_object_types" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">exclude_object_types</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">strings</span></div> <div><div html="&lt;p&gt;从召回范围里排除这几个对象类，同样只取对象类 id。适合上一轮返回里混进了噪音
+对象类、想重跑一次时用；与 &lt;code&gt;object_types&lt;/code&gt; 有重叠时以排除为准。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>从召回范围里排除这几个对象类，同样只取对象类 id。适合上一轮返回里混进了噪音
+对象类、想重跑一次时用；与 <code>object_types</code> 有重叠时以排除为准。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="max_object_types" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">max_object_types</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 1<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">10</span></div> <div><div html="&lt;p&gt;参与实例召回的对象类数量上限。每多一个对象类多一轮下游查询。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>参与实例召回的对象类数量上限。每多一个对象类多一轮下游查询。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="max_instances_per_type" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">max_instances_per_type</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 1<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">5</span></div> <div><div html="&lt;p&gt;每个对象类最多返回几条实例。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>每个对象类最多返回几条实例。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="rerank" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">rerank</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">boolean</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">false</span></div> <div><div html="&lt;p&gt;是否对召回结果做语义精排。默认关。开启后由 cross-encoder 逐条判断相关性并
+&lt;strong&gt;重排返回顺序&lt;/strong&gt;（&lt;code&gt;score&lt;/code&gt; 不变，模型分单独落在 &lt;code&gt;reranker_score&lt;/code&gt;，
+见响应说明），能分辨名次融合分不出的语义差异。
+代价是多一次模型调用（约 100~400ms），且要求部署里注册了精排小模型；
+模型不可用时自动退回原顺序，不报错。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>是否对召回结果做语义精排。默认关。开启后由 cross-encoder 逐条判断相关性并
+<strong>重排返回顺序</strong>（<code>score</code> 不变，模型分单独落在 <code>reranker_score</code>，
+见响应说明），能分辨名次融合分不出的语义差异。
+代价是多一次模型调用（约 100~400ms），且要求部署里注册了精排小模型；
+模型不可用时自动退回原顺序，不报错。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="include_object_types" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">include_object_types</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">boolean</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">true</span></div> <div><div html="&lt;p&gt;是否附带命中对象类的精简定义。默认附带——不附带的话，要读懂返回的实例
+还得再调一次 &lt;code&gt;get_object_types&lt;/code&gt;，而那一趟会把同一个 query 的概念召回重跑一遍。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>是否附带命中对象类的精简定义。默认附带——不附带的话，要读懂返回的实例
+还得再调一次 <code>get_object_types</code>，而那一趟会把同一个 query 的概念召回重跑一遍。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;召回结果&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>召回结果</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;参数错误（缺 kn_id / query 为空 / max_* 非正）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>参数错误（缺 kn_id / query 为空 / max_* 非正）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误，或下游依赖故障&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误，或下游依赖故障</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/search_instance</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/search_instance</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_4kqq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4kqq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4kqq_0" aria-labelledby="tab_R_4kqq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"kn_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"query"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"concept_groups"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"object_types"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"exclude_object_types"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"max_object_types"</span>: <span class="token number">10</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"max_instances_per_type"</span>: <span class="token number">5</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"rerank"</span>: <span class="token boolean">false</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"include_object_types"</span>: <span class="token boolean">true</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4sqq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4sqq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4sqq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_4sqq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_4sqq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_3" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4sqq_0" aria-labelledby="tab_R_4sqq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"nodes"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token punctuation">{ }</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"object_types"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token punctuation">{ }</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_1" aria-labelledby="tab_R_4sqq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_2" aria-labelledby="tab_R_4sqq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_3" aria-labelledby="tab_R_4sqq_3"></div></div></div></div></div></div></div><div class="sc-elsZMO dQcVAt"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.0.3","info":{"title":"对象实例查询","description":"按对象类查询实例数据。Context Loader（服务名 `agent-retrieval`）在这里做的是\n**面向 Agent 的收口**：接受结构化条件，转发给 ontology-query，再把结果按 Agent\n能直接消费的形态返回。\n\n典型链路：`search_schema` 拿到对象类与可用算子 → 本接口取实例 → 从每条记录的\n`_instance_identity` 取标识 → 喂给 [action.yaml](action.yaml) 的 `get_action_info`\n或 [logic-property.yaml](logic-property.yaml) 的 `logic-property-resolver`。\n\n**翻页两条路，互斥**：\n\n- `search_after` 游标翻页：适用于对象索引 / 数据视图路径，只能顺翻，不能跳页；\n  把上一页响应里的 `search_after` 原样回传即可，响应里没有该字段就是没有下一页。\n- `offset` 偏移翻页：适用于资源（vega 表源）路径，可跳任意页。\n\n**认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。\n","version":"0.1.3"},"servers":[{"url":"/api/agent-retrieval/v1"}],"security":[{"OAuth2":[]},{"AppKey":[]}],"paths":{"/kn/query_object_instance":{"post":{"tags":["ObjectInstance"],"summary":"查询对象实例","operationId":"queryObjectInstance","x-contract-probe":{"readonly":true,"order":3,"query":{"kn_id":"{cl_kn_id}","ot_id":"{cl_ot_id}"},"body":{"limit":2}},"description":"按单个对象类查询实例。`kn_id` / `ot_id` 走 **query 参数**，过滤与分页走请求体。\n\n**条件两种写法**：\n\n- `filters`：扁平简写，多个条件按 AND 组合，`value_from` 自动取 `const`。\n  覆盖「字段 op 值 [AND ...]」这类绝大多数场景。\n- `condition`：完整嵌套结构，需要 OR / 多层嵌套时用。\n\n两者同传时 `condition` 优先，`filters` 被忽略。\n\n**算子白名单以对象类为准**：可用算子看 `get_object_types` 返回的\n`condition_operations`，不要照抄本文档的枚举全集。对绑定 Vega 资源的对象类，\n这份清单由 BKN 按资源上**真实建成的索引**派生：字段建了全文索引才出现\n`match` / `multi_match`，建了向量索引且 embedding 模型可解析才出现 `knn`。\n没建索引的字段只保留按属性类型推导的比较算子。\n\n**文本检索选哪个**：`match` 走全文索引，按分析器分词后词法命中；`knn` 走向量\n索引，能召回字面不重合的表述（换个说法、跨语言）。两者是独立算子，没有隐式\n融合；要同时用就放进 `or` 的 `sub_conditions`。`knn` 另需 `limit_key: k` 与\n`limit_value: <近邻数>`。\n\n条件里用了字段不支持的算子时，ontology-query 返回 400 并原样透传错误详情\n（如 `OntologyQuery.InvalidParameter.Condition`）。\n\n**`_score` 的取舍**：纯结构化过滤在底层落成常量打分查询，每条命中分数相同，\n没有相关度语义，因此响应里的 `_score` 会被剥掉，避免调用方误以为结果按相关度\n排序。只有查询里含 `knn` 或 `match` 这类真正打分的算子时才保留 `_score`。\n\n**排序**：`sort` 可选，多字段按数组顺序依次比较（前一个相等才看后一个）。\n不传时的默认序**不保证语义**——既不是「最新」也不是「最相关」，因此\n「最近的 N 条」「金额最高的 N 个」必须显式传 `sort`，不能靠 `limit` 截默认序。\n`field` 是否属于该对象类由 ontology-query 校验，非法字段或非法 `direction`\n返回 400 并透传原因。\n\n**总数**：响应的 `total_count` 为满足过滤条件的实例总数，不受 `limit` 限制，\n无需请求方开启。判断「一共多少条」读它即可，不必翻页累加。三态要分清：\n\n- 有值且大于 0：真实总数。\n- 值为 `0`：真实零命中（字段存在）。\n- **字段缺失**：本次没有计算总数，不能推断为 0。用 `search_after` 翻页时\n  第二页起即如此（下游在游标非空时强制关闭总数计算）。要总数就回到不带\n  `search_after` 的首次查询。\n","parameters":[{"name":"kn_id","in":"query","required":true,"schema":{"type":"string"},"description":"知识网络 ID。"},{"name":"ot_id","in":"query","required":true,"schema":{"type":"string"},"description":"对象类 ID。"},{"name":"include_logic_params","in":"query","required":false,"schema":{"type":"boolean","default":false},"description":"是否返回逻辑属性的计算参数。默认 false，结果不含逻辑属性字段与值；\n逻辑属性求值请用 [logic-property.yaml](logic-property.yaml)。\n"},{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/QueryObjectInstanceRequest"},"examples":{"扁平过滤":{"summary":"filters 简写（等价于 status == Running AND replicas > 1）","value":{"filters":[{"field":"status","op":"==","value":"Running"},{"field":"replicas","op":">","value":1}],"limit":20,"properties":["pod_name","status"]}},"嵌套条件":{"summary":"condition 完整写法（OR 组合）","value":{"condition":{"operation":"or","sub_conditions":[{"field":"status","operation":"==","value":"Failed","value_from":"const"},{"field":"status","operation":"==","value":"Unknown","value_from":"const"}]},"limit":10}},"游标翻下一页":{"value":{"search_after":["20250922_020907_00027_qe7sf","xdb6f0e5f5ba7449ab94822da9f008386"],"limit":20}}}}}},"responses":{"200":{"description":"对象实例数据","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ObjectDataResponse"}},"application/toon":{"schema":{"type":"string","description":"TOON 编码的同一结构（`response_format=toon` 时）。"}}}},"400":{"description":"参数错误；条件不合法时携带下游 ontology-query 的具体原因","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"404":{"description":"知识网络或对象类不存在（下游状态码原样保留，不塌陷成 400）","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"500":{"description":"服务内部错误，或下游依赖故障","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}},"/kn/search_instance":{"post":{"tags":["ObjectInstance"],"summary":"语义召回实例","operationId":"searchInstance","x-contract-probe":{"readonly":true,"order":4,"body":{"kn_id":"{cl_kn_id}","query":"巡检探测"}},"description":"用一句自然语言直接召回实例，**不需要先知道对象类和字段名**——这是\n`search_schema`（只回 Schema）与 `query_object_instance`（要先给出结构化条件）\n之间缺的那一步。\n\n执行两段：先按 `query` 锁定相关对象类，再在这些对象类上做语义实例召回；\n向量（`knn`）与全文（`match`）两路并发发出后按名次融合，因此两种命中都能进入结果。\n\n**自足**：除实例行外，还附带读懂它们所需的对象类精简定义（`object_types`，\n只含真正出了实例的那几个），单次调用就够用，不必再回头查 Schema。\n只有 `condition_operations` 含 `match` / `knn` 的属性参与召回，\n**没建索引的对象类不会出实例**。\n\n**无命中不是错误**：返回空 `nodes` 加一句 `message`，不返回 5xx。\n","parameters":[{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SearchInstanceRequest"}}}},"responses":{"200":{"description":"召回结果","content":{"application/json":{"schema":{"$ref":"#/components/schemas/SearchInstanceResponse"}},"application/toon":{"schema":{"type":"string"}}}},"400":{"description":"参数错误（缺 kn_id / query 为空 / max_* 非正）","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"500":{"description":"服务内部错误，或下游依赖故障","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}}},"components":{"securitySchemes":{"OAuth2":{"type":"oauth2","description":"OAuth2 authentication for public APIs.","flows":{"clientCredentials":{"tokenUrl":"/oauth2/token","scopes":{}}}},"AppKey":{"type":"apiKey","in":"header","name":"Authorization","description":"Application key with the `bak_` prefix. Send it as\n`Authorization: Bearer bak_xxx` for service-to-service or\napplication-level calls.\n"}},"parameters":{"ResponseFormat":{"name":"response_format","in":"query","required":false,"schema":{"type":"string","enum":["json","toon"],"default":"json"},"description":"响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。"}},"schemas":{"SearchInstanceRequest":{"type":"object","required":["query"],"properties":{"kn_id":{"type":"string","description":"知识网络 ID。也可改用 `X-Kn-ID` 请求头传入。"},"query":{"type":"string","description":"自然语言问题或关键词。整句直接传，不必拆成字段条件——向量通道吃整句，\n全文通道由分析器分词。\n"},"concept_groups":{"type":"array","items":{"type":"string"},"description":"限定召回范围到指定的 BKN 概念分组；不传则在整个知识网络内召回。"},"object_types":{"type":"array","items":{"type":"string"},"description":"把召回范围钉死在这几个对象类上，只取对象类 id（例如 `material`），不接受名称。\nid 来自 `search_schema` 响应的 `concept_id`、本接口响应的 `object_type_id`\n或 `get_kn_detail` 的 `object_types[].id`。不传则不限。\n过滤发生在相关性排序与 `max_object_types` 截断之前，因此点名的对象类不会因为\n排名靠后被挤掉。列表里的 id 一个都不存在时返回空 `nodes`，并在 `message` 里\n列出这些 id。\n"},"exclude_object_types":{"type":"array","items":{"type":"string"},"description":"从召回范围里排除这几个对象类，同样只取对象类 id。适合上一轮返回里混进了噪音\n对象类、想重跑一次时用；与 `object_types` 有重叠时以排除为准。\n"},"max_object_types":{"type":"integer","default":10,"minimum":1,"description":"参与实例召回的对象类数量上限。每多一个对象类多一轮下游查询。"},"max_instances_per_type":{"type":"integer","default":5,"minimum":1,"description":"每个对象类最多返回几条实例。"},"rerank":{"type":"boolean","default":false,"description":"是否对召回结果做语义精排。默认关。开启后由 cross-encoder 逐条判断相关性并\n**重排返回顺序**（`score` 不变，模型分单独落在 `reranker_score`，\n见响应说明），能分辨名次融合分不出的语义差异。\n代价是多一次模型调用（约 100~400ms），且要求部署里注册了精排小模型；\n模型不可用时自动退回原顺序，不报错。\n"},"include_object_types":{"type":"boolean","default":true,"description":"是否附带命中对象类的精简定义。默认附带——不附带的话，要读懂返回的实例\n还得再调一次 `get_object_types`，而那一趟会把同一个 query 的概念召回重跑一遍。\n"}}},"SearchInstanceResponse":{"type":"object","required":["nodes"],"properties":{"nodes":{"type":"array","description":"命中的实例，**按相关性全局降序**排列，跨对象类统一排序。每条带\n`object_type_id`（可直接喂给 `get_object_types` / `query_object_instance`）、\n`properties`，以及 `rank` 与若干分数字段。\n\n**排序只认 `rank`**（从 1 开始，与返回顺序一致）。哪一个分数决定了位次取决于\n请求：默认是融合分，开启精排时是模型分。按任何单一分数字段自行重排都可能得到\n与服务端不同的顺序。\n\n分数字段各有量纲，是解释排序的证据，不能互相比较：\n\n- `score`：相关性分，也是默认排序依据。索引召回路径上是 RRF 融合的名次分，\n  「某一路第一」=1.0、「两路都第一」=2.0，表达两条召回通道的一致程度，\n  **不是绝对相关度**——某通道的第一名恒得 1.0，哪怕整个对象类都与 query 无关。\n- `bm25_score`：全文通道原始 `_score`。**无上界**，随语料与 query 长度漂移，\n  不能跨 query / 跨知识网络比较，也不能当阈值。\n- `knn_score`：向量通道相似度，0~1，是唯一跨 query 大致可比的原始分。\n- `reranker_score`：cross-encoder 精排分，0~1。仅当精排真的跑过并给该条打分时\n  出现；精排窗口（默认前 50 条）之外的行不带此字段。**该字段是否存在，也是\n  判断精排生效还是模型不可用静默降级的唯一依据。**\n- `heuristic_score`：本地兜底打分（0/0.3/0.5/0.85 档），仅在所有通道都没拿到\n  索引 `_score`、名次无意义时出现。出现时 `score` 携带的就是这个档位分，两种\n  刻度不可互相比较。\n","items":{"type":"object","additionalProperties":true}},"object_types":{"type":"array","description":"读懂 `nodes` 所需的对象类精简定义（属性名与类型），**只含真正出了实例的\n那些对象类**，不是召回扫过的全部。`include_object_types=false` 时不返回。\n","items":{"type":"object","additionalProperties":true}},"message":{"type":"string","description":"仅在没有命中时出现，说明为什么是空的。"}}},"QueryObjectInstanceRequest":{"type":"object","required":["bkn_context"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"condition":{"$ref":"#/components/schemas/Condition"},"filters":{"type":"array","items":{"$ref":"#/components/schemas/FlatFilter"},"description":"扁平过滤简写，多个条件按 AND 组合。与 `condition` 互斥，同传时\n`condition` 优先。需要 OR 或嵌套时改用 `condition`。\n"},"limit":{"type":"integer","default":10,"minimum":1,"maximum":10000,"description":"返回条数。"},"properties":{"type":"array","items":{"type":"string"},"description":"指定返回的属性字段；不传返回全部属性。"},"sort":{"type":"array","items":{"$ref":"#/components/schemas/SortSpec"},"description":"排序字段，按数组顺序依次比较。不传时默认序不保证语义，需要「最新 /\n最大 / 最小的前 N 条」时必须显式指定。\n"},"search_after":{"type":"array","items":{},"description":"游标翻页：上一页响应返回的 `search_after` 原样回传。首次查询留空。\n与 `offset` 互斥。\n"},"offset":{"type":"integer","description":"偏移翻页：适用于资源（vega 表源）路径，可跳页。与 `search_after` 互斥。\n"}}},"SortSpec":{"type":"object","description":"单个排序字段。","required":["field","direction"],"properties":{"field":{"type":"string","description":"排序字段，必须是该对象类的属性名。"},"direction":{"type":"string","enum":["asc","desc"],"description":"排序方向。"}}},"FlatFilter":{"type":"object","description":"单个「字段 算子 值」比较。多个之间按 AND 组合，`value_from` 固定为 `const`。","required":["field","op","value"],"properties":{"field":{"type":"string","description":"对象类属性名。"},"op":{"$ref":"#/components/schemas/ConditionOperation"},"value":{"description":"字段值。`in` / `not_in` 传数组，`range` / `out_range` 传 `[min, max]`，\n其余传单值。\n"}}},"Condition":{"type":"object","description":"过滤条件。逻辑算子（`and` / `or`）用 `sub_conditions` 组合子条件；\n叶子条件用 `field` + `operation` + `value` + `value_from`。\n\n**`value` 与 `value_from` 必须成对出现**，且 `value_from` 目前只支持 `const`。\n","required":["operation"],"properties":{"field":{"type":"string","description":"字段名，即对象类的属性名。逻辑算子节点不需要。"},"operation":{"$ref":"#/components/schemas/ConditionOperation"},"sub_conditions":{"type":"array","items":{"$ref":"#/components/schemas/Condition"},"description":"子条件数组，供 `and` / `or` 组合使用。"},"value":{"description":"字段值，格式随算子而定：比较类传单值；`range` / `out_range` 传\n`[min, max]`；`in` / `not_in` 传值数组；`knn` 传向量或待向量化的文本。\n"},"value_from":{"type":"string","enum":["const"],"description":"值来源。目前只支持 `const`，且必须与 `value` 同时出现。"},"limit_key":{"type":"string","enum":["k","min_score","min_distance"],"description":"向量检索（`knn`）的限定维度：`k` 取回条数，`min_score` 最低相似度，\n`min_distance` 最大距离。\n"},"limit_value":{"description":"与 `limit_key` 配套的取值。"}}},"ObjectDataResponse":{"type":"object","description":"对象实例查询结果。本接口固定不返回对象类定义（`object_type`）——需要定义\n请走 [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types`。\n","properties":{"datas":{"type":"array","items":{"$ref":"#/components/schemas/ObjectInstance"},"description":"对象实例列表。"},"total_count":{"type":"integer","format":"int64","description":"满足过滤条件的实例总数，不受 `limit` 限制。零命中时为 `0`（字段存在）。\n字段缺失表示本次未计算总数——`search_after` 翻页第二页起如此——\n不可推断为 0。\n"},"search_after":{"type":"array","items":{},"description":"下一页游标。非空时把它作为下次请求的 `search_after` 传入；字段不存在\n或为空表示没有更多数据。\n"}}},"ObjectInstance":{"type":"object","additionalProperties":true,"description":"单条对象实例。业务字段随对象类建模动态变化，此外固定含若干下划线前缀的\n元字段。\n","properties":{"_instance_id":{"type":"string","description":"该实例的唯一标识字符串。"},"_instance_identity":{"type":"object","additionalProperties":true,"description":"该实例的主键键值对。**下游接口要求的 `_instance_identities` 必须从这里\n原样取，不能自己拼**。\n"},"_display":{"description":"展示用的摘要字段。"},"_score":{"type":"number","format":"float","description":"相关度得分。仅当查询含 `knn` / `match` 等真正打分的算子时返回；\n纯结构化过滤下该字段被剥除。\n"}}},"ConditionOperation":{"type":"string","description":"查询算子全集。**实际可用范围以对象类的 `condition_operations` 为准**\n（见 [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types`）。\n","enum":["and","or","==","!=",">","<",">=","<=","in","not_in","like","not_like","range","out_range","exist","not_exist","regex","match","knn"]},"BKNContext":{"type":"object","additionalProperties":false,"description":"BKN Trace business-provenance context identifying the business\nconversation and interaction to which this call belongs. Required on\nREST APIs.\n\nBoth required child fields are server-issued handles and must not be\ninvented by the caller:\n\n- `conversation_id`: obtained from the Context Loader MCP tool\n  `bkn_start_interaction` on the first turn\n- `interaction_id`: obtained from the Context Loader MCP tool\n  `bkn_start_interaction`\n\nThese handles are available only through the provenance MCP tool above.\nThe BKN Trace Core session APIs under `/api/agent-observability/v1`\naccept gateway credentials only from trusted in-cluster services. They\ndo not accept OAuth tokens or `bak_` AppKeys; direct external calls\nreceive `401 permission_denied`.\nContext Loader derives the Operation idempotency identity on the server\nfrom request correlation, tool name, and normalized input. Callers must\nnot submit `operation_key`. Network retries should reuse\n`bkn-request-id` or provide a stable\n`X-OpenBKN-Client-Invocation-Id` for the same logical call. This hint is\nused only for idempotency and has no role in identity, authorization, or\ndata-isolation decisions.\n","required":["conversation_id","interaction_id"],"properties":{"conversation_id":{"type":"string","description":"Server-issued business conversation ID.","example":"conv_8eca1655217a128b16727ce664cd579c"},"interaction_id":{"type":"string","description":"Server-issued interaction ID for one question-and-answer turn.","example":"int_0ab58662974fe9edcfb4ae3e77e43502"},"parent_operation_id":{"type":"string","description":"Upstream operation ID that caused this call."},"causation_event_ids":{"type":"array","items":{"type":"string"},"description":"Event IDs that caused this call."},"business_refs":{"type":"array","maxItems":64,"description":"Canonical business-object, data, or logic references known to this call.","items":{"type":"object","additionalProperties":false,"required":["ref_type","ref_id"],"properties":{"ref_type":{"type":"string","description":"Business reference type, such as object_type, property, or data_resource."},"ref_id":{"type":"string","description":"Canonical business reference ID. Except for data_resource, it must belong to the current knowledge network."},"version":{"type":"string","description":"Reference version. Omission means unversioned."}}}}}},"ErrorCompact":{"description":"Error response shared by context-loader (`agent-retrieval`) and\nexecution-factory (`agent-operator-integration`) under adp. It is\nserialized from each service's `infra/errors.HTTPError`. Its field names\ndiffer from `Error` above and clients must not treat them as the same\nenvelope.\n\nWhen an error originates from a downstream service, these services pass\nthe downstream body through unchanged. In that case the field names are\nthose of the downstream envelope, commonly `error_code` and\n`error_details`. Use the `code` prefix to identify locally generated\nerrors: `Public.*`, `agentRetrieval.*`, or\n`AgentOperatorIntegration.*` (the last prefix starts with a capital\nletter).\n\nErrors from mf-model-api are an exception to the prefix rule.\n`/v1/chat/completions` exposes an OpenAI-compatible surface and always\nreturns `{\"error\": {\"message\", \"type\", \"param\", \"code\"}}` on failure.\nThere is no top-level `code`; the original business code is in\n`error.code`. Endpoints that call a large model, such as\nexecution-factory `/ai_generate/*`, pass this shape through. A top-level\n`error` object therefore identifies an error from the model call chain.\nRead `error.message` for the text and `error.type` for classifications\nsuch as `rate_limit_exceeded`, `service_unavailable_error`, and\n`invalid_request_error`.\n","type":"object","properties":{"code":{"type":"string","description":"Machine-readable error code. Generic errors use\n`Public.<ErrCode>`, such as `Public.BadRequest`. Business errors use\n`<service>.<ErrCode>.<ExtCode>`, for example\n`AgentOperatorIntegration.BadRequest.ValidationRequired`.\n","example":"Public.BadRequest"},"description":{"type":"string","description":"Localized, human-readable error description."},"solution":{"type":"string","description":"Recommended remediation."},"link":{"type":"string","description":"Link to error documentation; may indicate that no link is available."},"details":{"description":"Error details, commonly a string or object."}}},"ErrorAgentRetrieval":{"description":"Alias of `ErrorCompact` retained for the context-loader YAML files added\nin #578. The structure is identical. New documentation should reference\n`ErrorCompact` directly.\n","allOf":[{"$ref":"#/components/schemas/ErrorCompact"}]}}}}},"searchIndex":{"store":["tag/ObjectInstance","tag/ObjectInstance/operation/queryObjectInstance","tag/ObjectInstance/operation/searchInstance"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,0.981]],["description/0",[]],["title/1",[1,0.105]],["description/1",[1,0.223,2,0.619,3,0.619,4,0.297,5,0.962,6,0.619,7,0.619,8,0.619,9,0.962,10,0.619,11,0.297,12,0.619,13,0.619,14,0.566,15,0.619,16,0.619,17,0.566,18,0.619,19,0.619,20,0.619,21,0.619,22,0.962,23,0.962,24,0.619,25,1.18,26,0.962,27,0.962,28,0.962,29,0.619,30,0.619,31,0.619,32,1.18,33,0.962,34,0.619]],["title/2",[1,0.105]],["description/2",[1,0.217,4,0.569,11,0.569,14,0.569,17,0.569,35,1.188,36,1.532,37,1.188,38,1.188,39,1.188,40,1.188,41,1.188,42,1.188,43,1.188]]],"invertedIndex":[["",{"_index":1,"title":{"1":{},"2":{}},"description":{"1":{},"2":{}}}],["0",{"_index":32,"title":{},"description":{"1":{}}}],["400",{"_index":23,"title":{},"description":{"1":{}}}],["5xx",{"_index":42,"title":{},"description":{"2":{}}}],["_score",{"_index":25,"title":{},"description":{"1":{}}}],["bkn",{"_index":13,"title":{},"description":{"1":{}}}],["condit",{"_index":9,"title":{},"description":{"1":{}}}],["condition_oper",{"_index":11,"title":{},"description":{"1":{},"2":{}}}],["const",{"_index":7,"title":{},"description":{"1":{}}}],["direct",{"_index":30,"title":{},"description":{"1":{}}}],["embed",{"_index":16,"title":{},"description":{"1":{}}}],["field",{"_index":29,"title":{},"description":{"1":{}}}],["filter",{"_index":5,"title":{},"description":{"1":{}}}],["get_object_typ",{"_index":10,"title":{},"description":{"1":{}}}],["k",{"_index":20,"title":{},"description":{"1":{}}}],["kn/query_object_inst",{"_index":34,"title":{},"description":{"1":{}}}],["kn/search_inst",{"_index":43,"title":{},"description":{"2":{}}}],["kn_id",{"_index":2,"title":{},"description":{"1":{}}}],["knn",{"_index":17,"title":{},"description":{"1":{},"2":{}}}],["knn`）与全文（`match",{"_index":38,"title":{},"description":{"2":{}}}],["limit",{"_index":28,"title":{},"description":{"1":{}}}],["limit_key",{"_index":19,"title":{},"description":{"1":{}}}],["limit_valu",{"_index":21,"title":{},"description":{"1":{}}}],["match",{"_index":14,"title":{},"description":{"1":{},"2":{}}}],["messag",{"_index":41,"title":{},"description":{"2":{}}}],["multi_match",{"_index":15,"title":{},"description":{"1":{}}}],["n",{"_index":27,"title":{},"description":{"1":{}}}],["node",{"_index":40,"title":{},"description":{"2":{}}}],["object_typ",{"_index":39,"title":{},"description":{"2":{}}}],["objectinst",{"_index":0,"title":{"0":{}},"description":{}}],["ontology-queri",{"_index":22,"title":{},"description":{"1":{}}}],["ontologyquery.invalidparameter.condit",{"_index":24,"title":{},"description":{"1":{}}}],["op",{"_index":8,"title":{},"description":{"1":{}}}],["ot_id",{"_index":3,"title":{},"description":{"1":{}}}],["queri",{"_index":4,"title":{},"description":{"1":{},"2":{}}}],["query_object_inst",{"_index":37,"title":{},"description":{"2":{}}}],["schema",{"_index":36,"title":{},"description":{"2":{}}}],["search_aft",{"_index":33,"title":{},"description":{"1":{}}}],["search_schema",{"_index":35,"title":{},"description":{"2":{}}}],["sort",{"_index":26,"title":{},"description":{"1":{}}}],["sub_conditions`。`knn",{"_index":18,"title":{},"description":{"1":{}}}],["total_count",{"_index":31,"title":{},"description":{"1":{}}}],["value_from",{"_index":6,"title":{},"description":{"1":{}}}],["vega",{"_index":12,"title":{},"description":{"1":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>
