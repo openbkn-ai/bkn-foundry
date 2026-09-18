@@ -41,6 +41,18 @@ SYSTEM_DERIVED = "system_derived"
 AUTHORITY_SYSTEM = "system"
 FULL_BUSINESS_ACCESS = "full_business_access"
 AUTHORIZE = "authorize"
+CATALOG_BUSINESS_OPERATIONS = {
+    "view_detail",
+    "modify",
+    "delete",
+    "query_data",
+    "data_write",
+    "resource_manage",
+    "task_manage",
+}
+LEGACY_CATALOG_CREATOR_OPERATIONS = (
+    CATALOG_BUSINESS_OPERATIONS - {"data_write"}
+) | {AUTHORIZE}
 
 
 @dataclass(frozen=True)
@@ -102,6 +114,16 @@ class MigrationPlan:
 def stable_key(parts: Iterable[str]) -> str:
     """Match bkn-safe's deterministic grant and projection identity."""
     return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
+
+
+def is_valid_resource_id(resource_type: str, resource_id: str) -> bool:
+    """Match the concrete-instance constraints enforced by bkn-safe writers."""
+    return (
+        bool(resource_id)
+        and resource_id.strip() == resource_id
+        and "*" not in resource_id
+        and len(f"{resource_type}:{resource_id}".encode("utf-8")) <= 100
+    )
 
 
 def creator_grants(catalog: Catalog) -> tuple[Grant, Grant]:
@@ -167,7 +189,9 @@ def load_vega_rows(connection) -> tuple[list[Catalog], list[ResourceParent]]:
     return catalogs, parents
 
 
-def load_safe_state(connection) -> tuple[set[str], int, set[str]]:
+def load_safe_state(
+    connection,
+) -> tuple[set[str], int, set[str], dict[tuple[str, str], list[tuple[str, str, str]]]]:
     """Load accounts and existing canonical Vega authorization rows."""
     require_safe_proxy_schema(connection)
     with connection.cursor() as cursor:
@@ -186,7 +210,43 @@ def load_safe_state(connection) -> tuple[set[str], int, set[str]]:
             (f"{CATALOG_TYPE}:%", AUTHORITY_SYSTEM, COMMUNITY_BUNDLE, SYSTEM_DERIVED),
         )
         grant_ids = {normalize_text(row["grant_id"]) for row in cursor.fetchall()}
-    return users, parent_count, grant_ids
+        cursor.execute(
+            "SELECT v0, v1, v2, v3, v4 FROM casbin_rule "
+            "WHERE ptype = 'p' AND v1 LIKE %s",
+            (f"{CATALOG_TYPE}:%",),
+        )
+        policies: dict[tuple[str, str], list[tuple[str, str, str]]] = {}
+        for row in cursor.fetchall():
+            key = (normalize_text(row["v0"]), normalize_text(row["v1"]))
+            policies.setdefault(key, []).append(
+                (
+                    normalize_text(row["v2"]),
+                    normalize_text(row["v3"]) or EFFECT_ALLOW,
+                    normalize_text(row["v4"]),
+                )
+            )
+    return users, parent_count, grant_ids, policies
+
+
+def creator_policy_is_safe_to_upgrade(
+    policies: Sequence[tuple[str, str, str]],
+) -> bool:
+    """Allow only absent or complete historical creator registrations.
+
+    A partial policy may represent an intentional revocation. Expanding it to
+    the current bundle would be an unreviewed privilege escalation.
+    """
+    if not policies:
+        return True
+    allowed: set[str] = set()
+    for operation, effect, source in policies:
+        if effect != EFFECT_ALLOW:
+            return False
+        if operation == FULL_BUSINESS_ACCESS and source == COMMUNITY_BUNDLE:
+            allowed.update(CATALOG_BUSINESS_OPERATIONS)
+        else:
+            allowed.add(operation)
+    return LEGACY_CATALOG_CREATOR_OPERATIONS.issubset(allowed)
 
 
 def build_plan(
@@ -195,6 +255,9 @@ def build_plan(
     users: set[str],
     existing_parents: int = 0,
     existing_grant_ids: Optional[set[str]] = None,
+    existing_creator_policies: Optional[
+        dict[tuple[str, str], list[tuple[str, str, str]]]
+    ] = None,
 ) -> MigrationPlan:
     """Validate authoritative Vega rows and construct the complete Safe state."""
     plan = MigrationPlan(
@@ -204,8 +267,15 @@ def build_plan(
     )
     catalog_ids: set[str] = set()
     for catalog in catalogs:
-        if not catalog.catalog_id:
-            plan.failures.append(Failure("invalid_catalog_id", CATALOG_TYPE, "", "empty f_id"))
+        if not is_valid_resource_id(CATALOG_TYPE, catalog.catalog_id):
+            plan.failures.append(
+                Failure(
+                    "invalid_catalog_id",
+                    CATALOG_TYPE,
+                    catalog.catalog_id,
+                    "invalid concrete authorization resource ID",
+                )
+            )
             continue
         if catalog.catalog_id in catalog_ids:
             plan.failures.append(
@@ -240,12 +310,34 @@ def build_plan(
                 )
             )
             continue
-        plan.grants.extend(creator_grants(catalog))
+        grants = creator_grants(catalog)
+        existing = existing_grant_ids or set()
+        if not all(grant.grant_id in existing for grant in grants):
+            policy_key = (catalog.creator_id, f"{CATALOG_TYPE}:{catalog.catalog_id}")
+            policies = (existing_creator_policies or {}).get(policy_key, [])
+            if not creator_policy_is_safe_to_upgrade(policies):
+                plan.failures.append(
+                    Failure(
+                        "partial_creator_policy",
+                        CATALOG_TYPE,
+                        catalog.catalog_id,
+                        "creator has a partial or denied direct policy",
+                    )
+                )
+                continue
+        plan.grants.extend(grants)
 
     seen_resources: dict[str, str] = {}
     for parent in plan.parents:
-        if not parent.resource_id:
-            plan.failures.append(Failure("invalid_resource_id", RESOURCE_TYPE, "", "empty f_id"))
+        if not is_valid_resource_id(RESOURCE_TYPE, parent.resource_id):
+            plan.failures.append(
+                Failure(
+                    "invalid_resource_id",
+                    RESOURCE_TYPE,
+                    parent.resource_id,
+                    "invalid concrete authorization resource ID",
+                )
+            )
             continue
         previous = seen_resources.get(parent.resource_id)
         if previous is not None and previous != parent.catalog_id:
@@ -426,8 +518,17 @@ def run(mode: str, report_path: str = "") -> int:
         vega_connection = connect_database(vega_config)
         safe_connection = connect_database(safe_config)
         catalogs, parents = load_vega_rows(vega_connection)
-        users, existing_parents, existing_grants = load_safe_state(safe_connection)
-        plan = build_plan(catalogs, parents, users, existing_parents, existing_grants)
+        users, existing_parents, existing_grants, creator_policies = load_safe_state(
+            safe_connection
+        )
+        plan = build_plan(
+            catalogs,
+            parents,
+            users,
+            existing_parents,
+            existing_grants,
+            creator_policies,
+        )
         if plan.failures:
             write_report(migration_report(mode, plan), report_path)
             raise MigrationError("Vega migration validation failed")

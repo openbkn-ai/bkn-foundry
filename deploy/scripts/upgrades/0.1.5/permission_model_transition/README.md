@@ -34,7 +34,9 @@ particular, it never writes `task_manage`. Historical Core allow/deny rows are
 classified by the authorization step instead of being replaced.
 
 The Vega step writes only bkn-safe. Its changes are covered by the Safe backup
-created by the preceding BKN step; the Vega database is read-only.
+created by the preceding BKN step; the Vega database is read-only. A partial or
+denied direct creator policy blocks the step instead of being expanded into a
+full creator bundle.
 
 ## Requirements
 
