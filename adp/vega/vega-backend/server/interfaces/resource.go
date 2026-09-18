@@ -179,11 +179,13 @@ type ResourceIndexConfig struct {
 // ResourcesQueryParams holds resource list query parameters.
 type ResourcesQueryParams struct {
 	PaginationQueryParams
-	Name      string
-	CatalogID string
-	Category  string
-	Status    string
-	Schema    string
+	Name               string
+	CatalogID          string
+	Category           string
+	Status             string
+	Schema             string
+	Enabled            *bool
+	LastDiscoverStatus string
 	// IncludeBuiltin is set only by the service after checking the caller's
 	// account. It is not populated from an external list request.
 	IncludeBuiltin bool

@@ -248,7 +248,7 @@ func ValidateResourceListQueryParams(ctx context.Context, params interfaces.Reso
 	if err := validateResourceStatusQueryParam(ctx, params.Status); err != nil {
 		return err
 	}
-	return nil
+	return validateResourceDiscoverStatusQueryParam(ctx, params.LastDiscoverStatus)
 }
 
 // validateCreateResourceCategory enforces the business boundary that only
@@ -299,6 +299,25 @@ func validateResourceStatusQueryParam(ctx context.Context, status string) error 
 	default:
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("invalid status: %s", status))
+	}
+}
+
+func validateResourceDiscoverStatusQueryParam(ctx context.Context, status string) error {
+	if status == "" {
+		return nil
+	}
+
+	switch status {
+	case interfaces.DiscoverStatusError,
+		interfaces.DiscoverStatusMissing,
+		interfaces.DiscoverStatusNew,
+		interfaces.DiscoverStatusRestored,
+		interfaces.DiscoverStatusUnchanged,
+		interfaces.DiscoverStatusUpdated:
+		return nil
+	default:
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("invalid last_discover_status: %s", status))
 	}
 }
 

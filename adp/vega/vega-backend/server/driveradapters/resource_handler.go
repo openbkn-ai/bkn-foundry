@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"vega-backend/common"
 	"vega-backend/common/visitor"
@@ -64,6 +65,19 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 	category := c.Query("category")
 	status := c.Query("status")
 	schema := c.Query("schema")
+	lastDiscoverStatus := c.Query("last_discover_status")
+	var enabled *bool
+	if enabledStr := strings.TrimSpace(c.Query("enabled")); enabledStr != "" {
+		value, err := strconv.ParseBool(enabledStr)
+		if err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("invalid enabled: %s", enabledStr))
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		enabled = &value
+	}
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
 	sort := common.GetQueryOrDefault(c, "sort", interfaces.ResourceSortUpdateTime)
@@ -87,6 +101,8 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 		Category:              category,
 		Status:                status,
 		Schema:                schema,
+		Enabled:               enabled,
+		LastDiscoverStatus:    lastDiscoverStatus,
 	}
 
 	if err := ValidateResourceListQueryParams(ctx, params); err != nil {

@@ -79,6 +79,23 @@ paths:
               - active
               - deprecated
               - stale
+        - name: enabled
+          description: 按启用状态过滤
+          in: query
+          schema:
+            type: boolean
+        - name: last_discover_status
+          description: 按最近一次探查状态过滤
+          in: query
+          schema:
+            type: string
+            enum:
+              - error
+              - missing
+              - new
+              - restored
+              - unchanged
+              - updated
         - name: schema
           description: 按所属 schema 过滤；过滤在服务端计数和分页之前完成
           in: query

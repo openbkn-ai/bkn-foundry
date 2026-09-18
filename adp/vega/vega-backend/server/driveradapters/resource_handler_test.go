@@ -94,12 +94,15 @@ func Test_ResourceRestHandler_ListResources(t *testing.T) {
 				assert.Equal(t, interfaces.ResourceCategoryDataset, params.Category)
 				assert.Equal(t, interfaces.ResourceStatusActive, params.Status)
 				assert.Equal(t, "external_data", params.Schema)
+				require.NotNil(t, params.Enabled)
+				assert.True(t, *params.Enabled)
+				assert.Equal(t, interfaces.DiscoverStatusUpdated, params.LastDiscoverStatus)
 				assert.Equal(t, "update_time", params.Sort)
 				assert.Equal(t, "DESC", params.Direction)
 				return []*interfaces.Resource{}, int64(0), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, url+"?name=orders&category=dataset&status=active&schema=external_data", nil)
+		req := httptest.NewRequest(http.MethodGet, url+"?name=orders&category=dataset&status=active&enabled=true&last_discover_status=updated&schema=external_data", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

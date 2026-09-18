@@ -317,6 +317,7 @@ func TestResourceAccessList(t *testing.T) {
 	t.Run("returns resources with filters", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
+		enabled := true
 		params := interfaces.ResourcesQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "name", Direction: "ASC"},
 			Name:                  "order",
@@ -324,13 +325,15 @@ func TestResourceAccessList(t *testing.T) {
 			Category:              interfaces.ResourceCategoryTable,
 			Status:                interfaces.ResourceStatusActive,
 			Schema:                "db1",
+			Enabled:               &enabled,
+			LastDiscoverStatus:    interfaces.DiscoverStatusUpdated,
 		}
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_builtin = ? AND f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_schema = ?")).
-			WithArgs(false, "%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "db1").
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_builtin = ? AND (f_name LIKE ? OR f_source_identifier LIKE ?) AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_enabled = ? AND f_last_discover_status = ? AND f_schema = ?")).
+			WithArgs(false, "%order%", "%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, true, interfaces.DiscoverStatusUpdated, "db1").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta(resourceSummarySelectSQL("f_builtin = ? AND f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_schema = ? ORDER BY f_name ASC"))).
-			WithArgs(false, "%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "db1").
+		mock.ExpectQuery(regexp.QuoteMeta(resourceSummarySelectSQL("f_builtin = ? AND (f_name LIKE ? OR f_source_identifier LIKE ?) AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_enabled = ? AND f_last_discover_status = ? AND f_schema = ? ORDER BY f_name ASC"))).
+			WithArgs(false, "%order%", "%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, true, interfaces.DiscoverStatusUpdated, "db1").
 			WillReturnRows(resourceSummaryRows().AddRow(resourceSummaryRowValues(sampleResource())...))
 
 		got, total, err := access.List(context.Background(), params)

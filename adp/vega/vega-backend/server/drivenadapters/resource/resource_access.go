@@ -190,28 +190,6 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 	return summary, nil
 }
 
-func applyResourceFilters(builder sq.SelectBuilder, params interfaces.ResourcesQueryParams) sq.SelectBuilder {
-	if !params.IncludeBuiltin {
-		builder = builder.Where(sq.Eq{"f_builtin": false})
-	}
-	if params.Name != "" {
-		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
-	}
-	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if params.Category != "" {
-		builder = builder.Where(sq.Eq{"f_category": params.Category})
-	}
-	if params.Status != "" {
-		builder = builder.Where(sq.Eq{"f_status": params.Status})
-	}
-	if params.Schema != "" {
-		builder = builder.Where(sq.Eq{"f_schema": params.Schema})
-	}
-	return builder
-}
-
 // NewResourceAccess creates ra new ResourceAccess.
 func NewResourceAccess(appSetting *common.AppSetting) interfaces.ResourceAccess {
 	rAccessOnce.Do(func() {
@@ -1177,6 +1155,38 @@ func (ra *resourceAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, cat
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func applyResourceFilters(builder sq.SelectBuilder, params interfaces.ResourcesQueryParams) sq.SelectBuilder {
+	if !params.IncludeBuiltin {
+		builder = builder.Where(sq.Eq{"f_builtin": false})
+	}
+	if params.Name != "" {
+		pattern := "%" + common.EscapeLikePattern(params.Name) + "%"
+		builder = builder.Where(sq.Or{
+			sq.Like{"f_name": pattern},
+			sq.Like{"f_source_identifier": pattern},
+		})
+	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	}
+	if params.Category != "" {
+		builder = builder.Where(sq.Eq{"f_category": params.Category})
+	}
+	if params.Status != "" {
+		builder = builder.Where(sq.Eq{"f_status": params.Status})
+	}
+	if params.Enabled != nil {
+		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
+	}
+	if params.LastDiscoverStatus != "" {
+		builder = builder.Where(sq.Eq{"f_last_discover_status": params.LastDiscoverStatus})
+	}
+	if params.Schema != "" {
+		builder = builder.Where(sq.Eq{"f_schema": params.Schema})
+	}
+	return builder
 }
 
 // resourceListOrderByClause translates API sort fields into a safe ORDER BY clause.
