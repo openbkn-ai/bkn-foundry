@@ -86,6 +86,30 @@ func Test_ResourceRestHandler_ListResources(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "invalid status: unknown")
 	})
 
+	t.Run("invalid enabled", func(t *testing.T) {
+		engine, _ := setup(t)
+		req := httptest.NewRequest(http.MethodGet, url+"?enabled=abc", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.InvalidParameter")
+		assert.Contains(t, w.Body.String(), "invalid enabled: abc")
+	})
+
+	t.Run("invalid last discover status", func(t *testing.T) {
+		engine, _ := setup(t)
+		req := httptest.NewRequest(http.MethodGet, url+"?last_discover_status=unknown", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.InvalidParameter")
+		assert.Contains(t, w.Body.String(), "invalid last_discover_status: unknown")
+	})
+
 	t.Run("success list resources with schema", func(t *testing.T) {
 		engine, rs := setup(t)
 		rs.EXPECT().List(gomock.Any(), gomock.Any()).

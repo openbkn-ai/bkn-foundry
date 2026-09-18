@@ -212,10 +212,16 @@ func resourceDataEvidenceTruncated(result *interfaces.ResourceDataQueryResult) b
 }
 
 func safeResourceListQueryShape(params interfaces.ResourcesQueryParams) map[string]any {
+	var enabled any
+	if params.Enabled != nil {
+		enabled = *params.Enabled
+	}
 	return map[string]any{
 		"catalog_id":             params.CatalogID,
 		"category":               params.Category,
 		"status":                 params.Status,
+		"enabled":                enabled,
+		"last_discover_status":   params.LastDiscoverStatus,
 		"schema":                 params.Schema,
 		"offset":                 params.Offset,
 		"limit":                  params.Limit,

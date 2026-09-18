@@ -46,7 +46,7 @@ paths:
         需要这些字段时使用 `GET /resources/{id}`。
       parameters:
         - name: name
-          description: 按名称模糊过滤，匹配名称中包含该值的资源
+          description: 按资源名称或源端标识模糊过滤，匹配任一字段中包含该值的资源
           in: query
           schema:
             type: string

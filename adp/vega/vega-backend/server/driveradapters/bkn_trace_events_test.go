@@ -88,6 +88,18 @@ func TestResourceDataEvidenceTruncatedUsesCursorOrTotal(t *testing.T) {
 	}
 }
 
+func TestSafeResourceListQueryShapeIncludesAppliedFilters(t *testing.T) {
+	enabled := false
+	shape := safeResourceListQueryShape(interfaces.ResourcesQueryParams{
+		Enabled:            &enabled,
+		LastDiscoverStatus: interfaces.DiscoverStatusUpdated,
+	})
+
+	if shape["enabled"] != false || shape["last_discover_status"] != interfaces.DiscoverStatusUpdated {
+		t.Fatalf("resource list evidence omitted applied filters: %#v", shape)
+	}
+}
+
 func TestRawQueryArtifactContentPreservesActualQueryAndBusinessResult(t *testing.T) {
 	totalCount := int64(1)
 	req := &interfaces.RawQueryRequest{
