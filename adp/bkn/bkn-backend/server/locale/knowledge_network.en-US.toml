@@ -44,6 +44,11 @@ Description = "Invalid Path Length Paramter"
 Solution = "Please check whether the parameter is correct."
 ErrorLink = ""
 
+[BknBackend.KnowledgeNetwork.Proxy.TargetInvalid]
+Description = "The knowledge network has incomplete tool bindings"
+Solution = "Restore the tools listed in the error details, or import with detached bindings and configure them in the target environment."
+ErrorLink = ""
+
 [BknBackend.KnowledgeNetwork.KNIDExisted]
 Description = "Same ID Existed"
 Solution = "Please check whether the parameter is correct."

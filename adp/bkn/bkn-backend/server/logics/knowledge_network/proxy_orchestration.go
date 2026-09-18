@@ -7,6 +7,7 @@ package knowledge_network
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -1293,5 +1294,14 @@ func invalidProxyTargetError(ctx context.Context, cause error) *rest.HTTPError {
 	if cause != nil {
 		detail += ": " + cause.Error()
 	}
-	return proxyHTTPError(ctx, http.StatusBadRequest, detail)
+	var missingTools *missingBoundToolsError
+	if errors.As(cause, &missingTools) {
+		return proxyStateHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_ProxyTargetInvalid, detail)
+	}
+	var upstream *rest.HTTPError
+	if errors.As(cause, &upstream) {
+		return upstream
+	}
+	return proxyHTTPError(ctx, http.StatusInternalServerError, detail)
 }

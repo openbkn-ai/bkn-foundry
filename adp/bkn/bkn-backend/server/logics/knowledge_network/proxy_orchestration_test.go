@@ -41,6 +41,40 @@ type proxyAccessStub struct {
 	events          *[]string
 }
 
+func TestInvalidProxyTargetErrorUsesValidationCode(t *testing.T) {
+	err := invalidProxyTargetError(t.Context(), &missingBoundToolsError{toolIDsByBox: map[string][]string{
+		"box-1": []string{"tool-1"},
+	}})
+	if err.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", err.HTTPCode, http.StatusBadRequest)
+	}
+	if err.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyTargetInvalid {
+		t.Fatalf("error code = %s", err.BaseError.ErrorCode)
+	}
+	if err.BaseError.ErrorDetails != "published model contains an invalid proxy target: missing bound tools in toolbox box-1: tool-1" {
+		t.Fatalf("error details = %q", err.BaseError.ErrorDetails)
+	}
+}
+
+func TestInvalidProxyTargetErrorKeepsUnexpectedFailuresInternal(t *testing.T) {
+	err := invalidProxyTargetError(t.Context(), errors.New("execution factory is unavailable"))
+	if err.HTTPCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", err.HTTPCode, http.StatusInternalServerError)
+	}
+	if err.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_InternalError {
+		t.Fatalf("error code = %s", err.BaseError.ErrorCode)
+	}
+}
+
+func TestInvalidProxyTargetErrorPreservesUpstreamHTTPError(t *testing.T) {
+	upstream := rest.NewHTTPError(t.Context(), http.StatusServiceUnavailable,
+		berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable)
+	err := invalidProxyTargetError(t.Context(), upstream)
+	if err != upstream {
+		t.Fatal("upstream HTTP error was replaced")
+	}
+}
+
 func (s *proxyAccessStub) Get(context.Context, string) (*interfaces.KNProxyAccount, error) {
 	return s.mapping, nil
 }
