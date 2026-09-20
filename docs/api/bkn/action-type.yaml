@@ -267,6 +267,7 @@ paths:
                         object_type:
                           id: ""
                           name: ""
+                          branch: ""
                           icon: ""
                           color: ""
                         condition:
@@ -326,6 +327,7 @@ paths:
                         object_type:
                           id: ""
                           name: ""
+                          branch: ""
                           icon: ""
                           color: ""
                         condition:
@@ -781,7 +783,9 @@ components:
         branch:
           description: >-
             Owning branch. Always present, but no producer fills it today: every response carries
-            it as an empty string. Read the branch from the enclosing resource instead.
+            it as an empty string. Take the branch from the concept, not from this reference: the
+            relation type or action type that carries it, or the `branch` query parameter of the
+            request (a nested `affect.object_type` is two levels down — go up to the action type).
           type: string
     AffectDetail:
       deprecated: true
