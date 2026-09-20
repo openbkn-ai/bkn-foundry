@@ -16,7 +16,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
-	rowfiltersocket "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/rowfilter"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -180,12 +179,6 @@ func (s *adminWriteServices) DeleteRole(ctx context.Context, id string) error {
 	err := s.e.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 		role, err := loadCustomRole(ctx, tx.DB(), id)
 		if err != nil {
-			return err
-		}
-		// Keep policy cleanup in the same transaction as role removal. A paid
-		// binary without its EE lifecycle hook refuses the delete rather than
-		// allowing stale policies to survive a later role recreation.
-		if err := rowfiltersocket.DeleteSubject(ctx, tx.DB(), rowfiltersocket.SubjectTypeRole, role.ID); err != nil {
 			return err
 		}
 		if err := tx.DB().Delete(&model.Role{}, "id = ?", role.ID).Error; err != nil {

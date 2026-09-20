@@ -22,12 +22,13 @@ import (
 	"github.com/openbkn-ai/licverify"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // Capability deliberately reuses the existing Enterprise authorization
 // bundle. It is a display name, not a new licence feature key.
-const Capability = "perm_object_level"
+const Capability = permobject.Capability
 
 const (
 	// MaxObjectTypesPerRequest bounds one trusted batch decision. It deliberately
@@ -38,6 +39,7 @@ const (
 )
 
 var objectTypeRefPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$`)
+var propertyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$`)
 
 // ErrInvalidPlan means an extension returned a plan outside the deliberately
 // small, safe predicate language. Callers must fail closed and never compile
@@ -310,7 +312,7 @@ func normalizePredicate(predicate Predicate) (Predicate, error) {
 		}
 		return Predicate{Kind: predicate.Kind}, nil
 	case PredicateIn:
-		if predicate.Property == "" || len(predicate.Predicates) != 0 {
+		if !ValidPropertyName(predicate.Property) || len(predicate.Predicates) != 0 {
 			return Predicate{}, invalid("in predicate must have one property and no child predicates")
 		}
 		if len(predicate.Values) == 0 {
@@ -442,6 +444,13 @@ func validateRequest(request Request) error {
 // two authorization contracts cannot diverge in accepted identifier shape.
 func ValidObjectTypeRef(reference string) bool {
 	return len(reference) <= maxObjectIDLength*2+1 && objectTypeRefPattern.MatchString(reference)
+}
+
+// ValidPropertyName is shared by the property-level and row-filter contracts.
+// A predicate may name only a published DataProperty identifier, never an
+// arbitrary backend field or expression fragment.
+func ValidPropertyName(name string) bool {
+	return propertyNamePattern.MatchString(name)
 }
 
 // RegisterLifecycle installs the Enterprise policy lifecycle cleaner. It is

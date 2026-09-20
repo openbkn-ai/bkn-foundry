@@ -70,8 +70,8 @@ func TestResolveFailsClosedForUnknownDisabledAndAppCallers(t *testing.T) {
 	db.Create(&model.User{ID: "disabled", Account: "disabled", Enabled: false})
 	db.Create(&model.User{ID: "app", Account: "app", Enabled: true, AccountType: model.AccountTypeApp})
 	for _, id := range []string{"missing", "disabled", "app"} {
-		if _, err := resolver.Resolve(t.Context(), id); !errors.Is(err, ErrCallerUnavailable) {
-			t.Fatalf("Resolve(%q) error = %v, want ErrCallerUnavailable", id, err)
+		if _, err := resolver.Resolve(t.Context(), id); !errors.Is(err, ErrCallerInvalid) {
+			t.Fatalf("Resolve(%q) error = %v, want ErrCallerInvalid", id, err)
 		}
 	}
 }
@@ -84,8 +84,8 @@ func TestResolveFailsClosedWhenDepartmentScopeExceedsSafeLimit(t *testing.T) {
 	db.Create(&model.Department{ID: "d-child", Name: "Child", ParentID: "d-root"})
 	db.Create(&model.UserDepartment{UserID: "user-limit", DepartmentID: "d-root"})
 
-	if _, err := resolver.Resolve(t.Context(), "user-limit"); !errors.Is(err, ErrCallerUnavailable) {
-		t.Fatalf("Resolve above department safe limit error = %v, want %v", err, ErrCallerUnavailable)
+	if _, err := resolver.Resolve(t.Context(), "user-limit"); !errors.Is(err, ErrCallerInvalid) {
+		t.Fatalf("Resolve above department safe limit error = %v, want %v", err, ErrCallerInvalid)
 	}
 }
 

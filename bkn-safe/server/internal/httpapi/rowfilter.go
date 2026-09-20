@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -69,6 +70,10 @@ func registerRowFilter(group *gin.RouterGroup, enforcer *authz.Enforcer, directo
 		}
 		caller, err := internalrowfilter.NewTrustedCallerResolverWithDepartmentLimit(directoryService, enforcer, maxDepartmentScopeValues).Resolve(c.Request.Context(), body.AccessorID)
 		if err != nil {
+			if errors.Is(err, internalrowfilter.ErrCallerInvalid) {
+				replyPublicError(c, http.StatusForbidden)
+				return
+			}
 			replyPublicError(c, http.StatusServiceUnavailable)
 			return
 		}

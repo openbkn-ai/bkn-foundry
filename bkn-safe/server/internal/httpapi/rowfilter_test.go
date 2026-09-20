@@ -113,8 +113,8 @@ func TestRowFilterRejectsUntrustedCallerAndMalformedTarget(t *testing.T) {
 			if name == "bad target" && response.Code != http.StatusBadRequest {
 				t.Fatalf("row-filter = %d, want 400: %s", response.Code, response.Body.String())
 			}
-			if name == "missing caller" && response.Code != http.StatusServiceUnavailable {
-				t.Fatalf("row-filter = %d, want 503: %s", response.Code, response.Body.String())
+			if name == "missing caller" && response.Code != http.StatusForbidden {
+				t.Fatalf("row-filter = %d, want 403: %s", response.Code, response.Body.String())
 			}
 		})
 	}

@@ -169,6 +169,7 @@ func TestInvalidPlanFailsClosed(t *testing.T) {
 	for _, plan := range []Plan{
 		{Predicate: Predicate{Kind: PredicateIn, Property: "region"}},
 		{Predicate: Predicate{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "east"}, {Type: ValueString, String: "east"}}}},
+		{Predicate: Predicate{Kind: PredicateIn, Property: "region;drop", Values: []Value{{Type: ValueString, String: "east"}}}},
 		{Predicate: Predicate{Kind: PredicateTrue, Property: "region"}},
 		{Predicate: Predicate{Kind: PredicateKind("sql"), Property: "region"}},
 	} {

@@ -18,7 +18,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	rowfiltersocket "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/rowfilter"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -147,15 +146,6 @@ func (s *UserStore) DeleteUser(ctx context.Context, id string) error {
 		return err
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var user model.User
-		if err := tx.Select("id").First(&user, "id = ?", id).Error; err != nil {
-			return err
-		}
-		// The EE hook shares this transaction so a policy cannot survive a
-		// successful user delete and later revive if the same id is recreated.
-		if err := rowfiltersocket.DeleteSubject(ctx, tx, rowfiltersocket.SubjectTypeUser, id); err != nil {
-			return err
-		}
 		res := tx.Where("id = ?", id).Delete(&model.User{})
 		if res.Error != nil {
 			return res.Error

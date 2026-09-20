@@ -6,7 +6,6 @@ package httpapi
 
 import (
 	"net/http"
-	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -22,8 +21,6 @@ const (
 	maxPropertiesPerObjectType        = 200
 	maxPropertiesPerPropertyLevelCall = 1000
 )
-
-var propertyLevelPropertyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$`)
 
 type propertyLevelsRequest struct {
 	AccessorID string                      `json:"accessor_id" binding:"required"`
@@ -125,7 +122,7 @@ func validPropertyLevelsRequest(request propertyLevelsRequest) bool {
 		}
 		seenProperties := make(map[string]struct{}, len(item.Properties))
 		for _, name := range item.Properties {
-			if !propertyLevelPropertyNamePattern.MatchString(name) {
+			if !coresocket.ValidPropertyName(name) {
 				return false
 			}
 			if _, duplicate := seenProperties[name]; duplicate {

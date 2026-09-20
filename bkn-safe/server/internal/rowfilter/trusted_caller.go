@@ -13,15 +13,23 @@ import (
 	"errors"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/rowfilter"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 )
 
-// ErrCallerUnavailable covers a missing, disabled, or non-user caller. It is
-// deliberately a single opaque error because the query layer must fail closed
-// rather than downgrade an unresolved identity to the TRUE compatibility plan.
+// ErrCallerUnavailable covers bkn-safe dependency and configuration failures.
+// Callers may retry it because a later request can observe a recovered local
+// directory or authorization dependency.
 var ErrCallerUnavailable = errors.New("row filter caller is unavailable")
+
+// ErrCallerInvalid covers a caller identity that is permanently unusable for
+// this decision: it does not exist, is disabled, is an application account, or
+// has a department scope beyond the configured safe execution bound. Query
+// callers must fail closed without treating it as a retryable service outage.
+var ErrCallerInvalid = errors.New("row filter caller is invalid")
 
 // TrustedCallerResolver loads one caller's complete policy-subject context.
 // Both dependencies are bkn-safe-owned services backed by the authoritative
@@ -58,10 +66,13 @@ func (resolver *TrustedCallerResolver) Resolve(ctx context.Context, userID strin
 	}
 	user, err := resolver.directory.GetUser(ctx, userID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return rowfilter.Caller{}, ErrCallerInvalid
+		}
 		return rowfilter.Caller{}, fmt.Errorf("%w: resolve user", ErrCallerUnavailable)
 	}
 	if !user.Enabled || user.AccountType == "app" {
-		return rowfilter.Caller{}, ErrCallerUnavailable
+		return rowfilter.Caller{}, ErrCallerInvalid
 	}
 	roles, err := resolver.authz.ImplicitRolesForAccessor(user.ID)
 	if err != nil {
@@ -69,6 +80,9 @@ func (resolver *TrustedCallerResolver) Resolve(ctx context.Context, userID strin
 	}
 	departments, err := resolver.directory.UserRowFilterDepartmentScopeWithLimit(ctx, user.ID, resolver.maxDepartmentScopeValues)
 	if err != nil {
+		if errors.Is(err, directory.ErrRowFilterDepartmentScopeTooLarge) {
+			return rowfilter.Caller{}, ErrCallerInvalid
+		}
 		return rowfilter.Caller{}, fmt.Errorf("%w: resolve departments", ErrCallerUnavailable)
 	}
 	return rowfilter.Caller{
