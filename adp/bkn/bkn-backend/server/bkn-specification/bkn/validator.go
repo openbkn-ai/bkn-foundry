@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/PaesslerAG/jsonpath"
+
 	"bkn-backend/common/maskrule"
 )
 
@@ -525,9 +527,14 @@ func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjec
 						fmt.Sprintf("logic property %q with a metric data_source requires source id", lp.Name))
 				}
 			}
-			if strings.TrimSpace(lp.DataSource.ResultPath) != "" && dst != "tool" {
-				appendError(result, table, "logic_properties", "invalid_object_type",
-					fmt.Sprintf("logic property %q result_path is only valid for a tool data_source", lp.Name))
+			if strings.TrimSpace(lp.DataSource.ResultPath) != "" {
+				if dst != "tool" {
+					appendError(result, table, "logic_properties", "invalid_object_type",
+						fmt.Sprintf("logic property %q result_path is only valid for a tool data_source", lp.Name))
+				} else if _, err := jsonpath.New(lp.DataSource.ResultPath); err != nil {
+					appendError(result, table, "logic_properties", "invalid_object_type",
+						fmt.Sprintf("logic property %q result_path is not a valid jsonpath: %v", lp.Name, err))
+				}
 			}
 		}
 		for _, p := range lp.Parameters {
