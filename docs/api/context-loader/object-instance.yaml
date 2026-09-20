@@ -13,9 +13,12 @@ info:
 
     **翻页两条路，互斥**：
 
-    - `search_after` 游标翻页：适用于对象索引 / 数据视图路径，只能顺翻，不能跳页；
-      把上一页响应里的 `search_after` 原样回传即可，响应里没有该字段就是没有下一页。
+    - `cursor` 游标翻页：适用于对象索引 / 数据视图路径，只能顺翻，不能跳页；
+      把上一页响应里的 `cursor` 原样回传即可，响应里没有该字段就是没有下一页。
+      游标是不透明字符串，不要解析或自己拼。
     - `offset` 偏移翻页：适用于资源（vega 表源）路径，可跳任意页。
+
+    旧的 `search_after` 数组游标已不再接受：传了会被**静默忽略**，于是每次都拿回第一页。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
   version: 0.1.3
@@ -79,9 +82,9 @@ paths:
 
         - 有值且大于 0：真实总数。
         - 值为 `0`：真实零命中（字段存在）。
-        - **字段缺失**：本次没有计算总数，不能推断为 0。用 `search_after` 翻页时
+        - **字段缺失**：本次没有计算总数，不能推断为 0。用 `cursor` 翻页时
           第二页起即如此（下游在游标非空时强制关闭总数计算）。要总数就回到不带
-          `search_after` 的首次查询。
+          `cursor` 的首次查询。
       parameters:
         - name: kn_id
           in: query
@@ -143,9 +146,7 @@ paths:
                   limit: 10
               游标翻下一页:
                 value:
-                  search_after:
-                    - '20250922_020907_00027_qe7sf'
-                    - 'xdb6f0e5f5ba7449ab94822da9f008386'
+                  cursor: opaque-cursor-from-previous-page
                   limit: 20
       responses:
         '200':
@@ -408,16 +409,15 @@ components:
           description: |
             排序字段，按数组顺序依次比较。不传时默认序不保证语义，需要「最新 /
             最大 / 最小的前 N 条」时必须显式指定。
-        search_after:
-          type: array
-          items: {}
+        cursor:
+          type: string
           description: |
-            游标翻页：上一页响应返回的 `search_after` 原样回传。首次查询留空。
+            游标翻页：上一页响应返回的 `cursor` 原样回传，不透明字符串。首次查询留空。
             与 `offset` 互斥。
         offset:
           type: integer
           description: |
-            偏移翻页：适用于资源（vega 表源）路径，可跳页。与 `search_after` 互斥。
+            偏移翻页：适用于资源（vega 表源）路径，可跳页。与 `cursor` 互斥。
 
     SortSpec:
       type: object
@@ -509,14 +509,23 @@ components:
           format: int64
           description: |
             满足过滤条件的实例总数，不受 `limit` 限制。零命中时为 `0`（字段存在）。
-            字段缺失表示本次未计算总数——`search_after` 翻页第二页起如此——
+            字段缺失表示本次未计算总数——`cursor` 翻页第二页起如此——
             不可推断为 0。
-        search_after:
-          type: array
-          items: {}
+        cursor:
+          type: string
           description: |
-            下一页游标。非空时把它作为下次请求的 `search_after` 传入；字段不存在
-            或为空表示没有更多数据。
+            下一页游标，不透明字符串。非空时把它作为下次请求的 `cursor` 传入；
+            字段不存在或为空表示没有更多数据。
+        effective_permissions:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [none, schema, masked, full]
+          description: |
+            当前调用者对该对象类各属性的有效访问级别，键是属性名：`full` 为原值，
+            `masked` 为脱敏值，`schema` 只有字段定义、取不到值，`none` 的属性不会
+            出现在结果里。用它解释「为什么这个字段是空的 / 看起来被改过」，
+            不要据此重试。
 
     ObjectInstance:
       type: object

@@ -722,6 +722,12 @@ components:
           format: uri
           default: https://pypi.org/simple/
           description: 安装源地址。内网环境改成私有镜像。
+        working_directory:
+          type: string
+          description: |
+            执行目录，相对于工作区根目录。沙箱在该目录下跑代码，**产物收集也只覆盖
+            这个目录**。要按会话隔离文件就必须传它，在代码里自己 `chdir` 不算数——
+            产物范围仍按本字段算。不传则用工作区根目录。
         source:
           type: string
           description: |
