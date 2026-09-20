@@ -433,3 +433,11 @@ func TestValidateNetwork_LogicPropertyResultPathNeedsTool(t *testing.T) {
 	assert.False(t, res.OK())
 	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "result_path is only valid")
 }
+
+func TestValidateNetwork_LogicPropertyResultPathMustParse(t *testing.T) {
+	res := ValidateNetwork(networkWithLogicSource("tool", &ResourceInfo{
+		Type: "tool", Name: "coupon_stats", BoxID: "box-1", ToolID: "tool-1", ResultPath: "$..[",
+	}))
+	assert.False(t, res.OK())
+	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "not a valid jsonpath")
+}
