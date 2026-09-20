@@ -301,6 +301,17 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 	}
 	query.SearchAfter = searchAfter
 
+	// The two pagination strategies are mutually exclusive: OpenSearch rejects a non-zero from
+	// together with search_after, so reject the combination here instead of letting it come back
+	// as an opaque search_phase_execution_exception behind a 500.
+	if len(query.SearchAfter) > 0 && query.Offset > 0 {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails("offset and search_after cannot be used together; drop offset when paging with a cursor")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
 	// Set default limit
 	if query.Limit <= 0 {
 		query.Limit = 20

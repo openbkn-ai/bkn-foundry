@@ -282,14 +282,14 @@
     "input_schema.properties.trigger_type.description": "Filter by trigger type (optional): manual/scheduled.",
     "input_schema.properties.start_time_from.description": "Lower bound of start time (Unix milliseconds, optional).",
     "input_schema.properties.start_time_to.description": "Upper bound of start time (Unix milliseconds, optional).",
-    "input_schema.properties.offset.description": "Pagination offset (optional).",
+    "input_schema.properties.offset.description": "Pagination offset (optional). Mutually exclusive with search_after: do not send both.",
     "input_schema.properties.limit.description": "Pagination size (optional), default 20, max 1000.",
     "output_schema.description": "Paginated action execution history.",
     "output_schema.properties.total_count.description": "Total number of matching executions.",
     "output_schema.properties.entries.description": "List of execution records (each with id, action_type_id, status, counts, timestamps; action_type_snapshot and other heavy fields are stripped to save tokens).",
     "output_schema.properties.search_after.description": "Pagination cursor; pass this value as search_after in the next request to continue paging.",
     "input_schema.properties.response_format.description": "Response format: json or toon, default toon (fewer tokens).",
-    "input_schema.properties.search_after.description": "Cursor paging, optional: pass the search_after value from the previous response verbatim to fetch the next page. It suits deep paging better than offset."
+    "input_schema.properties.search_after.description": "Cursor paging, optional: pass the search_after value from the previous response verbatim to fetch the next page. It suits deep paging better than offset, and must not be combined with offset."
   },
   "execute_skill": {
     "input_schema.properties.kn_id.description": "Required. Knowledge network id. The caller needs view permission on the network itself, and the Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
