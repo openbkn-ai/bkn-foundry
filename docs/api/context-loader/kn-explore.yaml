@@ -491,6 +491,14 @@ components:
           type: string
         name:
           type: string
+        tags:
+          type: array
+          items:
+            type: string
+          description: 分组标签。可为空。
+        comment:
+          type: string
+          description: 分组说明。可为空。
         object_type_ids:
           type: array
           items:
@@ -532,6 +540,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LogicProperty'
+        effective_permissions:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [none, schema, masked, full]
+          description: |
+            当前调用者对该对象类每个属性的有效访问级别，键是属性名：
+            `full` 能取原值、也能当过滤条件；`masked` 取到的是脱敏值；`schema`
+            只看得到字段定义、取不到值。`masked` 与 `schema` 的属性一律不下发
+            `condition_operations`，即不能拿来做过滤；`none` 的属性连同它在
+            `data_properties` / `primary_keys` 里的条目一起被剔除，不会出现在响应里。
+            对象类没有绑定已发布资源时不下发本字段，同时 `data_properties` 为空——
+            对象类仍可被发现，但没有属性可用。
+        data_source_metadata_unavailable:
+          type: boolean
+          description: |
+            仅在组装本响应时读不到绑定资源才出现且为 true：由资源派生的字段
+            （`data_source.name`、映射字段的显示名与类型、`condition_operations`）
+            是「未知」而不是「没有」。资源读到了、或资源已被删除时都不下发。
         related_metrics:
           type: array
           description: |

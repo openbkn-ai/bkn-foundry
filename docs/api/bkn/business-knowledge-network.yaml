@@ -1905,9 +1905,20 @@ components:
           type: integer
         functions_total:
           description: >-
-            Bound function (ToolBox tool) count, on the same terms as skills_total. A
-            whole-box mount is expanded into one binding per tool at write time, so this is
-            the number of tools, not of boxes.
+            Bound function count, on the same terms as skills_total: bindings to tool boxes of
+            kind `function`. A whole-box mount is expanded into one binding per tool at write
+            time, so this is the number of tools, not of boxes. Bindings to `openapi` boxes are
+            counted by apis_total instead — add the two for every tool-box binding.
+          type: integer
+        apis_total:
+          description: >-
+            Bound API count: bindings to tool boxes of kind `openapi`, on the same terms as
+            functions_total.
+          type: integer
+        mcp_tools_total:
+          description: >-
+            Bound MCP Server tool count. An MCP tool is addressed by (mcp_id, tool_name) and runs
+            through the MCP proxy, so it is counted separately rather than inside functions_total.
           type: integer
     ConceptGroupInfo:
       description: Concept group information
@@ -1965,7 +1976,6 @@ components:
         - branch
         - color
         - icon
-        - updater
       type: object
       properties:
         id:
@@ -1990,6 +2000,12 @@ components:
           type: string
         branch:
           description: Branch ID
+          type: string
+        skill_content:
+          description: >-
+            The SKILL.md body carried by the knowledge network package, when the package has one.
+            Absent when the package carries no SKILL.md, and also withheld from a caller whose only
+            access to this network is navigation through a visible child resource.
           type: string
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
