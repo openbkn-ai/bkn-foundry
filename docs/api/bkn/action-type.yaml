@@ -779,7 +779,9 @@ components:
           description: Object type color
           type: string
         branch:
-          description: Owning branch
+          description: >-
+            Owning branch. Always present, but no producer fills it today: every response carries
+            it as an empty string. Read the branch from the enclosing resource instead.
           type: string
     AffectDetail:
       deprecated: true
