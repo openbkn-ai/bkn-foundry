@@ -32,16 +32,17 @@ type queryCursorCodec struct {
 }
 
 type queryCursorPayload struct {
-	Version        string                      `json:"v"`
-	CallerID       string                      `json:"caller_id"`
-	CallerType     string                      `json:"caller_type"`
-	KNID           string                      `json:"kn_id"`
-	ObjectTypeID   string                      `json:"object_type_id"`
-	QueryDigest    string                      `json:"query_digest"`
-	ModelVersion   string                      `json:"model_version"`
-	SearchAfter    interfaces.SearchAfterArray `json:"search_after"`
-	ResourceCursor string                      `json:"resource_cursor,omitempty"`
-	ExpiresAt      time.Time                   `json:"expires_at"`
+	Version                  string                      `json:"v"`
+	CallerID                 string                      `json:"caller_id"`
+	CallerType               string                      `json:"caller_type"`
+	KNID                     string                      `json:"kn_id"`
+	ObjectTypeID             string                      `json:"object_type_id"`
+	QueryDigest              string                      `json:"query_digest"`
+	EffectiveRowFilterDigest string                      `json:"effective_row_filter_digest"`
+	ModelVersion             string                      `json:"model_version"`
+	SearchAfter              interfaces.SearchAfterArray `json:"search_after"`
+	ResourceCursor           string                      `json:"resource_cursor,omitempty"`
+	ExpiresAt                time.Time                   `json:"expires_at"`
 }
 
 func newQueryCursorCodec() *queryCursorCodec {
@@ -109,6 +110,9 @@ func (codec *queryCursorCodec) encodePayload(ctx context.Context, query *interfa
 	if err != nil {
 		return "", err
 	}
+	if query.EffectiveRowFilterDigest == "" {
+		return "", fmt.Errorf("effective row filter digest is unavailable")
+	}
 	expiresAt := codec.now().Add(queryCursorTTL).UTC()
 	if expiresAtOverride != nil {
 		expiresAt = expiresAtOverride.UTC()
@@ -116,7 +120,7 @@ func (codec *queryCursorCodec) encodePayload(ctx context.Context, query *interfa
 	payload := queryCursorPayload{
 		Version: queryCursorVersion, CallerID: account.ID, CallerType: account.Type,
 		KNID: query.KNID, ObjectTypeID: query.ObjectTypeID,
-		QueryDigest: digest, ModelVersion: modelVersion,
+		QueryDigest: digest, EffectiveRowFilterDigest: query.EffectiveRowFilterDigest, ModelVersion: modelVersion,
 		SearchAfter: searchAfter, ResourceCursor: resourceCursor,
 		ExpiresAt: expiresAt,
 	}
@@ -174,8 +178,9 @@ func (codec *queryCursorCodec) decodePayload(ctx context.Context, query *interfa
 	if err != nil {
 		return nil, err
 	}
-	if payload.Version != queryCursorVersion || payload.CallerID != account.ID || payload.CallerType != account.Type ||
+	if query.EffectiveRowFilterDigest == "" || payload.Version != queryCursorVersion || payload.CallerID != account.ID || payload.CallerType != account.Type ||
 		payload.KNID != query.KNID || payload.ObjectTypeID != query.ObjectTypeID || payload.QueryDigest != digest ||
+		payload.EffectiveRowFilterDigest != query.EffectiveRowFilterDigest ||
 		payload.ModelVersion != modelVersion || !codec.now().Before(payload.ExpiresAt) ||
 		(len(payload.SearchAfter) == 0 && payload.ResourceCursor == "") {
 		return nil, fmt.Errorf("query cursor is invalid")
@@ -219,6 +224,5 @@ func queryCursorAccount(ctx context.Context) (interfaces.AccountInfo, bool) {
 	if ctx == nil {
 		return interfaces.AccountInfo{}, false
 	}
-	account, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
-	return account, ok && account.ID != "" && account.Type != ""
+	return interfaces.RowFilterCallerFromContext(ctx)
 }

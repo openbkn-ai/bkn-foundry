@@ -41,6 +41,7 @@ func TestObjectQueryRejectsEmptyReturnBeforeProxyOrVega(t *testing.T) {
 			"id": interfaces.PropertyAccessSchema, "mobile": interfaces.PropertyAccessSchema,
 			"notes": interfaces.PropertyAccessSchema, "secret": interfaces.PropertyAccessNone,
 		}},
+		rowFilters: trueRowFilterStub{},
 	}
 	_, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
 		KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"notes"},
@@ -151,7 +152,7 @@ func TestObjectQueryCursorReauthorizesAndNeverExposesRawPosition(t *testing.T) {
 	access := propertyAccessStub{levels: levels, calls: &calls}
 	service := &objectTypeService{
 		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
-		propertyAccess: access, cursor: testQueryCursorCodec(t, now),
+		propertyAccess: access, rowFilters: trueRowFilterStub{}, cursor: testQueryCursorCodec(t, now),
 	}
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: "user-1", Type: "user"})
@@ -212,7 +213,7 @@ func TestObjectQueryUsesDefaultSortAndFallsBackToSingleForUnsupportedCursorPagin
 	}
 	service := &objectTypeService{
 		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
-		propertyAccess: fullPropertyAccessStub{}, cursor: testQueryCursorCodec(t, time.Now()),
+		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}, cursor: testQueryCursorCodec(t, time.Now()),
 	}
 
 	result, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
@@ -250,7 +251,7 @@ func TestObjectQueryAppendsPrimaryKeyTieBreakerToExplicitResourceSort(t *testing
 	}}
 	service := &objectTypeService{
 		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
-		propertyAccess: fullPropertyAccessStub{}, cursor: testQueryCursorCodec(t, time.Now()),
+		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}, cursor: testQueryCursorCodec(t, time.Now()),
 	}
 
 	_, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
@@ -484,6 +485,7 @@ func TestObjectQueryDefaultSortDoesNotRequireFullPrimaryKeyAccess(t *testing.T) 
 			"id": interfaces.PropertyAccessSchema, "mobile": interfaces.PropertyAccessFull,
 			"notes": interfaces.PropertyAccessSchema, "secret": interfaces.PropertyAccessNone,
 		}},
+		rowFilters: trueRowFilterStub{},
 	}
 	result, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
 		KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"mobile"},

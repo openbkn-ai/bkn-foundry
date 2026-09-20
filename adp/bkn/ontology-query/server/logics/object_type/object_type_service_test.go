@@ -32,6 +32,20 @@ type objectTypeProxyResolverStub struct {
 
 type fullPropertyAccessStub struct{}
 
+type trueRowFilterStub struct{}
+
+func (trueRowFilterStub) ResolveRowFilters(_ context.Context,
+	refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	entries := make([]interfaces.RowFilterDecisionEntry, 0, len(refs))
+	for _, ref := range refs {
+		entries = append(entries, interfaces.RowFilterDecisionEntry{
+			ObjectTypeRef: ref, Predicate: interfaces.RowFilterPredicate{Kind: "true"},
+			EffectiveRowFilterDigest: "sha256:test-row-filter-true",
+		})
+	}
+	return entries, nil
+}
+
 func (fullPropertyAccessStub) ResolvePropertyLevels(_ context.Context,
 	items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
 	entries := make([]interfaces.PropertyLevelsDecisionEntry, 0, len(items))
@@ -88,7 +102,7 @@ func TestObjectTypeSchemaUsesPublishedViewDetailBinding(t *testing.T) {
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	vega := omock.NewMockVegaBackendAccess(ctrl)
 	proxy := &objectTypeProxyResolverStub{}
-	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}}
 
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
 		interfaces.ObjectType{
@@ -122,7 +136,7 @@ func TestObjectTypeSchemaSupportsLegacyResourceBindingWithoutType(t *testing.T) 
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	vega := omock.NewMockVegaBackendAccess(ctrl)
 	proxy := &objectTypeProxyResolverStub{}
-	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}}
 
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
 		interfaces.ObjectType{
@@ -151,7 +165,7 @@ func TestObjectTypeSampleDataUsesQueryDataProxyBinding(t *testing.T) {
 		Entries: []map[string]any{{"field1": "sample"}}, TotalCount: 1,
 	}}
 	proxy := &objectTypeProxyResolverStub{}
-	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}}
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
 		interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -236,6 +250,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			aoAccess:       aoAccess,
 			proxy:          &objectTypeProxyResolverStub{},
 			propertyAccess: fullPropertyAccessStub{},
+			rowFilters:     trueRowFilterStub{},
 		}
 
 		ctx := context.Background()
@@ -1300,6 +1315,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			aoAccess:       aoAccess,
 			proxy:          &objectTypeProxyResolverStub{},
 			propertyAccess: fullPropertyAccessStub{},
+			rowFilters:     trueRowFilterStub{},
 		}
 
 		ctx := context.Background()
@@ -2027,6 +2043,7 @@ func TestObjectTypeProxyFailureStopsVegaRead(t *testing.T) {
 		vba:            vega,
 		proxy:          &objectTypeProxyResolverStub{err: proxyErr},
 		propertyAccess: fullPropertyAccessStub{},
+		rowFilters:     trueRowFilterStub{},
 	}
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "ot-1").Return(
 		interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{

@@ -149,6 +149,39 @@ func TestPermissionServiceFilterQueryDataReturnsOnlyAllowedCandidatesInRequestOr
 	}
 }
 
+func TestPermissionServiceResolveRowFiltersAcceptsUserAliasesButNotAppPrincipals(t *testing.T) {
+	newContext := func(accountType string) context.Context {
+		return context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+			interfaces.AccountInfo{ID: "user-1", Type: accountType})
+	}
+
+	t.Run("realname is resolved as its directory user", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		access := omock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().ResolveRowFilters(gomock.Any(), interfaces.RowFiltersRequest{
+			AccessorID: "user-1", ObjectTypeRefs: []string{"kn-1/customer"},
+		}).Return(interfaces.RowFiltersResponse{Entries: []interfaces.RowFilterDecisionEntry{{
+			ObjectTypeRef: "kn-1/customer", Predicate: interfaces.RowFilterPredicate{Kind: "true"},
+			EffectiveRowFilterDigest: "sha256:row-filter-true",
+		}}}, nil)
+
+		entries, err := (&permissionService{access: access}).ResolveRowFilters(newContext("realname"), []string{"kn-1/customer"})
+		if err != nil || len(entries) != 1 {
+			t.Fatalf("ResolveRowFilters() = %#v, %v", entries, err)
+		}
+	})
+
+	t.Run("client credential app has no directory user and fails closed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		access := omock.NewMockPermissionAccess(ctrl)
+		err := func() error {
+			_, err := (&permissionService{access: access}).ResolveRowFilters(newContext("app"), []string{"kn-1/customer"})
+			return err
+		}()
+		assertHTTPStatus(t, err, http.StatusForbidden)
+	})
+}
+
 func TestPermissionServiceRequirePermissions(t *testing.T) {
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
 		ID: "account-1", Type: "user",

@@ -86,6 +86,21 @@ func (mr *MockPermissionAccessMockRecorder) ResolvePropertyLevels(ctx, request a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolvePropertyLevels", reflect.TypeOf((*MockPermissionAccess)(nil).ResolvePropertyLevels), ctx, request)
 }
 
+// ResolveRowFilters mocks base method.
+func (m *MockPermissionAccess) ResolveRowFilters(ctx context.Context, request interfaces.RowFiltersRequest) (interfaces.RowFiltersResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveRowFilters", ctx, request)
+	ret0, _ := ret[0].(interfaces.RowFiltersResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveRowFilters indicates an expected call of ResolveRowFilters.
+func (mr *MockPermissionAccessMockRecorder) ResolveRowFilters(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRowFilters", reflect.TypeOf((*MockPermissionAccess)(nil).ResolveRowFilters), ctx, request)
+}
+
 // MockPermissionService is a mock of PermissionService interface.
 type MockPermissionService struct {
 	ctrl     *gomock.Controller
@@ -190,6 +205,36 @@ func (m *MockPropertyAccessService) ResolvePropertyLevels(ctx context.Context, i
 func (mr *MockPropertyAccessServiceMockRecorder) ResolvePropertyLevels(ctx, items any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolvePropertyLevels", reflect.TypeOf((*MockPropertyAccessService)(nil).ResolvePropertyLevels), ctx, items)
+}
+
+// MockRowFilterService is a mock of RowFilterService interface.
+type MockRowFilterService struct {
+	ctrl     *gomock.Controller
+	recorder *MockRowFilterServiceMockRecorder
+	isgomock struct{}
+}
+
+type MockRowFilterServiceMockRecorder struct{ mock *MockRowFilterService }
+
+func NewMockRowFilterService(ctrl *gomock.Controller) *MockRowFilterService {
+	mock := &MockRowFilterService{ctrl: ctrl}
+	mock.recorder = &MockRowFilterServiceMockRecorder{mock}
+	return mock
+}
+
+func (m *MockRowFilterService) EXPECT() *MockRowFilterServiceMockRecorder { return m.recorder }
+
+func (m *MockRowFilterService) ResolveRowFilters(ctx context.Context, refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveRowFilters", ctx, refs)
+	ret0, _ := ret[0].([]interfaces.RowFilterDecisionEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (mr *MockRowFilterServiceMockRecorder) ResolveRowFilters(ctx, refs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRowFilters", reflect.TypeOf((*MockRowFilterService)(nil).ResolveRowFilters), ctx, refs)
 }
 
 // MockActionExecutionPermissionService is a mock of ActionExecutionPermissionService interface.
