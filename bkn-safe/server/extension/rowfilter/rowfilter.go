@@ -206,8 +206,8 @@ func normalizePredicate(predicate Predicate) (Predicate, error) {
 		if predicate.Property == "" || len(predicate.Predicates) != 0 {
 			return Predicate{}, invalid("in predicate must have one property and no child predicates")
 		}
-		if len(predicate.Values) == 0 || len(predicate.Values) > 100 {
-			return Predicate{}, invalid("in predicate has %d values, want 1..100", len(predicate.Values))
+		if len(predicate.Values) == 0 {
+			return Predicate{}, invalid("in predicate must contain values")
 		}
 		values := append([]Value(nil), predicate.Values...)
 		for _, value := range values {

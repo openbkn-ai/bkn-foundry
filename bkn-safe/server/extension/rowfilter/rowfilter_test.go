@@ -127,6 +127,20 @@ func TestInvalidPlanFailsClosed(t *testing.T) {
 	}
 }
 
+func TestDepartmentTreeSizedPlanIsNotLimitedLikeValueSet(t *testing.T) {
+	values := make([]Value, 0, 101)
+	for index := 0; index < 101; index++ {
+		values = append(values, Value{Type: ValueString, String: string(rune(index + 1))})
+	}
+	plan, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateIn, Property: "department_id", Values: values}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Predicate.Values) != 101 {
+		t.Fatalf("normalized values = %d, want 101", len(plan.Predicate.Values))
+	}
+}
+
 func TestResolverFailureDoesNotFallBack(t *testing.T) {
 	setEdition(t, licverify.EditionEnterprise)
 	want := errors.New("row-filter store unavailable")
