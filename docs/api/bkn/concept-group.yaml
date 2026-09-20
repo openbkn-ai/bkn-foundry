@@ -506,7 +506,13 @@ components:
           items:
             type: string
     Statistics:
-      description: Concept statistics
+      description: >-
+        Concept statistics for one group. Only the three counters below that name a group member
+        are calculated here: a group holds object types, and the relation and action types whose
+        endpoints are all inside it. The remaining counters are part of the shared statistics
+        shape and are serialized as `0` on this face — they are **not** a count of zero. Read
+        them from the knowledge-network detail (`GET /knowledge-networks/{kn_id}` with
+        `include_statistics=true`), which owns those resources.
       required:
         - action_types_total
         - object_types_total
@@ -514,22 +520,38 @@ components:
       type: object
       properties:
         object_types_total:
-          description: Object type count
+          description: Object types in this group that the caller may see.
           type: integer
         relation_types_total:
-          description: Relation type count
+          description: >-
+            Relation types whose source and target object types are both visible members of this
+            group.
           type: integer
         action_types_total:
-          description: Action type count
+          description: Action types bound to a visible member of this group.
           type: integer
         concept_groups_total:
-          description: Concept group count
+          description: Not calculated on this face; always `0`. See the schema description.
           type: integer
         risk_types_total:
-          description: Risk type count
+          description: Not calculated on this face; always `0`. See the schema description.
           type: integer
         metrics_total:
-          description: Metric count
+          description: Not calculated on this face; always `0`. See the schema description.
+          type: integer
+        skills_total:
+          description: >-
+            Not calculated on this face; always `0`. Capability bindings belong to the knowledge
+            network rather than to a group, so a group with mounted Skills still reports `0` here.
+          type: integer
+        functions_total:
+          description: Not calculated on this face; always `0`. See `skills_total`.
+          type: integer
+        apis_total:
+          description: Not calculated on this face; always `0`. See `skills_total`.
+          type: integer
+        mcp_tools_total:
+          description: Not calculated on this face; always `0`. See `skills_total`.
           type: integer
     DataSource:
       description: Resource source
@@ -725,6 +747,7 @@ components:
         - name
         - icon
         - color
+        - branch
       type: object
       properties:
         id:
@@ -738,6 +761,9 @@ components:
           type: string
         color:
           description: Object type color
+          type: string
+        branch:
+          description: Owning branch
           type: string
     ActionCondition:
       description: Action condition
@@ -915,6 +941,11 @@ components:
           enum:
             - object_type
           type: string
+        operations:
+          description: Operations allowed for the current accessor on this object type.
+          type: array
+          items:
+            type: string
         incremental_key:
           description: Property name used for incremental synchronization
           type: string
@@ -1172,6 +1203,14 @@ components:
           format: int64
           description: Most recent update time
           type: integer
+        module_type:
+          description: Module type of the concept
+          type: string
+        operations:
+          description: Operations allowed for the current accessor on this relation type.
+          type: array
+          items:
+            type: string
     DirectMappingRules:
       description: Direct mapping
       type: array
@@ -1364,3 +1403,8 @@ components:
         module_type:
           description: Module type of the concept
           type: string
+        operations:
+          description: Operations allowed for the current accessor on this concept group.
+          type: array
+          items:
+            type: string
