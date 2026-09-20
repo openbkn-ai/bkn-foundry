@@ -172,3 +172,22 @@ func TestRegisterGuardsAssembly(t *testing.T) {
 	}()
 	Register(licverify.EditionEnterprise, resolver)
 }
+
+func TestRegisterRejectsNonEnterpriseMinimum(t *testing.T) {
+	for _, edition := range []licverify.Edition{
+		licverify.EditionCommunity,
+		licverify.EditionProfessional,
+		licverify.EditionIndustry,
+		"",
+	} {
+		t.Run(string(edition), func(t *testing.T) {
+			setEdition(t, licverify.EditionIndustry)
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("Register(%q) must panic", edition)
+				}
+			}()
+			Register(edition, &fakeResolver{})
+		})
+	}
+}

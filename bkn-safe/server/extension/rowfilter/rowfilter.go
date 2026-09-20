@@ -119,6 +119,9 @@ func Register(min licverify.Edition, resolver Resolver) {
 	if resolver == nil {
 		panic("rowfilter: Register(nil)")
 	}
+	if min != licverify.EditionEnterprise {
+		panic("rowfilter: minimum edition must be Enterprise")
+	}
 	if load() != nil {
 		panic("rowfilter: resolver already registered")
 	}
