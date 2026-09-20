@@ -164,7 +164,7 @@ sudo bash ./deploy.sh --distro=k3s openbkn install --version_file=/tmp/m.yaml
 ```
 
 Per-chart resolution (stable-first): `--branch` newest build → latest stable →
-`--base` newest build → error. Release and patch branches are bootstrapped by a
+`--base` newest build → error. Release branches are bootstrapped by a
 full build; later partial builds replace only their changed charts, so the
 newest branch build of each chart forms the branch's deployable composition.
 The generated manifest annotates each chart's source (`branch` / `stable` /

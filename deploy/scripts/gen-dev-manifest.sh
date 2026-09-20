@@ -179,7 +179,7 @@ def newest_main_build(tags):
     return max(cand, key=lambda ts: ts[1])[0]
 
 # Branch tags embed a fixed-width commit timestamp. Select the newest build for
-# the requested branch, not only a build at its current HEAD: a release/patch
+# the requested branch, not only a build at its current HEAD: a release
 # branch is bootstrapped by one full build, then later pushes rebuild only the
 # components they change. The latest tag per chart is therefore the composed
 # product state for that branch.
@@ -211,7 +211,7 @@ def resolve(chart):
         s=highest_semver(tags)
         if s: return s, "stable"
         return None, "missing"
-    # 1) newest branch build. A release/patch branch is seeded by a full build;
+    # 1) newest branch build. A release branch is seeded by a full build;
     # subsequent partial builds replace only the charts they changed.
     if SAN_BRANCH:
         t=newest_branch_build(tags, SAN_BRANCH)

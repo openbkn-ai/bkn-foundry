@@ -44,6 +44,9 @@ jobs:
 
       - id: version
         shell: bash
+        env:
+          CI_REF_NAME: ${{ github.ref_name }}
+          CI_REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
 
@@ -53,8 +56,8 @@ jobs:
             echo "::error file=VERSION::VERSION must be a stable X.Y.Z version; received $BASE_VERSION"
             exit 1
           fi
-          REF_NAME="${{ github.ref_name }}"
-          REF_TYPE="${{ github.ref_type }}"
+          REF_NAME="$CI_REF_NAME"
+          REF_TYPE="$CI_REF_TYPE"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
 
           if [[ "$REF_TYPE" == "tag" ]]; then
@@ -69,9 +72,9 @@ jobs:
             VERSION="$TAG_VERSION"
           else
             if [[ "$REF_NAME" == release/* ]]; then
-            # 分支名必须与根 VERSION 一致：分支刚从 main 拉出、版本冻结提交尚未
-            # 落地时，VERSION 还是上一个版本，此时构建出的制品版本号会指向错误的
-            # 发布周期（例如在 release/0.1.2 上产出 0.1.1-release）。
+              # Release 分支名必须与根 VERSION 一致：分支刚切出、版本冻结提交尚未
+              # 落地时，VERSION 还是上一个版本，此时构建出的制品版本号会指向错误的
+              # 发布周期（例如在 release/0.1.2 上产出 0.1.1-release）。
               BRANCH_VERSION="${REF_NAME#release/}"
               if [[ "$BRANCH_VERSION" != "$BASE_VERSION" ]]; then
                 echo "::error::分支 $REF_NAME 与根 VERSION($BASE_VERSION) 不一致，拒绝构建：" \

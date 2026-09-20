@@ -21,7 +21,7 @@ assert not pattern.fullmatch(
 assert not pattern.fullmatch("0.1.5-fix-main.20260918003916.sha1643ce0")
 
 # Execute the resolver function from the embedded Python source so the test
-# covers its actual release/patch branch behavior without calling GHCR.
+# covers its actual release-branch behavior without calling GHCR.
 embedded = re.search(r"ORG=.*?python3 - <<'PY'\n(.*)\nPY\n", source, re.DOTALL)
 assert embedded, "embedded Python resolver not found"
 tree = ast.parse(embedded.group(1))
