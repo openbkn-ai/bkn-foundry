@@ -44,7 +44,6 @@ func NewRowFilterService(appSetting *common.AppSetting) interfaces.RowFilterServ
 func (ps *permissionService) ResolveRowFilters(ctx context.Context,
 	objectTypeRefs []string) ([]interfaces.RowFilterDecisionEntry, error) {
 	caller, ok := interfaces.RowFilterCallerFromContext(ctx)
-<<<<<<< HEAD
 	if !ok || !rowFilterUserSubject(caller.Type) {
 		return nil, permissionDenied(ctx, "row-filter caller is missing or not a user")
 	}
