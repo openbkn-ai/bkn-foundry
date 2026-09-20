@@ -83,9 +83,21 @@ const (
 // the matched object (used for the super-admin "do everything" grant).
 const ActAll = "*"
 
+const (
+	// Row filtering must see the complete role closure. These are operational
+	// safety bounds, not a truncation policy: exceeding either bound is an
+	// authorization error and callers must fail closed.
+	maxRowFilterImplicitRoles = 1000
+	maxRowFilterRoleDepth     = 32
+)
+
 // ErrManagedProxyPolicies tells a resource-deletion caller to remove the
 // corresponding proxy-grant sources before performing generic policy cleanup.
-var ErrManagedProxyPolicies = errors.New("resource still has managed proxy policies")
+var (
+	ErrManagedProxyPolicies      = errors.New("resource still has managed proxy policies")
+	ErrRowFilterRoleClosureLarge = errors.New("row filter implicit role closure exceeds limit")
+	ErrRowFilterRoleClosureDeep  = errors.New("row filter implicit role closure exceeds depth")
+)
 
 // Enforcer wraps a Casbin enforcer with the bkn-safe object convention.
 type Enforcer struct {
@@ -415,24 +427,62 @@ func (en *Enforcer) RolesForAccessor(accessorID string) ([]string, error) {
 // intentionally not included: public is a core base-permission convention,
 // never a row-filter policy subject.
 func (en *Enforcer) ImplicitRolesForAccessor(accessorID string) ([]string, error) {
-	roles, err := en.e.GetImplicitRolesForUser(accessorID)
-	if err != nil {
-		return nil, err
+	if accessorID == "" {
+		return nil, nil
 	}
-	seen := make(map[string]struct{}, len(roles))
-	out := make([]string, 0, len(roles))
-	for _, roleID := range roles {
-		if roleID == "" || roleID == PublicAccessorID {
-			continue
-		}
-		if _, duplicate := seen[roleID]; duplicate {
-			continue
-		}
-		seen[roleID] = struct{}{}
-		out = append(out, roleID)
+	if synced, ok := en.e.(*casbin.SyncedEnforcer); ok {
+		lock := synced.GetLock()
+		lock.RLock()
+		defer lock.RUnlock()
+		return rowFilterImplicitRoles(synced.Enforcer, accessorID)
 	}
-	sort.Strings(out)
-	return out, nil
+	return rowFilterImplicitRoles(en.e, accessorID)
+}
+
+type groupingPolicyReader interface {
+	GetFilteredGroupingPolicy(fieldIndex int, fieldValues ...string) ([][]string, error)
+}
+
+func rowFilterImplicitRoles(reader groupingPolicyReader, accessorID string) ([]string, error) {
+	seen := map[string]struct{}{accessorID: {}}
+	roles := make([]string, 0)
+	frontier := []string{accessorID}
+	for depth := 0; len(frontier) > 0; depth++ {
+		next := make([]string, 0)
+		for _, accessor := range frontier {
+			rows, err := reader.GetFilteredGroupingPolicy(0, accessor)
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				if len(row) < 2 || row[0] != accessor || row[1] == "" {
+					return nil, errors.New("invalid row filter role grouping policy")
+				}
+				if len(row) > 2 && row[2] != "" {
+					return nil, errors.New("domain-scoped row filter role grouping is unsupported")
+				}
+				roleID := row[1]
+				if roleID == PublicAccessorID {
+					continue
+				}
+				if _, alreadySeen := seen[roleID]; alreadySeen {
+					continue
+				}
+				if len(roles) == maxRowFilterImplicitRoles {
+					return nil, ErrRowFilterRoleClosureLarge
+				}
+				seen[roleID] = struct{}{}
+				roles = append(roles, roleID)
+				next = append(next, roleID)
+			}
+		}
+		if depth == maxRowFilterRoleDepth && len(next) > 0 {
+			return nil, ErrRowFilterRoleClosureDeep
+		}
+		frontier = next
+	}
+	sort.Strings(roles)
+	return roles, nil
 }
 
 // RoleMembers lists the accessor ids bound to a role (the grouping g-lines with
