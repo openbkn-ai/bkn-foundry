@@ -370,6 +370,14 @@ components:
         row_hash:
           type: string
           description: SHA-256 (hex) over the row's canonical form and `prev_hash`.
+        chain_state:
+          type: string
+          enum: [pending, chained]
+          description: >-
+            `pending` when the business transaction committed the audit fact but its chain
+            append is still outstanding — `seq`, `prev_hash` and `row_hash` are absent until it
+            is appended. `chained` once the append succeeded. Absent on rows written before the
+            chain existed.
     ChainHead:
       type: object
       required: [seq, row_hash, created_at]
