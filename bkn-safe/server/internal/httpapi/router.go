@@ -19,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permdata"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
+	rowfiltersocket "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/rowfilter"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -58,6 +59,10 @@ type Deps struct {
 	// AuthorizationResources is the provider registry for the admin resource
 	// picker. Its downstream paths are fixed in code; only base URLs are config.
 	AuthorizationResources AuthorizationResourceCatalog
+	// RowFilterMaxDepartmentIDs is the deployment's measured safe department
+	// predicate bound. Zero keeps the conservative core default for lightweight
+	// tests and embedders that do not configure the production server.
+	RowFilterMaxDepartmentIDs int
 }
 
 // New builds the gin engine with all routes mounted.
@@ -84,14 +89,20 @@ func New(deps Deps) *gin.Engine {
 		gateAudit = auditAuthFailures(deps.Audit, deps.Directory, newFailureLimiter(failureLimiterWindow))
 	}
 
-	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+	r.GET("/health/ready", func(c *gin.Context) {
+		if err := rowfiltersocket.ReadinessError(); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
 	// Internal authz API (service-to-service, ClusterIP, unauthenticated). The
 	// local intermediate mode relies on the platform network boundary (#333),
 	// never on a caller-supplied service-name header. Callers resolve the end-user
 	// identity at their own boundary and pass accessor_id.
-	registerAuthz(r, deps.Enforcer, deps.DB, deps.Audit, deps.Directory)
+	registerAuthz(r, deps.Enforcer, deps.DB, deps.Audit, deps.Directory, deps.RowFilterMaxDepartmentIDs)
 
 	// AppKey (user-issued API key) store. Verification is internal, tokenless and
 	// ClusterIP-only (same trust face as /authz) — the Context Loader MCP/REST

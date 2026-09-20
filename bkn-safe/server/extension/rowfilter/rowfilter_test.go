@@ -11,21 +11,39 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/licverify"
+	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 type fakeResolver struct {
-	plan  Plan
-	err   error
-	calls int
-	seen  Request
+	resolution Resolution
+	err        error
+	calls      int
+	seen       Request
 }
 
-func (fake *fakeResolver) Resolve(_ context.Context, request Request) (Plan, error) {
+func (fake *fakeResolver) Resolve(_ context.Context, request Request) (Resolution, error) {
 	fake.calls++
 	fake.seen = request
-	return fake.plan, fake.err
+	return fake.resolution, fake.err
+}
+
+type fakeLifecycle struct {
+	objectTypeRef string
+}
+
+func (fake *fakeLifecycle) DeleteSubject(context.Context, *gorm.DB, SubjectType, string) error {
+	return nil
+}
+
+func (fake *fakeLifecycle) DeleteObjectType(_ context.Context, objectTypeRef string) error {
+	fake.objectTypeRef = objectTypeRef
+	return nil
+}
+
+func (fake *fakeLifecycle) DeleteKnowledgeNetwork(context.Context, string) error {
+	return nil
 }
 
 func setEdition(t *testing.T, edition licverify.Edition) {
@@ -40,7 +58,7 @@ func setEdition(t *testing.T, edition licverify.Edition) {
 
 func testRequest() Request {
 	return Request{
-		ObjectTypeRef: "kn-1/customer",
+		ObjectTypeRefs: []string{"kn-1/customer"},
 		Caller: Caller{
 			UserID:              "user-1",
 			RoleIDs:             []string{"sales"},
@@ -56,10 +74,10 @@ func TestCommunityFallbackIsTrue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Plan.Predicate.Kind != PredicateTrue {
-		t.Fatalf("fallback predicate = %+v, want TRUE", response.Plan.Predicate)
+	if len(response.Entries) != 1 || response.Entries[0].Plan.Predicate.Kind != PredicateTrue {
+		t.Fatalf("fallback response = %+v, want one TRUE entry", response)
 	}
-	if response.EffectiveRowFilterDigest == "" {
+	if response.Entries[0].EffectiveRowFilterDigest == "" {
 		t.Fatal("fallback digest is empty")
 	}
 	if Available() {
@@ -69,10 +87,11 @@ func TestCommunityFallbackIsTrue(t *testing.T) {
 
 func TestEnterpriseResolverGetsTrustedCallerAndNormalizedPlan(t *testing.T) {
 	setEdition(t, licverify.EditionEnterprise)
-	fake := &fakeResolver{plan: Plan{Predicate: Predicate{Kind: PredicateOr, Predicates: []Predicate{
+	plan := Plan{Predicate: Predicate{Kind: PredicateOr, Predicates: []Predicate{
 		{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "south"}, {Type: ValueString, String: "east"}}},
 		{Kind: PredicateIn, Property: "owner", Values: []Value{{Type: ValueString, String: "user-1"}}},
-	}}}}
+	}}}
+	fake := &fakeResolver{resolution: Resolution{Decisions: []Decision{{ObjectTypeRef: "kn-1/customer", Plan: plan}}}}
 	Register(licverify.EditionEnterprise, fake)
 
 	response, err := Resolve(t.Context(), testRequest())
@@ -82,8 +101,39 @@ func TestEnterpriseResolverGetsTrustedCallerAndNormalizedPlan(t *testing.T) {
 	if fake.calls != 1 || fake.seen.Caller.UserID != "user-1" || len(fake.seen.Caller.DepartmentTreeIDs) != 2 {
 		t.Fatalf("resolver request = %+v, calls = %d", fake.seen, fake.calls)
 	}
-	if response.Plan.Predicate.Kind != PredicateOr || response.EffectiveRowFilterDigest == "" {
+	if len(response.Entries) != 1 || response.Entries[0].Plan.Predicate.Kind != PredicateOr || response.Entries[0].EffectiveRowFilterDigest == "" {
 		t.Fatalf("response = %+v", response)
+	}
+}
+
+func TestEnterpriseWithoutResolverFailsClosed(t *testing.T) {
+	setEdition(t, licverify.EditionEnterprise)
+	if _, err := Resolve(t.Context(), testRequest()); !errors.Is(err, ErrResolverUnavailable) {
+		t.Fatalf("Resolve without Enterprise resolver error = %v, want %v", err, ErrResolverUnavailable)
+	}
+}
+
+func TestBatchResolutionMustCoverExactlyRequestedObjectTypes(t *testing.T) {
+	setEdition(t, licverify.EditionEnterprise)
+	request := testRequest()
+	request.ObjectTypeRefs = []string{"kn-1/customer", "kn-1/order"}
+	Register(licverify.EditionEnterprise, &fakeResolver{resolution: Resolution{Decisions: []Decision{
+		{ObjectTypeRef: "kn-1/customer", Plan: Plan{Predicate: Predicate{Kind: PredicateTrue}}},
+	}}})
+	if _, err := Resolve(t.Context(), request); !errors.Is(err, ErrInvalidPlan) {
+		t.Fatalf("partial batch error = %v, want %v", err, ErrInvalidPlan)
+	}
+}
+
+func TestLifecycleUsesRegisteredEnterpriseCleaner(t *testing.T) {
+	setEdition(t, licverify.EditionEnterprise)
+	lifecycle := &fakeLifecycle{}
+	RegisterLifecycle(lifecycle)
+	if err := DeleteObjectType(t.Context(), "kn-1/customer"); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle.objectTypeRef != "kn-1/customer" {
+		t.Fatalf("cleaned object_type_ref = %q", lifecycle.objectTypeRef)
 	}
 }
 
@@ -93,21 +143,23 @@ func TestEquivalentPlansHaveSameDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := responseFor(request.ObjectTypeRef, Plan{Predicate: Predicate{Kind: PredicateOr, Predicates: []Predicate{
+	secondPlan := Plan{Predicate: Predicate{Kind: PredicateOr, Predicates: []Predicate{
 		{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "south"}, {Type: ValueString, String: "east"}}},
 		{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "east"}, {Type: ValueString, String: "south"}}},
-	}}})
+	}}}
+	second, err := responseFor(request, Resolution{Decisions: []Decision{{ObjectTypeRef: "kn-1/customer", Plan: secondPlan}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	third, err := responseFor(request.ObjectTypeRef, Plan{Predicate: Predicate{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "east"}, {Type: ValueString, String: "south"}}}})
+	thirdPlan := Plan{Predicate: Predicate{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "east"}, {Type: ValueString, String: "south"}}}}
+	third, err := responseFor(request, Resolution{Decisions: []Decision{{ObjectTypeRef: "kn-1/customer", Plan: thirdPlan}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.EffectiveRowFilterDigest != third.EffectiveRowFilterDigest {
-		t.Fatalf("equivalent plans got %q and %q", second.EffectiveRowFilterDigest, third.EffectiveRowFilterDigest)
+	if second.Entries[0].EffectiveRowFilterDigest != third.Entries[0].EffectiveRowFilterDigest {
+		t.Fatalf("equivalent plans got %q and %q", second.Entries[0].EffectiveRowFilterDigest, third.Entries[0].EffectiveRowFilterDigest)
 	}
-	if first.EffectiveRowFilterDigest == second.EffectiveRowFilterDigest {
+	if first.Entries[0].EffectiveRowFilterDigest == second.Entries[0].EffectiveRowFilterDigest {
 		t.Fatal("TRUE and a restricted plan must not share a digest")
 	}
 }
@@ -121,7 +173,7 @@ func TestInvalidPlanFailsClosed(t *testing.T) {
 		{Predicate: Predicate{Kind: PredicateKind("sql"), Property: "region"}},
 	} {
 		reset()
-		Register(licverify.EditionEnterprise, &fakeResolver{plan: plan})
+		Register(licverify.EditionEnterprise, &fakeResolver{resolution: Resolution{Decisions: []Decision{{ObjectTypeRef: "kn-1/customer", Plan: plan}}}})
 		if _, err := Resolve(t.Context(), testRequest()); !errors.Is(err, ErrInvalidPlan) {
 			t.Fatalf("Resolve(%+v) error = %v, want ErrInvalidPlan", plan, err)
 		}
@@ -161,14 +213,14 @@ func TestLicenseDowngradeStopsResolver(t *testing.T) {
 		reset()
 		entitlement.ResetForTest()
 	})
-	fake := &fakeResolver{plan: Plan{Predicate: Predicate{Kind: PredicateFalse}}}
+	fake := &fakeResolver{resolution: Resolution{Decisions: []Decision{{ObjectTypeRef: "kn-1/customer", Plan: Plan{Predicate: Predicate{Kind: PredicateFalse}}}}}}
 	Register(licverify.EditionEnterprise, fake)
 	edition = licverify.EditionCommunity
 	response, err := Resolve(t.Context(), testRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fake.calls != 0 || response.Plan.Predicate.Kind != PredicateTrue {
+	if fake.calls != 0 || len(response.Entries) != 1 || response.Entries[0].Plan.Predicate.Kind != PredicateTrue {
 		t.Fatalf("downgrade response = %+v, calls = %d", response, fake.calls)
 	}
 }

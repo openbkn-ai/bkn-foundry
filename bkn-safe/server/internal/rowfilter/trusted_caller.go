@@ -27,12 +27,25 @@ var ErrCallerUnavailable = errors.New("row filter caller is unavailable")
 // Both dependencies are bkn-safe-owned services backed by the authoritative
 // directory and Casbin role graph.
 type TrustedCallerResolver struct {
-	directory *directory.Service
-	authz     *authz.Enforcer
+	directory                *directory.Service
+	authz                    *authz.Enforcer
+	maxDepartmentScopeValues int
 }
 
 func NewTrustedCallerResolver(directoryService *directory.Service, enforcer *authz.Enforcer) *TrustedCallerResolver {
-	return &TrustedCallerResolver{directory: directoryService, authz: enforcer}
+	return NewTrustedCallerResolverWithDepartmentLimit(directoryService, enforcer, directory.DefaultRowFilterDepartmentScopeLimit)
+}
+
+// NewTrustedCallerResolverWithDepartmentLimit uses the deployment's measured
+// minimum safe value for every target query backend. A non-positive limit is a
+// configuration error that resolves callers as unavailable rather than
+// yielding an unbounded department predicate.
+func NewTrustedCallerResolverWithDepartmentLimit(directoryService *directory.Service, enforcer *authz.Enforcer, maxDepartmentScopeValues int) *TrustedCallerResolver {
+	return &TrustedCallerResolver{
+		directory:                directoryService,
+		authz:                    enforcer,
+		maxDepartmentScopeValues: maxDepartmentScopeValues,
+	}
 }
 
 // Resolve returns only data loaded from trusted local services. It accepts a
@@ -40,7 +53,7 @@ func NewTrustedCallerResolver(directoryService *directory.Service, enforcer *aut
 // Caller in TrustedProxyContext); it must not be fed a proxy principal or a
 // caller-selected role/department list.
 func (resolver *TrustedCallerResolver) Resolve(ctx context.Context, userID string) (rowfilter.Caller, error) {
-	if resolver == nil || resolver.directory == nil || resolver.authz == nil || userID == "" {
+	if resolver == nil || resolver.directory == nil || resolver.authz == nil || resolver.maxDepartmentScopeValues <= 0 || userID == "" {
 		return rowfilter.Caller{}, ErrCallerUnavailable
 	}
 	user, err := resolver.directory.GetUser(ctx, userID)
@@ -54,7 +67,7 @@ func (resolver *TrustedCallerResolver) Resolve(ctx context.Context, userID strin
 	if err != nil {
 		return rowfilter.Caller{}, fmt.Errorf("%w: resolve roles", ErrCallerUnavailable)
 	}
-	departments, err := resolver.directory.UserRowFilterDepartmentScope(ctx, user.ID)
+	departments, err := resolver.directory.UserRowFilterDepartmentScopeWithLimit(ctx, user.ID, resolver.maxDepartmentScopeValues)
 	if err != nil {
 		return rowfilter.Caller{}, fmt.Errorf("%w: resolve departments", ErrCallerUnavailable)
 	}

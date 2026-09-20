@@ -76,6 +76,19 @@ func TestResolveFailsClosedForUnknownDisabledAndAppCallers(t *testing.T) {
 	}
 }
 
+func TestResolveFailsClosedWhenDepartmentScopeExceedsSafeLimit(t *testing.T) {
+	resolver, db, _ := newResolver(t)
+	resolver = NewTrustedCallerResolverWithDepartmentLimit(resolver.directory, resolver.authz, 1)
+	db.Create(&model.User{ID: "user-limit", Account: "limit", Enabled: true})
+	db.Create(&model.Department{ID: "d-root", Name: "Root"})
+	db.Create(&model.Department{ID: "d-child", Name: "Child", ParentID: "d-root"})
+	db.Create(&model.UserDepartment{UserID: "user-limit", DepartmentID: "d-root"})
+
+	if _, err := resolver.Resolve(t.Context(), "user-limit"); !errors.Is(err, ErrCallerUnavailable) {
+		t.Fatalf("Resolve above department safe limit error = %v, want %v", err, ErrCallerUnavailable)
+	}
+}
+
 func sameStrings(actual, expected []string) bool {
 	if len(actual) != len(expected) {
 		return false

@@ -6,6 +6,7 @@ package directory
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"gorm.io/gorm"
@@ -120,6 +121,26 @@ func TestUserRowFilterDepartmentScopeUnionsMultipleDirectTrees(t *testing.T) {
 	}
 	if !eq(scope.DepartmentTreeIDs, []string{"d2", "d3", "d4"}) {
 		t.Fatalf("department tree = %v, want [d2 d3 d4]", scope.DepartmentTreeIDs)
+	}
+}
+
+func TestUserRowFilterDepartmentScopeFailsClosedAboveLimit(t *testing.T) {
+	s, db := newSvc(t)
+	db.Create(&model.User{ID: "u-limit", Account: "limit", Enabled: true})
+	db.Create(&model.Department{ID: "d-root", Name: "Root"})
+	db.Create(&model.Department{ID: "d-1", Name: "One", ParentID: "d-root"})
+	db.Create(&model.Department{ID: "d-2", Name: "Two", ParentID: "d-root"})
+	db.Create(&model.UserDepartment{UserID: "u-limit", DepartmentID: "d-root"})
+
+	if _, err := s.UserRowFilterDepartmentScopeWithLimit(context.Background(), "u-limit", 2); !errors.Is(err, ErrRowFilterDepartmentScopeTooLarge) {
+		t.Fatalf("scope above bound error = %v, want %v", err, ErrRowFilterDepartmentScopeTooLarge)
+	}
+	scope, err := s.UserRowFilterDepartmentScopeWithLimit(context.Background(), "u-limit", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eq(scope.DepartmentTreeIDs, []string{"d-1", "d-2", "d-root"}) {
+		t.Fatalf("scope at bound = %v", scope.DepartmentTreeIDs)
 	}
 }
 

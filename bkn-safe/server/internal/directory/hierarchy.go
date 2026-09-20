@@ -66,6 +66,16 @@ type RowFilterDepartmentScope struct {
 	DepartmentTreeIDs   []string
 }
 
+// ErrRowFilterDepartmentScopeTooLarge is returned before a caller context can
+// be used to query data. The caller must fail closed; truncating this set would
+// silently turn an authorization decision into a partial data result.
+var ErrRowFilterDepartmentScopeTooLarge = errors.New("row filter department scope exceeds safe limit")
+
+// DefaultRowFilterDepartmentScopeLimit is intentionally conservative until a
+// deployment sets its measured minimum safe backend value through bkn-safe
+// configuration. It limits both direct-department and descendant ranges.
+const DefaultRowFilterDepartmentScopeLimit = 1000
+
 // deptChain returns the path [root, ..., deptID] (root first, inclusive of the
 // department). Cycle-guarded; a missing department yields what was collected.
 func (s *Service) deptChain(ctx context.Context, deptID string) ([]DeptRef, error) {
@@ -112,9 +122,22 @@ func (s *Service) userDirectDeptIDs(ctx context.Context, userID string) ([]strin
 // caller supplies only a user id; neither ranges nor descendant ids are ever
 // accepted from a request payload.
 func (s *Service) UserRowFilterDepartmentScope(ctx context.Context, userID string) (RowFilterDepartmentScope, error) {
+	return s.UserRowFilterDepartmentScopeWithLimit(ctx, userID, DefaultRowFilterDepartmentScopeLimit)
+}
+
+// UserRowFilterDepartmentScopeWithLimit returns the trusted department scope
+// under the supplied backend-safe bound. maxIDs must be positive; a breached
+// bound is never truncated or converted into a permissive scope.
+func (s *Service) UserRowFilterDepartmentScopeWithLimit(ctx context.Context, userID string, maxIDs int) (RowFilterDepartmentScope, error) {
+	if maxIDs <= 0 {
+		return RowFilterDepartmentScope{}, ErrRowFilterDepartmentScopeTooLarge
+	}
 	direct, err := s.userDirectDeptIDs(ctx, userID)
 	if err != nil {
 		return RowFilterDepartmentScope{}, err
+	}
+	if len(direct) > maxIDs {
+		return RowFilterDepartmentScope{}, ErrRowFilterDepartmentScopeTooLarge
 	}
 	if len(direct) == 0 {
 		return RowFilterDepartmentScope{DirectDepartmentIDs: []string{}, DepartmentTreeIDs: []string{}}, nil
@@ -146,6 +169,9 @@ func (s *Service) UserRowFilterDepartmentScope(ctx context.Context, userID strin
 			}
 			if _, alreadySeen := seen[child.ID]; alreadySeen {
 				continue
+			}
+			if len(tree) >= maxIDs {
+				return RowFilterDepartmentScope{}, ErrRowFilterDepartmentScopeTooLarge
 			}
 			seen[child.ID] = struct{}{}
 			tree = append(tree, child.ID)
