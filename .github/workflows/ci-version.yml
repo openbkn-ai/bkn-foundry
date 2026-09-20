@@ -1,0 +1,35 @@
+name: ci-version
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-version-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version:
+    name: version contract
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          base="$(tr -d '[:space:]' < VERSION)"
+          ref="${{ github.head_ref || github.ref_name }}"
+          [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error file=VERSION::VERSION must be X.Y.Z"; exit 1; }
+          if [[ "${{ github.ref_type }}" == tag ]]; then
+            tag="${GITHUB_REF_NAME#v}"
+            [[ "$tag" == "$base" || "$tag" =~ ^"$base"-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$ ]] || { echo "::error::tag v$tag is outside VERSION $base"; exit 1; }
+          elif [[ "$ref" == release/* ]]; then
+            [[ "${ref#release/}" == "$base" ]] || { echo "::error::branch $ref disagrees with VERSION $base"; exit 1; }
+          fi

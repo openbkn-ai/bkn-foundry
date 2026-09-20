@@ -35,7 +35,8 @@ BKN Foundry 采用 **Trunk-based Development** 模型，核心原则：
 | 主分支 | `main` | 永远可发布的主干 | `main` |
 | 功能分支 | `feature/*` | 新功能开发 | `feature/add-oauth-support` |
 | 修复分支 | `fix/*` | Bug 修复 | `fix/memory-leak-in-loader` |
-| 发布分支 | `release/x.y.z` | 发布准备 + patch 维护 | `release/1.2.0` |
+| 发布分支 | `release/x.y.z` | 发布准备 + patch 基线 | `release/1.2.0` |
+| 补丁分支 | `patch/x.y.z` | 从发布基线切出的单次 patch 发布 | `patch/1.2.1` |
 
 ### 分支生命周期
 
@@ -152,7 +153,7 @@ flowchart LR
 9. 自动生成 GitHub Release（非 prerelease）
 10. 自动发布 Docker 镜像 / Python 包 / Helm Chart，并更新 `latest`
 11. `release/0.7.0` 通过 `--no-ff` merge 合回 `main`
-12. `release/0.7.0` 保留一个 minor 周期用于 patch（详见「Patch 版本发布」），到期或确认无需维护后删除分支；tag 永久保留
+12. `release/0.7.0` 保留一个 minor 周期，作为补丁分支的基线（详见「Patch 版本发布」）；到期或确认无需维护后删除分支；tag 永久保留
 
 ### 自动化发布
 
@@ -262,7 +263,7 @@ git push origin main
 
 #### 7. Release 分支保留与销毁
 
-`release/1.2.0` 在发完 `v1.2.0` 后**保留一个 minor 周期**（例如直到 `v1.3.0` 发布前），期间专门用于发 `v1.2.1` / `v1.2.2` 等 patch（详见「Patch 版本发布」）。周期结束 / 确认不再发 patch 后：
+`release/1.2.0` 在发完 `v1.2.0` 后**保留一个 minor 周期**（例如直到 `v1.3.0` 发布前），作为 `patch/1.2.1` / `patch/1.2.2` 等补丁分支的基线（详见「Patch 版本发布」）。周期结束 / 确认不再发 patch 后：
 
 ```bash
 # 删除分支；tag 永久保留
@@ -371,7 +372,9 @@ BKN Foundry 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 规范�
 
 ## 🔄 Patch 版本发布
 
-正式版本 `vX.Y.Z` 发布后，若在保留期内的 `release/X.Y.Z` 上发现需要修复的问题，可在该分支上发 patch（`vX.Y.Z+1`）。
+正式版本 `vX.Y.Z` 发布后，若在 `release/X.Y.Z` 的保留期内发现需要修复的问题，从该发布分支切出独立的 `patch/X.Y.(Z+1)` 分支发布 patch。补丁分支负责提升仓库和制品版本，其正式 tag 必须与根 `VERSION` 完全一致。
+
+保留的 `release/X.Y.Z` 是稳定的补丁基线：不得将补丁分支整体合回，否则根 `VERSION` 会与分支名不一致。应仅将代码修复提交带回基线，以便下一个补丁分支继承已有修复。
 
 ### 何时发 patch
 
@@ -385,36 +388,56 @@ BKN Foundry 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 规范�
 
 ### Patch 流程
 
-#### 1. 在 release 分支上修复
+#### 1. 从 release 基线创建补丁分支
 
 ```bash
 git checkout release/1.2.0
 git pull origin release/1.2.0
+git checkout -b patch/1.2.1
 
-# 提交修复
+# 将代码修复和发布版本更新拆分为两个提交。
 git commit -m "fix(auth): patch security vulnerability CVE-2025-XXXX"
-git push origin release/1.2.0
+
+# 将根 VERSION 和所有发布元数据更新为补丁版本。
+# 从而使 tag 与 VERSION 的契约完全一致。
+git commit -am "chore(release): prepare 1.2.1"
+git push -u origin patch/1.2.1
 ```
 
-#### 2.（可选）发 RC 验证
+#### 2.（可选）从补丁分支发 RC 验证
 
 对于影响面较大的 patch，仍可以走 RC 流程：
 
 ```bash
+git checkout patch/1.2.1
 git tag -a v1.2.1-rc.1 -m "Release candidate 1 for v1.2.1"
 git push origin v1.2.1-rc.1
 ```
 
-#### 3. 发布 patch tag
+#### 3. 从补丁分支发布 patch tag
 
 ```bash
+git checkout patch/1.2.1
 git tag -a v1.2.1 -m "Release v1.2.1"
 git push origin v1.2.1
 ```
 
 正式 tag 同样触发 GitHub Actions 完成产物构建与发布，行为与「正式 tag」一致。
 
-#### 4. 同步修复到 main
+#### 4. 将代码修复带回 release 基线
+
+不得将 `patch/1.2.1` 合回 `release/1.2.0`：补丁分支中的版本准备提交会使发布分支的根 `VERSION` 与分支名不一致。应只 cherry-pick 代码修复提交：
+
+```bash
+git checkout release/1.2.0
+git pull origin release/1.2.0
+git cherry-pick -x <fix-commit-hash>
+git push origin release/1.2.0
+```
+
+后续 patch 重复这一过程，例如从已更新的 `release/1.2.0` 基线切出 `patch/1.2.2`。
+
+#### 5. 同步修复到 main
 
 修复同样需要回到 `main`，以避免主干回归。两种方式任选其一：
 
@@ -435,9 +458,12 @@ git merge release/1.2.0 --no-ff -m "Merge release/1.2.0 into main"
 
 - [ ] 修复仅限 bug fix / 安全修复，无新功能
 - [ ] `release/X.Y.Z` 仍在保留期内
+- [ ] `patch/X.Y.(Z+1)` 已从对应 release 分支切出
+- [ ] 根 `VERSION`、发布元数据和正式 tag 均为 `X.Y.(Z+1)`
 - [ ] CHANGELOG 的 `[X.Y.Z+1]` 节已补
 - [ ] 涉及版本号的 `Chart.yaml` / `pyproject.toml` 已更新
 - [ ] Patch 版本号正确递增
+- [ ] 仅代码修复提交已 cherry-pick 回 `release/X.Y.Z`
 - [ ] 修复已通过 cherry-pick 或合回 main 同步至主干
 
 ---
@@ -451,4 +477,4 @@ git merge release/1.2.0 --no-ff -m "Merge release/1.2.0 into main"
 
 ---
 
-*最后更新：2026-04-27*
+*最后更新：2026-09-20*

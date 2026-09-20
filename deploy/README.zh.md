@@ -153,8 +153,8 @@ sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-b
 # 最新 stable —— 每个 chart 取最高干净 semver（如 0.1.0）
 ./scripts/gen-dev-manifest.sh --out=/tmp/m.yaml
 
-# 测某分支 —— 该分支重建过的组件用分支构建；其余回退到最新 stable，
-# 再回退到 --base 分支（默认 main）
+# 测某分支 —— 每个 chart 使用该分支最新的不可变构建；从未在该分支构建过的
+# chart 才回退到最新 stable，再回退到 --base 分支（默认 main）
 ./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
 
 # 用生成的 manifest 安装
@@ -162,8 +162,10 @@ sudo bash ./deploy.sh --distro=k3s openbkn install --version_file=/tmp/m.yaml
 ```
 
 逐 chart 解析（stable 优先）：`--branch` 最新构建 → 最新 stable → `--base` 最新构建 → 报错。
-生成的 manifest 会逐 chart 标注来源（`branch` / `stable` / `base`）。
-需要 `gh`（已登录，`package:read`）+ `python3`；详见 `./scripts/gen-dev-manifest.sh -h`。
+release / patch 分支先由一次全量构建建立基线，后续差异构建只替换有改动的 chart；
+每个 chart 的最新分支构建共同组成该分支可部署的版本组合。生成的 manifest 会逐 chart
+标注来源（`branch` / `stable` / `base`）。需要 `python3`；详见
+`./scripts/gen-dev-manifest.sh -h`。
 
 发版之前没有干净 stable，要装**每个组件的最新构建**用 `--latest` —— 逐 chart 取
 其最新 `…-main.<日期>.sha…` 构建（按 tag 内嵌的提交时间排序），否则回退最新 stable：

@@ -155,8 +155,8 @@ chart's version from GHCR and writes a manifest you pass with `--version_file`:
 # latest stable — every chart = highest clean semver (e.g. 0.1.0)
 ./scripts/gen-dev-manifest.sh --out=/tmp/m.yaml
 
-# test a branch — components it rebuilt use the branch build; the rest fall back
-# to latest stable, then to the --base branch (default: main)
+# test a branch — each chart uses its newest immutable build on that branch;
+# charts never built on it fall back to latest stable, then --base (default: main)
 ./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
 
 # install the generated manifest
@@ -164,9 +164,11 @@ sudo bash ./deploy.sh --distro=k3s openbkn install --version_file=/tmp/m.yaml
 ```
 
 Per-chart resolution (stable-first): `--branch` newest build → latest stable →
-`--base` newest build → error. The generated manifest annotates each chart's
-source (`branch` / `stable` / `base`). Requires `gh` (authenticated,
-`package:read`) + `python3`; see `./scripts/gen-dev-manifest.sh -h`.
+`--base` newest build → error. Release and patch branches are bootstrapped by a
+full build; later partial builds replace only their changed charts, so the
+newest branch build of each chart forms the branch's deployable composition.
+The generated manifest annotates each chart's source (`branch` / `stable` /
+`base`). Requires `python3`; see `./scripts/gen-dev-manifest.sh -h`.
 
 Before a release is cut there is **no clean stable**, so to install the **newest
 build of every component** use `--latest` — it resolves each chart to its newest
