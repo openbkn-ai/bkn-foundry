@@ -22,7 +22,7 @@ bkn-safe/**                                @sh00tg0a1
 adp/bkn/**                                 @kenlee1988 @Flynn-Zh @Yana-tao
 adp/context-loader/**                      @criller
 adp/execution-factory/**                   @criller
-adp/vega/**                                @kenlee1988 @Flynn-Zh @LuckyCaptain-go
+vega/**                                    @kenlee1988 @Flynn-Zh @LuckyCaptain-go
 adp/docs/**                                @kenlee1988 @Flynn-Zh @LuckyCaptain-go @Yana-tao
 
 # ── Decision Agent ───────────────────────────────────────────

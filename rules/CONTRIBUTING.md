@@ -14,7 +14,7 @@ BKN Foundry is a **monorepo** ([`openbkn-ai/bkn-foundry`](https://github.com/ope
 
 | Module | Path | Description |
 | --- | --- | --- |
-| **AI Data Platform (ADP)** | [`adp/`](../adp) | BKN Engine (`adp/bkn`), Context Loader (`adp/context-loader`), Execution Factory (`adp/execution-factory`), VEGA virtualization (`adp/vega`) |
+| **AI Data Platform (ADP)** | [`adp/`](../adp) | BKN Engine (`adp/bkn`), Context Loader (`adp/context-loader`), Execution Factory (`adp/execution-factory`), VEGA virtualization (`vega`) |
 | **BKN Trace** | [`bkn-trace/`](../bkn-trace) | Agent observability and OpenTelemetry collector chart |
 | **Infra** | [`infra/`](../infra) | `mf-model-manager` (model registry), `oss-gateway-backend`, `sandbox` runtime |
 | **BKN samples** | [`bkn/`](../bkn) | Reference Business Knowledge Networks (e.g. `smart_home_supply_chain`) |
@@ -68,7 +68,7 @@ When reporting a bug, please provide the following information:
 
 - **Version/Environment**:
   - BKN Foundry version (`git describe --tags` or `VERSION` file, e.g. `v0.6.0`)
-  - Module affected (e.g. `adp/bkn`, `adp/vega/vega-backend`, `infra/sandbox`)
+  - Module affected (e.g. `adp/bkn`, `vega/vega-backend`, `infra/sandbox`)
   - Runtime (Java / Go / Python / Node — and version, e.g. JDK 17, Go 1.25, Python 3.11)
   - OS (Linux distro + kernel, macOS, Windows)
   - Cluster (single-node K3s / kubeadm / managed K8s) and how it was installed (`deploy.sh openbkn install`)

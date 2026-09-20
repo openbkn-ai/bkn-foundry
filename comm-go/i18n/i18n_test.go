@@ -135,7 +135,7 @@ func TestServiceLocaleDirectories(t *testing.T) {
 	localeDirs := []string{
 		"adp/bkn/bkn-backend/server/locale",
 		"adp/bkn/ontology-query/server/locale",
-		"adp/vega/vega-backend/server/locale",
+		"vega/vega-backend/server/locale",
 	}
 	for _, localeDir := range localeDirs {
 		t.Run(localeDir, func(t *testing.T) {

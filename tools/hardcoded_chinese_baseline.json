@@ -649,10 +649,10 @@
       "5e9ba2b55cd7aa48cd6d",
       "396a28a1fb18be7451a2"
     ],
-    "adp/vega/vega-backend/server/interfaces/common.go": [
+    "vega/vega-backend/server/interfaces/common.go": [
       "3f88d9f5aaddad798eeb"
     ],
-    "adp/vega/vega-backend/server/logics/connector/local/fileset/anyshare/anyshare.go": [
+    "vega/vega-backend/server/logics/connector/local/fileset/anyshare/anyshare.go": [
       "ca80984e1edc663f04ff",
       "f94f5dba7d2c92797a9f",
       "cd3a7a9dc6406fbd615b",
@@ -663,14 +663,14 @@
       "38add77a79bc89d23c4f",
       "328f6c7fae6222a56bab"
     ],
-    "adp/vega/vega-backend/server/logics/connector/local/index/opensearch/opensearch.go": [
+    "vega/vega-backend/server/logics/connector/local/index/opensearch/opensearch.go": [
       "1f86e85d933ec4758b30",
       "c44789ceddba44c1a6b7",
       "a7ea1a3aee53d58c3a98",
       "6b9afe0082eee4f3305e",
       "61e1ec9637f6eaa0b130"
     ],
-    "adp/vega/vega-backend/server/logics/connector/local/table/mariadb/mariadb.go": [
+    "vega/vega-backend/server/logics/connector/local/table/mariadb/mariadb.go": [
       "0a7de9fe0a2385a191d8",
       "95f1eb69946d86942353",
       "2989463a040bc7652a8d",
@@ -678,7 +678,7 @@
       "37e21e9922c30bb24de9",
       "c4ac27a9ae45a7695903"
     ],
-    "adp/vega/vega-backend/server/logics/connector/local/table/postgresql/postgresql.go": [
+    "vega/vega-backend/server/logics/connector/local/table/postgresql/postgresql.go": [
       "c9c6286b08c19d7b8242",
       "31443649248078e5a489",
       "e11eff62ffe1e2d5e096",

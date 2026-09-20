@@ -14,7 +14,7 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
 
 | 模块 | 路径 | 描述 |
 | --- | --- | --- |
-| **AI Data Platform（ADP）** | [`adp/`](../adp) | 本体引擎（`adp/bkn`）、Context Loader（`adp/context-loader`）、Execution Factory（`adp/execution-factory`）、VEGA 数据虚拟化（`adp/vega`） |
+| **AI Data Platform（ADP）** | [`adp/`](../adp) | 本体引擎（`adp/bkn`）、Context Loader（`adp/context-loader`）、Execution Factory（`adp/execution-factory`）、VEGA 数据虚拟化（`vega`） |
 | **BKN Trace** | [`bkn-trace/`](../bkn-trace) | Agent 可观测与 OpenTelemetry Collector Chart |
 | **Infra** | [`infra/`](../infra) | `mf-model-manager`（模型注册）、`oss-gateway-backend`、`sandbox` 运行时 |
 | **BKN 示例** | [`bkn/`](../bkn) | 业务知识网络示例（如 `smart_home_supply_chain`） |
@@ -68,7 +68,7 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
 
 - **版本号 / 环境**：
   - BKN Foundry 版本（`git describe --tags` 或 `VERSION` 文件，如 `v0.6.0`）
-  - 受影响的模块（如 `adp/bkn`、`adp/vega/vega-backend`、`infra/sandbox`）
+  - 受影响的模块（如 `adp/bkn`、`vega/vega-backend`、`infra/sandbox`）
   - 运行时（Java / Go / Python / Node 及版本，如 JDK 17、Go 1.25、Python 3.11）
   - 操作系统（Linux 发行版与内核 / macOS / Windows）
   - 集群形态（单机 K3s / kubeadm / 托管 K8s）以及安装方式（`deploy.sh openbkn install`）

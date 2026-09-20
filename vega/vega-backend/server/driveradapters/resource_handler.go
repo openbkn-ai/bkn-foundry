@@ -1,0 +1,532 @@
+// Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
+//
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
+
+// Package driveradapters provides HTTP handlers (primary adapters).
+package driveradapters
+
+import (
+	"context"
+	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+)
+
+// ========== ListResources ==========
+
+// ListResourcesByEx handles GET /api/vega-backend/v1/resources (External)
+func (r *restHandler) ListResourcesByEx(c *gin.Context) {
+	// External network interface: Verify token
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.listResources(c, visitor)
+}
+
+// ListResourcesByIn handles GET /api/vega-backend/in/v1/resources (Internal)
+func (r *restHandler) ListResourcesByIn(c *gin.Context) {
+	// Internal network interface: user_id is taken from the header
+	visitor := visitor.GenerateVisitor(c)
+	r.listResources(c, visitor)
+}
+
+// listResources is the shared implementation
+func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	name := strings.TrimSpace(c.Query("name"))
+	catalogID := c.Query("catalog_id")
+	category := c.Query("category")
+	status := c.Query("status")
+	schema := c.Query("schema")
+	lastDiscoverStatus := c.Query("last_discover_status")
+	var enabled *bool
+	if enabledStr := strings.TrimSpace(c.Query("enabled")); enabledStr != "" {
+		value, err := strconv.ParseBool(enabledStr)
+		if err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("invalid enabled: %s", enabledStr))
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		enabled = &value
+	}
+	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
+	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
+	sort := common.GetQueryOrDefault(c, "sort", interfaces.ResourceSortUpdateTime)
+	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
+
+	// Verify the pagination query parameters
+	pageParam, err := validatePaginationQueryParams(ctx,
+		offset, limit, sort, direction, interfaces.RESOURCE_SORT)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+			httpErr.BaseError.ErrorDetails), nil)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	params := interfaces.ResourcesQueryParams{
+		PaginationQueryParams: pageParam,
+		Name:                  name,
+		CatalogID:             catalogID,
+		Category:              category,
+		Status:                status,
+		Schema:                schema,
+		Enabled:               enabled,
+		LastDiscoverStatus:    lastDiscoverStatus,
+	}
+
+	if err := ValidateResourceListQueryParams(ctx, params); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+			httpErr.BaseError.ErrorDetails), nil)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	entries, total, err := r.rs.List(ctx, params)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	result := map[string]any{
+		"entries":     entries,
+		"total_count": total,
+	}
+
+	logger.Debug("Handler ListResources Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitResourceSummaryReadEvidence(c, ctx, "data.catalog.get", entries, total, safeResourceListQueryShape(params))
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// ========== CreateResource ==========
+
+// CreateResourceByEx handles POST /api/vega-backend/v1/resources (External)
+func (r *restHandler) CreateResourceByEx(c *gin.Context) {
+	// External network interface: Verify token
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.createResource(c, visitor)
+}
+
+// CreateResourceByIn handles POST /api/vega-backend/in/v1/resources (Internal)
+func (r *restHandler) CreateResourceByIn(c *gin.Context) {
+	// Internal network interface: user_id is taken from the header
+	visitor := visitor.GenerateVisitor(c)
+	r.createResource(c, visitor)
+}
+
+// createResource is the shared implementation
+func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	var req interfaces.ResourceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := ValidateResourceRequest(ctx, &req); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := validateCreateResourceCategory(ctx, req.Category); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	resource, err := r.rs.Create(ctx, &req)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	// Record the successful creation in the audit log.
+	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
+		interfaces.GenerateResourceAuditObject(resource.ID, req.Name), "")
+
+	result := map[string]any{"id": resource.ID}
+
+	logger.Debug("Handler CreateResource Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusCreated, result)
+}
+
+// ========== GetResources ==========
+
+// GetResourcesByEx handles GET /api/vega-backend/v1/resources/:ids (External)
+func (r *restHandler) GetResourcesByEx(c *gin.Context) {
+	// External network interface: Verify token
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.getResources(c, visitor)
+}
+
+// GetResourcesByIn handles GET /api/vega-backend/in/v1/resources/:ids (Internal)
+func (r *restHandler) GetResourcesByIn(c *gin.Context) {
+	// Internal network interface: user_id is taken from the header
+	visitor := visitor.GenerateVisitor(c)
+	r.getResources(c, visitor)
+}
+
+// getResources is the shared implementation
+func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	ids := parseRawIDs(c.Param("id"))
+	if len(ids) == 0 {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("at least one resource id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	// By default any missing id 404s the whole request (all-or-nothing), for both
+	// single- and multi-id GETs — matching the strict default of the sibling
+	// batch DELETE. ?ignore_missing=true opts into tolerance: skip the missing
+	// ids and return the found ones (the caller detects drops from fewer entries
+	// than ids requested). That opt-in is the display-resolution escape hatch for
+	// a stale object-grant pointing at a removed resource.
+	ignoreMissing := strings.EqualFold(strings.TrimSpace(c.Query("ignore_missing")), "true")
+
+	resources, err := r.rs.GetByIDs(ctx, ids, true)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if !ignoreMissing && len(resources) != len(ids) {
+		for _, id := range ids {
+			found := false
+			for _, resource := range resources {
+				if resource.ID == id {
+					found = true
+					break
+				}
+			}
+			if !found {
+				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound,
+					verrors.VegaBackend_Resource_NotFound).WithErrorDetails(fmt.Sprintf("id %s not found", id))
+				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+				rest.ReplyError(c, httpErr)
+				return
+			}
+		}
+	}
+	result := map[string]any{"entries": resources}
+
+	logger.Debug("Handler GetResource Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitResourceReadEvidence(c, ctx, "data.catalog.get", resources, int64(len(resources)), safeResourceIDsQueryShape(ids, ignoreMissing))
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// ========== UpdateResource ==========
+
+// UpdateResourceByEx handles PUT /api/vega-backend/v1/resources/:id (External)
+func (r *restHandler) UpdateResourceByEx(c *gin.Context) {
+	// External network interface: Verify token
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.updateResource(c, visitor)
+}
+
+// UpdateResourceByIn handles PUT /api/vega-backend/in/v1/resources/:id (Internal)
+func (r *restHandler) UpdateResourceByIn(c *gin.Context) {
+	// Internal network interface: user_id is taken from the header
+	visitor := visitor.GenerateVisitor(c)
+	r.updateResource(c, visitor)
+}
+
+// updateResource is the shared implementation
+func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("id")
+
+	var req interfaces.ResourceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if req.ID != "" && req.ID != id {
+		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails(fmt.Sprintf("path id %q != body id %q", id, req.ID))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	req.ID = id
+
+	if err := ValidateResourceRequest(ctx, &req); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := r.rs.Update(ctx, &req); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
+		interfaces.GenerateResourceAuditObject(id, req.Name), "")
+
+	logger.Debug("Handler UpdateResource Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// EnableResourceByEx handles POST /api/vega-backend/v1/resources/:id/enable.
+func (r *restHandler) EnableResourceByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.setResourceEnabled(c, visitor, true)
+}
+
+// EnableResourceByIn handles POST /api/vega-backend/in/v1/resources/:id/enable.
+func (r *restHandler) EnableResourceByIn(c *gin.Context) {
+	r.setResourceEnabled(c, visitor.GenerateVisitor(c), true)
+}
+
+// DisableResourceByEx handles POST /api/vega-backend/v1/resources/:id/disable.
+func (r *restHandler) DisableResourceByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.setResourceEnabled(c, visitor, false)
+}
+
+// DisableResourceByIn handles POST /api/vega-backend/in/v1/resources/:id/disable.
+func (r *restHandler) DisableResourceByIn(c *gin.Context) {
+	r.setResourceEnabled(c, visitor.GenerateVisitor(c), false)
+}
+
+func (r *restHandler) setResourceEnabled(c *gin.Context, visitor hydra.Visitor, enabled bool) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID: visitor.ID, Type: string(visitor.Type),
+	})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("id")
+	resource, err := r.rs.SetEnabled(ctx, id, enabled)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
+		interfaces.GenerateResourceAuditObject(id, resource.Name), "")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// ========== DeleteResources ==========
+
+// DeleteResourcesByEx handles DELETE /api/vega-backend/v1/resources/:ids (External)
+func (r *restHandler) DeleteResourcesByEx(c *gin.Context) {
+	// External network interface: Verify token
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.deleteResources(c, visitor)
+}
+
+// DeleteResourcesByIn handles DELETE /api/vega-backend/in/v1/resources/:ids (Internal)
+func (r *restHandler) DeleteResourcesByIn(c *gin.Context) {
+	// Internal network interface: user_id is taken from the header
+	visitor := visitor.GenerateVisitor(c)
+	r.deleteResources(c, visitor)
+}
+
+// deleteResources is the shared implementation
+func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	ids := parseRawIDs(c.Param("id"))
+	if len(ids) == 0 {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("at least one resource id is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
+
+	if err := r.rs.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	for _, id := range ids {
+		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
+			interfaces.GenerateResourceAuditObject(id, ""), audit.SUCCESS, "")
+	}
+
+	logger.Debug("Handler DeleteResource Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// DiscoverResourceByEx handles POST /api/vega-backend/v1/resources/:id/discover.
+func (r *restHandler) DiscoverResourceByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.discoverResource(c, visitor)
+}
+
+// DiscoverResourceByIn handles POST /api/vega-backend/in/v1/resources/:id/discover.
+func (r *restHandler) DiscoverResourceByIn(c *gin.Context) {
+	r.discoverResource(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) discoverResource(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	resource, err := r.rs.InternalGetByID(ctx, nil, c.Param("id"))
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if resource == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	taskID, err := r.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{
+		CatalogID:   resource.CatalogID,
+		ResourceID:  resource.ID,
+		TriggerType: interfaces.DiscoverTaskTriggerManual,
+	})
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"id": taskID})
+}
