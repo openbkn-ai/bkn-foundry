@@ -1,0 +1,42 @@
+name: ci-version
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-version-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version:
+    name: version contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          base="$(tr -d '[:space:]' < VERSION)"
+          [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error file=VERSION::VERSION must be X.Y.Z"; exit 1; }
+          if [[ "$REF_TYPE" == tag ]]; then
+            tag="${REF_NAME#v}"
+            [[ "$tag" == "$base" || "$tag" =~ ^"$base"-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$ ]] || { echo "::error::tag v$tag is outside VERSION $base"; exit 1; }
+          else
+            # A PR checkout contains the merge result, so validate its target.
+            # The source branch is validated against its own VERSION on push.
+            ref="${BASE_REF:-$REF_NAME}"
+            if [[ "$ref" == release/* ]]; then
+              [[ "${ref#release/}" == "$base" ]] || { echo "::error::branch $ref disagrees with VERSION $base"; exit 1; }
+            fi
+          fi

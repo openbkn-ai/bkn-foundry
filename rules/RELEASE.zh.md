@@ -152,7 +152,7 @@ flowchart LR
 9. 自动生成 GitHub Release（非 prerelease）
 10. 自动发布 Docker 镜像 / Python 包 / Helm Chart，并更新 `latest`
 11. `release/0.7.0` 通过 `--no-ff` merge 合回 `main`
-12. `release/0.7.0` 保留一个 minor 周期用于 patch（详见「Patch 版本发布」），到期或确认无需维护后删除分支；tag 永久保留
+12. `release/0.7.0` 保留一个 minor 周期；需要 patch 时从它切出 `release/0.7.1`（详见「Patch 版本发布」），到期或确认无需维护后删除分支；tag 永久保留
 
 ### 自动化发布
 
@@ -246,9 +246,10 @@ git push origin v1.2.0
 - ✅ Python 包（来自仓库内各 `pyproject.toml`）
 - ✅ Helm Chart（来自仓库内各 `Chart.yaml`），推送至 chart 仓库
 
-#### 6. 合回 main
+#### 6. 同步回 main
 
-BKN Foundry 默认采用「fix 直接在 release 分支提交，最终整体 `--no-ff` 合回 main」的回流策略：
+对于一条版本线的首个 release 分支（例如 `release/1.2.0`），BKN Foundry 默认采用
+整体 `--no-ff` 合回 main 的回流策略：
 
 ```bash
 # 将 release 分支合并回 main
@@ -260,9 +261,13 @@ git push origin main
 
 > 若团队启用了 main 的 PR-only 保护，则改为开 `chore/merge-release-1.2.0` 分支提 PR 合并，与「分支之间避免相互合并」保持口径一致；本步骤是已声明的例外。
 
+对于 `release/1.2.1` 这类用于发布 patch 版本的 release 分支，不得整体合回：
+其中的发布版本准备提交会覆盖 main 已经承载的版本线。应按「Patch 版本发布」章节，
+只 cherry-pick 代码修复提交。
+
 #### 7. Release 分支保留与销毁
 
-`release/1.2.0` 在发完 `v1.2.0` 后**保留一个 minor 周期**（例如直到 `v1.3.0` 发布前），期间专门用于发 `v1.2.1` / `v1.2.2` 等 patch（详见「Patch 版本发布」）。周期结束 / 确认不再发 patch 后：
+`release/1.2.0` 在发完 `v1.2.0` 后**保留一个 minor 周期**（例如直到 `v1.3.0` 发布前），需要 patch 时从它切出 `release/1.2.1`（详见「Patch 版本发布」）；后续 patch 从该版本线最新的 release 分支继续切出。分支已被后续版本取代且不再需要，或维护周期结束后：
 
 ```bash
 # 删除分支；tag 永久保留
@@ -292,7 +297,7 @@ git branch -D release/1.2.0
 - [ ] Breaking Changes 已在文档中说明
 - [ ] 所有 RC 版本已验证通过，且 GitHub Release 标记为 prerelease
 - [ ] 正式 tag 后镜像 `latest` / Helm chart 仓库已更新
-- [ ] Release 分支已合并回 main
+- [ ] Release 变更已同步回 `main`：版本线首个 release 整体合并；patch release 分支仅 cherry-pick 代码修复提交
 
 ---
 
@@ -371,7 +376,7 @@ BKN Foundry 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 规范�
 
 ## 🔄 Patch 版本发布
 
-正式版本 `vX.Y.Z` 发布后，若在保留期内的 `release/X.Y.Z` 上发现需要修复的问题，可在该分支上发 patch（`vX.Y.Z+1`）。
+正式版本 `vX.Y.Z` 发布后，若在维护期内发现需要修复的问题，从 `release/X.Y.Z` 切出 `release/X.Y.(Z+1)`。每个 patch 版本继续使用统一的 release 分支规范：分支名、根 `VERSION`、发布元数据和正式 tag 必须是同一个版本。
 
 ### 何时发 patch
 
@@ -385,15 +390,20 @@ BKN Foundry 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 规范�
 
 ### Patch 流程
 
-#### 1. 在 release 分支上修复
+#### 1. 创建下一个 release 分支
 
 ```bash
 git checkout release/1.2.0
 git pull origin release/1.2.0
+git checkout -b release/1.2.1
 
-# 提交修复
+# 将代码修复和发布版本更新拆分为两个提交。
 git commit -m "fix(auth): patch security vulnerability CVE-2025-XXXX"
-git push origin release/1.2.0
+
+# 将根 VERSION 和所有发布元数据更新为补丁版本。
+# 从而使 tag 与 VERSION 的契约完全一致。
+git commit -am "chore(release): prepare 1.2.1"
+git push -u origin release/1.2.1
 ```
 
 #### 2.（可选）发 RC 验证
@@ -401,6 +411,7 @@ git push origin release/1.2.0
 对于影响面较大的 patch，仍可以走 RC 流程：
 
 ```bash
+git checkout release/1.2.1
 git tag -a v1.2.1-rc.1 -m "Release candidate 1 for v1.2.1"
 git push origin v1.2.1-rc.1
 ```
@@ -408,37 +419,36 @@ git push origin v1.2.1-rc.1
 #### 3. 发布 patch tag
 
 ```bash
+git checkout release/1.2.1
 git tag -a v1.2.1 -m "Release v1.2.1"
 git push origin v1.2.1
 ```
 
 正式 tag 同样触发 GitHub Actions 完成产物构建与发布，行为与「正式 tag」一致。
 
+后续 patch 从该版本线最新的 release 分支继续，例如 `release/1.2.1` → `release/1.2.2`。
+
 #### 4. 同步修复到 main
 
-修复同样需要回到 `main`，以避免主干回归。两种方式任选其一：
+代码修复同样需要回到 `main`，以避免主干回归。只 cherry-pick 修复提交，不要把 release 版本准备提交带入 main：
 
 ```bash
-# 方式 A：单独 cherry-pick
 git checkout main
 git pull origin main
 git cherry-pick -x <commit-hash>
 git push origin main
 ```
 
-```bash
-# 方式 B：随下次整体合回（在 release 分支销毁前必须完成一次）
-git merge release/1.2.0 --no-ff -m "Merge release/1.2.0 into main"
-```
-
 ### Patch 检查清单
 
 - [ ] 修复仅限 bug fix / 安全修复，无新功能
 - [ ] `release/X.Y.Z` 仍在保留期内
+- [ ] `release/X.Y.(Z+1)` 已从当前 release 分支切出
+- [ ] 根 `VERSION`、发布元数据和正式 tag 均为 `X.Y.(Z+1)`
 - [ ] CHANGELOG 的 `[X.Y.Z+1]` 节已补
 - [ ] 涉及版本号的 `Chart.yaml` / `pyproject.toml` 已更新
 - [ ] Patch 版本号正确递增
-- [ ] 修复已通过 cherry-pick 或合回 main 同步至主干
+- [ ] 代码修复已 cherry-pick 回 `main`
 
 ---
 
@@ -451,4 +461,4 @@ git merge release/1.2.0 --no-ff -m "Merge release/1.2.0 into main"
 
 ---
 
-*最后更新：2026-04-27*
+*最后更新：2026-09-20*
