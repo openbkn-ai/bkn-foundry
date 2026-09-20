@@ -46,9 +46,8 @@ type ObjectQueryBaseOnObjectType struct {
 	// EffectiveRowFilterDigest is server derived and binds an opaque cursor to
 	// the caller's effective row-filter decision. It is never accepted from or
 	// returned to API clients.
-	EffectiveRowFilterDigest string   `json:"-"`
-	RowFilterNoResults       bool     `json:"-"`
-	RowFilterFields          []string `json:"-"`
+	EffectiveRowFilterDigest string `json:"-"`
+	RowFilterNoResults       bool   `json:"-"`
 	CommonQueryParameters
 
 	// Compatibility fields for validating identities and property sets in property queries.
