@@ -7,6 +7,7 @@
 package bkn
 
 import (
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -374,4 +375,61 @@ func TestValidateNetwork_MockSystem(t *testing.T) {
 	require.NoError(t, err)
 	res := ValidateNetwork(net)
 	assert.True(t, res.OK(), "errors: %+v", res.Errors)
+}
+
+// networkWithLogicSource builds a minimal valid network whose only logic property carries src.
+func networkWithLogicSource(propType string, src *ResourceInfo) *BknNetwork {
+	return &BknNetwork{
+		BknNetworkFrontmatter: BknNetworkFrontmatter{
+			Type: "knowledge_network",
+			ID:   "net",
+			Name: "Net",
+		},
+		ObjectTypes: []*BknObjectType{
+			{
+				BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{
+					Type: "object_type",
+					ID:   "x",
+					Name: "X",
+				},
+				HasDataPropertiesSection: true,
+				HasKeysSection:           true,
+				DataProperties:           []*DataProperty{{Name: "k", DisplayName: "K", Type: "string"}},
+				PrimaryKeys:              []string{"k"},
+				DisplayKey:               "k",
+				LogicProperties: []*LogicProperty{
+					{Name: "lp1", DisplayName: "LP1", Type: propType, DataSource: src},
+				},
+			},
+		},
+	}
+}
+
+func TestValidateNetwork_LogicPropertyToolSourceOK(t *testing.T) {
+	res := ValidateNetwork(networkWithLogicSource("tool", &ResourceInfo{
+		Type: "tool", Name: "coupon_stats", BoxID: "box-1", ToolID: "tool-1", ResultPath: "$.result.rate_pct",
+	}))
+	assert.True(t, res.OK(), "expected valid tool logic property, errors: %+v", res.Errors)
+}
+
+func TestValidateNetwork_LogicPropertyToolSourceMissingIDs(t *testing.T) {
+	res := ValidateNetwork(networkWithLogicSource("tool", &ResourceInfo{
+		Type: "tool", ID: "coupon_stats", Name: "coupon_stats",
+	}))
+	assert.False(t, res.OK())
+	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "requires both box_id and tool_id")
+}
+
+func TestValidateNetwork_LogicPropertyMetricSourceMissingID(t *testing.T) {
+	res := ValidateNetwork(networkWithLogicSource("metric", &ResourceInfo{Type: "metric", Name: "m"}))
+	assert.False(t, res.OK())
+	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "requires source id")
+}
+
+func TestValidateNetwork_LogicPropertyResultPathNeedsTool(t *testing.T) {
+	res := ValidateNetwork(networkWithLogicSource("metric", &ResourceInfo{
+		Type: "metric", ID: "1", Name: "m", ResultPath: "$.result",
+	}))
+	assert.False(t, res.OK())
+	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "result_path is only valid")
 }

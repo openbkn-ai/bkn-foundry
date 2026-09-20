@@ -510,6 +510,25 @@ func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjec
 				appendError(result, table, "logic_properties", "invalid_object_type",
 					fmt.Sprintf("logic property %q type must match data_source.type", lp.Name))
 			}
+			// Mirror the backend contract so an incomplete source is caught offline instead of
+			// coming back as an HTTP 400 from push: a tool is addressed by box_id + tool_id,
+			// every other source type by its id, and result_path only means something for a tool.
+			switch dst {
+			case "tool":
+				if strings.TrimSpace(lp.DataSource.BoxID) == "" || strings.TrimSpace(lp.DataSource.ToolID) == "" {
+					appendError(result, table, "logic_properties", "invalid_object_type",
+						fmt.Sprintf("logic property %q with a tool data_source requires both box_id and tool_id", lp.Name))
+				}
+			case "metric":
+				if strings.TrimSpace(lp.DataSource.ID) == "" {
+					appendError(result, table, "logic_properties", "invalid_object_type",
+						fmt.Sprintf("logic property %q with a metric data_source requires source id", lp.Name))
+				}
+			}
+			if strings.TrimSpace(lp.DataSource.ResultPath) != "" && dst != "tool" {
+				appendError(result, table, "logic_properties", "invalid_object_type",
+					fmt.Sprintf("logic property %q result_path is only valid for a tool data_source", lp.Name))
+			}
 		}
 		for _, p := range lp.Parameters {
 			if strings.TrimSpace(p.Name) == "" {

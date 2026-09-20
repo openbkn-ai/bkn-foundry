@@ -309,9 +309,12 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 
 		if lp.DataSource != nil {
 			adpLP.DataSource = &interfaces.ResourceInfo{
-				ID:   lp.DataSource.ID,
-				Type: lp.DataSource.Type,
-				Name: lp.DataSource.Name,
+				ID:         lp.DataSource.ID,
+				Type:       lp.DataSource.Type,
+				Name:       lp.DataSource.Name,
+				BoxID:      lp.DataSource.BoxID,
+				ToolID:     lp.DataSource.ToolID,
+				ResultPath: lp.DataSource.ResultPath,
 			}
 		}
 
@@ -395,9 +398,12 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 
 		if adpLP.DataSource != nil {
 			lp.DataSource = &bknsdk.ResourceInfo{
-				ID:   adpLP.DataSource.ID,
-				Type: adpLP.DataSource.Type,
-				Name: adpLP.DataSource.Name,
+				ID:         adpLP.DataSource.ID,
+				Type:       adpLP.DataSource.Type,
+				Name:       adpLP.DataSource.Name,
+				BoxID:      adpLP.DataSource.BoxID,
+				ToolID:     adpLP.DataSource.ToolID,
+				ResultPath: adpLP.DataSource.ResultPath,
 			}
 		}
 

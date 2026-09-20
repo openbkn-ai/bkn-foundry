@@ -259,3 +259,29 @@ func Test_ActionExecution_Status_Constants(t *testing.T) {
 // func (m *mockOpenSearchAccess) DeleteByQuery(ctx context.Context, indexName string, query any) error {
 // 	return nil
 // }
+
+func Test_QueryExecutions_SearchAfterForcesZeroFrom(t *testing.T) {
+	Convey("A cursor query must never carry a non-zero from (#1669)", t, func() {
+		ctrl := gomock.NewController(t)
+		mockOSA := omock.NewMockOpenSearchAccess(ctrl)
+		mockOSA.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(true, nil)
+
+		var captured map[string]any
+		mockOSA.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, q any) ([]interfaces.Hit, error) {
+				captured, _ = q.(map[string]any)
+				return nil, nil
+			})
+
+		svc := &actionLogsService{osAccess: mockOSA}
+		_, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{
+			KNID:        "kn_001",
+			Offset:      10,
+			SearchAfter: []any{int64(1789780257572), "01a0b737-6b24-7d37-b8c1-61095804a879"},
+		})
+
+		So(err, ShouldBeNil)
+		So(captured["from"], ShouldEqual, 0)
+		So(captured["search_after"], ShouldNotBeNil)
+	})
+}
