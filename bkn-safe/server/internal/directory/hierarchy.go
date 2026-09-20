@@ -7,6 +7,7 @@ package directory
 import (
 	"context"
 	"errors"
+	"sort"
 
 	"gorm.io/gorm"
 
@@ -55,6 +56,16 @@ type UserFull struct {
 	Groups     []GroupRef  `json:"groups"`
 }
 
+// RowFilterDepartmentScope is the directory-derived department context used
+// by object-instance row filtering. DirectDepartmentIDs is the user's direct
+// membership set; DepartmentTreeIDs is the de-duplicated union of every direct
+// department and all of its descendants. It deliberately differs from
+// UserDeptIDs, whose established contract returns a department's ancestors.
+type RowFilterDepartmentScope struct {
+	DirectDepartmentIDs []string
+	DepartmentTreeIDs   []string
+}
+
 // deptChain returns the path [root, ..., deptID] (root first, inclusive of the
 // department). Cycle-guarded; a missing department yields what was collected.
 func (s *Service) deptChain(ctx context.Context, deptID string) ([]DeptRef, error) {
@@ -92,7 +103,58 @@ func (s *Service) userDirectDeptIDs(ctx context.Context, userID string) ([]strin
 	for _, ud := range uds {
 		ids = append(ids, ud.DepartmentID)
 	}
+	sort.Strings(ids)
 	return ids, nil
+}
+
+// UserRowFilterDepartmentScope returns the trusted direct-department and
+// direct-department-subtree ranges required by row-filter templates. The
+// caller supplies only a user id; neither ranges nor descendant ids are ever
+// accepted from a request payload.
+func (s *Service) UserRowFilterDepartmentScope(ctx context.Context, userID string) (RowFilterDepartmentScope, error) {
+	direct, err := s.userDirectDeptIDs(ctx, userID)
+	if err != nil {
+		return RowFilterDepartmentScope{}, err
+	}
+	if len(direct) == 0 {
+		return RowFilterDepartmentScope{DirectDepartmentIDs: []string{}, DepartmentTreeIDs: []string{}}, nil
+	}
+
+	seen := make(map[string]struct{}, len(direct))
+	tree := make([]string, 0, len(direct))
+	frontier := make([]string, 0, len(direct))
+	for _, id := range direct {
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		tree = append(tree, id)
+		frontier = append(frontier, id)
+	}
+
+	// Walk downward in batches. The cycle guard protects a damaged hierarchy;
+	// each discovered id enters the next frontier at most once.
+	for len(frontier) > 0 {
+		var children []model.Department
+		if err := s.db.WithContext(ctx).Where("parent_id IN ?", frontier).Order("id ASC").Find(&children).Error; err != nil {
+			return RowFilterDepartmentScope{}, err
+		}
+		next := make([]string, 0, len(children))
+		for _, child := range children {
+			if child.ID == "" {
+				return RowFilterDepartmentScope{}, errors.New("department hierarchy contains an empty id")
+			}
+			if _, alreadySeen := seen[child.ID]; alreadySeen {
+				continue
+			}
+			seen[child.ID] = struct{}{}
+			tree = append(tree, child.ID)
+			next = append(next, child.ID)
+		}
+		frontier = next
+	}
+	sort.Strings(tree)
+	return RowFilterDepartmentScope{DirectDepartmentIDs: direct, DepartmentTreeIDs: tree}, nil
 }
 
 // UserDeptIDs returns the transitive set of department ids a user belongs to:

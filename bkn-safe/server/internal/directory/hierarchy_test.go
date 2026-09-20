@@ -76,6 +76,53 @@ func TestDeptChainAndTransitive(t *testing.T) {
 	}
 }
 
+func TestUserRowFilterDepartmentScopeUsesDescendantsNotAncestors(t *testing.T) {
+	s, db := newSvc(t)
+	seedTree(t, db)
+	ctx := context.Background()
+
+	scope, err := s.UserRowFilterDepartmentScope(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eq(scope.DirectDepartmentIDs, []string{"d2"}) {
+		t.Fatalf("direct departments = %v, want [d2]", scope.DirectDepartmentIDs)
+	}
+	if !eq(scope.DepartmentTreeIDs, []string{"d2"}) {
+		t.Fatalf("department tree = %v, want [d2]", scope.DepartmentTreeIDs)
+	}
+
+	scope, err = s.UserRowFilterDepartmentScope(ctx, "u3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eq(scope.DirectDepartmentIDs, []string{"d1"}) {
+		t.Fatalf("direct departments = %v, want [d1]", scope.DirectDepartmentIDs)
+	}
+	if !eq(scope.DepartmentTreeIDs, []string{"d1", "d2"}) {
+		t.Fatalf("department tree = %v, want [d1 d2]", scope.DepartmentTreeIDs)
+	}
+}
+
+func TestUserRowFilterDepartmentScopeUnionsMultipleDirectTrees(t *testing.T) {
+	s, db := newSvc(t)
+	seedTree(t, db)
+	db.Create(&model.Department{ID: "d3", Name: "市场部", ParentID: "d0"})
+	db.Create(&model.Department{ID: "d4", Name: "市场一组", ParentID: "d3"})
+	db.Create(&model.UserDepartment{UserID: "u1", DepartmentID: "d3"})
+
+	scope, err := s.UserRowFilterDepartmentScope(context.Background(), "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eq(scope.DirectDepartmentIDs, []string{"d2", "d3"}) {
+		t.Fatalf("direct departments = %v, want [d2 d3]", scope.DirectDepartmentIDs)
+	}
+	if !eq(scope.DepartmentTreeIDs, []string{"d2", "d3", "d4"}) {
+		t.Fatalf("department tree = %v, want [d2 d3 d4]", scope.DepartmentTreeIDs)
+	}
+}
+
 func TestGroupSplitAndUserGroups(t *testing.T) {
 	s, db := newSvc(t)
 	seedTree(t, db)

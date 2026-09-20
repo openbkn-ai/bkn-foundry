@@ -409,6 +409,32 @@ func (en *Enforcer) RolesForAccessor(accessorID string) ([]string, error) {
 	return en.e.GetRolesForUser(accessorID)
 }
 
+// ImplicitRolesForAccessor returns every direct and transitive role bound to
+// an accessor. Row filtering needs this complete role closure because a policy
+// on an ancestor role applies to every inherited member. PublicAccessorID is
+// intentionally not included: public is a core base-permission convention,
+// never a row-filter policy subject.
+func (en *Enforcer) ImplicitRolesForAccessor(accessorID string) ([]string, error) {
+	roles, err := en.e.GetImplicitRolesForUser(accessorID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(roles))
+	out := make([]string, 0, len(roles))
+	for _, roleID := range roles {
+		if roleID == "" || roleID == PublicAccessorID {
+			continue
+		}
+		if _, duplicate := seen[roleID]; duplicate {
+			continue
+		}
+		seen[roleID] = struct{}{}
+		out = append(out, roleID)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // RoleMembers lists the accessor ids bound to a role (the grouping g-lines with
 // role=roleID). Mirrors ISF role-members.
 func (en *Enforcer) RoleMembers(roleID string) ([]string, error) {
