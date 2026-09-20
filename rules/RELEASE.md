@@ -35,7 +35,7 @@ BKN Foundry follows the **Trunk-based Development** model with these core princi
 | Main branch | `main` | Always-releasable trunk | `main` |
 | Feature branch | `feature/*` | New feature development | `feature/add-oauth-support` |
 | Fix branch | `fix/*` | Bug fixes | `fix/memory-leak-in-loader` |
-| Release branch | `release/x.y.z` | Release prep + patch maintenance | `release/1.2.0` |
+| Release branch | `release/x.y.z` | Release preparation + patch maintenance | `release/1.2.0` |
 
 ### Branch Lifecycle
 
@@ -152,7 +152,7 @@ Equivalent textual steps:
 9. A GitHub Release is auto-generated (non-prerelease)
 10. Docker images / Python packages / Helm charts are auto-published, and `latest` is updated
 11. `release/0.7.0` is merged back to `main` with `--no-ff`
-12. `release/0.7.0` is kept for one minor cycle for patches (see "Patch Releases"); after that, or once no more patches are needed, the branch is deleted (tags are kept forever)
+12. `release/0.7.0` is kept for one minor cycle so `release/0.7.1` can be cut from it if a patch is needed (see "Patch Releases"); after that, or once no more patches are needed, the branch is deleted (tags are kept forever)
 
 ### Automated Releases
 
@@ -246,9 +246,10 @@ The final tag triggers GitHub Actions to produce:
 - ✅ Python packages (from each `pyproject.toml`)
 - ✅ Helm charts (from each `Chart.yaml`), pushed to the chart repository
 
-#### 6. Merge Back to main
+#### 6. Sync Back to main
 
-BKN Foundry defaults to "fix directly on the release branch, then merge the whole release branch back into main with `--no-ff`":
+For the first release branch in a version line (for example, `release/1.2.0`),
+BKN Foundry defaults to merging the whole branch back into main with `--no-ff`:
 
 ```bash
 git checkout main
@@ -259,9 +260,14 @@ git push origin main
 
 > If `main` is protected as PR-only, open a `chore/merge-release-1.2.0` branch and merge via PR — keeping the spirit of "no cross-branch merging". This step is the declared exception.
 
+For a release branch used to publish a patch version, such as `release/1.2.1`,
+do **not** merge the whole branch back: its release-version preparation commit
+would overwrite the version line already carried by `main`. Follow the "Patch
+Releases" section and cherry-pick only the code-fix commits instead.
+
 #### 7. Release Branch Retention & Deletion
 
-`release/1.2.0` is **kept for one minor cycle** after `v1.2.0` ships (e.g., until `v1.3.0`), and is used to ship `v1.2.1` / `v1.2.2` patches (see "Patch Releases"). When the cycle ends or no further patches are expected:
+`release/1.2.0` is **kept for one minor cycle** after `v1.2.0` ships (e.g., until `v1.3.0`) so a `release/1.2.1` patch release can be cut from it (see "Patch Releases"). Each later patch is cut from the latest release branch in that line. When a branch is superseded and no longer needed, or when the maintenance cycle ends:
 
 ```bash
 # Delete the branch; tags are kept forever
@@ -291,7 +297,7 @@ Before creating a release tag, confirm:
 - [ ] Breaking changes are documented
 - [ ] All RC versions have been validated and their GitHub Releases are marked as prerelease
 - [ ] After the final tag, image `latest` / Helm chart repository have been updated
-- [ ] Release branch has been merged back to main
+- [ ] Release changes have been synced back to `main`: merge the whole branch for the first release in a version line; for a patch release branch, cherry-pick only its code-fix commits
 
 ---
 
@@ -370,7 +376,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## 🔄 Patch Releases
 
-After `vX.Y.Z` ships, fixes that surface during the retention window of `release/X.Y.Z` are released as patches (`vX.Y.Z+1`) directly from that branch.
+After `vX.Y.Z` ships, fixes found during its maintenance window are released by
+cutting `release/X.Y.(Z+1)` from `release/X.Y.Z`. Every patch version therefore
+uses the normal release-branch convention: branch name, root `VERSION`, release
+metadata, and final tag all identify the same version.
 
 ### When to Issue a Patch
 
@@ -384,15 +393,20 @@ After `vX.Y.Z` ships, fixes that surface during the retention window of `release
 
 ### Patch Process
 
-#### 1. Fix on the Release Branch
+#### 1. Create the Next Release Branch
 
 ```bash
 git checkout release/1.2.0
 git pull origin release/1.2.0
+git checkout -b release/1.2.1
 
-# Commit the fix
+# Commit the fix separately from the release-version update.
 git commit -m "fix(auth): patch security vulnerability CVE-2025-XXXX"
-git push origin release/1.2.0
+
+# Set root VERSION and all release metadata to the patch version.
+# This makes the tag-to-VERSION contract exact.
+git commit -am "chore(release): prepare 1.2.1"
+git push -u origin release/1.2.1
 ```
 
 #### 2. (Optional) Publish RC for Validation
@@ -400,6 +414,7 @@ git push origin release/1.2.0
 For high-impact patches, an RC cycle is still encouraged:
 
 ```bash
+git checkout release/1.2.1
 git tag -a v1.2.1-rc.1 -m "Release candidate 1 for v1.2.1"
 git push origin v1.2.1-rc.1
 ```
@@ -407,38 +422,38 @@ git push origin v1.2.1-rc.1
 #### 3. Publish the Patch Tag
 
 ```bash
+git checkout release/1.2.1
 git tag -a v1.2.1 -m "Release v1.2.1"
 git push origin v1.2.1
 ```
 
 The final tag triggers GitHub Actions in the same way as a regular release tag.
 
+Subsequent patches repeat this process from the latest release branch, for
+example `release/1.2.1` → `release/1.2.2`.
+
 #### 4. Sync the Fix Back to main
 
-The same fix must reach `main` to avoid regressions on the trunk. Choose either approach:
+The same code fix must reach `main` to avoid regressions on the trunk. Cherry-pick
+the fix commit only; do not carry the release-version preparation commit into main.
 
 ```bash
-# Approach A: cherry-pick standalone
 git checkout main
 git pull origin main
 git cherry-pick -x <commit-hash>
 git push origin main
 ```
 
-```bash
-# Approach B: rely on the next overall merge-back
-# (must happen at least once before the release branch is deleted)
-git merge release/1.2.0 --no-ff -m "Merge release/1.2.0 into main"
-```
-
 ### Patch Checklist
 
 - [ ] Fix is limited to bug / security fixes — no new features
 - [ ] `release/X.Y.Z` is still within its retention window
+- [ ] `release/X.Y.(Z+1)` was cut from the current release branch
+- [ ] Root `VERSION`, release metadata, and final tag all equal `X.Y.(Z+1)`
 - [ ] CHANGELOG `[X.Y.Z+1]` section is updated
 - [ ] Affected `Chart.yaml` / `pyproject.toml` versions are bumped
 - [ ] Patch version is correctly incremented
-- [ ] Fix has been synced back to `main` via cherry-pick or a merge-back
+- [ ] The code fix has been cherry-picked back to `main`
 
 ---
 
@@ -451,4 +466,4 @@ git merge release/1.2.0 --no-ff -m "Merge release/1.2.0 into main"
 
 ---
 
-*Last updated: 2026-04-27*
+*Last updated: 2026-09-20*
