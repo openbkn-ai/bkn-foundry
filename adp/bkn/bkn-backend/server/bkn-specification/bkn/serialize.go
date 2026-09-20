@@ -46,8 +46,13 @@ func tableCell(s string) string {
 }
 
 // hasToolSourceColumns reports whether a logic property source needs the tool addressing columns.
+// Every tool source gets them, including an incomplete one: the columns are where its box_id and
+// tool_id belong, so an export that is missing them still shows the author where to write them.
 func hasToolSourceColumns(src *ResourceInfo) bool {
-	return src != nil && (src.BoxID != "" || src.ToolID != "" || src.ResultPath != "")
+	if src == nil {
+		return false
+	}
+	return normType(src.Type) == "tool" || src.BoxID != "" || src.ToolID != "" || src.ResultPath != ""
 }
 
 func encodeMetricFormulaYAML(m *MetricFormula) string {
