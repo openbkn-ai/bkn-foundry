@@ -246,9 +246,10 @@ The final tag triggers GitHub Actions to produce:
 - ✅ Python packages (from each `pyproject.toml`)
 - ✅ Helm charts (from each `Chart.yaml`), pushed to the chart repository
 
-#### 6. Merge Back to main
+#### 6. Sync Back to main
 
-BKN Foundry defaults to "fix directly on the release branch, then merge the whole release branch back into main with `--no-ff`":
+For the first release branch in a version line (for example, `release/1.2.0`),
+BKN Foundry defaults to merging the whole branch back into main with `--no-ff`:
 
 ```bash
 git checkout main
@@ -258,6 +259,11 @@ git push origin main
 ```
 
 > If `main` is protected as PR-only, open a `chore/merge-release-1.2.0` branch and merge via PR — keeping the spirit of "no cross-branch merging". This step is the declared exception.
+
+For a release branch used to publish a patch version, such as `release/1.2.1`,
+do **not** merge the whole branch back: its release-version preparation commit
+would overwrite the version line already carried by `main`. Follow the "Patch
+Releases" section and cherry-pick only the code-fix commits instead.
 
 #### 7. Release Branch Retention & Deletion
 

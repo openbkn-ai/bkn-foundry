@@ -22,7 +22,6 @@ jobs:
       - uses: actions/checkout@v4
       - shell: bash
         env:
-          HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
           REF_NAME: ${{ github.ref_name }}
           REF_TYPE: ${{ github.ref_type }}
@@ -34,8 +33,10 @@ jobs:
             tag="${REF_NAME#v}"
             [[ "$tag" == "$base" || "$tag" =~ ^"$base"-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$ ]] || { echo "::error::tag v$tag is outside VERSION $base"; exit 1; }
           else
-            for ref in "${BASE_REF:-}" "${HEAD_REF:-$REF_NAME}"; do
-              [[ "$ref" == release/* ]] || continue
+            # A PR checkout contains the merge result, so validate its target.
+            # The source branch is validated against its own VERSION on push.
+            ref="${BASE_REF:-$REF_NAME}"
+            if [[ "$ref" == release/* ]]; then
               [[ "${ref#release/}" == "$base" ]] || { echo "::error::branch $ref disagrees with VERSION $base"; exit 1; }
-            done
+            fi
           fi

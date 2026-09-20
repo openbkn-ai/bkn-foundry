@@ -162,7 +162,7 @@ sudo bash ./deploy.sh --distro=k3s openbkn install --version_file=/tmp/m.yaml
 ```
 
 逐 chart 解析（stable 优先）：`--branch` 最新构建 → 最新 stable → `--base` 最新构建 → 报错。
-release / patch 分支先由一次全量构建建立基线，后续差异构建只替换有改动的 chart；
+release 分支先由一次全量构建建立基线，后续差异构建只替换有改动的 chart；
 每个 chart 的最新分支构建共同组成该分支可部署的版本组合。生成的 manifest 会逐 chart
 标注来源（`branch` / `stable` / `base`）。需要 `python3`；详见
 `./scripts/gen-dev-manifest.sh -h`。

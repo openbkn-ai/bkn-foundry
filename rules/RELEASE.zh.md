@@ -246,9 +246,10 @@ git push origin v1.2.0
 - ✅ Python 包（来自仓库内各 `pyproject.toml`）
 - ✅ Helm Chart（来自仓库内各 `Chart.yaml`），推送至 chart 仓库
 
-#### 6. 合回 main
+#### 6. 同步回 main
 
-BKN Foundry 默认采用「fix 直接在 release 分支提交，最终整体 `--no-ff` 合回 main」的回流策略：
+对于一条版本线的首个 release 分支（例如 `release/1.2.0`），BKN Foundry 默认采用
+整体 `--no-ff` 合回 main 的回流策略：
 
 ```bash
 # 将 release 分支合并回 main
@@ -259,6 +260,10 @@ git push origin main
 ```
 
 > 若团队启用了 main 的 PR-only 保护，则改为开 `chore/merge-release-1.2.0` 分支提 PR 合并，与「分支之间避免相互合并」保持口径一致；本步骤是已声明的例外。
+
+对于 `release/1.2.1` 这类用于发布 patch 版本的 release 分支，不得整体合回：
+其中的发布版本准备提交会覆盖 main 已经承载的版本线。应按「Patch 版本发布」章节，
+只 cherry-pick 代码修复提交。
 
 #### 7. Release 分支保留与销毁
 
