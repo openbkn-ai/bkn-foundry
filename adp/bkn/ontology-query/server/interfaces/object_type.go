@@ -43,6 +43,12 @@ type ObjectQueryBaseOnObjectType struct {
 	Branch          string        `json:"-"`
 	ObjectTypeID    string        `json:"-"`
 	ActualCondition *cond.CondCfg `json:"-"`
+	// EffectiveRowFilterDigest is server derived and binds an opaque cursor to
+	// the caller's effective row-filter decision. It is never accepted from or
+	// returned to API clients.
+	EffectiveRowFilterDigest string   `json:"-"`
+	RowFilterNoResults       bool     `json:"-"`
+	RowFilterFields          []string `json:"-"`
 	CommonQueryParameters
 
 	// Compatibility fields for validating identities and property sets in property queries.

@@ -52,6 +52,7 @@ type objectTypeService struct {
 	mqs            interfaces.MetricQueryService
 	proxy          interfaces.ProxyContextResolver
 	propertyAccess interfaces.PropertyAccessService
+	rowFilters     interfaces.RowFilterService
 	cursor         *queryCursorCodec
 }
 
@@ -67,6 +68,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			mqs:            metric.NewMetricQueryService(appSetting),
 			proxy:          logics.PCR,
 			propertyAccess: permissionlogic.NewPropertyAccessService(appSetting),
+			rowFilters:     permissionlogic.NewRowFilterService(appSetting),
 			cursor:         newQueryCursorCodec(),
 		}
 	})
@@ -230,32 +232,12 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 			}
 		}
 	}
-
-	// Authorize only caller-selected sort fields. The default sort is an internal
-	// stable-pagination detail and must not turn a schema-only primary key into a
-	// rejected user operation.
+	// Validate the caller's requested projection, condition and sort before
+	// resolving the downstream proxy. Row-filter-only fields are added later as
+	// hidden execution dependencies after the query_data authorization succeeds.
 	plan, err := buildPropertyAccessPlan(ctx, ots.propertyAccess, objectType, query, true)
 	if err != nil {
 		return resps, err
-	}
-	// A missing or explicitly empty sort both need the stable default used by
-	// Vega cursor paging. JSON clients commonly encode an optional empty list
-	// as [], which must not bypass this default.
-	if len(query.Sort) == 0 {
-		query.Sort = logics.BuildViewSort(objectType)
-	}
-
-	// Sort fields can be object type data properties or _score.
-
-	// 3.1 Process the object type and convert it into a view-field to object-type-property mapping.
-	// Mapping from view fields to object type properties.
-	viewFieldPropMap := plan.fieldPropertyMap()
-	// Mapping from object type property names to property names for use in case-to-index queries. Object index field names stay consistent with property names.
-	indexPropMap := make(map[string]string, len(plan.fetchFields))
-	for _, prop := range objectType.DataProperties {
-		if _, needed := plan.fetchFields[prop.Name]; needed {
-			indexPropMap[prop.Name] = prop.Name
-		}
 	}
 
 	dataSourceType := ""
@@ -285,6 +267,47 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		return resps, err
 	}
 	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+
+	if ots.rowFilters == nil {
+		return resps, propertyDecisionUnavailable(ctx, fmt.Errorf("row-filter resolver is not configured"))
+	}
+	objectTypeRef := query.KNID + "/" + objectType.OTID
+	decisions, err := ots.rowFilters.ResolveRowFilters(ctx, []string{objectTypeRef})
+	if err != nil {
+		return resps, err
+	}
+	if len(decisions) != 1 || decisions[0].ObjectTypeRef != objectTypeRef ||
+		strings.TrimSpace(decisions[0].EffectiveRowFilterDigest) == "" {
+		return resps, propertyDecisionUnavailable(ctx, fmt.Errorf("row-filter decision response mismatch"))
+	}
+	rowCondition, rowFields, noResults, err := compileRowFilter(decisions[0].Predicate, objectType)
+	if err != nil {
+		return resps, propertyDecisionUnavailable(ctx, err)
+	}
+	query.EffectiveRowFilterDigest = decisions[0].EffectiveRowFilterDigest
+	query.RowFilterNoResults = noResults
+	query.RowFilterFields = rowFields
+	query.ActualCondition = andRowFilterCondition(query.ActualCondition, rowCondition)
+	for _, name := range rowFields {
+		plan.dependencyFields[name] = struct{}{}
+		plan.fetchFields[name] = struct{}{}
+	}
+
+	// Authorize only caller-selected sort fields. The default sort is an internal
+	// stable-pagination detail and must not turn a schema-only primary key into a
+	// rejected user operation.
+	// A missing or explicitly empty sort both need the stable default used by
+	// Vega cursor paging. JSON clients commonly encode an optional empty list
+	// as [], which must not bypass this default.
+	if len(query.Sort) == 0 {
+		query.Sort = logics.BuildViewSort(objectType)
+	}
+
+	// Sort fields can be object type data properties or _score.
+
+	// 3.1 Process the object type and convert it into a view-field to object-type-property mapping.
+	// Mapping from view fields to object type properties.
+	viewFieldPropMap := plan.fieldPropertyMap()
 	if query.Cursor != "" {
 		if ots.cursor == nil {
 			return resps, invalidQueryCursorError(ctx)
@@ -304,10 +327,14 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		}
 	}
 
-	// 3. Request Vega Resource to get data.
-	err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap, plan)
-	if err != nil {
-		return resps, err
+	// FALSE is a decision made before any resource read. It is safe to return
+	// an empty set directly; this is not post-query filtering.
+	if !query.RowFilterNoResults {
+		// 3. Request Vega Resource to get data.
+		err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap, plan)
+		if err != nil {
+			return resps, err
+		}
 	}
 
 	if query.IncludeTypeInfo {

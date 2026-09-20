@@ -36,8 +36,9 @@ func TestQueryCursorIsEncryptedAndBoundToRequest(t *testing.T) {
 		interfaces.AccountInfo{ID: "user-1", Type: "user"})
 	query := &interfaces.ObjectQueryBaseOnObjectType{
 		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypeID: "customer",
-		Properties: []string{"mobile"},
-		PageQuery:  interfaces.PageQuery{Limit: 10, Sort: []*interfaces.SortParams{{Field: "id", Direction: "asc"}}},
+		Properties:               []string{"mobile"},
+		PageQuery:                interfaces.PageQuery{Limit: 10, Sort: []*interfaces.SortParams{{Field: "id", Direction: "asc"}}},
+		EffectiveRowFilterDigest: "sha256:row-filter-a",
 	}
 	position := []any{"raw-secret-position", 42}
 	token, err := codec.encode(ctx, query, "model-v1", position)
@@ -66,6 +67,11 @@ func TestQueryCursorIsEncryptedAndBoundToRequest(t *testing.T) {
 	if _, err := codec.decode(ctx, query, "model-v2", token); err == nil {
 		t.Fatal("cursor must be bound to model version")
 	}
+	changedFilter := *query
+	changedFilter.EffectiveRowFilterDigest = "sha256:row-filter-b"
+	if _, err := codec.decode(ctx, &changedFilter, "model-v1", token); err == nil {
+		t.Fatal("cursor must be bound to the effective row filter")
+	}
 	replacement := "A"
 	if token[len(token)-1:] == replacement {
 		replacement = "B"
@@ -81,7 +87,7 @@ func TestQueryCursorExpires(t *testing.T) {
 	codec := testQueryCursorCodec(t, now)
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: "user-1", Type: "user"})
-	query := &interfaces.ObjectQueryBaseOnObjectType{KNID: "kn-1", Branch: "main", ObjectTypeID: "customer"}
+	query := &interfaces.ObjectQueryBaseOnObjectType{KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", EffectiveRowFilterDigest: "sha256:row-filter-a"}
 	token, err := codec.encode(ctx, query, "model-v1", []any{"position"})
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +103,7 @@ func TestResourceQueryCursorIsEncryptedAndCannotBeUsedAsSearchAfter(t *testing.T
 	codec := testQueryCursorCodec(t, now)
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: "user-1", Type: "user"})
-	query := &interfaces.ObjectQueryBaseOnObjectType{KNID: "kn-1", Branch: "main", ObjectTypeID: "orders"}
+	query := &interfaces.ObjectQueryBaseOnObjectType{KNID: "kn-1", Branch: "main", ObjectTypeID: "orders", EffectiveRowFilterDigest: "sha256:row-filter-a"}
 	vegaExpiry := now.Add(5 * time.Minute).Unix()
 	token, err := codec.encodeResource(ctx, query, "model-v1", "vega-secret-cursor", &vegaExpiry)
 	if err != nil {

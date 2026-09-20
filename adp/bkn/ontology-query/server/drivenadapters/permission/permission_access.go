@@ -133,6 +133,37 @@ func (pa *permissionAccess) ResolvePropertyLevels(ctx context.Context,
 	return response, nil
 }
 
+func (pa *permissionAccess) ResolveRowFilters(ctx context.Context,
+	request interfaces.RowFiltersRequest) (interfaces.RowFiltersResponse, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ResolveRowFilters")
+	defer span.End()
+
+	var response interfaces.RowFiltersResponse
+	endpoint, err := pa.endpoint("/api/safe/v1/authz/row-filters")
+	if err != nil {
+		return response, err
+	}
+	respCode, body, err := pa.httpClient.PostNoUnmarshal(ctx, endpoint, map[string]string{
+		interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON,
+	}, request)
+	if err != nil {
+		return response, fmt.Errorf("call bkn-safe row-filters: %w", err)
+	}
+	if respCode != http.StatusOK {
+		return response, fmt.Errorf("bkn-safe row-filters returned status %d", respCode)
+	}
+	if len(body) == 0 {
+		return response, fmt.Errorf("bkn-safe row-filters returned an empty response")
+	}
+	if err := sonic.Unmarshal(body, &response); err != nil {
+		return response, fmt.Errorf("decode bkn-safe row-filters response: %w", err)
+	}
+	if response.Entries == nil {
+		return response, fmt.Errorf("bkn-safe row-filters response omitted entries")
+	}
+	return response, nil
+}
+
 func (pa *permissionAccess) resourceFilterEndpoint() (string, error) {
 	return pa.endpoint("/api/safe/v1/authz/resource-filter")
 }

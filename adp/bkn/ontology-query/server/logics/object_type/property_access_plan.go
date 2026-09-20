@@ -101,6 +101,16 @@ func buildPropertyAccessPlan(ctx context.Context, resolver interfaces.PropertyAc
 		plan.dependencyFields[name] = struct{}{}
 		plan.fetchFields[name] = struct{}{}
 	}
+	// Row-filter fields are execution-only dependencies. They are fetched for
+	// Vega's pushed-down predicate but never projected to the response, and do
+	// not require the caller to have property-level full access.
+	for _, name := range query.RowFilterFields {
+		if _, exists := plan.properties[name]; !exists {
+			return nil, unavailableOperationPropertyError(ctx)
+		}
+		plan.dependencyFields[name] = struct{}{}
+		plan.fetchFields[name] = struct{}{}
+	}
 	for _, sort := range query.Sort {
 		if sort != nil && sort.Field != "" && sort.Field != interfaces.SORT_FIELD_SCORE {
 			plan.operationFields[sort.Field] = struct{}{}

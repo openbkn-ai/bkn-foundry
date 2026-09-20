@@ -118,6 +118,38 @@ type PropertyAccessDecision struct {
 	Source string              `json:"source"`
 }
 
+// RowFilterValue keeps the type chosen by bkn-safe intact while the decision
+// crosses the ontology-query boundary. Row-filter predicates deliberately
+// support only exact string, integer and boolean values.
+type RowFilterValue struct {
+	Type    string  `json:"type"`
+	String  *string `json:"string,omitempty"`
+	Integer *int64  `json:"integer,omitempty"`
+	Boolean *bool   `json:"boolean,omitempty"`
+}
+
+type RowFilterPredicate struct {
+	Kind       string               `json:"kind"`
+	Property   string               `json:"property,omitempty"`
+	Values     []RowFilterValue     `json:"values,omitempty"`
+	Predicates []RowFilterPredicate `json:"predicates,omitempty"`
+}
+
+type RowFiltersRequest struct {
+	AccessorID     string   `json:"accessor_id"`
+	ObjectTypeRefs []string `json:"object_type_refs"`
+}
+
+type RowFilterDecisionEntry struct {
+	ObjectTypeRef            string             `json:"object_type_ref"`
+	Predicate                RowFilterPredicate `json:"predicate"`
+	EffectiveRowFilterDigest string             `json:"effective_row_filter_digest"`
+}
+
+type RowFiltersResponse struct {
+	Entries []RowFilterDecisionEntry `json:"entries"`
+}
+
 // PermissionRequirement is an immutable authorization fact captured for an
 // action execution and checked again immediately before every external call.
 type PermissionRequirement struct {
@@ -131,6 +163,7 @@ type PermissionAccess interface {
 	FilterResources(ctx context.Context, request PermissionFilterRequest) (PermissionFilterResponse, error)
 	CheckPermissions(ctx context.Context, request PermissionChecksRequest) (PermissionChecksResponse, error)
 	ResolvePropertyLevels(ctx context.Context, request PropertyLevelsRequest) (PropertyLevelsResponse, error)
+	ResolveRowFilters(ctx context.Context, request RowFiltersRequest) (RowFiltersResponse, error)
 }
 
 type PermissionService interface {
@@ -141,6 +174,13 @@ type PermissionService interface {
 
 type PropertyAccessService interface {
 	ResolvePropertyLevels(ctx context.Context, items []PropertyLevelsRequestItem) ([]PropertyLevelsDecisionEntry, error)
+}
+
+// RowFilterService resolves all object-type decisions needed by one query as
+// the effective caller. Callers must batch refs; implementations do not fall
+// back to a permissive result when bkn-safe is unavailable.
+type RowFilterService interface {
+	ResolveRowFilters(ctx context.Context, objectTypeRefs []string) ([]RowFilterDecisionEntry, error)
 }
 
 // ActionExecutionPermissionService checks the heterogeneous requirements of

@@ -37,6 +37,117 @@ func NewPropertyAccessService(appSetting *common.AppSetting) interfaces.Property
 	return &permissionService{access: permissionaccess.NewPermissionAccess(appSetting)}
 }
 
+func NewRowFilterService(appSetting *common.AppSetting) interfaces.RowFilterService {
+	return &permissionService{access: permissionaccess.NewPermissionAccess(appSetting)}
+}
+
+func (ps *permissionService) ResolveRowFilters(ctx context.Context,
+	objectTypeRefs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	caller, ok := interfaces.RowFilterCallerFromContext(ctx)
+	if !ok || caller.Type != "user" {
+		return nil, permissionDenied(ctx, "row-filter caller is missing or not a user")
+	}
+	if ps == nil || ps.access == nil {
+		return nil, permissionUnavailable(ctx, fmt.Errorf("row-filter permission access is not configured"))
+	}
+	refs, err := normalizeRowFilterRefs(objectTypeRefs)
+	if err != nil {
+		return nil, permissionDenied(ctx, err.Error())
+	}
+	response, err := ps.access.ResolveRowFilters(ctx, interfaces.RowFiltersRequest{
+		AccessorID: caller.ID, ObjectTypeRefs: refs,
+	})
+	if err != nil {
+		return nil, permissionUnavailable(ctx, err)
+	}
+	if err := validateRowFilterResponse(refs, response.Entries); err != nil {
+		return nil, permissionUnavailable(ctx, err)
+	}
+	return response.Entries, nil
+}
+
+func normalizeRowFilterRefs(refs []string) ([]string, error) {
+	if len(refs) == 0 || len(refs) > 100 {
+		return nil, fmt.Errorf("row-filter object type references are required")
+	}
+	result := make([]string, 0, len(refs))
+	seen := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" || strings.Count(ref, "/") != 1 {
+			return nil, fmt.Errorf("row-filter object type reference is invalid")
+		}
+		if _, exists := seen[ref]; exists {
+			return nil, fmt.Errorf("duplicate row-filter object type reference")
+		}
+		seen[ref] = struct{}{}
+		result = append(result, ref)
+	}
+	return result, nil
+}
+
+func validateRowFilterResponse(request []string, entries []interfaces.RowFilterDecisionEntry) error {
+	if len(request) != len(entries) {
+		return fmt.Errorf("row-filter response entry count mismatch")
+	}
+	for index, ref := range request {
+		entry := entries[index]
+		if entry.ObjectTypeRef != ref || strings.TrimSpace(entry.EffectiveRowFilterDigest) == "" {
+			return fmt.Errorf("row-filter response shape mismatch")
+		}
+		if err := validateRowFilterPredicate(entry.Predicate, 0); err != nil {
+			return fmt.Errorf("row-filter response predicate is invalid: %w", err)
+		}
+	}
+	return nil
+}
+
+func validateRowFilterPredicate(predicate interfaces.RowFilterPredicate, depth int) error {
+	if depth > 8 {
+		return fmt.Errorf("row-filter predicate exceeds maximum depth")
+	}
+	switch predicate.Kind {
+	case "true", "false":
+		if predicate.Property != "" || len(predicate.Values) != 0 || len(predicate.Predicates) != 0 {
+			return fmt.Errorf("row-filter constant predicate has fields")
+		}
+	case "in":
+		if strings.TrimSpace(predicate.Property) == "" || len(predicate.Values) == 0 || len(predicate.Predicates) != 0 {
+			return fmt.Errorf("row-filter in predicate is malformed")
+		}
+		for _, value := range predicate.Values {
+			switch value.Type {
+			case "string":
+				if value.String == nil || value.Integer != nil || value.Boolean != nil {
+					return fmt.Errorf("row-filter string value is malformed")
+				}
+			case "integer":
+				if value.String != nil || value.Integer == nil || value.Boolean != nil {
+					return fmt.Errorf("row-filter integer value is malformed")
+				}
+			case "boolean":
+				if value.String != nil || value.Integer != nil || value.Boolean == nil {
+					return fmt.Errorf("row-filter boolean value is malformed")
+				}
+			default:
+				return fmt.Errorf("row-filter value type is unsupported")
+			}
+		}
+	case "or":
+		if predicate.Property != "" || len(predicate.Values) != 0 || len(predicate.Predicates) < 2 {
+			return fmt.Errorf("row-filter or predicate is malformed")
+		}
+		for _, child := range predicate.Predicates {
+			if err := validateRowFilterPredicate(child, depth+1); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("row-filter predicate kind is unsupported")
+	}
+	return nil
+}
+
 // ResolvePropertyLevels splits oversized caller plans without weakening the
 // limits enforced by bkn-safe. Chunks for the same object type are never sent
 // in one request because the server rejects duplicate object_type_ref values.
