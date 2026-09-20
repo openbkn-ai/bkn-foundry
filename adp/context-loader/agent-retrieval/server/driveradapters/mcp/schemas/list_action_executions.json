@@ -37,7 +37,7 @@
       },
       "offset": {
         "type": "integer",
-        "description": "分页偏移（可选）。"
+        "description": "分页偏移（可选）。与 search_after 互斥，传入 search_after 时不要再传 offset。"
       },
       "limit": {
         "type": "integer",
@@ -45,7 +45,7 @@
       },
       "search_after": {
         "type": "array",
-        "description": "游标分页（可选）：将上一页响应返回的 search_after 原样传入以获取下一页，比 offset 更适合深翻页。",
+        "description": "游标分页（可选）：将上一页响应返回的 search_after 原样传入以获取下一页，比 offset 更适合深翻页。与 offset 互斥。",
         "items": {}
       }
     },

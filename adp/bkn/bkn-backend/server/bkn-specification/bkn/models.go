@@ -226,10 +226,17 @@ type MetricAnalysisDimRow struct {
 }
 
 // ResourceInfo represents a data source reference.
+//
+// A logic property of type tool is addressed by BoxID + ToolID instead of ID, and may pick one
+// field out of the tool result with ResultPath. The other source types only use Type/ID/Name.
 type ResourceInfo struct {
 	Type string
 	ID   string
 	Name string
+
+	BoxID      string
+	ToolID     string
+	ResultPath string
 }
 
 // DataProperty is a ### Data Properties table row.

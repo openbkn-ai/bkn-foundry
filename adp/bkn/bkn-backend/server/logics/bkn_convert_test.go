@@ -713,3 +713,41 @@ func Test_condCfgConverters(t *testing.T) {
 		})
 	})
 }
+
+func Test_ObjectTypeLogicPropertyToolSource_RoundTrip(t *testing.T) {
+	Convey("Test tool logic property source round trip\n", t, func() {
+		bknObj := &bknsdk.BknObjectType{
+			BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{ID: "ot1", Name: "OT1"},
+			LogicProperties: []*bknsdk.LogicProperty{
+				{
+					Name: "lp_coupon_redeem_rate", Type: "tool",
+					DataSource: &bknsdk.ResourceInfo{
+						Type:       "tool",
+						Name:       "coupon_stats",
+						BoxID:      "box-1",
+						ToolID:     "tool-1",
+						ResultPath: "$.result.rate_pct",
+					},
+				},
+			},
+		}
+
+		Convey("BKN to ADP keeps the tool addressing\n", func() {
+			adp := ToADPObjectType("kn1", "main", bknObj)
+
+			So(adp.LogicProperties[0].DataSource.Type, ShouldEqual, "tool")
+			So(adp.LogicProperties[0].DataSource.BoxID, ShouldEqual, "box-1")
+			So(adp.LogicProperties[0].DataSource.ToolID, ShouldEqual, "tool-1")
+			So(adp.LogicProperties[0].DataSource.ResultPath, ShouldEqual, "$.result.rate_pct")
+		})
+
+		Convey("ADP back to BKN keeps the tool addressing\n", func() {
+			back := ToBKNObjectType(ToADPObjectType("kn1", "main", bknObj))
+
+			So(back.LogicProperties[0].DataSource.Type, ShouldEqual, "tool")
+			So(back.LogicProperties[0].DataSource.BoxID, ShouldEqual, "box-1")
+			So(back.LogicProperties[0].DataSource.ToolID, ShouldEqual, "tool-1")
+			So(back.LogicProperties[0].DataSource.ResultPath, ShouldEqual, "$.result.rate_pct")
+		})
+	})
+}

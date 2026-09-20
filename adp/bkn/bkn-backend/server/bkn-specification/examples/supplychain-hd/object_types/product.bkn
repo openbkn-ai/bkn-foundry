@@ -34,9 +34,9 @@ tags: [供应链, 产品, 已审核]
 
 **Source**
 
-| Source Type | Source ID | Source Name |
-|-------------|-----------|-------------|
-| tool | bom_tree_builder | bom_tree_builder |
+| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |
+|-------------|-----------|-------------|-------|--------|------------|
+| tool | bom_tree_builder | bom_tree_builder | supplychain_hd_toolbox | bom_tree_builder |  |
 
 **Parameters**
 

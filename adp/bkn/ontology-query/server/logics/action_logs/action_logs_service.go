@@ -409,6 +409,10 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 
 	if len(query.SearchAfter) > 0 {
 		osQuery["search_after"] = query.SearchAfter
+		// OpenSearch rejects a non-zero from next to search_after with
+		// search_phase_execution_exception. The handler already refuses that combination; drop
+		// the offset here as well so no caller of this service can build the broken DSL.
+		osQuery["from"] = 0
 	}
 
 	hits, err := s.osAccess.SearchData(ctx, indexName, osQuery)
