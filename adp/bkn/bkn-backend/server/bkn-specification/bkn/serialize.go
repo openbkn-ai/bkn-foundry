@@ -45,6 +45,16 @@ func tableCell(s string) string {
 	return strings.ReplaceAll(s, "\n", "<br>")
 }
 
+// hasToolSourceColumns reports whether a logic property source needs the tool addressing columns.
+// Every tool source gets them, including an incomplete one: the columns are where its box_id and
+// tool_id belong, so an export that is missing them still shows the author where to write them.
+func hasToolSourceColumns(src *ResourceInfo) bool {
+	if src == nil {
+		return false
+	}
+	return normType(src.Type) == "tool" || src.BoxID != "" || src.ToolID != "" || src.ResultPath != ""
+}
+
 func encodeMetricFormulaYAML(m *MetricFormula) string {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
@@ -346,12 +356,21 @@ func SerializeObjectType(ot *BknObjectType) string {
 		_, _ = fmt.Fprintf(&sb, "|--------------|------|-------------|\n")
 		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", tableCell(lp.DisplayName), tableCell(lp.Type), tableCell(lp.Description))
 
-		// Source table
+		// Source table. A tool source carries its own addressing columns; the narrow three-column
+		// form stays the default so that existing files keep serializing byte for byte.
 		_, _ = fmt.Fprintf(&sb, "**Source**\n\n")
-		_, _ = fmt.Fprintf(&sb, "| Source Type | Source ID | Source Name |\n")
-		_, _ = fmt.Fprintf(&sb, "|-------------|-----------|-------------|\n")
-		if lp.DataSource != nil {
-			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n", tableCell(lp.DataSource.Type), tableCell(lp.DataSource.ID), tableCell(lp.DataSource.Name))
+		if hasToolSourceColumns(lp.DataSource) {
+			_, _ = fmt.Fprintf(&sb, "| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |\n")
+			_, _ = fmt.Fprintf(&sb, "|-------------|-----------|-------------|-------|--------|------------|\n")
+			_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s |\n",
+				tableCell(lp.DataSource.Type), tableCell(lp.DataSource.ID), tableCell(lp.DataSource.Name),
+				tableCell(lp.DataSource.BoxID), tableCell(lp.DataSource.ToolID), tableCell(lp.DataSource.ResultPath))
+		} else {
+			_, _ = fmt.Fprintf(&sb, "| Source Type | Source ID | Source Name |\n")
+			_, _ = fmt.Fprintf(&sb, "|-------------|-----------|-------------|\n")
+			if lp.DataSource != nil {
+				_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n", tableCell(lp.DataSource.Type), tableCell(lp.DataSource.ID), tableCell(lp.DataSource.Name))
+			}
 		}
 		_, _ = fmt.Fprintf(&sb, "\n")
 

@@ -378,9 +378,12 @@ func parseLogicPropertySubSection(name, content string) *LogicProperty {
 		case "Source":
 			if len(rows) > 0 {
 				prop.DataSource = &ResourceInfo{
-					Type: rows[0]["Source Type"],
-					ID:   rows[0]["Source ID"],
-					Name: rows[0]["Source Name"],
+					Type:       rows[0]["Source Type"],
+					ID:         rows[0]["Source ID"],
+					Name:       rows[0]["Source Name"],
+					BoxID:      firstNonEmpty(rows[0], "BoxID", "Box ID", "Toolbox ID"),
+					ToolID:     firstNonEmpty(rows[0], "ToolID", "Tool ID"),
+					ResultPath: firstNonEmpty(rows[0], "ResultPath", "Result Path"),
 				}
 			}
 		case "Parameters":

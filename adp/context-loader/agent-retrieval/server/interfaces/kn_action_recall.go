@@ -190,9 +190,9 @@ type KnListActionExecutionsRequest struct {
 	TriggerType   string `json:"trigger_type,omitempty"`    // Filter by trigger method: manual/scheduled (optional)
 	StartTimeFrom int64  `json:"start_time_from,omitempty"` // Lower bound on start time (Unix milliseconds, optional)
 	StartTimeTo   int64  `json:"start_time_to,omitempty"`   // Upper starting time bound (Unix milliseconds, optional)
-	Offset        int    `json:"offset,omitempty"`          // Page break offset (optional)
+	Offset        int    `json:"offset,omitempty"`          // Offset paging; mutually exclusive with search_after (optional)
 	Limit         int    `json:"limit,omitempty"`           // Number of pagination items, default 20, maximum 1000 (optional)
-	SearchAfter   []any  `json:"search_after,omitempty"`    // Cursor paging: The search_after of the previous page response is returned as is (optional)
+	SearchAfter   []any  `json:"search_after,omitempty"`    // Cursor paging: the search_after of the previous page response is returned as is; must not be combined with offset (optional)
 
 	AccountID   string `json:"-" header:"x-account-id"`
 	AccountType string `json:"-" header:"x-account-type"`

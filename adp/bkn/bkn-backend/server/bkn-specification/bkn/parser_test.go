@@ -1055,3 +1055,71 @@ action_type: modify
 	assert.Equal(t, "box-001", at.ActionSource.BoxID)
 	assert.Equal(t, "tool-abc", at.ActionSource.ToolID)
 }
+
+func TestLogicPropertyToolSource_RoundTrip(t *testing.T) {
+	text := `---
+type: object_type
+id: coupon
+name: coupon
+---
+
+## ObjectType: coupon
+
+### Logic Properties
+
+#### lp_coupon_redeem_rate
+
+**Meta**
+
+| Display Name | Type | Description |
+|--------------|------|-------------|
+| lp_coupon_redeem_rate | tool |  |
+
+**Source**
+
+| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |
+|-------------|-----------|-------------|-------|--------|------------|
+| tool |  | coupon_stats | box-1 | tool-1 | $.result.rate_pct |
+`
+	ot, err := ParseObjectTypeFile(text, "/test/coupon.bkn")
+	require.NoError(t, err)
+	require.Len(t, ot.LogicProperties, 1)
+
+	src := ot.LogicProperties[0].DataSource
+	require.NotNil(t, src)
+	assert.Equal(t, "tool", src.Type)
+	assert.Equal(t, "coupon_stats", src.Name)
+	assert.Equal(t, "box-1", src.BoxID)
+	assert.Equal(t, "tool-1", src.ToolID)
+	assert.Equal(t, "$.result.rate_pct", src.ResultPath)
+
+	// Serializing and parsing again must not drop the tool addressing.
+	reparsed, err := ParseObjectTypeFile(SerializeObjectType(ot), "/test/coupon.bkn")
+	require.NoError(t, err)
+	require.Len(t, reparsed.LogicProperties, 1)
+	assert.Equal(t, src, reparsed.LogicProperties[0].DataSource)
+}
+
+func TestLogicPropertySource_NonToolKeepsNarrowTable(t *testing.T) {
+	ot := &BknObjectType{
+		BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{Type: "object_type", ID: "ot1", Name: "OT1"},
+		LogicProperties: []*LogicProperty{
+			{Name: "lp1", Type: "metric", DataSource: &ResourceInfo{Type: "metric", ID: "m1", Name: "M1"}},
+		},
+	}
+
+	out := SerializeObjectType(ot)
+	assert.Contains(t, out, "| Source Type | Source ID | Source Name |\n")
+	assert.NotContains(t, out, "BoxID")
+}
+
+func TestLogicPropertySource_IncompleteToolStillGetsColumns(t *testing.T) {
+	ot := &BknObjectType{
+		BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{Type: "object_type", ID: "ot1", Name: "OT1"},
+		LogicProperties: []*LogicProperty{
+			{Name: "lp1", Type: "tool", DataSource: &ResourceInfo{Type: "tool", Name: "calc"}},
+		},
+	}
+
+	assert.Contains(t, SerializeObjectType(ot), "| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |")
+}
