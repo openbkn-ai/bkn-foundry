@@ -49,15 +49,24 @@ jobs:
 
           # Single source of truth: repo-root VERSION (shared by all services)
           BASE_VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error file=VERSION::VERSION must be a stable X.Y.Z version; received $BASE_VERSION"
+            exit 1
+          fi
           REF_NAME="${{ github.ref_name }}"
           REF_TYPE="${{ github.ref_type }}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
 
           if [[ "$REF_TYPE" == "tag" ]]; then
-            # Tag push (e.g. v0.1.1-alpha) cuts a release: the tag IS the version
-            # (leading "v" stripped). This is what makes `git push` a tag publish a
-            # clean, immutable image/chart set across all services.
-            VERSION="${REF_NAME#v}"
+            # A tag may be the stable VERSION or its prerelease (for example,
+            # v0.1.1-rc.1). Keep the full tag version on every image and chart,
+            # but never let it cross the release line declared in VERSION.
+            TAG_VERSION="${REF_NAME#v}"
+            if [[ "$TAG_VERSION" != "$BASE_VERSION" && "$TAG_VERSION" != "$BASE_VERSION-"* ]]; then
+              echo "::error file=VERSION::tag v$TAG_VERSION must equal VERSION ($BASE_VERSION) or use it as a prerelease prefix"
+              exit 1
+            fi
+            VERSION="$TAG_VERSION"
           elif [[ "$REF_NAME" == release/* ]]; then
             # 分支名必须与根 VERSION 一致：分支刚从 main 拉出、版本冻结提交尚未
             # 落地时，VERSION 还是上一个版本，此时构建出的制品版本号会指向错误的
@@ -68,10 +77,11 @@ jobs:
                    "请先提交版本冻结（VERSION -> $BRANCH_VERSION）。"
               exit 1
             fi
-            # Release branches use a stable, Helm-compatible version:
-            # release/0.1.2 -> 0.1.2-release. 裸版本号只由 tag 产出，保证 GA 制品
-            # 不会被后续 release 分支推送覆盖。
-            VERSION="${BASE_VERSION}-release"
+            # Release branches publish an immutable preparation build. The bare
+            # version and explicit RC versions belong to tags, so a later branch
+            # push can never overwrite a deployable candidate.
+            COMMIT_DATE="$(TZ=Asia/Shanghai git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)"
+            VERSION="${BASE_VERSION}-release.${COMMIT_DATE}.sha${SHORT_SHA}"
           else
             SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
             # Embed the commit time (Asia/Shanghai, fixed-width YYYYMMDDHHMMSS) so the
