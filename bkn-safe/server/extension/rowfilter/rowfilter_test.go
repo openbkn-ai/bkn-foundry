@@ -7,6 +7,7 @@ package rowfilter
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/openbkn-ai/licverify"
@@ -130,7 +131,7 @@ func TestInvalidPlanFailsClosed(t *testing.T) {
 func TestDepartmentTreeSizedPlanIsNotLimitedLikeValueSet(t *testing.T) {
 	values := make([]Value, 0, 101)
 	for index := 0; index < 101; index++ {
-		values = append(values, Value{Type: ValueString, String: string(rune(index + 1))})
+		values = append(values, Value{Type: ValueString, String: strconv.Itoa(index)})
 	}
 	plan, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateIn, Property: "department_id", Values: values}})
 	if err != nil {
