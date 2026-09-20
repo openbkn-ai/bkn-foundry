@@ -294,7 +294,11 @@ paths:
               $ref: '#/components/schemas/AttachCapabilitiesRequest'
       responses:
         '200':
-          description: The bindings of the requested capabilities
+          description: >-
+            The bindings of the requested capabilities. This reuses the list schema but fills
+            only `entries` and `total_count`: `boxes` is empty and `metadata_available` /
+            `sources_available` are always `false`, because a mount neither reads execution-factory
+            metadata nor resolves sources. Read them back with the list endpoint.
           content:
             application/json:
               schema:
@@ -569,6 +573,9 @@ components:
           description: >-
             False when the execution factory could not be reached. The bindings are still
             complete; only their names, descriptions and statuses are missing.
+
+            Meaningful on the list response only. The mount response reuses this schema without
+            reading metadata at all, so it always carries `false` there — see the mount endpoint.
           type: boolean
         sources_available:
           description: >-
@@ -576,6 +583,8 @@ components:
             capabilities are still listed, but the ones only the model uses are missing and the
             `sources` on the rest are incomplete — an empty sources list would otherwise read as
             "nothing uses this", which is the opposite of unknown.
+
+            Meaningful on the list response only, on the same terms as `metadata_available`.
           type: boolean
     CapabilityReferenceList:
       description: >-
