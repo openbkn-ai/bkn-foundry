@@ -1112,3 +1112,14 @@ func TestLogicPropertySource_NonToolKeepsNarrowTable(t *testing.T) {
 	assert.Contains(t, out, "| Source Type | Source ID | Source Name |\n")
 	assert.NotContains(t, out, "BoxID")
 }
+
+func TestLogicPropertySource_IncompleteToolStillGetsColumns(t *testing.T) {
+	ot := &BknObjectType{
+		BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{Type: "object_type", ID: "ot1", Name: "OT1"},
+		LogicProperties: []*LogicProperty{
+			{Name: "lp1", Type: "tool", DataSource: &ResourceInfo{Type: "tool", Name: "calc"}},
+		},
+	}
+
+	assert.Contains(t, SerializeObjectType(ot), "| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |")
+}
