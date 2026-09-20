@@ -37,10 +37,11 @@ type resourceRef struct {
 // registerAuthz mounts bkn-safe's clean authorization API under /api/safe/v1/authz.
 // This is a redesign — it deliberately drops ISF's quirks (GET-in-body,
 // array-vs-map responses, policy-delete double form, public/private split).
-func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *audit.Store, dir *directory.Service) {
+func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *audit.Store, dir *directory.Service, rowFilterMaxDepartmentIDs int) {
 	g := r.Group("/api/safe/v1/authz")
 	registerAuthorizationRegistry(g, db)
 	registerPropertyLevels(g, e, db)
+	registerRowFilter(g, e, dir, rowFilterMaxDepartmentIDs)
 	// Policy and hierarchy writes are the authorization changes this tokenless
 	// face accepts. They are audited like the token-gated ones (#334); the
 	// actor is the service peer, see auditMiddleware.

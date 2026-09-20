@@ -7,6 +7,7 @@ package interfaces
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -98,6 +99,34 @@ func TrustedProxyContextFromContext(ctx context.Context) (*TrustedProxyContext, 
 	}
 	proxy, ok := ctx.Value(proxyContextKey{}).(*TrustedProxyContext)
 	return proxy, ok && proxy != nil
+}
+
+// RowFilterCallerFromContext returns the identity whose rows must be filtered.
+// Ordinary requests use the authenticated account. A server-created proxy
+// context always switches that identity to its Caller, never to the managed
+// Proxy account or a resource-grant principal. A malformed identity fails
+// closed instead of allowing the execution layer to apply the TRUE fallback
+// reserved for a genuinely policy-free user.
+func RowFilterCallerFromContext(ctx context.Context) (AccountInfo, bool) {
+	if ctx == nil {
+		return AccountInfo{}, false
+	}
+	if proxy, ok := TrustedProxyContextFromContext(ctx); ok {
+		return validRowFilterCaller(proxy.Caller)
+	}
+	account, ok := ctx.Value(ACCOUNT_INFO_KEY).(AccountInfo)
+	if !ok {
+		return AccountInfo{}, false
+	}
+	return validRowFilterCaller(account)
+}
+
+func validRowFilterCaller(account AccountInfo) (AccountInfo, bool) {
+	if account.ID == "" || account.Type == "" || strings.TrimSpace(account.ID) != account.ID ||
+		strings.TrimSpace(account.Type) != account.Type {
+		return AccountInfo{}, false
+	}
+	return account, true
 }
 
 type callerRuntimeCredentialKey struct{}

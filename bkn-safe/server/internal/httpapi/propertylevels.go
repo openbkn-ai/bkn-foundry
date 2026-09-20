@@ -6,12 +6,12 @@ package httpapi
 
 import (
 	"net/http"
-	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permdata"
+	coresocket "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/rowfilter"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/propertyaccess"
 )
@@ -20,12 +20,7 @@ const (
 	maxPropertyLevelObjectTypes       = 100
 	maxPropertiesPerObjectType        = 200
 	maxPropertiesPerPropertyLevelCall = 1000
-	maxObjectIDLength                 = 40
-	maxObjectTypeRefLength            = maxObjectIDLength*2 + 1
 )
-
-var propertyLevelObjectTypeRefPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$`)
-var propertyLevelPropertyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$`)
 
 type propertyLevelsRequest struct {
 	AccessorID string                      `json:"accessor_id" binding:"required"`
@@ -127,7 +122,7 @@ func validPropertyLevelsRequest(request propertyLevelsRequest) bool {
 		}
 		seenProperties := make(map[string]struct{}, len(item.Properties))
 		for _, name := range item.Properties {
-			if !propertyLevelPropertyNamePattern.MatchString(name) {
+			if !coresocket.ValidPropertyName(name) {
 				return false
 			}
 			if _, duplicate := seenProperties[name]; duplicate {
@@ -140,7 +135,7 @@ func validPropertyLevelsRequest(request propertyLevelsRequest) bool {
 }
 
 func validObjectTypeRef(reference string) bool {
-	return len(reference) <= maxObjectTypeRefLength && propertyLevelObjectTypeRefPattern.MatchString(reference)
+	return coresocket.ValidObjectTypeRef(reference)
 }
 
 func basePropertyLevel(operations []string) propertyaccess.Level {

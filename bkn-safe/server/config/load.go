@@ -147,6 +147,9 @@ func applyEnv(cfg *Config) {
 			cfg.Authz.PolicyRefreshInterval = d
 		}
 	}
+	if v, ok := envInt("SAFE_AUTHZ_ROW_FILTER_MAX_DEPARTMENT_IDS"); ok && v > 0 {
+		cfg.Authz.RowFilterMaxDepartmentIDs = v
+	}
 	if v := os.Getenv("SAFE_BKN_BACKEND_BASE_URL"); v != "" {
 		cfg.Upstreams.BKNBackend.BaseURL = v
 	}

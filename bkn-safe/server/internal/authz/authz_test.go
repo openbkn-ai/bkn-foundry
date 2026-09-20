@@ -6,6 +6,7 @@ package authz
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -78,6 +79,37 @@ func TestRoleGrantAndWildcard(t *testing.T) {
 		if got != c.want {
 			t.Errorf("Check(%s, %s:%s, %s) = %v, want %v — %s", c.sub, c.typ, c.id, c.op, got, c.want, c.why)
 		}
+	}
+}
+
+func TestImplicitRolesForAccessorDoesNotSilentlyTruncateDeepClosure(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user = "u-deep"
+	parent := user
+	for index := 1; index <= 11; index++ {
+		role := fmt.Sprintf("role-%02d", index)
+		mustNoErr(t, e.AssignRole(parent, role))
+		parent = role
+	}
+	roles, err := e.ImplicitRolesForAccessor(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roles) != 11 || roles[10] != "role-11" {
+		t.Fatalf("implicit roles = %v, want all 11 role levels", roles)
+	}
+}
+
+func TestImplicitRolesForAccessorFailsClosedAtRoleDepthLimit(t *testing.T) {
+	e := newTestEnforcer(t)
+	parent := "u-deeper"
+	for index := 1; index <= maxRowFilterRoleDepth+1; index++ {
+		role := fmt.Sprintf("role-%02d", index)
+		mustNoErr(t, e.AssignRole(parent, role))
+		parent = role
+	}
+	if _, err := e.ImplicitRolesForAccessor("u-deeper"); !errors.Is(err, ErrRowFilterRoleClosureDeep) {
+		t.Fatalf("implicit role depth error = %v, want %v", err, ErrRowFilterRoleClosureDeep)
 	}
 }
 
