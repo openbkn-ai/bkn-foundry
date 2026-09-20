@@ -44,7 +44,7 @@ func NewRowFilterService(appSetting *common.AppSetting) interfaces.RowFilterServ
 func (ps *permissionService) ResolveRowFilters(ctx context.Context,
 	objectTypeRefs []string) ([]interfaces.RowFilterDecisionEntry, error) {
 	caller, ok := interfaces.RowFilterCallerFromContext(ctx)
-	if !ok || caller.Type != "user" {
+	if !ok || !rowFilterUserSubject(caller.Type) {
 		return nil, permissionDenied(ctx, "row-filter caller is missing or not a user")
 	}
 	if ps == nil || ps.access == nil {
@@ -64,6 +64,13 @@ func (ps *permissionService) ResolveRowFilters(ctx context.Context,
 		return nil, permissionUnavailable(ctx, err)
 	}
 	return response.Entries, nil
+}
+
+// bkn-safe resolves row-filter policy from a directory user id. realname is
+// the platform's authenticated-user alias, while an app is a client-credentials
+// principal and must remain fail-closed because it has no directory user.
+func rowFilterUserSubject(accountType string) bool {
+	return accountType == "user" || accountType == "realname"
 }
 
 func normalizeRowFilterRefs(refs []string) ([]string, error) {
