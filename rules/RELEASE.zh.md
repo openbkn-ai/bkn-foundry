@@ -297,7 +297,7 @@ git branch -D release/1.2.0
 - [ ] Breaking Changes 已在文档中说明
 - [ ] 所有 RC 版本已验证通过，且 GitHub Release 标记为 prerelease
 - [ ] 正式 tag 后镜像 `latest` / Helm chart 仓库已更新
-- [ ] Release 分支已合并回 main
+- [ ] Release 变更已同步回 `main`：版本线首个 release 整体合并；patch release 分支仅 cherry-pick 代码修复提交
 
 ---
 

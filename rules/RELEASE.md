@@ -297,7 +297,7 @@ Before creating a release tag, confirm:
 - [ ] Breaking changes are documented
 - [ ] All RC versions have been validated and their GitHub Releases are marked as prerelease
 - [ ] After the final tag, image `latest` / Helm chart repository have been updated
-- [ ] Release branch has been merged back to main
+- [ ] Release changes have been synced back to `main`: merge the whole branch for the first release in a version line; for a patch release branch, cherry-pick only its code-fix commits
 
 ---
 
