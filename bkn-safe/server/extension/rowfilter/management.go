@@ -19,6 +19,7 @@ import (
 // extension. It exposes published data properties and their verified exact
 // filter capability, never raw mappings or backend expressions.
 type PublishedDataProperty struct {
+	DisplayName     string    `json:"display_name,omitempty"`
 	Type            ValueType `json:"type"`
 	ExactFilterable bool      `json:"exact_filterable"`
 }

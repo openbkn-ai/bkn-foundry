@@ -63,7 +63,7 @@ func TestRowFilterCapabilityRejectsMissingOrNonUserIdentity(t *testing.T) {
 func TestRowFilterCapabilityOnlyOffersPublishedMappedScalarDataProperties(t *testing.T) {
 	capability := rowFilterCapabilityForObjectType("kn-1/customer", interfaces.ObjectType{
 		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{DataProperties: []cond.DataProperty{
-			{Name: "region", Type: "keyword", MappedField: cond.Field{Name: "region.keyword"}, ConditionOperations: []string{cond.OperationIn}},
+			{Name: "region", DisplayName: "Sales region", Type: "keyword", MappedField: cond.Field{Name: "region.keyword"}, ConditionOperations: []string{cond.OperationIn}},
 			{Name: "amount", Type: "integer", MappedField: cond.Field{Name: "amount"}, ConditionOperations: []string{cond.OperationIn}},
 			{Name: "active", Type: "boolean", MappedField: cond.Field{Name: "active"}, ConditionOperations: []string{cond.OperationIn}},
 			{Name: "description", Type: "text", MappedField: cond.Field{Name: "description"}, ConditionOperations: []string{cond.OperationIn}},
@@ -78,6 +78,9 @@ func TestRowFilterCapabilityOnlyOffersPublishedMappedScalarDataProperties(t *tes
 	}
 	if capability.Properties["region"].Type != "string" || capability.Properties["amount"].Type != "integer" || capability.Properties["active"].Type != "boolean" {
 		t.Fatalf("properties = %+v", capability.Properties)
+	}
+	if capability.Properties["region"].DisplayName != "Sales region" {
+		t.Fatalf("region display name = %q", capability.Properties["region"].DisplayName)
 	}
 	if _, found := capability.Properties["description"]; found {
 		t.Fatal("non-exact text field must not be exposed")
