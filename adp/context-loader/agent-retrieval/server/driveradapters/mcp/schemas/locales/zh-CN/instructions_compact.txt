@@ -20,4 +20,10 @@ ContextLoader 精简入口：只读查询业务知识网络。
 - 按确定条件取数、排序、翻页：query_object_instance。
 - 已建模的指标：query_metric，指标 ID 取自 search_schema 返回的 metric_types。
 
-边界：本入口不提供 SQL、Cypher、代码执行、行动执行和知识网络挂载能力。问题需要这些能力时，告诉用户改用完整入口；不要基于分页或预览结果自行计算统计值。
+其他只读操作（沿关系取子图、探索关联、逻辑属性、行动定义与执行记录、对象类和关系类的完整定义）经按需工具使用：
+1. search_native_tools：用一句话说明要做的事，得到候选工具。
+2. describe_native_tool：取候选的参数 schema 和调用模板；已知参数时可以跳过。
+3. execute_native_read_tool：name 填目标工具名，arguments 填目标参数，bkn_context 放在外层。
+候选工具不能按名称直接调用。
+
+边界：本入口不提供 SQL、Cypher、代码执行、行动执行、技能和知识网络挂载能力。问题需要这些能力时，告诉用户改用完整入口；不要基于分页或预览结果自行计算统计值。
