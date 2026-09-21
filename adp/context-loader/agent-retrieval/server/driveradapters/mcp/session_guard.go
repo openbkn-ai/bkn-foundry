@@ -145,7 +145,7 @@ func guardBusinessToolCallWithCompletion(
 		}
 		ensured, lifecycleErr, err := ensure(ctx, intent)
 		if err != nil {
-			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			return lifecycleUnavailable(ctx, req.Params.Name, "ensure_operation", err), nil
 		} else if lifecycleErr != nil {
 			return lifecycleToolError(*lifecycleErr), nil
 		}
@@ -382,12 +382,38 @@ type operationFailure struct {
 	Result  any    `json:"result,omitempty"`
 }
 
+// lifecycleUnavailable answers a Trace Core call that failed in transport or on
+// the server, and logs it on the way out.
+//
+// These paths used to hand the error to the caller and nothing else, so an
+// outage reached every agent while this service kept no record of it: nothing
+// said how often it happened, at which step, or with which code. The tool,
+// stage and code fields keep a fixed shape so a log query can group on them.
+func lifecycleUnavailable(ctx context.Context, toolName, stage string, err error) *mcpsdk.CallToolResult {
+	value := lifecycleAvailabilityError(err)
+	logger.DefaultLogger().WithContext(ctx).Warnf(
+		"[BKN Trace] lifecycle unavailable: tool=%s stage=%s code=%s: %v",
+		toolName, stage, value.Code, err,
+	)
+	return lifecycleToolError(value)
+}
+
 func lifecycleAvailabilityError(err error) lifecycleError {
 	// Keep this mapping aligned with the REST twin in lifecycle_middleware.go
 	// and the Core lifecycle error registry.
 	if errors.Is(err, bkntrace.ErrFeatureNotInstalled) {
 		return lifecycleError{
 			Code: "feature_not_installed", Message: "BKN Trace Core is not configured",
+		}
+	}
+	// An ingest URL that does not end in /events leaves no artifact endpoint to
+	// derive. Like a missing ingest credential, that is a deployment defect: as a
+	// plain error it read as a transient outage, so the question artifact was
+	// dropped on every start with nothing but a warning to show for it.
+	if errors.Is(err, bkntrace.ErrEvidenceArtifactURLNotConfigured) {
+		return lifecycleError{
+			Code: "evidence_capture_failed", Message: err.Error(),
+			RequiredAction: "contact_platform_operator",
 		}
 	}
 	var coreErr *bkntrace.CoreHTTPError

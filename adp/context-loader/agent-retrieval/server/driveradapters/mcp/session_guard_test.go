@@ -262,6 +262,14 @@ func TestLifecycleAvailabilityErrorPreservesEvidenceIngestConfigurationFailure(t
 	}
 }
 
+func TestLifecycleAvailabilityErrorReportsMissingArtifactEndpointAsDeploymentDefect(t *testing.T) {
+	result := lifecycleAvailabilityError(bkntrace.ErrEvidenceArtifactURLNotConfigured)
+	if result.Code != "evidence_capture_failed" ||
+		result.RequiredAction != "contact_platform_operator" || result.Retryable {
+		t.Fatalf("missing artifact endpoint was treated as a transient outage: %#v", result)
+	}
+}
+
 func trustedSessionGuardContext() context.Context {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{})
 	return common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
