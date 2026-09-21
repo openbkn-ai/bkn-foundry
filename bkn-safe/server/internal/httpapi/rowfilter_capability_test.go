@@ -19,6 +19,9 @@ func TestRowFilterPublishedObjectTypeResolverUsesInternalCapabilityContract(t *t
 		if request.Method != http.MethodPost || request.URL.Path != rowFilterCapabilityPath {
 			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
 		}
+		if request.Header.Get(rowFilterAccountIDHeader) != "operator-1" || request.Header.Get(rowFilterAccountTypeHeader) != rowFilterOperatorAccountType {
+			t.Fatalf("operator headers = (%q, %q)", request.Header.Get(rowFilterAccountIDHeader), request.Header.Get(rowFilterAccountTypeHeader))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"object_type_ref":"kn-1/customer","published":true,"properties":{"region":{"type":"string","exact_filterable":true}}}`))
 	}))
@@ -27,7 +30,7 @@ func TestRowFilterPublishedObjectTypeResolverUsesInternalCapabilityContract(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	capability, err := resolver.ResolvePublishedObjectType(t.Context(), "kn-1/customer")
+	capability, err := resolver.ResolvePublishedObjectType(t.Context(), "operator-1", "kn-1/customer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +48,7 @@ func TestRowFilterPublishedObjectTypeResolverRejectsMismatchedResponse(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.ResolvePublishedObjectType(t.Context(), "kn-1/customer"); err == nil {
+	if _, err := resolver.ResolvePublishedObjectType(t.Context(), "operator-1", "kn-1/customer"); err == nil {
 		t.Fatal("expected object type mismatch error")
 	}
 }
@@ -59,7 +62,14 @@ func TestRowFilterPublishedObjectTypeResolverAcceptsForwardCompatibleFields(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.ResolvePublishedObjectType(t.Context(), "kn-1/customer"); err != nil {
+	if _, err := resolver.ResolvePublishedObjectType(t.Context(), "operator-1", "kn-1/customer"); err != nil {
 		t.Fatalf("forward-compatible capability response = %v", err)
+	}
+}
+
+func TestRowFilterPublishedObjectTypeResolverRequiresOperator(t *testing.T) {
+	resolver := &rowFilterPublishedObjectTypeResolver{endpoint: "http://unused.invalid", client: http.DefaultClient}
+	if _, err := resolver.ResolvePublishedObjectType(t.Context(), "", "kn-1/customer"); err == nil {
+		t.Fatal("expected missing operator error")
 	}
 }
