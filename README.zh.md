@@ -152,18 +152,25 @@ Agent 不仅要"看得更全"，更要"做得更稳"。BKN Foundry 提供约束�
 
 ### 核心架构
 
-![BKN 参考架构](docs/images/bkn-architecture.zh.svg)
+BKN Foundry 定位为**面向 AI 应用开发者的生产级本体开发平台**：本体开发是底层能力，AI 应用在其之上搭建。
 
-| 组件 | 说明 |
+![BKN Foundry 架构](docs/images/bkn-architecture.zh.svg)
+
+| 层 / 组件 | 说明 |
 | --- | --- |
-| **接入层** | **BKN SDK / CLI**（统一接入接口）与 **BKN Skill**（平台级技能层，封装 SDK 能力）——面向用户、应用与 Agent。**BKN Studio**（用户交互 Web 控制台）位于独立前端仓库 [openbkn-ai/bkn-studio](https://github.com/openbkn-ai/bkn-studio)，**不属于**本后端 release。 |
-| **BKN Engine** | 业务知识网络引擎：**Context Loader**（Retrieval 召回 + Ranker 排序）作用于 **BKN**——以数据 / 逻辑 / 风险 / 行动四要素描述业务，并经映射下达到执行层 |
-| **VEGA** | 数据虚拟化——屏蔽底层多源 & 多模态数据差异 |
-| **Exec Factory** | 执行工厂——调度工具、MCP 与 Skills |
+| **接入层** | **BKN SDK / CLI**（统一接入接口）与 **BKN Skill**（平台级技能层，封装 SDK 能力）。**BKN Studio**（Web 控制台）位于独立前端仓库 [openbkn-ai/bkn-studio](https://github.com/openbkn-ai/bkn-studio)，**不属于**本后端 release。 |
+| **本体开发平台**（建设中） | 三个模块作为一个体系推进： |
+| &emsp;**BKN Project** | 本体构建——结构化与非结构化数据接入；自上而下（先做高层设计）与自下而上（从数据归纳）两条构建路径；动态本体，包括版本管理、AI 交互式更新网络、源数据变化后的网络同步 |
+| &emsp;**BKN Eval** | 评测与优化——本体质量校验规则（边缺失率、悬挂边、属性完整度、歧义等），网络建成并挂载数据后自动输出检测报告；语义对齐、逻辑一致性、函数与 schema 评估、Benchmark |
+| &emsp;**BKN Workshop** | 本体能力与应用开发——指标、函数、图可视化组件，以及基于本体的 AI 应用搭建 |
+| **BKN Engine** | 业务知识网络引擎：**Context Loader**（Retrieval 召回 + Ranker 排序）作用于 **BKN**——以数据 / 逻辑 / 风险 / 行动四要素描述业务，并经映射下达到基础层 |
+| **VEGA** | 数据虚拟化——屏蔽底层多源 & 多模态数据差异，承担数据质量校验 |
+| **算子层 / Exec Factory** | 算子与函数的注册和执行；Exec Factory 调度 API 接口、工具、MCP 与 Skill |
 | **BKN Safe** | 权限管控——统一身份、权限与策略入口，按业务对象 / 动作做安全管控与审计 |
+| **BKN Agent** | 贯穿能力——平台内置 Agent 运行时，保持简单；本体构建、智能图分析与评测都以它为执行载体，它自身经 MCP 消费 BKN Engine |
 | **BKN Trace** | 证据链——追踪 BKN 调用链路（意图 → 知识节点 → 数据源 → 映射 / 算子），可追溯、可解释 |
 
-完整说明见 [BKN 参考架构](docs/bkn-architecture.zh.md)。
+「BKN Foundry 体系」指整个产品家族，包含 Studio 等前端；本仓库只承载其中的后端部分。架构图中的模块不等于独立部署的服务，新模块默认落在现有后端服务内，见 [架构规范](rules/ARCHITECTURE.zh.md)。
 
 <a id="toc-bkn-lang"></a>
 

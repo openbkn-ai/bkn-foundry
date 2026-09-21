@@ -8,6 +8,7 @@ This document defines the BKN Foundry architecture rules. **For day-to-day work,
 
 ### 1.1 Layers and dependencies
 
+- **"Foundry family" vs. "Foundry repo"**: the "BKN Foundry family" is the whole product line — BKN Project, BKN Workshop, BKN Eval, BKN Engine, Vega, the operator layer, the execution factory, BKN Safe, BKN Trace, and frontends such as BKN Studio. In these rules, "Foundry" means the backend part of the family, i.e. the bkn-foundry repo; the frontend part (including Workshop's visualization widgets) lives in the bkn-studio repo.
 - **Foundry (no UI)**: Foundry must not include UI/Web Console/Portal/BFF. It only exposes **APIs/SDKs** and admin APIs.
 - **Product dependency**: Products call Foundry over its Public APIs. No reverse dependency — Foundry must not depend on products.
 - **Component optionality**: Capability modules are optional by default and must support enable/disable; consumers must degrade gracefully when a component is disabled (see Section 2).
@@ -68,6 +69,7 @@ If all answers are “no” → do not add a new service.
 
 Counting rules:
 
+- **Architecture modules are not services**: modules in the architecture diagram (e.g. BKN Project, BKN Workshop, BKN Eval) are implemented inside existing backend services by default; a module becomes a separate service only after passing the questions in 1.2, and then counts toward the budget
 - Count: independently deployable/scalable backend services with their own runtime and release cadence (Foundry services)
 - Do not count: DB/cache/message infrastructure; local-only mocks
 
@@ -88,7 +90,7 @@ Exemption (must be recorded):
 - **APIs**: OpenAPI updated + breaking detection passed + deprecation/migration notes + contract tests
 - **Backend additions**: no page-scoped BFF; any new service must pass the questions in 1.2
 - **Backends**: do not add a backend microservice per micro-app or per page; new backends must be product-domain services
-- **Budget**: Foundry < 5; service inventory and counts updated
+- **Budget**: Foundry < 5; service inventory and counts updated; new architecture modules add no service by default
 
 ---
 

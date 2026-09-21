@@ -8,6 +8,7 @@
 
 ### 1.1 分层与依赖
 
+- **「Foundry 体系」与「Foundry 仓库」**：「BKN Foundry 体系」指整个产品家族，包括 BKN Project、BKN Workshop、BKN Eval、BKN Engine、Vega、算子层、执行工厂、BKN Safe、BKN Trace，以及 BKN Studio 等前端。本规范中的「Foundry」指体系中的后端部分，即 bkn-foundry 仓库；前端部分（含 Workshop 的可视化组件）在 bkn-studio 仓库。
 - **Foundry（无 UI）**：Foundry 不包含 UI/Web Console/Portal/BFF；对外仅提供 **API/SDK** 与管理 API。
 - **产品依赖**：产品通过 Foundry 的 Public API 调用 Foundry；禁止反向依赖（Foundry 不得依赖产品）。
 - **组件可选性**：能力组件默认可选，必须支持启用/禁用；组件禁用时调用方需优雅降级（见第 2 章检查清单）。
@@ -68,6 +69,7 @@ flowchart LR
 
 统计口径：
 
+- **架构模块不等于服务**：架构图中的模块（如 BKN Project、BKN Workshop、BKN Eval）默认作为现有后端服务内的模块实现；只有通过 1.2 的判定后才能拆为独立服务，并计入预算
 - 计入：可独立部署/伸缩、拥有独立运行时与发布节奏的后端服务（Foundry 内部服务）
 - 不计入：数据库/缓存/消息中间件等基础设施；仅用于本地开发的 mock
 
@@ -88,7 +90,7 @@ flowchart LR
 - **API**：OpenAPI 更新 + breaking 检测通过 + deprecation/迁移说明 + contract test
 - **后端新增**：不得为页面专属 BFF；若新增服务必须符合 1.2 的判定问题
 - **后端**：不得为每个微应用或每个页面新增后端微服务；新增后端必须是产品域服务
-- **预算**：Foundry < 5；服务清单与计数同步更新
+- **预算**：Foundry < 5；服务清单与计数同步更新；新架构模块默认不新增服务
 
 ---
 
