@@ -55,9 +55,19 @@ func fakeTraceCore(t *testing.T) (*bkntrace.LifecycleClient, func() []string) {
 					ConversationID: "conv-1", InteractionID: "int-1", Attempt: 1, ReceiptStatus: "pending",
 				},
 			})
+		case r.Method == http.MethodPost && (strings.HasSuffix(r.URL.Path, ":complete") || strings.HasSuffix(r.URL.Path, ":fail")):
+			status := "completed"
+			if strings.HasSuffix(r.URL.Path, ":fail") {
+				status = "failed"
+			}
+			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
+				Operation: bkntrace.Operation{OperationID: "op-done", Attempt: 1, AttemptStatus: status},
+				Receipt: bkntrace.Receipt{
+					ReceiptID: "receipt-done", OperationID: "op-done", Attempt: 1,
+					ReceiptStatus: status, EvidenceDurability: "durable",
+				},
+			})
 		default:
-			// Completion is not under test; the guard logs the miss and returns
-			// the business result.
 			http.NotFound(w, r)
 		}
 	}))

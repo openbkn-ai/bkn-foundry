@@ -248,7 +248,13 @@ func newMCPServerForProfile(
 	options := []server.ServerOption{
 		server.WithToolCapabilities(true),
 		server.WithInstructions(profile.instructions(localeBundle)),
-		// The licence gate goes first. mcp-go applies middlewares in reverse,
+	}
+	if profile.textResults {
+		// Outermost of all, so it projects the result the guard completed.
+		options = append(options, server.WithToolHandlerMiddleware(compactResultMiddleware()))
+	}
+	options = append(options,
+		// Of the per-call checks, the licence gate goes first. mcp-go applies middlewares in reverse,
 		// so the first one registered is the outermost and runs before the
 		// lifecycle guard — an under-licensed enterprise tool must answer
 		// "no such tool", not "conversation_required", or the paid surface
@@ -265,7 +271,7 @@ func newMCPServerForProfile(
 		// difference; TestRefusalIsIndistinguishableFromAnUnknownTool is what
 		// notices.
 		server.WithToolFilter(b.filter),
-	}
+	)
 	if profile.published != nil {
 		// Filters stack and run in order, on tools/list and tools/call alike,
 		// so the licence filter above still applies and a tool this profile

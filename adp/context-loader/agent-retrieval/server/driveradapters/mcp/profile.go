@@ -38,6 +38,9 @@ type mcpProfile struct {
 	// view rewrites how a published tool is described. Nil publishes the
 	// assembled definition as is.
 	view func(mcp.Tool) mcp.Tool
+	// textResults sends business results as text only, with the receipt in
+	// _meta (see compactResultMiddleware).
+	textResults bool
 }
 
 func (p mcpProfile) filter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
@@ -87,6 +90,7 @@ var compactProfile = mcpProfile{
 	inlinePTC:    false,
 	gateway:      true,
 	view:         compactToolView,
+	textResults:  true,
 }
 
 func toolNameSet(names []string) map[string]struct{} {
