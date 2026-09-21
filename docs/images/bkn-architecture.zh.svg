@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 920" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
-<rect width="960" height="920" fill="#020617" rx="12"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 998" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+<rect width="960" height="998" fill="#020617" rx="12"/>
 <defs>
   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
     <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
@@ -16,7 +16,7 @@
 <rect x="520" y="56" width="200" height="44" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
 <text x="620.0" y="76.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">应用 / Agent</text>
 <text x="620.0" y="91.0" fill="#94a3b8" font-size="9" text-anchor="middle">基于本体搭建的 AI 应用</text>
-<rect x="20" y="122" width="920" height="668" rx="14" fill="none" stroke="#475569" stroke-width="1.2" stroke-dasharray="6 5"/>
+<rect x="20" y="122" width="920" height="746" rx="14" fill="none" stroke="#475569" stroke-width="1.2" stroke-dasharray="6 5"/>
 <text x="36" y="140" fill="#cbd5e1" font-size="11" font-weight="700" text-anchor="start">BKN Foundry 体系</text>
 <line x1="340" y1="100" x2="230" y2="162" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <line x1="340" y1="100" x2="440" y2="162" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
@@ -31,86 +31,94 @@
 <rect x="636" y="162" width="288" height="48" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
 <text x="780.0" y="184.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Skill</text>
 <text x="780.0" y="199.0" fill="#94a3b8" font-size="9" text-anchor="middle">平台级 · 封装 SDK 能力</text>
-<rect x="40" y="236" width="56" height="530" rx="10" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
-<text x="64" y="501.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 64 501.0)">BKN Safe</text>
-<text x="82" y="501.0" fill="#94a3b8" font-size="9" text-anchor="middle" transform="rotate(-90 82 501.0)">权限管控</text>
-<rect x="804" y="236" width="56" height="530" rx="10" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-<text x="836" y="501.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 836 501.0)">BKN Agent</text>
-<rect x="868" y="236" width="56" height="530" rx="10" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="892" y="501.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 892 501.0)">BKN Trace</text>
-<text x="910" y="501.0" fill="#94a3b8" font-size="9" text-anchor="middle" transform="rotate(-90 910 501.0)">证据链</text>
+<rect x="40" y="236" width="56" height="608" rx="10" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+<text x="64" y="540.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 64 540.0)">BKN Safe</text>
+<text x="82" y="540.0" fill="#94a3b8" font-size="9" text-anchor="middle" transform="rotate(-90 82 540.0)">权限管控</text>
+<rect x="804" y="236" width="56" height="608" rx="10" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+<text x="836" y="540.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 836 540.0)">BKN Agent</text>
+<rect x="868" y="236" width="56" height="608" rx="10" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="892" y="540.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 892 540.0)">BKN Trace</text>
+<text x="910" y="540.0" fill="#94a3b8" font-size="9" text-anchor="middle" transform="rotate(-90 910 540.0)">证据链</text>
 <line x1="184" y1="210" x2="184" y2="236" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <line x1="450" y1="210" x2="450" y2="236" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <line x1="716" y1="210" x2="716" y2="236" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-<rect x="112" y="236" width="676" height="232" rx="12" fill="rgba(30, 58, 138, 0.4)" stroke="#60a5fa" stroke-width="1.5"/>
+<rect x="112" y="236" width="676" height="310" rx="12" fill="rgba(30, 58, 138, 0.4)" stroke="#60a5fa" stroke-width="1.5"/>
 <text x="132" y="260" fill="white" font-size="13" font-weight="700" text-anchor="start">本体开发平台</text>
-<text x="132" y="276" fill="#bfdbfe" font-size="9" text-anchor="start">三块作为一个体系推进 · 不分先后</text>
-<rect x="132" y="290" width="200" height="138" rx="8" fill="#0f172a"/>
-<rect x="132" y="290" width="200" height="138" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="232.0" y="314" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Project</text>
-<text x="232.0" y="330" fill="#67e8f9" font-size="9" text-anchor="middle">本体构建</text>
-<text x="146" y="356" fill="#e2e8f0" font-size="9.5" text-anchor="start">· 结构化 / 非结构化数据接入</text>
-<text x="146" y="378" fill="#e2e8f0" font-size="9.5" text-anchor="start">· 自上而下 · 自下而上两条路</text>
-<text x="146" y="400" fill="#e2e8f0" font-size="9.5" text-anchor="start">· 动态本体：版本 · 源变化同步</text>
-<rect x="350" y="290" width="200" height="138" rx="8" fill="#0f172a"/>
-<rect x="350" y="290" width="200" height="138" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="450.0" y="314" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Eval</text>
-<text x="450.0" y="330" fill="#67e8f9" font-size="9" text-anchor="middle">评测与优化</text>
-<text x="364" y="356" fill="#e2e8f0" font-size="9.5" text-anchor="start">· 本体质量规则 · 自动检测报告</text>
-<text x="364" y="378" fill="#e2e8f0" font-size="9.5" text-anchor="start">· 语义对齐 · 逻辑一致性</text>
-<text x="364" y="400" fill="#e2e8f0" font-size="9.5" text-anchor="start">· 函数 / schema 评估 · Benchmark</text>
-<rect x="568" y="290" width="200" height="138" rx="8" fill="#0f172a"/>
-<rect x="568" y="290" width="200" height="138" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="668.0" y="314" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Workshop</text>
-<text x="668.0" y="330" fill="#67e8f9" font-size="9" text-anchor="middle">本体能力与应用开发</text>
-<text x="582" y="356" fill="#e2e8f0" font-size="9.5" text-anchor="start">· 指标 · 函数</text>
-<text x="582" y="378" fill="#e2e8f0" font-size="9.5" text-anchor="start">· 图可视化组件</text>
-<text x="582" y="400" fill="#e2e8f0" font-size="9.5" text-anchor="start">· AI 应用搭建</text>
-<path d="M 450.0 428 L 450.0 446 L 232.0 446 L 232.0 432" fill="none" stroke="#67e8f9" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrowhead)"/>
-<text x="341.0" y="460" fill="#67e8f9" font-size="9" text-anchor="middle">检测报告回流构建</text>
-<line x1="450" y1="468" x2="450" y2="488" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-<rect x="112" y="488" width="676" height="188" rx="12" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-<text x="132" y="510" fill="white" font-size="13" font-weight="700" text-anchor="start">BKN Engine</text>
-<text x="132" y="525" fill="#cbb6f7" font-size="9" text-anchor="start">业务知识网络引擎</text>
-<rect x="132" y="536" width="636" height="50" rx="8" fill="#0f172a"/>
-<rect x="132" y="536" width="636" height="50" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5"/>
-<text x="152" y="557" fill="white" font-size="12" font-weight="600" text-anchor="start">Context Loader</text>
-<text x="152" y="573" fill="#94a3b8" font-size="9" text-anchor="start">检索能力</text>
-<rect x="518" y="543" width="110" height="36" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="573" y="566" fill="white" font-size="11" font-weight="600" text-anchor="middle">Retrieval</text>
-<rect x="638" y="543" width="110" height="36" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="693" y="566" fill="white" font-size="11" font-weight="600" text-anchor="middle">Ranker</text>
-<line x1="450" y1="586" x2="450" y2="598" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-<rect x="132" y="598" width="636" height="66" rx="8" fill="#0f172a"/>
-<rect x="132" y="598" width="636" height="66" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="152" y="620" fill="white" font-size="13" font-weight="700" text-anchor="start">BKN</text>
-<text x="152" y="636" fill="#9fe6c8" font-size="9" text-anchor="start">业务知识网络</text>
-<rect x="362" y="612" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="406" y="636" fill="white" font-size="11" font-weight="600" text-anchor="middle">数据</text>
-<rect x="462" y="612" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="506" y="636" fill="white" font-size="11" font-weight="600" text-anchor="middle">逻辑</text>
-<rect x="562" y="612" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="606" y="636" fill="white" font-size="11" font-weight="600" text-anchor="middle">风险</text>
-<rect x="662" y="612" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="706" y="636" fill="white" font-size="11" font-weight="600" text-anchor="middle">行动</text>
-<line x1="230" y1="676" x2="230" y2="700" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-<line x1="462" y1="676" x2="462" y2="700" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-<line x1="694" y1="676" x2="694" y2="700" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-<text x="120" y="692" fill="#94a3b8" font-size="9" text-anchor="start">映射</text>
-<rect x="124" y="700" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="230.0" y="725.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">VEGA</text>
-<text x="230.0" y="740.0" fill="#94a3b8" font-size="9" text-anchor="middle">数据虚拟化 · 数据质量</text>
-<rect x="356" y="700" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="462.0" y="725.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">算子层</text>
-<text x="462.0" y="740.0" fill="#94a3b8" font-size="9" text-anchor="middle">算子 · 函数</text>
-<rect x="588" y="700" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="694.0" y="725.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">Exec Factory</text>
-<text x="694.0" y="740.0" fill="#94a3b8" font-size="9" text-anchor="middle">API 接口 · 工具 · MCP · Skill</text>
-<line x1="230" y1="754" x2="230" y2="806" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-<line x1="462" y1="754" x2="462" y2="806" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-<rect x="112" y="806" width="676" height="38" rx="6" fill="rgba(30, 41, 59, 0.6)" stroke="#94a3b8" stroke-width="1.5"/>
-<text x="450" y="830" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="middle">多源 &amp; 多模态数据 · 结构化 / 非结构化</text>
-<rect x="112" y="872" width="26" height="16" rx="3" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="146" y="884" fill="#cbd5e1" font-size="9.5" text-anchor="start">Q4 建设中</text>
-<text x="112" y="914" fill="#94a3b8" font-size="9.5" text-anchor="start">模块不等于服务：新模块默认落在现有后端服务内</text>
+<text x="132" y="276" fill="#bfdbfe" font-size="9" text-anchor="start">Project 产出 BKN；Eval 与 Workshop 基于同一个 BKN</text>
+<rect x="132" y="290" width="636" height="100" rx="8" fill="#0f172a"/>
+<rect x="132" y="290" width="636" height="100" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="152" y="314" fill="white" font-size="12" font-weight="600" text-anchor="start">BKN Project</text>
+<text x="260" y="314" fill="#67e8f9" font-size="9" text-anchor="start">本体构建主线</text>
+<rect x="152" y="328" width="140" height="32" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="222.0" y="349" fill="white" font-size="10.5" font-weight="600" text-anchor="middle">需求管理</text>
+<line x1="292" y1="344" x2="304" y2="344" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="304" y="328" width="140" height="32" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="374.0" y="349" fill="white" font-size="10.5" font-weight="600" text-anchor="middle">本体建模</text>
+<line x1="444" y1="344" x2="456" y2="344" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="456" y="328" width="140" height="32" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="526.0" y="349" fill="white" font-size="10.5" font-weight="600" text-anchor="middle">数据映射</text>
+<line x1="596" y1="344" x2="608" y2="344" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="608" y="328" width="140" height="32" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="678.0" y="349" fill="white" font-size="10.5" font-weight="600" text-anchor="middle">发布版本</text>
+<text x="152" y="378" fill="#e2e8f0" font-size="9" text-anchor="start">自上而下 / 自下而上两条路 · 结构化与非结构化接入 · 动态本体：版本 · 源变化同步</text>
+<line x1="560" y1="390" x2="560" y2="430" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<text x="660" y="414" fill="#94a3b8" font-size="9" text-anchor="middle">创建并发布 BKN</text>
+<path d="M 300 430 L 300 390" fill="none" stroke="#67e8f9" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrowhead)"/>
+<text x="220" y="414" fill="#67e8f9" font-size="9" text-anchor="middle">检测报告回流</text>
+<rect x="132" y="430" width="308" height="96" rx="8" fill="#0f172a"/>
+<rect x="132" y="430" width="308" height="96" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="286.0" y="458" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Eval</text>
+<text x="286.0" y="478" fill="#67e8f9" font-size="9.5" text-anchor="middle">质量与测试评估</text>
+<text x="286.0" y="502" fill="#e2e8f0" font-size="9" text-anchor="middle">数据 / 本体 / Agent 校验 · 语义对齐 · Benchmark</text>
+<rect x="460" y="430" width="308" height="96" rx="8" fill="#0f172a"/>
+<rect x="460" y="430" width="308" height="96" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="614.0" y="458" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Workshop</text>
+<text x="614.0" y="478" fill="#67e8f9" font-size="9.5" text-anchor="middle">业务应用开发</text>
+<text x="614.0" y="502" fill="#e2e8f0" font-size="9" text-anchor="middle">指标 · 函数 · 图可视化组件 · AI 应用搭建</text>
+<text x="450" y="542" fill="#94a3b8" font-size="9" text-anchor="middle">Eval 与 Workshop 进入具体 BKN 后可见 · 二者平级</text>
+<line x1="450" y1="546" x2="450" y2="566" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="112" y="566" width="676" height="188" rx="12" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+<text x="132" y="588" fill="white" font-size="13" font-weight="700" text-anchor="start">BKN Engine</text>
+<text x="132" y="603" fill="#cbb6f7" font-size="9" text-anchor="start">业务知识网络引擎</text>
+<rect x="132" y="614" width="636" height="50" rx="8" fill="#0f172a"/>
+<rect x="132" y="614" width="636" height="50" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5"/>
+<text x="152" y="635" fill="white" font-size="12" font-weight="600" text-anchor="start">Context Loader</text>
+<text x="152" y="651" fill="#94a3b8" font-size="9" text-anchor="start">检索能力</text>
+<rect x="518" y="621" width="110" height="36" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="573" y="644" fill="white" font-size="11" font-weight="600" text-anchor="middle">Retrieval</text>
+<rect x="638" y="621" width="110" height="36" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="693" y="644" fill="white" font-size="11" font-weight="600" text-anchor="middle">Ranker</text>
+<line x1="450" y1="664" x2="450" y2="676" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="132" y="676" width="636" height="66" rx="8" fill="#0f172a"/>
+<rect x="132" y="676" width="636" height="66" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="152" y="698" fill="white" font-size="13" font-weight="700" text-anchor="start">BKN</text>
+<text x="152" y="714" fill="#9fe6c8" font-size="9" text-anchor="start">业务知识网络</text>
+<rect x="362" y="690" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="406" y="714" fill="white" font-size="11" font-weight="600" text-anchor="middle">数据</text>
+<rect x="462" y="690" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="506" y="714" fill="white" font-size="11" font-weight="600" text-anchor="middle">逻辑</text>
+<rect x="562" y="690" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="606" y="714" fill="white" font-size="11" font-weight="600" text-anchor="middle">风险</text>
+<rect x="662" y="690" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="706" y="714" fill="white" font-size="11" font-weight="600" text-anchor="middle">行动</text>
+<line x1="230" y1="754" x2="230" y2="778" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="462" y1="754" x2="462" y2="778" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="694" y1="754" x2="694" y2="778" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<text x="120" y="770" fill="#94a3b8" font-size="9" text-anchor="start">映射</text>
+<rect x="124" y="778" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="230.0" y="803.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">VEGA</text>
+<text x="230.0" y="818.0" fill="#94a3b8" font-size="9" text-anchor="middle">数据虚拟化 · 数据质量</text>
+<rect x="356" y="778" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="462.0" y="803.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">算子层</text>
+<text x="462.0" y="818.0" fill="#94a3b8" font-size="9" text-anchor="middle">算子 · 函数</text>
+<rect x="588" y="778" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="694.0" y="803.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">Exec Factory</text>
+<text x="694.0" y="818.0" fill="#94a3b8" font-size="9" text-anchor="middle">API 接口 · 工具 · MCP · Skill</text>
+<line x1="230" y1="832" x2="230" y2="884" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="462" y1="832" x2="462" y2="884" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="112" y="884" width="676" height="38" rx="6" fill="rgba(30, 41, 59, 0.6)" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="450" y="908" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="middle">多源 &amp; 多模态数据 · 结构化 / 非结构化</text>
+<rect x="112" y="950" width="26" height="16" rx="3" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="146" y="962" fill="#cbd5e1" font-size="9.5" text-anchor="start">Q4 建设中</text>
+<text x="112" y="992" fill="#94a3b8" font-size="9.5" text-anchor="start">模块不等于服务：新模块默认落在现有后端服务内</text>
 </svg>
