@@ -9,7 +9,11 @@ on:
   push:
     branches: ['**']
     paths:
-      - 'deploy/images/redis/**'
+      # Only files baked into the image: a README-only push must not publish
+      # another immutable tag for byte-identical Redis content.
+      - 'deploy/images/redis/Dockerfile'
+      - 'deploy/images/redis/config-init.sh'
+      - 'deploy/images/redis/liveness-check.sh'
       - '.github/workflows/release-deploy-redis.yml'
       - '.github/workflows/reusable-build.yml'
   workflow_dispatch:
