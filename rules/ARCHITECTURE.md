@@ -8,7 +8,7 @@ This document defines the BKN Foundry architecture rules. **For day-to-day work,
 
 ### 1.1 Layers and dependencies
 
-- **"Foundry family" vs. "Foundry repo"**: the "BKN Foundry family" is the whole product line — BKN Project, BKN Workshop, BKN Eval, BKN Engine, Vega, the operator layer, the execution factory, BKN Safe, BKN Trace, and frontends such as BKN Studio. In these rules, "Foundry" means the backend part of the family, i.e. the bkn-foundry repo; the frontend part (including Workshop's visualization widgets) lives in the bkn-studio repo.
+- **"Foundry family" vs. "Foundry repo"**: the "BKN Foundry family" is the whole product line — BKN Project, BKN Workshop, BKN Eval, BKN Engine, BKN Agent, Vega, the operator layer, the execution factory, BKN Safe, BKN Trace, and frontends such as BKN Studio. In these rules, "Foundry" means the backend part of the family, i.e. the bkn-foundry repo; the frontend part (including Workshop's visualization widgets) lives in the bkn-studio repo.
 - **Foundry (no UI)**: Foundry must not include UI/Web Console/Portal/BFF. It only exposes **APIs/SDKs** and admin APIs.
 - **Product dependency**: Products call Foundry over its Public APIs. No reverse dependency — Foundry must not depend on products.
 - **Component optionality**: Capability modules are optional by default and must support enable/disable; consumers must degrade gracefully when a component is disabled (see Section 2).

@@ -8,7 +8,7 @@
 
 ### 1.1 分层与依赖
 
-- **「Foundry 体系」与「Foundry 仓库」**：「BKN Foundry 体系」指整个产品家族，包括 BKN Project、BKN Workshop、BKN Eval、BKN Engine、Vega、算子层、执行工厂、BKN Safe、BKN Trace，以及 BKN Studio 等前端。本规范中的「Foundry」指体系中的后端部分，即 bkn-foundry 仓库；前端部分（含 Workshop 的可视化组件）在 bkn-studio 仓库。
+- **「Foundry 体系」与「Foundry 仓库」**：「BKN Foundry 体系」指整个产品家族，包括 BKN Project、BKN Workshop、BKN Eval、BKN Engine、BKN Agent、Vega、算子层、执行工厂、BKN Safe、BKN Trace，以及 BKN Studio 等前端。本规范中的「Foundry」指体系中的后端部分，即 bkn-foundry 仓库；前端部分（含 Workshop 的可视化组件）在 bkn-studio 仓库。
 - **Foundry（无 UI）**：Foundry 不包含 UI/Web Console/Portal/BFF；对外仅提供 **API/SDK** 与管理 API。
 - **产品依赖**：产品通过 Foundry 的 Public API 调用 Foundry；禁止反向依赖（Foundry 不得依赖产品）。
 - **组件可选性**：能力组件默认可选，必须支持启用/禁用；组件禁用时调用方需优雅降级（见第 2 章检查清单）。
