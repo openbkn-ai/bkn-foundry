@@ -9,6 +9,7 @@ package ontology_manager
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -449,11 +450,12 @@ func Test_ontologyManagerAccess_GetRelationType(t *testing.T) {
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusBadRequest, errorBytes, nil)
+				Return(http.StatusForbidden, errorBytes, nil)
 
 			result, exists, err := oma.GetRelationType(ctx, knID, branch, rtID)
 
 			So(err, ShouldNotBeNil)
+			assertOntologyManagerHTTPStatus(t, err, http.StatusForbidden)
 			So(exists, ShouldBeFalse)
 			So(result.RTID, ShouldEqual, "")
 		})
@@ -643,11 +645,12 @@ func Test_ontologyManagerAccess_GetActionType(t *testing.T) {
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusBadRequest, errorBytes, nil)
+				Return(http.StatusForbidden, errorBytes, nil)
 
 			result, rawSnapshot, exists, err := oma.GetActionType(ctx, knID, branch, atID)
 
 			So(err, ShouldNotBeNil)
+			assertOntologyManagerHTTPStatus(t, err, http.StatusForbidden)
 			So(exists, ShouldBeFalse)
 			So(result.ATID, ShouldEqual, "")
 			So(rawSnapshot, ShouldBeNil)
@@ -860,11 +863,12 @@ func Test_ontologyManagerAccess_GetRelationTypePathsBaseOnSource(t *testing.T) {
 
 			mockHTTPClient.EXPECT().
 				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusBadRequest, errorBytes, nil)
+				Return(http.StatusForbidden, errorBytes, nil)
 
 			result, err := oma.GetRelationTypePathsBaseOnSource(ctx, knID, branch, query)
 
 			So(err, ShouldNotBeNil)
+			assertOntologyManagerHTTPStatus(t, err, http.StatusForbidden)
 			So(result, ShouldBeNil)
 		})
 
@@ -924,4 +928,15 @@ func Test_ontologyManagerAccess_GetRelationTypePathsBaseOnSource(t *testing.T) {
 		})
 
 	})
+}
+
+func assertOntologyManagerHTTPStatus(t *testing.T, err error, expected int) {
+	t.Helper()
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("error = %T %v, want a wrapped *rest.HTTPError", err, err)
+	}
+	if httpErr.HTTPCode != expected {
+		t.Fatalf("HTTP status = %d, want %d", httpErr.HTTPCode, expected)
+	}
 }

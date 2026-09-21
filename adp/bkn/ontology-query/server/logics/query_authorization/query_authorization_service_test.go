@@ -7,6 +7,7 @@ package query_authorization
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -326,6 +327,20 @@ func TestAuthorizeObjectTypePreservesModelPermissionDenial(t *testing.T) {
 		rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 
 	err := service.AuthorizeObjectTypeQuery(context.Background(), "kn-a", "main", "orders")
+	assertQueryAuthHTTPStatus(t, err, http.StatusForbidden)
+}
+
+func TestAuthorizeActionTypePreservesWrappedModelPermissionDenial(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	service := &queryAuthorizationService{models: models, permissions: omock.NewMockPermissionService(ctrl)}
+
+	models.EXPECT().GetActionType(gomock.Any(), "kn-a", "main", "action-1").Return(
+		interfaces.ActionType{}, nil, false,
+		fmt.Errorf("get action type failed: %w",
+			rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)))
+
+	err := service.AuthorizeActionTypeQuery(context.Background(), "kn-a", "main", "action-1")
 	assertQueryAuthHTTPStatus(t, err, http.StatusForbidden)
 }
 
