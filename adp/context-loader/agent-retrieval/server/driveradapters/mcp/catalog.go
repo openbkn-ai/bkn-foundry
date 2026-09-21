@@ -33,16 +33,20 @@ var longTailTargets = []string{
 	toolKeyListActionExecutions,
 	toolKeyGetObjectTypes,
 	toolKeyGetRelationTypes,
-	toolKeyListSkills,
-	toolKeyGetSkillContent,
-	toolKeyReadSkillFile,
 }
 
 // notInProfileTools are public community tools the compact profile
 // deliberately leaves out. Naming one is a caller error with a known fix (use
 // the full entry), so the gateway says so instead of pretending it does not
 // exist: their names are already public, and telling them apart leaks nothing.
+//
+// Skills are left out whole: the profile has no way to discover what a
+// network mounts, and reading a skill's text is of little use without being
+// able to run it.
 var notInProfileTools = []string{
+	toolKeyListSkills,
+	toolKeyGetSkillContent,
+	toolKeyReadSkillFile,
 	toolKeyRunSQL,
 	toolKeyRunCypher,
 	toolKeyRunCode,
@@ -139,8 +143,13 @@ func compileExecutableSchema(schema json.RawMessage) (*jsonschema.Schema, error)
 	}
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft7)
-	if err := compiler.AddResource("schema.json", document); err != nil {
+	if err := compiler.AddResource(executableSchemaURL, document); err != nil {
 		return nil, fmt.Errorf("register executable schema: %w", err)
 	}
-	return compiler.Compile("schema.json")
+	return compiler.Compile(executableSchemaURL)
 }
+
+// executableSchemaURL names the compiled schema in validation errors. A bare
+// file name would be resolved against the working directory and put the
+// server's own path into errors that reach callers.
+const executableSchemaURL = "urn:openbkn:mcp:executable-arguments"

@@ -7,14 +7,17 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 	"github.com/openbkn-ai/licverify"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func catalogForLocale(t *testing.T, locale string) *nativeCatalog {
@@ -142,5 +145,114 @@ func TestLookupFollowsTheLicence(t *testing.T) {
 	tool, _, ok = catalog.lookup(context.Background(), toolKeyGetObjectTypes)
 	if !ok || !strings.Contains(string(tool.RawInputSchema), "probe_depth") {
 		t.Fatalf("licensed: resolved=%v, schema lacks the paid parameter", ok)
+	}
+}
+
+// Every name the gateway can answer for needs its copy in every locale, and
+// nothing else may carry any: a card for a tool the gateway cannot reach would
+// send the model to a dead end.
+func TestGatewayCardsCoverExactlyTheGatewayNames(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		bundle := buildMCPLocaleBundle(locale)
+		for name := range allToolMeta() {
+			card := bundle.ToolMeta(name).Gateway
+			text := map[string]string{}
+			if card != nil {
+				text = map[string]string{"summary": card.Summary, "use_when": card.UseWhen, "not_for": card.NotFor, "next_step": card.NextStep}
+			}
+			switch {
+			case slices.Contains(longTailTargets, name):
+				if card == nil {
+					t.Errorf("%s: gateway target %s has no card", locale, name)
+					continue
+				}
+				for field, value := range text {
+					if strings.TrimSpace(value) == "" {
+						t.Errorf("%s %s: %s is empty", locale, name, field)
+					}
+				}
+				if card.Boundary != "" || len(card.Keywords) == 0 || len(card.ExampleArguments) == 0 {
+					t.Errorf("%s %s: a target needs keywords and an example and no boundary", locale, name)
+				}
+			case slices.Contains(notInProfileTools, name):
+				if card == nil || strings.TrimSpace(card.Boundary) == "" || len(card.Keywords) == 0 {
+					t.Errorf("%s: %s is outside the profile without a boundary and keywords", locale, name)
+					continue
+				}
+				for field, value := range text {
+					if value != "" {
+						t.Errorf("%s %s: a tool outside the profile has a %s", locale, name, field)
+					}
+				}
+			default:
+				if card != nil {
+					t.Errorf("%s: %s is neither a gateway target nor outside the profile, but has a card", locale, name)
+				}
+			}
+		}
+	}
+}
+
+// Keywords stay bilingual on purpose, because a question may be asked in
+// either language whatever the locale; the text a model reads may not.
+func TestEnglishGatewayCopyIsTranslated(t *testing.T) {
+	bundle := buildMCPLocaleBundle("en-US")
+	for name := range allToolMeta() {
+		card := bundle.ToolMeta(name).Gateway
+		if card == nil {
+			continue
+		}
+		for _, value := range []string{card.Summary, card.UseWhen, card.NotFor, card.NextStep, card.Boundary, string(card.ExampleArguments)} {
+			if strings.ContainsFunc(value, func(r rune) bool { return unicode.Is(unicode.Han, r) }) {
+				t.Errorf("%s: untranslated gateway copy %q", name, value)
+			}
+		}
+	}
+}
+
+// A card's example is what describe_native_tool hands a model as a call
+// template, so it must pass the same validation the executor applies.
+func TestGatewayExamplesPassTheExecutableSchemas(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		catalog := catalogForLocale(t, locale)
+		bundle := buildMCPLocaleBundle(locale)
+		for _, name := range longTailTargets {
+			tool, _, _ := catalog.lookup(context.Background(), name)
+			raw, err := executableSchema(tool.RawInputSchema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			schema, err := compileExecutableSchema(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			card := bundle.ToolMeta(name).Gateway
+			if card == nil {
+				t.Errorf("%s %s: no card", locale, name)
+				continue
+			}
+			example, err := jsonschema.UnmarshalJSON(bytes.NewReader(card.ExampleArguments))
+			if err != nil {
+				t.Errorf("%s %s: example is not JSON: %v", locale, name, err)
+				continue
+			}
+			if err := schema.Validate(example); err != nil {
+				t.Errorf("%s %s: example does not pass the executable schema: %v", locale, name, err)
+			}
+		}
+	}
+}
+
+func TestLocalizedGatewayCardInheritsWhatItDoesNotRestate(t *testing.T) {
+	base := &GatewayCard{Summary: "中文", Keywords: []string{"子图", "subgraph"}, ExampleArguments: json.RawMessage(`{"kn_id":"kn"}`)}
+	got := localizeGatewayCard(base, &GatewayCard{Summary: "English"})
+	if got.Summary != "English" || !slices.Equal(got.Keywords, base.Keywords) || string(got.ExampleArguments) != `{"kn_id":"kn"}` {
+		t.Fatalf("overlay = %+v, want English text with the baseline keywords and example", got)
+	}
+	if base.Summary != "中文" {
+		t.Fatalf("the shared baseline card was modified: %+v", base)
+	}
+	if got := localizeGatewayCard(nil, &GatewayCard{Boundary: "only here"}); got.Boundary != "only here" {
+		t.Fatalf("overlay without a baseline card = %+v", got)
 	}
 }

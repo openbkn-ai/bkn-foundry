@@ -272,7 +272,37 @@ func (b *mcpLocaleBundle) ToolMeta(toolKey string) ToolMeta {
 	if localized.Description != "" {
 		meta.Description = localized.Description
 	}
+	if localized.Gateway != nil {
+		meta.Gateway = localizeGatewayCard(meta.Gateway, localized.Gateway)
+	}
 	return meta
+}
+
+// localizeGatewayCard overlays a locale's gateway copy field by field, so a
+// locale translates the text and inherits keywords and examples it does not
+// restate. It returns a new card: the baseline is shared by every request.
+func localizeGatewayCard(base, localized *GatewayCard) *GatewayCard {
+	card := GatewayCard{}
+	if base != nil {
+		card = *base
+	}
+	overlay := func(into *string, from string) {
+		if from != "" {
+			*into = from
+		}
+	}
+	overlay(&card.Summary, localized.Summary)
+	overlay(&card.UseWhen, localized.UseWhen)
+	overlay(&card.NotFor, localized.NotFor)
+	overlay(&card.NextStep, localized.NextStep)
+	overlay(&card.Boundary, localized.Boundary)
+	if len(localized.Keywords) > 0 {
+		card.Keywords = localized.Keywords
+	}
+	if len(localized.ExampleArguments) > 0 {
+		card.ExampleArguments = localized.ExampleArguments
+	}
+	return &card
 }
 
 func (b *mcpLocaleBundle) ToolSchemas(toolKey string) (input, output json.RawMessage) {

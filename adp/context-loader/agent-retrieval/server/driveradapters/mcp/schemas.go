@@ -35,6 +35,27 @@ type ToolMeta struct {
 	GroupTitle  string `json:"group_title,omitempty"`
 	Order       int    `json:"order,omitempty"`
 	Description string `json:"description,omitempty"`
+	// Gateway is what the compact profile's gateway says about the tool. It
+	// never reaches tools/list or /mcp/info.
+	Gateway *GatewayCard `json:"gateway,omitempty"`
+}
+
+// GatewayCard is the compact gateway's copy for one tool, kept beside the
+// tool's other metadata so each tool is described in one place.
+//
+// A gateway target fills the card fields, so a model can choose between
+// neighbouring tools without reading full schemas. A public tool the profile
+// leaves out fills Boundary instead: a search that lands on it, or a call that
+// names it, gets that answer rather than the nearest unrelated tool.
+// Keywords feed search in both cases.
+type GatewayCard struct {
+	Summary          string          `json:"summary,omitempty"`
+	UseWhen          string          `json:"use_when,omitempty"`
+	NotFor           string          `json:"not_for,omitempty"`
+	NextStep         string          `json:"next_step,omitempty"`
+	Boundary         string          `json:"boundary,omitempty"`
+	Keywords         []string        `json:"keywords,omitempty"`
+	ExampleArguments json.RawMessage `json:"example_arguments,omitempty"`
 }
 
 // loadToolMeta loads a tool's metadata from schemas/tools_meta.json.
