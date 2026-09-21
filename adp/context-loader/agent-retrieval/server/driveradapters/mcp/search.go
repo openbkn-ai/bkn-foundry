@@ -252,8 +252,11 @@ func matchScore(query string, meta ToolMeta) int {
 // normalizeSearchText lower-cases text and drops the particle 的, so 执行的状态
 // matches 执行状态 and 关系的定义 matches 关系定义.
 func normalizeSearchText(text string) string {
-	return strings.ReplaceAll(strings.ToLower(text), "的", "")
+	return strings.ReplaceAll(strings.ToLower(text), particleDe, "")
 }
+
+// particleDe is 的, escaped because source strings stay ASCII.
+const particleDe = "\u7684"
 
 // keywordWeight gives a longer, more specific keyword more weight than a short
 // one it contains, so 字段关联 outranks 关联. A Chinese keyword counts one word
