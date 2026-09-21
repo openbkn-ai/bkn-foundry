@@ -137,3 +137,16 @@ func TestOnlyTheCompactProfileHasTheGateway(t *testing.T) {
 	}
 }
 
+// search and describe are recorded under their own names, so Trace must
+// recognise them; the executor never is, so it needs no entry.
+func TestGatewayToolsResolveTheirCapabilityProfiles(t *testing.T) {
+	for _, name := range []string{toolKeySearchNativeTools, toolKeyDescribeNativeTool} {
+		var profile CapabilityProfile
+		if err := json.Unmarshal(capabilityProfileJSON(name), &profile); err != nil {
+			t.Fatal(err)
+		}
+		if profile.Resolution != capabilityResolutionMatched || profile.ExecutionRole != "discovery" {
+			t.Errorf("%s: resolution %q (%s), role %q", name, profile.Resolution, profile.Reason, profile.ExecutionRole)
+		}
+	}
+}
