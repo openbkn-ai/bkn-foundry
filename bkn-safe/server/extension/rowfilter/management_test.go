@@ -69,7 +69,7 @@ func managementResponse(t *testing.T, router *gin.Engine) (int, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Fatal(err)

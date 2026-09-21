@@ -745,7 +745,7 @@ func TestMetricExecutionAppliesRowFilterBeforeAggregation(t *testing.T) {
 	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 		OTID: "order", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "orders"},
 		DataProperties: []cond.DataProperty{
-			{Name: "region", Type: dtype.DATATYPE_STRING, MappedField: cond.Field{Name: "region_col"}},
+			{Name: "region", Type: dtype.DATATYPE_STRING, MappedField: cond.Field{Name: "region_col"}, ConditionOperations: []string{cond.OperationIn}},
 			{Name: "amount", Type: dtype.DATATYPE_DOUBLE, MappedField: cond.Field{Name: "amount_col"}},
 		},
 	}}

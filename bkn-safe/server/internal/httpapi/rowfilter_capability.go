@@ -57,7 +57,7 @@ func (resolver *rowFilterPublishedObjectTypeResolver) ResolvePublishedObjectType
 	if err != nil {
 		return rowfiltersocket.PublishedObjectType{}, fmt.Errorf("row-filter capability request: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return rowfiltersocket.PublishedObjectType{}, fmt.Errorf("row-filter capability upstream returned status %d", response.StatusCode)
 	}
