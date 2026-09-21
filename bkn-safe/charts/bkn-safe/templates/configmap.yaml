@@ -42,6 +42,9 @@ data:
   {{- $vegaBackend := $upstreams.vegaBackend | default dict }}
   SAFE_VEGA_BACKEND_BASE_URL: {{ $vegaBackend.baseURL | default "http://vega-backend-svc:13014" | quote }}
   SAFE_VEGA_BACKEND_TIMEOUT: {{ $vegaBackend.timeout | default "3s" | quote }}
+  {{- $ontologyQuery := $upstreams.ontologyQuery | default dict }}
+  SAFE_ONTOLOGY_QUERY_BASE_URL: {{ $ontologyQuery.baseURL | default "http://ontology-query-svc:13014" | quote }}
+  SAFE_ONTOLOGY_QUERY_TIMEOUT: {{ $ontologyQuery.timeout | default "3s" | quote }}
   SAFE_HYDRA_ADMIN_URL: {{ .Values.config.hydra.adminURL | quote }}
   SAFE_HYDRA_PUBLIC_URL: {{ .Values.config.hydra.publicURL | quote }}
   SAFE_LDAP_URL: {{ .Values.config.ldap.url | quote }}

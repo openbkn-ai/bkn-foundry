@@ -140,6 +140,11 @@ config:
     vegaBackend:
       baseURL: "http://vega-backend-svc:13014"
       timeout: "3s"
+    ontologyQuery:
+      # Used by Enterprise row-filter policy validation. Keep this internal:
+      # callers never supply schema or backend capability metadata themselves.
+      baseURL: "http://ontology-query-svc:13014"
+      timeout: "3s"
   hydra:
     adminURL: "http://bkn-safe-hydra-admin:4445"
     publicURL: "http://bkn-safe-hydra-public:4444"

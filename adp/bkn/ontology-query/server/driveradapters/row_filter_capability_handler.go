@@ -11,10 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
-	dtype "ontology-query/interfaces/data_type"
+	rowfilter "ontology-query/logics/row_filter"
 )
 
 type rowFilterCapabilityRequest struct {
@@ -66,30 +65,18 @@ func (r *restHandler) GetRowFilterCapabilities(c *gin.Context) {
 func rowFilterCapabilityForObjectType(objectTypeRef string, objectType interfaces.ObjectType) rowFilterCapabilityResponse {
 	response := rowFilterCapabilityResponse{
 		ObjectTypeRef: objectTypeRef,
-		// An index-unavailable object type must not receive a stored policy:
-		// execution cannot guarantee that the predicate reaches the backend.
-		Published:  objectType.Status != nil && objectType.Status.IndexAvailable,
+		// Looking up a model from MAIN is the publication boundary. Index status
+		// is deliberately not used here: both OpenSearch and resource-backed
+		// object types must prove exact filtering at the property level instead.
+		Published:  true,
 		Properties: map[string]rowFilterCapabilityProperty{},
 	}
 	for _, property := range objectType.DataProperties {
-		valueType, supported := rowFilterValueType(property)
-		if !supported || strings.TrimSpace(property.Name) == "" || strings.TrimSpace(property.MappedField.Name) == "" {
+		valueType, supported := rowfilter.ExactFilterValueType(property)
+		if !supported {
 			continue
 		}
 		response.Properties[property.Name] = rowFilterCapabilityProperty{Type: valueType, ExactFilterable: true}
 	}
 	return response
-}
-
-func rowFilterValueType(property cond.DataProperty) (string, bool) {
-	switch {
-	case dtype.SimpleTypeMapping[property.Type] == dtype.SimpleChar || dtype.DataType_IsString(property.Type):
-		return "string", true
-	case dtype.SimpleTypeMapping[property.Type] == dtype.SimpleInt || dtype.DataType_IsNumber(property.Type):
-		return "integer", true
-	case property.Type == dtype.DATATYPE_BOOLEAN || dtype.SimpleTypeMapping[property.Type] == dtype.SimpleBool:
-		return "boolean", true
-	default:
-		return "", false
-	}
 }
