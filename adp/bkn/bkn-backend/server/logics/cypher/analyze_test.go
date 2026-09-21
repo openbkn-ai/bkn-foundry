@@ -256,7 +256,14 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order) RETURN a.x.y", "nested property access"},
 		{"MATCH (a:Order) RETURN 1", "only variable.property references"},
 		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
-		{"MATCH (a:Order) WHERE a.x STARTS WITH 'A' RETURN a.id", "STARTS WITH"},
+		{"MATCH (a:Order) WHERE a.x STARTS WITH 1 RETURN a.id", "STARTS WITH against a non-string value"},
+		{"MATCH (a:Order) WHERE a.x ENDS WITH true RETURN a.id", "ENDS WITH against a non-string value"},
+		{"MATCH (a:Order) WHERE a.x CONTAINS null RETURN a.id", "matching against null"},
+		{"MATCH (a:Order) WHERE a.x CONTAINS a.y RETURN a.id", "CONTAINS against a property"},
+		{"MATCH (a:Order) WHERE 'abc' CONTAINS a.x RETURN a.id", "CONTAINS applies to variable.property"},
+		{"MATCH (a:Order) WHERE a.x CONTAINS 'a' + 'b' RETURN a.id", "arithmetic"},
+		{"MATCH (a:Order) WHERE a.x CONTAINS 'a' IS NULL RETURN a.id", "combining string predicates"},
+		{"MATCH (a:Order) RETURN a.x CONTAINS 'a'", "a condition here"},
 		{"MATCH (a:Order) WHERE a.x = a.y RETURN a.id", "against a literal"},
 		{"MATCH (a:Order) WHERE a.x = null RETURN a.id", "comparing against null"},
 		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
@@ -362,7 +369,7 @@ func TestDecodeStringLiteralRefusesMalformedEscapes(t *testing.T) {
 // A rejection has to say where, because a long query has many places the same
 // construct could appear.
 func TestAnalyzeRejectionCarriesPosition(t *testing.T) {
-	_, err := analyze(t, "MATCH (a:Order)\nWHERE a.name STARTS WITH 'A'\nRETURN a.id")
+	_, err := analyze(t, "MATCH (a:Order)\nWHERE a.name STARTS WITH 1\nRETURN a.id")
 	unsupported, ok := err.(*Unsupported)
 	if !ok {
 		t.Fatalf("error = %T (%v), want *Unsupported", err, err)
