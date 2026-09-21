@@ -86,8 +86,13 @@ def sanitize(b):
     b=re.sub(r'-+','-',b)
     return b.strip('.-')
 
-SAN_BRANCH=sanitize(BRANCH) if BRANCH else ""
-SAN_BASE=sanitize(BASE) if BASE else ""
+def branch_channel(branch):
+    if re.fullmatch(r'release/\d+\.\d+\.\d+', branch):
+        return 'release', branch.split('/', 1)[1]
+    return sanitize(branch), None
+
+SAN_BRANCH, BRANCH_LINE=branch_channel(BRANCH) if BRANCH else ("", None)
+SAN_BASE, BASE_LINE=branch_channel(BASE) if BASE else ("", None)
 
 SEMVER=re.compile(r'^(\d+)\.(\d+)\.(\d+)$')
 
@@ -183,9 +188,16 @@ def newest_main_build(tags):
 # branch is bootstrapped by one full build, then later pushes rebuild only the
 # components they change. The latest tag per chart is therefore the composed
 # product state for that branch.
-def newest_branch_build(tags, san):
+def newest_branch_build(tags, san, line=None):
+    prefix=re.escape(line) if line else r'\d+\.\d+\.\d+'
+    # During the transition, unchanged charts may still have the old
+    # <version>-release-<version> tag from an earlier partial branch build.
+    channels=[san]
+    if san == 'release' and line:
+        channels.append(f'release-{line}')
+    channel='(?:' + '|'.join(re.escape(name) for name in channels) + ')'
     dated=re.compile(
-        rf'^\d+\.\d+\.\d+-{re.escape(san)}\.(\d{{14}})\.sha[0-9a-f]{{7}}$'
+        rf'^{prefix}-{channel}\.(\d{{14}})\.sha[0-9a-f]{{7}}$'
     )
     candidates=[]
     for tag in tags:
@@ -194,12 +206,12 @@ def newest_branch_build(tags, san):
     if candidates:
         return max(candidates, key=lambda item:item[1])[0]
 
-    # Compatibility with the old, un-dated branch tags. They cannot be ordered
-    # by commit time, but keeping a deterministic fallback avoids making an
-    # existing branch undeployable during the tag-format transition.
-    legacy=re.compile(rf'^\d+\.\d+\.\d+-{re.escape(san)}\.sha[0-9a-f]{{7}}$')
+    # An old, un-dated branch tag has no sortable build time. Use it only when
+    # unambiguous; multiple candidates must fall through to stable/base rather
+    # than silently choosing a SHA by lexical order.
+    legacy=re.compile(rf'^{prefix}-{channel}\.sha[0-9a-f]{{7}}$')
     candidates=[tag for tag in tags if legacy.fullmatch(tag)]
-    return max(candidates) if candidates else None
+    return candidates[0] if len(candidates) == 1 else None
 
 def resolve(chart):
     tags=reg_tags(chart)
@@ -214,14 +226,14 @@ def resolve(chart):
     # 1) newest branch build. A release branch is seeded by a full build;
     # subsequent partial builds replace only the charts they changed.
     if SAN_BRANCH:
-        t=newest_branch_build(tags, SAN_BRANCH)
+        t=newest_branch_build(tags, SAN_BRANCH, BRANCH_LINE)
         if t: return t, "branch"
     # 2) latest stable (highest clean semver)
     s=highest_semver(tags)
     if s: return s, "stable"
     # 3) base branch build
     if SAN_BASE:
-        t=newest_branch_build(tags, SAN_BASE)
+        t=newest_branch_build(tags, SAN_BASE, BASE_LINE)
         if t: return t, "base"
     return None, "missing"
 

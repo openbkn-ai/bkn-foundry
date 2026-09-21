@@ -185,6 +185,11 @@ git checkout -b release/1.2.0
 git push origin release/1.2.0
 ```
 
+Branch builds use immutable `X.Y.Z-release.<commit time>.sha<short>` image and
+Chart tags; `main` and feature branches use the same format with their branch
+name in place of `release`. Only a `vX.Y.Z` or `vX.Y.Z-rc*` tag produces an
+explicit release version.
+
 #### 2. Code Freeze
 
 Once the release branch is created, it enters **code freeze** state:

@@ -185,6 +185,10 @@ git checkout -b release/1.2.0
 git push origin release/1.2.0
 ```
 
+分支构建的镜像和 Chart 使用不可变 tag `X.Y.Z-release.<提交时间>.sha<短哈希>`；
+`main`、需求分支使用同一结构，仅将 `release` 换成对应分支名。只有
+`vX.Y.Z` 或 `vX.Y.Z-rc*` tag 才产出显式发布版本。
+
 #### 2. 代码冻结 (Code Freeze)
 
 Release 分支创建后进入**代码冻结**状态：

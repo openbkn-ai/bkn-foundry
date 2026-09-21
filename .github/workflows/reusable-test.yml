@@ -86,6 +86,9 @@ jobs:
             # explicit RC versions belong to tags, so a later branch push can
             # never overwrite a deployable candidate.
             SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
+            # The VERSION prefix already identifies the release line; keeping
+            # its number in the branch token would duplicate it in the tag.
+            if [[ "$REF_NAME" == release/* ]]; then SANITIZED_BRANCH=release; fi
             COMMIT_DATE="$(TZ=Asia/Shanghai git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)"
             # Embed the commit time (Asia/Shanghai, fixed-width YYYYMMDDHHMMSS) so
             # the prerelease is monotonically sortable. Commit time, not build time,

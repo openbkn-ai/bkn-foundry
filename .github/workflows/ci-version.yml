@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Test branch manifest resolution
+        run: bash deploy/scripts/tests/test-gen-dev-manifest.sh
       - shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}

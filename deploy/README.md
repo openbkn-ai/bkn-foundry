@@ -167,6 +167,8 @@ Per-chart resolution (stable-first): `--branch` newest build → latest stable �
 `--base` newest build → error. Release branches are bootstrapped by a
 full build; later partial builds replace only their changed charts, so the
 newest branch build of each chart forms the branch's deployable composition.
+For `release/X.Y.Z`, the version prefix already carries the release number:
+the branch channel is `release`, giving `X.Y.Z-release.<date>.sha<short>`.
 The generated manifest annotates each chart's source (`branch` / `stable` /
 `base`). Requires `python3`; see `./scripts/gen-dev-manifest.sh -h`.
 
