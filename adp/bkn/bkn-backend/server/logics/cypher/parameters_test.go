@@ -8,6 +8,7 @@ package cypher
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -196,5 +197,153 @@ func TestParameterNumbers(t *testing.T) {
 	if _, err := literalFromParameter(json.Number("not a number")); err == nil ||
 		!strings.Contains(err.Error(), "not a number this interface can carry") {
 		t.Fatalf("a malformed number must be refused, got %v", err)
+	}
+}
+
+// A whole list passed as one parameter, IN $name, has to produce the same
+// statement as the list written in the query: both go through the literal
+// path, so both are escaped the same way (#1719).
+func TestCompileListParameterMatchesListLiteral(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		literal    string
+		parameter  string
+		parameters map[string]any
+	}{
+		{
+			name:       "integers",
+			literal:    "o.id IN [6, 7, 8]",
+			parameter:  "o.id IN $keys",
+			parameters: map[string]any{"keys": []any{float64(6), float64(7), float64(8)}},
+		},
+		{
+			name:       "strings with quotes",
+			literal:    `o.region IN ['eu', 'a\'; DROP TABLE x --']`,
+			parameter:  "o.region IN $regions",
+			parameters: map[string]any{"regions": []any{"eu", "a'; DROP TABLE x --"}},
+		},
+		{
+			name:       "integers and floats are both numbers",
+			literal:    "o.amount IN [1, 2.5]",
+			parameter:  "o.amount IN $amounts",
+			parameters: map[string]any{"amounts": []any{json.Number("1"), 2.5}},
+		},
+		{
+			name:       "negated",
+			literal:    "NOT (o.id IN [6, 7])",
+			parameter:  "NOT (o.id IN $keys)",
+			parameters: map[string]any{"keys": []any{6, 7}},
+		},
+		{
+			name:       "element-wise parameters",
+			literal:    "o.id IN [6, 7]",
+			parameter:  "o.id IN [$a, $b]",
+			parameters: map[string]any{"a": 6, "b": 7},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want, err := compileWithParameters(t, "MATCH (o:Order) WHERE "+tc.literal+" RETURN o.id AS id", nil)
+			if err != nil {
+				t.Fatalf("compile literal: %v", err)
+			}
+			got, err := compileWithParameters(t, "MATCH (o:Order) WHERE "+tc.parameter+" RETURN o.id AS id", tc.parameters)
+			if err != nil {
+				t.Fatalf("compile parameter: %v", err)
+			}
+			if got != want {
+				t.Fatalf("got  %s\nwant %s", got, want)
+			}
+		})
+	}
+}
+
+func TestAnalyzeListParameter(t *testing.T) {
+	query := mustAnalyze(t, "MATCH (o:Order) WHERE o.id IN $keys RETURN o.id")
+	membership, ok := query.Where.(Membership)
+	if !ok {
+		t.Fatalf("where = %T, want Membership", query.Where)
+	}
+	if membership.ListParameter == nil || membership.ListParameter.Name != "keys" || len(membership.Values) != 0 {
+		t.Fatalf("membership = %+v", membership)
+	}
+}
+
+func TestPlanListParameterPointers(t *testing.T) {
+	tree, err := Parse("MATCH (o:Order) WHERE o.id IN $keys RETURN o.id AS id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	analyzed, err := Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := Compile(analyzed, modelSchema(t), CompileOptions{Parameters: map[string]any{"keys": []any{6, 7}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	membership, ok := plan.Where.(PlanMembership)
+	if !ok {
+		t.Fatalf("where = %T", plan.Where)
+	}
+	if len(membership.Values) != 2 || membership.ListInputPointer != "$.parameters.keys" ||
+		len(membership.InputPointers) != 0 {
+		t.Fatalf("membership = %+v", membership)
+	}
+	descriptor, err := BuildSemanticQueryDescriptor(plan, tree.GetText())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(descriptor.Predicates) != 1 || descriptor.Predicates[0].InputPointer != "$.parameters.keys" ||
+		descriptor.Predicates[0].Operator != "in" || len(descriptor.Predicates[0].ValueHashes) != 2 {
+		t.Fatalf("predicates = %+v", descriptor.Predicates)
+	}
+}
+
+func TestCompileListParameterRejections(t *testing.T) {
+	tooMany := make([]any, MaxListParameterLength+1)
+	for i := range tooMany {
+		tooMany[i] = i
+	}
+	atLimit := make([]any, MaxListParameterLength)
+	for i := range atLimit {
+		atLimit[i] = i
+	}
+	if _, err := compileWithParameters(t, "MATCH (o:Order) WHERE o.id IN $keys RETURN o.id",
+		map[string]any{"keys": atLimit}); err != nil {
+		t.Fatalf("a list at the limit must compile: %v", err)
+	}
+	for _, tc := range []struct {
+		name  string
+		value any
+		skip  bool
+		want  string
+	}{
+		{name: "missing", skip: true, want: `parameter "keys" was not supplied`},
+		{name: "null", value: nil, want: "is null"},
+		{name: "scalar", value: 6, want: "needs the parameter to be a list"},
+		{name: "object", value: map[string]any{"a": 1}, want: "is an object; IN $name needs"},
+		{name: "empty", value: []any{}, want: "is an empty list"},
+		{name: "null element", value: []any{1, nil}, want: "null at index 1"},
+		{name: "nested list", value: []any{1, []any{2}}, want: "has a list at index 1"},
+		{name: "object element", value: []any{map[string]any{"a": 1}}, want: "has an object at index 0"},
+		{name: "mixed kinds", value: []any{1, "2"}, want: "mixes number and string"},
+		{name: "mixed booleans", value: []any{true, "x"}, want: "mixes boolean and string"},
+		{name: "too long", value: tooMany, want: "at most 500"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parameters := map[string]any{}
+			if !tc.skip {
+				parameters["keys"] = tc.value
+			}
+			_, err := compileWithParameters(t, "MATCH (o:Order) WHERE o.id IN $keys RETURN o.id", parameters)
+			var planErr *PlanError
+			if err == nil || !errors.As(err, &planErr) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want a plan error mentioning %q", err, tc.want)
+			}
+			// The caller wrote JSON; a Go type name in the error means nothing to them.
+			if strings.Contains(err.Error(), "interface") || strings.Contains(err.Error(), "[]") {
+				t.Fatalf("error names a Go type: %v", err)
+			}
+		})
 	}
 }
