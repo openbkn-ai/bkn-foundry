@@ -35,12 +35,18 @@ type mcpProfile struct {
 	// gateway registers search_native_tools, describe_native_tool and
 	// execute_native_read_tool over the long-tail targets.
 	gateway bool
+	// view rewrites how a published tool is described. Nil publishes the
+	// assembled definition as is.
+	view func(mcp.Tool) mcp.Tool
 }
 
 func (p mcpProfile) filter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
 	out := make([]mcp.Tool, 0, len(p.published))
 	for _, tool := range tools {
 		if _, ok := p.published[tool.Name]; ok {
+			if p.view != nil {
+				tool = p.view(tool)
+			}
 			out = append(out, tool)
 		}
 	}
@@ -80,6 +86,7 @@ var compactProfile = mcpProfile{
 	published:    toolNameSet(append(slices.Clone(compactProfileTools), gatewayToolOrder...)),
 	inlinePTC:    false,
 	gateway:      true,
+	view:         compactToolView,
 }
 
 func toolNameSet(names []string) map[string]struct{} {
@@ -109,7 +116,7 @@ func BuildCompactMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error)
 	tools := make([]MCPToolInfo, 0, len(compactProfile.published))
 	for _, tool := range info.Tools {
 		if _, ok := compactProfile.published[tool.Name]; ok {
-			tools = append(tools, tool)
+			tools = append(tools, compactInfoView(tool))
 		}
 	}
 	locale := loadMCPLocaleBundle(localeName)
