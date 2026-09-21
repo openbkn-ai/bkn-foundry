@@ -368,7 +368,11 @@ func statsRowFilterValues(values []interfaces.RowFilterValue, propertyType strin
 			if value.String == nil || !statsRowFilterValueTypeAllowed(propertyType, value.Type) {
 				return nil, fmt.Errorf("string value does not match property type")
 			}
-			result = append(result, "'"+strings.ReplaceAll(*value.String, "'", "''")+"'")
+			literal, err := statsRowFilterStringLiteral(*value.String)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, literal)
 		case "integer":
 			if value.Integer == nil || !statsRowFilterValueTypeAllowed(propertyType, value.Type) {
 				return nil, fmt.Errorf("integer value does not match property type")
@@ -388,6 +392,18 @@ func statsRowFilterValues(values []interfaces.RowFilterValue, propertyType strin
 		}
 	}
 	return result, nil
+}
+
+func statsRowFilterStringLiteral(value string) (string, error) {
+	if strings.ContainsRune(value, 0) {
+		return "", fmt.Errorf("row-filter string value must not contain a null byte")
+	}
+
+	// Vega executes this filter as MySQL. Escape backslashes before quotes so a
+	// backslash from a policy value cannot escape the following quote literal.
+	escaped := strings.ReplaceAll(value, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, "'", "''")
+	return "'" + escaped + "'", nil
 }
 
 func statsRowFilterValueTypeAllowed(propertyType, valueType string) bool {

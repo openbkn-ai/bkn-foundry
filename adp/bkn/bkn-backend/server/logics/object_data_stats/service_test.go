@@ -245,6 +245,34 @@ func Test_objectDataStatsService_AppliesRowFilter(t *testing.T) {
 	}
 }
 
+func Test_statsRowFilterStringLiteral_EscapesMySQLSpecialCharacters(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "domain account", input: `CORP\alice`, want: `'CORP\\alice'`},
+		{name: "trailing backslash", input: `east\`, want: `'east\\'`},
+		{name: "backslash before quote", input: `a\' OR 1=1 -- `, want: `'a\\'' OR 1=1 -- '`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := statsRowFilterStringLiteral(tt.input)
+			if err != nil {
+				t.Fatalf("statsRowFilterStringLiteral() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("statsRowFilterStringLiteral() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	if _, err := statsRowFilterStringLiteral("east\x00"); err == nil {
+		t.Fatal("statsRowFilterStringLiteral() accepted a null byte")
+	}
+}
+
 func Test_asInt64_ReadsEveryDriverShape(t *testing.T) {
 	Convey("Counts come back shaped differently per driver\n", t, func() {
 		// The vega adapter decodes with UseNumber, so this is the shape that actually arrives in
