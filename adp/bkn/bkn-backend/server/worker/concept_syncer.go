@@ -528,8 +528,18 @@ func (cs *ConceptSyncer) insertDatasetDataForKN(ctx context.Context, kn *interfa
 	docid := interfaces.GenerateConceptDocuemtnID(kn.KNID, interfaces.MODULE_TYPE_KN, kn.KNID, kn.Branch)
 	kn.ModuleType = interfaces.MODULE_TYPE_KN
 
+	// Child concepts have documents of their own. Embedded here, their free-typed
+	// values (e.g. action-type parameters) can conflict in the mapping (#1710).
+	networkDoc := *kn
+	networkDoc.ConceptGroups = nil
+	networkDoc.ObjectTypes = nil
+	networkDoc.RelationTypes = nil
+	networkDoc.ActionTypes = nil
+	networkDoc.RiskTypes = nil
+	networkDoc.Metrics = nil
+
 	// Convert to map for dataset
-	docBytes, err := sonic.Marshal(kn)
+	docBytes, err := sonic.Marshal(&networkDoc)
 	if err != nil {
 		logger.Errorf("Failed to marshal KN: %s", err.Error())
 		return err
