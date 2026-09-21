@@ -41,6 +41,11 @@ func lifecycleToolMiddleware(client *bkntrace.LifecycleClient) server.ToolHandle
 			if _, lifecycle := lifecycleToolNames[req.Params.Name]; lifecycle {
 				return next(ctx, req)
 			}
+			// Guarding the executor as well would record two Operations for one
+			// call, the outer one under a name that ran nothing.
+			if _, executor := executorSkipsServerGuard[req.Params.Name]; executor {
+				return next(ctx, req)
+			}
 			return guardBusinessToolCallWithCompletion(
 				ensureOperationAdapter(client),
 				completeOperationAdapter(client),
