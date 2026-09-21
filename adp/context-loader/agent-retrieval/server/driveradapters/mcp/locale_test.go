@@ -62,14 +62,18 @@ func TestMCPLocaleBundle(t *testing.T) {
 
 func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreUnavailable(t *testing.T) {
 	resources := fstest.MapFS{
-		"schemas/locales/zh-CN/instructions.txt":     &fstest.MapFile{Data: []byte("Chinese baseline instructions")},
-		"schemas/locales/zh-CN/ptc_instructions.txt": &fstest.MapFile{Data: []byte("Chinese baseline PTC instructions")},
+		"schemas/locales/zh-CN/instructions.txt":         &fstest.MapFile{Data: []byte("Chinese baseline instructions")},
+		"schemas/locales/zh-CN/instructions_compact.txt": &fstest.MapFile{Data: []byte("Chinese baseline compact instructions")},
+		"schemas/locales/zh-CN/ptc_instructions.txt":     &fstest.MapFile{Data: []byte("Chinese baseline PTC instructions")},
 	}
 
 	bundle := buildMCPLocaleBundleFromFS(resources, "en-US")
 
 	if got := bundle.ServerInstructions(); got != "Chinese baseline instructions" {
 		t.Fatalf("instructions = %q, want baseline instructions", got)
+	}
+	if got := bundle.CompactServerInstructions(); got != "Chinese baseline compact instructions" {
+		t.Fatalf("compact instructions = %q, want baseline instructions", got)
 	}
 	if got := bundle.PTCServerInstructions(); got != "Chinese baseline PTC instructions" {
 		t.Fatalf("PTC instructions = %q, want baseline instructions", got)
@@ -100,8 +104,10 @@ PTC instructions`)},
 func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreMalformed(t *testing.T) {
 	resources := fstest.MapFS{
 		"schemas/locales/zh-CN/instructions.txt":         &fstest.MapFile{Data: []byte("Chinese baseline instructions")},
+		"schemas/locales/zh-CN/instructions_compact.txt": &fstest.MapFile{Data: []byte("Chinese baseline compact instructions")},
 		"schemas/locales/zh-CN/ptc_instructions.txt":     &fstest.MapFile{Data: []byte("Chinese baseline PTC instructions")},
 		"schemas/locales/en-US/instructions.txt":         &fstest.MapFile{Data: []byte("English instructions")},
+		"schemas/locales/en-US/instructions_compact.txt": &fstest.MapFile{Data: []byte("English compact instructions")},
 		"schemas/locales/en-US/ptc_instructions.txt":     &fstest.MapFile{Data: []byte("English PTC instructions")},
 		"schemas/locales/en-US/tools_meta.json":          &fstest.MapFile{Data: []byte(`{`)},
 		"schemas/locales/en-US/schema_descriptions.json": &fstest.MapFile{Data: []byte(`{`)},
@@ -111,6 +117,9 @@ func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreMalformed(t *testing.T) 
 
 	if got := bundle.ServerInstructions(); got != "English instructions" {
 		t.Fatalf("instructions = %q, want localized instructions", got)
+	}
+	if got := bundle.CompactServerInstructions(); got != "English compact instructions" {
+		t.Fatalf("compact instructions = %q, want localized instructions", got)
 	}
 	if got := bundle.PTCServerInstructions(); got != "English PTC instructions" {
 		t.Fatalf("PTC instructions = %q, want localized instructions", got)
@@ -326,4 +335,30 @@ func getNestedString(root map[string]any, path []string) (string, bool) {
 	}
 	value, ok := current.(string)
 	return value, ok
+}
+
+// compactInstructionsBudget is the design ceiling for the compact profile's
+// instructions (bkn-docs issue-1175 design, section 7): hosts that read server
+// instructions load them into every conversation, so they stay short.
+const compactInstructionsBudget = 2300
+
+func TestShippedCompactInstructionsStayWithinBudget(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		t.Run(locale, func(t *testing.T) {
+			bundle := buildMCPLocaleBundle(locale)
+			compact := bundle.CompactServerInstructions()
+			if strings.TrimSpace(compact) == "" {
+				t.Fatal("compact instructions are empty")
+			}
+			if strings.Contains(compact, "Copyright") {
+				t.Fatal("license header leaked into compact instructions")
+			}
+			if compact == bundle.ServerInstructions() {
+				t.Fatal("compact instructions are the full-profile instructions")
+			}
+			if size := len(compact); size > compactInstructionsBudget {
+				t.Fatalf("compact instructions are %d bytes, over the %d-byte budget", size, compactInstructionsBudget)
+			}
+		})
+	}
 }

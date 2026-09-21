@@ -19,12 +19,17 @@ import (
 
 const defaultMCPLocale = "zh-CN"
 
+// compactInstructionsResource holds the server instructions of the compact
+// profile. A locale without its own copy falls back to the default locale's.
+const compactInstructionsResource = "instructions_compact.txt"
+
 type mcpLocaleBundle struct {
-	locale             string
-	instructions       string
-	ptcInstructions    string
-	toolMeta           map[string]ToolMeta
-	schemaDescriptions map[string]map[string]string
+	locale              string
+	instructions        string
+	compactInstructions string
+	ptcInstructions     string
+	toolMeta            map[string]ToolMeta
+	schemaDescriptions  map[string]map[string]string
 }
 
 // localeBundles memoises the parsed bundles.
@@ -50,9 +55,10 @@ func buildMCPLocaleBundle(normalized string) *mcpLocaleBundle {
 
 func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBundle {
 	bundle := &mcpLocaleBundle{
-		locale:          normalized,
-		instructions:    mustReadMCPInstructions(resources, defaultMCPLocale),
-		ptcInstructions: mustReadMCPResource(resources, defaultMCPLocale, "ptc_instructions.txt"),
+		locale:              normalized,
+		instructions:        mustReadMCPInstructions(resources, defaultMCPLocale),
+		compactInstructions: mustReadMCPResource(resources, defaultMCPLocale, compactInstructionsResource),
+		ptcInstructions:     mustReadMCPResource(resources, defaultMCPLocale, "ptc_instructions.txt"),
 	}
 	if normalized == defaultMCPLocale {
 		return bundle
@@ -63,6 +69,13 @@ func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBu
 		log.Printf("WARN: MCP locale instructions for %s are empty; using baseline", normalized)
 	} else {
 		bundle.instructions = content
+	}
+	if content, err := readMCPResource(resources, normalized, compactInstructionsResource); err != nil {
+		log.Printf("WARN: cannot load compact MCP locale instructions for %s: %v; using baseline", normalized, err)
+	} else if strings.TrimSpace(content) == "" {
+		log.Printf("WARN: compact MCP locale instructions for %s are empty; using baseline", normalized)
+	} else {
+		bundle.compactInstructions = content
 	}
 	if content, err := readMCPResource(resources, normalized, "ptc_instructions.txt"); err != nil {
 		log.Printf("WARN: cannot load PTC MCP locale instructions for %s: %v; using baseline", normalized, err)
@@ -168,6 +181,13 @@ func normalizeMCPLocale(locale string) string {
 
 func (b *mcpLocaleBundle) ServerInstructions() string {
 	return b.instructions
+}
+
+// CompactServerInstructions returns the instructions for the compact profile.
+// They route only between the tools that profile publishes, so they must not
+// name a tool that /mcp-compact does not offer.
+func (b *mcpLocaleBundle) CompactServerInstructions() string {
+	return b.compactInstructions
 }
 
 func (b *mcpLocaleBundle) PTCServerInstructions() string {

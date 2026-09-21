@@ -1,0 +1,17 @@
+Context Loader compact entry: read-only queries over business knowledge networks.
+
+Managed interaction lifecycle, for each new user question:
+1. Call bkn_start_interaction with the complete question, the current Agent name, and conversation_mode. For the first question in this chat, use conversation_mode=new and omit conversation_id; for a later question, use conversation_mode=continue and pass the conversation_id returned previously.
+2. Pass bkn_context: { conversation_id, interaction_id } to every other tool call, copying the values returned in step 1.
+3. Before replying to the user, call bkn_finish_interaction: pass outcome=completed and the final answer on success; otherwise pass failed, cancelled, or handed_off, optionally with the reason.
+
+Exploring:
+- If you do not know the kn_id, call list_knowledge_networks first; skip it when you do.
+- get_kn_detail gives an overview of a network; search_schema finds object types, relation types and metrics. Query only with the real IDs they return; never guess an ID from a name.
+
+Querying:
+- Natural-language recall of relevant instances: search_instance. It returns the top matches by relevance, not every instance that meets a condition.
+- Exact conditions, sorting and paging: query_object_instance.
+- Modelled metrics: query_metric, with the metric ID taken from the metric_types returned by search_schema.
+
+Boundary: this entry does not offer SQL, Cypher, code execution, action execution, or capabilities mounted on a network. When a question needs them, tell the user to use the full entry instead; never compute statistics from paged or preview results.
