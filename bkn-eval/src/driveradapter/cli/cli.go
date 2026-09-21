@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-eval/internal/port"
+	"github.com/openbkn-ai/bkn-foundry/bkn-eval/src/port/driven/idatasetsource"
 )
 
 const usage = `usage: bkn-eval <command> [arguments]
@@ -29,7 +29,7 @@ planned (not implemented yet):
 
 // Deps are the driven adapters the commands use.
 type Deps struct {
-	Datasets port.DatasetSource
+	Datasets idatasetsource.Source
 }
 
 // Run executes one command and returns the process exit code.

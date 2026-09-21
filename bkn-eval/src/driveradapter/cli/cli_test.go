@@ -11,15 +11,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-eval/internal/domain/entity"
+	"github.com/openbkn-ai/bkn-foundry/bkn-eval/src/domain/valueobject/datasetvo"
 )
 
 // fakeDatasets stands in for a driven adapter: "good" loads, anything else fails.
 type fakeDatasets struct{}
 
-func (fakeDatasets) Load(ref string) (*entity.Dataset, error) {
+func (fakeDatasets) Load(ref string) (*datasetvo.Dataset, error) {
 	if ref == "good" {
-		return &entity.Dataset{DatasetID: "probe", Version: "1", Cases: make([]entity.Case, 3)}, nil
+		return &datasetvo.Dataset{DatasetID: "probe", Version: "1", Cases: make([]datasetvo.Case, 3)}, nil
 	}
 	return nil, errors.New(ref + ": not found")
 }

@@ -2,26 +2,28 @@
 
 Evaluation for agents that use BKN through Context Loader: datasets with expected facts, runs against an MCP entry point, grading, and comparison between arms.
 
-**This is a command-line tool, not a service.** It runs locally or in CI, is not deployed, and has no database or HTTP API. When bkn-eval becomes a service, the server is added as a second command in this Go module (`cmd/bkn-eval-server`) and reuses `internal/`; the datasets and schemas here become its storage contract as they are.
+**This is a command-line tool, not a service.** It runs locally or in CI, is not deployed, and has no database or HTTP API. When bkn-eval becomes a service, the server is added as a `serve` command in this Go module and reuses `src/`; the datasets and schemas here become its storage contract as they are.
 
 Design: bkn-docs `docs/foundry/bkn-eval/design/issue-tbd-bkn-eval-module-design.md` (module) and `docs/foundry/context-loader/design/issue-1175-context-loader-mcp-token-optimization.md` §13.4 (the arms and gates this tool serves). Tracking: #272, epic #1704.
 
 ## Layout
 
-The code follows the ports-and-adapters layout of `bkn-trace/agent-observability`, so turning the tool into a service adds adapters and leaves the domain alone.
+The code follows the hexagonal layout of `bkn-trace/agent-observability` (see its `src/readme.md`), so turning the tool into a service adds adapters and leaves the domain alone.
 
 | Path | Contents |
 | --- | --- |
-| `cmd/bkn-eval/` | The command-line entry. It only wires adapters together. |
-| `internal/domain/` | Entities and domain services: datasets and cases now; grading, statistics and experiments later. Pure Go, no I/O. Anything that can change a score or a conclusion lives here. |
-| `internal/port/` | Interfaces the domain needs from outside: dataset source now; MCP host, model client, fixture importer, Trace reader and result store later. |
-| `internal/driveradapter/` | Entry adapters: `cli` now; an HTTP adapter when bkn-eval becomes a service. |
-| `internal/drivenadapter/` | Outbound adapters: `filestore` now; Context Loader MCP, model factory, bkn-backend and BKN Trace clients later, and a database store for the service. |
+| `main.go` | The command-line entry. It only calls `src/boot`. |
+| `src/boot/` | Assembly: builds the driven adapters and hands them to the driver adapter. |
+| `src/domain/valueobject/` | Value objects, one package per concept with a `vo` suffix: `datasetvo` now; runs and reports later. Pure Go, no I/O. |
+| `src/domain/service/` | Domain services with an `svc` suffix, added as they arrive: `runsvc` (the MCP host runner), `gradesvc`, `reportsvc`. Anything that can change a score or a conclusion lives in `src/domain`. |
+| `src/port/driven/` | One package per outbound port with an `i` prefix: `idatasetsource` now; MCP session, model client, fixture importer, Trace reader and result store later. |
+| `src/driveradapter/` | Entry adapters: `cli` now; `api/httphandler` when bkn-eval becomes a service. |
+| `src/drivenadapter/` | Outbound adapters grouped by access kind: `fileaccess/datasetfile` now; `httpaccess/…` for Context Loader MCP, the model factory, bkn-backend and BKN Trace later, and `dbaccess/…` for the service. |
 | `schemas/` | JSON Schemas for datasets (and later runs and reports). |
 | `datasets/` | Datasets, one directory each. |
 | `scripts/` | Thin wrappers that only call `bkn-eval`. No scoring or statistics in scripts. |
 
-Becoming a service therefore means a `cmd/bkn-eval-server`, an HTTP driver adapter, a database driven adapter behind the same ports, and migrations under `migrations/bkn-eval`.
+Becoming a service therefore means a `serve` command in `src/boot`, an HTTP driver adapter, a database driven adapter behind the same ports, and migrations under `migrations/bkn-eval`.
 
 ## Commands
 
@@ -35,7 +37,7 @@ Becoming a service therefore means a `cmd/bkn-eval-server`, an HTTP driver adapt
 
 ```bash
 make ci                              # vet, unit tests, dataset validation
-go run ./cmd/bkn-eval validate datasets/cypher-probe/dataset.json
+go run . validate datasets/cypher-probe/dataset.json
 ```
 
 ## Dataset rules

@@ -3,8 +3,8 @@
 // Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
 // Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
-// Package filestore reads datasets from JSON files in the repository.
-package filestore
+// Package datasetfile reads datasets from JSON files in the repository.
+package datasetfile
 
 import (
 	"bytes"
@@ -12,22 +12,22 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-eval/internal/domain/entity"
-	"github.com/openbkn-ai/bkn-foundry/bkn-eval/internal/port"
+	"github.com/openbkn-ai/bkn-foundry/bkn-eval/src/domain/valueobject/datasetvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-eval/src/port/driven/idatasetsource"
 )
 
-// Datasets loads dataset files by path.
-type Datasets struct{}
+// Store loads dataset files by path.
+type Store struct{}
 
-var _ port.DatasetSource = Datasets{}
+var _ idatasetsource.Source = Store{}
 
 // Load reads a dataset file, rejects unknown fields, and validates it.
-func (Datasets) Load(path string) (*entity.Dataset, error) {
+func (Store) Load(path string) (*datasetvo.Dataset, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var ds entity.Dataset
+	var ds datasetvo.Dataset
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&ds); err != nil {

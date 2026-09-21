@@ -9,4 +9,4 @@ if [ ${#datasets[@]} -eq 0 ]; then
   echo "no datasets found under datasets/" >&2
   exit 1
 fi
-go run ./cmd/bkn-eval validate "${datasets[@]}"
+go run . validate "${datasets[@]}"

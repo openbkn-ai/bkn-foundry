@@ -3,12 +3,12 @@
 // Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
 // Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
-// Package entity holds the domain entities of bkn-eval. The dataset contract
-// is a versioned set of cases, each with the facts a correct answer must state
-// and the tool paths that count as a correct way to get there. A future
-// bkn-eval service stores the same entities, so nothing here may depend on how
-// a dataset is read or how a run is executed.
-package entity
+// Package datasetvo holds the dataset value objects of bkn-eval: a versioned
+// set of cases, each with the facts a correct answer must state and the tool
+// paths that count as a correct way to get there. A future bkn-eval service
+// stores the same values, so nothing here may depend on how a dataset is read
+// or how a run is executed.
+package datasetvo
 
 import (
 	"encoding/json"
