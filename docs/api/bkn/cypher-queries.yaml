@@ -175,8 +175,12 @@ components:
 
             A condition compares a property with =, <>, <, >, <= or >= against a literal or a
             parameter, or tests it with IN [ ... ], IN $list (the whole list as one parameter),
-            IS NULL or IS NOT NULL. Conditions combine
-            with AND, OR and NOT, and parentheses group them. XOR is not supported.
+            IS NULL or IS NOT NULL. A string property can also be matched with STARTS WITH,
+            ENDS WITH or CONTAINS against a string literal or parameter: the match is a literal
+            substring match (% and _ are not wildcards), a null property never matches, case
+            sensitivity follows the column collation, and using them on a non-string property
+            is refused with 400. Conditions combine with AND, OR and NOT, and parentheses group
+            them. XOR is not supported.
 
             Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
             count(*). Cypher has no GROUP BY: aggregating anything groups by everything else

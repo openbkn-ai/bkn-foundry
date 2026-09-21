@@ -26,6 +26,11 @@ const maxSemanticDescriptorBytes = 64 << 10
 // server failure.
 var ErrSemanticDescriptorTooLarge = errors.New("semantic query descriptor too large")
 
+// semanticStringMatchOperators names the string predicates in the descriptor.
+var semanticStringMatchOperators = map[StringMatchOperator]string{
+	StartsWith: "starts_with", EndsWith: "ends_with", Contains: "contains",
+}
+
 var simpleJSONPathField = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // SemanticQueryDescriptor is the bounded ontology plan captured after a
@@ -226,6 +231,17 @@ func appendSemanticPredicates(descriptor *SemanticQueryDescriptor, plan *Plan, p
 		descriptor.Predicates = append(descriptor.Predicates, SemanticQueryPredicate{
 			PropertyRef: semanticPropertyRef(plan, value.Table, value.Property),
 			Operator:    operator, InputPointer: pointer, ValueHashes: hashes, LogicalPath: path,
+		})
+	case PlanStringMatch:
+		operator, ok := semanticStringMatchOperators[value.Operator]
+		if !ok {
+			return fmt.Errorf("unsupported semantic string predicate %q", value.Operator)
+		}
+		descriptor.Predicates = append(descriptor.Predicates, SemanticQueryPredicate{
+			PropertyRef: semanticPropertyRef(plan, value.Table, value.Property),
+			Operator:    operator, InputPointer: value.InputPointer,
+			ValueHashes: []string{semanticLiteralHash(Literal{Kind: LiteralString, String: value.Value})},
+			LogicalPath: path,
 		})
 	case PlanNegation:
 		return appendSemanticPredicates(descriptor, plan, value.Operand, semanticPath(path, "NOT", 0))

@@ -8,8 +8,10 @@ package cypher
 
 import (
 	"fmt"
+	"strings"
 
 	"bkn-backend/interfaces"
+	dtype "bkn-backend/interfaces/data_type"
 )
 
 // The planner turns an accepted query plus the model into the shape of one
@@ -158,6 +160,20 @@ type PlanMembership struct {
 }
 
 func (PlanMembership) planPredicate() {}
+
+// PlanStringMatch is STARTS WITH, ENDS WITH or CONTAINS against a resolved
+// string. The value is kept as written; turning it into a LIKE pattern is the
+// generator's job, next to the rest of the escaping.
+type PlanStringMatch struct {
+	Table        int
+	Column       string
+	Property     string
+	Operator     StringMatchOperator
+	Value        string
+	InputPointer string
+}
+
+func (PlanStringMatch) planPredicate() {}
 
 // PlanColumnComparison compares two columns. The analyzer does not produce one
 // -- a query comparing two properties is refused -- but the planner needs it
@@ -621,9 +637,61 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 			Values: values, InputPointers: inputPointers, Negated: node.Negated,
 		}, nil
 
+	case StringMatch:
+		table, column, err := p.resolveProperty(node.Property)
+		if err != nil {
+			return nil, err
+		}
+		if propertyType, known := p.dataPropertyType(table, node.Property.Property); known && !stringMatchable(propertyType) {
+			// MySQL casts a number to text and matches it; PostgreSQL and SQL
+			// Server refuse the statement. Refusing here keeps every data
+			// source to the same answer, and says why.
+			return nil, planErrorf(node.Pos, "%s applies to string properties; %q is %s",
+				node.Operator, node.Property.Property, propertyType)
+		}
+		value, err := p.resolveValue(node.Value, node.Pos)
+		if err != nil {
+			return nil, err
+		}
+		if value.Kind != LiteralString {
+			// Only a parameter gets here with another type: a literal was
+			// checked while the query was read.
+			return nil, planErrorf(value.Pos, "%s takes a string, got %s", node.Operator, value.describe())
+		}
+		return PlanStringMatch{
+			Table: table, Column: column, Property: node.Property.Property,
+			Operator: node.Operator, Value: value.String, InputPointer: operandInputPointer(node.Value),
+		}, nil
+
 	default:
 		return nil, planErrorf(predicate.predicatePosition(), "unsupported predicate %T", predicate)
 	}
+}
+
+// stringMatchTypes are the property types STARTS WITH, ENDS WITH and CONTAINS
+// accept. The shared string-type helper is not used: it leaves out "string",
+// which is what most modelled properties are.
+var stringMatchTypes = map[string]struct{}{
+	dtype.DATATYPE_STRING:  {},
+	dtype.DATATYPE_TEXT:    {},
+	dtype.DATATYPE_KEYWORD: {},
+}
+
+func stringMatchable(propertyType string) bool {
+	_, ok := stringMatchTypes[strings.ToLower(propertyType)]
+	return ok
+}
+
+// dataPropertyType returns the declared type of a data property on the object
+// type bound to table. known is false when the model does not declare one, in
+// which case the data source decides.
+func (p *planner) dataPropertyType(table int, property string) (string, bool) {
+	for _, dp := range p.objectType[table].DataProperties {
+		if dp != nil && dp.Name == property {
+			return dp.Type, dp.Type != ""
+		}
+	}
+	return "", false
 }
 
 func operandInputPointer(value Operand) string {

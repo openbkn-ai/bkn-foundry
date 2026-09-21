@@ -613,6 +613,8 @@ var queriesNamingAmount = []struct {
 	{name: "returned", query: "MATCH (o:Order) RETURN o.amount"},
 	{name: "filtered", query: "MATCH (o:Order) WHERE o.amount > 10 RETURN o.id"},
 	{name: "filtered inline", query: "MATCH (o:Order {amount: 10}) RETURN o.id"},
+	{name: "string-matched", query: "MATCH (o:Order) WHERE o.amount CONTAINS '1' RETURN o.id"},
+	{name: "string-matched under NOT", query: "MATCH (o:Order) WHERE NOT o.amount STARTS WITH '1' RETURN o.id"},
 	{name: "null-checked", query: "MATCH (o:Order) WHERE o.amount IS NULL RETURN o.id"},
 	{name: "sorted", query: "MATCH (o:Order) RETURN o.id ORDER BY o.amount"},
 	{name: "aggregated", query: "MATCH (o:Order) RETURN sum(o.amount) AS total"},
@@ -1117,3 +1119,7 @@ func TestQueryRowFilterGroupsListParameterCondition(t *testing.T) {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
 	}
 }
+
+// A row filter is ANDed onto the caller's condition, so a caller's OR must stay
+// grouped: without the parentheses the filter would bind to one branch only and
+// the other would read rows the filter hides.

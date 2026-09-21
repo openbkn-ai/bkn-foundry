@@ -155,6 +155,27 @@ type Membership struct {
 
 func (m Membership) predicatePosition() Position { return m.Pos }
 
+// StringMatch is STARTS WITH, ENDS WITH or CONTAINS: a property against a
+// string that is matched literally, never as a pattern. Value is a literal or
+// a parameter; that it is a string is checked once the parameter is known.
+type StringMatch struct {
+	Property PropertyRef
+	Operator StringMatchOperator
+	Value    Operand
+	Pos      Position
+}
+
+func (s StringMatch) predicatePosition() Position { return s.Pos }
+
+// StringMatchOperator names one of the three string predicates.
+type StringMatchOperator string
+
+const (
+	StartsWith StringMatchOperator = "STARTS WITH"
+	EndsWith   StringMatchOperator = "ENDS WITH"
+	Contains   StringMatchOperator = "CONTAINS"
+)
+
 // LiteralKind tags which field of Literal carries the value.
 type LiteralKind int
 

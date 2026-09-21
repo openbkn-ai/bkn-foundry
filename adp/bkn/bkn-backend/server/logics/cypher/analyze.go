@@ -806,7 +806,7 @@ func analyzeStringListNullPredicate(ctx parsing.IOC_StringListNullPredicateExpre
 	parentheses grouping) (Predicate, operand, error) {
 
 	if len(ctx.AllOC_StringPredicateExpression()) > 0 {
-		return nil, operand{}, unsupported(ctx, "STARTS WITH, ENDS WITH and CONTAINS")
+		return analyzeStringMatch(ctx)
 	}
 
 	// Parentheses are how a reader groups OR against AND, so a parenthesised
@@ -856,6 +856,56 @@ func analyzeStringListNullPredicate(ctx parsing.IOC_StringListNullPredicateExpre
 	}
 	return Membership{
 		Property: *subject.property, Values: values, ListParameter: listParameter, Pos: positionOf(ctx),
+	}, operand{}, nil
+}
+
+// analyzeStringMatch reads STARTS WITH, ENDS WITH or CONTAINS. The left side
+// has to be a property and the right side a string written in the query or a
+// parameter; a parameter's type is checked when it is resolved.
+func analyzeStringMatch(ctx parsing.IOC_StringListNullPredicateExpressionContext) (Predicate, operand, error) {
+	predicates := ctx.AllOC_StringPredicateExpression()
+	if len(predicates)+len(ctx.AllOC_ListPredicateExpression())+len(ctx.AllOC_NullPredicateExpression()) > 1 {
+		return nil, operand{}, unsupportedf(ctx, "combining string predicates, IN and IS NULL in one term",
+			"write them as separate terms joined by AND")
+	}
+	subject, err := analyzeAddOrSubtractOperand(ctx.OC_AddOrSubtractExpression())
+	if err != nil {
+		return nil, operand{}, err
+	}
+	predicate := predicates[0]
+	operator := Contains
+	switch {
+	case predicate.STARTS() != nil:
+		operator = StartsWith
+	case predicate.ENDS() != nil:
+		operator = EndsWith
+	}
+	if subject.property == nil {
+		return nil, operand{}, unsupportedf(ctx, "this predicate",
+			"%s applies to variable.property", operator)
+	}
+	value, err := analyzeAddOrSubtractOperand(predicate.OC_AddOrSubtractExpression())
+	if err != nil {
+		return nil, operand{}, err
+	}
+	switch {
+	case value.parameter != nil:
+	case value.literal != nil && value.literal.Kind == LiteralString:
+	case value.literal != nil && value.literal.Kind == LiteralNull:
+		return nil, operand{}, unsupportedf(predicate, "matching against null",
+			"%s takes a string; write IS NULL or IS NOT NULL to test for null", operator)
+	case value.literal != nil:
+		return nil, operand{}, unsupportedf(predicate, string(operator)+" against a non-string value",
+			"%s takes a string literal or a parameter, got %s", operator, value.literal.describe())
+	default:
+		return nil, operand{}, unsupportedf(predicate, string(operator)+" against a property",
+			"%s takes a string literal or a parameter", operator)
+	}
+	return StringMatch{
+		Property: *subject.property,
+		Operator: operator,
+		Value:    *value.operand(),
+		Pos:      positionOf(ctx),
 	}, operand{}, nil
 }
 
