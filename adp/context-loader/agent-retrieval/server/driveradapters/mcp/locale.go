@@ -360,6 +360,11 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 		log.Printf("WARN: MCP overlay for %s: cannot marshal localized input schema, serving baseline: %v", toolKey, err)
 		return input, output
 	}
+	// A tool without an output schema has none to translate; marshalling the
+	// missing key would publish the literal null.
+	if len(output) == 0 {
+		return rawInput, output
+	}
 	rawOutput, err := sonic.ConfigStd.Marshal(root["output_schema"])
 	if err != nil {
 		log.Printf("WARN: MCP overlay for %s: cannot marshal localized output schema, serving baseline: %v", toolKey, err)

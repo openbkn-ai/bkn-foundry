@@ -362,3 +362,18 @@ func TestShippedCompactInstructionsStayWithinBudget(t *testing.T) {
 		})
 	}
 }
+
+// A tool without an output schema must stay without one after translation:
+// wrapping and unwrapping it would otherwise turn the absent schema into the
+// JSON literal null, which tools/list then publishes as "outputSchema": null.
+func TestOverlayKeepsAnAbsentOutputSchemaAbsent(t *testing.T) {
+	bundle := buildMCPLocaleBundle("en-US")
+	input := json.RawMessage(`{"type":"object","properties":{"at_id":{"type":"string","description":"行动类 ID"}}}`)
+	translated, output := bundle.OverlaySchemas(toolKeyGetActionInfo, input, nil)
+	if len(output) != 0 {
+		t.Fatalf("output schema = %s, want none", output)
+	}
+	if strings.Contains(string(translated), "行动类") {
+		t.Fatalf("input schema was not translated: %s", translated)
+	}
+}
