@@ -1,0 +1,126 @@
+// Copyright 2026 openbkn.ai
+// Copyright The openbkn.ai Authors.
+//
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
+
+package mcp
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+)
+
+// mcpProfile is one published shape of the MCP server.
+//
+// Every profile assembles the same tools with the same handlers and
+// middlewares; a profile only decides what it publishes and what the server
+// instructions say. Assembling everything and narrowing afterwards keeps
+// verifyDecoratorsLanded meaningful for every profile, and because mcp-go runs
+// tool filters on tools/call as well as tools/list, a tool a profile drops is
+// refused exactly like a tool that does not exist.
+type mcpProfile struct {
+	endpointPath string
+	instructions func(*mcpLocaleBundle) string
+	// published lists the tool names the profile offers. Nil offers every
+	// assembled tool.
+	published map[string]struct{}
+	// inlinePTC registers run_code and run_shell.
+	inlinePTC bool
+}
+
+func (p mcpProfile) filter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
+	out := make([]mcp.Tool, 0, len(p.published))
+	for _, tool := range tools {
+		if _, ok := p.published[tool.Name]; ok {
+			out = append(out, tool)
+		}
+	}
+	return out
+}
+
+// fullProfile is /mcp: every assembled tool, the full instructions and the
+// inline sandbox execution tools.
+var fullProfile = mcpProfile{
+	endpointPath: endpointPath,
+	instructions: (*mcpLocaleBundle).ServerInstructions,
+	inlinePTC:    true,
+}
+
+const compactEndpointPath = "/api/agent-retrieval/v1/mcp-compact"
+
+// compactProfileTools is the fixed tool list of /mcp-compact. It is the same
+// for every connection and every request; only deployment configuration and
+// the caller's authorization change what a caller can use.
+var compactProfileTools = []string{
+	toolKeyStartInteraction,
+	toolKeyFinishInteraction,
+	toolKeyListKnowledgeNetworks,
+	toolKeyGetKnDetail,
+	toolKeySearchSchema,
+	toolKeySearchInstance,
+	toolKeyQueryObjectInstance,
+	toolKeyQueryMetric,
+}
+
+// compactProfile is /mcp-compact: a small fixed tool list for hosts that load
+// every tool definition into the model, with instructions that route only
+// between those tools and no sandbox execution.
+var compactProfile = mcpProfile{
+	endpointPath: compactEndpointPath,
+	instructions: (*mcpLocaleBundle).CompactServerInstructions,
+	published:    toolNameSet(compactProfileTools),
+	inlinePTC:    false,
+}
+
+func toolNameSet(names []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		set[name] = struct{}{}
+	}
+	return set
+}
+
+// CompactProfileEnabledEnv turns on /mcp-compact. It is off by default.
+const CompactProfileEnabledEnv = "MCP_COMPACT_ENABLED"
+
+// CompactProfileEnabled reports whether /mcp-compact is served. Anything but a
+// value strconv.ParseBool reads as true leaves it off.
+func CompactProfileEnabled() bool {
+	enabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(CompactProfileEnabledEnv)))
+	return err == nil && enabled
+}
+
+// NewCompactMCPHandler builds the handler behind /mcp-compact. Build it only
+// when CompactProfileEnabled: it assembles one server per locale, the same
+// start-up cost as the full profile.
+func NewCompactMCPHandler() http.Handler {
+	return newLocalizedMCPHandlerForProfile(bkntrace.NewLifecycleClientFromEnv(), defaultPTCServicePort, compactProfile)
+}
+
+// BuildCompactMCPInfoForLocale describes /mcp-compact: the full catalogue
+// narrowed to the profile's tools, so it agrees with the profile's tools/list.
+// It carries no toolkit_version, because the profile publishes no sandbox
+// execution tools.
+func BuildCompactMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
+	info, err := buildMCPInfoForLocale(endpoint, localeName, false)
+	if err != nil {
+		return nil, err
+	}
+	tools := make([]MCPToolInfo, 0, len(compactProfile.published))
+	for _, tool := range info.Tools {
+		if _, ok := compactProfile.published[tool.Name]; ok {
+			tools = append(tools, tool)
+		}
+	}
+	info.Tools = tools
+	info.ToolCount = len(tools)
+	return info, nil
+}
