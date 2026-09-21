@@ -196,15 +196,3 @@ func TestCompactInfoAgreesWithToolsList(t *testing.T) {
 		})
 	}
 }
-
-func TestCompactProfileEnabledIsOffUnlessSetTrue(t *testing.T) {
-	cases := map[string]bool{"": false, "false": false, "no": false, "1": true, "true": true, " TRUE ": true}
-	for value, want := range cases {
-		t.Run(value, func(t *testing.T) {
-			t.Setenv(CompactProfileEnabledEnv, value)
-			if got := CompactProfileEnabled(); got != want {
-				t.Fatalf("%s=%q: enabled = %v, want %v", CompactProfileEnabledEnv, value, got, want)
-			}
-		})
-	}
-}

@@ -9,9 +9,6 @@ package mcp
 import (
 	"context"
 	"net/http"
-	"os"
-	"strconv"
-	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -88,19 +85,9 @@ func toolNameSet(names []string) map[string]struct{} {
 	return set
 }
 
-// CompactProfileEnabledEnv turns on /mcp-compact. It is off by default.
-const CompactProfileEnabledEnv = "MCP_COMPACT_ENABLED"
-
-// CompactProfileEnabled reports whether /mcp-compact is served. Anything but a
-// value strconv.ParseBool reads as true leaves it off.
-func CompactProfileEnabled() bool {
-	enabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(CompactProfileEnabledEnv)))
-	return err == nil && enabled
-}
-
-// NewCompactMCPHandler builds the handler behind /mcp-compact. Build it only
-// when CompactProfileEnabled: it assembles one server per locale, the same
-// start-up cost as the full profile.
+// NewCompactMCPHandler builds the handler behind /mcp-compact, one server per
+// locale like the full profile. There is no switch: a new URL is opt-in by
+// itself, and /mcp is unaffected by it.
 func NewCompactMCPHandler() http.Handler {
 	return newLocalizedMCPHandlerForProfile(bkntrace.NewLifecycleClientFromEnv(), defaultPTCServicePort, compactProfile)
 }
