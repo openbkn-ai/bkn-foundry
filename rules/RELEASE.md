@@ -87,7 +87,7 @@ vMAJOR.MINOR.PATCH[-PRERELEASE]
 | Rule | Description |
 | --- | --- |
 | Prefix | Must start with `v` |
-| Format | `vX.Y.Z` or `vX.Y.Z-rc.N` |
+| Format | `vX.Y.Z` or `vX.Y.Z-<prerelease>` (for example, `rc.1`, `dev.1`, or `snapshot`) |
 | Signing | GPG-signed tags are recommended |
 
 **Correct Examples:**
@@ -185,10 +185,13 @@ git checkout -b release/1.2.0
 git push origin release/1.2.0
 ```
 
-Branch builds use immutable `X.Y.Z-release.<commit time>.sha<short>` image and
-Chart tags; `main` and feature branches use the same format with their branch
-name in place of `release`. Only a `vX.Y.Z` or `vX.Y.Z-rc*` tag produces an
-explicit release version.
+Service images and Charts use immutable `X.Y.Z-release.<commit time>.sha<short>`
+tags; `main` and feature branches use the same format with their branch name
+in place of `release`. Auxiliary Redis/OpenSearch images use their own fixed
+base versions and commit-qualified tags without a product branch segment;
+product release tags do not automatically trigger their builds. A `vX.Y.Z`
+tag, or a prerelease tag on the same version line such as `vX.Y.Z-rc.1` or
+`vX.Y.Z-dev.1`, produces an explicit release version.
 
 #### 2. Code Freeze
 

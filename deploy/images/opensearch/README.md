@@ -63,10 +63,10 @@ snapshot remains stable until vega-backend is restarted.
 ## Build & publish
 
 CI (`.github/workflows/release-deploy-opensearch.yml`) builds
-`linux/amd64,linux/arm64` on any push touching this directory and publishes to
-GHCR plus the Huawei SWR mirror as
-`opensearch:2.19.4-<branch>.<committime>.sha<short>` (base `2.19.4` = the
-OpenSearch version, not the repo VERSION).
+`linux/amd64,linux/arm64` when the Dockerfile or build workflow changes on a
+branch and publishes to GHCR plus the Huawei SWR mirror as
+`opensearch:2.19.4-<committime>.sha<short>` (base `2.19.4` = the OpenSearch
+version, not the repo VERSION; the tag does not depend on the product branch).
 
 This image is the installer default. `deploy/scripts/lib/common.sh` pins
 `OPENSEARCH_IMAGE_REPOSITORY=opensearch` and

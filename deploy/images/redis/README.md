@@ -28,8 +28,8 @@ kind, arm64 k3s). This directory rebuilds the identical image multi-arch.
 CI (`.github/workflows/release-deploy-redis.yml`) builds
 `linux/amd64,linux/arm64` on any push touching this directory and publishes to
 GHCR plus the Huawei SWR mirror as
-`redis:1.11.2-<branch>.<committime>.sha<short>` (base `1.11.2` = chart
-version, not the repo VERSION).
+`redis:1.11.2-<committime>.sha<short>` (base `1.11.2` = chart version,
+not the repo VERSION; the tag does not depend on the product branch).
 
 Consumed via `REDIS_IMAGE_TAG` (default in `deploy/scripts/lib/common.sh`).
 
