@@ -41,7 +41,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/semantic_understanding_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/user_mgmt"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/driveradapters"
-	extensionconnector "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/extension/connector"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/worker"
@@ -164,6 +163,7 @@ func Boot(_ Options) (*App, error) {
 
 	gate, refresh := entitlement.GateWithRunner()
 	entitlement.SetGate(gate)
+	factory.RegisterCoreLocalConnectors()
 
 	return &App{
 		appSetting:    appSetting,
@@ -173,10 +173,10 @@ func Boot(_ Options) (*App, error) {
 	}, nil
 }
 
-// Run freezes extension assembly, materializes the connector factory, then
-// starts workers and the HTTP service.
+// Run freezes connector registration assembly, materializes the connector
+// factory, then starts workers and the HTTP service.
 func (server *App) Run() error {
-	extensionconnector.Freeze()
+	factory.FreezeLocalConnectorRegistrations()
 	if server.refresh != nil {
 		go server.refresh(server.stop)
 	}

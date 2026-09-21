@@ -22,6 +22,11 @@ import (
 
 func TestConnectorFactoryInitLocalConnectors(t *testing.T) {
 	t.Run("connector factory init local connectors", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		ResetLocalConnectorRegistrationsForTest()
+		t.Cleanup(resetLocalConnectorRegistrationsForTest)
+		RegisterCoreLocalConnectors()
+
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
 
 		cf.initLocalConnectors()
@@ -280,6 +285,11 @@ func TestConnectorFactoryValidateConnectorTypeRegistration(t *testing.T) {
 	})
 
 	t.Run("supports mysql registration through mariadb implementation", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		ResetLocalConnectorRegistrationsForTest()
+		t.Cleanup(resetLocalConnectorRegistrationsForTest)
+		RegisterCoreLocalConnectors()
+
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
 		cf.initLocalConnectors()
 		request := &interfaces.ConnectorType{
