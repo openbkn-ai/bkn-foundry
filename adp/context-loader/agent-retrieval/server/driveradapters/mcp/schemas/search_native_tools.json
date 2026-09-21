@@ -1,0 +1,23 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500,
+        "description": "要做的事，一句话描述，中英文均可，例如「沿订单到明细的关系取实例」。"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "default": 3,
+        "description": "最多返回几个候选，默认 3，上限 5。"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  }
+}

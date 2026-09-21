@@ -116,6 +116,11 @@ func buildMCPInfoForLocale(endpoint, localeName string, withToolkitVersion bool)
 		if key == toolKeyExecuteSkill && !knskills.ExecuteEnabled() {
 			continue
 		}
+		// The full profile never assembles the gateway, and the sandbox toolkit is
+		// rendered from this list, so a gateway tool here would reach both.
+		if _, gateway := gatewayTools[key]; gateway {
+			continue
+		}
 		m := locale.ToolMeta(key)
 		in, out := tryLoadToolSchemas(locale, key)
 		if d, ok := mcptool.DecoratorFor(key); ok && d.Allowed() {

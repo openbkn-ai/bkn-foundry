@@ -241,5 +241,20 @@
     "gateway": {
       "boundary": "This entry cannot run the functions and external tools mounted on a network; tell the user to use the full entry when that is needed."
     }
+  },
+  "search_native_tools": {
+    "title": "Find Query Tools",
+    "group_title": "On-demand Queries",
+    "description": "Find the right tool for a task among the read-only query tools this entry offers on demand. Returns up to 5 candidates, each with its name, purpose, when to use it, when not to, and the next step. Candidates are not tools this entry publishes directly and cannot be called by name: get the arguments schema with describe_native_tool, then run the tool through execute_native_read_tool; when you already know the name and arguments, run it directly. Tools this entry publishes directly are not searched. When the task needs something this entry does not offer (SQL, Cypher, code execution, action execution, skills and mounted capabilities), the result says so; tell the user to use the full entry as it explains."
+  },
+  "describe_native_tool": {
+    "title": "Describe Query Tool",
+    "group_title": "On-demand Queries",
+    "description": "Describe one on-demand tool: its purpose, its executable arguments schema, a call template that passes that schema, and hints about the output fields; with include_output_schema=true the full output schema is added. Take name from the results of search_native_tools. The executable arguments schema has no bkn_context; execute_native_read_tool carries it over from the outer call."
+  },
+  "execute_native_read_tool": {
+    "title": "Run Query Tool",
+    "group_title": "On-demand Queries",
+    "description": "Run one on-demand read-only tool: name is the target tool, and arguments follows the executable arguments schema returned by describe_native_tool, without bkn_context. When the arguments are invalid, the error carries the target's executable arguments schema and the failing fields, so you can fix them and retry. Only the read-only tools search_native_tools can find are run here; call the tools this entry publishes directly yourself, and anything this entry does not offer returns an explanation."
   }
 }

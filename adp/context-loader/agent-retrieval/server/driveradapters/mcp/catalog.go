@@ -18,6 +18,20 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 )
 
+// The gateway tools exist only on the compact profile. The full profile
+// publishes every native tool itself and has nothing to reach through them.
+const (
+	toolKeySearchNativeTools     = "search_native_tools"
+	toolKeyDescribeNativeTool    = "describe_native_tool"
+	toolKeyExecuteNativeReadTool = "execute_native_read_tool"
+)
+
+var gatewayTools = toolNameSet([]string{
+	toolKeySearchNativeTools,
+	toolKeyDescribeNativeTool,
+	toolKeyExecuteNativeReadTool,
+})
+
 // longTailTargets are the native tools the compact profile reaches only
 // through its gateway (search, describe, execute). Each one is admitted
 // because it reads and has no risk of its own that a host would want to

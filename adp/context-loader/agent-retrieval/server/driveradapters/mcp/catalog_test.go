@@ -256,3 +256,82 @@ func TestLocalizedGatewayCardInheritsWhatItDoesNotRestate(t *testing.T) {
 		t.Fatalf("overlay without a baseline card = %+v", got)
 	}
 }
+
+// The gateway tools are ordinary business tools: complete metadata in every
+// locale, a schema that compiles, bkn_context required like every managed
+// tool, and neither response_format nor an output schema, since the compact
+// profile publishes neither.
+func TestGatewayToolsAreDefinedInEveryLocale(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		bundle := buildMCPLocaleBundle(locale)
+		for name := range gatewayTools {
+			meta := bundle.ToolMeta(name)
+			if meta.Name != name || meta.Title == "" || meta.Description == "" || meta.Group == "" {
+				t.Errorf("%s %s: incomplete metadata %+v", locale, name, meta)
+			}
+			input, output := tryLoadToolSchemas(bundle, name)
+			if len(output) != 0 {
+				t.Errorf("%s %s: declares an output schema", locale, name)
+			}
+			var schema struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+				Required   []string                   `json:"required"`
+			}
+			if err := json.Unmarshal(input, &schema); err != nil {
+				t.Fatalf("%s %s: %v", locale, name, err)
+			}
+			if _, ok := schema.Properties["bkn_context"]; !ok || !slices.Contains(schema.Required, "bkn_context") {
+				t.Errorf("%s %s: bkn_context is not required", locale, name)
+			}
+			if _, ok := schema.Properties["response_format"]; ok {
+				t.Errorf("%s %s: offers response_format", locale, name)
+			}
+			if _, err := compileExecutableSchema(input); err != nil {
+				t.Errorf("%s %s: input schema does not compile: %v", locale, name, err)
+			}
+		}
+	}
+}
+
+// The full profile publishes every native tool itself. A gateway tool in its
+// catalogue would advertise a tool it cannot call, and the sandbox toolkit,
+// rendered from that catalogue, would gain a stub for it.
+func TestFullProfileLeavesTheGatewayOut(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		info, err := buildMCPInfoForLocale("", locale, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tool := range info.Tools {
+			if _, gateway := gatewayTools[tool.Name]; gateway {
+				t.Errorf("%s: /mcp/info lists %s", locale, tool.Name)
+			}
+		}
+		srv, _ := newMCPServerForLocale(nil, locale)
+		for _, name := range listedToolNames(t, srv) {
+			if _, gateway := gatewayTools[name]; gateway {
+				t.Errorf("%s: tools/list on the full profile lists %s", locale, name)
+			}
+		}
+	}
+	toolkit, err := BuildPTCToolkit("", defaultPTCServicePort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range gatewayTools {
+		if strings.Contains(toolkit.Stub, name) || strings.Contains(toolkit.Digest, name) {
+			t.Errorf("the sandbox toolkit mentions %s", name)
+		}
+	}
+}
+
+// execute_native_read_tool advertises itself as read-only, which holds only
+// while every target it can reach is read-only.
+func TestEveryLongTailTargetIsReadOnly(t *testing.T) {
+	for _, name := range longTailTargets {
+		hint := annotationFor(name).ReadOnlyHint
+		if hint == nil || !*hint {
+			t.Errorf("%s is a gateway target but not annotated read-only", name)
+		}
+	}
+}

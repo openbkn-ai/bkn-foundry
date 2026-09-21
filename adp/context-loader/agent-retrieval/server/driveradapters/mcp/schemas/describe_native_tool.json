@@ -1,0 +1,20 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "目标工具名，取自 search_native_tools 的结果。"
+      },
+      "include_output_schema": {
+        "type": "boolean",
+        "default": false,
+        "description": "是否附上目标的完整输出 schema，默认不附。返回里已有输出字段提示，只需知道返回哪些字段时不必打开。"
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+}

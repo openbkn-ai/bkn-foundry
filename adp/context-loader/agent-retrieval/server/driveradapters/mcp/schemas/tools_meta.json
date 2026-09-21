@@ -614,5 +614,29 @@
         "function"
       ]
     }
+  },
+  "search_native_tools": {
+    "name": "search_native_tools",
+    "title": "查找可用查询能力",
+    "group": "gateway",
+    "group_title": "按需查询",
+    "order": 710,
+    "description": "在本入口按需提供的只读查询工具中，按要做的事查找合适的工具，返回最多 5 个候选：名称、用途、适用与不适用的场景和下一步。候选不是本入口直接公布的工具，不能按名称直接调用：先用 describe_native_tool 取参数 schema，再经 execute_native_read_tool 执行；已知名称和参数时可以直接执行。本入口直接公布的工具不在搜索范围内。要做的事本入口不提供时（SQL、Cypher、代码执行、执行行动、技能和挂载能力），返回相应说明，请按说明告知用户改用完整入口。"
+  },
+  "describe_native_tool": {
+    "name": "describe_native_tool",
+    "title": "读取查询能力说明",
+    "group": "gateway",
+    "group_title": "按需查询",
+    "order": 720,
+    "description": "返回一个按需工具的说明：用途、可执行参数 schema、一份通过该 schema 校验的调用模板和输出字段提示；include_output_schema=true 时再附完整输出 schema。name 取自 search_native_tools 的结果。可执行参数 schema 不含 bkn_context，执行时由 execute_native_read_tool 从外层带入。"
+  },
+  "execute_native_read_tool": {
+    "name": "execute_native_read_tool",
+    "title": "执行按需查询",
+    "group": "gateway",
+    "group_title": "按需查询",
+    "order": 730,
+    "description": "执行一个按需只读工具：name 是目标工具名，arguments 按 describe_native_tool 返回的可执行参数 schema 填写，不要放 bkn_context。参数不合法时，错误中附目标的可执行参数 schema 和出错字段，可据此修正后重试。只能执行 search_native_tools 能找到的只读工具；本入口直接公布的工具请直接调用，本入口不提供的能力会返回相应说明。"
   }
 }
