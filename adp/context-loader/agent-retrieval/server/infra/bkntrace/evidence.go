@@ -1046,11 +1046,24 @@ func snapshotEvidenceOutcome(ctx context.Context) (bool, bool, []string, []Busin
 	return outcome.attempted, outcome.durable, append([]string(nil), outcome.eventIDs...), append([]BusinessRef(nil), outcome.businessRefs...)
 }
 
+// postBatchWithRetry delivers every event in the batch, resuming after the last
+// one Trace Core accepted.
+//
+// Each attempt used to start again from the first event, so a batch that failed
+// on its third event re-sent the first two on every retry - more load on the
+// store that was already too slow to answer. A rejection Core marks as not
+// retryable ends the attempt as well: the same event sent again gets the same
+// answer, which is how the artifact path already behaves.
 func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {
 	var err error
+	next := 0
 	for attempt := 0; attempt < 3; attempt++ {
-		if err = postBatch(ingestURL, timeout, payload); err == nil {
+		if next, err = postEventsFrom(ingestURL, timeout, payload, next); err == nil {
 			return nil
+		}
+		var coreErr *CoreHTTPError
+		if errors.As(err, &coreErr) && !coreErr.Retryable() {
+			return err
 		}
 		if attempt < 2 {
 			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
@@ -1060,10 +1073,18 @@ func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) 
 }
 
 func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
-	for _, event := range payload.Events {
+	_, err := postEventsFrom(ingestURL, timeout, payload, 0)
+	return err
+}
+
+// postEventsFrom sends payload.Events[start:] in order. It returns the index of
+// the first event Core did not accept, or len(payload.Events) once all landed.
+func postEventsFrom(ingestURL string, timeout time.Duration, payload batch, start int) (int, error) {
+	for index := start; index < len(payload.Events); index++ {
+		event := payload.Events[index]
 		requestPayload, err := trace30EvidenceEvent(payload.Trace, event, payload.DeclaredBusinessRefs)
 		if err != nil {
-			return err
+			return index, err
 		}
 		// Same config that hashed the envelope. Envelope holds the live Event map rather than the
 		// bytes that were hashed, so marshalling it here with a different config ships bytes the
@@ -1073,30 +1094,30 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 		// every event is rejected exactly as in #1098.
 		body, err := sonic.ConfigStd.Marshal(requestPayload)
 		if err != nil {
-			return err
+			return index, err
 		}
 		postCtx, cancel := context.WithTimeout(context.Background(), timeout)
 		req, err := http.NewRequestWithContext(postCtx, http.MethodPost, ingestURL, bytes.NewReader(body))
 		if err != nil {
 			cancel()
-			return err
+			return index, err
 		}
 		setEvidenceIngestHeaders(req.Header, payload.Trace)
 
 		resp, err := evidenceHTTPClient.Do(req)
 		if err != nil {
 			cancel()
-			return err
+			return index, err
 		}
 		if resp.StatusCode >= http.StatusBadRequest {
 			err = coreHTTPError(resp)
 			cancel()
-			return err
+			return index, err
 		}
 		_ = resp.Body.Close()
 		cancel()
 	}
-	return nil
+	return len(payload.Events), nil
 }
 
 func coreHTTPError(resp *http.Response) error {

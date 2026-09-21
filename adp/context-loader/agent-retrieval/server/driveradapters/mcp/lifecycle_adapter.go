@@ -22,6 +22,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 )
 
 const (
@@ -231,7 +232,7 @@ func handleLifecycleTool(
 		var err error
 		ctx, err = bkntrace.EnsureTraceCorrelation(ctx)
 		if err != nil {
-			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			return lifecycleUnavailable(ctx, name, "trace_correlation", err), nil
 		}
 		hints, hintErr := hostLifecycleHintsFromRequest(req)
 		if hintErr != nil {
@@ -289,7 +290,7 @@ func handleLifecycleTool(
 				ctx, http.MethodGet, "/interactions/"+url.PathEscape(interactionID), nil, &current,
 			)
 			if err != nil {
-				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+				return lifecycleUnavailable(ctx, name, "read_interaction", err), nil
 			}
 			if apiErr != nil {
 				return lifecycleToolError(lifecycleError(*apiErr)), nil
@@ -310,7 +311,7 @@ func handleLifecycleTool(
 					bkntrace.InteractionArtifactResult, args["answer"],
 				)
 				if err != nil {
-					return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+					return lifecycleUnavailable(ctx, name, "answer_artifact", err), nil
 				}
 				args["answer_artifact_ref"] = artifactRef
 			}
@@ -319,7 +320,7 @@ func handleLifecycleTool(
 		target := &bkntrace.Interaction{}
 		apiErr, err := client.Call(ctx, method, path, body, target)
 		if err != nil {
-			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			return lifecycleUnavailable(ctx, name, "core_call", err), nil
 		}
 		if apiErr != nil {
 			return lifecycleToolError(lifecycleError(*apiErr)), nil
@@ -330,7 +331,23 @@ func handleLifecycleTool(
 				ctx, target.ConversationID, target.InteractionID,
 				bkntrace.InteractionArtifactQuestion, args["question"],
 			); err != nil {
-				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+				// Core has already committed the interaction, so failing here hands the
+				// caller an error about an interaction it holds no id for. Its retry
+				// mints a fresh idempotency key: a continued conversation is then
+				// refused with interaction_in_progress, and a new one leaves this
+				// interaction active until its lease lapses. A transient evidence-store
+				// fault costs only the question text in the evidence summary - nothing
+				// in the lifecycle reads it - so the ids go back and the fault is
+				// logged. A non-retryable fault is a deployment defect the operator
+				// has to see, and still fails the call.
+				value := lifecycleAvailabilityError(err)
+				if !value.Retryable {
+					return lifecycleUnavailable(ctx, name, "question_artifact", err), nil
+				}
+				logger.DefaultLogger().WithContext(ctx).Warnf(
+					"[BKN Trace] lifecycle degraded: tool=%s stage=question_artifact code=%s interaction_id=%s: %v",
+					name, value.Code, target.InteractionID, err,
+				)
 			}
 		}
 		return lifecycleSuccessResult(agentLifecycleView(name, target))
@@ -350,13 +367,13 @@ func ensureManagedConversation(
 		var err error
 		externalKey, err = newManagedConversationKey()
 		if err != nil {
-			return bkntrace.Conversation{}, lifecycleToolError(lifecycleAvailabilityError(err))
+			return bkntrace.Conversation{}, lifecycleUnavailable(ctx, toolKeyStartInteraction, "ensure_conversation", err)
 		}
 	}
 	idempotencyKey := "mcp-conversation:" + strings.TrimPrefix(hashBytes([]byte(externalKey)), "sha256:")[:32]
 	conversation, apiErr, err := client.EnsureCurrentConversation(ctx, externalKey, idempotencyKey)
 	if err != nil {
-		return bkntrace.Conversation{}, lifecycleToolError(lifecycleAvailabilityError(err))
+		return bkntrace.Conversation{}, lifecycleUnavailable(ctx, toolKeyStartInteraction, "ensure_conversation", err)
 	}
 	if apiErr != nil {
 		return bkntrace.Conversation{}, lifecycleToolError(lifecycleError(*apiErr))

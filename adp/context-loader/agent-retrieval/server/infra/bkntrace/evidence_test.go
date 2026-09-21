@@ -971,6 +971,58 @@ func TestPostBatchWithRetryTreatsNon2xxAsFailure(t *testing.T) {
 	}
 }
 
+func TestPostBatchWithRetryResumesAfterLastAcceptedEvent(t *testing.T) {
+	previous := evidenceHTTPClient
+	t.Cleanup(func() { evidenceHTTPClient = previous })
+	var sent []string
+	failedOnce := false
+	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		var body struct {
+			EventID string `json:"event_id"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Fatalf("decode event: %v", err)
+		}
+		sent = append(sent, body.EventID)
+		status := http.StatusAccepted
+		if body.EventID == "evt-2" && !failedOnce {
+			failedOnce = true
+			status = http.StatusServiceUnavailable
+		}
+		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})}
+
+	payload := batch{Events: []Event{{"event_id": "evt-1"}, {"event_id": "evt-2"}, {"event_id": "evt-3"}}}
+	if err := postBatchWithRetry("http://trace.local", time.Second, payload); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"evt-1", "evt-2", "evt-2", "evt-3"}
+	if strings.Join(sent, ",") != strings.Join(want, ",") {
+		t.Fatalf("sent %v, want %v: a retry must not re-send events Core already accepted", sent, want)
+	}
+}
+
+func TestPostBatchWithRetryStopsOnNonRetryableRejection(t *testing.T) {
+	previous := evidenceHTTPClient
+	t.Cleanup(func() { evidenceHTTPClient = previous })
+	var calls atomic.Int32
+	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_event","message":"rejected"}}`)),
+		}, nil
+	})}
+
+	err := postBatchWithRetry("http://trace.local", time.Second, batch{Events: []Event{{}}})
+	if err == nil || !strings.Contains(err.Error(), "invalid_event") {
+		t.Fatalf("err = %v, want the non-retryable Core rejection", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("calls=%d, want 1: a non-retryable rejection must not be retried", calls.Load())
+	}
+}
+
 func TestPostBatchPreservesSafeCoreErrorDetails(t *testing.T) {
 	previous := evidenceHTTPClient
 	t.Cleanup(func() { evidenceHTTPClient = previous })

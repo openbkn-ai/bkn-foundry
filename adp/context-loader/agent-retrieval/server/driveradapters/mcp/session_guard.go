@@ -145,7 +145,7 @@ func guardBusinessToolCallWithCompletion(
 		}
 		ensured, lifecycleErr, err := ensure(ctx, intent)
 		if err != nil {
-			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			return lifecycleUnavailable(ctx, req.Params.Name, "ensure_operation", err), nil
 		} else if lifecycleErr != nil {
 			return lifecycleToolError(*lifecycleErr), nil
 		}
@@ -380,6 +380,22 @@ type operationFailure struct {
 	Message string `json:"message"`
 	Stage   string `json:"stage"`
 	Result  any    `json:"result,omitempty"`
+}
+
+// lifecycleUnavailable answers a Trace Core call that failed in transport or on
+// the server, and logs it on the way out.
+//
+// These paths used to hand the error to the caller and nothing else, so an
+// outage reached every agent while this service kept no record of it: nothing
+// said how often it happened, at which step, or with which code. The tool,
+// stage and code fields keep a fixed shape so a log query can group on them.
+func lifecycleUnavailable(ctx context.Context, toolName, stage string, err error) *mcpsdk.CallToolResult {
+	value := lifecycleAvailabilityError(err)
+	logger.DefaultLogger().WithContext(ctx).Warnf(
+		"[BKN Trace] lifecycle unavailable: tool=%s stage=%s code=%s: %v",
+		toolName, stage, value.Code, err,
+	)
+	return lifecycleToolError(value)
 }
 
 func lifecycleAvailabilityError(err error) lifecycleError {
