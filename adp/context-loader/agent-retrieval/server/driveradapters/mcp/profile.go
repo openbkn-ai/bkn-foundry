@@ -9,6 +9,7 @@ package mcp
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -31,6 +32,9 @@ type mcpProfile struct {
 	published map[string]struct{}
 	// inlinePTC registers run_code and run_shell.
 	inlinePTC bool
+	// gateway registers search_native_tools, describe_native_tool and
+	// execute_native_read_tool over the long-tail targets.
+	gateway bool
 }
 
 func (p mcpProfile) filter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
@@ -69,12 +73,13 @@ var compactProfileTools = []string{
 
 // compactProfile is /mcp-compact: a small fixed tool list for hosts that load
 // every tool definition into the model, with instructions that route only
-// between those tools and no sandbox execution.
+// between those tools, the gateway to the long tail, and no sandbox execution.
 var compactProfile = mcpProfile{
 	endpointPath: compactEndpointPath,
 	instructions: (*mcpLocaleBundle).CompactServerInstructions,
-	published:    toolNameSet(compactProfileTools),
+	published:    toolNameSet(append(slices.Clone(compactProfileTools), gatewayToolOrder...)),
 	inlinePTC:    false,
+	gateway:      true,
 }
 
 func toolNameSet(names []string) map[string]struct{} {
@@ -93,9 +98,9 @@ func NewCompactMCPHandler() http.Handler {
 }
 
 // BuildCompactMCPInfoForLocale describes /mcp-compact: the full catalogue
-// narrowed to the profile's tools, so it agrees with the profile's tools/list.
-// It carries no toolkit_version, because the profile publishes no sandbox
-// execution tools.
+// narrowed to the profile's tools, plus the gateway tools the full catalogue
+// leaves out, so it agrees with the profile's tools/list. It carries no
+// toolkit_version, because the profile publishes no sandbox execution tools.
 func BuildCompactMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 	info, err := buildMCPInfoForLocale(endpoint, localeName, false)
 	if err != nil {
@@ -106,6 +111,15 @@ func BuildCompactMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error)
 		if _, ok := compactProfile.published[tool.Name]; ok {
 			tools = append(tools, tool)
 		}
+	}
+	locale := loadMCPLocaleBundle(localeName)
+	for _, key := range gatewayToolOrder {
+		meta := locale.ToolMeta(key)
+		input, output := tryLoadToolSchemas(locale, key)
+		tools = append(tools, MCPToolInfo{
+			Name: meta.Name, Title: meta.Title, Group: meta.Group, GroupTitle: meta.GroupTitle,
+			Order: meta.Order, Description: meta.Description, InputSchema: input, OutputSchema: output,
+		})
 	}
 	info.Tools = tools
 	info.ToolCount = len(tools)

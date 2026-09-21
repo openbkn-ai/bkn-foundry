@@ -66,9 +66,16 @@ func compactServer(t *testing.T, locale string) *server.MCPServer {
 	return srv
 }
 
+// The list is written out rather than derived, so changing what the profile
+// publishes has to change this test too.
 func TestCompactProfilePublishesExactlyItsToolList(t *testing.T) {
-	want := slices.Clone(compactProfileTools)
-	slices.Sort(want)
+	want := []string{
+		"bkn_finish_interaction", "bkn_start_interaction",
+		"describe_native_tool", "execute_native_read_tool",
+		"get_kn_detail", "list_knowledge_networks",
+		"query_metric", "query_object_instance",
+		"search_instance", "search_native_tools", "search_schema",
+	}
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		t.Run(locale, func(t *testing.T) {
 			srv := compactServer(t, locale)

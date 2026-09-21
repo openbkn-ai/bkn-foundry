@@ -240,6 +240,7 @@ func newMCPServerForProfile(
 	// the same, so an enterprise tool cannot shadow one of them — mcp-go's
 	// AddTool replaces a same-named tool silently, and these are core capability.
 	b.claimLifecycleNames()
+	b.claimGatewayNames()
 
 	b.addExtras()
 	b.verifyDecoratorsLanded()
@@ -276,6 +277,9 @@ func newMCPServerForProfile(
 	b.attach(mcpServer)
 	if profile.inlinePTC {
 		registerInlinePTCTools(mcpServer, localeBundle, locale, sandboxPort)
+	}
+	if profile.gateway {
+		registerGatewayTools(mcpServer, b, lifecycleClient)
 	}
 	return mcpServer, b
 }

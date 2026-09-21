@@ -14,6 +14,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/openbkn-ai/licverify"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 type intentCase struct {
@@ -215,6 +220,10 @@ func TestDescribeReturnsTheExecutableSchemaAndATemplate(t *testing.T) {
 }
 
 func TestDescribeRefusesWhatTheGatewayCannotRun(t *testing.T) {
+	// A licensed enterprise tool is real and callable on the full profile, yet
+	// never a gateway target.
+	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
+	mcptool.Register(extraTool("probe_context", "probe_context"))
 	catalog := catalogForLocale(t, "zh-CN")
 	refusal := func(name string) *gatewayRefusal {
 		_, err := catalog.describe(context.Background(), name, false)
@@ -230,11 +239,14 @@ func TestDescribeRefusesWhatTheGatewayCannotRun(t *testing.T) {
 	if r := refusal(toolKeySearchSchema); r.Code != refusalPublishedDirectly {
 		t.Errorf("search_schema: %+v, want published_directly", r)
 	}
+	if r := refusal(toolKeyExecuteNativeReadTool); r.Code != refusalPublishedDirectly {
+		t.Errorf("execute_native_read_tool: %+v, want published_directly", r)
+	}
 	// An unknown name and a real tool the gateway does not admit must look
 	// alike, so the answer reveals nothing about what exists.
-	unknown, hidden := refusal("no_such_tool"), refusal(toolKeyExecuteNativeReadTool)
+	unknown, hidden := refusal("no_such_tool"), refusal("probe_context")
 	if unknown.Code != refusalUnknownTool || hidden.Code != refusalUnknownTool ||
-		strings.ReplaceAll(unknown.Message, "no_such_tool", "X") != strings.ReplaceAll(hidden.Message, toolKeyExecuteNativeReadTool, "X") {
+		strings.ReplaceAll(unknown.Message, "no_such_tool", "X") != strings.ReplaceAll(hidden.Message, "probe_context", "X") {
 		t.Errorf("unknown %+v and not admitted %+v differ", unknown, hidden)
 	}
 }

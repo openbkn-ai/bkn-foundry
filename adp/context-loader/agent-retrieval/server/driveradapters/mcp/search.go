@@ -355,7 +355,7 @@ func (c *nativeCatalog) resolve(ctx context.Context, name string) (targetDefinit
 		}
 		return targetDefinition{}, &gatewayRefusal{Code: refusalNotInProfile, Name: name, Message: message}
 	}
-	if slices.Contains(compactProfileTools, name) {
+	if _, published := compactProfile.published[name]; published {
 		return targetDefinition{}, &gatewayRefusal{
 			Code: refusalPublishedDirectly, Name: name,
 			Message: fmt.Sprintf("%s is published on this entry; call it directly.", name),

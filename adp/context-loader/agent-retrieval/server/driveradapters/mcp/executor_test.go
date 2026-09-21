@@ -180,7 +180,7 @@ func TestExecutorRefusesWhatItCannotRun(t *testing.T) {
 		toolKeyRunSQL:                refusalNotInProfile,
 		toolKeySearchSchema:          refusalPublishedDirectly,
 		"no_such_tool":               refusalUnknownTool,
-		toolKeyExecuteNativeReadTool: refusalUnknownTool,
+		toolKeyExecuteNativeReadTool: refusalPublishedDirectly,
 	} {
 		refusal := refusalOf(t, h.call(t, `{"name":"`+name+`","arguments":{},"bkn_context":`+testBKNContext+`}`))
 		if refusal["error"] != code {
