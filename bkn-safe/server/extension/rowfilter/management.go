@@ -38,7 +38,7 @@ type ManagementServices interface {
 	AuthorizeRoleRead(context.Context, string) (bool, error)
 	AuthorizeRoleWrite(context.Context, string) (bool, error)
 	ResolveCaller(context.Context, string) (Caller, error)
-	ResolvePublishedObjectType(context.Context, string) (PublishedObjectType, error)
+	ResolvePublishedObjectType(ctx context.Context, operatorID, objectTypeRef string) (PublishedObjectType, error)
 }
 
 type OperatorIDResolver func(*http.Request) (string, bool)
@@ -90,6 +90,14 @@ type managementOperatorContextKey struct{}
 
 func operatorIDFromRequest(request *http.Request) (string, bool) {
 	operatorID, ok := request.Context().Value(managementOperatorContextKey{}).(string)
+	return operatorID, ok && operatorID != ""
+}
+
+// ManagementOperatorID reads the authenticated operator attached by
+// MountManagement. Core-to-EE adapters use it to preserve the operator's
+// identity when a management request must consult another Core service.
+func ManagementOperatorID(ctx context.Context) (string, bool) {
+	operatorID, ok := ctx.Value(managementOperatorContextKey{}).(string)
 	return operatorID, ok && operatorID != ""
 }
 

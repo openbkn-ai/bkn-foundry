@@ -34,7 +34,7 @@ func (managementServicesStub) AuthorizeRoleWrite(context.Context, string) (bool,
 func (managementServicesStub) ResolveCaller(context.Context, string) (Caller, error) {
 	return Caller{}, nil
 }
-func (managementServicesStub) ResolvePublishedObjectType(context.Context, string) (PublishedObjectType, error) {
+func (managementServicesStub) ResolvePublishedObjectType(context.Context, string, string) (PublishedObjectType, error) {
 	return PublishedObjectType{}, nil
 }
 
@@ -49,6 +49,11 @@ func managementTestRouter(t *testing.T, enterprise bool) *gin.Engine {
 				operator, ok := operatorIDFromRequest(r)
 				if !ok || operator != "operator-1" {
 					http.Error(w, "missing operator", http.StatusUnauthorized)
+					return
+				}
+				contextOperator, contextOK := ManagementOperatorID(r.Context())
+				if !contextOK || contextOperator != operator {
+					http.Error(w, "missing context operator", http.StatusUnauthorized)
 					return
 				}
 				w.WriteHeader(http.StatusNoContent)

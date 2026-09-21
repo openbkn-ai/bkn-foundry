@@ -17,7 +17,12 @@ import (
 	rowfiltersocket "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/rowfilter"
 )
 
-const rowFilterCapabilityPath = "/api/ontology-query/in/v1/row-filter-capabilities"
+const (
+	rowFilterCapabilityPath      = "/api/ontology-query/in/v1/row-filter-capabilities"
+	rowFilterAccountIDHeader     = "x-account-id"
+	rowFilterAccountTypeHeader   = "x-account-type"
+	rowFilterOperatorAccountType = "user"
+)
 
 // NewRowFilterPublishedObjectTypeResolver connects the Core-owned row-filter
 // management service to ontology-query's published-model capability contract.
@@ -41,7 +46,10 @@ type rowFilterPublishedObjectTypeResolver struct {
 	client   *http.Client
 }
 
-func (resolver *rowFilterPublishedObjectTypeResolver) ResolvePublishedObjectType(ctx context.Context, objectTypeRef string) (rowfiltersocket.PublishedObjectType, error) {
+func (resolver *rowFilterPublishedObjectTypeResolver) ResolvePublishedObjectType(ctx context.Context, operatorID, objectTypeRef string) (rowfiltersocket.PublishedObjectType, error) {
+	if operatorID == "" {
+		return rowfiltersocket.PublishedObjectType{}, fmt.Errorf("row-filter capability operator is required")
+	}
 	payload, err := json.Marshal(struct {
 		ObjectTypeRef string `json:"object_type_ref"`
 	}{ObjectTypeRef: objectTypeRef})
@@ -53,6 +61,8 @@ func (resolver *rowFilterPublishedObjectTypeResolver) ResolvePublishedObjectType
 		return rowfiltersocket.PublishedObjectType{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(rowFilterAccountIDHeader, operatorID)
+	request.Header.Set(rowFilterAccountTypeHeader, rowFilterOperatorAccountType)
 	response, err := resolver.client.Do(request)
 	if err != nil {
 		return rowfiltersocket.PublishedObjectType{}, fmt.Errorf("row-filter capability request: %w", err)

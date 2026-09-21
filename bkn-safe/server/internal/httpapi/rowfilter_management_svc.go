@@ -14,7 +14,7 @@ import (
 )
 
 type RowFilterPublishedObjectTypeResolver interface {
-	ResolvePublishedObjectType(context.Context, string) (rowfiltersocket.PublishedObjectType, error)
+	ResolvePublishedObjectType(ctx context.Context, operatorID, objectTypeRef string) (rowfiltersocket.PublishedObjectType, error)
 }
 
 type rowFilterManagementServices struct {
@@ -56,6 +56,6 @@ func (services *rowFilterManagementServices) ResolveCaller(ctx context.Context, 
 	return internalrowfilter.NewTrustedCallerResolverWithDepartmentLimit(services.directory, services.enforcer, services.departmentMax).Resolve(ctx, userID)
 }
 
-func (services *rowFilterManagementServices) ResolvePublishedObjectType(ctx context.Context, objectTypeRef string) (rowfiltersocket.PublishedObjectType, error) {
-	return services.published.ResolvePublishedObjectType(ctx, objectTypeRef)
+func (services *rowFilterManagementServices) ResolvePublishedObjectType(ctx context.Context, operatorID, objectTypeRef string) (rowfiltersocket.PublishedObjectType, error) {
+	return services.published.ResolvePublishedObjectType(ctx, operatorID, objectTypeRef)
 }

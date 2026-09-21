@@ -5,6 +5,7 @@
 package driveradapters
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -36,6 +37,12 @@ type rowFilterCapabilityResponse struct {
 // the same mapped data property and scalar type are accepted by the existing
 // row-filter compiler; it deliberately excludes logic and system properties.
 func (r *restHandler) GetRowFilterCapabilities(c *gin.Context) {
+	operatorID := strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_ID))
+	operatorType := strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_TYPE))
+	if operatorID == "" || operatorType != "user" {
+		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusForbidden, rest.PublicError_Forbidden))
+		return
+	}
 	var request rowFilterCapabilityRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter))
@@ -50,7 +57,8 @@ func (r *restHandler) GetRowFilterCapabilities(c *gin.Context) {
 		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusServiceUnavailable, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 		return
 	}
-	objectType, exists, err := r.oma.GetObjectType(c, parts[0], interfaces.MAIN_BRANCH, parts[1])
+	ctx := context.WithValue(c, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: operatorID, Type: operatorType})
+	objectType, exists, err := r.oma.GetObjectType(ctx, parts[0], interfaces.MAIN_BRANCH, parts[1])
 	if err != nil {
 		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusServiceUnavailable, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 		return
