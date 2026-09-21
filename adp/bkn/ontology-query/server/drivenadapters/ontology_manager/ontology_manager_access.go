@@ -353,7 +353,9 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get relation type paths failed: %v", httpErr), httpErr)
 
-		return nil, fmt.Errorf("get relation type paths failed: %v", httpErr.Error())
+		// Keep the structured HTTP error in the chain so authorization callers can
+		// distinguish an upstream 401/403 from an unavailable dependency.
+		return nil, fmt.Errorf("get relation type paths failed: %w", httpErr)
 	}
 
 	if result == nil {
@@ -520,7 +522,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get relation type failed: %v", httpErr), httpErr)
 
-		return emptyRelationType, false, fmt.Errorf("get relation type failed: %v", httpErr.Error())
+		return emptyRelationType, false, fmt.Errorf("get relation type failed: %w", httpErr)
 	}
 
 	if result == nil {
@@ -626,7 +628,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 		httpErr := &rest.HTTPError{HTTPCode: respCode, BaseError: baseError}
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		otellog.LogError(ctx, fmt.Sprintf("List relation types failed: %v", httpErr), httpErr)
-		return nil, fmt.Errorf("list relation types failed: %v", httpErr.Error())
+		return nil, fmt.Errorf("list relation types failed: %w", httpErr)
 	}
 
 	if result == nil {
@@ -733,7 +735,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get action type failed: %v", httpErr), httpErr)
 
-		return emptyActionType, nil, false, fmt.Errorf("get action type failed: %v", httpErr.Error())
+		return emptyActionType, nil, false, fmt.Errorf("get action type failed: %w", httpErr)
 	}
 
 	if result == nil {
@@ -824,9 +826,10 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 		logger.Errorf("GetRiskTypesByIDs failed: %v", result)
 		var baseError rest.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
-			return nil, fmt.Errorf("get risk types failed: %s", string(result))
+			return nil, fmt.Errorf("decode risk types error response: %w", err)
 		}
-		return nil, fmt.Errorf("get risk types failed: %s", baseError.Description)
+		httpErr := &rest.HTTPError{HTTPCode: respCode, BaseError: baseError}
+		return nil, fmt.Errorf("get risk types failed: %w", httpErr)
 	}
 
 	var response struct {
