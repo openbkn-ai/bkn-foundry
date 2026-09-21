@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/openbkn-ai/bkn-foundry/bkn-eval/schemas/dataset.schema.json",
+  "title": "bkn-eval dataset",
+  "description": "A versioned set of evaluation cases against one public fixture network. Enforced by internal/dataset; keep both in step.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dataset_id", "version", "network", "cases"],
+  "properties": {
+    "dataset_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "version": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "source": { "type": "string" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "locale", "split", "solvability", "input", "facts", "acceptable_paths"],
+      "properties": {
+        "case_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "locale": { "enum": ["zh-CN", "en-US"] },
+        "split": {
+          "enum": ["dev", "holdout"],
+          "description": "Holdout cases are never used to tune descriptions, instructions or defaults."
+        },
+        "solvability": {
+          "enum": ["both", "full_only", "no_mcp"],
+          "description": "full_only cases are scored on the compact entry by whether it states the boundary; no_mcp cases must not call tools."
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["user_message"],
+          "properties": { "user_message": { "type": "string", "minLength": 1 } }
+        },
+        "facts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fact" }
+        },
+        "acceptable_paths": {
+          "type": "array",
+          "description": "Each path is an ordered list of real target tool names; extra calls in between are allowed. Empty only for no_mcp cases.",
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "match"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "statement": { "type": "string" },
+        "match": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "enum": ["contains", "regex", "number"] },
+            "value": { "type": ["string", "number"] },
+            "tolerance": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}

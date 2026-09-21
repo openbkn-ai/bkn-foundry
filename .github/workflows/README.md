@@ -25,6 +25,7 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`lint-commit.yml`](./lint-commit.yml) | Commit Message Lint | `pull_request` | Commit message checks |
 | [`ci-execution-factory.yml`](./ci-execution-factory.yml) | ci-execution-factory | `pull_request` / `push` (`adp/execution-factory/**`), `workflow_dispatch` | L2 smoke collect-only + operator-integration Go unit tests; optional live smoke |
 | [`ci-bkn-trace.yml`](./ci-bkn-trace.yml) | ci-bkn-trace | `pull_request` (`bkn-trace/**`) | Compile gate for agent-observability |
+| [`ci-bkn-eval.yml`](./ci-bkn-eval.yml) | ci-bkn-eval | `pull_request` (`bkn-eval/**`) | bkn-eval vet, unit tests and dataset validation |
 | [`release-bkn-trace-agent-observability.yml`](./release-bkn-trace-agent-observability.yml) | release-bkn-trace-agent-observability | `push` (`bkn-trace/agent-observability/**`, …), `workflow_dispatch` | Agent observability image + Helm chart |
 | [`release-infra-model-factory-base.yml`](./release-infra-model-factory-base.yml) | release-infra-model-factory-base | `push` (`infra/model-factory-base/**`), `workflow_dispatch` | Shared base image for mf-model-* → GHCR (`model-factory-base:v2`) |
 | [`release-infra-oss-gateway.yml`](./release-infra-oss-gateway.yml) | release-infra-oss-gateway | `push` (`infra/oss-gateway-backend/**`), `workflow_dispatch` | oss-gateway-backend image + Helm chart |

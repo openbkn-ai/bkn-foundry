@@ -1,0 +1,71 @@
+{
+  "dataset_id": "cypher-probe",
+  "version": "1",
+  "description": "Sample cases on the Cypher probe fixture network. Expected values come from the fixture's documented results over the e-commerce demo resources.",
+  "network": {
+    "name": "cypher_probe_fcj",
+    "source": "bkn-docs: docs/foundry/bkn/design/issue-1210-cypher-probe-fixture"
+  },
+  "cases": [
+    {
+      "case_id": "direct-one-hop-order",
+      "locale": "zh-CN",
+      "split": "dev",
+      "solvability": "both",
+      "input": {
+        "user_message": "在 cypher_probe_fcj 知识网络中，i_key 为 20732 的订单明细，经 probe_direct 关系对应的是哪一个订单？"
+      },
+      "facts": [
+        {
+          "id": "order",
+          "statement": "The item with i_key 20732 maps to order probe_order-18357 over probe_direct.",
+          "match": { "type": "contains", "value": "18357" }
+        }
+      ],
+      "acceptable_paths": [
+        ["query_instance_subgraph"],
+        ["run_cypher"]
+      ],
+      "tags": ["relation", "one-hop"]
+    },
+    {
+      "case_id": "fcj-edges-over-amount",
+      "locale": "en-US",
+      "split": "dev",
+      "solvability": "both",
+      "input": {
+        "user_message": "In the cypher_probe_fcj knowledge network, how many probe_fcj edges lead to orders whose o_amount is greater than 40000?"
+      },
+      "facts": [
+        {
+          "id": "edge-count",
+          "statement": "79 probe_fcj edges lead to orders with o_amount above 40000.",
+          "match": { "type": "number", "value": 79 }
+        }
+      ],
+      "acceptable_paths": [
+        ["run_cypher"],
+        ["aggregate_object_instance"]
+      ],
+      "tags": ["aggregation", "count", "cross-relation"]
+    },
+    {
+      "case_id": "translation-needs-no-mcp",
+      "locale": "zh-CN",
+      "split": "dev",
+      "solvability": "no_mcp",
+      "input": {
+        "user_message": "把这句话翻译成英文：订单已发货。"
+      },
+      "facts": [
+        {
+          "id": "shipped",
+          "statement": "The translation says the order has shipped.",
+          "match": { "type": "regex", "value": "(?i)shipped" }
+        }
+      ],
+      "acceptable_paths": [],
+      "tags": ["no-mcp"]
+    }
+  ]
+}

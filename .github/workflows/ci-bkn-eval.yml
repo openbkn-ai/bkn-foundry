@@ -1,0 +1,25 @@
+name: ci-bkn-eval
+
+on:
+  pull_request:
+    paths:
+      - 'bkn-eval/**'
+      - '.github/workflows/ci-bkn-eval.yml'
+
+concurrency:
+  group: ci-bkn-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bkn-eval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bkn-eval/go.mod
+      - name: Vet, unit tests and dataset validation
+        run: make ci
