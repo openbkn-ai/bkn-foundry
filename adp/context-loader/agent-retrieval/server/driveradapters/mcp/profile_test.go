@@ -154,9 +154,10 @@ func TestProfilesServeTheirOwnInstructions(t *testing.T) {
 	}
 }
 
-// The compact instructions may only name tools the compact profile publishes;
-// naming any other tool sends the model to a tool it cannot call.
-func TestCompactInstructionsNameOnlyPublishedTools(t *testing.T) {
+// The compact instructions may only name tools the compact profile can reach:
+// published directly, or through the gateway. Naming any other tool sends the
+// model to a tool it cannot call.
+func TestCompactInstructionsNameOnlyReachableTools(t *testing.T) {
 	data, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		t.Fatal(err)
@@ -168,12 +169,12 @@ func TestCompactInstructionsNameOnlyPublishedTools(t *testing.T) {
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		text := loadMCPLocaleBundle(locale).CompactServerInstructions()
 		for name := range meta {
-			if _, published := compactProfile.published[name]; published {
+			if _, published := compactProfile.published[name]; published || cardEligible(name) {
 				continue
 			}
 			pattern := regexp.MustCompile(`(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(name) + `([^A-Za-z0-9_]|$)`)
 			if pattern.MatchString(text) {
-				t.Errorf("%s compact instructions name %s, which the profile does not publish", locale, name)
+				t.Errorf("%s compact instructions name %s, which the profile cannot reach", locale, name)
 			}
 		}
 	}

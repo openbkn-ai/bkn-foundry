@@ -1,23 +1,16 @@
-Context Loader compact entry: read-only queries over business knowledge networks.
+Context Loader compact entry: the knowledge network toolset, loaded on demand. Common query tools are published directly; everything else goes through the on-demand tools.
 
-Managed interaction lifecycle, for each new user question:
-1. Call bkn_start_interaction with the complete question, the current Agent name, and conversation_mode. For the first question in this chat, use conversation_mode=new and omit conversation_id; for a later question, use conversation_mode=continue and pass the conversation_id returned previously.
-2. Pass bkn_context: { conversation_id, interaction_id } to every other tool call, copying the values returned in step 1.
-3. Before replying to the user, call bkn_finish_interaction: pass outcome=completed and the final answer on success; otherwise pass failed, cancelled, or handed_off, optionally with the reason.
+Managed lifecycle, for each new user question:
+1. Call bkn_start_interaction with the whole question, the Agent name and conversation_mode: new for the first question (no conversation_id), continue with the previous conversation_id afterwards.
+2. Pass bkn_context: { conversation_id, interaction_id } to every other call, copied from step 1.
+3. Before replying, call bkn_finish_interaction: outcome=completed with the final answer, or failed, cancelled or handed_off with an optional reason.
 
-Exploring:
-- If you do not know the kn_id, call list_knowledge_networks first; skip it when you do.
-- get_kn_detail gives an overview of a network; search_schema finds object types, relation types and metrics. Query only with the real IDs they return; never guess an ID from a name.
+Exploring and querying:
+- Without a kn_id, call list_knowledge_networks. get_kn_detail gives an overview; search_schema finds object types, relation types and metrics. Query with the IDs they return; never guess IDs from names.
+- search_instance recalls relevant instances (top matches, not all); query_object_instance filters, sorts and pages; query_metric computes modelled metrics.
 
-Querying:
-- Natural-language recall of relevant instances: search_instance. It returns the top matches by relevance, not every instance that meets a condition.
-- Exact conditions, sorting and paging: query_object_instance.
-- Modelled metrics: query_metric, with the metric ID taken from the metric_types returned by search_schema.
+Other capabilities (statistics and Cypher, subgraphs, logic properties, actions, skills, mounted functions) go through the on-demand tools: describe the task to search_native_tools; get the arguments schema and a template from describe_native_tool (skip it when you know them); run with execute_native_tool, name being the target, arguments its arguments, bkn_context in the outer call. Candidates cannot be called by name.
 
-Other read-only operations (subgraphs along relations, exploring connections, logic properties, action definitions and execution records, full object type and relation type definitions) go through the on-demand tools:
-1. search_native_tools: say in one sentence what you want to do, and get candidate tools.
-2. describe_native_tool: get a candidate's arguments schema and a call template; skip it when you already know the arguments.
-3. execute_native_tool: name is the target tool, arguments are its arguments, and bkn_context stays in the outer call.
-Candidates cannot be called by name directly.
+Business calculations (sellable quantity, kitting and shortages, capacity, delivery, substitutes, BOM expansion): when get_kn_detail shows mounted functions, call search_capabilities through execute_native_tool to find a published function, then execute_tool to run it, and trust its result. Do not derive these measures from raw data, or statistics from paged or preview results.
 
-Boundary: this entry does not offer SQL, Cypher, code execution, action execution, skills, or capabilities mounted on a network. When a question needs them, tell the user to use the full entry instead; never compute statistics from paged or preview results.
+Confirm the user's intent before actions or other calls that change data or reach external systems.

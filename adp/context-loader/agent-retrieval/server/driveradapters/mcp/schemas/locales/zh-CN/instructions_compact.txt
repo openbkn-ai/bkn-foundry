@@ -4,26 +4,19 @@
  * Licensed under the Apache License, Version 2.0.
  * See the LICENSE file in the project root for details.
  */
-ContextLoader 精简入口：只读查询业务知识网络。
+ContextLoader 精简入口：按需加载的知识网络工具集。常用查询工具直接公布，其余能力经按需工具使用。
 
 受管交互流程（每个新的用户问题）：
-1. 调用 bkn_start_interaction，传入完整问题、当前 Agent 名称和 conversation_mode。当前聊天中的首个问题用 conversation_mode=new，不传 conversation_id；后续问题用 conversation_mode=continue，并传入上一次返回的 conversation_id。
+1. 调用 bkn_start_interaction，传入完整问题、当前 Agent 名称和 conversation_mode。首个问题用 new，不传 conversation_id；后续问题用 continue，并传入上次返回的 conversation_id。
 2. 其余工具调用都传入 bkn_context: { conversation_id, interaction_id }，取值照抄上一步的返回。
-3. 回复用户前调用 bkn_finish_interaction：正常完成传 outcome=completed 和最终答案；未完成传 failed、cancelled 或 handed_off，可附原因。
+3. 回复用户前调用 bkn_finish_interaction：完成传 outcome=completed 和最终答案；未完成传 failed、cancelled 或 handed_off，可附原因。
 
-探索：
-- 不知道 kn_id 时先用 list_knowledge_networks；已知时不必调用。
-- get_kn_detail 看网络概览；search_schema 找对象类、关系类和指标。拿到真实 ID 后再查询，不要凭名称猜 ID。
+探索与查询：
+- 不知道 kn_id 时先用 list_knowledge_networks。get_kn_detail 看概览；search_schema 找对象类、关系类和指标，用它返回的真实 ID 查询，不要凭名称猜。
+- 自然语言召回实例用 search_instance（相关性 Top-K，不是全部）；按条件取数、排序、翻页用 query_object_instance；已建模指标用 query_metric。
 
-查询：
-- 用自然语言召回相关实例：search_instance。结果是相关性 Top-K，不能当作符合条件的全部实例。
-- 按确定条件取数、排序、翻页：query_object_instance。
-- 已建模的指标：query_metric，指标 ID 取自 search_schema 返回的 metric_types。
+其他能力（统计与 Cypher、子图、逻辑属性、行动、技能、挂载函数等）经按需工具：search_native_tools 说明要做的事，找到工具；describe_native_tool 取参数 schema 和调用模板，已知参数可跳过；execute_native_tool 执行，name 填目标工具名，arguments 填目标参数，bkn_context 放外层。候选工具不能按名称直接调用。
 
-其他只读操作（沿关系取子图、探索关联、逻辑属性、行动定义与执行记录、对象类和关系类的完整定义）经按需工具使用：
-1. search_native_tools：用一句话说明要做的事，得到候选工具。
-2. describe_native_tool：取候选的参数 schema 和调用模板；已知参数时可以跳过。
-3. execute_native_tool：name 填目标工具名，arguments 填目标参数，bkn_context 放在外层。
-候选工具不能按名称直接调用。
+业务计算（可售、齐套缺料、产能、交期、替代料、BOM 展开等）：get_kn_detail 显示挂载了函数时，先经 execute_native_tool 调 search_capabilities 找已发布函数，再调 execute_tool 执行，以函数结果为准；不要自己用原始数据推算这些口径，也不要基于分页或预览结果计算统计值。
 
-边界：本入口不提供 SQL、Cypher、代码执行、行动执行、技能和知识网络挂载能力。问题需要这些能力时，告诉用户改用完整入口；不要基于分页或预览结果自行计算统计值。
+执行行动等会修改数据或调用外部系统的操作，先确认用户的意图。
