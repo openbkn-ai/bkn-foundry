@@ -143,14 +143,18 @@ type PlanNullCheck struct {
 
 func (PlanNullCheck) planPredicate() {}
 
-// PlanMembership is IN over values written in the query.
+// PlanMembership is IN over values written in the query or carried by one
+// list parameter.
 type PlanMembership struct {
 	Table         int
 	Column        string
 	Property      string
 	Values        []Literal
 	InputPointers []string
-	Negated       bool
+	// ListInputPointer is set when the whole list came from one parameter
+	// (IN $name); it points at that parameter, and InputPointers is empty.
+	ListInputPointer string
+	Negated          bool
 }
 
 func (PlanMembership) planPredicate() {}
@@ -591,6 +595,17 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 		if err != nil {
 			return nil, err
 		}
+		if node.ListParameter != nil {
+			values, err := p.resolveListParameter(*node.ListParameter)
+			if err != nil {
+				return nil, err
+			}
+			return PlanMembership{
+				Table: table, Column: column, Property: node.Property.Property,
+				Values: values, Negated: node.Negated,
+				ListInputPointer: parameterInputPointer(node.ListParameter.Name),
+			}, nil
+		}
 		values := make([]Literal, 0, len(node.Values))
 		inputPointers := make([]string, 0, len(node.Values))
 		for _, value := range node.Values {
@@ -613,9 +628,34 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 
 func operandInputPointer(value Operand) string {
 	if value.Parameter != nil {
-		return "$.parameters." + value.Parameter.Name
+		return parameterInputPointer(value.Parameter.Name)
 	}
 	return "$.query"
+}
+
+func parameterInputPointer(name string) string {
+	return "$.parameters." + name
+}
+
+// resolveListParameter expands `IN $name` into the literals the list carries,
+// through the same conversion as a scalar parameter, so each element is
+// escaped exactly as a list literal written in the query would be. The list is
+// recorded by one pointer to the parameter, ListInputPointer, rather than one
+// per element.
+func (p *planner) resolveListParameter(parameter ParameterRef) ([]Literal, error) {
+	name := parameter.Name
+	supplied, ok := p.parameters[name]
+	if !ok {
+		return nil, planErrorf(parameter.Pos, "parameter %q was not supplied", name)
+	}
+	literals, err := literalsFromListParameter(supplied)
+	if err != nil {
+		return nil, planErrorf(parameter.Pos, "parameter %q %v", name, err)
+	}
+	for i := range literals {
+		literals[i].Pos = parameter.Pos
+	}
+	return literals, nil
 }
 
 // resolveValue turns what the query wrote into the value the statement will

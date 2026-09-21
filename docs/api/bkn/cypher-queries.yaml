@@ -156,7 +156,10 @@ components:
             Values for the $name references in the query. A parameter is a value and never an
             identifier: it can change which rows come back, never which resource or column is
             read. Strings, numbers and booleans are accepted; a null is refused, because IS
-            NULL says that and a comparison against null never matches.
+            NULL says that and a comparison against null never matches. A parameter used as
+            IN $name takes a non-empty array of scalars of one kind (integers and floats both
+            count as numbers), with no null and at most 500 elements. Several long lists in
+            one query can still be refused with 400 as too large; split them across queries.
           example:
             region: "eu"
             floor: 100
@@ -171,7 +174,8 @@ components:
             [ORDER BY a.property | alias | aggregate(a.property) [DESC]] [SKIP n] [LIMIT n]
 
             A condition compares a property with =, <>, <, >, <= or >= against a literal or a
-            parameter, or tests it with IN [ ... ], IS NULL or IS NOT NULL. Conditions combine
+            parameter, or tests it with IN [ ... ], IN $list (the whole list as one parameter),
+            IS NULL or IS NOT NULL. Conditions combine
             with AND, OR and NOT, and parentheses group them. XOR is not supported.
 
             Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
