@@ -473,3 +473,41 @@ func TestMCPRequestBodyForLogOmitsGovernedBusinessContent(t *testing.T) {
 		}
 	}
 }
+
+// Every route that serves MCP must log only the summary. The compact profile
+// is a sibling of /mcp rather than a child of it, so a substring test on
+// "/mcp/" would miss it and write its tool arguments to the general log.
+func TestRequestBodyForLogSummarisesEveryMCPRoute(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"run_sql","arguments":{"sql":"SELECT * FROM secret_table"}}}`)
+	cases := []struct {
+		path      string
+		summarise bool
+	}{
+		{"/api/agent-retrieval/v1/mcp", true},
+		{"/api/agent-retrieval/v1/mcp/", true},
+		{"/api/agent-retrieval/v1/mcp/info", true},
+		{"/api/agent-retrieval/v1/mcp-compact", true},
+		{"/api/agent-retrieval/v1/mcp-compact/", true},
+		{"/api/agent-retrieval/v1/mcp-compact/info", true},
+		{"/api/agent-retrieval/internal-v1/mcp/proxy/m1/tools/t1/call", true},
+		{"/api/agent-retrieval/v1/kn/search_schema", false},
+		{"/api/agent-retrieval/v1/mcp-compactx/", false},
+		{"/api/agent-retrieval/v1/kn/mcp_notes", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			logged := requestBodyForLog(tc.path, body)
+			encoded, err := jsoniter.MarshalToString(logged)
+			if err != nil {
+				t.Fatal(err)
+			}
+			leaked := strings.Contains(encoded, "secret_table")
+			if tc.summarise && leaked {
+				t.Fatalf("MCP route %s logged tool arguments: %s", tc.path, encoded)
+			}
+			if !tc.summarise && !leaked {
+				t.Fatalf("non-MCP route %s was summarised: %s", tc.path, encoded)
+			}
+		})
+	}
+}
