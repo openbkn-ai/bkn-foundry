@@ -263,7 +263,7 @@ func postArtifactWithRetry(
 	artifact map[string]any,
 ) error {
 	if url == "" {
-		return errors.New("BKN Trace artifact URL is not configured")
+		return ErrEvidenceArtifactURLNotConfigured
 	}
 	body, err := json.Marshal(artifact)
 	if err != nil {

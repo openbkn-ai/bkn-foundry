@@ -418,6 +418,51 @@ func TestStartInteractionReturnsCommittedIDsWhenQuestionArtifactStoreIsUnavailab
 	}
 }
 
+func TestStartInteractionReportsUnderivableArtifactEndpointWithoutDegrading(t *testing.T) {
+	startCalls := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/agent-observability/v1/conversations/conv-1/interactions":
+			startCalls++
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "active", EvidenceStatus: "pending",
+				CreatedAt: time.Date(2026, 9, 21, 10, 0, 0, 0, time.UTC),
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer backend.Close()
+	// The ingest URL must end in /events for the artifact endpoint to be derived.
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/ingest")
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
+
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "req-artifact-url-missing-1"})
+	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},
+	})
+	result, err := handleLifecycleTool(
+		bkntrace.NewLifecycleClient(backend.URL, backend.Client()),
+		"bkn_start_interaction",
+	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
+		"conversation_id": "conv-1", "conversation_mode": "continue", "question": "查询 BOM", "agent_name": "供应链分析助手",
+	}}})
+	if err != nil || !result.IsError {
+		t.Fatalf("an underivable artifact endpoint must fail start rather than degrade: result=%#v err=%v", result, err)
+	}
+	if startCalls != 1 {
+		t.Fatalf("start interaction calls = %d, want 1", startCalls)
+	}
+	errorValue := lifecycleErrorFromResult(t, result)
+	if errorValue["code"] != "evidence_capture_failed" ||
+		errorValue["required_action"] != "contact_platform_operator" ||
+		errorValue["retryable"] != false {
+		t.Fatalf("start reported a deployment defect as a transient outage: %#v", errorValue)
+	}
+}
+
 func TestFinishInteractionUsesCoreUpdatedAtForServerOwnedResultEvidence(t *testing.T) {
 	updatedAt := time.Date(2026, 8, 3, 6, 32, 0, 789000000, time.UTC)
 	var artifact map[string]any

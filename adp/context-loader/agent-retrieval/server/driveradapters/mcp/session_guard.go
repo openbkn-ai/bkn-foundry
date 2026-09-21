@@ -406,6 +406,16 @@ func lifecycleAvailabilityError(err error) lifecycleError {
 			Code: "feature_not_installed", Message: "BKN Trace Core is not configured",
 		}
 	}
+	// An ingest URL that does not end in /events leaves no artifact endpoint to
+	// derive. Like a missing ingest credential, that is a deployment defect: as a
+	// plain error it read as a transient outage, so the question artifact was
+	// dropped on every start with nothing but a warning to show for it.
+	if errors.Is(err, bkntrace.ErrEvidenceArtifactURLNotConfigured) {
+		return lifecycleError{
+			Code: "evidence_capture_failed", Message: err.Error(),
+			RequiredAction: "contact_platform_operator",
+		}
+	}
 	var coreErr *bkntrace.CoreHTTPError
 	if errors.As(err, &coreErr) {
 		message := coreErr.Message
