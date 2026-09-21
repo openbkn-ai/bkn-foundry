@@ -3,9 +3,8 @@ name: release-deploy-opensearch
 # Multi-arch build of the platform OpenSearch image (deploy/images/opensearch):
 # stock OpenSearch plus the IK Chinese analyzer. Versioned off the OpenSearch
 # version (2.19.4-*), NOT the repo VERSION — see
-# deploy/images/opensearch/README.md. Branch pushes publish a branch-tagged
-# image (same convention as the service pipelines), so a fix is testable
-# pre-merge.
+# deploy/images/opensearch/README.md. Branch pushes publish a commit-qualified
+# image independent of the product release branch, so a fix is testable pre-merge.
 
 on:
   push:
@@ -46,12 +45,10 @@ jobs:
           # Base = the OpenSearch version baked into the image, so image tags
           # stay in the 2.19.4-* line the chart/scripts expect.
           BASE_VERSION="2.19.4"
-          REF_NAME="${{ github.ref_name }}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
-          SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
           # Commit time (Asia/Shanghai), not build time — monotonic and re-run reproducible.
           COMMIT_DATE="$(TZ=Asia/Shanghai git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)"
-          VERSION="$BASE_VERSION-$SANITIZED_BRANCH.$COMMIT_DATE.sha$SHORT_SHA"
+          VERSION="$BASE_VERSION-$COMMIT_DATE.sha$SHORT_SHA"
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 

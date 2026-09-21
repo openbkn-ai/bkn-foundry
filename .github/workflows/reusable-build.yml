@@ -17,9 +17,9 @@ name: reusable-build
 # skopeo or `--platform`.
 #
 # The list is assembled from the digests each leg just pushed, not by
-# resolving the arch tags again: versions are not unique per run (release/*
-# branches build `X.Y.Z-release`, a `v*` tag can be rebuilt), and no caller
-# sets `concurrency`, so two runs of one version can interleave. Reading
+# resolving the arch tags again: a `v*` tag can be rebuilt and no caller sets
+# `concurrency`, so two runs of one version can interleave. Release branches
+# include commit time and SHA and are therefore immutable. Reading
 # tags back could pair an amd64 image from one commit with an arm64 image
 # from another; digests pin the list to this run's own builds. What remains
 # is that a leg can fail after the other already pushed its arch tag — then
