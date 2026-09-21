@@ -182,6 +182,19 @@ func TestPermissionServiceResolveRowFiltersAcceptsUserAliasesButNotAppPrincipals
 	})
 }
 
+func TestValidateRowFilterPredicateRejectsOversizedValueSet(t *testing.T) {
+	value := "east"
+	values := make([]interfaces.RowFilterValue, maxRowFilterValuesPerPredicate+1)
+	for index := range values {
+		values[index] = interfaces.RowFilterValue{Type: "string", String: &value}
+	}
+	if err := validateRowFilterPredicate(interfaces.RowFilterPredicate{
+		Kind: "in", Property: "region", Values: values,
+	}, 0); err == nil {
+		t.Fatal("row-filter predicate accepted more than the value-set limit")
+	}
+}
+
 func TestPermissionServiceRequirePermissions(t *testing.T) {
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
 		ID: "account-1", Type: "user",

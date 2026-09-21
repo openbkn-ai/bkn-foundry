@@ -281,6 +281,19 @@ func TestPermissionServiceImplResolveRowFilters(t *testing.T) {
 	}
 }
 
+func TestValidateRowFilterPredicateRejectsOversizedValueSet(t *testing.T) {
+	value := "east"
+	values := make([]interfaces.RowFilterValue, maxRowFilterValuesPerPredicate+1)
+	for index := range values {
+		values[index] = interfaces.RowFilterValue{Type: "string", String: &value}
+	}
+	if err := validateRowFilterPredicate(interfaces.RowFilterPredicate{
+		Kind: "in", Property: "region", Values: values,
+	}, 0); err == nil {
+		t.Fatal("row-filter predicate accepted more than the value-set limit")
+	}
+}
+
 func Test_PermissionServiceImpl_CreateResources(t *testing.T) {
 	Convey("Test PermissionServiceImpl CreateResources\n", t, func() {
 		svc, mockCtrl, pa, _ := newTestPermissionImpl(t)

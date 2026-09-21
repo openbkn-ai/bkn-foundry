@@ -30,7 +30,10 @@ import (
 
 const maxPropertyLevelsPerRequest = 200
 
-const maxRowFilterObjectTypesPerRequest = 100
+const (
+	maxRowFilterObjectTypesPerRequest = 100
+	maxRowFilterValuesPerPredicate    = 100
+)
 
 func localizedPermissionDetail(ctx context.Context, key string) string {
 	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail."+key, nil)
@@ -249,7 +252,8 @@ func validateRowFilterPredicate(predicate interfaces.RowFilterPredicate, depth i
 			return fmt.Errorf("row-filter constant predicate has fields")
 		}
 	case "in":
-		if strings.TrimSpace(predicate.Property) == "" || len(predicate.Values) == 0 || len(predicate.Predicates) != 0 {
+		if strings.TrimSpace(predicate.Property) == "" || len(predicate.Values) == 0 ||
+			len(predicate.Values) > maxRowFilterValuesPerPredicate || len(predicate.Predicates) != 0 {
 			return fmt.Errorf("row-filter in predicate is malformed")
 		}
 		for _, value := range predicate.Values {

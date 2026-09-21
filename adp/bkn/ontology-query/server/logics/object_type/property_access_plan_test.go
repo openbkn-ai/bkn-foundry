@@ -27,6 +27,22 @@ type propertyAccessStub struct {
 	calls  *int
 }
 
+type sequenceRowFilterStub struct {
+	entries []interfaces.RowFilterDecisionEntry
+	calls   int
+}
+
+func (s *sequenceRowFilterStub) ResolveRowFilters(_ context.Context,
+	refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	if len(refs) != 1 || s.calls >= len(s.entries) {
+		return nil, context.Canceled
+	}
+	entry := s.entries[s.calls]
+	s.calls++
+	entry.ObjectTypeRef = refs[0]
+	return []interfaces.RowFilterDecisionEntry{entry}, nil
+}
+
 func TestObjectQueryRejectsEmptyReturnBeforeProxyOrVega(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
@@ -196,6 +212,88 @@ func TestObjectQueryCursorReauthorizesAndNeverExposesRawPosition(t *testing.T) {
 	}
 	if _, exists := second.Datas[0]["mobile"]; exists {
 		t.Fatalf("permission downgrade was not applied: %#v", second.Datas[0])
+	}
+}
+
+func TestObjectQueryInvalidatesCursorBeforeReadingWhenRowFilterChanges(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	objectType := accessPlanObjectType()
+	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
+	objectType.DataProperties = append(objectType.DataProperties,
+		cond.DataProperty{Name: "region", Type: "keyword", MappedField: cond.Field{Name: "region_code"}})
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Times(2).
+		Return(objectType, true, nil)
+	nextCursor := "vega-secret-cursor"
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: []map[string]any{{"customer_id": "customer-1", "phone": "13812345678", "region_code": "east"}},
+		Paging:  &interfaces.ResourceDataPagingResponse{NextCursor: &nextCursor},
+	}}
+	east, west := "east", "west"
+	filters := &sequenceRowFilterStub{entries: []interfaces.RowFilterDecisionEntry{
+		{EffectiveRowFilterDigest: "sha256:east", Predicate: interfaces.RowFilterPredicate{
+			Kind: "in", Property: "region", Values: []interfaces.RowFilterValue{{Type: "string", String: &east}},
+		}},
+		{EffectiveRowFilterDigest: "sha256:west", Predicate: interfaces.RowFilterPredicate{
+			Kind: "in", Property: "region", Values: []interfaces.RowFilterValue{{Type: "string", String: &west}},
+		}},
+	}}
+	service := &objectTypeService{
+		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
+		propertyAccess: fullPropertyAccessStub{}, rowFilters: filters, cursor: testQueryCursorCodec(t, now),
+	}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "user-1", Type: "user"})
+	newQuery := func() *interfaces.ObjectQueryBaseOnObjectType {
+		return &interfaces.ObjectQueryBaseOnObjectType{
+			KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"id", "mobile"},
+			PageQuery: interfaces.PageQuery{Limit: 10, Sort: []*interfaces.SortParams{{Field: "id", Direction: "asc"}}},
+		}
+	}
+
+	first, err := service.GetObjectsByObjectTypeID(ctx, newQuery())
+	if err != nil || first.Cursor == "" || len(vega.paramsHistory) != 1 {
+		t.Fatalf("first page = %#v, %v; reads = %d", first, err, len(vega.paramsHistory))
+	}
+	if _, exists := first.Datas[0]["region"]; exists {
+		t.Fatalf("row-filter dependency leaked into the response: %#v", first.Datas[0])
+	}
+
+	secondQuery := newQuery()
+	secondQuery.Cursor = first.Cursor
+	if _, err = service.GetObjectsByObjectTypeID(ctx, secondQuery); err == nil {
+		t.Fatal("cursor must fail when the effective row filter changes")
+	}
+	if filters.calls != 2 || len(vega.paramsHistory) != 1 {
+		t.Fatalf("changed row filter must fail before Vega: resolver calls = %d, reads = %d", filters.calls, len(vega.paramsHistory))
+	}
+}
+
+func TestObjectQueryNoRowsAvoidsResourceReadAndDoesNotLeakCount(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	objectType := accessPlanObjectType()
+	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Return(objectType, true, nil)
+	vega := &vegaStubForOTQuery{}
+	service := &objectTypeService{
+		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
+		propertyAccess: fullPropertyAccessStub{},
+		rowFilters: &sequenceRowFilterStub{entries: []interfaces.RowFilterDecisionEntry{{
+			EffectiveRowFilterDigest: "sha256:no-rows", Predicate: interfaces.RowFilterPredicate{Kind: "false"},
+		}}},
+	}
+
+	result, err := service.GetObjectsByObjectTypeID(context.Background(), &interfaces.ObjectQueryBaseOnObjectType{
+		KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"id"},
+		PageQuery: interfaces.PageQuery{Limit: 10, NeedTotal: true},
+	})
+	if err != nil || len(result.Datas) != 0 || result.TotalCount != 0 || result.Cursor != "" {
+		t.Fatalf("no_rows result = %#v, %v", result, err)
+	}
+	if len(vega.paramsHistory) != 0 {
+		t.Fatalf("no_rows must not issue a resource read: %#v", vega.paramsHistory)
 	}
 }
 

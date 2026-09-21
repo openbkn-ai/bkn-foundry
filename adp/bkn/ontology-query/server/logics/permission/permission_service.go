@@ -27,6 +27,7 @@ const (
 	maxPropertyLevelObjectsPerCall    = 100
 	maxPropertyLevelPropertiesPerItem = 200
 	maxPropertyLevelPropertiesPerCall = 1000
+	maxRowFilterValuesPerPredicate    = 100
 )
 
 func NewPermissionService(appSetting *common.AppSetting) interfaces.PermissionService {
@@ -119,7 +120,8 @@ func validateRowFilterPredicate(predicate interfaces.RowFilterPredicate, depth i
 			return fmt.Errorf("row-filter constant predicate has fields")
 		}
 	case "in":
-		if strings.TrimSpace(predicate.Property) == "" || len(predicate.Values) == 0 || len(predicate.Predicates) != 0 {
+		if strings.TrimSpace(predicate.Property) == "" || len(predicate.Values) == 0 ||
+			len(predicate.Values) > maxRowFilterValuesPerPredicate || len(predicate.Predicates) != 0 {
 			return fmt.Errorf("row-filter in predicate is malformed")
 		}
 		for _, value := range predicate.Values {
