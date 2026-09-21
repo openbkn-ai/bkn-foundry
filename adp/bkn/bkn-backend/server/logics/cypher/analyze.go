@@ -850,11 +850,13 @@ func analyzeStringListNullPredicate(ctx parsing.IOC_StringListNullPredicateExpre
 		}, operand{}, nil
 	}
 
-	values, err := analyzeListOperands(lists[0].OC_AddOrSubtractExpression())
+	values, listParameter, err := analyzeListOperands(lists[0].OC_AddOrSubtractExpression())
 	if err != nil {
 		return nil, operand{}, err
 	}
-	return Membership{Property: *subject.property, Values: values, Pos: positionOf(ctx)}, operand{}, nil
+	return Membership{
+		Property: *subject.property, Values: values, ListParameter: listParameter, Pos: positionOf(ctx),
+	}, operand{}, nil
 }
 
 // analyzeStringMatch reads STARTS WITH, ENDS WITH or CONTAINS. The left side
@@ -908,41 +910,49 @@ func analyzeStringMatch(ctx parsing.IOC_StringListNullPredicateExpressionContext
 }
 
 // analyzeListOperands reads the right side of IN, which has to be a list
-// written in the query. A list computed at run time would need evaluation the
-// compiler does not do.
-func analyzeListOperands(ctx parsing.IOC_AddOrSubtractExpressionContext) ([]Operand, error) {
+// written in the query or one parameter carrying the whole list. A list
+// computed at run time would need evaluation the compiler does not do. A list
+// parameter is only named here; the planner checks and expands it.
+func analyzeListOperands(ctx parsing.IOC_AddOrSubtractExpressionContext) ([]Operand, *ParameterRef, error) {
 	multiplications := ctx.AllOC_MultiplyDivideModuloExpression()
 	if len(multiplications) != 1 {
-		return nil, unsupported(ctx, "arithmetic")
+		return nil, nil, unsupported(ctx, "arithmetic")
 	}
 	atom, err := singleAtom(multiplications[0])
 	if err != nil {
-		return nil, unsupportedf(ctx, "IN over something other than a list",
-			"write the values as a list, as in n.property IN [1, 2]")
+		return nil, nil, unsupportedf(ctx, "IN over something other than a list",
+			"write the values as a list, as in n.property IN [1, 2], or pass one list parameter, as in n.property IN $values")
+	}
+	if parameter := atom.OC_Parameter(); parameter != nil {
+		name, err := parameterName(parameter)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, &ParameterRef{Name: name, Pos: positionOf(parameter)}, nil
 	}
 	literal := atom.OC_Literal()
 	if literal == nil || literal.OC_ListLiteral() == nil {
-		return nil, unsupportedf(ctx, "IN over something other than a list",
-			"write the values as a list, as in n.property IN [1, 2]")
+		return nil, nil, unsupportedf(ctx, "IN over something other than a list",
+			"write the values as a list, as in n.property IN [1, 2], or pass one list parameter, as in n.property IN $values")
 	}
 
 	var values []Operand
 	for _, element := range literal.OC_ListLiteral().AllOC_Expression() {
 		value, err := analyzeOperand(element)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if value.operand() == nil || value.property != nil {
-			return nil, unsupportedf(element, "a list holding something other than values",
+			return nil, nil, unsupportedf(element, "a list holding something other than values",
 				"IN takes literals or parameters")
 		}
 		if value.literal != nil && value.literal.Kind == LiteralNull {
-			return nil, unsupportedf(element, "null in an IN list",
+			return nil, nil, unsupportedf(element, "null in an IN list",
 				"a null there matches nothing and hides a mistake")
 		}
 		values = append(values, *value.operand())
 	}
-	return values, nil
+	return values, nil, nil
 }
 
 // parenthesizedExpression reports the expression inside ( ), when the term is

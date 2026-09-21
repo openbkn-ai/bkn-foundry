@@ -212,6 +212,10 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	// caller and must not enter their trace/evidence payload merely because it
 	// constrains execution below.
 	descriptor, err := BuildSemanticQueryDescriptor(plan, query.Query)
+	if errors.Is(err, ErrSemanticDescriptorTooLarge) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
+			WithErrorDetails("the query is too large to record; split a long IN list across several queries")
+	}
 	if err != nil {
 		common.LogSafeError(ctx, "Cypher semantic descriptor generation failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
