@@ -33,7 +33,7 @@ type mcpProfile struct {
 	// inlinePTC registers run_code and run_shell.
 	inlinePTC bool
 	// gateway registers search_native_tools, describe_native_tool and
-	// execute_native_read_tool over the long-tail targets.
+	// execute_native_tool over the long-tail targets.
 	gateway bool
 	// view rewrites how a published tool is described. Nil publishes the
 	// assembled definition as is.

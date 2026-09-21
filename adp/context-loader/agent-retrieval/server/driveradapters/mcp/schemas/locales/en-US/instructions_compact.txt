@@ -17,7 +17,7 @@ Querying:
 Other read-only operations (subgraphs along relations, exploring connections, logic properties, action definitions and execution records, full object type and relation type definitions) go through the on-demand tools:
 1. search_native_tools: say in one sentence what you want to do, and get candidate tools.
 2. describe_native_tool: get a candidate's arguments schema and a call template; skip it when you already know the arguments.
-3. execute_native_read_tool: name is the target tool, arguments are its arguments, and bkn_context stays in the outer call.
+3. execute_native_tool: name is the target tool, arguments are its arguments, and bkn_context stays in the outer call.
 Candidates cannot be called by name directly.
 
 Boundary: this entry does not offer SQL, Cypher, code execution, action execution, skills, or capabilities mounted on a network. When a question needs them, tell the user to use the full entry instead; never compute statistics from paged or preview results.

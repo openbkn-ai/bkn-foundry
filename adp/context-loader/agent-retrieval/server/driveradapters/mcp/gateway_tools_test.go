@@ -117,7 +117,7 @@ func TestCompactGatewayRunsEndToEnd(t *testing.T) {
 		t.Fatalf("describe: %s", resultText(described))
 	}
 
-	callTrustedTool(t, srv, toolKeyExecuteNativeReadTool, map[string]any{
+	callTrustedTool(t, srv, toolKeyExecuteNativeTool, map[string]any{
 		"name": toolKeyGetObjectTypes, "arguments": description.CallTemplate.Arguments, "bkn_context": bknContext,
 	})
 	want := []string{toolKeySearchNativeTools, toolKeyDescribeNativeTool, toolKeyGetObjectTypes}

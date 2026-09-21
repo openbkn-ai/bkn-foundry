@@ -21,15 +21,15 @@ import (
 // The gateway tools exist only on the compact profile. The full profile
 // publishes every native tool itself and has nothing to reach through them.
 const (
-	toolKeySearchNativeTools     = "search_native_tools"
-	toolKeyDescribeNativeTool    = "describe_native_tool"
-	toolKeyExecuteNativeReadTool = "execute_native_read_tool"
+	toolKeySearchNativeTools  = "search_native_tools"
+	toolKeyDescribeNativeTool = "describe_native_tool"
+	toolKeyExecuteNativeTool  = "execute_native_tool"
 )
 
 var gatewayTools = toolNameSet([]string{
 	toolKeySearchNativeTools,
 	toolKeyDescribeNativeTool,
-	toolKeyExecuteNativeReadTool,
+	toolKeyExecuteNativeTool,
 })
 
 // gatewayManagedFields are the argument fields the gateway supplies itself,
@@ -85,7 +85,7 @@ func (c *nativeCatalog) lookup(ctx context.Context, name string) (mcp.Tool, mcpt
 // executableSchema is the arguments schema a caller of the gateway fills in
 // for a target: the target's effective input schema without the fields the
 // gateway supplies itself. describe_native_tool returns exactly this and
-// execute_native_read_tool validates against exactly this, so the two cannot
+// execute_native_tool validates against exactly this, so the two cannot
 // disagree.
 func executableSchema(input json.RawMessage) (json.RawMessage, error) {
 	decoder := json.NewDecoder(bytes.NewReader(input))

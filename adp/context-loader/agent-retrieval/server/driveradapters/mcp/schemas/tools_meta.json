@@ -723,12 +723,12 @@
     "order": 720,
     "description": "返回一个按需工具的说明：用途、可执行参数 schema、一份通过该 schema 校验的调用模板和输出字段提示；include_output_schema=true 时再附完整输出 schema。name 取自 search_native_tools 的结果。可执行参数 schema 不含 bkn_context，执行时由执行器从外层带入。"
   },
-  "execute_native_read_tool": {
-    "name": "execute_native_read_tool",
-    "title": "执行按需查询",
+  "execute_native_tool": {
+    "name": "execute_native_tool",
+    "title": "执行按需工具",
     "group": "gateway",
     "group_title": "按需查询",
     "order": 730,
-    "description": "执行一个按需只读工具：name 是目标工具名，arguments 按 describe_native_tool 返回的可执行参数 schema 填写，不要放 bkn_context。参数不合法时，错误中附目标的可执行参数 schema 和出错字段，可据此修正后重试。只能执行 search_native_tools 能找到的只读工具；本入口直接公布的工具请直接调用，本入口不提供的能力会返回相应说明。"
+    "description": "执行一个按需工具：name 是目标工具名，arguments 按 describe_native_tool 返回的可执行参数 schema 填写，不要放 bkn_context。目标可以是本入口没有直接公布的任何工具，包括会修改数据或调用外部系统的工具（执行行动、挂载函数等），执行前先确认用户的意图。参数不合法时，错误中附目标的可执行参数 schema 和出错字段，可据此修正后重试。本入口直接公布的工具请直接调用。"
   }
 }

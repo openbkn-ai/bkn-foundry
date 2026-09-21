@@ -73,7 +73,7 @@ type gatewayDescription struct {
 	Name            string          `json:"name"`
 	Description     string          `json:"description"`
 	ArgumentsSchema json.RawMessage `json:"arguments_schema"`
-	// CallTemplate is a complete execute_native_read_tool call that passes
+	// CallTemplate is a complete execute_native_tool call that passes
 	// ArgumentsSchema.
 	CallTemplate gatewayCall `json:"call_template"`
 	// OutputFields names the top-level output fields, required ones marked.

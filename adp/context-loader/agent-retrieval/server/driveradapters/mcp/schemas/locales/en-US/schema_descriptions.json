@@ -455,7 +455,7 @@
     "input_schema.properties.name.description": "Name of the target tool, taken from the results of search_native_tools.",
     "input_schema.properties.include_output_schema.description": "Whether to include the target's full output schema; off by default. The result already hints at the output fields, so leave it off unless you need the exact shape."
   },
-  "execute_native_read_tool": {
+  "execute_native_tool": {
     "input_schema.properties.name.description": "Name of the target tool, taken from the results of search_native_tools.",
     "input_schema.properties.arguments.description": "The target tool's arguments, filled in against the executable arguments schema returned by describe_native_tool. Do not put bkn_context here; the gateway carries it over from this call."
   }

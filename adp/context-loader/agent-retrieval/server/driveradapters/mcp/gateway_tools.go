@@ -18,7 +18,7 @@ import (
 )
 
 // gatewayToolOrder is the registration order of the gateway tools.
-var gatewayToolOrder = []string{toolKeySearchNativeTools, toolKeyDescribeNativeTool, toolKeyExecuteNativeReadTool}
+var gatewayToolOrder = []string{toolKeySearchNativeTools, toolKeyDescribeNativeTool, toolKeyExecuteNativeTool}
 
 // claimGatewayNames reserves the gateway tools' names on every profile, as the
 // lifecycle tools' names are, so an enterprise tool cannot take one of them.
@@ -38,9 +38,9 @@ func (b *toolBuilder) claimGatewayNames() {
 func registerGatewayTools(srv *server.MCPServer, b *toolBuilder, lifecycleClient *bkntrace.LifecycleClient) {
 	catalog := newNativeCatalog(b)
 	handlers := map[string]server.ToolHandlerFunc{
-		toolKeySearchNativeTools:     handleSearchNativeTools(catalog),
-		toolKeyDescribeNativeTool:    handleDescribeNativeTool(catalog),
-		toolKeyExecuteNativeReadTool: newNativeExecutor(catalog, lifecycleClient).handle,
+		toolKeySearchNativeTools:  handleSearchNativeTools(catalog),
+		toolKeyDescribeNativeTool: handleDescribeNativeTool(catalog),
+		toolKeyExecuteNativeTool:  newNativeExecutor(catalog, lifecycleClient).handle,
 	}
 	for _, key := range gatewayToolOrder {
 		input, output := b.locale.ToolSchemas(key)

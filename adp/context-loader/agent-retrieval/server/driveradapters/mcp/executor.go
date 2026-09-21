@@ -36,9 +36,9 @@ const (
 
 // executorSkipsServerGuard names the tools the server-level lifecycle guard
 // passes through: the executor applies the guard to its target itself.
-var executorSkipsServerGuard = map[string]struct{}{toolKeyExecuteNativeReadTool: {}}
+var executorSkipsServerGuard = map[string]struct{}{toolKeyExecuteNativeTool: {}}
 
-// nativeExecutor runs execute_native_read_tool.
+// nativeExecutor runs execute_native_tool.
 //
 // The server applies its per-call middlewares (licence gate, lifecycle guard)
 // by the name in tools/call, which here is the executor's. The executor is

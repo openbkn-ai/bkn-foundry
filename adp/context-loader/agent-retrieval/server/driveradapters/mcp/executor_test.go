@@ -56,7 +56,7 @@ func newExecutorHarness(t *testing.T) *executorHarness {
 func (h *executorHarness) call(t *testing.T, arguments string) *mcpsdk.CallToolResult {
 	t.Helper()
 	req := mcpsdk.CallToolRequest{}
-	req.Params.Name = toolKeyExecuteNativeReadTool
+	req.Params.Name = toolKeyExecuteNativeTool
 	req.Params.RawArguments = json.RawMessage(arguments)
 	if err := json.Unmarshal(req.Params.RawArguments, &req.Params.Arguments); err != nil {
 		t.Fatal(err)
@@ -177,10 +177,10 @@ func TestExecutorNormalizesArgumentsByFixedRules(t *testing.T) {
 func TestExecutorRefusesWhatItCannotRun(t *testing.T) {
 	h := newExecutorHarness(t)
 	for name, code := range map[string]string{
-		toolKeyRunCode:               refusalUnknownTool,
-		toolKeySearchSchema:          refusalPublishedDirectly,
-		"no_such_tool":               refusalUnknownTool,
-		toolKeyExecuteNativeReadTool: refusalPublishedDirectly,
+		toolKeyRunCode:           refusalUnknownTool,
+		toolKeySearchSchema:      refusalPublishedDirectly,
+		"no_such_tool":           refusalUnknownTool,
+		toolKeyExecuteNativeTool: refusalPublishedDirectly,
 	} {
 		refusal := refusalOf(t, h.call(t, `{"name":"`+name+`","arguments":{},"bkn_context":`+testBKNContext+`}`))
 		if refusal["error"] != code {
@@ -214,7 +214,7 @@ func TestExecutorAppliesTheServerGuardToTheTarget(t *testing.T) {
 	catalog.targets[toolKeyGetObjectTypes] = target
 	executor := newNativeExecutor(catalog, nil)
 	req := mcpsdk.CallToolRequest{}
-	req.Params.Name = toolKeyExecuteNativeReadTool
+	req.Params.Name = toolKeyExecuteNativeTool
 	req.Params.RawArguments = json.RawMessage(`{"name":"get_object_types","arguments":{"kn_id":"kn_demo","ids":["ot_order"]}}`)
 	result, err := executor.handle(context.Background(), req)
 	if err != nil || ran || !result.IsError || !strings.Contains(resultText(result), "conversation_required") {
@@ -231,7 +231,7 @@ func TestServerGuardLeavesTheExecutorToItself(t *testing.T) {
 		return mcpsdk.NewToolResultText("ok"), nil
 	}
 	guarded := lifecycleToolMiddleware(nil)(next)
-	for _, name := range []string{toolKeyExecuteNativeReadTool, toolKeyGetObjectTypes} {
+	for _, name := range []string{toolKeyExecuteNativeTool, toolKeyGetObjectTypes} {
 		passed = ""
 		req := mcpsdk.CallToolRequest{}
 		req.Params.Name = name
@@ -240,7 +240,7 @@ func TestServerGuardLeavesTheExecutorToItself(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if name == toolKeyExecuteNativeReadTool && passed != name {
+		if name == toolKeyExecuteNativeTool && passed != name {
 			t.Errorf("the executor was guarded at the server level: %s", resultText(result))
 		}
 		if name == toolKeyGetObjectTypes && (passed != "" || !strings.Contains(resultText(result), "conversation_required")) {

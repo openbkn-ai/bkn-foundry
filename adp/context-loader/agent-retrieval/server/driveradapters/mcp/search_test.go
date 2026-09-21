@@ -219,8 +219,8 @@ func TestDescribeRefusesWhatTheGatewayCannotRun(t *testing.T) {
 	if r := refusal(toolKeySearchSchema); r.Code != refusalPublishedDirectly {
 		t.Errorf("search_schema: %+v, want published_directly", r)
 	}
-	if r := refusal(toolKeyExecuteNativeReadTool); r.Code != refusalPublishedDirectly {
-		t.Errorf("execute_native_read_tool: %+v, want published_directly", r)
+	if r := refusal(toolKeyExecuteNativeTool); r.Code != refusalPublishedDirectly {
+		t.Errorf("execute_native_tool: %+v, want published_directly", r)
 	}
 	// An unknown name and a real tool the licence does not cover must look
 	// alike, so the answer reveals nothing about what exists.

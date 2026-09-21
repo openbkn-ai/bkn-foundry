@@ -71,7 +71,7 @@ func compactServer(t *testing.T, locale string) *server.MCPServer {
 func TestCompactProfilePublishesExactlyItsToolList(t *testing.T) {
 	want := []string{
 		"bkn_finish_interaction", "bkn_start_interaction",
-		"describe_native_tool", "execute_native_read_tool",
+		"describe_native_tool", "execute_native_tool",
 		"get_kn_detail", "list_knowledge_networks",
 		"query_metric", "query_object_instance",
 		"search_instance", "search_native_tools", "search_schema",

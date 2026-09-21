@@ -283,9 +283,9 @@
     "group_title": "On-demand Queries",
     "description": "Describe one on-demand tool: its purpose, its executable arguments schema, a call template that passes that schema, and hints about the output fields; with include_output_schema=true the full output schema is added. Take name from the results of search_native_tools. The executable arguments schema has no bkn_context; the executor carries it over from the outer call."
   },
-  "execute_native_read_tool": {
-    "title": "Run Query Tool",
+  "execute_native_tool": {
+    "title": "Run On-demand Tool",
     "group_title": "On-demand Queries",
-    "description": "Run one on-demand read-only tool: name is the target tool, and arguments follows the executable arguments schema returned by describe_native_tool, without bkn_context. When the arguments are invalid, the error carries the target's executable arguments schema and the failing fields, so you can fix them and retry. Only the read-only tools search_native_tools can find are run here; call the tools this entry publishes directly yourself, and anything this entry does not offer returns an explanation."
+    "description": "Run one on-demand tool: name is the target tool, and arguments follows the executable arguments schema returned by describe_native_tool, without bkn_context. The target may be any tool this entry does not publish directly, including tools that change data or call external systems (actions, mounted functions and so on), so confirm the user's intent before running one. When the arguments are invalid, the error carries the target's executable arguments schema and the failing fields, so you can fix them and retry. Call the tools this entry publishes directly yourself."
   }
 }
