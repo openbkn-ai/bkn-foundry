@@ -549,7 +549,12 @@ func TestConceptSyncer_insertDatasetDataForKN(t *testing.T) {
 			actionType := &interfaces.ActionType{}
 			actionType.Parameters = []interfaces.Parameter{{Value: "3"}, {Value: []any{1, 2, 3}}}
 			fullKN := *kn
+			fullKN.ConceptGroups = []*interfaces.ConceptGroup{{}}
+			fullKN.ObjectTypes = []*interfaces.ObjectType{{}}
+			fullKN.RelationTypes = []*interfaces.RelationType{{}}
 			fullKN.ActionTypes = []*interfaces.ActionType{actionType}
+			fullKN.RiskTypes = []*interfaces.RiskType{{}}
+			fullKN.Metrics = []*interfaces.MetricDefinition{{}}
 
 			var written map[string]any
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).
@@ -559,7 +564,10 @@ func TestConceptSyncer_insertDatasetDataForKN(t *testing.T) {
 				})
 
 			So(cs.insertDatasetDataForKN(ctx, &fullKN), ShouldBeNil)
-			So(written, ShouldNotContainKey, "action_types")
+			for _, field := range []string{"concept_groups", "object_types", "relation_types",
+				"action_types", "risk_types", "metrics"} {
+				So(written, ShouldNotContainKey, field)
+			}
 			So(written["id"], ShouldEqual, "kn1")
 			So(fullKN.ActionTypes, ShouldHaveLength, 1)
 		})
