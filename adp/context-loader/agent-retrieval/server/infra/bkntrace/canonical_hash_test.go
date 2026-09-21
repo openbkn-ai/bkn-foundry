@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 // Regression for #1098.
@@ -35,8 +37,8 @@ func canonicalEventFixture() Event {
 
 // receiverCanonicalHash mirrors ledgervo.CanonicalPayloadHash. It lives in bkn-trace, a separate
 // module this one cannot import, so the contract is restated here rather than asserted against the
-// real function - if that canonicalisation ever changes, this test is the thing that has to be
-// updated in step with it.
+// real function. ledgerSharedVector pins the restatement to the real function's output: the same
+// vector and hash sit in ledgervo's canonical_hash_test.go, so a change on either side fails a test.
 func receiverCanonicalHash(t *testing.T, envelope []byte) string {
 	t.Helper()
 	var decoded any
@@ -70,6 +72,78 @@ func TestEvidenceEnvelopeHashMatchesReceiverCanonicalisation(t *testing.T) {
 	if built.PayloadHash != want {
 		t.Errorf("payload_hash would be rejected by agent-observability:\n  sent     = %s\n  receiver = %s",
 			built.PayloadHash, want)
+	}
+}
+
+// ledgerSharedVector and ledgerSharedVectorHash also appear in bkn-trace's
+// ledgervo/canonical_hash_test.go, where the hash is asserted against CanonicalPayloadHash itself.
+// Keep the two copies byte for byte identical.
+const (
+	ledgerSharedVector     = `{"event_id":"evt-1711","payload":{"definition":{"zeta":"a<b>&c","alpha":9007199254740993,"mid":{"name":"n","code":"c"},"ratio":0.5}},"event_type":"ontology.schema.snapshot"}`
+	ledgerSharedVectorHash = "42210712b1261e4939024f526fa34b419faf2058ab44afc75e8aae249a4ec4a6"
+)
+
+func TestCanonicalPayloadHashMatchesLedgerSharedVector(t *testing.T) {
+	if got := canonicalPayloadHash([]byte(ledgerSharedVector)); got != ledgerSharedVectorHash {
+		t.Fatalf("canonicalPayloadHash drifted from the ledger: got %s, want %s", got, ledgerSharedVectorHash)
+	}
+	if got := receiverCanonicalHash(t, []byte(ledgerSharedVector)); got != ledgerSharedVectorHash {
+		t.Fatalf("receiverCanonicalHash no longer restates the ledger: got %s, want %s", got, ledgerSharedVectorHash)
+	}
+}
+
+// Regression for #1711. The schema snapshot puts the tool's response struct into the envelope.
+// Struct fields marshal in declaration order, while the receiver decodes the envelope into generic
+// JSON and re-encodes it sorted, so a digest taken over the marshalled bytes never matched and every
+// get_kn_detail / get_object_types / get_relation_types event was rejected. The fixture is built so
+// that declaration order is not alphabetical, and it adds a nested struct, HTML characters, an
+// integer above 2^53 and a float - each a way the two encodings can differ.
+type snapshotDefinitionFixture struct {
+	Zeta  string                   `json:"zeta"`
+	Alpha int64                    `json:"alpha"`
+	Mid   snapshotNestedDefinition `json:"mid"`
+	Ratio float64                  `json:"ratio"`
+}
+
+type snapshotNestedDefinition struct {
+	Name string `json:"name"`
+	Code string `json:"code"`
+}
+
+func TestEvidenceEnvelopeHashMatchesReceiverWhenEnvelopeCarriesStruct(t *testing.T) {
+	event := Event{
+		"event_id":   "evt-1711",
+		"event_type": "ontology.schema.snapshot",
+		"payload": map[string]any{
+			"definition": snapshotDefinitionFixture{
+				Zeta: "a<b>&c", Alpha: 9007199254740993, Ratio: 0.5,
+				Mid: snapshotNestedDefinition{Name: "n", Code: "c"},
+			},
+		},
+	}
+	built, err := trace30EvidenceEvent(map[string]any{"bkn.conversation.id": "conv_1"}, event, nil)
+	if err != nil {
+		t.Fatalf("trace30EvidenceEvent failed: %v", err)
+	}
+
+	// What the receiver sees is the envelope inside the request body postBatch sends.
+	body, err := sonic.ConfigStd.Marshal(built)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	var wire struct {
+		PayloadHash string          `json:"payload_hash"`
+		Envelope    json.RawMessage `json:"envelope"`
+	}
+	if err := json.Unmarshal(body, &wire); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if want := receiverCanonicalHash(t, wire.Envelope); wire.PayloadHash != want {
+		t.Fatalf("payload_hash would be rejected by agent-observability:\n  sent     = %s\n  receiver = %s",
+			wire.PayloadHash, want)
+	}
+	if wire.PayloadHash != ledgerSharedVectorHash {
+		t.Fatalf("an envelope equal to the shared vector hashed to %s, want %s", wire.PayloadHash, ledgerSharedVectorHash)
 	}
 }
 
