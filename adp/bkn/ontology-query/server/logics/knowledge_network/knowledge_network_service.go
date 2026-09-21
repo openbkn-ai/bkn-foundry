@@ -295,7 +295,9 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 	}
 	subGraphquery.BatchQueryState = *baseState
 
-	// Build the subgraph from the source along the path. TODO: fix this by adding filters for each object type.
+	// Build the subgraph from the source along the path. Source, intermediate,
+	// and target instances are each read through ObjectTypeService, which applies
+	// that object type's row filter before an edge or path is assembled.
 	typePathObjectCtx := &typePathObjectsContext{
 		ctx:           typePathsObjectCtx.ctx,
 		relationPaths: []interfaces.RelationPath{},

@@ -26,6 +26,7 @@ import (
 	"ontology-query/locale"
 	"ontology-query/logics"
 	permissionlogic "ontology-query/logics/permission"
+	rowfilter "ontology-query/logics/row_filter"
 )
 
 var (
@@ -40,6 +41,7 @@ type metricQueryService struct {
 	vba            interfaces.VegaBackendAccess
 	proxy          interfaces.ProxyContextResolver
 	propertyAccess interfaces.PropertyAccessService
+	rowFilters     interfaces.RowFilterService
 }
 
 // NewMetricQueryService constructs the metric query service (same pattern as NewObjectTypeService / bkn-backend NewMetricService).
@@ -52,6 +54,7 @@ func NewMetricQueryService(appSetting *common.AppSetting) interfaces.MetricQuery
 			vba:            logics.VBA,
 			proxy:          logics.PCR,
 			propertyAccess: permissionlogic.NewPropertyAccessService(appSetting),
+			rowFilters:     permissionlogic.NewRowFilterService(appSetting),
 		}
 	})
 	return metricQueryServiceInst
@@ -212,6 +215,11 @@ func resolveTrendTimeRangeMS(def *interfaces.MetricDefinition, tw *interfaces.Me
 
 func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, def *interfaces.MetricDefinition,
 	metricQuery *interfaces.MetricQueryRequest, ot interfaces.ObjectType) (*interfaces.ResourceDataQueryParams, *trendMeta, error) {
+	return s.buildResourceDataQueryParamsWithRowFilter(ctx, def, metricQuery, ot, nil)
+}
+
+func (s *metricQueryService) buildResourceDataQueryParamsWithRowFilter(ctx context.Context, def *interfaces.MetricDefinition,
+	metricQuery *interfaces.MetricQueryRequest, ot interfaces.ObjectType, rowFilter *cond.CondCfg) (*interfaces.ResourceDataQueryParams, *trendMeta, error) {
 
 	if def.CalculationFormula == nil {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
@@ -290,6 +298,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 	}
 	merged := mergeConditions(metricFormula.Condition, reqCond)
 	merged = mergeConditions(merged, timeCond)
+	merged = rowfilter.And(merged, rowFilter)
 	var fc map[string]any
 	if merged != nil {
 		rewriteCondition, err := cond.RewriteCondition(ctx, merged, propMap,
@@ -798,10 +807,27 @@ func (s *metricQueryService) executeMetricWithObjectType(ctx context.Context, kn
 		return interfaces.MetricData{}, err
 	}
 	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
-
-	params, trend, err := s.buildResourceDataQueryParams(ctx, def, metricQuery, ot)
+	rowFilter, noResults, err := s.resolveRowFilter(ctx, knID, ot)
 	if err != nil {
 		return interfaces.MetricData{}, err
+	}
+	// Build the complete execution shape before short-circuiting a FALSE
+	// policy. A caller must receive the same validation and trend metadata as
+	// an ordinary empty query; only the downstream data read is skipped.
+	params, trend, err := s.buildResourceDataQueryParamsWithRowFilter(ctx, def, metricQuery, ot, rowFilter)
+	if err != nil {
+		return interfaces.MetricData{}, err
+	}
+	if noResults {
+		result := interfaces.MetricData{
+			Model: interfaces.MetricModel{UnitType: def.UnitType, Unit: def.Unit},
+			Datas: []interfaces.Data{},
+		}
+		if trend != nil {
+			result.Step = trend.step
+			result.IsCalendar = true
+		}
+		return result, nil
 	}
 
 	// Query data from Vega, record the request start and end, and return them through the API.
@@ -842,7 +868,7 @@ func (s *metricQueryService) executeMetricWithObjectType(ctx context.Context, kn
 		nq := *metricQuery
 		nq.Time = &tw
 
-		params, _, err := s.buildResourceDataQueryParams(ctx, def, &nq, ot)
+		params, _, err := s.buildResourceDataQueryParamsWithRowFilter(ctx, def, &nq, ot, rowFilter)
 		if err != nil {
 			return interfaces.MetricData{}, err
 		}

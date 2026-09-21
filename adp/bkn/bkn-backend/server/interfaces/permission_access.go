@@ -223,12 +223,48 @@ type PropertyAccessDecision struct {
 	Source string `json:"source"`
 }
 
+// RowFilterValue is an exact value selected by a row-filter policy. Keeping
+// the value tagged avoids a JSON number being silently widened to float64
+// while it crosses the bkn-safe boundary.
+type RowFilterValue struct {
+	Type    string  `json:"type"`
+	String  *string `json:"string,omitempty"`
+	Integer *int64  `json:"integer,omitempty"`
+	Boolean *bool   `json:"boolean,omitempty"`
+}
+
+// RowFilterPredicate is the deliberately small predicate language returned
+// by bkn-safe. Query services validate and compile it against their local
+// published model before it is ever sent to a data engine.
+type RowFilterPredicate struct {
+	Kind       string               `json:"kind"`
+	Property   string               `json:"property,omitempty"`
+	Values     []RowFilterValue     `json:"values,omitempty"`
+	Predicates []RowFilterPredicate `json:"predicates,omitempty"`
+}
+
+type RowFiltersRequest struct {
+	AccessorID     string   `json:"accessor_id"`
+	ObjectTypeRefs []string `json:"object_type_refs"`
+}
+
+type RowFilterDecisionEntry struct {
+	ObjectTypeRef            string             `json:"object_type_ref"`
+	Predicate                RowFilterPredicate `json:"predicate"`
+	EffectiveRowFilterDigest string             `json:"effective_row_filter_digest"`
+}
+
+type RowFiltersResponse struct {
+	Entries []RowFilterDecisionEntry `json:"entries"`
+}
+
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go
 type PermissionAccess interface {
 	CheckPermission(ctx context.Context, check PermissionCheck) (bool, error)
 	CheckPermissions(ctx context.Context, request PermissionChecksRequest) (PermissionChecksResponse, error)
 	FilterResources(ctx context.Context, filter PermissionResourcesFilter) (map[string]PermissionResourceOps, error)
 	ResolvePropertyLevels(ctx context.Context, request PropertyLevelsRequest) (PropertyLevelsResponse, error)
+	ResolveRowFilters(ctx context.Context, request RowFiltersRequest) (RowFiltersResponse, error)
 
 	CreateResources(ctx context.Context, policies []PermissionPolicy) error
 	DeleteResources(ctx context.Context, resources []PermissionResource) error

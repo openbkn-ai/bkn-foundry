@@ -19,6 +19,10 @@ type PermissionService interface {
 	// named property of one object type: PROPERTY_ACCESS_FULL, _MASKED, _SCHEMA
 	// or _NONE.
 	ResolvePropertyAccessLevels(ctx context.Context, objectTypeRef string, properties []string) (map[string]string, error)
+	// ResolveRowFilters returns the effective row predicate for every requested
+	// object class in one bkn-safe decision. It is fail-closed for service-app
+	// principals because bkn-safe evaluates row policies as directory users.
+	ResolveRowFilters(ctx context.Context, objectTypeRefs []string) ([]RowFilterDecisionEntry, error)
 	RequireFullPropertyAccess(ctx context.Context, objectTypeRef string, properties []string) error
 	// FilterVisibleResources returns only resources satisfying every visibility operation.
 	FilterVisibleResources(ctx context.Context, resourceType string, ids []string,

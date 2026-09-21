@@ -196,6 +196,18 @@ func (s *safePermissionAccess) ResolvePropertyLevels(ctx context.Context,
 	return response, nil
 }
 
+func (s *safePermissionAccess) ResolveRowFilters(ctx context.Context,
+	request interfaces.RowFiltersRequest) (interfaces.RowFiltersResponse, error) {
+	var response interfaces.RowFiltersResponse
+	if err := s.safe.do(ctx, http.MethodPost, "/api/safe/v1/authz/row-filters", request, &response); err != nil {
+		return response, err
+	}
+	if response.Entries == nil {
+		return response, fmt.Errorf("invalid bkn-safe row-filters response")
+	}
+	return response, nil
+}
+
 // filterBatch is the shared body of FilterResources.
 func (s *safePermissionAccess) filterBatch(ctx context.Context,
 	filter interfaces.PermissionResourcesFilter, visibility []string,

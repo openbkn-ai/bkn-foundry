@@ -9,6 +9,7 @@ package metric
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -46,6 +47,41 @@ type unexpectedMetricPropertyAccessStub struct{}
 func (unexpectedMetricPropertyAccessStub) ResolvePropertyLevels(context.Context,
 	[]interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
 	panic("published metric queries must not use the caller's object-type property access")
+}
+
+type trueMetricRowFilterStub struct{}
+
+func (trueMetricRowFilterStub) ResolveRowFilters(_ context.Context,
+	refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	entries := make([]interfaces.RowFilterDecisionEntry, 0, len(refs))
+	for _, ref := range refs {
+		entries = append(entries, interfaces.RowFilterDecisionEntry{
+			ObjectTypeRef: ref, Predicate: interfaces.RowFilterPredicate{Kind: "true"},
+			EffectiveRowFilterDigest: "sha256:test-row-filter-true",
+		})
+	}
+	return entries, nil
+}
+
+type metricRowFilterStub struct {
+	predicate interfaces.RowFilterPredicate
+	err       error
+	calls     [][]string
+}
+
+func (s *metricRowFilterStub) ResolveRowFilters(_ context.Context,
+	refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	s.calls = append(s.calls, append([]string(nil), refs...))
+	if s.err != nil {
+		return nil, s.err
+	}
+	entries := make([]interfaces.RowFilterDecisionEntry, 0, len(refs))
+	for _, ref := range refs {
+		entries = append(entries, interfaces.RowFilterDecisionEntry{
+			ObjectTypeRef: ref, Predicate: s.predicate, EffectiveRowFilterDigest: "sha256:metric-row-filter",
+		})
+	}
+	return entries, nil
 }
 
 type metricProxyResolverStub struct {
@@ -465,6 +501,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 			vba:            vba,
 			proxy:          &metricProxyResolverStub{},
 			propertyAccess: unexpectedMetricPropertyAccessStub{},
+			rowFilters:     trueMetricRowFilterStub{},
 		}
 
 		def := &interfaces.MetricDefinition{
@@ -690,6 +727,83 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 	})
 }
 
+func TestMetricExecutionAppliesRowFilterBeforeAggregation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	vega := omock.NewMockVegaBackendAccess(ctrl)
+	east := "east"
+	filters := &metricRowFilterStub{predicate: interfaces.RowFilterPredicate{
+		Kind: "in", Property: "region", Values: []interfaces.RowFilterValue{{Type: "string", String: &east}},
+	}}
+	service := &metricQueryService{vba: vega, proxy: &metricProxyResolverStub{}, rowFilters: filters}
+	definition := &interfaces.MetricDefinition{
+		ID: "metric-1", ScopeRef: "order", UnitType: "count", Unit: "",
+		CalculationFormula: &interfaces.MetricCalculationFormula{
+			Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: interfaces.MetricAggrSum},
+		},
+	}
+	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "order", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "orders"},
+		DataProperties: []cond.DataProperty{
+			{Name: "region", Type: dtype.DATATYPE_STRING, MappedField: cond.Field{Name: "region_col"}},
+			{Name: "amount", Type: dtype.DATATYPE_DOUBLE, MappedField: cond.Field{Name: "amount_col"}},
+		},
+	}}
+	vega.EXPECT().QueryResourceData(gomock.Any(), "orders", gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+			want := map[string]any{"field": "region_col", "operation": cond.OperationIn, "value": []any{"east"}}
+			if !reflect.DeepEqual(params.FilterCondition, want) {
+				t.Fatalf("row-filter condition = %#v, want %#v", params.FilterCondition, want)
+			}
+			return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"__value": 3.0}}}, nil
+		},
+	)
+	result, err := service.executeMetricWithObjectType(context.Background(), "kn-1", "main", definition,
+		&interfaces.MetricQueryRequest{}, objectType, true)
+	if err != nil || len(result.Datas) != 1 {
+		t.Fatalf("executeMetricWithObjectType() = %#v, %v", result, err)
+	}
+	if want := [][]string{{"kn-1/order"}}; !reflect.DeepEqual(filters.calls, want) {
+		t.Fatalf("row-filter calls = %#v, want %#v", filters.calls, want)
+	}
+}
+
+func TestMetricExecutionSkipsVegaWhenRowFilterMatchesNothing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	service := &metricQueryService{
+		vba:        omock.NewMockVegaBackendAccess(ctrl),
+		proxy:      &metricProxyResolverStub{},
+		rowFilters: &metricRowFilterStub{predicate: interfaces.RowFilterPredicate{Kind: "false"}},
+	}
+	definition := &interfaces.MetricDefinition{
+		ID: "metric-1", ScopeRef: "order", UnitType: "count", Unit: "",
+		TimeDimension: &interfaces.MetricTimeDimension{Property: "occurred_at"},
+		CalculationFormula: &interfaces.MetricCalculationFormula{
+			Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: interfaces.MetricAggrSum},
+		},
+	}
+	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "order", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "orders"},
+		DataProperties: []cond.DataProperty{
+			{Name: "amount", Type: dtype.DATATYPE_DOUBLE, MappedField: cond.Field{Name: "amount_col"}},
+			{Name: "occurred_at", Type: dtype.DATATYPE_DATETIME, MappedField: cond.Field{Name: "occurred_at_col"}},
+		},
+	}}
+	start, end := int64(1_776_729_600_000), int64(1_776_816_000_000)
+	instant, step := false, "day"
+	result, err := service.executeMetricWithObjectType(context.Background(), "kn-1", "main", definition,
+		&interfaces.MetricQueryRequest{Time: &interfaces.MetricTimeWindow{
+			Start: &start, End: &end, Instant: &instant, Step: &step,
+		}}, objectType, true)
+	if err != nil || result.Datas == nil || len(result.Datas) != 0 {
+		t.Fatalf("executeMetricWithObjectType() = %#v, %v", result, err)
+	}
+	if result.Step != step || !result.IsCalendar {
+		t.Fatalf("empty trend response = %#v, want step %q and calendar metadata", result, step)
+	}
+}
+
 // Trend plus calendar day once incorrectly used ParseDuration("day"), producing step=0 and invalid timelines such as -28800000ms; fill_null must use calendar alignment.
 func Test_correctingTime_trendCalendarDay(t *testing.T) {
 	Convey("correctingTime uses calendar path for trend day (not ParseDuration)\n", t, func() {
@@ -738,6 +852,7 @@ func Test_metricQueryService_DryRunMetricData(t *testing.T) {
 			vba:            vba,
 			proxy:          &metricProxyResolverStub{},
 			propertyAccess: fullMetricPropertyAccessStub{},
+			rowFilters:     trueMetricRowFilterStub{},
 		}
 
 		Convey("Fails when kn_id mismatches metric_config.kn_id\n", func() {

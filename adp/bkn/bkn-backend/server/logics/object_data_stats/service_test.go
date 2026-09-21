@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -52,6 +53,15 @@ func Test_objectDataStatsService_ObjectDataStats(t *testing.T) {
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
 		svc := NewObjectDataStatsServiceWith(ps, ots, vba)
+		// The normal policy is TRUE. Individual policy behavior is covered below;
+		// the existing data-statistics cases should retain their previous shape.
+		ps.EXPECT().ResolveRowFilters(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+			func(_ context.Context, refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+				return []interfaces.RowFilterDecisionEntry{{
+					ObjectTypeRef: refs[0], Predicate: interfaces.RowFilterPredicate{Kind: "true"},
+					EffectiveRowFilterDigest: "digest",
+				}}, nil
+			})
 
 		req := interfaces.ObjectDataStatsRequest{
 			Base:   interfaces.ObjectTypeRef{KNID: "kn1", Branch: "main", OTID: "bom"},
@@ -196,6 +206,43 @@ func Test_objectDataStatsService_ObjectDataStats(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
+}
+
+func Test_objectDataStatsService_AppliesRowFilter(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	vba := bmock.NewMockVegaBackendAccess(ctrl)
+	svc := NewObjectDataStatsServiceWith(ps, ots, vba)
+
+	objectType := objectTypeFixture("bom", "res-1", []string{"bom_material_code"})
+	objectType.DataProperties = append(objectType.DataProperties,
+		&interfaces.DataProperty{Name: "region", Type: "keyword", MappedField: &interfaces.Field{Name: "region_code"}})
+	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(2).Return(nil)
+	ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Nil(), gomock.Any(), gomock.Any(), "bom").Times(2).Return(objectType, nil)
+	ps.EXPECT().ResolveRowFilters(gomock.Any(), gomock.Any()).Times(2).DoAndReturn(
+		func(_ context.Context, refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+			east := "east"
+			return []interfaces.RowFilterDecisionEntry{{
+				ObjectTypeRef: refs[0], EffectiveRowFilterDigest: "digest-east",
+				Predicate: interfaces.RowFilterPredicate{Kind: "in", Property: "region", Values: []interfaces.RowFilterValue{{Type: "string", String: &east}}},
+			}}, nil
+		})
+	vba.EXPECT().RawQuery(gomock.Any(), gomock.Any()).Times(2).DoAndReturn(
+		func(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+			if !strings.Contains(req.Query, "WHERE `region_code` IN ('east')") {
+				t.Fatalf("stats query misses row filter: %s", req.Query)
+			}
+			return countRow(2, 2, true), nil
+		})
+
+	_, err := svc.ObjectDataStats(context.Background(), interfaces.ObjectDataStatsRequest{
+		Base:   interfaces.ObjectTypeRef{KNID: "kn-1", OTID: "bom"},
+		Target: interfaces.ObjectTypeRef{KNID: "kn-2", OTID: "bom"},
+	})
+	if err != nil {
+		t.Fatalf("ObjectDataStats() error = %v", err)
+	}
 }
 
 func Test_asInt64_ReadsEveryDriverShape(t *testing.T) {

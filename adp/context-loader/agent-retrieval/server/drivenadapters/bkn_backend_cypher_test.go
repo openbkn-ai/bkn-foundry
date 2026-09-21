@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
@@ -50,5 +51,34 @@ func TestRunCypherQueryPassesForbiddenThrough(t *testing.T) {
 				t.Fatalf("details = %v, want the property the refusal names", httpErr.ErrorDetails)
 			}
 		})
+	}
+}
+
+// Row filters are evaluated in bkn-backend. Context Loader must therefore
+// retain the actual caller while creating its child tracing operation.
+func TestRunCypherQueryForwardsCallerIdentity(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+	mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+	mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
+	mockHTTPClient.EXPECT().
+		PostNoUnmarshal(gomock.Any(), "http://bkn/in/v1/knowledge-networks/kn-1/cypher-queries", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, header map[string]string, _ any) (int, []byte, error) {
+			if got := header[string(interfaces.HeaderXAccountID)]; got != "user-1" {
+				t.Fatalf("x-account-id = %q, want user-1", got)
+			}
+			if got := header[string(interfaces.HeaderXAccountType)]; got != "user" {
+				t.Fatalf("x-account-type = %q, want user", got)
+			}
+			return http.StatusOK, []byte(`{"columns":[],"entries":[]}`), nil
+		})
+
+	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorType("user"),
+	})
+	client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
+	if _, err := client.RunCypherQuery(ctx, &interfaces.CypherQueryReq{KnID: "kn-1", Query: "MATCH (u:user) RETURN u"}); err != nil {
+		t.Fatalf("RunCypherQuery() error = %v", err)
 	}
 }

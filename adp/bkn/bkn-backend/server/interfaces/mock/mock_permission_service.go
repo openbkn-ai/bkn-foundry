@@ -200,6 +200,21 @@ func (mr *MockPermissionServiceMockRecorder) ResolvePropertyAccessLevels(ctx, ob
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolvePropertyAccessLevels", reflect.TypeOf((*MockPermissionService)(nil).ResolvePropertyAccessLevels), ctx, objectTypeRef, properties)
 }
 
+// ResolveRowFilters mocks base method.
+func (m *MockPermissionService) ResolveRowFilters(ctx context.Context, objectTypeRefs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveRowFilters", ctx, objectTypeRefs)
+	ret0, _ := ret[0].([]interfaces.RowFilterDecisionEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveRowFilters indicates an expected call of ResolveRowFilters.
+func (mr *MockPermissionServiceMockRecorder) ResolveRowFilters(ctx, objectTypeRefs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRowFilters", reflect.TypeOf((*MockPermissionService)(nil).ResolveRowFilters), ctx, objectTypeRefs)
+}
+
 // UpdateResource mocks base method.
 func (m *MockPermissionService) UpdateResource(ctx context.Context, resource interfaces.PermissionResource) error {
 	m.ctrl.T.Helper()
