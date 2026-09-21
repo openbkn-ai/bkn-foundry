@@ -245,6 +245,7 @@ func newMCPServerForProfile(
 	b.addExtras()
 	b.verifyDecoratorsLanded()
 
+	var mcpServer *server.MCPServer
 	options := []server.ServerOption{
 		server.WithToolCapabilities(true),
 		server.WithInstructions(profile.instructions(localeBundle)),
@@ -252,6 +253,24 @@ func newMCPServerForProfile(
 	if profile.textResults {
 		// Outermost of all, so it projects the result the guard completed.
 		options = append(options, server.WithToolHandlerMiddleware(compactResultMiddleware()))
+	}
+	if profile.strictArguments {
+		// Before the guard, so a refused call leaves no Operation.
+		options = append(options, server.WithToolHandlerMiddleware(compactArgumentsMiddleware(
+			func(ctx context.Context, name string) (mcp.Tool, bool) {
+				registered := mcpServer.GetTool(name)
+				if registered == nil {
+					return mcp.Tool{}, false
+				}
+				tools := b.filter(ctx, []mcp.Tool{registered.Tool})
+				if profile.published != nil {
+					tools = profile.filter(ctx, tools)
+				}
+				if len(tools) == 0 {
+					return mcp.Tool{}, false
+				}
+				return tools[0], true
+			})))
 	}
 	options = append(options,
 		// Of the per-call checks, the licence gate goes first. mcp-go applies middlewares in reverse,
@@ -278,7 +297,7 @@ func newMCPServerForProfile(
 		// does not publish is refused exactly like an unknown one.
 		options = append(options, server.WithToolFilter(profile.filter))
 	}
-	mcpServer := server.NewMCPServer(serverName, serverVersion, options...)
+	mcpServer = server.NewMCPServer(serverName, serverVersion, options...)
 	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 	b.attach(mcpServer)
 	if profile.inlinePTC {

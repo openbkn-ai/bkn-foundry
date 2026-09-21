@@ -41,6 +41,9 @@ type mcpProfile struct {
 	// textResults sends business results as text only, with the receipt in
 	// _meta (see compactResultMiddleware).
 	textResults bool
+	// strictArguments refuses argument names a published definition does not
+	// declare (see compactArgumentsMiddleware).
+	strictArguments bool
 }
 
 func (p mcpProfile) filter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
@@ -84,13 +87,14 @@ var compactProfileTools = []string{
 // every tool definition into the model, with instructions that route only
 // between those tools, the gateway to the long tail, and no sandbox execution.
 var compactProfile = mcpProfile{
-	endpointPath: compactEndpointPath,
-	instructions: (*mcpLocaleBundle).CompactServerInstructions,
-	published:    toolNameSet(append(slices.Clone(compactProfileTools), gatewayToolOrder...)),
-	inlinePTC:    false,
-	gateway:      true,
-	view:         compactToolView,
-	textResults:  true,
+	endpointPath:    compactEndpointPath,
+	instructions:    (*mcpLocaleBundle).CompactServerInstructions,
+	published:       toolNameSet(append(slices.Clone(compactProfileTools), gatewayToolOrder...)),
+	inlinePTC:       false,
+	gateway:         true,
+	view:            compactToolView,
+	textResults:     true,
+	strictArguments: true,
 }
 
 func toolNameSet(names []string) map[string]struct{} {

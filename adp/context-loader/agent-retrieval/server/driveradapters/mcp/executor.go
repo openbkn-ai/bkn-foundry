@@ -100,6 +100,13 @@ func (e *nativeExecutor) handle(ctx context.Context, req mcp.CallToolRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("executable schema of %s: %w", name, err)
 	}
+	argumentNames := make([]string, 0, len(arguments))
+	for argument := range arguments {
+		argumentNames = append(argumentNames, argument)
+	}
+	if err := checkArgumentNames(name, schema, argumentNames); err != nil {
+		return refusalResult(err), nil
+	}
 	if err := validateTargetArguments(name, schema, arguments); err != nil {
 		var invalid *invalidArguments
 		if errors.As(err, &invalid) {
