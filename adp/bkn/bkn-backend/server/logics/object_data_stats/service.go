@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -21,6 +22,7 @@ import (
 	"bkn-backend/common"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
+	"bkn-backend/interfaces/data_type"
 	"bkn-backend/logics"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
@@ -141,7 +143,11 @@ func (s *objectDataStatsService) sideStats(ctx context.Context,
 	}
 	stats.PrimaryKeys = objectType.PrimaryKeys
 
-	statement, err := buildStatsSQL(ctx, objectType.DataSource.ID, keyColumns)
+	where, err := s.statsRowFilter(ctx, ref.KNID, objectType)
+	if err != nil {
+		return nil, err
+	}
+	statement, err := buildStatsSQLWithWhere(ctx, objectType.DataSource.ID, keyColumns, where)
 	if err != nil {
 		return nil, err
 	}
@@ -231,9 +237,20 @@ const (
 // where it read as a duplicate. The rows with a complete key are counted separately so a missing
 // key and a repeated key come back as the two different faults they are.
 func buildStatsSQL(ctx context.Context, resourceID string, keyColumns []string) (string, error) {
+	return buildStatsSQLWithWhere(ctx, resourceID, keyColumns, "")
+}
+
+// buildStatsSQLWithWhere builds the aggregate over the caller's visible rows.
+// The policy expression is compiler-produced from bkn-safe's restricted
+// predicate grammar; it is never copied from a client request.
+func buildStatsSQLWithWhere(ctx context.Context, resourceID string, keyColumns []string, where string) (string, error) {
 	table := "{{." + resourceID + "}}"
+	from := "FROM " + table
+	if where != "" {
+		from += " WHERE " + where
+	}
 	if len(keyColumns) == 0 {
-		return fmt.Sprintf("SELECT COUNT(*) AS %s FROM %s", statsColumnRowCount, table), nil
+		return fmt.Sprintf("SELECT COUNT(*) AS %s %s", statsColumnRowCount, from), nil
 	}
 
 	quoted := make([]string, 0, len(keyColumns))
@@ -255,9 +272,151 @@ func buildStatsSQL(ctx context.Context, resourceID string, keyColumns []string) 
 	}
 	complete := strings.Join(present, " AND ")
 	return fmt.Sprintf("SELECT COUNT(*) AS %s, COUNT(CASE WHEN %s THEN 1 END) AS %s, "+
-		"COUNT(DISTINCT CASE WHEN %s THEN %s END) AS %s FROM %s",
+		"COUNT(DISTINCT CASE WHEN %s THEN %s END) AS %s %s",
 		statsColumnRowCount, complete, statsColumnKeyedRows,
-		complete, keyExpression, statsColumnKeyDistinct, table), nil
+		complete, keyExpression, statsColumnKeyDistinct, from), nil
+}
+
+// statsRowFilter resolves the effective policy for this side of the comparison
+// and translates the small, validated policy grammar to a SQL WHERE clause.
+// Data-statistics returns counts, so leaving it unfiltered would still expose
+// rows which ordinary object reads hide.
+func (s *objectDataStatsService) statsRowFilter(ctx context.Context, knID string,
+	objectType *interfaces.ObjectType) (string, error) {
+	ref := interfaces.KNChildResourceID(knID, objectType.OTID)
+	entries, err := s.ps.ResolveRowFilters(ctx, []string{ref})
+	if err != nil {
+		return "", err
+	}
+	if len(entries) != 1 || entries[0].ObjectTypeRef != ref ||
+		strings.TrimSpace(entries[0].EffectiveRowFilterDigest) == "" {
+		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KNDiff_DataStatsQueryFailed).WithErrorDetails("invalid row-filter decision")
+	}
+	where, err := compileStatsRowFilter(ctx, entries[0].Predicate, objectType)
+	if err != nil {
+		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KNDiff_DataStatsQueryFailed).WithErrorDetails("invalid row-filter predicate")
+	}
+	return where, nil
+}
+
+func compileStatsRowFilter(ctx context.Context, predicate interfaces.RowFilterPredicate,
+	objectType *interfaces.ObjectType) (string, error) {
+	switch predicate.Kind {
+	case "true":
+		return "", nil
+	case "false":
+		return "1 = 0", nil
+	case "in":
+		property, err := statsRowFilterProperty(objectType, predicate.Property)
+		if err != nil {
+			return "", err
+		}
+		column, err := quoteIdentifier(ctx, property.MappedField.Name)
+		if err != nil {
+			return "", err
+		}
+		values, err := statsRowFilterValues(predicate.Values, property.Type)
+		if err != nil {
+			return "", err
+		}
+		return column + " IN (" + strings.Join(values, ", ") + ")", nil
+	case "or":
+		parts := make([]string, 0, len(predicate.Predicates))
+		for _, child := range predicate.Predicates {
+			compiled, err := compileStatsRowFilter(ctx, child, objectType)
+			if err != nil {
+				return "", err
+			}
+			if compiled == "" { // TRUE makes the whole OR true.
+				return "", nil
+			}
+			if compiled != "1 = 0" {
+				parts = append(parts, compiled)
+			}
+		}
+		if len(parts) == 0 {
+			return "1 = 0", nil
+		}
+		if len(parts) == 1 {
+			return parts[0], nil
+		}
+		return "(" + strings.Join(parts, " OR ") + ")", nil
+	default:
+		return "", fmt.Errorf("unsupported row-filter predicate %q", predicate.Kind)
+	}
+}
+
+func statsRowFilterProperty(objectType *interfaces.ObjectType, name string) (*interfaces.DataProperty, error) {
+	for _, property := range objectType.DataProperties {
+		if property != nil && property.Name == name && property.MappedField != nil && property.MappedField.Name != "" {
+			return property, nil
+		}
+	}
+	return nil, fmt.Errorf("row-filter property %q is not a mapped data property", name)
+}
+
+func statsRowFilterValues(values []interfaces.RowFilterValue, propertyType string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, fmt.Errorf("row-filter has no values")
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		switch value.Type {
+		case "string":
+			if value.String == nil || !statsRowFilterValueTypeAllowed(propertyType, value.Type) {
+				return nil, fmt.Errorf("string value does not match property type")
+			}
+			literal, err := statsRowFilterStringLiteral(*value.String)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, literal)
+		case "integer":
+			if value.Integer == nil || !statsRowFilterValueTypeAllowed(propertyType, value.Type) {
+				return nil, fmt.Errorf("integer value does not match property type")
+			}
+			result = append(result, strconv.FormatInt(*value.Integer, 10))
+		case "boolean":
+			if value.Boolean == nil || !statsRowFilterValueTypeAllowed(propertyType, value.Type) {
+				return nil, fmt.Errorf("boolean value does not match property type")
+			}
+			if *value.Boolean {
+				result = append(result, "TRUE")
+			} else {
+				result = append(result, "FALSE")
+			}
+		default:
+			return nil, fmt.Errorf("unsupported row-filter value type")
+		}
+	}
+	return result, nil
+}
+
+func statsRowFilterStringLiteral(value string) (string, error) {
+	if strings.ContainsRune(value, 0) {
+		return "", fmt.Errorf("row-filter string value must not contain a null byte")
+	}
+
+	// Vega executes this filter as MySQL. Escape backslashes before quotes so a
+	// backslash from a policy value cannot escape the following quote literal.
+	escaped := strings.ReplaceAll(value, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, "'", "''")
+	return "'" + escaped + "'", nil
+}
+
+func statsRowFilterValueTypeAllowed(propertyType, valueType string) bool {
+	switch valueType {
+	case "string":
+		return data_type.SimpleTypeMapping[propertyType] == data_type.SimpleChar || data_type.DataType_IsString(propertyType)
+	case "integer":
+		return data_type.SimpleTypeMapping[propertyType] == data_type.SimpleInt
+	case "boolean":
+		return propertyType == data_type.DATATYPE_BOOLEAN || data_type.SimpleTypeMapping[propertyType] == data_type.SimpleBool
+	default:
+		return false
+	}
 }
 
 // quoteIdentifier writes a column name into the statement.

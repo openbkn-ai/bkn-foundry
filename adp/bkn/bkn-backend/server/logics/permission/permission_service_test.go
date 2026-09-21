@@ -222,6 +222,65 @@ func Test_PermissionServiceImpl_ResolvePropertyAccessLevels(t *testing.T) {
 	}
 }
 
+func TestPermissionServiceImplResolveRowFilters(t *testing.T) {
+	allowed := "east"
+	tests := []struct {
+		name       string
+		account    interfaces.AccountInfo
+		refs       []string
+		response   interfaces.RowFiltersResponse
+		accessErr  error
+		wantStatus int
+	}{
+		{
+			name:    "resolves one batched user decision",
+			account: interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
+			refs:    []string{"kn1/orders", "kn1/customers"},
+			response: interfaces.RowFiltersResponse{Entries: []interfaces.RowFilterDecisionEntry{
+				{ObjectTypeRef: "kn1/orders", Predicate: interfaces.RowFilterPredicate{Kind: "in", Property: "region", Values: []interfaces.RowFilterValue{{Type: "string", String: &allowed}}}, EffectiveRowFilterDigest: "digest-orders"},
+				{ObjectTypeRef: "kn1/customers", Predicate: interfaces.RowFilterPredicate{Kind: "true"}, EffectiveRowFilterDigest: "digest-customers"},
+			}},
+		},
+		{
+			name:       "client credentials account is denied",
+			account:    interfaces.AccountInfo{ID: "app1", Type: interfaces.ACCESSOR_TYPE_APP},
+			refs:       []string{"kn1/orders"},
+			wantStatus: 403,
+		},
+		{
+			name:    "malformed safe response fails closed",
+			account: interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
+			refs:    []string{"kn1/orders"},
+			response: interfaces.RowFiltersResponse{Entries: []interfaces.RowFilterDecisionEntry{{
+				ObjectTypeRef: "kn1/orders", Predicate: interfaces.RowFilterPredicate{Kind: "true"},
+			}}},
+			wantStatus: 500,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc, _, pa, _ := newTestPermissionImpl(t)
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, test.account)
+			if test.wantStatus != 403 {
+				pa.EXPECT().ResolveRowFilters(gomock.Any(), interfaces.RowFiltersRequest{
+					AccessorID: test.account.ID, ObjectTypeRefs: test.refs,
+				}).Return(test.response, test.accessErr)
+			}
+			entries, err := svc.ResolveRowFilters(ctx, test.refs)
+			if test.wantStatus == 0 {
+				if err != nil || len(entries) != len(test.refs) {
+					t.Fatalf("ResolveRowFilters() = %#v, %v", entries, err)
+				}
+				return
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok || httpErr.HTTPCode != test.wantStatus {
+				t.Fatalf("ResolveRowFilters() error = %#v, want HTTP %d", err, test.wantStatus)
+			}
+		})
+	}
+}
+
 func Test_PermissionServiceImpl_CreateResources(t *testing.T) {
 	Convey("Test PermissionServiceImpl CreateResources\n", t, func() {
 		svc, mockCtrl, pa, _ := newTestPermissionImpl(t)

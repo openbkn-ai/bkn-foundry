@@ -179,6 +179,10 @@ type stubPermission struct {
 	propertyErr   error
 	propertyCalls map[string]int
 	propertyAsked map[string][]string
+
+	rowFilters     map[string]interfaces.RowFilterPredicate
+	rowFilterErr   error
+	rowFilterCalls [][]string
 }
 
 func (p *stubPermission) ResolvePropertyAccessLevels(_ context.Context, objectTypeRef string,
@@ -200,6 +204,27 @@ func (p *stubPermission) ResolvePropertyAccessLevels(_ context.Context, objectTy
 		levels[property] = level
 	}
 	return levels, nil
+}
+
+func (p *stubPermission) ResolveRowFilters(_ context.Context,
+	objectTypeRefs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	p.rowFilterCalls = append(p.rowFilterCalls, append([]string(nil), objectTypeRefs...))
+	if p.rowFilterErr != nil {
+		return nil, p.rowFilterErr
+	}
+	entries := make([]interfaces.RowFilterDecisionEntry, 0, len(objectTypeRefs))
+	for _, ref := range objectTypeRefs {
+		predicate := interfaces.RowFilterPredicate{Kind: "true"}
+		if configured, ok := p.rowFilters[ref]; ok {
+			predicate = configured
+		}
+		entries = append(entries, interfaces.RowFilterDecisionEntry{
+			ObjectTypeRef:            ref,
+			Predicate:                predicate,
+			EffectiveRowFilterDigest: "test-digest",
+		})
+	}
+	return entries, nil
 }
 
 func (p *stubPermission) FilterVisibleResources(_ context.Context, _ string, ids []string,
@@ -279,6 +304,97 @@ func TestQueryRunsCompiledStatement(t *testing.T) {
 		t.Fatalf("paging = %+v, want a single page of 5", vega.request.Paging)
 	}
 }
+
+func TestQueryAppliesRowFiltersToEveryMatchedNode(t *testing.T) {
+	order := objectType("ot_order", "Order", resource("res_order", "orders"),
+		dataProperty("id", "f_id"), dataProperty("region", "f_region"), dataProperty("amount", "f_amount"))
+	customer := objectType("ot_customer", "Customer", resource("res_customer", "customers"),
+		dataProperty("id", "f_id"), dataProperty("region", "f_region"))
+	relation := relationType("rt_belongs_to", "BELONGS_TO")
+	relation.SourceObjectTypeID = order.OTID
+	relation.TargetObjectTypeID = customer.OTID
+	relation.MappingRules = []interfaces.Mapping{{
+		SourceProp: interfaces.SimpleProperty{Name: "id"},
+		TargetProp: interfaces.SimpleProperty{Name: "id"},
+	}}
+
+	east, cn := "east", "cn"
+	permission := &stubPermission{rowFilters: map[string]interfaces.RowFilterPredicate{
+		"kn_1/ot_order": {
+			Kind: "in", Property: "region",
+			Values: []interfaces.RowFilterValue{{Type: "string", String: &east}},
+		},
+		"kn_1/ot_customer": {
+			Kind: "in", Property: "region",
+			Values: []interfaces.RowFilterValue{{Type: "string", String: &cn}},
+		},
+	}}
+	vega := &recordingVega{}
+	service := &cypherQueryService{
+		ps: permission,
+		schema: &fakeSchemaSource{
+			objectTypes:   []*interfaces.ObjectType{order, customer},
+			relationTypes: []*interfaces.RelationType{relation},
+		},
+		vba: vega,
+	}
+
+	result, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: "main",
+		Query: "MATCH (o:Order)-[:BELONGS_TO]->(c:Customer) WHERE o.amount > 10 RETURN count(*) AS total",
+	})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if got, want := len(permission.rowFilterCalls), 1; got != want {
+		t.Fatalf("row-filter calls = %d, want %d", got, want)
+	}
+	if got, want := permission.rowFilterCalls[0], []string{"kn_1/ot_order", "kn_1/ot_customer"}; !slices.Equal(got, want) {
+		t.Fatalf("row-filter refs = %v, want %v", got, want)
+	}
+	if strings.Contains(string(result.TraceDescriptor), "region") {
+		t.Fatalf("trace descriptor leaked row-filter-only property: %s", result.TraceDescriptor)
+	}
+	want := "SELECT COUNT(*) AS `total` FROM {{.res_order}} t0 JOIN {{.res_customer}} t1 ON t0.`f_id` = t1.`f_id` " +
+		"WHERE t0.`f_amount` > 10 AND t0.`f_region` IN ('east') AND t1.`f_region` IN ('cn') LIMIT 1000"
+	if got := vega.request.Query; got != want {
+		t.Fatalf("statement = %s\nwant      = %s", got, want)
+	}
+}
+
+func TestQueryRowFilterFalseIsPushedIntoSQL(t *testing.T) {
+	permission := &stubPermission{rowFilters: map[string]interfaces.RowFilterPredicate{
+		"kn_1/ot_order": {Kind: "false"},
+	}}
+	vega := &recordingVega{}
+	service := testService(t, vega, permission)
+
+	_, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: "main", Query: "MATCH (o:Order) RETURN count(*) AS total",
+	})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if got, want := vega.request.Query, "SELECT COUNT(*) AS `total` FROM {{.res_order}} t0 WHERE 1 = 0 LIMIT 1000"; got != want {
+		t.Fatalf("statement = %s, want %s", got, want)
+	}
+}
+
+func TestQueryRejectsInvalidRowFilterResult(t *testing.T) {
+	permission := &stubPermission{rowFilters: map[string]interfaces.RowFilterPredicate{
+		"kn_1/ot_order": {Kind: "in", Property: "missing", Values: []interfaces.RowFilterValue{{Type: "string", String: stringPtr("east")}}},
+	}}
+	service := testService(t, &recordingVega{}, permission)
+
+	_, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: "main", Query: "MATCH (o:Order) RETURN o.id",
+	})
+	if status := statusOf(t, err); status != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", status, http.StatusInternalServerError)
+	}
+}
+
+func stringPtr(value string) *string { return &value }
 
 func TestQueryAppliesDefaultLimit(t *testing.T) {
 	vega := &recordingVega{}

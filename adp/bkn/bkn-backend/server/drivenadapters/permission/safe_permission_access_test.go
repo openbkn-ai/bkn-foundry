@@ -157,6 +157,30 @@ func TestSafeResolvePropertyLevelsRejectsMissingEntries(t *testing.T) {
 	}
 }
 
+func TestSafeResolveRowFilters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/safe/v1/authz/row-filters" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		var request interfaces.RowFiltersRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.AccessorID != "u-1" || !reflect.DeepEqual(request.ObjectTypeRefs, []string{"kn-1/orders"}) {
+			t.Fatalf("unexpected request: %#v", request)
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"object_type_ref":"kn-1/orders","predicate":{"kind":"true"},"effective_row_filter_digest":"sha256:one"}]}`))
+	}))
+	defer srv.Close()
+
+	response, err := NewPermissionAccess(srv.URL).ResolveRowFilters(context.Background(), interfaces.RowFiltersRequest{
+		AccessorID: "u-1", ObjectTypeRefs: []string{"kn-1/orders"},
+	})
+	if err != nil || len(response.Entries) != 1 || response.Entries[0].Predicate.Kind != "true" {
+		t.Fatalf("ResolveRowFilters() = %#v, %v", response, err)
+	}
+}
+
 func knFilter(ids []string, ops, _ []string) interfaces.PermissionResourcesFilter {
 	resources := make([]interfaces.PermissionResource, 0, len(ids))
 	for _, id := range ids {

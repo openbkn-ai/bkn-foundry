@@ -207,7 +207,10 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
 			WithErrorDetails(err.Error())
 	}
-
+	// The semantic descriptor records the caller's query, not policy internals.
+	// In particular, a filter-only policy property may be invisible to the
+	// caller and must not enter their trace/evidence payload merely because it
+	// constrains execution below.
 	descriptor, err := BuildSemanticQueryDescriptor(plan, query.Query)
 	if err != nil {
 		common.LogSafeError(ctx, "Cypher semantic descriptor generation failed", err)
@@ -215,6 +218,14 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	}
 	descriptorJSON, err := json.Marshal(descriptor)
 	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+	}
+	if err := s.applyRowFilters(ctx, query.KNID, plan, schema); err != nil {
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
+			return nil, err
+		}
+		common.LogSafeError(ctx, "Cypher row-filter compilation failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
