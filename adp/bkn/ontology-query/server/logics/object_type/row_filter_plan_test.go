@@ -15,7 +15,7 @@ func TestCompileRowFilterBuildsOnlyExactMappedPredicates(t *testing.T) {
 	east := "east"
 	west := "west"
 	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-		DataProperties: []cond.DataProperty{{Name: "region", Type: "keyword", MappedField: cond.Field{Name: "region.keyword"}}},
+		DataProperties: []cond.DataProperty{{Name: "region", Type: "keyword", MappedField: cond.Field{Name: "region.keyword"}, ConditionOperations: []string{cond.OperationIn}}},
 	}}
 	compiled, fields, noResults, err := compileRowFilter(interfaces.RowFilterPredicate{
 		Kind: "or", Predicates: []interfaces.RowFilterPredicate{
@@ -34,7 +34,7 @@ func TestCompileRowFilterBuildsOnlyExactMappedPredicates(t *testing.T) {
 func TestCompileRowFilterRejectsUnmappedOrWronglyTypedFields(t *testing.T) {
 	value := int64(1)
 	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-		DataProperties: []cond.DataProperty{{Name: "region", Type: "keyword", MappedField: cond.Field{Name: "region.keyword"}}},
+		DataProperties: []cond.DataProperty{{Name: "region", Type: "keyword", MappedField: cond.Field{Name: "region.keyword"}, ConditionOperations: []string{cond.OperationIn}}},
 	}}
 	if _, _, _, err := compileRowFilter(interfaces.RowFilterPredicate{
 		Kind: "in", Property: "region", Values: []interfaces.RowFilterValue{{Type: "integer", Integer: &value}},
@@ -45,6 +45,34 @@ func TestCompileRowFilterRejectsUnmappedOrWronglyTypedFields(t *testing.T) {
 		Kind: "in", Property: "unknown", Values: []interfaces.RowFilterValue{{Type: "integer", Integer: &value}},
 	}, objectType); err == nil {
 		t.Fatal("row filter with an unknown field must fail closed")
+	}
+}
+
+func TestCompileRowFilterRejectsFieldsWithoutExactCapability(t *testing.T) {
+	value := "east"
+	for _, property := range []cond.DataProperty{
+		{Name: "region", Type: "keyword", MappedField: cond.Field{Name: "region.keyword"}},
+		{Name: "description", Type: "text", MappedField: cond.Field{Name: "description"}, ConditionOperations: []string{cond.OperationIn}},
+	} {
+		objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{DataProperties: []cond.DataProperty{property}}}
+		if _, _, _, err := compileRowFilter(interfaces.RowFilterPredicate{
+			Kind: "in", Property: property.Name, Values: []interfaces.RowFilterValue{{Type: "string", String: &value}},
+		}, objectType); err == nil {
+			t.Fatalf("row filter for %#v must fail closed", property)
+		}
+	}
+}
+
+func TestCompileRowFilterAllowsMappedIntegerWithoutStringOperationMetadata(t *testing.T) {
+	value := int64(42)
+	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		DataProperties: []cond.DataProperty{{Name: "department_id", Type: "integer", MappedField: cond.Field{Name: "department_id"}}},
+	}}
+	compiled, _, noResults, err := compileRowFilter(interfaces.RowFilterPredicate{
+		Kind: "in", Property: "department_id", Values: []interfaces.RowFilterValue{{Type: "integer", Integer: &value}},
+	}, objectType)
+	if err != nil || noResults || compiled == nil || compiled.Operation != cond.OperationIn {
+		t.Fatalf("integer row filter = %#v, %v, %v", compiled, noResults, err)
 	}
 }
 

@@ -174,6 +174,14 @@ func applyEnv(cfg *Config) {
 			cfg.Upstreams.VegaBackend.Timeout = d
 		}
 	}
+	if v := os.Getenv("SAFE_ONTOLOGY_QUERY_BASE_URL"); v != "" {
+		cfg.Upstreams.OntologyQuery.BaseURL = v
+	}
+	if v := os.Getenv("SAFE_ONTOLOGY_QUERY_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Upstreams.OntologyQuery.Timeout = d
+		}
+	}
 }
 
 func envInt(k string) (int, bool) {

@@ -83,21 +83,25 @@ func valuesForProperty(values []interfaces.RowFilterValue, property cond.DataPro
 	if len(values) == 0 {
 		return nil, fmt.Errorf("has no values")
 	}
+	valueType, exactFilterable := ExactFilterValueType(property)
+	if !exactFilterable {
+		return nil, fmt.Errorf("is not an exactly filterable data property")
+	}
 	result := make([]any, 0, len(values))
 	for _, value := range values {
 		switch value.Type {
 		case "string":
-			if value.String == nil || !typeAllows(property.Type, value.Type) {
+			if value.String == nil || valueType != value.Type {
 				return nil, fmt.Errorf("string value does not match property type")
 			}
 			result = append(result, *value.String)
 		case "integer":
-			if value.Integer == nil || !typeAllows(property.Type, value.Type) {
+			if value.Integer == nil || valueType != value.Type {
 				return nil, fmt.Errorf("integer value does not match property type")
 			}
 			result = append(result, *value.Integer)
 		case "boolean":
-			if value.Boolean == nil || !typeAllows(property.Type, value.Type) {
+			if value.Boolean == nil || valueType != value.Type {
 				return nil, fmt.Errorf("boolean value does not match property type")
 			}
 			result = append(result, *value.Boolean)
@@ -108,14 +112,44 @@ func valuesForProperty(values []interfaces.RowFilterValue, property cond.DataPro
 	return result, nil
 }
 
-func typeAllows(propertyType, valueType string) bool {
-	switch valueType {
-	case "string":
-		return dtype.SimpleTypeMapping[propertyType] == dtype.SimpleChar || dtype.DataType_IsString(propertyType)
-	case "integer":
-		return dtype.SimpleTypeMapping[propertyType] == dtype.SimpleInt || dtype.DataType_IsNumber(propertyType)
-	case "boolean":
-		return propertyType == dtype.DATATYPE_BOOLEAN || dtype.SimpleTypeMapping[propertyType] == dtype.SimpleBool
+// ExactFilterValueType is the single model-level capability check for a
+// row-filter IN predicate. String properties must explicitly advertise IN
+// support; that is the model's evidence that the mapped string field can be
+// matched exactly. Integer and boolean fields have no ConditionOperations
+// metadata in the existing object-model contract, but their scalar equality
+// semantics are exact when mapped, so they intentionally do not depend on it.
+// When the required proof or a supported scalar type is absent, callers must
+// reject the policy rather than trying a best-effort predicate.
+func ExactFilterValueType(property cond.DataProperty) (string, bool) {
+	if strings.TrimSpace(property.Name) == "" || strings.TrimSpace(property.MappedField.Name) == "" {
+		return "", false
+	}
+	switch {
+	case property.Type == dtype.DATATYPE_KEYWORD,
+		dtype.SimpleTypeMapping[property.Type] == dtype.SimpleChar && !isNonExactStringType(property.Type):
+		return "string", supportsIn(property.ConditionOperations)
+	case dtype.SimpleTypeMapping[property.Type] == dtype.SimpleInt:
+		return "integer", true
+	case property.Type == dtype.DATATYPE_BOOLEAN || dtype.SimpleTypeMapping[property.Type] == dtype.SimpleBool:
+		return "boolean", true
+	default:
+		return "", false
+	}
+}
+
+func supportsIn(operations []string) bool {
+	for _, operation := range operations {
+		if strings.EqualFold(strings.TrimSpace(operation), cond.OperationIn) {
+			return true
+		}
+	}
+	return false
+}
+
+func isNonExactStringType(propertyType string) bool {
+	switch strings.ToLower(strings.TrimSpace(propertyType)) {
+	case dtype.DATATYPE_TEXT, dtype.DATATYPE_BINARY, "json", "jsonb", "xml", "ntext", "nclob":
+		return true
 	default:
 		return false
 	}

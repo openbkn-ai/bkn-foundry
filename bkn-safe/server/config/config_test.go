@@ -54,6 +54,9 @@ hydra:
 	if cfg.Upstreams.VegaBackend.BaseURL != "http://vega-backend-svc:13014" {
 		t.Fatalf("vega backend base_url = %q", cfg.Upstreams.VegaBackend.BaseURL)
 	}
+	if cfg.Upstreams.OntologyQuery.BaseURL != "http://ontology-query-svc:13018" {
+		t.Fatalf("ontology query base_url = %q", cfg.Upstreams.OntologyQuery.BaseURL)
+	}
 }
 
 func TestEnvOverridesFile(t *testing.T) {

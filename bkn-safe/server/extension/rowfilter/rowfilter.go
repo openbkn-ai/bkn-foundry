@@ -541,4 +541,5 @@ func reset() {
 	implementation = atomic.Value{}
 	lifecycleImplementation = atomic.Value{}
 	resolverUnavailableReported = atomic.Bool{}
+	resetManagement()
 }

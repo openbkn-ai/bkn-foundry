@@ -63,6 +63,10 @@ type Deps struct {
 	// predicate bound. Zero keeps the conservative core default for lightweight
 	// tests and embedders that do not configure the production server.
 	RowFilterMaxDepartmentIDs int
+	// RowFilterPublishedObjectTypes validates one published object type and its
+	// exact-filterable data properties through ontology-query. A nil resolver
+	// keeps the EE management route closed rather than accepting unsafe writes.
+	RowFilterPublishedObjectTypes RowFilterPublishedObjectTypeResolver
 }
 
 // New builds the gin engine with all routes mounted.
@@ -238,6 +242,21 @@ func New(deps Deps) *gin.Engine {
 			return operatorID, operatorID != ""
 		}) {
 			slog.Info("property-grant management routes mounted (enterprise build)")
+		}
+		if deps.RowFilterPublishedObjectTypes != nil {
+			rowFilterAdmin := r.Group("/api/safe/v1/admin", rowfiltersocket.ManagementGate(),
+				sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier), RequireActiveAccount(deps.DB))
+			if deps.Audit != nil {
+				rowFilterAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
+			}
+			if rowfiltersocket.MountManagement(rowFilterAdmin, newRowFilterManagementServices(
+				deps.Enforcer, deps.Directory, deps.RowFilterMaxDepartmentIDs, deps.RowFilterPublishedObjectTypes,
+			), func(c *gin.Context) (string, bool) {
+				operatorID := c.GetString(ctxAccessorID)
+				return operatorID, operatorID != ""
+			}) {
+				slog.Info("row-filter management routes mounted (enterprise build)")
+			}
 		}
 		// Global AppKey oversight: list/revoke any user's keys.
 		if apiKeys != nil {
