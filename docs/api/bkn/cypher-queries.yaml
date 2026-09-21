@@ -158,7 +158,8 @@ components:
             read. Strings, numbers and booleans are accepted; a null is refused, because IS
             NULL says that and a comparison against null never matches. A parameter used as
             IN $name takes a non-empty array of scalars of one kind (integers and floats both
-            count as numbers), with no null and at most 500 elements.
+            count as numbers), with no null and at most 500 elements. Several long lists in
+            one query can still be refused with 400 as too large; split them across queries.
           example:
             region: "eu"
             floor: 100

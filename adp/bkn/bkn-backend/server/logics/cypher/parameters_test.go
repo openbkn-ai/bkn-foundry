@@ -324,8 +324,9 @@ func TestCompileListParameterRejections(t *testing.T) {
 		{name: "object", value: map[string]any{"a": 1}, want: "is an object; IN $name needs"},
 		{name: "empty", value: []any{}, want: "is an empty list"},
 		{name: "null element", value: []any{1, nil}, want: "null at index 1"},
-		{name: "nested list", value: []any{1, []any{2}}, want: "has a list at index 1"},
-		{name: "object element", value: []any{map[string]any{"a": 1}}, want: "has an object at index 0"},
+		{name: "nested list", value: []any{1, []any{2}}, want: "element 1 is a list"},
+		{name: "object element", value: []any{map[string]any{"a": 1}}, want: "element 0 is an object"},
+		{name: "number out of range", value: []any{json.Number("1e999")}, want: "element 0 is not a number this interface can carry"},
 		{name: "mixed kinds", value: []any{1, "2"}, want: "mixes number and string"},
 		{name: "mixed booleans", value: []any{true, "x"}, want: "mixes boolean and string"},
 		{name: "too long", value: tooMany, want: "at most 500"},
@@ -341,7 +342,7 @@ func TestCompileListParameterRejections(t *testing.T) {
 				t.Fatalf("got %v, want a plan error mentioning %q", err, tc.want)
 			}
 			// The caller wrote JSON; a Go type name in the error means nothing to them.
-			if strings.Contains(err.Error(), "interface") || strings.Contains(err.Error(), "[]") {
+			if strings.Contains(err.Error(), "interface {}") || strings.Contains(err.Error(), "[]") {
 				t.Fatalf("error names a Go type: %v", err)
 			}
 		})

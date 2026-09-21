@@ -101,8 +101,7 @@ func literalsFromListParameter(value any) ([]Literal, error) {
 		}
 		literal, err := literalFromParameter(element)
 		if err != nil {
-			return nil, fmt.Errorf("has %s at index %d; list elements must be a string, a number or a boolean",
-				describeParameterValue(element), i)
+			return nil, fmt.Errorf("element %d %v", i, err)
 		}
 		kind := categoryOf(literal.Kind)
 		if i == 0 {
