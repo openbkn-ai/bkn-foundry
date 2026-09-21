@@ -16,15 +16,17 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/mark3labs/mcp-go/mcp"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 )
 
 const (
 	searchDefaultLimit = 3
 	searchMaxLimit     = 5
-	// maxNotOffered bounds how many "not on this entry" answers one search
-	// returns, so they cannot crowd out the candidates.
-	maxNotOffered = 2
+	// maxUncardedSummaryRunes bounds the summary of a target without a gateway
+	// card, which falls back to the start of its description.
+	maxUncardedSummaryRunes = 120
 	// maxExecutableSchemaChars bounds what describe_native_tool hands back. A
 	// target over it is a catalogue defect, reported rather than truncated.
 	maxExecutableSchemaChars = 8000
@@ -51,11 +53,6 @@ type gatewayCandidate struct {
 	Arguments string `json:"arguments,omitempty"`
 }
 
-type gatewayNotOffered struct {
-	Tools   []string `json:"tools"`
-	Message string   `json:"message"`
-}
-
 type gatewaySearchResult struct {
 	Candidates []gatewayCandidate `json:"candidates"`
 	// Matched counts the targets that matched, before the limit.
@@ -64,8 +61,7 @@ type gatewaySearchResult struct {
 	// NoMatch marks a result that lists every target, name and summary only,
 	// because nothing matched: with a catalogue this small, letting the model
 	// choose beats an empty answer.
-	NoMatch    bool                `json:"no_match,omitempty"`
-	NotOffered []gatewayNotOffered `json:"not_offered,omitempty"`
+	NoMatch bool `json:"no_match,omitempty"`
 }
 
 type gatewayCall struct {
@@ -95,7 +91,6 @@ type gatewayRefusal struct {
 }
 
 const (
-	refusalNotInProfile      = "not_in_profile"
 	refusalPublishedDirectly = "published_directly"
 	refusalUnknownTool       = "unknown_tool"
 	refusalSchemaTooLarge    = "schema_too_large"
@@ -107,15 +102,13 @@ func (r *gatewayRefusal) Error() string {
 }
 
 // search ranks the targets the caller can use now against what they want to
-// do. Tools the profile leaves out are matched too, and answered with their
-// boundary rather than offered.
+// do.
 func (c *nativeCatalog) search(ctx context.Context, query string, limit int) gatewaySearchResult {
 	if limit < 1 {
 		limit = searchDefaultLimit
 	}
 	limit = min(limit, searchMaxLimit)
 	query = normalizeSearchText(query)
-	locale := c.builder.locale
 
 	type scored struct {
 		candidate gatewayCandidate
@@ -123,31 +116,26 @@ func (c *nativeCatalog) search(ctx context.Context, query string, limit int) gat
 		order     int
 	}
 	var matched, all []scored
-	for order, name := range longTailTargets {
+	for order, name := range c.order {
 		tool, _, ok := c.lookup(ctx, name)
 		if !ok {
-			continue
-		}
-		meta := locale.ToolMeta(name)
-		if meta.Gateway == nil {
 			continue
 		}
 		schema, err := executableSchema(tool.RawInputSchema)
 		if err != nil {
 			continue
 		}
-		entry := scored{
-			candidate: gatewayCandidate{
-				Name:      name,
-				Summary:   meta.Gateway.Summary,
-				UseWhen:   meta.Gateway.UseWhen,
-				NotFor:    meta.Gateway.NotFor,
-				NextStep:  meta.Gateway.NextStep,
-				Arguments: fieldSignature(schema),
-			},
-			score: matchScore(query, meta),
-			order: order,
+		meta := c.targetMeta(name, tool)
+		candidate := gatewayCandidate{Name: name, Arguments: fieldSignature(schema)}
+		if meta.Gateway != nil {
+			candidate.Summary = meta.Gateway.Summary
+			candidate.UseWhen = meta.Gateway.UseWhen
+			candidate.NotFor = meta.Gateway.NotFor
+			candidate.NextStep = meta.Gateway.NextStep
+		} else {
+			candidate.Summary = firstRunes(meta.Description, maxUncardedSummaryRunes)
 		}
+		entry := scored{candidate: candidate, score: matchScore(query, meta), order: order}
 		all = append(all, entry)
 		if entry.score > 0 {
 			matched = append(matched, entry)
@@ -160,7 +148,7 @@ func (c *nativeCatalog) search(ctx context.Context, query string, limit int) gat
 		return matched[i].order < matched[j].order
 	})
 
-	result := gatewaySearchResult{Matched: len(matched), NotOffered: c.notOffered(query)}
+	result := gatewaySearchResult{Matched: len(matched)}
 	if len(matched) == 0 {
 		result.NoMatch = true
 		for _, entry := range all {
@@ -178,45 +166,29 @@ func (c *nativeCatalog) search(ctx context.Context, query string, limit int) gat
 	return result
 }
 
-// notOffered answers for the tools the profile leaves out that the query
-// matched. Tools sharing a message are answered once.
-func (c *nativeCatalog) notOffered(query string) []gatewayNotOffered {
-	type group struct {
-		answer gatewayNotOffered
-		score  int
-		order  int
+// targetMeta is a target's metadata. A core tool has it in tools_meta.json;
+// an enterprise tool carries its own title and description instead.
+func (c *nativeCatalog) targetMeta(name string, tool mcp.Tool) ToolMeta {
+	if _, core := allToolMeta()[name]; core {
+		return c.builder.locale.ToolMeta(name)
 	}
-	var groups []*group
-	byMessage := map[string]*group{}
-	for order, name := range notInProfileTools {
-		meta := c.builder.locale.ToolMeta(name)
-		if meta.Gateway == nil || meta.Gateway.Boundary == "" {
-			continue
-		}
-		score := matchScore(query, meta)
-		if score == 0 {
-			continue
-		}
-		g, ok := byMessage[meta.Gateway.Boundary]
-		if !ok {
-			g = &group{answer: gatewayNotOffered{Message: meta.Gateway.Boundary}, order: order}
-			byMessage[meta.Gateway.Boundary] = g
-			groups = append(groups, g)
-		}
-		g.answer.Tools = append(g.answer.Tools, name)
-		g.score = max(g.score, score)
+	return ToolMeta{Name: name, Title: tool.Title, Description: tool.Description}
+}
+
+// firstRunes cuts text to at most n runes at a sentence end when it can.
+func firstRunes(text string, n int) string {
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) <= n {
+		return string(runes)
 	}
-	sort.SliceStable(groups, func(i, j int) bool {
-		if groups[i].score != groups[j].score {
-			return groups[i].score > groups[j].score
+	cut := string(runes[:n])
+	// U+3002 is the ideographic full stop; source strings stay ASCII.
+	for _, stop := range []string{"\u3002", ". "} {
+		if i := strings.LastIndex(cut, stop); i > 0 {
+			return cut[:i+len(stop)]
 		}
-		return groups[i].order < groups[j].order
-	})
-	var out []gatewayNotOffered
-	for _, g := range groups[:min(maxNotOffered, len(groups))] {
-		out = append(out, g.answer)
 	}
-	return out
+	return cut + "…"
 }
 
 // matchScore scores a normalized query against one tool's metadata.
@@ -348,13 +320,6 @@ func (c *nativeCatalog) resolve(ctx context.Context, name string) (targetDefinit
 	if tool, handler, ok := c.lookup(ctx, name); ok {
 		return targetDefinition{input: tool.RawInputSchema, output: tool.RawOutputSchema, handler: handler}, nil
 	}
-	if slices.Contains(notInProfileTools, name) {
-		message := ""
-		if card := c.builder.locale.ToolMeta(name).Gateway; card != nil {
-			message = card.Boundary
-		}
-		return targetDefinition{}, &gatewayRefusal{Code: refusalNotInProfile, Name: name, Message: message}
-	}
 	if _, published := compactProfile.published[name]; published {
 		return targetDefinition{}, &gatewayRefusal{
 			Code: refusalPublishedDirectly, Name: name,
@@ -383,7 +348,8 @@ func (c *nativeCatalog) describe(ctx context.Context, name string, includeOutput
 			Message: fmt.Sprintf("The arguments schema of %s is %d characters, over the %d this entry returns.", name, n, maxExecutableSchemaChars),
 		}
 	}
-	meta := c.builder.locale.ToolMeta(name)
+	tool, _, _ := c.lookup(ctx, name)
+	meta := c.targetMeta(name, tool)
 	description := gatewayDescription{
 		Name:            name,
 		Description:     meta.Description,

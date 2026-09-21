@@ -22,10 +22,9 @@ import (
 )
 
 type intentCase struct {
-	Query      string `json:"query"`
-	Expect     string `json:"expect"`
-	NotOffered string `json:"not_offered"`
-	None       bool   `json:"none"`
+	Query  string `json:"query"`
+	Expect string `json:"expect"`
+	None   bool   `json:"none"`
 }
 
 func loadIntentCases(t *testing.T) []intentCase {
@@ -70,14 +69,6 @@ func TestSearchFindsTheIntendedTool(t *testing.T) {
 				} else if names[0] == tc.Expect {
 					first++
 				}
-			case tc.NotOffered != "":
-				found := false
-				for _, answer := range result.NotOffered {
-					found = found || slices.Contains(answer.Tools, tc.NotOffered)
-				}
-				if !found {
-					t.Errorf("%s %q: want the %s answer, got %+v", locale, tc.Query, tc.NotOffered, result.NotOffered)
-				}
 			case tc.None:
 				if !result.NoMatch {
 					t.Errorf("%s %q: want no match, got %v", locale, tc.Query, names)
@@ -90,7 +81,7 @@ func TestSearchFindsTheIntendedTool(t *testing.T) {
 
 func TestSearchRanksANamedToolFirst(t *testing.T) {
 	catalog := catalogForLocale(t, "zh-CN")
-	for _, name := range longTailTargets {
+	for _, name := range catalog.order {
 		result := catalog.search(context.Background(), "用 "+name+" 查一下", searchDefaultLimit)
 		if len(result.Candidates) == 0 || result.Candidates[0].Name != name {
 			t.Errorf("naming %s ranked %v", name, candidateNames(result))
@@ -101,7 +92,7 @@ func TestSearchRanksANamedToolFirst(t *testing.T) {
 func TestSearchWithoutAMatchListsEveryTarget(t *testing.T) {
 	catalog := catalogForLocale(t, "zh-CN")
 	result := catalog.search(context.Background(), "你好", 1)
-	if !result.NoMatch || result.Matched != 0 || !slices.Equal(candidateNames(result), longTailTargets) {
+	if !result.NoMatch || result.Matched != 0 || !slices.Equal(candidateNames(result), catalog.order) {
 		t.Fatalf("no-match result = %+v, want every target in catalogue order", result)
 	}
 	for _, candidate := range result.Candidates {
@@ -141,22 +132,12 @@ func TestSearchResultStaysSmall(t *testing.T) {
 		if len(raw) > 4000 {
 			t.Errorf("%s: five candidates take %d bytes", locale, len(raw))
 		}
+		// The no-match listing names every target with its summary: the whole
+		// catalogue in one short answer.
 		noMatch, _ := json.Marshal(catalog.search(context.Background(), "hello", searchDefaultLimit))
-		if len(noMatch) > 1500 {
+		if len(noMatch) > 3500 {
 			t.Errorf("%s: the no-match listing takes %d bytes", locale, len(noMatch))
 		}
-	}
-}
-
-func TestSearchAnswersLeftOutToolsOnceAndBriefly(t *testing.T) {
-	catalog := catalogForLocale(t, "zh-CN")
-	result := catalog.search(context.Background(), "数据资源的原始表结构和资源列表", searchDefaultLimit)
-	if len(result.NotOffered) != 1 || !slices.Equal(result.NotOffered[0].Tools, []string{toolKeyListResources, toolKeyDescribeResource}) {
-		t.Fatalf("not_offered = %+v, want one answer for both resource tools", result.NotOffered)
-	}
-	crowded := catalog.search(context.Background(), "SQL Cypher 代码 命令 执行行动 技能 挂载", searchDefaultLimit)
-	if len(crowded.NotOffered) != maxNotOffered {
-		t.Fatalf("not_offered has %d answers, want %d", len(crowded.NotOffered), maxNotOffered)
 	}
 }
 
@@ -195,7 +176,7 @@ func TestFieldSignature(t *testing.T) {
 func TestDescribeReturnsTheExecutableSchemaAndATemplate(t *testing.T) {
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		catalog := catalogForLocale(t, locale)
-		for _, name := range longTailTargets {
+		for _, name := range catalog.order {
 			description, err := catalog.describe(context.Background(), name, false)
 			if err != nil {
 				t.Fatalf("%s %s: %v", locale, name, err)
@@ -208,8 +189,11 @@ func TestDescribeReturnsTheExecutableSchemaAndATemplate(t *testing.T) {
 			if description.Description == "" || description.CallTemplate.Name != name || string(description.CallTemplate.Arguments) == "{}" {
 				t.Errorf("%s %s: incomplete description %+v", locale, name, description)
 			}
-			if description.OutputFields == "" || description.OutputSchema != nil {
-				t.Errorf("%s %s: want output field hints and no output schema by default", locale, name)
+			if description.OutputSchema != nil {
+				t.Errorf("%s %s: the output schema is sent by default", locale, name)
+			}
+			if tool.RawOutputSchema != nil && fieldSignature(tool.RawOutputSchema) != "" && description.OutputFields == "" {
+				t.Errorf("%s %s: no output field hints", locale, name)
 			}
 			full, err := catalog.describe(context.Background(), name, true)
 			if err != nil || len(full.OutputSchema) == 0 {
@@ -220,9 +204,8 @@ func TestDescribeReturnsTheExecutableSchemaAndATemplate(t *testing.T) {
 }
 
 func TestDescribeRefusesWhatTheGatewayCannotRun(t *testing.T) {
-	// A licensed enterprise tool is real and callable on the full profile, yet
-	// never a gateway target.
-	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
+	// An enterprise tool the licence does not cover is real but unreachable.
+	withSocket(t, entitlement.FixedGate(licverify.EditionCommunity))
 	mcptool.Register(extraTool("probe_context", "probe_context"))
 	catalog := catalogForLocale(t, "zh-CN")
 	refusal := func(name string) *gatewayRefusal {
@@ -233,21 +216,34 @@ func TestDescribeRefusesWhatTheGatewayCannotRun(t *testing.T) {
 		}
 		return r
 	}
-	if r := refusal(toolKeyRunSQL); r.Code != refusalNotInProfile || r.Message != buildMCPLocaleBundle("zh-CN").ToolMeta(toolKeyRunSQL).Gateway.Boundary {
-		t.Errorf("run_sql: %+v, want not_in_profile with its boundary", r)
-	}
 	if r := refusal(toolKeySearchSchema); r.Code != refusalPublishedDirectly {
 		t.Errorf("search_schema: %+v, want published_directly", r)
 	}
 	if r := refusal(toolKeyExecuteNativeReadTool); r.Code != refusalPublishedDirectly {
 		t.Errorf("execute_native_read_tool: %+v, want published_directly", r)
 	}
-	// An unknown name and a real tool the gateway does not admit must look
+	// An unknown name and a real tool the licence does not cover must look
 	// alike, so the answer reveals nothing about what exists.
 	unknown, hidden := refusal("no_such_tool"), refusal("probe_context")
 	if unknown.Code != refusalUnknownTool || hidden.Code != refusalUnknownTool ||
 		strings.ReplaceAll(unknown.Message, "no_such_tool", "X") != strings.ReplaceAll(hidden.Message, "probe_context", "X") {
 		t.Errorf("unknown %+v and not admitted %+v differ", unknown, hidden)
+	}
+}
+
+// A licensed enterprise tool is part of what the full profile offers, so the
+// gateway reaches it too, described by its own title and description.
+func TestGatewayReachesLicensedEnterpriseTools(t *testing.T) {
+	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
+	mcptool.Register(extraTool("probe_context", "probe_context"))
+	catalog := catalogForLocale(t, "zh-CN")
+	result := catalog.search(context.Background(), "用 probe_context 查一下", searchDefaultLimit)
+	if len(result.Candidates) == 0 || result.Candidates[0].Name != "probe_context" || result.Candidates[0].Summary != "enterprise probe" {
+		t.Fatalf("search = %+v, want the enterprise tool with its description", result)
+	}
+	description, err := catalog.describe(context.Background(), "probe_context", false)
+	if err != nil || description.Description != "enterprise probe" || string(description.CallTemplate.Arguments) != "{}" {
+		t.Fatalf("describe = %+v, %v", description, err)
 	}
 }
 

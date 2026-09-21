@@ -32,70 +32,39 @@ var gatewayTools = toolNameSet([]string{
 	toolKeyExecuteNativeReadTool,
 })
 
-// longTailTargets are the native tools the compact profile reaches only
-// through its gateway (search, describe, execute). Each one is admitted
-// because it reads and has no risk of its own that a host would want to
-// approve per tool: no writes, no action execution, no credentials, no
-// resource-level access outside the knowledge network. Enterprise tools are
-// never admitted here without a separate review.
-var longTailTargets = []string{
-	toolKeyQueryInstanceSubgraph,
-	toolKeyExploreSubgraph,
-	toolKeyGetLogicPropertiesValues,
-	toolKeyGetActionInfo,
-	toolKeyGetActionExecution,
-	toolKeyListActionExecutions,
-	toolKeyGetObjectTypes,
-	toolKeyGetRelationTypes,
-}
-
-// notInProfileTools are public community tools the compact profile
-// deliberately leaves out. Naming one is a caller error with a known fix (use
-// the full entry), so the gateway says so instead of pretending it does not
-// exist: their names are already public, and telling them apart leaks nothing.
-//
-// Skills are left out whole: the profile has no way to discover what a
-// network mounts, and reading a skill's text is of little use without being
-// able to run it.
-var notInProfileTools = []string{
-	toolKeyListSkills,
-	toolKeyGetSkillContent,
-	toolKeyReadSkillFile,
-	toolKeyRunSQL,
-	toolKeyRunCypher,
-	toolKeyRunCode,
-	toolKeyRunShell,
-	toolKeyExecuteAction,
-	toolKeyExecuteTool,
-	toolKeyExecuteSkill,
-	toolKeyListResources,
-	toolKeyDescribeResource,
-	toolKeySearchCapabilities,
-}
-
 // gatewayManagedFields are the argument fields the gateway supplies itself,
 // so they are not part of what a caller fills in for a target.
 var gatewayManagedFields = []string{"bkn_context", "response_format"}
 
-// nativeCatalog resolves long-tail targets against what the builder
-// assembled. Resolution happens per call through the builder's own filter, so
-// a licence change takes effect on the gateway exactly as it does on
-// tools/list, and a stale search result cannot reach a target the licence no
-// longer covers.
+// nativeCatalog is everything the builder assembled that the profile does
+// not publish directly: the compact profile loads definitions on demand, it
+// does not narrow what a caller can do. Enterprise tools are included as the
+// licence allows. Resolution happens per call through the builder's own
+// filter, so a licence change takes effect on the gateway exactly as it does
+// on tools/list, and a stale search result cannot reach a target the licence
+// no longer covers.
 type nativeCatalog struct {
 	builder *toolBuilder
 	targets map[string]pendingTool
+	// order is the assembly order, which search uses to break ties and to
+	// list every target when nothing matches.
+	order []string
 }
 
-func newNativeCatalog(b *toolBuilder, names []string) *nativeCatalog {
-	allowed := toolNameSet(names)
-	targets := make(map[string]pendingTool, len(names))
+func newNativeCatalog(b *toolBuilder) *nativeCatalog {
+	catalog := &nativeCatalog{builder: b, targets: map[string]pendingTool{}}
 	for _, p := range b.pending {
-		if _, ok := allowed[p.tool.Name]; ok {
-			targets[p.tool.Name] = p
+		name := p.tool.Name
+		if _, published := compactProfile.published[name]; published {
+			continue
 		}
+		if _, gateway := gatewayTools[name]; gateway {
+			continue
+		}
+		catalog.targets[name] = p
+		catalog.order = append(catalog.order, name)
 	}
-	return &nativeCatalog{builder: b, targets: targets}
+	return catalog
 }
 
 // lookup returns the effective definition of an admitted target and its

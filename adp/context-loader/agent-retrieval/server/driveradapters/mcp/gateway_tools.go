@@ -36,7 +36,7 @@ func (b *toolBuilder) claimGatewayNames() {
 // each call as its own Operation. The executor is passed through by the
 // server's guard and governs its target itself (see nativeExecutor).
 func registerGatewayTools(srv *server.MCPServer, b *toolBuilder, lifecycleClient *bkntrace.LifecycleClient) {
-	catalog := newNativeCatalog(b, longTailTargets)
+	catalog := newNativeCatalog(b)
 	handlers := map[string]server.ToolHandlerFunc{
 		toolKeySearchNativeTools:     handleSearchNativeTools(catalog),
 		toolKeyDescribeNativeTool:    handleDescribeNativeTool(catalog),

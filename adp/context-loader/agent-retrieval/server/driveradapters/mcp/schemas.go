@@ -41,19 +41,15 @@ type ToolMeta struct {
 }
 
 // GatewayCard is the compact gateway's copy for one tool, kept beside the
-// tool's other metadata so each tool is described in one place.
-//
-// A gateway target fills the card fields, so a model can choose between
-// neighbouring tools without reading full schemas. A public tool the profile
-// leaves out fills Boundary instead: a search that lands on it, or a call that
-// names it, gets that answer rather than the nearest unrelated tool.
-// Keywords feed search in both cases.
+// tool's other metadata so each tool is described in one place. Its short
+// fields let a model choose between neighbouring tools without reading full
+// schemas, its keywords feed search, and its example is the call template
+// describe_native_tool hands out.
 type GatewayCard struct {
 	Summary          string          `json:"summary,omitempty"`
 	UseWhen          string          `json:"use_when,omitempty"`
 	NotFor           string          `json:"not_for,omitempty"`
 	NextStep         string          `json:"next_step,omitempty"`
-	Boundary         string          `json:"boundary,omitempty"`
 	Keywords         []string        `json:"keywords,omitempty"`
 	ExampleArguments json.RawMessage `json:"example_arguments,omitempty"`
 }

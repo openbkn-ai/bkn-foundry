@@ -23,52 +23,46 @@ import (
 func catalogForLocale(t *testing.T, locale string) *nativeCatalog {
 	t.Helper()
 	_, b := newMCPServerForLocale(nil, locale)
-	return newNativeCatalog(b, longTailTargets)
+	return newNativeCatalog(b)
 }
 
-func TestLongTailTargetsAreAssembledAndOutsideTheOtherLists(t *testing.T) {
+// cardEligible reports whether a tool can be a gateway target at all, so may
+// carry a gateway card: not published directly, not a gateway tool, not the
+// lifecycle pair, and not the sandbox tools, which the builder does not
+// assemble.
+func cardEligible(name string) bool {
+	_, published := compactProfile.published[name]
+	_, gateway := gatewayTools[name]
+	_, lifecycle := lifecycleToolNames[name]
+	return !published && !gateway && !lifecycle && name != toolKeyRunCode && name != toolKeyRunShell
+}
+
+// The compact profile narrows loading, not capability: every assembled tool
+// it does not publish directly is reachable through the gateway.
+func TestCatalogReachesEveryToolNotPublishedDirectly(t *testing.T) {
 	for _, locale := range []string{"zh-CN", "en-US"} {
-		catalog := catalogForLocale(t, locale)
-		for _, name := range longTailTargets {
-			if _, _, ok := catalog.lookup(context.Background(), name); !ok {
-				t.Errorf("%s: long-tail target %s is not assembled", locale, name)
+		_, b := newMCPServerForLocale(nil, locale)
+		catalog := newNativeCatalog(b)
+		var want []string
+		for _, p := range b.pending {
+			if cardEligible(p.tool.Name) {
+				want = append(want, p.tool.Name)
 			}
 		}
-	}
-	for _, name := range longTailTargets {
-		if slices.Contains(compactProfileTools, name) {
-			t.Errorf("%s is both published directly and reached through the gateway", name)
+		if !slices.Equal(catalog.order, want) {
+			t.Errorf("%s: catalogue = %v, want %v", locale, catalog.order, want)
 		}
-		if slices.Contains(notInProfileTools, name) {
-			t.Errorf("%s is both a gateway target and outside the profile", name)
-		}
-	}
-}
-
-// A typo in notInProfileTools would silently turn a known public name into an
-// "unknown target" answer; every entry must be a tool the service defines.
-func TestNotInProfileToolsArePublicToolNames(t *testing.T) {
-	data, err := schemasFS.ReadFile("schemas/tools_meta.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var meta map[string]json.RawMessage
-	if err := json.Unmarshal(data, &meta); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range notInProfileTools {
-		if _, ok := meta[name]; !ok {
-			t.Errorf("%s is not a tool this service defines", name)
-		}
-		if slices.Contains(compactProfileTools, name) {
-			t.Errorf("%s is published on the compact profile and listed as outside it", name)
+		for _, name := range []string{toolKeyRunCypher, toolKeyExecuteAction, toolKeySearchCapabilities, toolKeyExecuteTool, toolKeyGetSkillContent} {
+			if _, _, ok := catalog.lookup(context.Background(), name); !ok {
+				t.Errorf("%s: %s is not reachable through the gateway", locale, name)
+			}
 		}
 	}
 }
 
 func TestLookupRefusesAnythingNotAdmitted(t *testing.T) {
 	catalog := catalogForLocale(t, "zh-CN")
-	for _, name := range []string{toolKeyRunSQL, toolKeySearchSchema, toolKeyRunCode, "no_such_tool"} {
+	for _, name := range []string{toolKeySearchSchema, toolKeyRunCode, toolKeySearchNativeTools, "bkn_start_interaction", "no_such_tool"} {
 		if _, _, ok := catalog.lookup(context.Background(), name); ok {
 			t.Errorf("%s resolved through the gateway catalogue", name)
 		}
@@ -109,7 +103,7 @@ func TestExecutableSchemaDropsGatewayFields(t *testing.T) {
 func TestEveryTargetHasACompilableExecutableSchema(t *testing.T) {
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		catalog := catalogForLocale(t, locale)
-		for _, name := range longTailTargets {
+		for _, name := range catalog.order {
 			tool, _, _ := catalog.lookup(context.Background(), name)
 			schema, err := executableSchema(tool.RawInputSchema)
 			if err != nil {
@@ -148,46 +142,31 @@ func TestLookupFollowsTheLicence(t *testing.T) {
 	}
 }
 
-// Every name the gateway can answer for needs its copy in every locale, and
-// nothing else may carry any: a card for a tool the gateway cannot reach would
-// send the model to a dead end.
-func TestGatewayCardsCoverExactlyTheGatewayNames(t *testing.T) {
+// Every core tool the gateway can reach needs a complete card in every
+// locale, and nothing else may carry one: a card for a tool the gateway cannot
+// reach would send the model to a dead end.
+func TestGatewayCardsCoverExactlyTheReachableTools(t *testing.T) {
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		bundle := buildMCPLocaleBundle(locale)
 		for name := range allToolMeta() {
 			card := bundle.ToolMeta(name).Gateway
-			text := map[string]string{}
-			if card != nil {
-				text = map[string]string{"summary": card.Summary, "use_when": card.UseWhen, "not_for": card.NotFor, "next_step": card.NextStep}
-			}
-			switch {
-			case slices.Contains(longTailTargets, name):
-				if card == nil {
-					t.Errorf("%s: gateway target %s has no card", locale, name)
-					continue
-				}
-				for field, value := range text {
-					if strings.TrimSpace(value) == "" {
-						t.Errorf("%s %s: %s is empty", locale, name, field)
-					}
-				}
-				if card.Boundary != "" || len(card.Keywords) == 0 || len(card.ExampleArguments) == 0 {
-					t.Errorf("%s %s: a target needs keywords and an example and no boundary", locale, name)
-				}
-			case slices.Contains(notInProfileTools, name):
-				if card == nil || strings.TrimSpace(card.Boundary) == "" || len(card.Keywords) == 0 {
-					t.Errorf("%s: %s is outside the profile without a boundary and keywords", locale, name)
-					continue
-				}
-				for field, value := range text {
-					if value != "" {
-						t.Errorf("%s %s: a tool outside the profile has a %s", locale, name, field)
-					}
-				}
-			default:
+			if !cardEligible(name) {
 				if card != nil {
-					t.Errorf("%s: %s is neither a gateway target nor outside the profile, but has a card", locale, name)
+					t.Errorf("%s: %s cannot be a gateway target but has a card", locale, name)
 				}
+				continue
+			}
+			if card == nil {
+				t.Errorf("%s: %s has no gateway card", locale, name)
+				continue
+			}
+			for field, value := range map[string]string{"summary": card.Summary, "use_when": card.UseWhen, "not_for": card.NotFor, "next_step": card.NextStep} {
+				if strings.TrimSpace(value) == "" {
+					t.Errorf("%s %s: %s is empty", locale, name, field)
+				}
+			}
+			if len(card.Keywords) == 0 || len(card.ExampleArguments) == 0 {
+				t.Errorf("%s %s: a card needs keywords and an example", locale, name)
 			}
 		}
 	}
@@ -202,7 +181,7 @@ func TestEnglishGatewayCopyIsTranslated(t *testing.T) {
 		if card == nil {
 			continue
 		}
-		for _, value := range []string{card.Summary, card.UseWhen, card.NotFor, card.NextStep, card.Boundary, string(card.ExampleArguments)} {
+		for _, value := range []string{card.Summary, card.UseWhen, card.NotFor, card.NextStep, string(card.ExampleArguments)} {
 			if strings.ContainsFunc(value, func(r rune) bool { return unicode.Is(unicode.Han, r) }) {
 				t.Errorf("%s: untranslated gateway copy %q", name, value)
 			}
@@ -216,7 +195,7 @@ func TestGatewayExamplesPassTheExecutableSchemas(t *testing.T) {
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		catalog := catalogForLocale(t, locale)
 		bundle := buildMCPLocaleBundle(locale)
-		for _, name := range longTailTargets {
+		for _, name := range catalog.order {
 			tool, _, _ := catalog.lookup(context.Background(), name)
 			raw, err := executableSchema(tool.RawInputSchema)
 			if err != nil {
@@ -252,7 +231,7 @@ func TestLocalizedGatewayCardInheritsWhatItDoesNotRestate(t *testing.T) {
 	if base.Summary != "中文" {
 		t.Fatalf("the shared baseline card was modified: %+v", base)
 	}
-	if got := localizeGatewayCard(nil, &GatewayCard{Boundary: "only here"}); got.Boundary != "only here" {
+	if got := localizeGatewayCard(nil, &GatewayCard{Summary: "only here"}); got.Summary != "only here" {
 		t.Fatalf("overlay without a baseline card = %+v", got)
 	}
 }
@@ -321,17 +300,6 @@ func TestFullProfileLeavesTheGatewayOut(t *testing.T) {
 	for name := range gatewayTools {
 		if strings.Contains(toolkit.Stub, name) || strings.Contains(toolkit.Digest, name) {
 			t.Errorf("the sandbox toolkit mentions %s", name)
-		}
-	}
-}
-
-// execute_native_read_tool advertises itself as read-only, which holds only
-// while every target it can reach is read-only.
-func TestEveryLongTailTargetIsReadOnly(t *testing.T) {
-	for _, name := range longTailTargets {
-		hint := annotationFor(name).ReadOnlyHint
-		if hint == nil || !*hint {
-			t.Errorf("%s is a gateway target but not annotated read-only", name)
 		}
 	}
 }

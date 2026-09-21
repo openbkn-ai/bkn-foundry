@@ -295,7 +295,6 @@ func localizeGatewayCard(base, localized *GatewayCard) *GatewayCard {
 	overlay(&card.UseWhen, localized.UseWhen)
 	overlay(&card.NotFor, localized.NotFor)
 	overlay(&card.NextStep, localized.NextStep)
-	overlay(&card.Boundary, localized.Boundary)
 	if len(localized.Keywords) > 0 {
 		card.Keywords = localized.Keywords
 	}
