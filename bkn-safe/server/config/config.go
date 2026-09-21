@@ -35,6 +35,7 @@ type UpstreamsConfig struct {
 	BKNBackend       UpstreamConfig `yaml:"bkn_backend"`
 	ExecutionFactory UpstreamConfig `yaml:"execution_factory"`
 	VegaBackend      UpstreamConfig `yaml:"vega_backend"`
+	OntologyQuery    UpstreamConfig `yaml:"ontology_query"`
 }
 
 type UpstreamConfig struct {

@@ -59,6 +59,10 @@ func defaultConfig() *Config {
 				BaseURL: "http://vega-backend-svc:13014",
 				Timeout: 3 * time.Second,
 			},
+			OntologyQuery: UpstreamConfig{
+				BaseURL: "http://ontology-query-svc:13014",
+				Timeout: 3 * time.Second,
+			},
 		},
 	}
 }

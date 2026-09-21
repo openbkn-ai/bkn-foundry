@@ -140,6 +140,10 @@ func Boot(opts Options) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("authorization resource catalog: %w", err)
 	}
+	rowFilterPublishedObjectTypes, err := httpapi.NewRowFilterPublishedObjectTypeResolver(cfg.Upstreams.OntologyQuery)
+	if err != nil {
+		return nil, fmt.Errorf("row-filter published object type resolver: %w", err)
+	}
 	if decisionStore.Enabled() {
 		slog.Info("authz decision log enabled",
 			"allow_sample_rate", cfg.Audit.DecisionLog.AllowSampleRate,
@@ -178,18 +182,19 @@ func Boot(opts Options) (*App, error) {
 		freshAuthorizationStore: freshAuthorizationStore,
 		decisions:               decisionStore,
 		deps: httpapi.Deps{
-			Enforcer:                  enforcer,
-			DB:                        db,
-			Provider:                  provider,
-			Hydra:                     hydraAdmin,
-			Directory:                 dir,
-			Users:                     userStore,
-			Audit:                     auditStore,
-			AccessLog:                 accessLogStore,
-			Decisions:                 decisionStore,
-			License:                   licSvc,
-			AuthorizationResources:    authorizationResources,
-			RowFilterMaxDepartmentIDs: cfg.Authz.RowFilterMaxDepartmentIDs,
+			Enforcer:                      enforcer,
+			DB:                            db,
+			Provider:                      provider,
+			Hydra:                         hydraAdmin,
+			Directory:                     dir,
+			Users:                         userStore,
+			Audit:                         auditStore,
+			AccessLog:                     accessLogStore,
+			Decisions:                     decisionStore,
+			License:                       licSvc,
+			AuthorizationResources:        authorizationResources,
+			RowFilterMaxDepartmentIDs:     cfg.Authz.RowFilterMaxDepartmentIDs,
+			RowFilterPublishedObjectTypes: rowFilterPublishedObjectTypes,
 		},
 	}, nil
 }

@@ -22,6 +22,7 @@ import (
 	"ontology-query/common"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
+	"ontology-query/logics"
 	"ontology-query/logics/action_logs"
 	"ontology-query/logics/action_scheduler"
 	"ontology-query/logics/action_type"
@@ -47,6 +48,7 @@ type restHandler struct {
 	ms         interfaces.MetricQueryService
 	ots        interfaces.ObjectTypeService
 	qas        interfaces.QueryAuthorizationService
+	oma        interfaces.OntologyManagerAccess
 }
 
 func NewRestHandler(appSetting *common.AppSetting) RestHandler {
@@ -60,6 +62,7 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 		ms:         metric.NewMetricQueryService(appSetting),
 		ots:        object_type.NewObjectTypeService(appSetting),
 		qas:        queryauthorization.NewQueryAuthorizationService(appSetting),
+		oma:        logics.OMA,
 	}
 	return r
 }
@@ -105,6 +108,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1 := c.Group("/api/ontology-query/in/v1")
 	apiInV1.Use(rest.PrivateNoCacheMiddleware())
 	{
+		// Published-model capability for bkn-safe's row-filter policy manager.
+		// It is internal-only and returns no data values or backend expressions.
+		apiInV1.POST("/row-filter-capabilities", r.verifyJsonContentType(), r.GetRowFilterCapabilities)
 		// Knowledge networks.
 		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_id/schema", r.GetObjectTypeSchemaByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_id/sample-data", r.GetObjectTypeSampleDataByIn)

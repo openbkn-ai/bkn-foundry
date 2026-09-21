@@ -41,6 +41,10 @@ upstreams:
     # Vega's authorization-resource path is intentionally fixed in bkn-safe code.
     base_url: http://127.0.0.1:13014
     timeout: 3s
+  ontology_query:
+    # Published-object and exact-filter capability used by EE row-filter policy management.
+    base_url: http://127.0.0.1:13014
+    timeout: 3s
 
 ldap:
   url: ""
