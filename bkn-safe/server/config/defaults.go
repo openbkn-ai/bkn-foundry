@@ -60,7 +60,7 @@ func defaultConfig() *Config {
 				Timeout: 3 * time.Second,
 			},
 			OntologyQuery: UpstreamConfig{
-				BaseURL: "http://ontology-query-svc:13014",
+				BaseURL: "http://ontology-query-svc:13018",
 				Timeout: 3 * time.Second,
 			},
 		},

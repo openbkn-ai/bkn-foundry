@@ -63,6 +63,19 @@ func TestCompileRowFilterRejectsFieldsWithoutExactCapability(t *testing.T) {
 	}
 }
 
+func TestCompileRowFilterAllowsMappedIntegerWithoutStringOperationMetadata(t *testing.T) {
+	value := int64(42)
+	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		DataProperties: []cond.DataProperty{{Name: "department_id", Type: "integer", MappedField: cond.Field{Name: "department_id"}}},
+	}}
+	compiled, _, noResults, err := compileRowFilter(interfaces.RowFilterPredicate{
+		Kind: "in", Property: "department_id", Values: []interfaces.RowFilterValue{{Type: "integer", Integer: &value}},
+	}, objectType)
+	if err != nil || noResults || compiled == nil || compiled.Operation != cond.OperationIn {
+		t.Fatalf("integer row filter = %#v, %v, %v", compiled, noResults, err)
+	}
+}
+
 func TestCompileRowFilterFalseReadsNoRows(t *testing.T) {
 	compiled, fields, noResults, err := compileRowFilter(interfaces.RowFilterPredicate{Kind: "false"}, interfaces.ObjectType{})
 	if err != nil || compiled != nil || len(fields) != 0 || !noResults {

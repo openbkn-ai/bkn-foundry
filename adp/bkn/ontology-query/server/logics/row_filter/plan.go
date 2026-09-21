@@ -113,18 +113,21 @@ func valuesForProperty(values []interfaces.RowFilterValue, property cond.DataPro
 }
 
 // ExactFilterValueType is the single model-level capability check for a
-// row-filter IN predicate. The model must explicitly advertise IN support;
-// this is the proof used for both OpenSearch and resource-backed (Vega)
-// object types. When that proof or an exact scalar type is absent, callers
-// must reject the policy rather than trying a best-effort predicate.
+// row-filter IN predicate. String properties must explicitly advertise IN
+// support; that is the model's evidence that the mapped string field can be
+// matched exactly. Integer and boolean fields have no ConditionOperations
+// metadata in the existing object-model contract, but their scalar equality
+// semantics are exact when mapped, so they intentionally do not depend on it.
+// When the required proof or a supported scalar type is absent, callers must
+// reject the policy rather than trying a best-effort predicate.
 func ExactFilterValueType(property cond.DataProperty) (string, bool) {
-	if strings.TrimSpace(property.Name) == "" || strings.TrimSpace(property.MappedField.Name) == "" || !supportsIn(property.ConditionOperations) {
+	if strings.TrimSpace(property.Name) == "" || strings.TrimSpace(property.MappedField.Name) == "" {
 		return "", false
 	}
 	switch {
 	case property.Type == dtype.DATATYPE_KEYWORD,
 		dtype.SimpleTypeMapping[property.Type] == dtype.SimpleChar && !isNonExactStringType(property.Type):
-		return "string", true
+		return "string", supportsIn(property.ConditionOperations)
 	case dtype.SimpleTypeMapping[property.Type] == dtype.SimpleInt:
 		return "integer", true
 	case property.Type == dtype.DATATYPE_BOOLEAN || dtype.SimpleTypeMapping[property.Type] == dtype.SimpleBool:

@@ -143,7 +143,7 @@ config:
     ontologyQuery:
       # Used by Enterprise row-filter policy validation. Keep this internal:
       # callers never supply schema or backend capability metadata themselves.
-      baseURL: "http://ontology-query-svc:13014"
+      baseURL: "http://ontology-query-svc:13018"
       timeout: "3s"
   hydra:
     adminURL: "http://bkn-safe-hydra-admin:4445"

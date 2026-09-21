@@ -26,6 +26,9 @@ type rowFilterManagementServices struct {
 
 func newRowFilterManagementServices(enforcer *authz.Enforcer, directoryService *directory.Service, departmentMax int,
 	published RowFilterPublishedObjectTypeResolver) rowfiltersocket.ManagementServices {
+	if departmentMax <= 0 {
+		departmentMax = directory.DefaultRowFilterDepartmentScopeLimit
+	}
 	return &rowFilterManagementServices{enforcer: enforcer, directory: directoryService, departmentMax: departmentMax, published: published}
 }
 

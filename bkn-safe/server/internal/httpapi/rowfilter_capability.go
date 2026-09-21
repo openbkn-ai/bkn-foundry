@@ -63,7 +63,6 @@ func (resolver *rowFilterPublishedObjectTypeResolver) ResolvePublishedObjectType
 	}
 	var capability rowfiltersocket.PublishedObjectType
 	decoder := json.NewDecoder(response.Body)
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&capability); err != nil {
 		return rowfiltersocket.PublishedObjectType{}, fmt.Errorf("decode row-filter capability: %w", err)
 	}

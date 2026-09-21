@@ -43,7 +43,7 @@ upstreams:
     timeout: 3s
   ontology_query:
     # Published-object and exact-filter capability used by EE row-filter policy management.
-    base_url: http://127.0.0.1:13014
+    base_url: http://127.0.0.1:13018
     timeout: 3s
 
 ldap:

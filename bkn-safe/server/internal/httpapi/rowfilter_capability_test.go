@@ -49,3 +49,17 @@ func TestRowFilterPublishedObjectTypeResolverRejectsMismatchedResponse(t *testin
 		t.Fatal("expected object type mismatch error")
 	}
 }
+
+func TestRowFilterPublishedObjectTypeResolverAcceptsForwardCompatibleFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"object_type_ref":"kn-1/customer","published":true,"properties":{},"future_capability":"ignored"}`))
+	}))
+	defer server.Close()
+	resolver, err := NewRowFilterPublishedObjectTypeResolver(config.UpstreamConfig{BaseURL: server.URL, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.ResolvePublishedObjectType(t.Context(), "kn-1/customer"); err != nil {
+		t.Fatalf("forward-compatible capability response = %v", err)
+	}
+}
