@@ -7,6 +7,9 @@ on:
       - 'bkn-safe/server/migrationcontract/**'
       - '.github/workflows/ci-permission-transition.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-permission-transition-${{ github.ref }}
   cancel-in-progress: true

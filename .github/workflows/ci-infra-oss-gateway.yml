@@ -8,6 +8,9 @@ on:
       - 'infra/oss-gateway-backend/**'
       - '.github/workflows/ci-infra-oss-gateway.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-infra-oss-gateway-${{ github.ref }}
   cancel-in-progress: true
