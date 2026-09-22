@@ -54,7 +54,7 @@ func connectorInitializationError(ctx context.Context, err error) error {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
 	}
 	if errors.Is(err, factory.ErrConnectorDisabled) {
-		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_Connector_Disabled).WithErrorDetails(err.Error())
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled).WithErrorDetails(err.Error())
 	}
 	return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 		WithErrorDetails("connector initialization failed")
