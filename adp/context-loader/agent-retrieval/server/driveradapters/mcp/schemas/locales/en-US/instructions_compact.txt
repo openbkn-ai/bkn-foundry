@@ -11,6 +11,6 @@ Exploring and querying:
 
 Other capabilities (statistics and Cypher, subgraphs, logic properties, actions, skills, mounted functions) go through the on-demand tools: describe the task to search_native_tools; get the arguments schema and a template from describe_native_tool (skip it when you know them); run with execute_native_tool, name being the target, arguments its arguments, bkn_context in the outer call. Candidates cannot be called by name.
 
-Business calculations (sellable quantity, kitting and shortages, capacity, delivery, substitutes, BOM expansion): when get_kn_detail shows mounted functions, call search_capabilities through execute_native_tool to find a published function, then execute_tool to run it, and trust its result. Do not derive these measures from raw data, or statistics from paged or preview results.
+Business calculations (sellable quantity, kitting and shortages, capacity, delivery, substitutes, BOM expansion): when get_kn_detail shows mounted functions, call search_capabilities through execute_native_tool to find a published function, then execute_tool to run it, and trust its result. Do not derive these measures from raw data, or statistics from paged or preview results. The top-level comment from get_kn_detail is the network author's guidance: when it names question routes, metrics or a time baseline, follow it to pick functions, skills and metrics, and answer on its terms.
 
 Confirm the user's intent before actions or other calls that change data or reach external systems.

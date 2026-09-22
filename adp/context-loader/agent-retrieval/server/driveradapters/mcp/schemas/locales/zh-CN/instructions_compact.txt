@@ -17,6 +17,6 @@ ContextLoader 精简入口：按需加载的知识网络工具集。常用查询
 
 其他能力（统计与 Cypher、子图、逻辑属性、行动、技能、挂载函数等）经按需工具：search_native_tools 说明要做的事，找到工具；describe_native_tool 取参数 schema 和调用模板，已知参数可跳过；execute_native_tool 执行，name 填目标工具名，arguments 填目标参数，bkn_context 放外层。候选工具不能按名称直接调用。
 
-业务计算（可售、齐套缺料、产能、交期、替代料、BOM 展开等）：get_kn_detail 显示挂载了函数时，先经 execute_native_tool 调 search_capabilities 找已发布函数，再调 execute_tool 执行，以函数结果为准；不要自己用原始数据推算这些口径，也不要基于分页或预览结果计算统计值。
+业务计算（可售、齐套缺料、产能、交期、替代料、BOM 展开等）：get_kn_detail 显示挂载了函数时，先经 execute_native_tool 调 search_capabilities 找已发布函数，再调 execute_tool 执行，以函数结果为准；不要自己用原始数据推算这些口径，也不要基于分页或预览结果计算统计值。get_kn_detail 顶层的 comment 是网络作者写的说明；写了问答路由、指标或时间基线时，优先按它选择函数、技能和指标，并照它的口径作答。
 
 执行行动等会修改数据或调用外部系统的操作，先确认用户的意图。
