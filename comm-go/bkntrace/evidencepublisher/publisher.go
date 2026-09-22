@@ -145,6 +145,14 @@ func (p *Publisher) NextSequence() uint64 {
 }
 
 func (p *Publisher) Close(ctx context.Context) DrainResult {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && p.config.ShutdownTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.config.ShutdownTimeout)
+		defer cancel()
+	}
 	p.mu.Lock()
 	if p.closed {
 		ack := p.lastAck
@@ -163,7 +171,15 @@ func (p *Publisher) Close(ctx context.Context) DrainResult {
 	}
 	p.mu.Unlock()
 
-	for _, item := range items {
+	for index, item := range items {
+		if ctx.Err() != nil {
+			remaining := uint64(len(items) - index)
+			ack.Dropped += remaining
+			for dropped := uint64(0); dropped < remaining; dropped++ {
+				p.metrics.Dropped(ReasonShutdownTimeout)
+			}
+			break
+		}
 		if p.config.MaxAge > 0 && time.Since(item.enqueuedAt) > p.config.MaxAge {
 			ack.Dropped++
 			p.metrics.Dropped(ReasonRetryExhausted)
@@ -175,11 +191,14 @@ func (p *Publisher) Close(ctx context.Context) DrainResult {
 				published = true
 				break
 			} else if attempt+1 < p.config.MaxAttempts {
+				if ctx.Err() != nil {
+					break
+				}
 				timer := time.NewTimer(p.config.RetryBackoff)
 				select {
 				case <-ctx.Done():
 					timer.Stop()
-					break
+					attempt = p.config.MaxAttempts
 				case <-timer.C:
 				}
 			}

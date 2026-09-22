@@ -15,6 +15,13 @@ type fakeSender struct {
 	failures int
 }
 
+type blockingSender struct{}
+
+func (blockingSender) Send(ctx context.Context, _ Record) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
 func (s *fakeSender) Send(_ context.Context, record Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -124,6 +131,36 @@ func TestPublisherRetriesFiniteFailuresAndReportsDropped(t *testing.T) {
 	}
 	ack := publisher.Close(context.Background())
 	if ack.Published != 0 || ack.Dropped != 1 || ack.QueueEmpty != true {
+		t.Fatalf("close ack = %+v", ack)
+	}
+}
+
+func TestPublisherRejectsNonCanonicalCapturePolicyRevision(t *testing.T) {
+	cfg := publisherTestConfig()
+	cfg.CapturePolicyRevision = "041"
+	if _, err := New(cfg, &fakeSender{}); err == nil {
+		t.Fatal("New() accepted a capture policy revision with a leading zero")
+	}
+}
+
+func TestPublisherCloseHonorsShutdownTimeout(t *testing.T) {
+	cfg := publisherTestConfig()
+	cfg.ShutdownTimeout = 10 * time.Millisecond
+	cfg.MaxAttempts = 2
+	cfg.RetryBackoff = time.Millisecond
+	publisher, err := New(cfg, blockingSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := publisher.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
+		t.Fatalf("TryPublish() = %+v", result)
+	}
+	started := time.Now()
+	ack := publisher.Close(context.Background())
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("Close() took %s, timeout was %s", elapsed, cfg.ShutdownTimeout)
+	}
+	if ack.Dropped != 1 || ack.QueueEmpty != true {
 		t.Fatalf("close ack = %+v", ack)
 	}
 }

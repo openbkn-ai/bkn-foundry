@@ -1,6 +1,9 @@
 package evidencepublisher
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 type Config struct {
 	Topic                 string
@@ -51,6 +54,13 @@ func (c Config) validate() error {
 		return errInvalidConfig
 	}
 	if c.CapturePolicyRevision == "" {
+		return errInvalidConfig
+	}
+	if len(c.CapturePolicyRevision) > 1 && c.CapturePolicyRevision[0] == '0' {
+		return errInvalidConfig
+	}
+	revision, err := strconv.ParseUint(c.CapturePolicyRevision, 10, 64)
+	if err != nil || revision == 0 {
 		return errInvalidConfig
 	}
 	if c.QueueMaxRecords < 1 || c.QueueMaxBytes < 1 || c.MaxRecordBytes < 1 || c.MaxAttempts < 1 {
