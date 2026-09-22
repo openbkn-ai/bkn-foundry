@@ -9,7 +9,6 @@ package risk_type
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -184,12 +183,15 @@ func (rta *riskTypeAccess) ListRiskTypes(ctx context.Context, query interfaces.R
 
 	builder := processRiskTypeQueryCondition(query, subBuilder)
 	if query.Sort != "" {
-		sortCol := query.Sort // Validated by validatePaginationQueryParameters and already a DB column name.
 		dir := query.Direction
 		if dir == "" {
 			dir = interfaces.DESC_DIRECTION
 		}
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", sortCol, dir))
+		orderBy, err := common.SafeOrderBy(query.Sort, dir)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.OrderBy(orderBy)
 	}
 
 	sqlStr, vals, err := builder.ToSql()

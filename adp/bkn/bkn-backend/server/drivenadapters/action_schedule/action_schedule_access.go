@@ -365,7 +365,11 @@ func (a *actionScheduleAccess) ListSchedules(ctx context.Context, query interfac
 	}
 
 	if query.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
+		orderBy, err := common.SafeOrderBy(query.Sort, query.Direction)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.OrderBy(orderBy)
 	}
 
 	if query.Offset > 0 {
