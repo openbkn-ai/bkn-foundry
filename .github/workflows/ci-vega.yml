@@ -9,6 +9,9 @@ on:
       - '.github/actions/golangci-lint/**'
       - '.github/workflows/ci-vega.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-vega-${{ github.ref }}
   cancel-in-progress: true

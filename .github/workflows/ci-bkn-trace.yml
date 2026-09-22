@@ -7,6 +7,9 @@ on:
       - 'docs/api/agent-observability/**'
       - '.github/workflows/ci-bkn-trace.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-bkn-trace-${{ github.ref }}
   cancel-in-progress: true

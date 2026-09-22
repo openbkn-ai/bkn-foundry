@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/**'
 
+permissions:
+  contents: read
+
 jobs:
   workflow-file-names:
     runs-on: ubuntu-latest

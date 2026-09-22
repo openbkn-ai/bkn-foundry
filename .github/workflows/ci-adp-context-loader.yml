@@ -22,6 +22,9 @@ on:
       # 炸在一个无关的 PR 上。消费方 CI 盯着自己读的契约文件，是目前最短的兜底。
       - 'bkn-trace/agent-observability/docs/swagger/**'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-adp-context-loader-${{ github.ref }}
   cancel-in-progress: true
