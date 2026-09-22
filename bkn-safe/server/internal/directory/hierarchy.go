@@ -56,26 +56,6 @@ type UserFull struct {
 	Groups     []GroupRef  `json:"groups"`
 }
 
-// RowFilterDepartmentScope is the directory-derived department context used
-// by object-instance row filtering. DirectDepartmentIDs is the user's direct
-// membership set; DepartmentTreeIDs is the de-duplicated union of every direct
-// department and all of its descendants. It deliberately differs from
-// UserDeptIDs, whose established contract returns a department's ancestors.
-type RowFilterDepartmentScope struct {
-	DirectDepartmentIDs []string
-	DepartmentTreeIDs   []string
-}
-
-// ErrRowFilterDepartmentScopeTooLarge is returned before a caller context can
-// be used to query data. The caller must fail closed; truncating this set would
-// silently turn an authorization decision into a partial data result.
-var ErrRowFilterDepartmentScopeTooLarge = errors.New("row filter department scope exceeds safe limit")
-
-// DefaultRowFilterDepartmentScopeLimit is intentionally conservative until a
-// deployment sets its measured minimum safe backend value through bkn-safe
-// configuration. It limits both direct-department and descendant ranges.
-const DefaultRowFilterDepartmentScopeLimit = 1000
-
 // deptChain returns the path [root, ..., deptID] (root first, inclusive of the
 // department). Cycle-guarded; a missing department yields what was collected.
 func (s *Service) deptChain(ctx context.Context, deptID string) ([]DeptRef, error) {
@@ -115,72 +95,6 @@ func (s *Service) userDirectDeptIDs(ctx context.Context, userID string) ([]strin
 	}
 	sort.Strings(ids)
 	return ids, nil
-}
-
-// UserRowFilterDepartmentScope returns the trusted direct-department and
-// direct-department-subtree ranges required by row-filter templates. The
-// caller supplies only a user id; neither ranges nor descendant ids are ever
-// accepted from a request payload.
-func (s *Service) UserRowFilterDepartmentScope(ctx context.Context, userID string) (RowFilterDepartmentScope, error) {
-	return s.UserRowFilterDepartmentScopeWithLimit(ctx, userID, DefaultRowFilterDepartmentScopeLimit)
-}
-
-// UserRowFilterDepartmentScopeWithLimit returns the trusted department scope
-// under the supplied backend-safe bound. maxIDs must be positive; a breached
-// bound is never truncated or converted into a permissive scope.
-func (s *Service) UserRowFilterDepartmentScopeWithLimit(ctx context.Context, userID string, maxIDs int) (RowFilterDepartmentScope, error) {
-	if maxIDs <= 0 {
-		return RowFilterDepartmentScope{}, ErrRowFilterDepartmentScopeTooLarge
-	}
-	direct, err := s.userDirectDeptIDs(ctx, userID)
-	if err != nil {
-		return RowFilterDepartmentScope{}, err
-	}
-	if len(direct) > maxIDs {
-		return RowFilterDepartmentScope{}, ErrRowFilterDepartmentScopeTooLarge
-	}
-	if len(direct) == 0 {
-		return RowFilterDepartmentScope{DirectDepartmentIDs: []string{}, DepartmentTreeIDs: []string{}}, nil
-	}
-
-	seen := make(map[string]struct{}, len(direct))
-	tree := make([]string, 0, len(direct))
-	frontier := make([]string, 0, len(direct))
-	for _, id := range direct {
-		if _, duplicate := seen[id]; duplicate {
-			continue
-		}
-		seen[id] = struct{}{}
-		tree = append(tree, id)
-		frontier = append(frontier, id)
-	}
-
-	// Walk downward in batches. The cycle guard protects a damaged hierarchy;
-	// each discovered id enters the next frontier at most once.
-	for len(frontier) > 0 {
-		var children []model.Department
-		if err := s.db.WithContext(ctx).Where("parent_id IN ?", frontier).Order("id ASC").Find(&children).Error; err != nil {
-			return RowFilterDepartmentScope{}, err
-		}
-		next := make([]string, 0, len(children))
-		for _, child := range children {
-			if child.ID == "" {
-				return RowFilterDepartmentScope{}, errors.New("department hierarchy contains an empty id")
-			}
-			if _, alreadySeen := seen[child.ID]; alreadySeen {
-				continue
-			}
-			if len(tree) >= maxIDs {
-				return RowFilterDepartmentScope{}, ErrRowFilterDepartmentScopeTooLarge
-			}
-			seen[child.ID] = struct{}{}
-			tree = append(tree, child.ID)
-			next = append(next, child.ID)
-		}
-		frontier = next
-	}
-	sort.Strings(tree)
-	return RowFilterDepartmentScope{DirectDepartmentIDs: direct, DepartmentTreeIDs: tree}, nil
 }
 
 // UserDeptIDs returns the transitive set of department ids a user belongs to:

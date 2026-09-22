@@ -36,10 +36,6 @@ func newResolver(t *testing.T) (*TrustedCallerResolver, *gorm.DB, *authz.Enforce
 func TestResolveUsesOnlyDirectoryAndTransitiveRoleData(t *testing.T) {
 	resolver, db, enforcer := newResolver(t)
 	db.Create(&model.User{ID: "user-1", Account: "alice", Enabled: true})
-	db.Create(&model.Department{ID: "d-root", Name: "总部"})
-	db.Create(&model.Department{ID: "d-sales", Name: "销售", ParentID: "d-root"})
-	db.Create(&model.Department{ID: "d-east", Name: "华东", ParentID: "d-sales"})
-	db.Create(&model.UserDepartment{UserID: "user-1", DepartmentID: "d-sales"})
 	if err := enforcer.AssignRole("user-1", "sales"); err != nil {
 		t.Fatal(err)
 	}
@@ -57,12 +53,6 @@ func TestResolveUsesOnlyDirectoryAndTransitiveRoleData(t *testing.T) {
 	if !sameStrings(caller.RoleIDs, []string{"regional", "sales"}) {
 		t.Fatalf("roles = %v", caller.RoleIDs)
 	}
-	if !sameStrings(caller.DirectDepartmentIDs, []string{"d-sales"}) {
-		t.Fatalf("direct departments = %v", caller.DirectDepartmentIDs)
-	}
-	if !sameStrings(caller.DepartmentTreeIDs, []string{"d-east", "d-sales"}) {
-		t.Fatalf("department tree = %v", caller.DepartmentTreeIDs)
-	}
 }
 
 func TestResolveFailsClosedForUnknownDisabledAndAppCallers(t *testing.T) {
@@ -73,19 +63,6 @@ func TestResolveFailsClosedForUnknownDisabledAndAppCallers(t *testing.T) {
 		if _, err := resolver.Resolve(t.Context(), id); !errors.Is(err, ErrCallerInvalid) {
 			t.Fatalf("Resolve(%q) error = %v, want ErrCallerInvalid", id, err)
 		}
-	}
-}
-
-func TestResolveFailsClosedWhenDepartmentScopeExceedsSafeLimit(t *testing.T) {
-	resolver, db, _ := newResolver(t)
-	resolver = NewTrustedCallerResolverWithDepartmentLimit(resolver.directory, resolver.authz, 1)
-	db.Create(&model.User{ID: "user-limit", Account: "limit", Enabled: true})
-	db.Create(&model.Department{ID: "d-root", Name: "Root"})
-	db.Create(&model.Department{ID: "d-child", Name: "Child", ParentID: "d-root"})
-	db.Create(&model.UserDepartment{UserID: "user-limit", DepartmentID: "d-root"})
-
-	if _, err := resolver.Resolve(t.Context(), "user-limit"); !errors.Is(err, ErrCallerInvalid) {
-		t.Fatalf("Resolve above department safe limit error = %v, want %v", err, ErrCallerInvalid)
 	}
 }
 
