@@ -28,20 +28,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: tag
-        name: Resolve Python base checksum tag
+        name: Resolve Python base content tag
         shell: bash
         run: |
           set -euo pipefail
-          date="$(TZ=Asia/Shanghai git show -s --format=%cd --date=format-local:%Y%m%d HEAD)"
-          checksum="$(cd vega/vega-python-base && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-7)"
-          echo "tag=$date-$checksum" >> "$GITHUB_OUTPUT"
+          checksum="$(cd vega/vega-python-base && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)"
+          echo "tag=$checksum" >> "$GITHUB_OUTPUT"
 
   build:
     needs: resolve-tag
     uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
-      additional-tags: latest
       context: "."
       dockerfile: Dockerfile
       image-name: vega-python-base
