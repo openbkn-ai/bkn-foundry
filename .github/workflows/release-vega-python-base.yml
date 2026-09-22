@@ -41,6 +41,7 @@ jobs:
     uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
+      additional-tags: latest
       context: "."
       dockerfile: Dockerfile
       image-name: vega-python-base

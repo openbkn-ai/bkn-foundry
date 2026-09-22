@@ -19,6 +19,10 @@ name: reusable-container-image
 on:
   workflow_call:
     inputs:
+      additional-tags:
+        default: ""
+        description: "Additional image tags, one Docker tag per line"
+        type: string
       build-args:
         default: ""
         description: "Extra docker build args, one KEY=VALUE per line (e.g. BASE_IMAGE=ubuntu:22.04)"
@@ -269,6 +273,7 @@ jobs:
         shell: bash
         env:
           ARCHS: ${{ needs.setup.outputs.archs }}
+          ADDITIONAL_TAGS: ${{ inputs.additional-tags }}
           DIGEST_DIR: ${{ runner.temp }}/digests
           IMAGE: ${{ inputs.image-name }}
           VERSION: ${{ inputs.version }}
@@ -301,18 +306,34 @@ jobs:
           # depends on would rest on inference rather than on the tool's
           # contract. The runner is fresh, so each run assembles the list from
           # scratch; nothing local to amend.
+          tags=("${VERSION}")
+          while IFS= read -r tag; do
+            tag="$(echo "${tag}" | xargs)"
+            if [ -z "${tag}" ] || [ "${tag}" = "${VERSION}" ]; then
+              continue
+            fi
+            if ! [[ "${tag}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+              echo "::error::invalid additional image tag: ${tag}"
+              exit 1
+            fi
+            tags+=("${tag}")
+          done <<< "${ADDITIONAL_TAGS}"
+
           union() {
             local repo="$1"
+            local tag="$2"
             local children=()
             for arch in "${archs[@]}"; do
               children+=("${repo}@$(digest_for "${arch}")")
             done
-            docker manifest create "${repo}:${VERSION}" "${children[@]}"
-            docker manifest push "${repo}:${VERSION}"
-            echo "Pushed multi-arch ${repo}:${VERSION}"
-            docker manifest inspect "${repo}:${VERSION}" | head -30
+            docker manifest create "${repo}:${tag}" "${children[@]}"
+            docker manifest push "${repo}:${tag}"
+            echo "Pushed multi-arch ${repo}:${tag}"
+            docker manifest inspect "${repo}:${tag}" | head -30
           }
-          union "ghcr.io/${{ github.repository_owner }}/${IMAGE}"
-          if [ "${{ needs.setup.outputs.swr }}" = "true" ]; then
-            union "${SWR_REPO}/${IMAGE}"
-          fi
+          for tag in "${tags[@]}"; do
+            union "ghcr.io/${{ github.repository_owner }}/${IMAGE}" "${tag}"
+            if [ "${{ needs.setup.outputs.swr }}" = "true" ]; then
+              union "${SWR_REPO}/${IMAGE}" "${tag}"
+            fi
+          done
