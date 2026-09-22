@@ -9,7 +9,14 @@
     "api-docs": "make api-docs"
   },
   "devDependencies": {
-    "@redocly/cli": "^1.25.0",
+    "@redocly/cli": "^2.54.2",
     "widdershins": "^4.0.1"
+  },
+  "overrides": {
+    "form-data": "4.0.6",
+    "httpsnippet": "3.0.10",
+    "markdown-it": "14.2.0",
+    "swagger2openapi": "7.0.8",
+    "yargs": "17.7.2"
   }
 }
