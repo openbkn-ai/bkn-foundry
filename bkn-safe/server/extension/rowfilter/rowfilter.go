@@ -58,26 +58,24 @@ var ErrResolverUnavailable = errors.New("row filter resolver unavailable")
 var ErrLifecycleUnavailable = errors.New("row filter lifecycle unavailable")
 
 // Caller is the server-derived identity context available to policy
-// resolution. Roles and department ranges are populated only by bkn-safe's
-// trusted directory/authz resolver; request payloads must never supply them.
+// resolution. First-version fixed conditions use only user role membership to
+// select applicable policies; request payloads must never supply it.
 type Caller struct {
-	UserID              string
-	RoleIDs             []string
-	DirectDepartmentIDs []string
-	DepartmentTreeIDs   []string
+	UserID  string
+	RoleIDs []string
 }
 
 // Request is a batch of object-type row-filter decisions for one trusted
-// caller. Role and department expansion happens once per request, never once
-// for every object type in a traversal.
+// caller. Role expansion happens once per request, never once for every object
+// type in a traversal.
 type Request struct {
 	ObjectTypeRefs []string
 	Caller         Caller
 }
 
-// ValueType is the intentionally small scalar vocabulary allowed in an IN
-// predicate. It mirrors the v1 value_set policy contract and prevents the EE
-// implementation from smuggling a backend-specific expression into core.
+// ValueType is the intentionally small scalar vocabulary allowed in a fixed
+// field predicate. It prevents the EE implementation from smuggling a
+// backend-specific expression into core.
 type ValueType string
 
 const (
@@ -96,21 +94,29 @@ type Value struct {
 }
 
 // PredicateKind is the v1 effective-row-filter language. User queries are
-// ANDed with this complete plan by the execution layer; a policy resolver can
-// only produce a constant, one exact IN branch, or an OR of such branches.
+// ANDed with this complete plan by the execution layer. The policy API only
+// creates one flat AND or OR group, while composition may place those groups
+// beneath an OR for the user's applicable user and role policies.
 type PredicateKind string
 
 const (
-	PredicateTrue  PredicateKind = "true"
-	PredicateFalse PredicateKind = "false"
-	PredicateIn    PredicateKind = "in"
-	PredicateOr    PredicateKind = "or"
+	PredicateTrue    PredicateKind = "true"
+	PredicateFalse   PredicateKind = "false"
+	PredicateIn      PredicateKind = "in"
+	PredicateNotIn   PredicateKind = "not_in"
+	PredicateGT      PredicateKind = "gt"
+	PredicateGTE     PredicateKind = "gte"
+	PredicateLT      PredicateKind = "lt"
+	PredicateLTE     PredicateKind = "lte"
+	PredicateBetween PredicateKind = "between"
+	PredicateAnd     PredicateKind = "and"
+	PredicateOr      PredicateKind = "or"
 )
 
 // Predicate is an abstract, backend-neutral effective row filter. Property is
-// required only for IN; Values are always typed. OR contains one or more
-// normalized children and is never used for an empty, singleton, TRUE, or
-// FALSE expression.
+// required for field predicates; Values are always typed. AND and OR contain
+// one or more normalized children and are never used for an empty, singleton,
+// TRUE, or FALSE expression.
 type Predicate struct {
 	Kind       PredicateKind
 	Property   string
@@ -294,7 +300,7 @@ func responseFor(request Request, resolution Resolution) (Response, error) {
 }
 
 // Normalize validates and canonicalizes the v1 plan. Canonical plans make the
-// digest semantic: differently ordered but equivalent IN/OR branches produce
+// digest semantic: differently ordered but equivalent condition groups produce
 // exactly the same effective_row_filter_digest.
 func Normalize(plan Plan) (Plan, error) {
 	predicate, err := normalizePredicate(plan.Predicate)
@@ -311,29 +317,39 @@ func normalizePredicate(predicate Predicate) (Predicate, error) {
 			return Predicate{}, invalid("%s predicate carries fields", predicate.Kind)
 		}
 		return Predicate{Kind: predicate.Kind}, nil
-	case PredicateIn:
+	case PredicateIn, PredicateNotIn:
 		if !ValidPropertyName(predicate.Property) || len(predicate.Predicates) != 0 {
-			return Predicate{}, invalid("in predicate must have one property and no child predicates")
+			return Predicate{}, invalid("%s predicate must have one property and no child predicates", predicate.Kind)
 		}
 		if len(predicate.Values) == 0 {
-			return Predicate{}, invalid("in predicate must contain values")
+			return Predicate{}, invalid("%s predicate must contain values", predicate.Kind)
 		}
 		values := append([]Value(nil), predicate.Values...)
 		for _, value := range values {
 			if !value.valid() {
-				return Predicate{}, invalid("in predicate has invalid %q value", value.Type)
+				return Predicate{}, invalid("%s predicate has invalid %q value", predicate.Kind, value.Type)
 			}
 		}
 		sort.Slice(values, func(i, j int) bool { return valueKey(values[i]) < valueKey(values[j]) })
 		for i := 1; i < len(values); i++ {
 			if valueKey(values[i-1]) == valueKey(values[i]) {
-				return Predicate{}, invalid("in predicate contains a duplicate value")
+				return Predicate{}, invalid("%s predicate contains a duplicate value", predicate.Kind)
 			}
 		}
-		return Predicate{Kind: PredicateIn, Property: predicate.Property, Values: values}, nil
-	case PredicateOr:
+		return Predicate{Kind: predicate.Kind, Property: predicate.Property, Values: values}, nil
+	case PredicateGT, PredicateGTE, PredicateLT, PredicateLTE:
+		if !ValidPropertyName(predicate.Property) || len(predicate.Predicates) != 0 || len(predicate.Values) != 1 || predicate.Values[0].Type != ValueInteger || !predicate.Values[0].valid() {
+			return Predicate{}, invalid("%s predicate requires one integer property value", predicate.Kind)
+		}
+		return Predicate{Kind: predicate.Kind, Property: predicate.Property, Values: append([]Value(nil), predicate.Values...)}, nil
+	case PredicateBetween:
+		if !ValidPropertyName(predicate.Property) || len(predicate.Predicates) != 0 || len(predicate.Values) != 2 || predicate.Values[0].Type != ValueInteger || predicate.Values[1].Type != ValueInteger || !predicate.Values[0].valid() || !predicate.Values[1].valid() || predicate.Values[0].Integer > predicate.Values[1].Integer {
+			return Predicate{}, invalid("between predicate requires ordered integer bounds")
+		}
+		return Predicate{Kind: PredicateBetween, Property: predicate.Property, Values: append([]Value(nil), predicate.Values...)}, nil
+	case PredicateAnd, PredicateOr:
 		if predicate.Property != "" || len(predicate.Values) != 0 || len(predicate.Predicates) == 0 {
-			return Predicate{}, invalid("or predicate must contain child predicates only")
+			return Predicate{}, invalid("%s predicate must contain child predicates only", predicate.Kind)
 		}
 		children := make([]Predicate, 0, len(predicate.Predicates))
 		for _, child := range predicate.Predicates {
@@ -341,18 +357,34 @@ func normalizePredicate(predicate Predicate) (Predicate, error) {
 			if err != nil {
 				return Predicate{}, err
 			}
-			switch normalized.Kind {
-			case PredicateTrue:
-				return Predicate{Kind: PredicateTrue}, nil
-			case PredicateFalse:
-				continue
-			case PredicateOr:
-				children = append(children, normalized.Predicates...)
-			default:
-				children = append(children, normalized)
+			if predicate.Kind == PredicateAnd {
+				switch normalized.Kind {
+				case PredicateFalse:
+					return Predicate{Kind: PredicateFalse}, nil
+				case PredicateTrue:
+					continue
+				case PredicateAnd:
+					children = append(children, normalized.Predicates...)
+				default:
+					children = append(children, normalized)
+				}
+			} else {
+				switch normalized.Kind {
+				case PredicateTrue:
+					return Predicate{Kind: PredicateTrue}, nil
+				case PredicateFalse:
+					continue
+				case PredicateOr:
+					children = append(children, normalized.Predicates...)
+				default:
+					children = append(children, normalized)
+				}
 			}
 		}
 		if len(children) == 0 {
+			if predicate.Kind == PredicateAnd {
+				return Predicate{Kind: PredicateTrue}, nil
+			}
 			return Predicate{Kind: PredicateFalse}, nil
 		}
 		sort.Slice(children, func(i, j int) bool { return predicateKey(children[i]) < predicateKey(children[j]) })
@@ -365,7 +397,7 @@ func normalizePredicate(predicate Predicate) (Predicate, error) {
 		if len(unique) == 1 {
 			return unique[0], nil
 		}
-		return Predicate{Kind: PredicateOr, Predicates: unique}, nil
+		return Predicate{Kind: predicate.Kind, Predicates: unique}, nil
 	default:
 		return Predicate{}, invalid("unknown predicate kind %q", predicate.Kind)
 	}
@@ -420,11 +452,7 @@ func validateRequest(request Request) error {
 	if request.Caller.UserID == "" {
 		return invalid("caller user_id is empty")
 	}
-	for field, ids := range map[string][]string{
-		"role_ids":              request.Caller.RoleIDs,
-		"direct_department_ids": request.Caller.DirectDepartmentIDs,
-		"department_tree_ids":   request.Caller.DepartmentTreeIDs,
-	} {
+	for field, ids := range map[string][]string{"role_ids": request.Caller.RoleIDs} {
 		seen := make(map[string]struct{}, len(ids))
 		for _, id := range ids {
 			if id == "" {
