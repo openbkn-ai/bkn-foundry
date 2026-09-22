@@ -523,12 +523,14 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10).Return("TSQL SINGLE PAGE")
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "TSQL SINGLE PAGE").Return(&interfaces.RawQueryResponse{
-			Entries: []map[string]any{{"id": 1}},
-		}, nil)
+		gomock.InOrder(
+			connector.EXPECT().Connect(gomock.Any()).Return(nil),
+			connector.EXPECT().BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10).Return("TSQL SINGLE PAGE"),
+			connector.EXPECT().ExecuteRawSQL(gomock.Any(), "TSQL SINGLE PAGE").Return(&interfaces.RawQueryResponse{
+				Entries: []map[string]any{{"id": 1}},
+			}, nil),
+			connector.EXPECT().Close(gomock.Any()).Return(nil),
+		)
 
 		result, err := svc.executeSQL(context.Background(), catalog,
 			"SELECT id FROM dbo.orders", interfaces.PagingModeSingle, &rawSQLBuildOptions{offset: 20, limit: 10})
@@ -663,15 +665,17 @@ func TestRawQueryServiceExecuteSQLTotalCount(t *testing.T) {
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().BuildCountSQL("SELECT id FROM dbo.orders").Return(
-			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total")
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(),
-			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total").
-			Return(&interfaces.RawQueryResponse{
-				Entries: []map[string]any{{rawQueryTotalCountColumn: int64(42)}},
-			}, nil)
+		gomock.InOrder(
+			connector.EXPECT().Connect(gomock.Any()).Return(nil),
+			connector.EXPECT().BuildCountSQL("SELECT id FROM dbo.orders").Return(
+				"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total"),
+			connector.EXPECT().ExecuteRawSQL(gomock.Any(),
+				"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total").
+				Return(&interfaces.RawQueryResponse{
+					Entries: []map[string]any{{rawQueryTotalCountColumn: int64(42)}},
+				}, nil),
+			connector.EXPECT().Close(gomock.Any()).Return(nil),
+		)
 
 		count, err := svc.executeSQLTotalCount(context.Background(), catalog, "SELECT id FROM dbo.orders")
 
