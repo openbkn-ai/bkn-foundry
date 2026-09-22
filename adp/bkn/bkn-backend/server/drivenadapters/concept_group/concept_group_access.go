@@ -234,7 +234,11 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 
 	// Sort.
 	if query.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
+		orderBy, err := common.SafeOrderBy(query.Sort, query.Direction)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.OrderBy(orderBy)
 	}
 	if query.Limit > 0 {
 		builder = builder.Limit(uint64(query.Limit))

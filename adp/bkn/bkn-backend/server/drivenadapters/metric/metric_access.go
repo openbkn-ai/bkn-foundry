@@ -408,14 +408,17 @@ func (ma *metricAccess) ListMetrics(ctx context.Context, query interfaces.Metric
 	subBuilder := sq.Select(metricSelectColumns()...).From(METRIC_TABLE_NAME)
 	builder := processMetricQueryCondition(query, subBuilder)
 	if query.Sort != "" {
-		sortCol := query.Sort
 		dir := query.Direction
 		if dir == "" {
 			dir = interfaces.DESC_DIRECTION
 		}
+		orderBy, err := common.SafeOrderBy(query.Sort, dir)
+		if err != nil {
+			return nil, err
+		}
 		// Use f_id as a tie-breaker because same-batch metrics can share identical f_update_time values.
 		// Without a tie-breaker, ordering across page boundaries is unstable and rows can repeat or be skipped.
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", sortCol, dir), "f_id ASC")
+		builder = builder.OrderBy(orderBy, "f_id ASC")
 	}
 
 	sqlStr, vals, err := builder.ToSql()

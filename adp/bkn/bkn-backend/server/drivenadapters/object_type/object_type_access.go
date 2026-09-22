@@ -339,7 +339,11 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 
 	// Sort.
 	if query.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("ot.%s %s", query.Sort, query.Direction))
+		orderBy, err := common.SafeOrderBy(query.Sort, query.Direction)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.OrderBy("ot." + orderBy)
 	}
 	if query.Limit > 0 {
 		builder = builder.Limit(uint64(query.Limit))
