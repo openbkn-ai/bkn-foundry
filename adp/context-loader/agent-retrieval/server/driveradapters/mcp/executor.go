@@ -70,8 +70,11 @@ type argumentViolation struct {
 // fix the call without describing the target first.
 type invalidArguments struct {
 	gatewayRefusal
-	Violations      []argumentViolation `json:"violations"`
-	ArgumentsSchema json.RawMessage     `json:"arguments_schema"`
+	Violations []argumentViolation `json:"violations"`
+	// ArgumentsSchema is omitted when it is larger than describe_native_tool
+	// would return: a failed call must not print more than asking for the
+	// schema does, and the violations still name the fields to fix.
+	ArgumentsSchema json.RawMessage `json:"arguments_schema,omitempty"`
 }
 
 func (r *invalidArguments) Error() string {
@@ -199,14 +202,17 @@ func validateTargetArguments(name string, schema json.RawMessage, arguments map[
 		}
 		violations = append(violations, argumentViolation{Path: unit.InstanceLocation, Message: unit.Error.String()})
 	}
-	return &invalidArguments{
+	refusal := &invalidArguments{
 		gatewayRefusal: gatewayRefusal{
 			Code: refusalInvalidArguments, Name: name,
 			Message: "The arguments do not match the target's arguments schema; fix the listed fields and call again.",
 		},
-		Violations:      violations,
-		ArgumentsSchema: schema,
+		Violations: violations,
 	}
+	if len([]rune(string(schema))) <= maxExecutableSchemaChars {
+		refusal.ArgumentsSchema = schema
+	}
+	return refusal
 }
 
 // innerRequest is the call the target sees: the outer request with the
@@ -214,7 +220,7 @@ func validateTargetArguments(name string, schema json.RawMessage, arguments map[
 // bkn_context. Raw bytes matter: handlers bind numbers from them, so a wide
 // integer reaches the target unrounded.
 func innerRequest(outer mcp.CallToolRequest, name string, arguments map[string]json.RawMessage, bknContext json.RawMessage) (mcp.CallToolRequest, error) {
-	merged := make(map[string]json.RawMessage, len(arguments)+1)
+	merged := make(map[string]json.RawMessage, len(arguments))
 	for key, value := range arguments {
 		merged[key] = value
 	}
