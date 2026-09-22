@@ -84,6 +84,7 @@ type RelationTypesQueryParams struct {
 	SourceObjectTypeIDs []string
 	TargetObjectTypeIDs []string
 	BoundObjectTypeIDs  []string
+	RTIDS               []string
 }
 
 // Relation type search list.

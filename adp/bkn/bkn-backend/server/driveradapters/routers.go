@@ -148,6 +148,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.PUT("/knowledge-networks/:kn_id", r.verifyJsonContentType(), r.UpdateKNByEx)
 		apiV1.GET("/knowledge-networks", r.ListKNsByEx)
 		apiV1.GET("/knowledge-networks/:kn_id", r.GetKNByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/overview-graph", r.ListOverviewGraphByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/validation", r.verifyJsonContentType(), r.ValidateKNByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/relation-type-paths", r.GetRelationTypePathsByEx)
 
@@ -260,6 +261,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.PUT("/knowledge-networks/:kn_id", r.verifyJsonContentType(), r.UpdateKNByIn)
 		apiInV1.GET("/knowledge-networks", r.ListKNsByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id", r.GetKNByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/overview-graph", r.ListOverviewGraphByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/validation", r.verifyJsonContentType(), r.ValidateKNByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/relation-type-paths", r.GetRelationTypePathsByIn)
 

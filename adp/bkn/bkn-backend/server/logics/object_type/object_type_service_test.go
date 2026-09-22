@@ -1534,6 +1534,47 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 	})
 }
 
+func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ums := bmock.NewMockUserMgmtService(ctrl)
+	service := &objectTypeService{ota: ota, ps: ps, ums: ums}
+	ctx := context.Background()
+
+	query := interfaces.ObjectTypesQueryParams{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, NamePattern: "order", Tag: "core",
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{
+			Offset: 100, Limit: 10, Sort: "f_name", Direction: interfaces.ASC_DIRECTION,
+		},
+	}
+	visibleQuery := query
+	visibleQuery.OTIDS = []string{"orders", "customers"}
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		ResourceIDs: []string{"kn-2/ignored", "kn-1/orders", "kn-1/customers", "kn-1/orders"},
+	}, nil)
+	ota.EXPECT().GetObjectTypesTotal(gomock.Any(), visibleQuery).Return(2, nil)
+	page := []*interfaces.ObjectType{{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders", OTName: "Orders"},
+		KNID:                   "kn-1", Branch: interfaces.MAIN_BRANCH,
+	}}
+	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), visibleQuery).Return(page, nil)
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/orders"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
+		map[string]interfaces.PermissionResourceOps{
+			"kn-1/orders": {ResourceID: "kn-1/orders", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
+	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
+
+	items, total, err := service.ListObjectTypeSummaries(ctx, nil, query)
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+	require.Len(t, items, 1)
+	assert.Equal(t, "orders", items[0].OTID)
+	assert.Equal(t, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, items[0].Operations)
+}
+
 func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 	Convey("Test UpdateObjectType\n", t, func() {
 		ctx := context.Background()

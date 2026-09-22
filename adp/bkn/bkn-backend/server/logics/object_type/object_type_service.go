@@ -575,6 +575,92 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	return objectTypes, total, nil
 }
 
+// ListObjectTypeSummaries performs authorization before storage count and
+// pagination, then projects operations only for the returned page.
+func (ots *objectTypeService) ListObjectTypeSummaries(ctx context.Context, tx *sql.Tx,
+	query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, int, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List object type summaries")
+	defer span.End()
+
+	pageQuery := query
+	if !interfaces.IsAuthorizationResourceCatalog(ctx) {
+		scope, err := ots.ps.ListAccessibleResources(ctx, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !scope.Unrestricted {
+			visible := make(map[string]struct{}, len(scope.ResourceIDs))
+			visibleIDs := make([]string, 0, len(scope.ResourceIDs))
+			for _, resourceID := range scope.ResourceIDs {
+				if childID, ok := interfaces.KNChildIDFromResourceID(query.KNID, resourceID); ok {
+					if _, exists := visible[childID]; exists {
+						continue
+					}
+					visible[childID] = struct{}{}
+					visibleIDs = append(visibleIDs, childID)
+				}
+			}
+			ids := make([]string, 0, len(visible))
+			if query.OTIDS == nil {
+				ids = append(ids, visibleIDs...)
+			} else {
+				for _, id := range query.OTIDS {
+					if _, ok := visible[id]; ok {
+						ids = append(ids, id)
+					}
+				}
+			}
+			pageQuery.OTIDS = ids
+		}
+	}
+
+	total, err := ots.ota.GetObjectTypesTotal(ctx, pageQuery)
+	if err != nil {
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	}
+	items, err := ots.ota.ListObjectTypeSummaries(ctx, tx, pageQuery)
+	if err != nil {
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	}
+	if interfaces.IsAuthorizationResourceCatalog(ctx) || len(items) == 0 {
+		return items, total, nil
+	}
+
+	childIDs := make([]string, 0, len(items))
+	for _, item := range items {
+		childIDs = append(childIDs, item.OTID)
+	}
+	operations, err := permission.FilterKNChildResourceIDsWithOperations(ctx, ots.ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, interfaces.KNChildResourceIDs(query.KNID, childIDs),
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return nil, 0, err
+	}
+	visibleItems := make([]*interfaces.ObjectType, 0, len(items))
+	accountInfos := make([]*interfaces.AccountInfo, 0, len(items)*2)
+	for _, item := range items {
+		resourceID := interfaces.KNChildResourceID(query.KNID, item.OTID)
+		resourceOps, ok := operations[resourceID]
+		if !ok {
+			continue
+		}
+		item.Operations = resourceOps.Operations
+		visibleItems = append(visibleItems, item)
+		accountInfos = append(accountInfos, &item.Creator, &item.Updater)
+	}
+	if len(accountInfos) > 0 {
+		if err := ots.ums.GetAccountNames(ctx, accountInfos); err != nil {
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return visibleItems, total, nil
+}
+
 func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx,
 	knID string, branch string, otIDs []string) ([]*interfaces.ObjectType, error) {
 	// Get object types.

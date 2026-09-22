@@ -919,7 +919,7 @@ func (r *restHandler) ListObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	// var result map[string]any
 	// if simpleInfo {
 	// Get object type summaries.
-	otList, total, err := r.ots.ListObjectTypes(ctx, nil, parameter)
+	otList, total, err := r.ots.ListObjectTypeSummaries(ctx, nil, parameter)
 	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)

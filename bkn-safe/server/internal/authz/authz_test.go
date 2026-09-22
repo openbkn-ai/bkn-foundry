@@ -230,6 +230,28 @@ func TestAccessibleResourcesFiltersDenyInBatch(t *testing.T) {
 	}
 }
 
+func TestAccessibleResourceScopeDistinguishesSuperAdminFromConcreteGrants(t *testing.T) {
+	e := newTestEnforcer(t)
+	mustNoErr(t, e.GrantObjectPermission("reader", "object_type", "kn-1/orders", "view_detail"))
+
+	ids, unrestricted, err := e.AccessibleResourceScope("reader", "object_type", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unrestricted || !sameSet(ids, []string{"kn-1/orders"}) {
+		t.Fatalf("reader scope = (%v, %v), want concrete orders grant", ids, unrestricted)
+	}
+
+	mustNoErr(t, e.AssignRole("admin", SuperAdminRoleID))
+	ids, unrestricted, err = e.AccessibleResourceScope("admin", "object_type", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unrestricted || len(ids) != 0 {
+		t.Fatalf("super-admin scope = (%v, %v), want unrestricted", ids, unrestricted)
+	}
+}
+
 func TestSuperAdminCannotBeDenied(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "break-glass-admin"

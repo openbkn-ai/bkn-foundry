@@ -353,6 +353,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthorizationResourceList"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/overview-graph:
+    get:
+      summary: Get a bounded ontology overview graph
+      description: |
+        Returns a lightweight, authorization-filtered graph projection for large knowledge networks.
+        Counts are calculated after authorization. The initial page and cursor pages are bounded;
+        focus_object_type_id expands one node by one or two hops. A cursor is rejected when the
+        network snapshot has changed. Returned edges never reference a node omitted by authorization.
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: Business knowledge network ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          schema:
+            type: string
+            default: main
+        - name: node_limit
+          in: query
+          description: Maximum returned nodes. Defaults to 60; maximum 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 60
+        - name: edge_limit
+          in: query
+          description: Maximum candidate relations read for this response. Defaults to 120; maximum 500.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 120
+        - name: cursor
+          in: query
+          description: Opaque cursor from next_cursor. Cannot be combined with focus or concept-group expansion.
+          schema:
+            type: string
+        - name: focus_object_type_id
+          in: query
+          description: Object type whose bounded neighbourhood should be returned.
+          schema:
+            type: string
+        - name: expand_depth
+          in: query
+          description: Focus expansion depth. Supported values are 1 and 2; defaults to 1.
+          schema:
+            type: integer
+            enum: [1, 2]
+            default: 1
+        - name: concept_group_id
+          in: query
+          description: Return a bounded projection of one concept group. Mutually exclusive with focus_object_type_id.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bounded overview graph
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewGraph"
+        "400":
+          description: Invalid limits, expansion parameters, or a stale cursor
+        "404":
+          description: Knowledge network or visible focus object type not found
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/validation:
     post:
       summary: Validate a business knowledge network
@@ -423,6 +492,74 @@ components:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
+    OverviewGraph:
+      type: object
+      required:
+        - nodes
+        - edges
+        - object_type_total
+        - relation_type_total
+        - returned_nodes
+        - returned_edges
+        - truncated
+        - snapshot
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/OverviewGraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/OverviewGraphEdge"
+        object_type_total:
+          type: integer
+          minimum: 0
+        relation_type_total:
+          type: integer
+          minimum: 0
+        returned_nodes:
+          type: integer
+          minimum: 0
+        returned_edges:
+          type: integer
+          minimum: 0
+        truncated:
+          type: boolean
+        snapshot:
+          type: string
+        next_cursor:
+          type: string
+          description: Opaque cursor for the next bounded node page. Omitted when there is no next page.
+    OverviewGraphNode:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        indexed:
+          type: boolean
+        degree:
+          type: integer
+          minimum: 0
+    OverviewGraphEdge:
+      type: object
+      required: [id, name, source_id, target_id]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        source_id:
+          type: string
+        target_id:
+          type: string
     AuthorizationResourceList:
       type: object
       required: [entries, total]

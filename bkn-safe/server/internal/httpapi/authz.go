@@ -466,12 +466,12 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			c.JSON(http.StatusOK, gin.H{"ids": []string{}})
 			return
 		}
-		ids, err := e.AccessibleResources(accessorID, rtype, op)
+		ids, unrestricted, err := e.AccessibleResourceScope(accessorID, rtype, op)
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"ids": ids})
+		c.JSON(http.StatusOK, gin.H{"ids": ids, "unrestricted": unrestricted})
 	})
 
 	// GET /policies — list the per-accessor grants on a resource instance.

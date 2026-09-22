@@ -310,6 +310,74 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 	return relationTypes, nil
 }
 
+// ListRelationTypeSummaries reads the graph projection without mapping rules,
+// raw model content, audit principals, or other detail-only fields.
+func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
+	query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListRelationTypeSummaries")
+	defer span.End()
+
+	builder := processQueryCondition(query, sq.Select(
+		"f_id",
+		"f_name",
+		"f_icon",
+		"f_color",
+		"f_kn_id",
+		"f_branch",
+		"f_source_object_type_id",
+		"f_target_object_type_id",
+		"f_type",
+		"f_update_time",
+	).From(RT_TABLE_NAME))
+	if query.Sort != "" {
+		orderBy, err := common.SafeOrderBy(query.Sort, query.Direction)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.OrderBy(orderBy, "f_id ASC")
+	}
+	if query.Limit > 0 {
+		builder = builder.Limit(uint64(query.Limit))
+		if query.Offset > 0 {
+			builder = builder.Offset(uint64(query.Offset))
+		}
+	}
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	rows, err := rta.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]*interfaces.RelationType, 0)
+	for rows.Next() {
+		item := &interfaces.RelationType{ModuleType: interfaces.MODULE_TYPE_RELATION_TYPE}
+		if err := rows.Scan(
+			&item.RTID,
+			&item.RTName,
+			&item.Icon,
+			&item.Color,
+			&item.KNID,
+			&item.Branch,
+			&item.SourceObjectTypeID,
+			&item.TargetObjectTypeID,
+			&item.Type,
+			&item.UpdateTime,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
+}
+
 func (rta *relationTypeAccess) GetRelationTypesTotal(ctx context.Context, query interfaces.RelationTypesQueryParams) (int, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetRelationTypesTotal")
 	defer span.End()
@@ -820,6 +888,10 @@ func processQueryCondition(query interfaces.RelationTypesQueryParams, subBuilder
 			sq.Eq{"f_source_object_type_id": query.BoundObjectTypeIDs},
 			sq.Eq{"f_target_object_type_id": query.BoundObjectTypeIDs},
 		})
+	}
+
+	if query.RTIDS != nil {
+		subBuilder = subBuilder.Where(sq.Eq{"f_id": query.RTIDS})
 	}
 
 	return subBuilder

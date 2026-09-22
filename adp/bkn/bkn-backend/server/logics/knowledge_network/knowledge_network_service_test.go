@@ -28,6 +28,77 @@ import (
 	"bkn-backend/logics/permission"
 )
 
+func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &knowledgeNetworkService{kna: kna, ota: ota, rta: rta, ps: ps}
+	ctx := context.Background()
+
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(
+		&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, UpdateTime: 1234}, nil)
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		ResourceIDs: []string{"kn-1/orders", "kn-1/customers", "kn-2/ignored"},
+	}, nil)
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		ResourceIDs: []string{"kn-1/places"},
+	}, nil)
+	ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query interfaces.ObjectTypesQueryParams) (int, error) {
+			if fmt.Sprint(query.OTIDS) != "[orders customers]" || query.Limit != 2 {
+				t.Fatalf("unexpected object count query: %#v", query)
+			}
+			return 2, nil
+		})
+	rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query interfaces.RelationTypesQueryParams) (int, error) {
+			if fmt.Sprint(query.RTIDS) != "[places]" || fmt.Sprint(query.SourceObjectTypeIDs) != "[orders customers]" ||
+				fmt.Sprint(query.TargetObjectTypeIDs) != "[orders customers]" || query.Limit != 3 {
+				t.Fatalf("unexpected relation count query: %#v", query)
+			}
+			return 1, nil
+		})
+	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
+			if query.Offset != 0 || query.Limit != 2 {
+				t.Fatalf("unexpected object page query: %#v", query)
+			}
+			return []*interfaces.ObjectType{
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders", OTName: "Orders"}},
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "customers", OTName: "Customers"}},
+			}, nil
+		})
+	rta.EXPECT().ListRelationTypeSummaries(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
+			if fmt.Sprint(query.SourceObjectTypeIDs) != "[orders customers]" ||
+				fmt.Sprint(query.TargetObjectTypeIDs) != "[orders customers]" || query.Limit != 3 {
+				t.Fatalf("unexpected relation page query: %#v", query)
+			}
+			return []*interfaces.RelationType{{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID: "places", RTName: "places", SourceObjectTypeID: "customers", TargetObjectTypeID: "orders",
+				},
+			}}, nil
+		})
+
+	result, err := service.ListOverviewGraph(ctx, "kn-1", interfaces.OverviewGraphQuery{
+		Branch: interfaces.MAIN_BRANCH, NodeLimit: 2, EdgeLimit: 3, ExpandDepth: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ObjectTypeTotal != 2 || result.RelationTypeTotal != 1 || len(result.Nodes) != 2 || len(result.Edges) != 1 {
+		t.Fatalf("unexpected overview result: %#v", result)
+	}
+	if result.Edges[0].SourceID != "customers" || result.Edges[0].TargetID != "orders" {
+		t.Fatalf("unexpected overview edge: %#v", result.Edges[0])
+	}
+}
+
 func Test_knowledgeNetworkService_CheckKNExistByID(t *testing.T) {
 	Convey("Test CheckKNExistByID\n", t, func() {
 		ctx := context.Background()
