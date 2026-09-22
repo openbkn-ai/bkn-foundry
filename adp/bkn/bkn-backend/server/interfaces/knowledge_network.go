@@ -176,10 +176,11 @@ type OverviewGraphNode struct {
 }
 
 type OverviewGraphEdge struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	SourceID string `json:"source_id"`
-	TargetID string `json:"target_id"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SourceID    string `json:"source_id"`
+	TargetID    string `json:"target_id"`
+	MappingMode string `json:"mapping_mode"`
 }
 
 type OverviewGraph struct {

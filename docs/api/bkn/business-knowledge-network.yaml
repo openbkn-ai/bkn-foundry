@@ -550,7 +550,7 @@ components:
           minimum: 0
     OverviewGraphEdge:
       type: object
-      required: [id, name, source_id, target_id]
+      required: [id, name, source_id, target_id, mapping_mode]
       properties:
         id:
           type: string
@@ -560,6 +560,9 @@ components:
           type: string
         target_id:
           type: string
+        mapping_mode:
+          type: string
+          enum: [direct, indirect, filtered_cross_join]
     AuthorizationResourceList:
       type: object
       required: [entries, total]

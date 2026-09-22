@@ -81,6 +81,7 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 			return []*interfaces.RelationType{{
 				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 					RTID: "places", RTName: "places", SourceObjectTypeID: "customers", TargetObjectTypeID: "orders",
+					Type: interfaces.RELATION_TYPE_INDIRECT,
 				},
 			}}, nil
 		})
@@ -94,7 +95,8 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 	if result.ObjectTypeTotal != 2 || result.RelationTypeTotal != 1 || len(result.Nodes) != 2 || len(result.Edges) != 1 {
 		t.Fatalf("unexpected overview result: %#v", result)
 	}
-	if result.Edges[0].SourceID != "customers" || result.Edges[0].TargetID != "orders" {
+	if result.Edges[0].SourceID != "customers" || result.Edges[0].TargetID != "orders" ||
+		result.Edges[0].MappingMode != interfaces.RELATION_TYPE_INDIRECT {
 		t.Fatalf("unexpected overview edge: %#v", result.Edges[0])
 	}
 }

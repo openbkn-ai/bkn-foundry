@@ -187,7 +187,8 @@ func overviewEdges(items []*interfaces.RelationType, nodeIDs map[string]struct{}
 		}
 		seen[item.RTID] = struct{}{}
 		edges = append(edges, interfaces.OverviewGraphEdge{
-			ID: item.RTID, Name: item.RTName, SourceID: item.SourceObjectTypeID, TargetID: item.TargetObjectTypeID,
+			ID: item.RTID, Name: item.RTName, SourceID: item.SourceObjectTypeID,
+			TargetID: item.TargetObjectTypeID, MappingMode: item.Type,
 		})
 	}
 	return edges
