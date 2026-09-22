@@ -28,12 +28,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: tag
-        name: Resolve Python base content tag
+        name: Resolve Python base version tag
         shell: bash
         run: |
           set -euo pipefail
-          checksum="$(cd vega/vega-python-base && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)"
-          echo "tag=$checksum" >> "$GITHUB_OUTPUT"
+          version="$(tr -d '[:space:]' < VERSION)"
+          if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION must contain a plain semantic version, got '${version}'"
+            exit 1
+          fi
+          echo "tag=$version" >> "$GITHUB_OUTPUT"
 
   build:
     needs: resolve-tag
