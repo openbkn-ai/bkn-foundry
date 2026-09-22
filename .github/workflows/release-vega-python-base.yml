@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - "VERSION"
       - "vega/vega-python-base/**"
       - ".github/workflows/release-vega-python-base.yml"
       - ".github/workflows/reusable-container-image.yml"
