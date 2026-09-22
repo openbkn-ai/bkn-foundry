@@ -225,6 +225,142 @@ func TestExtractTarToMemory_SkipsAppleDouble(t *testing.T) {
 	assert.Equal(t, "pod", loaded.ObjectTypes[0].ID)
 }
 
+func TestExtractTarToMemory_RejectsUnsafePaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr string
+	}{
+		{name: "../network.bkn", wantErr: "escapes the archive root"},
+		{name: "nested/../../network.bkn", wantErr: "escapes the archive root"},
+		{name: "/network.bkn", wantErr: "uses an absolute path"},
+		{name: "C:/network.bkn", wantErr: "uses an absolute path"},
+		{name: `nested\..\network.bkn`, wantErr: "uses a non-portable path separator"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tw := tar.NewWriter(&buf)
+			content := []byte("network")
+			require.NoError(t, tw.WriteHeader(&tar.Header{Name: tt.name, Size: int64(len(content)), Mode: 0644}))
+			_, _ = tw.Write(content)
+			_ = tw.Close()
+
+			_, _, err := ExtractTarToMemory(&buf)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestExtractTarToMemory_SkipsPAXGlobalHeader(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Typeflag: tar.TypeXGlobalHeader,
+		PAXRecords: map[string]string{
+			"comment": "generated",
+		},
+	}))
+	network := []byte("---\ntype: network\nid: pax-test\n---\n")
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "network.bkn", Size: int64(len(network)), Mode: 0644}))
+	_, _ = tw.Write(network)
+	require.NoError(t, tw.Close())
+
+	tr := tar.NewReader(bytes.NewReader(buf.Bytes()))
+	header, err := tr.Next()
+	require.NoError(t, err)
+	assert.Equal(t, byte(tar.TypeXGlobalHeader), header.Typeflag)
+
+	mfs, rootDir, err := ExtractTarToMemory(bytes.NewReader(buf.Bytes()))
+	require.NoError(t, err)
+	assert.Equal(t, ".", rootDir)
+	got, err := mfs.ReadFile("network.bkn")
+	require.NoError(t, err)
+	assert.Equal(t, network, got)
+}
+
+func TestExtractTarToMemory_IgnoresOversizedUnsupportedFile(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	ignored := make([]byte, maxTarFileSize+1)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "preview.png", Size: int64(len(ignored)), Mode: 0644}))
+	_, _ = tw.Write(ignored)
+	network := []byte("---\ntype: network\nid: attachment-test\n---\n")
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "network.bkn", Size: int64(len(network)), Mode: 0644}))
+	_, _ = tw.Write(network)
+	require.NoError(t, tw.Close())
+
+	mfs, _, err := ExtractTarToMemory(&buf)
+	require.NoError(t, err)
+	_, err = mfs.ReadFile("network.bkn")
+	require.NoError(t, err)
+}
+
+func TestExtractTarToMemory_DuplicateFilesUseLastEntry(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	first := []byte("---\ntype: network\nid: first\n---\n")
+	second := []byte("---\ntype: network\nid: second\n---\n")
+	for _, content := range [][]byte{first, second} {
+		require.NoError(t, tw.WriteHeader(&tar.Header{Name: "network.bkn", Size: int64(len(content)), Mode: 0644}))
+		_, _ = tw.Write(content)
+	}
+	require.NoError(t, tw.Close())
+
+	mfs, rootDir, err := ExtractTarToMemory(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, ".", rootDir)
+	got, err := mfs.ReadFile("network.bkn")
+	require.NoError(t, err)
+	assert.Equal(t, second, got)
+}
+
+func TestExtractTarToMemory_RejectsSpecialFiles(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     "network.bkn",
+		Typeflag: tar.TypeSymlink,
+		Linkname: "../network.bkn",
+		Mode:     0777,
+	}))
+	_ = tw.Close()
+
+	_, _, err := ExtractTarToMemory(&buf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported tar entry type")
+}
+
+func TestExtractTarToMemory_RejectsOversizedFiles(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name: "network.bkn",
+		Size: maxTarFileSize + 1,
+		Mode: 0644,
+	}))
+
+	_, _, err := ExtractTarToMemory(&buf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file limit")
+}
+
+func TestExtractTarToMemory_AcceptsLeadingDotSlash(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	content := []byte("---\ntype: network\nid: test\n---\n")
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "./network.bkn", Size: int64(len(content)), Mode: 0644}))
+	_, _ = tw.Write(content)
+	require.NoError(t, tw.Close())
+
+	mfs, rootDir, err := ExtractTarToMemory(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, ".", rootDir)
+	_, err = mfs.ReadFile("network.bkn")
+	require.NoError(t, err)
+}
+
 // === Network Serialization Tests ===
 
 func TestWriteNetworkToTar_MinimalNetwork(t *testing.T) {
