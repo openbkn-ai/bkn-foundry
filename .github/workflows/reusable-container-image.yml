@@ -303,16 +303,17 @@ jobs:
           # scratch; nothing local to amend.
           union() {
             local repo="$1"
+            local tag="$2"
             local children=()
             for arch in "${archs[@]}"; do
               children+=("${repo}@$(digest_for "${arch}")")
             done
-            docker manifest create "${repo}:${VERSION}" "${children[@]}"
-            docker manifest push "${repo}:${VERSION}"
-            echo "Pushed multi-arch ${repo}:${VERSION}"
-            docker manifest inspect "${repo}:${VERSION}" | head -30
+            docker manifest create "${repo}:${tag}" "${children[@]}"
+            docker manifest push "${repo}:${tag}"
+            echo "Pushed multi-arch ${repo}:${tag}"
+            docker manifest inspect "${repo}:${tag}" | head -30
           }
-          union "ghcr.io/${{ github.repository_owner }}/${IMAGE}"
+          union "ghcr.io/${{ github.repository_owner }}/${IMAGE}" "${VERSION}"
           if [ "${{ needs.setup.outputs.swr }}" = "true" ]; then
-            union "${SWR_REPO}/${IMAGE}"
+            union "${SWR_REPO}/${IMAGE}" "${VERSION}"
           fi
