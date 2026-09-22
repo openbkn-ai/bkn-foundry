@@ -98,6 +98,10 @@
             "input_schema": {
               "type": "object",
               "description": "业务入参契约，仅工具类有；execute_tool 的 arguments 按它填。Skill 不带，它是读的不是调的"
+            },
+            "call": {
+              "type": "object",
+              "description": "使用这项能力的下一次调用，ID 已填好：tool 是要调的工具，arguments 是它的参数。函数和 MCP 工具只需按 input_schema 补上 arguments.arguments；Skill 直接调用即可读取说明"
             }
           },
           "additionalProperties": true

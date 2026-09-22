@@ -443,6 +443,7 @@
     "output_schema.properties.capabilities.items.properties.description.description": "What the capability does",
     "output_schema.properties.capabilities.items.properties.use_rule.description": "Usage rule, tools only",
     "output_schema.properties.capabilities.items.properties.input_schema.description": "Business input contract, tools only; fill execute_tool's arguments from it. A Skill carries none: it is read, not called",
+    "output_schema.properties.capabilities.items.properties.call.description": "The next call that uses this capability, IDs already filled in: tool is the tool to call and arguments its arguments. For a function or MCP tool, fill arguments.arguments from input_schema; for a Skill, call it as is to read the instructions",
     "output_schema.properties.total_matched.description": "How many capabilities matched, which may exceed the length of capabilities",
     "output_schema.properties.truncated.description": "True when more matched than the page holds and only the first were returned",
     "output_schema.properties.message.description": "Why the answer is empty or truncated, named by cause"
