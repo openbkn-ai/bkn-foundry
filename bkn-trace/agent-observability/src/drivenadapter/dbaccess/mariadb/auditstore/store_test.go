@@ -31,7 +31,7 @@ func testDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *Store) {
 
 func TestAppendInsertsDedupAndMonthlyLedgerInOneTransaction(t *testing.T) {
 	db, mock, store := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	event := testEvent()
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT content_hash, target_table")).WithArgs(event.EventID).WillReturnError(sql.ErrNoRows)
@@ -49,7 +49,7 @@ func TestAppendInsertsDedupAndMonthlyLedgerInOneTransaction(t *testing.T) {
 
 func TestAppendSameHashIsIdempotentWithoutMonthlyInsert(t *testing.T) {
 	db, mock, store := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	event := testEvent()
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT content_hash, target_table")).WithArgs(event.EventID).WillReturnRows(sqlmock.NewRows([]string{"content_hash", "target_table"}).AddRow(event.ContentHash, "audit_event_202609"))
@@ -65,7 +65,7 @@ func TestAppendSameHashIsIdempotentWithoutMonthlyInsert(t *testing.T) {
 
 func TestAppendDifferentHashPreservesFirstFact(t *testing.T) {
 	db, mock, store := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	event := testEvent()
 	event.ContentHash = "sha256:different"
 	mock.ExpectBegin()
@@ -82,7 +82,7 @@ func TestAppendDifferentHashPreservesFirstFact(t *testing.T) {
 
 func TestAppendFailsClosedWhenRoutedMonthlyTableIsMissing(t *testing.T) {
 	db, mock, store := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	event := testEvent()
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT content_hash, target_table")).WithArgs(event.EventID).WillReturnError(sql.ErrNoRows)

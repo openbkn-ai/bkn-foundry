@@ -25,9 +25,7 @@ func (f fakeLedger) Append(context.Context, auditstore.Event) (auditstore.Decisi
 }
 
 type fakeCommitter struct {
-	calls     int
-	partition int
-	offset    int64
+	calls int
 }
 
 func (f *fakeCommitter) Commit(context.Context, int, int64) error { f.calls++; return nil }
