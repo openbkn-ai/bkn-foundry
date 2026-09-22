@@ -1,3 +1,8 @@
+-- Copyright (c) 2026 OpenBKN
+-- SPDX-License-Identifier: LicenseRef-OpenBKN
+-- Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+-- Conditions. See LICENSE-OPENBKN.txt in the repository root.
+--
 -- Audit monthly-table template, version v031.
 -- Operators replace the literal YYYYMM token with a validated UTC month before
 -- applying this file; application input is never interpolated into SQL.
