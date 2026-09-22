@@ -61,6 +61,32 @@ func TestRejectsOversizeOrSecret(t *testing.T) {
 	}
 }
 
+func TestRFC8785CanonicalizesNumbersAndUnicode(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "integer-equivalence", in: `{"schema_version":"1.0","source_id":"s","target":{"type":"t","id":"i"},"n":1.0}`, want: `{"n":1,"schema_version":"1.0","source_id":"s","target":{"id":"i","type":"t"}}`},
+		{name: "negative-zero", in: `{"schema_version":"1.0","source_id":"s","target":{"type":"t","id":"i"},"n":-0}`, want: `{"n":0,"schema_version":"1.0","source_id":"s","target":{"id":"i","type":"t"}}`},
+		{name: "exponent", in: `{"schema_version":"1.0","source_id":"s","target":{"type":"t","id":"i"},"n":1e30}`, want: `{"n":1e+30,"schema_version":"1.0","source_id":"s","target":{"id":"i","type":"t"}}`},
+		{name: "safe-integer-boundary", in: `{"schema_version":"1.0","source_id":"s","target":{"type":"t","id":"i"},"n":9007199254740991}`, want: `{"n":9007199254740991,"schema_version":"1.0","source_id":"s","target":{"id":"i","type":"t"}}`},
+		{name: "unicode-and-escape", in: `{"schema_version":"1.0","source_id":"s","target":{"type":"t","id":"i"},"text":"\u00e9"}`, want: `{"schema_version":"1.0","source_id":"s","target":{"id":"i","type":"t"},"text":"é"}`},
+		{name: "unicode-surrogate-pair", in: `{"schema_version":"1.0","source_id":"s","target":{"type":"t","id":"i"},"text":"\ud83d\ude00"}`, want: `{"schema_version":"1.0","source_id":"s","target":{"id":"i","type":"t"},"text":"😀"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			record, err := BuildRecord([]byte(tc.in))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(record.Value) != tc.want {
+				t.Fatalf("canonical value = %s, want %s", record.Value, tc.want)
+			}
+		})
+	}
+}
+
 type fakeSender struct {
 	mu       sync.Mutex
 	calls    int

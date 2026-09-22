@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	jsoncanonicalizer "github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
 )
 
 const (
@@ -84,9 +86,7 @@ func BuildRecord(value []byte) (Record, error) {
 		return Record{}, errors.New("audit target.type and target.id are required")
 	}
 
-	// encoding/json sorts object keys, giving the stable canonical form needed
-	// by the current contract's RFC 8785-compatible fixture values.
-	canonical, err := json.Marshal(payload)
+	canonical, err := jsoncanonicalizer.Transform(value)
 	if err != nil {
 		return Record{}, fmt.Errorf("canonicalize audit value: %w", err)
 	}

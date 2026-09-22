@@ -3,6 +3,7 @@ package auditstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -73,6 +74,23 @@ func TestAppendDifferentHashPreservesFirstFact(t *testing.T) {
 	decision, err := store.Append(context.Background(), event)
 	if err != nil || decision != DecisionConflict {
 		t.Fatalf("decision=%q err=%v", decision, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppendFailsClosedWhenRoutedMonthlyTableIsMissing(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer db.Close()
+	event := testEvent()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT content_hash, target_table")).WithArgs(event.EventID).WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO bkn_audit.audit_event_dedup")).WithArgs(event.EventID, event.ContentHash, sqlmock.AnyArg(), "audit_event_202609").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO bkn_audit.audit_event_202609")).WillReturnError(errors.New("table does not exist"))
+	mock.ExpectRollback()
+	if _, err := store.Append(context.Background(), event); err == nil {
+		t.Fatal("missing monthly table was accepted")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

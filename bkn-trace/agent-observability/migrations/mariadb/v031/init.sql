@@ -2,9 +2,8 @@
 -- SPDX-License-Identifier: LicenseRef-OpenBKN
 -- Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt.
 --
--- Audit Ledger Writer uses this global dedup table plus the identical monthly
--- audit_event_YYYYMM template provisioned by the database operator for the
--- current month and the next two UTC months. No producer outbox or DLQ exists.
+-- Audit schema namespace: v031. v026-v030 are reserved by the evidence and
+-- policy workstreams and must not be reused by Audit.
 CREATE DATABASE IF NOT EXISTS bkn_audit;
 
 CREATE TABLE IF NOT EXISTS bkn_audit.audit_event_dedup (
@@ -16,5 +15,6 @@ CREATE TABLE IF NOT EXISTS bkn_audit.audit_event_dedup (
   KEY idx_audit_event_dedup_target_table (target_table, first_recorded_at)
 ) ENGINE=InnoDB;
 
--- Monthly tables must be created from the same schema before their UTC month
--- becomes writable; external input is never interpolated into DDL or DML.
+-- Monthly tables are provisioned from migrations/mariadb/audit/audit_event_template.sql
+-- for the current UTC month and the next two UTC months. Writer fails closed
+-- when the routed table is absent; it never creates a table from input data.
