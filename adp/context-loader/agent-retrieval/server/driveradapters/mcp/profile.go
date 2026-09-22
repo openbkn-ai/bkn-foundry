@@ -131,10 +131,10 @@ func BuildCompactMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error)
 	for _, key := range gatewayToolOrder {
 		meta := locale.ToolMeta(key)
 		input, output := tryLoadToolSchemas(locale, key)
-		tools = append(tools, MCPToolInfo{
+		tools = append(tools, compactInfoView(MCPToolInfo{
 			Name: meta.Name, Title: meta.Title, Group: meta.Group, GroupTitle: meta.GroupTitle,
 			Order: meta.Order, Description: meta.Description, InputSchema: input, OutputSchema: output,
-		})
+		}))
 	}
 	info.Tools = tools
 	info.ToolCount = len(tools)

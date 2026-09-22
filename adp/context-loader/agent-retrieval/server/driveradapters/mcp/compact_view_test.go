@@ -101,6 +101,45 @@ func TestFullProfileKeepsItsSchemas(t *testing.T) {
 	if len(tool.OutputSchema) == 0 || !slices.Contains(properties, "response_format") {
 		t.Fatal("the full profile lost query_object_instance's output schema or response_format")
 	}
+	if contextFields := bknContextFields(t, tool.InputSchema); !slices.Contains(contextFields, "business_refs") {
+		t.Fatalf("the full profile's bkn_context lost business_refs: %v", contextFields)
+	}
+}
+
+// The full bkn_context declaration repeated about 2.5K characters on every
+// tool; the compact profile publishes only the two IDs every call needs.
+func TestCompactProfilePublishesOnlyTheContextIDs(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		for name, tool := range listedTools(t, compactServer(t, locale)) {
+			if _, lifecycle := lifecycleToolNames[name]; lifecycle {
+				continue
+			}
+			fields := bknContextFields(t, tool.InputSchema)
+			slices.Sort(fields)
+			if !slices.Equal(fields, []string{"conversation_id", "interaction_id"}) {
+				t.Errorf("%s %s: bkn_context publishes %v", locale, name, fields)
+			}
+		}
+	}
+}
+
+func bknContextFields(t *testing.T, raw json.RawMessage) []string {
+	t.Helper()
+	var schema struct {
+		Properties struct {
+			BKNContext struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			} `json:"bkn_context"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("decode schema: %v", err)
+	}
+	fields := make([]string, 0, len(schema.Properties.BKNContext.Properties))
+	for field := range schema.Properties.BKNContext.Properties {
+		fields = append(fields, field)
+	}
+	return fields
 }
 
 func TestCompactInputSchema(t *testing.T) {

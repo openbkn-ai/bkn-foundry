@@ -54,6 +54,10 @@ func compactInputSchema(name string, input json.RawMessage) json.RawMessage {
 	}
 	properties, _ := schema["properties"].(map[string]any)
 	changed := false
+	if _, present := properties["bkn_context"]; present {
+		properties["bkn_context"] = compactBKNContextSchema()
+		changed = true
+	}
 	for _, field := range compactHiddenInputFields {
 		if _, present := properties[field]; present {
 			delete(properties, field)
@@ -80,6 +84,27 @@ func compactInputSchema(name string, input json.RawMessage) json.RawMessage {
 		return input
 	}
 	return raw
+}
+
+// compactBKNContextSchema is the bkn_context the compact profile publishes: the
+// two IDs every call needs and nothing else.
+//
+// The full declaration repeats about 2.5K characters of business_refs,
+// causation and parent-operation documentation on every tool, which on this
+// entry was half of all tool definitions, while agents almost never send those
+// fields. They are still accepted: the guard reads bkn_context from the
+// arguments, not from this schema, so a host that declares business refs keeps
+// working. additionalProperties is left open for the same reason.
+func compactBKNContextSchema() map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": "BKN Trace managed context. Copy both IDs from bkn_start_interaction.",
+		"properties": map[string]any{
+			"conversation_id": describedStringSchema("conversation_id returned by bkn_start_interaction."),
+			"interaction_id":  describedStringSchema("interaction_id returned by bkn_start_interaction."),
+		},
+		"required": []string{"conversation_id", "interaction_id"},
+	}
 }
 
 // compactInfoView applies compactToolView to a /mcp-compact/info entry.
