@@ -89,9 +89,10 @@ type Service struct {
 	mu       sync.Mutex
 }
 
-// New validates and normalizes the deployment baseline before accepting any
-// requests. The first URI is the system accessAddress; subsequent URIs come
-// from clientSeed.extraWebRedirectUris.
+// New normalizes managed Studio callbacks from the deployment baseline before
+// accepting requests. The first URI is the system accessAddress; subsequent
+// URIs come from clientSeed.extraWebRedirectUris. Legacy callback shapes stay
+// unmanaged in Hydra for backward compatibility.
 func New(db *gorm.DB, client Client, baselineRedirectURIs []string) (*Service, error) {
 	if db == nil || client == nil {
 		return nil, errors.New("OAuth access-origin service requires database and Hydra client")
@@ -101,7 +102,12 @@ func New(db *gorm.DB, client Client, baselineRedirectURIs []string) (*Service, e
 	for i, callback := range baselineRedirectURIs {
 		origin, err := OriginFromCallback(callback)
 		if err != nil {
-			return nil, fmt.Errorf("baseline redirect URI %q: %w", callback, err)
+			// Older deployments may have configured a valid Hydra redirect URI
+			// whose path is not the managed Studio callback path. Keep it in
+			// Hydra through reconciliation's unknown-URI preservation instead of
+			// making a Helm upgrade fail to boot. It remains available through
+			// the legacy client redirect-URI endpoint.
+			continue
 		}
 		if seen[origin] {
 			continue
@@ -211,19 +217,41 @@ func (s *Service) List(ctx context.Context) ([]Entry, error) {
 // Add persists a runtime origin and immediately attempts reconciliation. A
 // Hydra outage leaves the row in error state so the background loop can retry.
 func (s *Service) Add(ctx context.Context, rawOrigin, actorID string) (Entry, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	origin, err := NormalizeOrigin(rawOrigin)
 	if err != nil {
 		return Entry{}, err
 	}
+	row, duplicate, err := s.add(ctx, origin, actorID)
+	if err != nil {
+		return Entry{}, err
+	}
+	if duplicate != nil {
+		// A duplicate request is also a useful retry signal: the existing
+		// desired state might be waiting on recovery from a prior Hydra outage.
+		_ = s.Reconcile(ctx)
+		return Entry{}, duplicate
+	}
+
+	_ = s.Reconcile(ctx)
+	if err := s.db.WithContext(ctx).First(&row, "id = ?", row.ID).Error; err != nil {
+		return Entry{}, err
+	}
+	return entryFromRow(row), nil
+}
+
+// add persists or restores a desired runtime origin. It holds the mutation
+// lock only while changing the database so Add can reconcile afterward without
+// self-deadlocking through Reconcile's lock.
+func (s *Service) add(ctx context.Context, origin, actorID string) (model.OAuthAccessOrigin, *DuplicateError, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if b, ok := s.baselineByOrigin(origin); ok {
-		return Entry{}, &DuplicateError{ExistingID: b.id}
+		return model.OAuthAccessOrigin{}, &DuplicateError{ExistingID: b.id}, nil
 	}
 
 	var row model.OAuthAccessOrigin
-	err = s.db.WithContext(ctx).Where("origin = ?", origin).First(&row).Error
+	err := s.db.WithContext(ctx).Where("origin = ?", origin).First(&row).Error
 	if err == nil {
 		if row.DesiredState == desiredStateDelete {
 			row.DesiredState = desiredStateActive
@@ -231,21 +259,21 @@ func (s *Service) Add(ctx context.Context, rawOrigin, actorID string) (Entry, er
 			row.LastSyncError = ""
 			row.CreatedBy = actorID
 			if err := s.db.WithContext(ctx).Save(&row).Error; err != nil {
-				return Entry{}, err
+				return model.OAuthAccessOrigin{}, nil, err
 			}
 		} else {
-			return Entry{}, &DuplicateError{ExistingID: row.ID}
+			return model.OAuthAccessOrigin{}, &DuplicateError{ExistingID: row.ID}, nil
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return Entry{}, err
+		return model.OAuthAccessOrigin{}, nil, err
 	} else {
 		var count int64
 		if err := s.db.WithContext(ctx).Model(&model.OAuthAccessOrigin{}).
 			Where("desired_state = ?", desiredStateActive).Count(&count).Error; err != nil {
-			return Entry{}, err
+			return model.OAuthAccessOrigin{}, nil, err
 		}
 		if count >= maxRuntimeOrigins {
-			return Entry{}, ErrOriginLimit
+			return model.OAuthAccessOrigin{}, nil, ErrOriginLimit
 		}
 		row = model.OAuthAccessOrigin{
 			ID: newID(), Origin: origin, DesiredState: desiredStateActive,
@@ -254,17 +282,12 @@ func (s *Service) Add(ctx context.Context, rawOrigin, actorID string) (Entry, er
 		if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
 			var existing model.OAuthAccessOrigin
 			if findErr := s.db.WithContext(ctx).Where("origin = ?", origin).First(&existing).Error; findErr == nil {
-				return Entry{}, &DuplicateError{ExistingID: existing.ID}
+				return model.OAuthAccessOrigin{}, &DuplicateError{ExistingID: existing.ID}, nil
 			}
-			return Entry{}, err
+			return model.OAuthAccessOrigin{}, nil, err
 		}
 	}
-
-	_ = s.reconcile(ctx)
-	if err := s.db.WithContext(ctx).First(&row, "id = ?", row.ID).Error; err != nil {
-		return Entry{}, err
-	}
-	return entryFromRow(row), nil
+	return row, nil, nil
 }
 
 // Delete marks a runtime origin for removal and immediately reconciles. The

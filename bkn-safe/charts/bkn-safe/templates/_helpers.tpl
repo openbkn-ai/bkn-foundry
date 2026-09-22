@@ -64,7 +64,16 @@ would travel with any copy of the config. Derive from the host or render nothing
 {{- define "bkn-safe.studioRedirectURIs" -}}
 {{- $web := .Values.clientSeed.webRedirectUri -}}
 {{- if and .Values.accessAddress .Values.accessAddress.host -}}
-{{- $web = printf "%s/studio/callback" (include "bkn-safe.hydraBrowserPublicURL" .) -}}
+{{- /* Keep this deployment-owned callback source compatible with the original
+      seed job. Hydra's issuer may deliberately use a different public origin. */ -}}
+{{- $aa := .Values.accessAddress -}}
+{{- $scheme := $aa.scheme | default "https" -}}
+{{- $port := $aa.port | toString -}}
+{{- if or (and (eq $scheme "https") (eq $port "443")) (and (eq $scheme "http") (eq $port "80")) -}}
+{{- $web = printf "%s://%s/studio/callback" $scheme $aa.host -}}
+{{- else -}}
+{{- $web = printf "%s://%s:%s/studio/callback" $scheme $aa.host $port -}}
+{{- end -}}
 {{- end -}}
 {{- $uris := list $web -}}
 {{- range .Values.clientSeed.extraWebRedirectUris -}}

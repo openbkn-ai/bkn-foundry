@@ -97,6 +97,22 @@ func TestLegacyStudioRedirectEndpointUsesDurableOrigins(t *testing.T) {
 	}
 }
 
+func TestLegacyStudioRedirectEndpointKeepsUnmanagedCallbacksVisibleAndRemovable(t *testing.T) {
+	router, _ := newAccessOriginAdminServer(t)
+	const legacy = "/api/safe/v1/admin/clients/openbkn-studio/redirect-uris"
+	const callback = "https://host/callback"
+
+	response := adminReq(t, router, http.MethodGet, legacy, nil)
+	if response.Code != http.StatusOK || !contains(redirectURIs(t, response.Body.Bytes()), callback) {
+		t.Fatalf("legacy callback not listed: %d: %s", response.Code, response.Body.String())
+	}
+
+	response = adminReq(t, router, http.MethodDelete, legacy, map[string]string{"redirect_uri": callback})
+	if response.Code != http.StatusOK || contains(redirectURIs(t, response.Body.Bytes()), callback) {
+		t.Fatalf("legacy callback not removed: %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func decodeOriginEntries(t *testing.T, body []byte) []oauthorigin.Entry {
 	t.Helper()
 	var response struct {

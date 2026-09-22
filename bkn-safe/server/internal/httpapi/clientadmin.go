@@ -26,8 +26,9 @@ type ClientManager interface {
 	RemoveClientRedirectURI(ctx context.Context, clientID, uri string) ([]string, error)
 }
 
-// StudioOriginManager backs the legacy openbkn-studio redirect-URI endpoint
-// with the same durable origin store as the dedicated admin API.
+// StudioOriginManager backs fixed-shape Studio callbacks in the legacy
+// redirect-URI endpoint with the same durable origin store as the dedicated
+// admin API. Other valid legacy callback shapes continue to use Hydra directly.
 type StudioOriginManager interface {
 	Callbacks(context.Context) ([]string, error)
 	AddCallback(context.Context, string, string) ([]string, error)
@@ -46,9 +47,9 @@ var manageableClients = map[string]bool{
 }
 
 // registerClientAdmin mounts redirect-uri management for the platform's login
-// clients under the admin group (RequireAdmin + audited). Studio mutations are
-// routed through the durable access-origin service; the CLI and SDK retain the
-// legacy direct-Hydra behavior for backward compatibility.
+// clients under the admin group (RequireAdmin + audited). Fixed-shape Studio
+// mutations use the durable access-origin service; other Studio callback shapes
+// plus the CLI and SDK retain legacy direct-Hydra behavior.
 func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOriginManager, e *authz.Enforcer) {
 	// GET /clients/:id/redirect-uris -> { "redirect_uris": [...] }
 	g.GET("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
@@ -59,11 +60,11 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 		}
 		var uris []string
 		var err error
-		if id == "openbkn-studio" && origins != nil {
-			uris, err = origins.Callbacks(c.Request.Context())
-		} else {
-			uris, err = mgr.GetClientRedirectURIs(c.Request.Context(), id)
-		}
+		// Preserve this endpoint's historical Hydra view. In particular, old
+		// Studio installations can have valid callback paths other than
+		// /studio/callback; those are intentionally outside origin management
+		// but must remain visible to existing API consumers.
+		uris, err = mgr.GetClientRedirectURIs(c.Request.Context(), id)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -93,6 +94,12 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 		var err error
 		if id == "openbkn-studio" && origins != nil {
 			uris, err = origins.AddCallback(c.Request.Context(), req.RedirectURI, c.GetString(ctxAccessorID))
+			if errors.Is(err, oauthorigin.ErrInvalidOrigin) {
+				// Keep arbitrary, pre-existing Studio callback paths compatible
+				// with the legacy endpoint. Reconcile preserves these unmanaged
+				// Hydra URIs while the fixed Studio callback stays durable.
+				uris, err = mgr.AddClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
+			}
 		} else {
 			uris, err = mgr.AddClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
 		}
@@ -124,6 +131,9 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 		var err error
 		if id == "openbkn-studio" && origins != nil {
 			uris, err = origins.RemoveCallback(c.Request.Context(), req.RedirectURI)
+			if errors.Is(err, oauthorigin.ErrInvalidOrigin) {
+				uris, err = mgr.RemoveClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
+			}
 		} else {
 			uris, err = mgr.RemoveClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
 		}

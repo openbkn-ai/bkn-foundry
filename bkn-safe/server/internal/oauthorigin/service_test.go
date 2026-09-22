@@ -133,7 +133,7 @@ func TestReconcileImportsLegacyAndPreservesUnknownURIs(t *testing.T) {
 	}
 }
 
-func TestAddPersistsWhenHydraIsUnavailableThenRetries(t *testing.T) {
+func TestDuplicateAddRetriesWhenHydraRecovers(t *testing.T) {
 	client := &fakeClient{getErr: errors.New("hydra unavailable")}
 	service, _ := testService(t, client, "https://primary.example/studio/callback")
 
@@ -147,8 +147,10 @@ func TestAddPersistsWhenHydraIsUnavailableThenRetries(t *testing.T) {
 
 	client.getErr = nil
 	client.uris = auth.OAuthClientURIs{}
-	if err := service.Reconcile(context.Background()); err != nil {
-		t.Fatalf("retry reconcile: %v", err)
+	_, err = service.Add(context.Background(), "http://10.0.0.8:30080", "admin-1")
+	var duplicate *DuplicateError
+	if !errors.As(err, &duplicate) || duplicate.ExistingID != entry.ID {
+		t.Fatalf("duplicate add error = %#v, want existing ID %q", err, entry.ID)
 	}
 	entries, err := service.List(context.Background())
 	if err != nil {
@@ -159,6 +161,32 @@ func TestAddPersistsWhenHydraIsUnavailableThenRetries(t *testing.T) {
 	}
 	if !slices.Contains(client.uris.RedirectURIs, "http://10.0.0.8:30080/studio/callback") {
 		t.Fatalf("runtime callback missing from Hydra: %v", client.uris.RedirectURIs)
+	}
+}
+
+func TestNewAcceptsLegacyBaselineCallbackPath(t *testing.T) {
+	const legacyCallback = "http://localhost:5173/callback"
+	client := &fakeClient{uris: auth.OAuthClientURIs{
+		RedirectURIs:           []string{"https://primary.example/studio/callback", legacyCallback},
+		PostLogoutRedirectURIs: []string{"https://primary.example/studio", "http://localhost:5173"},
+	}}
+	service, _ := testService(t, client,
+		"https://primary.example/studio/callback",
+		legacyCallback,
+	)
+
+	if err := service.Reconcile(context.Background()); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if !slices.Contains(client.uris.RedirectURIs, legacyCallback) {
+		t.Fatalf("legacy baseline callback was removed: %v", client.uris.RedirectURIs)
+	}
+	entries, err := service.List(context.Background())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Origin != "https://primary.example" {
+		t.Fatalf("managed entries = %+v", entries)
 	}
 }
 
