@@ -105,6 +105,41 @@ class TestLoaderSourceTypeDefault:
 
 
 class TestSecretLoading:
+    def test_secret_loading_redacts_path_and_values_from_logs(self, tmp_path, caplog):
+        """加载 secret 配置时保留行为，但日志不能泄露路径或其内容。"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(textwrap.dedent("""
+            depServices:
+              rds:
+                host: config-host
+                port: 3306
+                user: config-user
+                password: config-password
+                type: mariadb
+        """), encoding="utf-8")
+        secret_marker = "tenant-a-production-credentials"
+        secret_value = "do-not-log-this-secret"
+        secret_path = tmp_path / f"{secret_marker}.yaml"
+        secret_path.write_text(textwrap.dedent(f"""
+            depServices:
+              rds:
+                host: secret-host
+                port: 3307
+                user: secret-user
+                password: {secret_value}
+                type: dm8
+        """), encoding="utf-8")
+
+        with caplog.at_level(logging.INFO, logger=logger.name):
+            cfg = load_config(str(config_path), None, logger, str(secret_path))
+
+        assert cfg.rds.host == "secret-host"
+        assert cfg.rds.password == secret_value
+        assert "加载 secret-config 文件" in caplog.text
+        assert str(secret_path) not in caplog.text
+        assert secret_marker not in caplog.text
+        assert secret_value not in caplog.text
+
     def test_secret_overwrites_dep_services(self):
         """secret-config.yaml 存在时，depServices 覆盖 config.yaml 中的同名字段"""
         config_path = write_yaml("""
