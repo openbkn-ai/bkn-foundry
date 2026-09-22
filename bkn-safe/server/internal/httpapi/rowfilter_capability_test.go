@@ -23,7 +23,7 @@ func TestRowFilterPublishedObjectTypeResolverUsesInternalCapabilityContract(t *t
 			t.Fatalf("operator headers = (%q, %q)", request.Header.Get(rowFilterAccountIDHeader), request.Header.Get(rowFilterAccountTypeHeader))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"object_type_ref":"kn-1/customer","published":true,"properties":{"region":{"type":"string","exact_filterable":true}}}`))
+		_, _ = w.Write([]byte(`{"object_type_ref":"kn-1/customer","published":true,"properties":{"region":{"display_name":"Sales region","type":"string","exact_filterable":true}}}`))
 	}))
 	defer server.Close()
 	resolver, err := NewRowFilterPublishedObjectTypeResolver(config.UpstreamConfig{BaseURL: server.URL, Timeout: time.Second})
@@ -34,7 +34,7 @@ func TestRowFilterPublishedObjectTypeResolverUsesInternalCapabilityContract(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !capability.Published || capability.Properties["region"].Type != rowfiltersocket.ValueString || !capability.Properties["region"].ExactFilterable {
+	if !capability.Published || capability.Properties["region"].DisplayName != "Sales region" || capability.Properties["region"].Type != rowfiltersocket.ValueString || !capability.Properties["region"].ExactFilterable {
 		t.Fatalf("capability = %+v", capability)
 	}
 }
