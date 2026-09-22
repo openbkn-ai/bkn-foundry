@@ -31,7 +31,7 @@ func TestConnectorFactoryRegisterLocalConnector(t *testing.T) {
 			connectorRequiredEditions: map[string]licverify.Edition{},
 		}
 
-		cf.registerLocalConnector(connector, licverify.EditionProfessional)
+		cf.RegisterLocalConnector(connector, licverify.EditionProfessional)
 
 		assert.Same(t, connector, cf.connectors["private-db"])
 		assert.Equal(t, licverify.EditionProfessional, cf.connectorRequiredEditions["private-db"])
@@ -45,7 +45,7 @@ func TestConnectorFactoryRegisterLocalConnector(t *testing.T) {
 		cf := &connectorFactory{localConnectorsFrozen: true}
 
 		assert.Panics(t, func() {
-			cf.registerLocalConnector(nil, licverify.EditionProfessional)
+			cf.RegisterLocalConnector(nil, licverify.EditionProfessional)
 		})
 	})
 }

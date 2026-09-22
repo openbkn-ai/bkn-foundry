@@ -41,14 +41,7 @@ func TestConnectorFactoryRegisterCoreLocalConnectors(t *testing.T) {
 		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeOracle)
 		assert.Equal(t, licverify.EditionCommunity, cf.connectorRequiredEditions[interfaces.ConnectorTypeMySQL])
 		assert.NotSame(t, cf.connectors[interfaces.ConnectorTypeMySQL], cf.connectors[interfaces.ConnectorTypeMariaDB])
-		assert.Contains(t, entitlement.Assembled(), entitlement.AssembledCap{
-			Name:       interfaces.ConnectorTypeMySQL,
-			MinEdition: licverify.EditionCommunity,
-		})
-		assert.Contains(t, entitlement.Assembled(), entitlement.AssembledCap{
-			Name:       interfaces.ConnectorTypeMariaDB,
-			MinEdition: licverify.EditionCommunity,
-		})
+		assert.Empty(t, entitlement.Assembled())
 
 		cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, true)
 		cf.SetConnectorEnabled(interfaces.ConnectorTypeMySQL, false)

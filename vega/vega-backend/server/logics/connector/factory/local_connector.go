@@ -24,7 +24,10 @@ import (
 // factory. Availability is evaluated from the current license at use time,
 // not during assembly.
 func (cf *connectorFactory) RegisterLocalConnector(connector interfaces.Connector, minEdition licverify.Edition) {
-	cf.registerLocalConnector(connector, minEdition)
+	cf.mu.Lock()
+	defer cf.mu.Unlock()
+	connectorType := cf.registerLocalConnectorLocked(connector, minEdition)
+	entitlement.MarkAssembled(connectorType, minEdition)
 }
 
 // RegisterCoreLocalConnectors registers Foundry's built-in local connectors.
@@ -38,13 +41,7 @@ func (cf *connectorFactory) RegisterCoreLocalConnectors() {
 	cf.registerLocalConnectorLocked(anyshare.NewAnyShareConnector(), licverify.EditionCommunity)
 }
 
-func (cf *connectorFactory) registerLocalConnector(connector interfaces.Connector, minEdition licverify.Edition) {
-	cf.mu.Lock()
-	defer cf.mu.Unlock()
-	cf.registerLocalConnectorLocked(connector, minEdition)
-}
-
-func (cf *connectorFactory) registerLocalConnectorLocked(connector interfaces.Connector, minEdition licverify.Edition) {
+func (cf *connectorFactory) registerLocalConnectorLocked(connector interfaces.Connector, minEdition licverify.Edition) string {
 	if cf.localConnectorsFrozen {
 		panic("vega connector factory: local connector registered after Finalize")
 	}
@@ -68,8 +65,7 @@ func (cf *connectorFactory) registerLocalConnectorLocked(connector interfaces.Co
 
 	cf.connectors[connectorType] = connector
 	cf.connectorRequiredEditions[connectorType] = minEdition
-
-	entitlement.MarkAssembled(connectorType, minEdition)
+	return connectorType
 }
 
 // applyPersistedConnectorTypes applies database connector-type configuration
