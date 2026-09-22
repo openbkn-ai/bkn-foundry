@@ -1,0 +1,53 @@
+name: release-vega-python-base
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "VERSION"
+      - "vega/vega-python-base/**"
+      - ".github/workflows/release-vega-python-base.yml"
+      - ".github/workflows/reusable-container-image.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to GHCR (true) or verify build only (false)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  resolve-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: tag
+        name: Resolve Python base version tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION must contain a plain semantic version, got '${version}'"
+            exit 1
+          fi
+          echo "tag=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve-tag
+    uses: ./.github/workflows/reusable-container-image.yml
+    secrets: inherit
+    with:
+      context: "."
+      dockerfile: Dockerfile
+      image-name: vega-python-base
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      service-path: vega/vega-python-base
+      version: ${{ needs.resolve-tag.outputs.tag }}

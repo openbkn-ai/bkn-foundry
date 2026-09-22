@@ -20,6 +20,17 @@ import (
 
 const maxSemanticDescriptorBytes = 64 << 10
 
+// ErrSemanticDescriptorTooLarge reports a query whose descriptor would exceed
+// maxSemanticDescriptorBytes. It is the query that is too large, typically an
+// IN over many values, so callers report it as a bad request rather than as a
+// server failure.
+var ErrSemanticDescriptorTooLarge = errors.New("semantic query descriptor too large")
+
+// semanticStringMatchOperators names the string predicates in the descriptor.
+var semanticStringMatchOperators = map[StringMatchOperator]string{
+	StartsWith: "starts_with", EndsWith: "ends_with", Contains: "contains",
+}
+
 var simpleJSONPathField = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // SemanticQueryDescriptor is the bounded ontology plan captured after a
@@ -174,7 +185,7 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		return nil, err
 	}
 	if len(raw) > maxSemanticDescriptorBytes {
-		return nil, fmt.Errorf("semantic query descriptor exceeds %d bytes", maxSemanticDescriptorBytes)
+		return nil, fmt.Errorf("%w: exceeds %d bytes", ErrSemanticDescriptorTooLarge, maxSemanticDescriptorBytes)
 	}
 	return descriptor, nil
 }
@@ -211,12 +222,26 @@ func appendSemanticPredicates(descriptor *SemanticQueryDescriptor, plan *Plan, p
 			hashes = append(hashes, semanticLiteralHash(literal))
 		}
 		pointer := "$.query"
-		if len(value.InputPointers) == 1 {
+		switch {
+		case value.ListInputPointer != "":
+			pointer = value.ListInputPointer
+		case len(value.InputPointers) == 1:
 			pointer = value.InputPointers[0]
 		}
 		descriptor.Predicates = append(descriptor.Predicates, SemanticQueryPredicate{
 			PropertyRef: semanticPropertyRef(plan, value.Table, value.Property),
 			Operator:    operator, InputPointer: pointer, ValueHashes: hashes, LogicalPath: path,
+		})
+	case PlanStringMatch:
+		operator, ok := semanticStringMatchOperators[value.Operator]
+		if !ok {
+			return fmt.Errorf("unsupported semantic string predicate %q", value.Operator)
+		}
+		descriptor.Predicates = append(descriptor.Predicates, SemanticQueryPredicate{
+			PropertyRef: semanticPropertyRef(plan, value.Table, value.Property),
+			Operator:    operator, InputPointer: value.InputPointer,
+			ValueHashes: []string{semanticLiteralHash(Literal{Kind: LiteralString, String: value.Value})},
+			LogicalPath: path,
 		})
 	case PlanNegation:
 		return appendSemanticPredicates(descriptor, plan, value.Operand, semanticPath(path, "NOT", 0))

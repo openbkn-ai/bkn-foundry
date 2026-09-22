@@ -40,6 +40,9 @@ const (
 var (
 	ErrFeatureNotInstalled      = errors.New("BKN Trace Core URL is not configured")
 	ErrMissingFinishCorrelation = errors.New("current request and OTel trace context are required")
+	// ErrEvidenceArtifactURLNotConfigured means no artifact endpoint could be
+	// derived from the evidence ingest URL, which has to end in /events.
+	ErrEvidenceArtifactURLNotConfigured = errors.New("BKN Trace artifact URL is not configured")
 )
 
 type APIError struct {

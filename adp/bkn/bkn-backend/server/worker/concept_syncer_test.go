@@ -544,6 +544,33 @@ func TestConceptSyncer_insertDatasetDataForKN(t *testing.T) {
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("Omits child concepts from the network document (#1710)", func() {
+			actionType := &interfaces.ActionType{}
+			actionType.Parameters = []interfaces.Parameter{{Value: "3"}, {Value: []any{1, 2, 3}}}
+			fullKN := *kn
+			fullKN.ConceptGroups = []*interfaces.ConceptGroup{{}}
+			fullKN.ObjectTypes = []*interfaces.ObjectType{{}}
+			fullKN.RelationTypes = []*interfaces.RelationType{{}}
+			fullKN.ActionTypes = []*interfaces.ActionType{actionType}
+			fullKN.RiskTypes = []*interfaces.RiskType{{}}
+			fullKN.Metrics = []*interfaces.MetricDefinition{{}}
+
+			var written map[string]any
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _, _ string, doc map[string]any) error {
+					written = doc
+					return nil
+				})
+
+			So(cs.insertDatasetDataForKN(ctx, &fullKN), ShouldBeNil)
+			for _, field := range []string{"concept_groups", "object_types", "relation_types",
+				"action_types", "risk_types", "metrics"} {
+				So(written, ShouldNotContainKey, field)
+			}
+			So(written["id"], ShouldEqual, "kn1")
+			So(fullKN.ActionTypes, ShouldHaveLength, 1)
+		})
 	})
 }
 

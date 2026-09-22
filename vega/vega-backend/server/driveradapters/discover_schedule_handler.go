@@ -1,0 +1,442 @@
+// Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
+//
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
+
+package driveradapters
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+)
+
+// =========================== POST /discover-schedules ===========================
+
+// CreateDiscoverScheduleByEx handles POST /api/vega-backend/v1/discover-schedules (External).
+func (r *restHandler) CreateDiscoverScheduleByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.createDiscoverSchedule(c, visitor)
+}
+
+// CreateDiscoverScheduleByIn handles POST /api/vega-backend/in/v1/discover-schedules (Internal).
+func (r *restHandler) CreateDiscoverScheduleByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.createDiscoverSchedule(c, visitor)
+}
+
+func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	var req interfaces.DiscoverScheduleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := ValidateDiscoverScheduleRequest(ctx, &req); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	catalog, err := r.cs.GetByID(ctx, req.CatalogID, false)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if catalog == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if catalog.Type != interfaces.CatalogTypePhysical {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_Type).
+			WithErrorDetails("discover schedules are only supported for physical catalogs")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	scheduleID, err := r.dss.Create(ctx, &req)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_CreateFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
+		interfaces.GenerateCatalogAuditObject(req.CatalogID, ""), "")
+
+	logger.Debug("Handler CreateDiscoverSchedule Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
+	rest.ReplyOK(c, http.StatusCreated, gin.H{"id": scheduleID})
+}
+
+// =========================== GET /discover-schedules ===========================
+
+// ListDiscoverSchedulesByEx handles GET /api/vega-backend/v1/discover-schedules (External).
+func (r *restHandler) ListDiscoverSchedulesByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.listDiscoverSchedules(c, visitor)
+}
+
+// ListDiscoverSchedulesByIn handles GET /api/vega-backend/in/v1/discover-schedules (Internal).
+func (r *restHandler) ListDiscoverSchedulesByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.listDiscoverSchedules(c, visitor)
+}
+
+func (r *restHandler) listDiscoverSchedules(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
+	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
+	sort := common.GetQueryOrDefault(c, "sort", interfaces.DiscoverScheduleSortUpdateTime)
+	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
+
+	pageParam, err := validatePaginationQueryParams(ctx,
+		offset, limit, sort, direction, interfaces.DISCOVER_SCHEDULE_SORT)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+			httpErr.BaseError.ErrorDetails), nil)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	params := interfaces.DiscoverScheduleQueryParams{
+		PaginationQueryParams: pageParam,
+		Name:                  strings.TrimSpace(c.Query("name")),
+		CatalogID:             c.Query("catalog_id"),
+	}
+	if enabledStr := c.Query("enabled"); enabledStr != "" {
+		v, err := strconv.ParseBool(enabledStr)
+		if err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(fmt.Sprintf("invalid enabled value: %s", enabledStr))
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		params.Enabled = &v
+	}
+
+	entries, total, err := r.dss.List(ctx, params)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, gin.H{"entries": entries, "total_count": total})
+}
+
+// =========================== GET /discover-schedules/:id ===========================
+
+// GetDiscoverScheduleByEx handles GET /api/vega-backend/v1/discover-schedules/:id (External).
+func (r *restHandler) GetDiscoverScheduleByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.getDiscoverSchedule(c, visitor)
+}
+
+// GetDiscoverScheduleByIn handles GET /api/vega-backend/in/v1/discover-schedules/:id (Internal).
+func (r *restHandler) GetDiscoverScheduleByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.getDiscoverSchedule(c, visitor)
+}
+
+func (r *restHandler) getDiscoverSchedule(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("id")
+	schedule, err := r.dss.GetByID(ctx, id)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if schedule == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverSchedule_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, schedule)
+}
+
+// =========================== PUT /discover-schedules/:id ===========================
+
+// UpdateDiscoverScheduleByEx handles PUT /api/vega-backend/v1/discover-schedules/:id (External).
+func (r *restHandler) UpdateDiscoverScheduleByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.updateDiscoverSchedule(c, visitor)
+}
+
+// UpdateDiscoverScheduleByIn handles PUT /api/vega-backend/in/v1/discover-schedules/:id (Internal).
+func (r *restHandler) UpdateDiscoverScheduleByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.updateDiscoverSchedule(c, visitor)
+}
+
+func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("id")
+
+	current, err := r.dss.GetByID(ctx, id)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if current == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverSchedule_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	var req interfaces.DiscoverScheduleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := ValidateDiscoverScheduleRequest(ctx, &req); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	// Strict checks: catalog_id / enabled are read-only here.
+	if req.CatalogID != current.CatalogID {
+		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_CatalogMismatch).
+			WithErrorDetails(fmt.Sprintf("catalog_id is read-only; current=%s, body=%s", current.CatalogID, req.CatalogID))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if req.Enabled != current.Enabled {
+		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_EnabledFieldNotAllowed).
+			WithErrorDetails("use POST /discover-schedules/{id}/enable or /disable to change enabled state")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := r.dss.Update(ctx, current, &req); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
+		interfaces.GenerateCatalogAuditObject(current.CatalogID, ""), "")
+
+	logger.Debug("Handler UpdateDiscoverSchedule Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// =========================== DELETE /discover-schedules/:id ===========================
+
+// DeleteDiscoverScheduleByEx handles DELETE /api/vega-backend/v1/discover-schedules/:id (External).
+func (r *restHandler) DeleteDiscoverScheduleByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.deleteDiscoverSchedule(c, visitor)
+}
+
+// DeleteDiscoverScheduleByIn handles DELETE /api/vega-backend/in/v1/discover-schedules/:id (Internal).
+func (r *restHandler) DeleteDiscoverScheduleByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.deleteDiscoverSchedule(c, visitor)
+}
+
+func (r *restHandler) deleteDiscoverSchedule(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("id")
+
+	current, err := r.dss.GetByID(ctx, id)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if current == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverSchedule_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := r.dss.Delete(ctx, current); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_DeleteFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
+		interfaces.GenerateCatalogAuditObject(current.CatalogID, ""), audit.SUCCESS, "")
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// =========================== POST /discover-schedules/:id/enable ===========================
+
+// EnableDiscoverScheduleByEx handles POST /api/vega-backend/v1/discover-schedules/:id/enable (External).
+func (r *restHandler) EnableDiscoverScheduleByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.setDiscoverScheduleEnabled(c, visitor, true)
+}
+
+// EnableDiscoverScheduleByIn handles POST /api/vega-backend/in/v1/discover-schedules/:id/enable (Internal).
+func (r *restHandler) EnableDiscoverScheduleByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.setDiscoverScheduleEnabled(c, visitor, true)
+}
+
+// DisableDiscoverScheduleByEx handles POST /api/vega-backend/v1/discover-schedules/:id/disable (External).
+func (r *restHandler) DisableDiscoverScheduleByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.setDiscoverScheduleEnabled(c, visitor, false)
+}
+
+// DisableDiscoverScheduleByIn handles POST /api/vega-backend/in/v1/discover-schedules/:id/disable (Internal).
+func (r *restHandler) DisableDiscoverScheduleByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.setDiscoverScheduleEnabled(c, visitor, false)
+}
+
+// setDiscoverScheduleEnabled 封装启用和禁用调度的公共逻辑。
+// 重复设置相同状态时仍通过 update_time 校验读取后的并发更新。
+func (r *restHandler) setDiscoverScheduleEnabled(c *gin.Context, visitor hydra.Visitor, enabled bool) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("id")
+
+	current, err := r.dss.GetByID(ctx, id)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if current == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverSchedule_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := r.dss.UpdateEnabled(ctx, current, enabled); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	op := audit.UPDATE
+	_ = op
+	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
+		interfaces.GenerateCatalogAuditObject(current.CatalogID, ""), "")
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}

@@ -138,17 +138,43 @@ type NullCheck struct {
 
 func (n NullCheck) predicatePosition() Position { return n.Pos }
 
-// Membership is IN over a list written in the query. An empty list matches
-// nothing, which is what Cypher says and what the generator has to write
-// explicitly because SQL has no empty IN.
+// Membership is IN over a list written in the query, or over one parameter
+// that carries the whole list. An empty list literal matches nothing, which is
+// what Cypher says and what the generator has to write explicitly because SQL
+// has no empty IN.
+//
+// When ListParameter is set, Values is empty: the planner expands the
+// parameter into literals, so generation sees the same shape either way.
 type Membership struct {
-	Property PropertyRef
-	Values   []Operand
-	Negated  bool
-	Pos      Position
+	Property      PropertyRef
+	Values        []Operand
+	ListParameter *ParameterRef
+	Negated       bool
+	Pos           Position
 }
 
 func (m Membership) predicatePosition() Position { return m.Pos }
+
+// StringMatch is STARTS WITH, ENDS WITH or CONTAINS: a property against a
+// string that is matched literally, never as a pattern. Value is a literal or
+// a parameter; that it is a string is checked once the parameter is known.
+type StringMatch struct {
+	Property PropertyRef
+	Operator StringMatchOperator
+	Value    Operand
+	Pos      Position
+}
+
+func (s StringMatch) predicatePosition() Position { return s.Pos }
+
+// StringMatchOperator names one of the three string predicates.
+type StringMatchOperator string
+
+const (
+	StartsWith StringMatchOperator = "STARTS WITH"
+	EndsWith   StringMatchOperator = "ENDS WITH"
+	Contains   StringMatchOperator = "CONTAINS"
+)
 
 // LiteralKind tags which field of Literal carries the value.
 type LiteralKind int

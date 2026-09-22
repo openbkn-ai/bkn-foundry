@@ -14,22 +14,18 @@ import (
 )
 
 type RowFilterPublishedObjectTypeResolver interface {
-	ResolvePublishedObjectType(context.Context, string) (rowfiltersocket.PublishedObjectType, error)
+	ResolvePublishedObjectType(ctx context.Context, operatorID, objectTypeRef string) (rowfiltersocket.PublishedObjectType, error)
 }
 
 type rowFilterManagementServices struct {
-	enforcer      *authz.Enforcer
-	directory     *directory.Service
-	departmentMax int
-	published     RowFilterPublishedObjectTypeResolver
+	enforcer  *authz.Enforcer
+	directory *directory.Service
+	published RowFilterPublishedObjectTypeResolver
 }
 
-func newRowFilterManagementServices(enforcer *authz.Enforcer, directoryService *directory.Service, departmentMax int,
+func newRowFilterManagementServices(enforcer *authz.Enforcer, directoryService *directory.Service,
 	published RowFilterPublishedObjectTypeResolver) rowfiltersocket.ManagementServices {
-	if departmentMax <= 0 {
-		departmentMax = directory.DefaultRowFilterDepartmentScopeLimit
-	}
-	return &rowFilterManagementServices{enforcer: enforcer, directory: directoryService, departmentMax: departmentMax, published: published}
+	return &rowFilterManagementServices{enforcer: enforcer, directory: directoryService, published: published}
 }
 
 func (services *rowFilterManagementServices) AuthorizeUserRead(ctx context.Context, operatorID string) (bool, error) {
@@ -53,9 +49,9 @@ func (services *rowFilterManagementServices) AuthorizeRoleWrite(ctx context.Cont
 }
 
 func (services *rowFilterManagementServices) ResolveCaller(ctx context.Context, userID string) (rowfiltersocket.Caller, error) {
-	return internalrowfilter.NewTrustedCallerResolverWithDepartmentLimit(services.directory, services.enforcer, services.departmentMax).Resolve(ctx, userID)
+	return internalrowfilter.NewTrustedCallerResolver(services.directory, services.enforcer).Resolve(ctx, userID)
 }
 
-func (services *rowFilterManagementServices) ResolvePublishedObjectType(ctx context.Context, objectTypeRef string) (rowfiltersocket.PublishedObjectType, error) {
-	return services.published.ResolvePublishedObjectType(ctx, objectTypeRef)
+func (services *rowFilterManagementServices) ResolvePublishedObjectType(ctx context.Context, operatorID, objectTypeRef string) (rowfiltersocket.PublishedObjectType, error) {
+	return services.published.ResolvePublishedObjectType(ctx, operatorID, objectTypeRef)
 }

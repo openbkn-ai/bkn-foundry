@@ -2,16 +2,20 @@ name: release-deploy-redis
 
 # Multi-arch build of the platform Redis image (deploy/images/redis).
 # Versioned off the redis chart line (1.11.2-*), NOT the repo VERSION — see
-# deploy/images/redis/README.md. Branch pushes publish a branch-tagged image
-# (same convention as the service pipelines), so a fix is testable pre-merge.
+# deploy/images/redis/README.md. Branch pushes publish a commit-qualified image
+# independent of the product release branch, so a fix is testable pre-merge.
 
 on:
   push:
     branches: ['**']
     paths:
-      - 'deploy/images/redis/**'
+      # Only files baked into the image: a README-only push must not publish
+      # another immutable tag for byte-identical Redis content.
+      - 'deploy/images/redis/Dockerfile'
+      - 'deploy/images/redis/config-init.sh'
+      - 'deploy/images/redis/liveness-check.sh'
       - '.github/workflows/release-deploy-redis.yml'
-      - '.github/workflows/reusable-build.yml'
+      - '.github/workflows/reusable-container-image.yml'
   workflow_dispatch:
     inputs:
       publish:
@@ -41,18 +45,16 @@ jobs:
           # Base = redis chart version (deploy/charts/redis-1.11.2.tgz), so
           # image tags stay in the 1.11.2-* line the chart/scripts expect.
           BASE_VERSION="1.11.2"
-          REF_NAME="${{ github.ref_name }}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
-          SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
           # Commit time (Asia/Shanghai), not build time — monotonic and re-run reproducible.
           COMMIT_DATE="$(TZ=Asia/Shanghai git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)"
-          VERSION="$BASE_VERSION-$SANITIZED_BRANCH.$COMMIT_DATE.sha$SHORT_SHA"
+          VERSION="$BASE_VERSION-$COMMIT_DATE.sha$SHORT_SHA"
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build:
     needs: resolve-version
-    uses: ./.github/workflows/reusable-build.yml
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: deploy/images/redis

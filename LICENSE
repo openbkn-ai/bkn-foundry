@@ -39,7 +39,7 @@ Mixed-licensed components
    Some upstream-derived components also contain OpenBKN net-new files
    and are therefore licensed per file: Apache 2.0 for upstream files,
    OpenBKN License for OpenBKN net-new files. These include
-   adp/execution-factory, adp/vega, adp/context-loader, adp/bkn,
+   adp/execution-factory, vega, adp/context-loader, adp/bkn,
    infra/mf-model-manager and deploy. Always consult the individual
    file header.
 

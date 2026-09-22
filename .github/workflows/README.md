@@ -23,8 +23,11 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`lint-workflow-files.yml`](./lint-workflow-files.yml) | Workflow File Naming | `pull_request` (`.github/workflows/**`) | Enforces allowed filename prefixes (see table above) |
 | [`lint-branch-name.yml`](./lint-branch-name.yml) | Branch Name Lint | `pull_request` | Branch naming rules |
 | [`lint-commit.yml`](./lint-commit.yml) | Commit Message Lint | `pull_request` | Commit message checks |
+| [`ci-vega-backend.yml`](./ci-vega-backend.yml) | ci-vega-backend | `pull_request` / `push` (`vega/**`) | Vega backend dependency, lint, unit-test, coverage, race, and build gate |
 | [`ci-execution-factory.yml`](./ci-execution-factory.yml) | ci-execution-factory | `pull_request` / `push` (`adp/execution-factory/**`), `workflow_dispatch` | L2 smoke collect-only + operator-integration Go unit tests; optional live smoke |
 | [`ci-bkn-trace.yml`](./ci-bkn-trace.yml) | ci-bkn-trace | `pull_request` (`bkn-trace/**`) | Compile gate for agent-observability |
+| [`reusable-version.yml`](./reusable-version.yml) | reusable-version | `workflow_call` | Resolves the repository-wide immutable release version from `VERSION`, ref, and commit |
+| [`reusable-release-verify.yml`](./reusable-release-verify.yml) | reusable-release-verify | `workflow_call` | Go, Python, or Helm release verification before image/chart build and publish |
 | [`release-bkn-trace-agent-observability.yml`](./release-bkn-trace-agent-observability.yml) | release-bkn-trace-agent-observability | `push` (`bkn-trace/agent-observability/**`, …), `workflow_dispatch` | Agent observability image + Helm chart |
 | [`release-infra-model-factory-base.yml`](./release-infra-model-factory-base.yml) | release-infra-model-factory-base | `push` (`infra/model-factory-base/**`), `workflow_dispatch` | Shared base image for mf-model-* → GHCR (`model-factory-base:v2`) |
 | [`release-infra-oss-gateway.yml`](./release-infra-oss-gateway.yml) | release-infra-oss-gateway | `push` (`infra/oss-gateway-backend/**`), `workflow_dispatch` | oss-gateway-backend image + Helm chart |
@@ -36,8 +39,9 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`release-adp-ontology-query.yml`](./release-adp-ontology-query.yml) | release-adp-ontology-query | `push` (`adp/bkn/ontology-query/**`), `workflow_dispatch` | ontology-query image + Helm chart |
 | [`release-adp-agent-retrieval.yml`](./release-adp-agent-retrieval.yml) | release-adp-agent-retrieval | `push` (`adp/context-loader/agent-retrieval/**`), `workflow_dispatch` | agent-retrieval image + Helm chart |
 | [`release-adp-operator-integration.yml`](./release-adp-operator-integration.yml) | release-adp-operator-integration | `push` (`adp/execution-factory/operator-integration/**`), `workflow_dispatch` | agent-operator-integration image + Helm chart |
-| [`release-adp-vega-backend.yml`](./release-adp-vega-backend.yml) | release-adp-vega-backend | `push` (`adp/vega/vega-backend/**`), `workflow_dispatch` | vega-backend image + Helm chart |
-| [`release-adp-kafka-connect.yml`](./release-adp-kafka-connect.yml) | release-adp-kafka-connect | `push` (`adp/vega/kafka-connect/**`), `workflow_dispatch` | kafka-connect image + Helm chart |
+| [`release-vega-python-base.yml`](./release-vega-python-base.yml) | release-vega-python-base | `push` (`main`, `vega/vega-python-base/**`), `workflow_dispatch` | Vega Python runtime base image |
+| [`release-vega-backend.yml`](./release-vega-backend.yml) | release-vega-backend | `pull_request` (build-only), `push` (`main` / `release/**` / `v*`), `workflow_dispatch` | Vega backend image + Helm chart; manual branch builds may publish when `publish=true` |
+| [`release-vega-kafka-connect.yml`](./release-vega-kafka-connect.yml) | release-vega-kafka-connect | `push` (`vega/kafka-connect/**`), `workflow_dispatch` | kafka-connect image + Helm chart |
 | [`release-adp-bkn-safe.yml`](./release-adp-bkn-safe.yml) | release-adp-bkn-safe | `push` (`bkn-safe/**`), `workflow_dispatch` | bkn-safe image + bkn-safe & hydra Helm charts (ISF replacement) |
 | [`release-infra-sandbox.yml`](./release-infra-sandbox.yml) | release-infra-sandbox | `push` (`infra/sandbox/**`), `workflow_dispatch` | sandbox bases (v1) + control-plane + web + 2 templates + 2 Helm charts |
 | [`automation-ghcr-cleanup.yml`](./automation-ghcr-cleanup.yml) | automation-ghcr-cleanup | `schedule` (weekly Sun 03:00 UTC), `workflow_dispatch` | Delete old GHCR container packages (branch-suffixed tags > 30d, untagged orphans); keeps semver/v1/v2/latest |

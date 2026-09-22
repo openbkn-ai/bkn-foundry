@@ -193,7 +193,6 @@ func Boot(opts Options) (*App, error) {
 			Decisions:                     decisionStore,
 			License:                       licSvc,
 			AuthorizationResources:        authorizationResources,
-			RowFilterMaxDepartmentIDs:     cfg.Authz.RowFilterMaxDepartmentIDs,
 			RowFilterPublishedObjectTypes: rowFilterPublishedObjectTypes,
 		},
 	}, nil

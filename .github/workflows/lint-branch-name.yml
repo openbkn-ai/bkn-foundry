@@ -4,6 +4,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+
 jobs:
   branch-name-lint:
     runs-on: ubuntu-latest
@@ -28,7 +31,7 @@ jobs:
 
           SEGMENT='[a-z0-9][a-z0-9._-]*'
           # Regex: type + exactly 1 or 2 segments (not 3+); plus release/x.y.z
-          PATTERN="^(${VALID_TYPES})\/${SEGMENT}(\/${SEGMENT})?$|^release\/[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9._-]+)?$"
+          PATTERN="^(${VALID_TYPES})\/${SEGMENT}(\/${SEGMENT})?$|^release\/[0-9]+\.[0-9]+\.[0-9]+$"
 
           if echo "$BRANCH_NAME" | grep -qE "$PATTERN"; then
             echo "✅ Branch name is valid: $BRANCH_NAME"

@@ -78,7 +78,7 @@ func compileRowFilterPredicate(predicate interfaces.RowFilterPredicate, table in
 		return nil, nil
 	case "false":
 		return PlanNever{}, nil
-	case "in":
+	case "in", "not_in":
 		property, err := rowFilterDataProperty(objectType, predicate.Property)
 		if err != nil {
 			return nil, err
@@ -91,7 +91,44 @@ func compileRowFilterPredicate(predicate interfaces.RowFilterPredicate, table in
 		if err != nil {
 			return nil, err
 		}
-		return PlanMembership{Table: table, Column: column, Property: predicate.Property, Values: values}, nil
+		return PlanMembership{Table: table, Column: column, Property: predicate.Property, Values: values, Negated: predicate.Kind == "not_in"}, nil
+	case "gt", "gte", "lt", "lte":
+		return compileRowFilterComparison(predicate, table, objectType, schema)
+	case "between":
+		property, err := rowFilterDataProperty(objectType, predicate.Property)
+		if err != nil {
+			return nil, err
+		}
+		column, err := schema.Column(objectType, predicate.Property)
+		if err != nil {
+			return nil, err
+		}
+		values, err := compileRowFilterValues(predicate.Values, property.Type)
+		if err != nil || len(values) != 2 {
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("between row-filter requires two values")
+		}
+		return PlanLogical{Operator: "AND", Operands: []PlanPredicate{
+			PlanCondition{Table: table, Column: column, Property: predicate.Property, Operator: ">=", Value: values[0]},
+			PlanCondition{Table: table, Column: column, Property: predicate.Property, Operator: "<=", Value: values[1]},
+		}}, nil
+	case "and":
+		children := make([]PlanPredicate, 0, len(predicate.Predicates))
+		for _, child := range predicate.Predicates {
+			compiled, err := compileRowFilterPredicate(child, table, objectType, schema)
+			if err != nil {
+				return nil, err
+			}
+			if _, never := compiled.(PlanNever); never {
+				return PlanNever{}, nil
+			}
+			if compiled != nil {
+				children = append(children, compiled)
+			}
+		}
+		return combineRowFilterAnd(children), nil
 	case "or":
 		children := make([]PlanPredicate, 0, len(predicate.Predicates))
 		for _, child := range predicate.Predicates {
@@ -117,6 +154,27 @@ func compileRowFilterPredicate(predicate interfaces.RowFilterPredicate, table in
 	default:
 		return nil, fmt.Errorf("unsupported row-filter predicate %q", predicate.Kind)
 	}
+}
+
+func compileRowFilterComparison(predicate interfaces.RowFilterPredicate, table int,
+	objectType *interfaces.ObjectType, schema *Schema) (PlanPredicate, error) {
+	property, err := rowFilterDataProperty(objectType, predicate.Property)
+	if err != nil {
+		return nil, err
+	}
+	column, err := schema.Column(objectType, predicate.Property)
+	if err != nil {
+		return nil, err
+	}
+	values, err := compileRowFilterValues(predicate.Values, property.Type)
+	if err != nil || len(values) != 1 {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("comparison row-filter requires one value")
+	}
+	operators := map[string]string{"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+	return PlanCondition{Table: table, Column: column, Property: predicate.Property, Operator: operators[predicate.Kind], Value: values[0]}, nil
 }
 
 func rowFilterDataProperty(objectType *interfaces.ObjectType, name string) (*interfaces.DataProperty, error) {

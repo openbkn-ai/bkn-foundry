@@ -263,7 +263,7 @@ func postArtifactWithRetry(
 	artifact map[string]any,
 ) error {
 	if url == "" {
-		return errors.New("BKN Trace artifact URL is not configured")
+		return ErrEvidenceArtifactURLNotConfigured
 	}
 	body, err := json.Marshal(artifact)
 	if err != nil {
@@ -1046,11 +1046,24 @@ func snapshotEvidenceOutcome(ctx context.Context) (bool, bool, []string, []Busin
 	return outcome.attempted, outcome.durable, append([]string(nil), outcome.eventIDs...), append([]BusinessRef(nil), outcome.businessRefs...)
 }
 
+// postBatchWithRetry delivers every event in the batch, resuming after the last
+// one Trace Core accepted.
+//
+// Each attempt used to start again from the first event, so a batch that failed
+// on its third event re-sent the first two on every retry - more load on the
+// store that was already too slow to answer. A rejection Core marks as not
+// retryable ends the attempt as well: the same event sent again gets the same
+// answer, which is how the artifact path already behaves.
 func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {
 	var err error
+	next := 0
 	for attempt := 0; attempt < 3; attempt++ {
-		if err = postBatch(ingestURL, timeout, payload); err == nil {
+		if next, err = postEventsFrom(ingestURL, timeout, payload, next); err == nil {
 			return nil
+		}
+		var coreErr *CoreHTTPError
+		if errors.As(err, &coreErr) && !coreErr.Retryable() {
+			return err
 		}
 		if attempt < 2 {
 			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
@@ -1060,43 +1073,48 @@ func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) 
 }
 
 func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
-	for _, event := range payload.Events {
+	_, err := postEventsFrom(ingestURL, timeout, payload, 0)
+	return err
+}
+
+// postEventsFrom sends payload.Events[start:] in order. It returns the index of
+// the first event Core did not accept, or len(payload.Events) once all landed.
+func postEventsFrom(ingestURL string, timeout time.Duration, payload batch, start int) (int, error) {
+	for index := start; index < len(payload.Events); index++ {
+		event := payload.Events[index]
 		requestPayload, err := trace30EvidenceEvent(payload.Trace, event, payload.DeclaredBusinessRefs)
 		if err != nil {
-			return err
+			return index, err
 		}
-		// Same config that hashed the envelope. Envelope holds the live Event map rather than the
-		// bytes that were hashed, so marshalling it here with a different config ships bytes the
-		// digest was not taken over. It survives today only because the receiver canonicalises what
-		// it gets before comparing - the moment a value stops round-tripping through that step
-		// unchanged (an int above 2^53, a json.Number, a struct), the two drift apart again and
-		// every event is rejected exactly as in #1098.
+		// payload_hash is taken over the receiver's canonical form of the envelope
+		// (canonicalPayloadHash), so these bytes only have to decode to the same JSON value the
+		// digest was computed from. ConfigStd, as in trace30EvidenceEvent, for sorted output.
 		body, err := sonic.ConfigStd.Marshal(requestPayload)
 		if err != nil {
-			return err
+			return index, err
 		}
 		postCtx, cancel := context.WithTimeout(context.Background(), timeout)
 		req, err := http.NewRequestWithContext(postCtx, http.MethodPost, ingestURL, bytes.NewReader(body))
 		if err != nil {
 			cancel()
-			return err
+			return index, err
 		}
 		setEvidenceIngestHeaders(req.Header, payload.Trace)
 
 		resp, err := evidenceHTTPClient.Do(req)
 		if err != nil {
 			cancel()
-			return err
+			return index, err
 		}
 		if resp.StatusCode >= http.StatusBadRequest {
 			err = coreHTTPError(resp)
 			cancel()
-			return err
+			return index, err
 		}
 		_ = resp.Body.Close()
 		cancel()
 	}
-	return nil
+	return len(payload.Events), nil
 }
 
 func coreHTTPError(resp *http.Response) error {
@@ -1162,18 +1180,18 @@ type trace30OperationEdge struct {
 }
 
 func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs []BusinessRef) (trace30Event, error) {
-	// ConfigStd, because agent-observability recomputes this digest to admit the event and does it
-	// with encoding/json (ledgervo.CanonicalPayloadHash). Event is a map[string]any, and the default
-	// sonic config does not sort map keys, so the two sides agreed on nothing: Go randomises map
-	// iteration order, so the sender produced a different envelope - and a different hash - on every
-	// call, and every event was rejected with "payload_hash does not match canonical envelope".
-	// That rejection blocks bkn_start_interaction, which gates every MCP tool that takes a
-	// bkn_context, so the whole MCP surface goes down with it.
+	// agent-observability admits an event only if payload_hash equals the canonical hash of the
+	// envelope it receives (ledgervo.CanonicalPayloadHash), so the digest is taken over that same
+	// canonical form rather than over these bytes. Hashing the bytes as marshalled held only while
+	// every value in the envelope already came out the way encoding/json writes it: default sonic
+	// left map keys unsorted and every event was rejected (#1092), and ConfigStd still writes struct
+	// fields in declaration order, so the schema snapshot, whose definition is a struct, was
+	// rejected on every call (#1711). ConfigStd stays for sorted, stable output.
 	envelope, err := sonic.ConfigStd.Marshal(event)
 	if err != nil {
 		return trace30Event{}, err
 	}
-	sum := sha256.Sum256(envelope)
+	payloadHash := canonicalPayloadHash(envelope)
 	operationID := stringValue(event["operation_id"])
 	attempt := uint32(intValue(event["attempt"], 1))
 	observedAt := stringValue(event["observed_at"])
@@ -1198,7 +1216,7 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs [
 	}
 	return trace30Event{
 		SchemaVersion: CoreSchemaVersion, EventID: stringValue(event["event_id"]),
-		EventType: stringValue(event["event_type"]), PayloadHash: hex.EncodeToString(sum[:]),
+		EventType: stringValue(event["event_type"]), PayloadHash: payloadHash,
 		ConversationID: stringValue(traceBlock["bkn.conversation.id"]),
 		InteractionID:  stringValue(event["interaction_id"]), OperationID: operationID,
 		Attempt: attempt, RequestID: stringValue(traceBlock["bkn.request.id"]),
@@ -1208,6 +1226,22 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs [
 		StartedAt: observedAt, ObservedAt: observedAt, EmittedAt: emittedAt,
 		Envelope: event, BusinessRefs: refs, OperationBusinessEdges: edges,
 	}, nil
+}
+
+// canonicalPayloadHash reproduces agent-observability's ledgervo.CanonicalPayloadHash, the value
+// the ledger compares payload_hash against: decode into generic JSON, re-encode with
+// encoding/json, sha256. Keep it on encoding/json rather than sonic - escaping and float
+// formatting have to match the receiver byte for byte. The shared test vector in both modules
+// fails if either side changes the algorithm.
+func canonicalPayloadHash(envelope []byte) string {
+	var decoded any
+	if err := json.Unmarshal(envelope, &decoded); err == nil {
+		if canonical, err := json.Marshal(decoded); err == nil {
+			envelope = canonical
+		}
+	}
+	sum := sha256.Sum256(envelope)
+	return hex.EncodeToString(sum[:])
 }
 
 func trace30BusinessRefs(event Event, declaredRefs []BusinessRef) []trace30BusinessRef {

@@ -53,7 +53,11 @@ paths:
           一条查询的模式最多 8 条关系、9 个节点（不与其他节点相连的节点也各算一张表）。
           关系变量（`-[r:R]->`）不支持。
         - **WHERE**：`=` `<>` `<` `>` `<=` `>=`、`IN [...]`、`IS NULL` / `IS NOT NULL`，
-          用 `AND` / `OR` / `NOT` 组合，可加括号。值可写 `$name` 参数。
+          `STARTS WITH` / `ENDS WITH` / `CONTAINS`，用 `AND` / `OR` / `NOT` 组合，可加括号。
+          值可写 `$name` 参数；`IN $list` 可把整个列表作为一个参数传入。字符串谓词左侧须为
+          `变量.属性`，右侧须为字符串字面量或取值为字符串的参数；按 openCypher 语义做字面
+          子串匹配（`%`、`_` 等不是通配符），属性为 null 时不匹配；大小写是否敏感取决于
+          数据源列的排序规则（collation）。只能用于字符串属性，用在数值、日期等属性上返回 400。
         - **RETURN**：属性、`AS` 别名、`DISTINCT`，以及 `count` / `sum` / `avg` /
           `min` / `max`（含 `count(*)` 与 `DISTINCT` 形式）。有聚合时按 RETURN 中其余
           列自动分组——这是 Cypher 的隐式 GROUP BY，无需也不能自己写 GROUP BY。
@@ -61,8 +65,7 @@ paths:
           或 DISTINCT 折叠后，只能按返回的值排序。
 
         **不支持**（会被拒绝，报错指名是哪个语法与位置）：`OPTIONAL MATCH`、`WITH`、
-        `UNION`、变长路径 `[:R*1..3]`、`XOR`、`STARTS WITH` / `CONTAINS` / `ENDS WITH`、
-        返回整个节点、函数调用与算术表达式、写操作（`CREATE` / `MERGE` / `DELETE` /
+        `UNION`、变长路径 `[:R*1..3]`、`XOR`、返回整个节点、函数调用与算术表达式、写操作（`CREATE` / `MERGE` / `DELETE` /
         `SET` / `REMOVE`）。
 
         **行数**：不写 `LIMIT` 默认返回 1000 行；`LIMIT` 不得超过 10000。
@@ -171,7 +174,9 @@ components:
           description: |
             语句里 `$name` 的取值。只能是字符串、数字或布尔值——参数是值，不会变成
             表名或列名，因此不能用来拼标签、关系类型或属性名。`null` 会被拒绝：
-            判空写 `IS NULL`。
+            判空写 `IS NULL`。用在 `IN $name` 右侧的参数须为非空数组，元素为同一类标量
+            （整数与小数都算数字），不能含 `null`，最多 500 个，如 `{"keys": [6, 7, 8]}`。
+            一条查询里多个长列表合计过大时会返回 400，需拆成多次查询。
 
     RunCypherResponse:
       type: object

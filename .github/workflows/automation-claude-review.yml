@@ -52,16 +52,20 @@ on:
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
     paths:
+      - '.github/actions/**'
+      - '.github/workflows/**'
       - 'adp/**'
-      - 'infra/**'
       - 'bkn-safe/**'
       - 'bkn-trace/**'
       - 'comm-go/**'
       - 'data-migrator/**'
       - 'deploy/scripts/**'
+      - 'infra/**'
       # Migrations run once, against a customer's data, and cannot be rolled
       # back. They were the one category of change reaching main unreviewed.
-      - '**/migrations/**'
+      - 'migrations/**'
+      - 'tools/**'
+      - 'vega/**'
       - '!**/*.md'
   issue_comment:
     types: [created]

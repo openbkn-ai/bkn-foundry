@@ -1,0 +1,67 @@
+name: release-vega-backend
+
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - main
+      - "release/**"
+    paths:
+      - "vega/vega-backend/**"
+      - ".github/workflows/release-vega-backend.yml"
+      - ".github/workflows/reusable-*.yml"
+      - "VERSION"
+  pull_request:
+    paths:
+      - "vega/vega-backend/**"
+      - ".github/workflows/release-vega-backend.yml"
+      - ".github/workflows/reusable-*.yml"
+      - "VERSION"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to GHCR (true) or verify build only (false)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+    with:
+      publish: ${{ inputs.publish || false }}
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
+    with:
+      go-mod-file: server/go.mod
+      service-path: vega/vega-backend
+      stack: go
+
+  image:
+    needs: [version, verify]
+    uses: ./.github/workflows/reusable-container-image.yml
+    secrets: inherit
+    with:
+      build-args: SERVER_VERSION=${{ needs.version.outputs.version }}
+      context: server
+      dockerfile: docker/Dockerfile
+      image-name: vega-backend
+      publish: ${{ needs.version.outputs.publish == 'true' }}
+      service-path: vega/vega-backend
+      version: ${{ needs.version.outputs.version }}
+
+  chart:
+    needs: [version, image]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      chart-name: vega-backend
+      chart-path: helm/vega-backend
+      publish: ${{ needs.version.outputs.publish == 'true' }}
+      service-path: vega/vega-backend
+      version: ${{ needs.version.outputs.version }}

@@ -8,8 +8,10 @@ package cypher
 
 import (
 	"fmt"
+	"strings"
 
 	"bkn-backend/interfaces"
+	dtype "bkn-backend/interfaces/data_type"
 )
 
 // The planner turns an accepted query plus the model into the shape of one
@@ -143,17 +145,35 @@ type PlanNullCheck struct {
 
 func (PlanNullCheck) planPredicate() {}
 
-// PlanMembership is IN over values written in the query.
+// PlanMembership is IN over values written in the query or carried by one
+// list parameter.
 type PlanMembership struct {
 	Table         int
 	Column        string
 	Property      string
 	Values        []Literal
 	InputPointers []string
-	Negated       bool
+	// ListInputPointer is set when the whole list came from one parameter
+	// (IN $name); it points at that parameter, and InputPointers is empty.
+	ListInputPointer string
+	Negated          bool
 }
 
 func (PlanMembership) planPredicate() {}
+
+// PlanStringMatch is STARTS WITH, ENDS WITH or CONTAINS against a resolved
+// string. The value is kept as written; turning it into a LIKE pattern is the
+// generator's job, next to the rest of the escaping.
+type PlanStringMatch struct {
+	Table        int
+	Column       string
+	Property     string
+	Operator     StringMatchOperator
+	Value        string
+	InputPointer string
+}
+
+func (PlanStringMatch) planPredicate() {}
 
 // PlanColumnComparison compares two columns. The analyzer does not produce one
 // -- a query comparing two properties is refused -- but the planner needs it
@@ -591,6 +611,17 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 		if err != nil {
 			return nil, err
 		}
+		if node.ListParameter != nil {
+			values, err := p.resolveListParameter(*node.ListParameter)
+			if err != nil {
+				return nil, err
+			}
+			return PlanMembership{
+				Table: table, Column: column, Property: node.Property.Property,
+				Values: values, Negated: node.Negated,
+				ListInputPointer: parameterInputPointer(node.ListParameter.Name),
+			}, nil
+		}
 		values := make([]Literal, 0, len(node.Values))
 		inputPointers := make([]string, 0, len(node.Values))
 		for _, value := range node.Values {
@@ -606,16 +637,93 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 			Values: values, InputPointers: inputPointers, Negated: node.Negated,
 		}, nil
 
+	case StringMatch:
+		table, column, err := p.resolveProperty(node.Property)
+		if err != nil {
+			return nil, err
+		}
+		if propertyType, known := p.dataPropertyType(table, node.Property.Property); known && !stringMatchable(propertyType) {
+			// MySQL casts a number to text and matches it; PostgreSQL and SQL
+			// Server refuse the statement. Refusing here keeps every data
+			// source to the same answer, and says why.
+			return nil, planErrorf(node.Pos, "%s applies to string properties; %q is %s",
+				node.Operator, node.Property.Property, propertyType)
+		}
+		value, err := p.resolveValue(node.Value, node.Pos)
+		if err != nil {
+			return nil, err
+		}
+		if value.Kind != LiteralString {
+			// Only a parameter gets here with another type: a literal was
+			// checked while the query was read.
+			return nil, planErrorf(value.Pos, "%s takes a string, got %s", node.Operator, value.describe())
+		}
+		return PlanStringMatch{
+			Table: table, Column: column, Property: node.Property.Property,
+			Operator: node.Operator, Value: value.String, InputPointer: operandInputPointer(node.Value),
+		}, nil
+
 	default:
 		return nil, planErrorf(predicate.predicatePosition(), "unsupported predicate %T", predicate)
 	}
 }
 
+// stringMatchTypes are the property types STARTS WITH, ENDS WITH and CONTAINS
+// accept. The shared string-type helper is not used: it leaves out "string",
+// which is what most modelled properties are.
+var stringMatchTypes = map[string]struct{}{
+	dtype.DATATYPE_STRING:  {},
+	dtype.DATATYPE_TEXT:    {},
+	dtype.DATATYPE_KEYWORD: {},
+}
+
+func stringMatchable(propertyType string) bool {
+	_, ok := stringMatchTypes[strings.ToLower(propertyType)]
+	return ok
+}
+
+// dataPropertyType returns the declared type of a data property on the object
+// type bound to table. known is false when the model does not declare one, in
+// which case the data source decides.
+func (p *planner) dataPropertyType(table int, property string) (string, bool) {
+	for _, dp := range p.objectType[table].DataProperties {
+		if dp != nil && dp.Name == property {
+			return dp.Type, dp.Type != ""
+		}
+	}
+	return "", false
+}
+
 func operandInputPointer(value Operand) string {
 	if value.Parameter != nil {
-		return "$.parameters." + value.Parameter.Name
+		return parameterInputPointer(value.Parameter.Name)
 	}
 	return "$.query"
+}
+
+func parameterInputPointer(name string) string {
+	return "$.parameters." + name
+}
+
+// resolveListParameter expands `IN $name` into the literals the list carries,
+// through the same conversion as a scalar parameter, so each element is
+// escaped exactly as a list literal written in the query would be. The list is
+// recorded by one pointer to the parameter, ListInputPointer, rather than one
+// per element.
+func (p *planner) resolveListParameter(parameter ParameterRef) ([]Literal, error) {
+	name := parameter.Name
+	supplied, ok := p.parameters[name]
+	if !ok {
+		return nil, planErrorf(parameter.Pos, "parameter %q was not supplied", name)
+	}
+	literals, err := literalsFromListParameter(supplied)
+	if err != nil {
+		return nil, planErrorf(parameter.Pos, "parameter %q %v", name, err)
+	}
+	for i := range literals {
+		literals[i].Pos = parameter.Pos
+	}
+	return literals, nil
 }
 
 // resolveValue turns what the query wrote into the value the statement will

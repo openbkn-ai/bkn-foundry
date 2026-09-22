@@ -59,12 +59,7 @@ func setEdition(t *testing.T, edition licverify.Edition) {
 func testRequest() Request {
 	return Request{
 		ObjectTypeRefs: []string{"kn-1/customer"},
-		Caller: Caller{
-			UserID:              "user-1",
-			RoleIDs:             []string{"sales"},
-			DirectDepartmentIDs: []string{"department-1"},
-			DepartmentTreeIDs:   []string{"department-1", "department-2"},
-		},
+		Caller:         Caller{UserID: "user-1", RoleIDs: []string{"sales"}},
 	}
 }
 
@@ -98,11 +93,66 @@ func TestEnterpriseResolverGetsTrustedCallerAndNormalizedPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fake.calls != 1 || fake.seen.Caller.UserID != "user-1" || len(fake.seen.Caller.DepartmentTreeIDs) != 2 {
+	if fake.calls != 1 || fake.seen.Caller.UserID != "user-1" || len(fake.seen.Caller.RoleIDs) != 1 {
 		t.Fatalf("resolver request = %+v, calls = %d", fake.seen, fake.calls)
 	}
 	if len(response.Entries) != 1 || response.Entries[0].Plan.Predicate.Kind != PredicateOr || response.Entries[0].EffectiveRowFilterDigest == "" {
 		t.Fatalf("response = %+v", response)
+	}
+}
+
+func TestNormalizeSupportsFixedConditionGroupsAndComparisons(t *testing.T) {
+	plan, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateAnd, Predicates: []Predicate{
+		{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "east"}}},
+		{Kind: PredicateBetween, Property: "priority", Values: []Value{{Type: ValueInteger, Integer: 3}, {Type: ValueInteger, Integer: 8}}},
+		{Kind: PredicateNotIn, Property: "status", Values: []Value{{Type: ValueString, String: "archived"}}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Predicate.Kind != PredicateAnd || len(plan.Predicate.Predicates) != 3 {
+		t.Fatalf("normalized fixed-condition group = %+v", plan.Predicate)
+	}
+	if _, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateBetween, Property: "priority", Values: []Value{{Type: ValueInteger, Integer: 8}, {Type: ValueInteger, Integer: 3}}}}); err == nil {
+		t.Fatal("reversed between bounds must be rejected")
+	}
+}
+
+func TestNormalizeAndAbsorbsConstantsAndFlattensChildren(t *testing.T) {
+	condition := Predicate{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "east"}}}
+
+	absorbed, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateAnd, Predicates: []Predicate{
+		{Kind: PredicateTrue},
+		{Kind: PredicateFalse},
+		condition,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if absorbed.Predicate.Kind != PredicateFalse {
+		t.Fatalf("AND with FALSE = %+v, want FALSE", absorbed.Predicate)
+	}
+
+	identity, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateAnd, Predicates: []Predicate{
+		{Kind: PredicateTrue},
+		{Kind: PredicateTrue},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.Predicate.Kind != PredicateTrue {
+		t.Fatalf("AND with only TRUE = %+v, want TRUE", identity.Predicate)
+	}
+
+	flattened, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateAnd, Predicates: []Predicate{
+		condition,
+		{Kind: PredicateAnd, Predicates: []Predicate{{Kind: PredicateTrue}, condition}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flattened.Predicate.Kind != PredicateIn || flattened.Predicate.Property != condition.Property || len(flattened.Predicate.Values) != 1 || flattened.Predicate.Values[0].String != "east" {
+		t.Fatalf("flattened AND = %+v, want the single region condition", flattened.Predicate)
 	}
 }
 

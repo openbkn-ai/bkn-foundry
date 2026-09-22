@@ -9,9 +9,11 @@ package cypher
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -611,6 +613,8 @@ var queriesNamingAmount = []struct {
 	{name: "returned", query: "MATCH (o:Order) RETURN o.amount"},
 	{name: "filtered", query: "MATCH (o:Order) WHERE o.amount > 10 RETURN o.id"},
 	{name: "filtered inline", query: "MATCH (o:Order {amount: 10}) RETURN o.id"},
+	{name: "string-matched", query: "MATCH (o:Order) WHERE o.amount CONTAINS '1' RETURN o.id"},
+	{name: "string-matched under NOT", query: "MATCH (o:Order) WHERE NOT o.amount STARTS WITH '1' RETURN o.id"},
 	{name: "null-checked", query: "MATCH (o:Order) WHERE o.amount IS NULL RETURN o.id"},
 	{name: "sorted", query: "MATCH (o:Order) RETURN o.id ORDER BY o.amount"},
 	{name: "aggregated", query: "MATCH (o:Order) RETURN sum(o.amount) AS total"},
@@ -1046,3 +1050,76 @@ func TestQueryReportsVegaRefusalAsForbidden(t *testing.T) {
 		})
 	}
 }
+
+// A list long enough to overflow the semantic descriptor is the caller's query
+// being too large, not a server failure, so it is reported as a bad request.
+// The largest list parameter the planner accepts still has to fit.
+func TestQueryDescriptorSize(t *testing.T) {
+	longList := make([]string, 1200)
+	for i := range longList {
+		longList[i] = strconv.Itoa(i)
+	}
+	vega := &recordingVega{}
+	service := testService(t, vega, &stubPermission{})
+	_, err := service.Query(context.Background(), interfaces.CypherQuery{
+		KNID: "kn_1", Query: "MATCH (o:Order) WHERE o.id IN [" + strings.Join(longList, ", ") + "] RETURN o.id",
+	})
+	if got := statusOf(t, err); got != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", got, http.StatusBadRequest)
+	}
+	if got := errorCodeOf(t, err); got != berrors.BknBackend_Cypher_InvalidQuery {
+		t.Fatalf("code = %s, want %s", got, berrors.BknBackend_Cypher_InvalidQuery)
+	}
+	if vega.request != nil {
+		t.Fatalf("an oversized query still reached vega-backend: %s", vega.request.Query)
+	}
+
+	values := make([]any, MaxListParameterLength)
+	for i := range values {
+		values[i] = fmt.Sprintf("order-%06d", i)
+	}
+	vega = &recordingVega{}
+	service = testService(t, vega, &stubPermission{})
+	if _, err := service.Query(context.Background(), interfaces.CypherQuery{
+		KNID: "kn_1", Query: "MATCH (o:Order) WHERE o.id IN $ids RETURN o.id",
+		Parameters: map[string]any{"ids": values},
+	}); err != nil {
+		t.Fatalf("a list parameter at the limit was refused: %v", err)
+	}
+}
+
+// A row filter is ANDed onto the caller's condition, so a caller's OR must stay
+// grouped: without the parentheses the filter would bind to one branch only and
+// the other would read rows the filter hides.
+func TestQueryRowFilterGroupsListParameterCondition(t *testing.T) {
+	order := objectType("ot_order", "Order", resource("res_order", "orders"),
+		dataProperty("id", "f_id"), dataProperty("region", "f_region"), dataProperty("amount", "f_amount"))
+	east := "east"
+	permission := &stubPermission{rowFilters: map[string]interfaces.RowFilterPredicate{
+		"kn_1/ot_order": {
+			Kind: "in", Property: "region",
+			Values: []interfaces.RowFilterValue{{Type: "string", String: &east}},
+		},
+	}}
+	vega := &recordingVega{}
+	service := &cypherQueryService{
+		ps:     permission,
+		schema: &fakeSchemaSource{objectTypes: []*interfaces.ObjectType{order}},
+		vba:    vega,
+	}
+	if _, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: "main",
+		Query:      "MATCH (o:Order) WHERE o.id IN $ids OR o.amount > 10 RETURN o.id AS id",
+		Parameters: map[string]any{"ids": []any{"a'1", "b2"}},
+	}); err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 WHERE (t0.`f_id` IN ('a''1', 'b2') OR t0.`f_amount` > 10) AND t0.`f_region` IN ('east') LIMIT 1000"
+	if got := vega.request.Query; got != want {
+		t.Fatalf("statement = %s\nwant      = %s", got, want)
+	}
+}
+
+// A row filter is ANDed onto the caller's condition, so a caller's OR must stay
+// grouped: without the parentheses the filter would bind to one branch only and
+// the other would read rows the filter hides.

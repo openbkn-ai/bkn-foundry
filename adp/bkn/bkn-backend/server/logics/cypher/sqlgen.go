@@ -301,6 +301,9 @@ func (g *generator) writePredicate(predicate PlanPredicate, nested bool) error {
 	case PlanMembership:
 		return g.writeMembership(node)
 
+	case PlanStringMatch:
+		return g.writeStringMatch(node)
+
 	case PlanNegation:
 		g.out.WriteString("NOT ")
 		return g.writePredicate(node.Operand, true)
@@ -359,6 +362,60 @@ func (g *generator) writeMembership(node PlanMembership) error {
 		g.out.WriteString(written)
 	}
 	g.out.WriteString(")")
+	return nil
+}
+
+// likeEscape is the escape character of every generated LIKE. It is not a
+// backslash: MySQL also reads a backslash as a string escape, so a pattern
+// escaped with one would be unescaped twice, and the statement is transpiled
+// to other dialects on the way to the database, each with its own reading.
+// '!' means nothing to any of them outside LIKE.
+const likeEscape = "!"
+
+// likePatternEscaper makes a value match itself under LIKE ... ESCAPE '!'.
+// '%' and '_' are the standard wildcards; '[' opens a character class in SQL
+// Server, which receives these statements transpiled. ']' needs no escape once
+// '[' has one, and escaping a character that is not special is not portable.
+var likePatternEscaper = strings.NewReplacer(
+	likeEscape, likeEscape+likeEscape,
+	"%", likeEscape+"%",
+	"_", likeEscape+"_",
+	"[", likeEscape+"[",
+)
+
+// likePattern turns a string predicate into the LIKE pattern that matches it
+// literally. An empty value gives '%%' for CONTAINS, which matches any
+// non-null string, as Cypher does.
+func likePattern(operator StringMatchOperator, value string) string {
+	escaped := likePatternEscaper.Replace(value)
+	switch operator {
+	case StartsWith:
+		return escaped + "%"
+	case EndsWith:
+		return "%" + escaped
+	default:
+		return "%" + escaped + "%"
+	}
+}
+
+// writeStringMatch writes STARTS WITH, ENDS WITH or CONTAINS as a LIKE. The
+// pattern is escaped for LIKE first and then written as any other string, so
+// the quoting rules of the dialect apply to it unchanged. Whether the match
+// ignores case is up to the column's collation, as it is for =.
+func (g *generator) writeStringMatch(node PlanStringMatch) error {
+	switch node.Operator {
+	case StartsWith, EndsWith, Contains:
+	default:
+		return fmt.Errorf("cannot generate a %q string predicate", node.Operator)
+	}
+	pattern, err := g.stringLiteral(likePattern(node.Operator, node.Value))
+	if err != nil {
+		return err
+	}
+	g.out.WriteString(g.column(node.Table, node.Column))
+	g.out.WriteString(" LIKE ")
+	g.out.WriteString(pattern)
+	g.out.WriteString(" ESCAPE '" + likeEscape + "'")
 	return nil
 }
 
