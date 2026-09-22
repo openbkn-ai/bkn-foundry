@@ -83,7 +83,7 @@ type RequestContext struct {
 	ParentOperationID      string
 	CausationEventID       string
 	ClaimID                string
-	Attempt                int
+	Attempt                uint32
 	ObservedAt             string
 }
 
@@ -121,7 +121,7 @@ type eventContext struct {
 	operationID       string
 	parentOperationID string
 	causationEventID  string
-	attempt           int
+	attempt           uint32
 	observedAt        string
 }
 
@@ -405,7 +405,7 @@ func toCoreEvent(event Event, ec eventContext) (outbox.Event, error) {
 	return outbox.Event{
 		EventID: eventID, EventType: eventType, ConversationID: conversationID,
 		InteractionID: ec.interactionID, OperationID: ec.operationID,
-		Attempt: uint32(ec.attempt), RequestID: ec.requestID, TraceID: ec.traceID, SpanID: ec.spanID,
+		Attempt: ec.attempt, RequestID: ec.requestID, TraceID: ec.traceID, SpanID: ec.spanID,
 		CausationIDs: nonEmptyStrings(ec.causationEventID),
 		StartedAt:    observedAt, ObservedAt: observedAt, EmittedAt: observedAt, Envelope: raw,
 	}, nil
@@ -660,6 +660,7 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 	if interactionID == "" || operationID == "" {
 		return eventContext{}, false
 	}
+	attempt := normalizedAttempt(reqCtx.Attempt)
 	flags := "00"
 	if spanContext.TraceFlags().IsSampled() {
 		flags = "01"
@@ -675,7 +676,7 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		operationID:       operationID,
 		parentOperationID: strings.TrimSpace(reqCtx.ParentOperationID),
 		causationEventID:  strings.TrimSpace(reqCtx.CausationEventID),
-		attempt:           normalizedAttempt(reqCtx.Attempt),
+		attempt:           attempt,
 		observedAt:        observedAt,
 	}, true
 }
@@ -695,7 +696,7 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 		"bkn.operation.name":       operationName,
 		"interaction_id":           ec.interactionID,
 		"operation_id":             ec.operationID,
-		"attempt":                  ec.attempt,
+		"attempt":                  int(ec.attempt),
 		"payload":                  payload,
 	}
 	if ec.causationEventID != "" {
@@ -707,12 +708,12 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 	return event
 }
 
-func stableEventID(traceID, operationID, eventType string, attempt int) string {
+func stableEventID(traceID, operationID, eventType string, attempt uint32) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d", traceID, operationID, eventType, attempt)))
 	return "evt_" + hex.EncodeToString(sum[:])
 }
 
-func normalizedAttempt(attempt int) int {
+func normalizedAttempt(attempt uint32) uint32 {
 	if attempt > 0 {
 		return attempt
 	}
