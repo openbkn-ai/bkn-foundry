@@ -205,10 +205,9 @@ jobs:
       # The manifest job pins the list to these digests (see header). One file
       # per leg, named by arch; the artifact name carries the image so several
       # reusable-container-image calls in one workflow run don't collide. `__` is the
-      # delimiter because image names use `-` and can be prefixes of each other
-      # (vega-backend / vega-backend-python-base in one run): the manifest job
-      # matches `digest__<image>__*`, and `digest__vega-backend__*` cannot
-      # match `digest__vega-backend-python-base__amd64`.
+      # delimiter because image names use `-` and can be prefixes of each other.
+      # The manifest job matches `digest__<image>__*`, so the delimiters avoid
+      # matching the digest artifact of a longer image name with the same prefix.
       - name: Record image digest
         if: ${{ inputs.publish }}
         shell: bash

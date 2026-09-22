@@ -2,7 +2,14 @@ name: reusable-version
 
 on:
   workflow_call:
+    inputs:
+      publish:
+        default: false
+        type: boolean
     outputs:
+      publish:
+        value: ${{ jobs.resolve.outputs.publish }}
+        description: Whether the release may publish artifacts
       version:
         value: ${{ jobs.resolve.outputs.version }}
         description: Resolved version string
@@ -14,6 +21,7 @@ jobs:
   resolve:
     runs-on: ubuntu-latest
     outputs:
+      publish: ${{ steps.version.outputs.publish }}
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -74,5 +82,12 @@ jobs:
             VERSION="$BASE_VERSION-$SANITIZED_BRANCH.$COMMIT_DATE.sha$SHORT_SHA"
           fi
 
+          if [[ "$REF_TYPE" == "tag" || "${{ github.event_name }}" == "push" ]]; then
+            PUBLISH=true
+          else
+            PUBLISH='${{ inputs.publish }}'
+          fi
+
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
