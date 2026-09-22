@@ -206,11 +206,11 @@ func binaryDecode(parameterStatus *parameterStatus, s []byte, typ oid.Oid, cn co
 		value = int64(int16(binary.BigEndian.Uint16(s)))
 		return
 	case cn.allOid.T_uint8:
-		s, _ := strconv.ParseUint(string(s), 10, 64)
-		value = uint64(s)
+		value = parseUint64Value(s)
+		return
 	case cn.allOid.T_uint4:
-		s, _ := strconv.ParseUint(string(s), 10, 64)
-		value = uint32(s)
+		value = parseUint32Value(s)
+		return
 	case cn.allOid.T_tinyint:
 		fillByte := fill64(s)
 		if cn.databaseMode == "sqlserver" {
@@ -303,19 +303,16 @@ func textDecode(parameterStatus *parameterStatus, s []byte, typ oid.Oid, cn conn
 		value = i
 		return i
 	case cn.allOid.T_uint8:
-		s, _ := strconv.ParseUint(string(s), 10, 64)
-		value = uint64(s)
+		value = parseUint64Value(s)
 		return
 	case cn.allOid.T_uint4:
-		s, _ := strconv.ParseUint(string(s), 10, 64)
-		value = uint32(s)
+		value = parseUint32Value(s)
 		return
 	case cn.allOid.T_tinyint:
-		sVal, _ := strconv.ParseInt(string(s), 10, 64)
 		if cn.databaseMode == "sqlserver" {
-			value = uint8(sVal)
+			value = parseUint8Value(s)
 		} else {
-			value = int8(sVal)
+			value = parseInt8Value(s)
 		}
 		return
 	case cn.allOid.T_float4, cn.allOid.T_float8, cn.allOid.T_float, cn.allOid.T_real:
@@ -336,6 +333,57 @@ func textDecode(parameterStatus *parameterStatus, s []byte, typ oid.Oid, cn conn
 	}
 	value = s
 	return
+}
+
+func parseUint64Value(value []byte) uint64 {
+	parsed, err := strconv.ParseUint(string(value), 10, 64)
+	if err != nil {
+		errorf("invalid unsigned integer %q: %v", value, err)
+	}
+	return parsed
+}
+
+func parseUint32Value(value []byte) uint32 {
+	parsed, err := strconv.ParseUint(string(value), 10, 32)
+	if err != nil {
+		errorf("invalid uint32 %q: %v", value, err)
+	}
+	return uint32(parsed)
+}
+
+func parseUint16Value(value []byte) uint16 {
+	parsed, err := strconv.ParseUint(string(value), 10, 16)
+	if err != nil {
+		errorf("invalid uint16 %q: %v", value, err)
+	}
+	return uint16(parsed)
+}
+
+func parseUint8Value(value []byte) uint8 {
+	parsed, err := strconv.ParseUint(string(value), 10, 8)
+	if err != nil {
+		errorf("invalid uint8 %q: %v", value, err)
+	}
+	return uint8(parsed)
+}
+
+func parseUintNativeValue(value []byte) uint {
+	parsed, err := strconv.ParseUint(string(value), 10, strconv.IntSize)
+	if err != nil {
+		errorf("invalid uint %q: %v", value, err)
+	}
+	if parsed > uint64(^uint(0)) {
+		errorf("unsigned integer %q is out of range", value)
+	}
+	return uint(parsed)
+}
+
+func parseInt8Value(value []byte) int8 {
+	parsed, err := strconv.ParseInt(string(value), 10, 8)
+	if err != nil {
+		errorf("invalid int8 %q: %v", value, err)
+	}
+	return int8(parsed)
 }
 
 // appendEncodedText将参数转为文本格式big添加到buf中

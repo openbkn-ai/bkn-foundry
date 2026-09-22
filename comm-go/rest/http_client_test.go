@@ -7,10 +7,34 @@ package rest
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestNewRawHTTPClientUsesVerifiedTLSByDefault(t *testing.T) {
+	client := NewRawHTTPClientWithOptions(HttpClientOptions{TimeOut: 1})
+	transport := client.Transport.(*http.Transport)
+	if transport.TLSClientConfig != nil && transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("TLS certificate verification is disabled")
+	}
+}
+
+func TestNewRawHTTPClientClonesCustomTLSConfig(t *testing.T) {
+	config := &tls.Config{ServerName: "private.example"}
+	client := NewRawHTTPClientWithOptionsAndTLS(HttpClientOptions{TimeOut: 1}, config)
+	transport := client.Transport.(*http.Transport)
+	if transport.TLSClientConfig == config {
+		t.Fatal("TLS config was not cloned")
+	}
+	if got := transport.TLSClientConfig.ServerName; got != config.ServerName {
+		t.Fatalf("ServerName = %q, want %q", got, config.ServerName)
+	}
+	if transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("custom TLS config disabled certificate verification")
+	}
+}
 
 func TestHTTPClientPropagatesEffectiveLanguage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

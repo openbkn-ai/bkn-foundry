@@ -24,7 +24,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/hmac"
-	"crypto/md5"
 	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
@@ -2049,18 +2048,7 @@ func (cn *conn) auth(r *readBuf, o values) {
 			errorf("unexpected authentication response: %q", t)
 		}
 	case 5:
-		s, w := string(r.next(4)), cn.writeBuf('p')
-		w.string("md5" + md5s(md5s(o["password"]+o["user"])+s))
-		cn.send(w)
-
-		t, r := cn.recv()
-		if 'R' != t {
-			errorf("unexpected password response: %q", t)
-		}
-
-		if 0 != r.int32() {
-			errorf("unexpected authentication response: %q", t)
-		}
+		errorf("legacy MD5 authentication is disabled; configure the server to use SCRAM-SHA-256")
 	case 10:
 		sc := scram.NewClient(sha256.New, o["user"], o["password"])
 		sc.Step(nil)
@@ -2519,30 +2507,28 @@ func (cn conn) ParseOutValues(rb *readBuf, bindParams []driver.Value, colTyps []
 					*dest.(*[]byte) = byteValues[outNum]
 				}
 			case cn.allOid.T_uint8:
-				s, _ := strconv.ParseUint(string(byteValues[outNum]), 10, 64)
 				switch dest.(type) {
 				case *uint:
-					*dest.(*uint) = uint(s)
+					*dest.(*uint) = parseUintNativeValue(byteValues[outNum])
 				case *uint64:
-					*dest.(*uint64) = uint64(s)
+					*dest.(*uint64) = parseUint64Value(byteValues[outNum])
 				case *uint32:
-					*dest.(*uint32) = uint32(s)
+					*dest.(*uint32) = parseUint32Value(byteValues[outNum])
 				case *uint16:
-					*dest.(*uint16) = uint16(s)
+					*dest.(*uint16) = parseUint16Value(byteValues[outNum])
 				case *uint8:
-					*dest.(*uint8) = uint8(s)
+					*dest.(*uint8) = parseUint8Value(byteValues[outNum])
 				}
 			case cn.allOid.T_uint4:
-				s, _ := strconv.ParseUint(string(byteValues[outNum]), 10, 64)
 				switch dest.(type) {
 				case *uint:
-					*dest.(*uint) = uint(s)
+					*dest.(*uint) = uint(parseUint32Value(byteValues[outNum]))
 				case *uint32:
-					*dest.(*uint32) = uint32(s)
+					*dest.(*uint32) = parseUint32Value(byteValues[outNum])
 				case *uint16:
-					*dest.(*uint16) = uint16(s)
+					*dest.(*uint16) = parseUint16Value(byteValues[outNum])
 				case *uint8:
-					*dest.(*uint8) = uint8(s)
+					*dest.(*uint8) = parseUint8Value(byteValues[outNum])
 				}
 			case cn.allOid.T_float8, cn.allOid.T_float:
 				f, _ := strconv.ParseFloat(string(byteValues[outNum]), 64)
@@ -2653,19 +2639,18 @@ func (cn conn) ParseOutValues(rb *readBuf, bindParams []driver.Value, colTyps []
 				(*dest.(*CursorString)).CursorName = string(byteValues[outNum])
 			case cn.allOid.T_numeric, cn.allOid.T_money: //decimal
 				newString := strings.ReplaceAll(string(byteValues[outNum]), ",", "")
-				s, _ := strconv.ParseUint(newString, 10, 64)
 				f, _ := strconv.ParseFloat(newString, 64)
 				switch dest.(type) {
 				case *uint:
-					*dest.(*uint) = uint(s)
+					*dest.(*uint) = parseUintNativeValue([]byte(newString))
 				case *uint64:
-					*dest.(*uint64) = uint64(s)
+					*dest.(*uint64) = parseUint64Value([]byte(newString))
 				case *uint32:
-					*dest.(*uint32) = uint32(s)
+					*dest.(*uint32) = parseUint32Value([]byte(newString))
 				case *uint16:
-					*dest.(*uint16) = uint16(s)
+					*dest.(*uint16) = parseUint16Value([]byte(newString))
 				case *uint8:
-					*dest.(*uint8) = uint8(s)
+					*dest.(*uint8) = parseUint8Value([]byte(newString))
 				case *int:
 					if GetPlatformBit() == 64 {
 						*dest.(*int) = int(binary.BigEndian.Uint64(byteValues[outNum]))
@@ -2679,7 +2664,7 @@ func (cn conn) ParseOutValues(rb *readBuf, bindParams []driver.Value, colTyps []
 				case *int16:
 					*dest.(*int16) = int16(binary.BigEndian.Uint16(byteValues[outNum]))
 				case *int8:
-					*dest.(*uint8) = uint8(s)
+					*dest.(*int8) = parseInt8Value([]byte(newString))
 				case *float64:
 					*dest.(*float64) = f
 				case *float32:
@@ -2845,13 +2830,6 @@ func QuoteLiteral(literal string) (s string) {
 		literal = `'` + literal + `'`
 	}
 	s = literal
-	return
-}
-
-func md5s(s string) (md5String string) {
-	h := md5.New()
-	h.Write([]byte(s))
-	md5String = fmt.Sprintf("%x", h.Sum(nil))
 	return
 }
 

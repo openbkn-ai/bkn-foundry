@@ -31,22 +31,14 @@ type OpenSearchClientConfig struct {
 
 // NewOpenSearchClient initializes an OpenSearch client.
 func NewOpenSearchClient(cfg OpenSearchClientConfig) *opensearch.Client {
+	return NewOpenSearchClientWithTLSConfig(cfg, nil)
+}
+
+// NewOpenSearchClientWithTLSConfig initializes an OpenSearch client with
+// custom TLS roots or a server name. Certificate verification is always enabled.
+func NewOpenSearchClientWithTLSConfig(cfg OpenSearchClientConfig, tlsConfig *tls.Config) *opensearch.Client {
 	// Initialize the HTTP client.
-	transport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second, // Connection timeout.
-			KeepAlive: 60 * time.Second, // Keep-alive duration.
-		}).DialContext, // Dialer configuration.
-		MaxIdleConns:          1000,             // Maximum idle connections.
-		IdleConnTimeout:       60 * time.Second, // Idle connection timeout.
-		ExpectContinueTimeout: 30 * time.Second, // Wait time for the first response.
-		MaxIdleConnsPerHost:   500,              // Maximum idle connections per host.
-		TLSHandshakeTimeout:   30 * time.Second,
-		//nolint:gosec // Existing deployments may use self-signed certificates.
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	}
+	transport := newOpenSearchTransport(tlsConfig)
 
 	// Endpoint address.
 	address := fmt.Sprintf("%s://%s:%d", cfg.Protocol, cfg.Host, cfg.Port)
@@ -74,6 +66,21 @@ func NewOpenSearchClient(cfg OpenSearchClientConfig) *opensearch.Client {
 
 	CheckConnection(osc)
 	return osc
+}
+
+func newOpenSearchTransport(tlsConfig *tls.Config) *http.Transport {
+	return &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second, // Connection timeout.
+			KeepAlive: 60 * time.Second, // Keep-alive duration.
+		}).DialContext, // Dialer configuration.
+		MaxIdleConns:          1000,             // Maximum idle connections.
+		IdleConnTimeout:       60 * time.Second, // Idle connection timeout.
+		ExpectContinueTimeout: 30 * time.Second, // Wait time for the first response.
+		MaxIdleConnsPerHost:   500,              // Maximum idle connections per host.
+		TLSHandshakeTimeout:   30 * time.Second,
+		TLSClientConfig:       cloneTLSConfig(tlsConfig),
+	}
 }
 
 // CheckConnection verifies the OpenSearch connection.

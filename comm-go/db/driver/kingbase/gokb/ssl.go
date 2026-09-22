@@ -32,34 +32,17 @@ import (
 
 // ssl基于sslmode和相关设置返回一个用于升级net.Conn的函数
 func ssl(o values) (handler func(net.Conn) (nc net.Conn, err error), err error) {
-	verifyCaOnly := false
-	tlsConf := tls.Config{}
 	switch mode := o["sslmode"]; mode {
-	// 默认为"require"
-	case "", "require":
-		// 在Go 1.3版本之后TLS需要全验证，在此处跳过TLS的验证
-		tlsConf.InsecureSkipVerify = true
-
-		// 为了之前版本向后兼容
-		// 如果根CA文件存在，sslmode=require的情况下的处理和verify-ca相同
-		// 这意味着服务端证书对CA是有效的，我们不提倡依赖这种行为，需要证书验证的应用应该使用verify-ca或verify-full.
-		if sslrootcert, ok := o["sslrootcert"]; ok {
-			if _, err := os.Stat(sslrootcert); nil == err {
-				verifyCaOnly = true
-			} else {
-				delete(o, "sslrootcert")
-			}
-		}
-	case "verify-ca":
-		tlsConf.InsecureSkipVerify = true
-		verifyCaOnly = true
-	case "verify-full":
-		tlsConf.ServerName = o["host"]
+	case "", "require", "verify-ca", "verify-full":
 	case "disable":
 		return nil, nil
 	default:
 		return nil, fmterrorf(`unsupported sslmode %q; only "require" (default), "verify-full", "verify-ca", and "disable" supported`, mode)
 	}
+
+	// All TLS modes validate both the certificate chain and server name. Private
+	// deployments can provide their CA through sslrootcert.
+	tlsConf := tls.Config{ServerName: o["host"]}
 
 	err = sslClientCertificates(&tlsConf, o)
 	if nil != err {
@@ -75,14 +58,7 @@ func ssl(o values) (handler func(net.Conn) (nc net.Conn, err error), err error) 
 	tlsConf.Renegotiation = tls.RenegotiateFreelyAsClient
 
 	return func(conn net.Conn) (nc net.Conn, err error) {
-		client := tls.Client(conn, &tlsConf)
-		if verifyCaOnly {
-			err = sslVerifyCertificateAuthority(client, &tlsConf)
-			if nil != err {
-				return nil, err
-			}
-		}
-		return client, nil
+		return tls.Client(conn, &tlsConf), nil
 	}, nil
 }
 
@@ -141,27 +117,4 @@ func sslCertificateAuthority(tlsConf *tls.Config, o values) (err error) {
 	}
 
 	return nil
-}
-
-// sslVerifyCertificateAuthority向后端发起TLS握手并根据CA验证当前的证书
-// sslrootcert没有被指定时，则通过系统CA
-func sslVerifyCertificateAuthority(client *tls.Conn, tlsConf *tls.Config) (err error) {
-	err = client.Handshake()
-	if nil != err {
-		return err
-	}
-	certs := client.ConnectionState().PeerCertificates
-	opts := x509.VerifyOptions{
-		DNSName:       client.ConnectionState().ServerName,
-		Intermediates: x509.NewCertPool(),
-		Roots:         tlsConf.RootCAs,
-	}
-	for i, cert := range certs {
-		if 0 == i {
-			continue
-		}
-		opts.Intermediates.AddCert(cert)
-	}
-	_, err = certs[0].Verify(opts)
-	return err
 }
