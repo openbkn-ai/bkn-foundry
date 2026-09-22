@@ -82,15 +82,23 @@ func TestConnectorFactoryApplyPersistedConnectorTypes(t *testing.T) {
 	assert.ErrorIs(t, err, ErrConnectorUnavailable)
 }
 
-func TestConnectorFactoryIsConnectorAvailable(t *testing.T) {
+func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
 	cf := &connectorFactory{
 		connectors: map[string]interfaces.Connector{
 			"registered": nil,
 		},
+		connectorRequiredEditions: map[string]licverify.Edition{
+			"sqlserver": licverify.EditionProfessional,
+		},
 	}
 
-	assert.True(t, cf.IsConnectorAvailable("registered"))
-	assert.False(t, cf.IsConnectorAvailable("missing"))
+	registered := cf.GetConnectorAvailability("registered")
+	assert.True(t, registered.Available)
+	assert.Empty(t, registered.RequiredEdition)
+
+	missing := cf.GetConnectorAvailability("missing")
+	assert.False(t, missing.Available)
+	assert.Empty(t, missing.RequiredEdition)
 }
 
 func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
@@ -106,7 +114,9 @@ func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
 		},
 	}
 
-	assert.False(t, cf.IsConnectorAvailable("sqlserver"))
+	availability := cf.GetConnectorAvailability("sqlserver")
+	assert.False(t, availability.Available)
+	assert.Equal(t, licverify.EditionProfessional, availability.RequiredEdition)
 	connector, err := cf.CreateConnectorInstance(context.Background(), "sqlserver", nil)
 	require.Error(t, err)
 	assert.Nil(t, connector)
@@ -120,7 +130,7 @@ func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
 	assert.ErrorIs(t, err, ErrConnectorEntitlementDenied)
 
 	entitlement.SetGate(entitlement.FixedGate(licverify.EditionProfessional))
-	assert.True(t, cf.IsConnectorAvailable("sqlserver"))
+	assert.True(t, cf.GetConnectorAvailability("sqlserver").Available)
 }
 
 func TestConnectorFactoryRegisterConnector(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 	context "context"
 	sql "database/sql"
 	reflect "reflect"
-	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 
+	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 

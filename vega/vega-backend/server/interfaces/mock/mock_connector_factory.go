@@ -81,6 +81,20 @@ func (mr *MockConnectorFactoryMockRecorder) Finalize() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Finalize", reflect.TypeOf((*MockConnectorFactory)(nil).Finalize))
 }
 
+// GetConnectorAvailability mocks base method.
+func (m *MockConnectorFactory) GetConnectorAvailability(tp string) interfaces.ConnectorAvailability {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetConnectorAvailability", tp)
+	ret0, _ := ret[0].(interfaces.ConnectorAvailability)
+	return ret0
+}
+
+// GetConnectorAvailability indicates an expected call of GetConnectorAvailability.
+func (mr *MockConnectorFactoryMockRecorder) GetConnectorAvailability(tp any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnectorAvailability", reflect.TypeOf((*MockConnectorFactory)(nil).GetConnectorAvailability), tp)
+}
+
 // GetConnectorFieldConfig mocks base method.
 func (m *MockConnectorFactory) GetConnectorFieldConfig(ctx context.Context, ct *interfaces.ConnectorType) (map[string]interfaces.ConnectorFieldConfig, error) {
 	m.ctrl.T.Helper()
@@ -108,20 +122,6 @@ func (m *MockConnectorFactory) GetSensitiveFields(tp string) []string {
 func (mr *MockConnectorFactoryMockRecorder) GetSensitiveFields(tp any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockConnectorFactory)(nil).GetSensitiveFields), tp)
-}
-
-// IsConnectorAvailable mocks base method.
-func (m *MockConnectorFactory) IsConnectorAvailable(tp string) bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsConnectorAvailable", tp)
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// IsConnectorAvailable indicates an expected call of IsConnectorAvailable.
-func (mr *MockConnectorFactoryMockRecorder) IsConnectorAvailable(tp any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsConnectorAvailable", reflect.TypeOf((*MockConnectorFactory)(nil).IsConnectorAvailable), tp)
 }
 
 // RegisterConnector mocks base method.

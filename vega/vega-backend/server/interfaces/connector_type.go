@@ -6,6 +6,8 @@
 
 package interfaces
 
+import "github.com/openbkn-ai/licverify"
+
 const (
 	ConnectorModeLocal  string = "local"  // It runs built-in within the vega-backend process
 	ConnectorModeRemote string = "remote" // It runs as an independent service and is invoked via HTTP
@@ -86,7 +88,9 @@ type ConnectorType struct {
 	Endpoint    string   `json:"endpoint"`    // Only remote mode, remote service address
 	Enabled     bool     `json:"enabled"`     // Whether to enable
 
-	Available   bool                            `json:"available"`              // Whether the current binary contains the implementation of this connector
+	Available       bool              `json:"available"`                  // Whether the current binary contains the implementation of this connector
+	RequiredEdition licverify.Edition `json:"required_edition,omitempty"` // Minimum edition required by this connector implementation
+
 	FieldConfig map[string]ConnectorFieldConfig `json:"field_config,omitempty"` // Runtime field configuration (compatible with JSON Schema properties)
 
 	Operations []string `json:"operations"`

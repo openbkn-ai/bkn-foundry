@@ -115,7 +115,9 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 	}
 
 	ct.Operations = []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}
-	ct.Available = cts.cf.IsConnectorAvailable(ct.Type)
+	availability := cts.cf.GetConnectorAvailability(ct.Type)
+	ct.Available = availability.Available
+	ct.RequiredEdition = availability.RequiredEdition
 	if !ct.Available {
 		span.SetStatus(codes.Ok, "")
 		return ct, nil
@@ -145,7 +147,9 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 
 	connectorTypes := make([]*interfaces.ConnectorType, 0)
 	for _, c := range connectorTypesArr {
-		c.Available = cts.cf.IsConnectorAvailable(c.Type)
+		availability := cts.cf.GetConnectorAvailability(c.Type)
+		c.Available = availability.Available
+		c.RequiredEdition = availability.RequiredEdition
 		c.FieldConfig = nil
 		c.Operations = []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}
 		if params.Available != nil && c.Available != *params.Available {

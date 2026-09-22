@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/licverify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -35,12 +36,17 @@ func newTestConnectorTypeService(t *testing.T) (*connectorTypeService, *vmock.Mo
 	}, cta, ps
 }
 
-func mockConnectorAvailability(t *testing.T, service *connectorTypeService, availableByType map[string]bool) {
+func mockConnectorAvailability(t *testing.T, service *connectorTypeService, availableByType map[string]bool, requiredEditions map[string]licverify.Edition) {
 	t.Helper()
 
 	connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
-	connectorFactory.EXPECT().IsConnectorAvailable(gomock.Any()).AnyTimes().
-		DoAndReturn(func(tp string) bool { return availableByType[tp] })
+	connectorFactory.EXPECT().GetConnectorAvailability(gomock.Any()).AnyTimes().
+		DoAndReturn(func(tp string) interfaces.ConnectorAvailability {
+			return interfaces.ConnectorAvailability{
+				Available:       availableByType[tp],
+				RequiredEdition: requiredEditions[tp],
+			}
+		})
 	service.cf = connectorFactory
 }
 
@@ -137,7 +143,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 	t.Run("returns connector type with read-only operations", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
 		connectorType := &interfaces.ConnectorType{Type: "remote-api", Name: "Remote API"}
-		mockConnectorAvailability(t, service, map[string]bool{"remote-api": true})
+		mockConnectorAvailability(t, service, map[string]bool{"remote-api": true}, nil)
 
 		cta.EXPECT().GetByType(gomock.Any(), "remote-api").Return(connectorType, nil)
 		service.cf.(*vmock.MockConnectorFactory).EXPECT().
@@ -149,6 +155,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 		require.NoError(t, err)
 		require.Same(t, connectorType, got)
 		assert.True(t, got.Available)
+		assert.Empty(t, got.RequiredEdition)
 		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{"host": {Type: "string", Required: true}}, got.FieldConfig)
 		assert.Equal(t, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, got.Operations)
 	})
@@ -167,7 +174,9 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 	t.Run("returns unavailable connector metadata without runtime field config", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
 		connectorType := &interfaces.ConnectorType{Type: "sqlserver", Name: "SQL Server"}
-		mockConnectorAvailability(t, service, map[string]bool{"sqlserver": false})
+		mockConnectorAvailability(t, service, map[string]bool{"sqlserver": false}, map[string]licverify.Edition{
+			"sqlserver": licverify.EditionProfessional,
+		})
 
 		cta.EXPECT().GetByType(gomock.Any(), "sqlserver").Return(connectorType, nil)
 
@@ -176,6 +185,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 		require.NoError(t, err)
 		assert.Same(t, connectorType, got)
 		assert.False(t, got.Available)
+		assert.Equal(t, licverify.EditionProfessional, got.RequiredEdition)
 		assert.Nil(t, got.FieldConfig)
 		assert.Equal(t, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, got.Operations)
 	})
@@ -183,7 +193,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 	t.Run("returns a dedicated error when runtime field config is unavailable", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
 		connectorType := &interfaces.ConnectorType{Type: "remote-api", Name: "Remote API"}
-		mockConnectorAvailability(t, service, map[string]bool{"remote-api": true})
+		mockConnectorAvailability(t, service, map[string]bool{"remote-api": true}, nil)
 
 		cta.EXPECT().GetByType(gomock.Any(), "remote-api").Return(connectorType, nil)
 		service.cf.(*vmock.MockConnectorFactory).EXPECT().
@@ -203,7 +213,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 
 	t.Run("returns detail without connector permission", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
-		mockConnectorAvailability(t, service, map[string]bool{"remote-api": false})
+		mockConnectorAvailability(t, service, map[string]bool{"remote-api": false}, nil)
 		cta.EXPECT().GetByType(gomock.Any(), "remote-api").
 			Return(&interfaces.ConnectorType{Type: "remote-api"}, nil)
 
@@ -218,7 +228,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 func TestConnectorTypeServiceList(t *testing.T) {
 	t.Run("lists connector types without permission filtering then paginates", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
-		mockConnectorAvailability(t, service, map[string]bool{"a": true, "c": true})
+		mockConnectorAvailability(t, service, map[string]bool{"a": true, "c": true}, nil)
 		params := interfaces.ConnectorTypesQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 1, Limit: 1},
 		}
@@ -244,7 +254,10 @@ func TestConnectorTypeServiceList(t *testing.T) {
 
 	t.Run("limit -1 returns all connector types", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
-		mockConnectorAvailability(t, service, map[string]bool{"a": true, "b": true})
+		mockConnectorAvailability(t, service, map[string]bool{"a": true, "b": true}, map[string]licverify.Edition{
+			"a": licverify.EditionCommunity,
+			"b": licverify.EditionProfessional,
+		})
 		params := interfaces.ConnectorTypesQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
 		}
@@ -259,6 +272,8 @@ func TestConnectorTypeServiceList(t *testing.T) {
 		assert.Len(t, got, 2)
 		assert.True(t, got[0].Available)
 		assert.True(t, got[1].Available)
+		assert.Equal(t, licverify.EditionCommunity, got[0].RequiredEdition)
+		assert.Equal(t, licverify.EditionProfessional, got[1].RequiredEdition)
 	})
 
 	t.Run("filters by runtime availability before pagination", func(t *testing.T) {
@@ -273,7 +288,7 @@ func TestConnectorTypeServiceList(t *testing.T) {
 			{Type: "b"},
 			{Type: "c"},
 		}
-		mockConnectorAvailability(t, service, map[string]bool{"b": true, "c": true})
+		mockConnectorAvailability(t, service, map[string]bool{"b": true, "c": true}, nil)
 
 		cta.EXPECT().List(gomock.Any(), params).Return(types, int64(len(types)), nil)
 
@@ -288,7 +303,7 @@ func TestConnectorTypeServiceList(t *testing.T) {
 
 	t.Run("offset outside list returns empty page with total", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
-		mockConnectorAvailability(t, service, map[string]bool{"a": true})
+		mockConnectorAvailability(t, service, map[string]bool{"a": true}, nil)
 		params := interfaces.ConnectorTypesQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 10},
 		}

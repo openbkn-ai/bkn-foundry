@@ -13,6 +13,14 @@ import (
 
 //go:generate mockgen -source ../interfaces/connector_factory.go -destination ../interfaces/mock/mock_connector_factory.go
 
+// ConnectorAvailability describes whether a connector can currently be used
+// and the edition declared by its local implementation. RequiredEdition is
+// empty for remote connectors and implementations not bundled in this binary.
+type ConnectorAvailability struct {
+	Available       bool
+	RequiredEdition licverify.Edition
+}
+
 // ConnectorFactory owns the process-wide connector lifecycle. During startup,
 // it assembles built-in and extension local connectors, then finalizes their
 // persisted configuration before serving requests. At runtime, it validates
@@ -49,9 +57,9 @@ type ConnectorFactory interface {
 	// supplied type and configuration.
 	CreateConnectorInstance(ctx context.Context, tp string, cfg ConnectorConfig) (Connector, error)
 
-	// IsConnectorAvailable reports whether this process provides the connector
-	// type under the current entitlement.
-	IsConnectorAvailable(tp string) bool
+	// GetConnectorAvailability returns the connector's current availability and
+	// declared edition requirement in one consistent snapshot.
+	GetConnectorAvailability(tp string) ConnectorAvailability
 
 	// GetConnectorFieldConfig returns the runtime field semantics for a
 	// connector type.

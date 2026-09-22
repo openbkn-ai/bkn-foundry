@@ -200,18 +200,21 @@ func (cf *connectorFactory) SetConnectorEnabled(tp string, enabled bool) {
 	logger.Infof("Skip runtime enabled update for connector %s: not registered in this process", tp)
 }
 
-// IsConnectorAvailable reports whether the running binary contains a registered
-// implementation for the connector type.
-func (cf *connectorFactory) IsConnectorAvailable(tp string) bool {
+// GetConnectorAvailability reports the connector's current availability and
+// declared edition requirement from one registry snapshot.
+func (cf *connectorFactory) GetConnectorAvailability(tp string) interfaces.ConnectorAvailability {
 	cf.mu.RLock()
 	defer cf.mu.RUnlock()
 
 	_, exists := cf.connectors[tp]
 	if !exists {
-		return false
+		return interfaces.ConnectorAvailability{}
 	}
 	minimumEdition, hasMinimumEdition := cf.connectorRequiredEditions[tp]
-	return !hasMinimumEdition || entitlement.AtLeast(minimumEdition)
+	return interfaces.ConnectorAvailability{
+		Available:       !hasMinimumEdition || entitlement.AtLeast(minimumEdition),
+		RequiredEdition: minimumEdition,
+	}
 }
 
 // CreateConnector creates connector instances based on the type name

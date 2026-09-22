@@ -17,6 +17,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/licverify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -206,10 +207,11 @@ func Test_ConnectorTypeRestHandler_GetConnectorType(t *testing.T) {
 		engine, cts := setupConnectorTypeHandlerTest(t)
 		cts.EXPECT().GetByType(gomock.Any(), "mysql").
 			Return(&interfaces.ConnectorType{
-				Type:     "mysql",
-				Name:     "MySQL",
-				Mode:     interfaces.ConnectorModeLocal,
-				Category: interfaces.ConnectorCategoryTable,
+				Type:            "mysql",
+				Name:            "MySQL",
+				Mode:            interfaces.ConnectorModeLocal,
+				Category:        interfaces.ConnectorCategoryTable,
+				RequiredEdition: licverify.EditionProfessional,
 			}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/connector-types/mysql", nil)
@@ -220,6 +222,7 @@ func Test_ConnectorTypeRestHandler_GetConnectorType(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"type":"mysql"`)
 		assert.Contains(t, w.Body.String(), `"name":"MySQL"`)
+		assert.Contains(t, w.Body.String(), `"required_edition":"professional"`)
 	})
 
 	t.Run("returns not found for nil connector type", func(t *testing.T) {

@@ -376,6 +376,10 @@ components:
         available:
           description: Whether the running binary includes this connector implementation
           type: boolean
+        required_edition:
+          description: Minimum edition declared by a bundled local connector implementation; omitted for remote connectors and implementations not bundled in this binary.
+          type: string
+          enum: [community, professional, enterprise, industry]
         operations:
           description: Read-only operation reported by this endpoint; connector type management permissions are checked separately.
           type: array
@@ -438,6 +442,10 @@ components:
         available:
           description: Whether the running binary includes this connector implementation
           type: boolean
+        required_edition:
+          description: Minimum edition declared by a bundled local connector implementation; omitted for remote connectors and implementations not bundled in this binary.
+          type: string
+          enum: [community, professional, enterprise, industry]
         operations:
           description: Read-only operation reported by this endpoint; connector type management permissions are checked separately.
           type: array
