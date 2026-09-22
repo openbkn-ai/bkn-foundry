@@ -269,6 +269,16 @@ Description = "The operation-audit event was not found."
 Solution = "Check the event_id and scope."
 ErrorLink = ""
 
+[VegaBackend.Connector.EntitlementDenied]
+Description = "The current license does not include this connector"
+Solution = "Upgrade the license to an edition that includes this connector"
+ErrorLink = ""
+
+[VegaBackend.Connector.Disabled]
+Description = "This connector is disabled"
+Solution = "Enable the connector before retrying"
+ErrorLink = ""
+
 [VegaBackend.Validation.Detail]
 MultiCatalogJoinNotSupported = "Cross-catalog JOIN is not supported yet; Trino or DuckDB support is planned."
 SemanticUnderstandingInsufficientSampleDataSingular = "The {{.fields}} field has insufficient sample data."

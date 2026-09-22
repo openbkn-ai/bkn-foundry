@@ -269,6 +269,16 @@ Description = "未找到操作审计事件。"
 Solution = "请检查 event_id 和查询范围。"
 ErrorLink = ""
 
+[VegaBackend.Connector.EntitlementDenied]
+Description = "当前许可证不包含此连接器"
+Solution = "请升级到包含此连接器的许可证版本"
+ErrorLink = ""
+
+[VegaBackend.Connector.Disabled]
+Description = "此连接器已被禁用"
+Solution = "请启用连接器后重试"
+ErrorLink = ""
+
 [VegaBackend.Validation.Detail]
 MultiCatalogJoinNotSupported = "暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。"
 SemanticUnderstandingInsufficientSampleDataSingular = "字段 {{.fields}} 的样本数据不足。"

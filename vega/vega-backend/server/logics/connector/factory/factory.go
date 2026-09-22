@@ -36,6 +36,10 @@ var (
 	// ErrConnectorEntitlementDenied indicates that the connector implementation
 	// exists in this binary but requires an edition unavailable to this process.
 	ErrConnectorEntitlementDenied = errors.New("connector entitlement denied")
+
+	// ErrConnectorDisabled indicates that an otherwise available connector is
+	// disabled by its persisted connector-type configuration.
+	ErrConnectorDisabled = errors.New("connector disabled")
 )
 
 // ConnectorFactory creates and manages data source connectors
@@ -220,7 +224,7 @@ func (cf *connectorFactory) CreateConnectorInstance(ctx context.Context, tp stri
 			return nil, fmt.Errorf("connector %s requires edition %s: %w", tp, minimumEdition, ErrConnectorEntitlementDenied)
 		}
 		if !connector.GetEnabled() {
-			return nil, fmt.Errorf("connector %s is disabled", tp)
+			return nil, fmt.Errorf("connector %s is disabled: %w", tp, ErrConnectorDisabled)
 		}
 
 		cntor, err := connector.New(cfg)

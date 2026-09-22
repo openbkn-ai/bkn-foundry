@@ -38,6 +38,12 @@ const (
 	VegaBackend_CountExceeded_FilterConditionSubConds     = "VegaBackend.CountExceeded.FilterConditionSubConds"
 	VegaBackend_UnsupportFilterConditionOperation         = "VegaBackend.UnsupportFilterConditionOperation"
 
+	// 403 Forbidden (connector entitlement)
+	VegaBackend_Connector_EntitlementDenied = "VegaBackend.Connector.EntitlementDenied"
+
+	// 409 Conflict (connector configuration state)
+	VegaBackend_Connector_Disabled = "VegaBackend.Connector.Disabled"
+
 	// 406 Not Acceptable
 	VegaBackend_InvalidRequestHeader_ContentType = "VegaBackend.InvalidRequestHeader.ContentType"
 
@@ -85,6 +91,12 @@ var (
 		VegaBackend_NullParameter_FilterConditionOperation,
 		VegaBackend_CountExceeded_FilterConditionSubConds,
 		VegaBackend_UnsupportFilterConditionOperation,
+
+		// 403 Forbidden
+		VegaBackend_Connector_EntitlementDenied,
+
+		// 409 Conflict
+		VegaBackend_Connector_Disabled,
 
 		// 406 Not Acceptable
 		VegaBackend_InvalidRequestHeader_ContentType,

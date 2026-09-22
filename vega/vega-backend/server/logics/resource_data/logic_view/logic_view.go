@@ -2,6 +2,7 @@ package logic_view
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -43,6 +44,17 @@ type logicViewService struct {
 	rs         interfaces.ResourceService
 	ps         interfaces.PermissionService
 	qs         interfaces.RawQueryService
+}
+
+func connectorCreationError(ctx context.Context, err error) error {
+	if errors.Is(err, factory.ErrConnectorEntitlementDenied) {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
+	}
+	if errors.Is(err, factory.ErrConnectorDisabled) {
+		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_Connector_Disabled).WithErrorDetails(err.Error())
+	}
+	return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		WithErrorDetails(fmt.Sprintf("failed to create connector: %v", err))
 }
 
 // NewLogicViewService creates a new ResourceDataService.
@@ -552,8 +564,7 @@ func (lvs *logicViewService) executeIndexQuery(ctx context.Context, catalog *int
 	connector, err := lvs.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-			WithErrorDetails(fmt.Sprintf("failed to create connector: %v", err))
+		return nil, 0, connectorCreationError(ctx, err)
 	}
 
 	if err := connector.Connect(ctx); err != nil {
@@ -594,8 +605,7 @@ func (lvs *logicViewService) executeTableQuery(ctx context.Context, catalog *int
 	connector, err := lvs.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-			WithErrorDetails(fmt.Sprintf("failed to create connector: %v", err))
+		return nil, 0, connectorCreationError(ctx, err)
 	}
 
 	if err := connector.Connect(ctx); err != nil {

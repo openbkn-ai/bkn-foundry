@@ -419,6 +419,7 @@ func TestConnectorFactorySetEnabledCreateAndSensitiveFields(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "is disabled")
+		assert.ErrorIs(t, err, ErrConnectorDisabled)
 
 		cf.SetConnectorEnabled("localdb", true)
 		got, err = cf.CreateConnectorInstance(ctx, "localdb", cfg)

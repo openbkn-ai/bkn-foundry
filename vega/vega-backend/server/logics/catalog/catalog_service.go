@@ -51,6 +51,17 @@ const (
 	maximumConnectionTestResultLength      = 2048
 )
 
+func connectorInitializationError(ctx context.Context, err error) error {
+	if errors.Is(err, factory.ErrConnectorEntitlementDenied) {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
+	}
+	if errors.Is(err, factory.ErrConnectorDisabled) {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled).WithErrorDetails(err.Error())
+	}
+	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
+}
+
 var (
 	cServiceOnce sync.Once
 	cService     interfaces.CatalogService
@@ -198,8 +209,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		connector, err := cs.cf.CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
-			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
+			return "", connectorInitializationError(ctx, err)
 		}
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
@@ -799,8 +809,7 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 		connector, err := cs.cf.CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
+			return connectorInitializationError(ctx, err)
 		}
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
@@ -1360,8 +1369,7 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	connector, err := cs.cf.CreateConnectorInstance(ctx, connectorType, config)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to create connector", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
+		return nil, connectorInitializationError(ctx, err)
 	}
 	defer func() { _ = connector.Close(ctx) }()
 
