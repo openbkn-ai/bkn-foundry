@@ -289,7 +289,11 @@ type ManagedProxyAccess interface {
 	Archive(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	CheckGrant(ctx context.Context, proxyAccountID, grantorID string, source ProxyGrantSourceSpec) (ProxyGrantCheckResult, error)
 	CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantBatchCheckResult, error)
+	CheckGrantDelta(ctx context.Context, proxyAccountID, grantorID string,
+		upserts, removals []ProxyGrantSourceSpec) (ProxyGrantBatchCheckResult, error)
 	SyncGrants(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64,
 		snapshotVersion string, sources []ProxyGrantSourceSpec) (ProxyGrantSyncResult, error)
+	SyncGrantDelta(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64,
+		baseSnapshotVersion, targetSnapshotVersion string, upserts, removals []ProxyGrantSourceSpec) (ProxyGrantSyncResult, error)
 	ReconcileGrants(ctx context.Context, proxyAccountID, requestedBy string) (ProxyGrantReconcileResult, error)
 }

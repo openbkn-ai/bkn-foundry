@@ -263,6 +263,11 @@ func (s *managedProxyAccessStub) CheckGrants(_ context.Context, _, grantorID str
 	return result, nil
 }
 
+func (s *managedProxyAccessStub) CheckGrantDelta(ctx context.Context, proxyID, grantorID string,
+	upserts, _ []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	return s.CheckGrants(ctx, proxyID, grantorID, upserts)
+}
+
 func TestPreflightProxySourcesRejectsLegacySafeResponseWithoutDelegators(t *testing.T) {
 	service := &knowledgeNetworkService{mpa: &managedProxyAccessStub{allowed: true, omitResolved: true}}
 	_, err := service.preflightProxySources(t.Context(), "proxy-1", "editor-1", []interfaces.ProxyGrantSourceSpec{{
@@ -302,6 +307,18 @@ func (s *managedProxyAccessStub) SyncGrants(_ context.Context, _, _ string, gene
 	s.syncVersions = append(s.syncVersions, snapshotVersion)
 	if s.events != nil {
 		*s.events = append(*s.events, "grants:sync")
+	}
+	return interfaces.ProxyGrantSyncResult{}, s.syncErr
+}
+
+func (s *managedProxyAccessStub) SyncGrantDelta(_ context.Context, _, _ string, generation int64,
+	_, targetSnapshotVersion string, upserts, _ []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
+	s.syncCalls++
+	s.synced = append([]interfaces.ProxyGrantSourceSpec(nil), upserts...)
+	s.syncGenerations = append(s.syncGenerations, generation)
+	s.syncVersions = append(s.syncVersions, targetSnapshotVersion)
+	if s.events != nil {
+		*s.events = append(*s.events, "grants:sync-delta")
 	}
 	return interfaces.ProxyGrantSyncResult{}, s.syncErr
 }

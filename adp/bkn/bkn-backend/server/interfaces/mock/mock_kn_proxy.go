@@ -358,6 +358,21 @@ func (mr *MockManagedProxyAccessMockRecorder) CheckGrant(ctx, proxyAccountID, gr
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckGrant", reflect.TypeOf((*MockManagedProxyAccess)(nil).CheckGrant), ctx, proxyAccountID, grantorID, source)
 }
 
+// CheckGrantDelta mocks base method.
+func (m *MockManagedProxyAccess) CheckGrantDelta(ctx context.Context, proxyAccountID, grantorID string, upserts, removals []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckGrantDelta", ctx, proxyAccountID, grantorID, upserts, removals)
+	ret0, _ := ret[0].(interfaces.ProxyGrantBatchCheckResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckGrantDelta indicates an expected call of CheckGrantDelta.
+func (mr *MockManagedProxyAccessMockRecorder) CheckGrantDelta(ctx, proxyAccountID, grantorID, upserts, removals any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckGrantDelta", reflect.TypeOf((*MockManagedProxyAccess)(nil).CheckGrantDelta), ctx, proxyAccountID, grantorID, upserts, removals)
+}
+
 // CheckGrants mocks base method.
 func (m *MockManagedProxyAccess) CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
 	m.ctrl.T.Helper()
@@ -447,4 +462,19 @@ func (m *MockManagedProxyAccess) SyncGrants(ctx context.Context, proxyAccountID,
 func (mr *MockManagedProxyAccessMockRecorder) SyncGrants(ctx, proxyAccountID, grantorID, syncGeneration, snapshotVersion, sources any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncGrants", reflect.TypeOf((*MockManagedProxyAccess)(nil).SyncGrants), ctx, proxyAccountID, grantorID, syncGeneration, snapshotVersion, sources)
+}
+
+// SyncGrantDelta mocks base method.
+func (m *MockManagedProxyAccess) SyncGrantDelta(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64, baseSnapshotVersion, targetSnapshotVersion string, upserts, removals []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncGrantDelta", ctx, proxyAccountID, grantorID, syncGeneration, baseSnapshotVersion, targetSnapshotVersion, upserts, removals)
+	ret0, _ := ret[0].(interfaces.ProxyGrantSyncResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SyncGrantDelta indicates an expected call of SyncGrantDelta.
+func (mr *MockManagedProxyAccessMockRecorder) SyncGrantDelta(ctx, proxyAccountID, grantorID, syncGeneration, baseSnapshotVersion, targetSnapshotVersion, upserts, removals any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncGrantDelta", reflect.TypeOf((*MockManagedProxyAccess)(nil).SyncGrantDelta), ctx, proxyAccountID, grantorID, syncGeneration, baseSnapshotVersion, targetSnapshotVersion, upserts, removals)
 }

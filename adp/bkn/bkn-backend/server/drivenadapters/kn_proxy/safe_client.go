@@ -115,6 +115,18 @@ func (c *safeClient) CheckGrants(ctx context.Context, proxyAccountID, grantorID 
 	return result, err
 }
 
+func (c *safeClient) CheckGrantDelta(ctx context.Context, proxyAccountID, grantorID string,
+	upserts, removals []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	var result interfaces.ProxyGrantBatchCheckResult
+	_, err := c.do(ctx, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources/check-delta", map[string]any{
+		"proxy_account_id": proxyAccountID,
+		"grantor_id":       grantorID,
+		"upserts":          upserts,
+		"removals":         removals,
+	}, &result)
+	return result, err
+}
+
 func (c *safeClient) SyncGrants(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64,
 	snapshotVersion string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	var result interfaces.ProxyGrantSyncResult
@@ -124,6 +136,21 @@ func (c *safeClient) SyncGrants(ctx context.Context, proxyAccountID, grantorID s
 		"sync_generation":  syncGeneration,
 		"snapshot_version": snapshotVersion,
 		"sources":          sources,
+	}, &result)
+	return result, err
+}
+
+func (c *safeClient) SyncGrantDelta(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64,
+	baseSnapshotVersion, targetSnapshotVersion string, upserts, removals []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
+	var result interfaces.ProxyGrantSyncResult
+	_, err := c.do(ctx, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources/sync-delta", map[string]any{
+		"proxy_account_id":        proxyAccountID,
+		"grantor_id":              grantorID,
+		"sync_generation":         syncGeneration,
+		"base_snapshot_version":   baseSnapshotVersion,
+		"target_snapshot_version": targetSnapshotVersion,
+		"upserts":                 upserts,
+		"removals":                removals,
 	}, &result)
 	return result, err
 }

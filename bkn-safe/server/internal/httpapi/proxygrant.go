@@ -70,12 +70,36 @@ func registerProxyGrantSources(r *gin.Engine, service *proxygrant.Service) {
 		c.JSON(http.StatusOK, result)
 	})
 
+	group.POST("/check-delta", func(c *gin.Context) {
+		var req proxygrant.DeltaCheckRequest
+		if !bind(c, &req) {
+			return
+		}
+		result, err := service.CheckDelta(c.Request.Context(), req)
+		if writeProxyGrantError(c, err) {
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
 	group.POST("/sync", func(c *gin.Context) {
 		var req proxygrant.SyncRequest
 		if !bind(c, &req) {
 			return
 		}
 		result, err := service.Sync(c.Request.Context(), req)
+		if writeProxyGrantError(c, err) {
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
+	group.POST("/sync-delta", func(c *gin.Context) {
+		var req proxygrant.DeltaSyncRequest
+		if !bind(c, &req) {
+			return
+		}
+		result, err := service.SyncDelta(c.Request.Context(), req)
 		if writeProxyGrantError(c, err) {
 			return
 		}
@@ -112,6 +136,8 @@ func writeProxyGrantError(c *gin.Context, err error) bool {
 	case errors.Is(err, proxygrant.ErrSourceRequired):
 		replyPublicError(c, http.StatusConflict)
 	case errors.Is(err, proxygrant.ErrStaleSync):
+		replyPublicError(c, http.StatusConflict)
+	case errors.Is(err, proxygrant.ErrSnapshotConflict):
 		replyPublicError(c, http.StatusConflict)
 	default:
 		serverError(c, err)
