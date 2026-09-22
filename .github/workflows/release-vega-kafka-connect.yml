@@ -22,32 +22,36 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: vega/kafka-connect
       stack: chart-only
 
   build-kafka-connect:
-    needs: test
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: vega/kafka-connect
       dockerfile: docker/Dockerfile
       context: docker
       image-name: kafka-connect
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=bitnamilegacy/kafka:3.9.0-debian-12-r10
 
   chart-kafka-connect:
-    needs: [test, build-kafka-connect]
+    needs: [version, verify, build-kafka-connect]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: vega/kafka-connect
       chart-path: helm
       chart-name: kafka-connect
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

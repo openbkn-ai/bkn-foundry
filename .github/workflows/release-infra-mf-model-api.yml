@@ -1,7 +1,7 @@
 name: release-infra-mf-model-api
 
 # Image FROM ghcr.io/<owner>/model-factory-base:v2 (built by
-# release-infra-model-factory-base.yml). On push, reusable-build logs into GHCR
+# release-infra-model-factory-base.yml). On push, reusable-container-image logs into GHCR
 # so the base pulls; that base build must have published first.
 # The reusable test job still lints the chart. The focused authz-unit job runs
 # the permission regression suite inside the same runtime base image used by
@@ -29,8 +29,12 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: infra/mf-model-api
       stack: chart-only
@@ -51,23 +55,23 @@ jobs:
           python -m unittest -v app.test.test_permission_manager_authz app.test.test_auth_middleware_identity
 
   build:
-    needs: [test, authz-unit]
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify, authz-unit]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/mf-model-api
       dockerfile: Dockerfile
       context: '.'
       image-name: mf-model-api
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
-    needs: [test, build]
+    needs: [version, verify, build]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: infra/mf-model-api
       chart-path: charts
       chart-name: mf-model-api
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

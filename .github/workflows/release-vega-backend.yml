@@ -3,37 +3,51 @@ name: release-vega-backend
 on:
   push:
     tags:
-      - 'v*'
-    branches: ['**']
+      - "v*"
+    branches:
+      - main
+      - "release/**"
     paths:
-      - 'vega/vega-backend/**'
-      - '.github/workflows/release-vega-backend.yml'
-      - '.github/workflows/reusable-*.yml'
+      - "vega/vega-backend/**"
+      - ".github/workflows/release-vega-backend.yml"
+      - ".github/workflows/reusable-*.yml"
       # 版本冻结提交（release/<x.y.z> 分支）触发全量重建
-      - 'VERSION'
+      - "VERSION"
+  pull_request:
+    paths:
+      - "vega/vega-backend/**"
+      - ".github/workflows/release-vega-backend.yml"
+      - ".github/workflows/reusable-*.yml"
+      - "VERSION"
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish to GHCR (true) or verify build only (false)'
+        description: "Publish to GHCR (true) or verify build only (false)"
         type: boolean
         default: false
       force-build-python-base:
-        description: 'Force build and publish the Vega Python base image (requires publish=true)'
+        description: "Force build and publish the Vega Python base image (requires publish=true)"
         type: boolean
         default: false
+
 permissions:
   contents: read
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: vega/vega-backend
-      stack: chart-only
+      stack: go
+      go-mod-file: server/go.mod
 
   prepare-python-base:
-    needs: test
+    needs: [version, verify]
     runs-on: ubuntu-latest
     outputs:
       should-build: ${{ steps.base.outputs.should-build }}
@@ -61,6 +75,13 @@ jobs:
               exit 1
             fi
             should_build='${{ inputs.force-build-python-base }}'
+          elif [ "${{ github.event_name }}" = 'pull_request' ]; then
+            if ! git diff --quiet \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" \
+              -- "$base_context"; then
+              should_build=true
+            fi
           else
             before='${{ github.event.before }}'
             if [ "$before" = '0000000000000000000000000000000000000000' ] \
@@ -74,9 +95,9 @@ jobs:
           echo "should-build=$should_build" >> "$GITHUB_OUTPUT"
 
   build-python-base:
-    needs: [test, prepare-python-base]
+    needs: [version, verify, prepare-python-base]
     if: needs.prepare-python-base.outputs.should-build == 'true'
-    uses: ./.github/workflows/reusable-build.yml
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: vega/vega-backend
@@ -87,38 +108,38 @@ jobs:
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-vega-backend:
-    needs: [test, prepare-python-base, build-python-base]
+    needs: [version, verify, prepare-python-base, build-python-base]
     if: >-
       always() &&
-      needs.test.result == 'success' &&
+      needs.verify.result == 'success' &&
       needs.prepare-python-base.result == 'success' &&
       (needs.build-python-base.result == 'success' || needs.build-python-base.result == 'skipped')
-    uses: ./.github/workflows/reusable-build.yml
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: vega/vega-backend
       dockerfile: docker/Dockerfile
-      context: '.'
+      context: "."
       image-name: vega-backend
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       build-args: |
-        SERVER_VERSION=${{ needs.test.outputs.version }}
+        SERVER_VERSION=${{ needs.version.outputs.version }}
         PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/vega-backend-python-base:${{ needs.prepare-python-base.outputs.tag }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart-vega-backend:
-    needs: [test, build-vega-backend]
+    needs: [version, verify, build-vega-backend]
     # build-python-base is deliberately skipped when its context is unchanged.
     # Do not let that normal skipped ancestor suppress chart packaging after the
     # main image build has succeeded.
     if: >-
       always() &&
-      needs.test.result == 'success' &&
+      needs.verify.result == 'success' &&
       needs.build-vega-backend.result == 'success'
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: vega/vega-backend
       chart-path: helm/vega-backend
       chart-name: vega-backend
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

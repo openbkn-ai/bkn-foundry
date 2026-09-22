@@ -122,7 +122,7 @@ make test-at
 
 ## CI 要求
 
-- 修改 `vega/**` 时必须确保 `.github/workflows/ci-vega.yml` 对应的 build 和 lint 门禁可通过。
+- 修改 `vega/**` 时必须确保 `.github/workflows/ci-vega-backend.yml` 对应的 build 和 lint 门禁可通过。
 - 本地执行结果不能替代 GitHub CI；CI 未完成或失败时，不得宣称变更已全部验证通过。
 - 新增可静态检测的缺陷修复时，应优先将对应 analyzer 接入 lint/CI，防止回归。
 - 修改 CI workflow 时必须同时核对触发路径、工作目录、Go 版本来源和本地命令的一致性。

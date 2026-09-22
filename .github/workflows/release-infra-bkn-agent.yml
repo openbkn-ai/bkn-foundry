@@ -2,8 +2,8 @@ name: release-infra-bkn-agent
 
 # 平台内置 Agent 运行时 bkn-agent（Epic #202）。Python / LangGraph 服务。
 # test stack = python：跑 app/test 全量单测（回归门禁）。单测专用依赖在
-# test-requirements.txt（reusable-test 检测到就装，不进运行镜像 requirements.txt）。
-# 镜像 FROM python:3.12-slim（reusable-build 多架构：linux/amd64,linux/arm64）。
+# test-requirements.txt（reusable-release-verify 检测到就装，不进运行镜像 requirements.txt）。
+# 镜像 FROM python:3.12-slim（reusable-container-image 多架构：linux/amd64,linux/arm64）。
 
 on:
   push:
@@ -27,8 +27,12 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: infra/bkn-agent
       stack: python
@@ -44,23 +48,23 @@ jobs:
         run: bash scripts/test_business_provenance_bootstrap_chart.sh charts
 
   build:
-    needs: test
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/bkn-agent
       dockerfile: Dockerfile
       context: '.'
       image-name: bkn-agent
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
-    needs: [test, build, chart-contract]
+    needs: [version, verify, build, chart-contract]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: infra/bkn-agent
       chart-path: charts
       chart-name: bkn-agent
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

@@ -12,7 +12,7 @@ on:
     paths:
       - 'infra/model-factory-base/**'
       - '.github/workflows/release-infra-model-factory-base.yml'
-      - '.github/workflows/reusable-build.yml'
+      - '.github/workflows/reusable-container-image.yml'
   workflow_dispatch:
     inputs:
       publish:
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   build:
-    uses: ./.github/workflows/reusable-build.yml
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/model-factory-base
