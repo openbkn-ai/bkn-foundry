@@ -36,6 +36,8 @@
 "business_module is not registered" = "business_module 未注册"
 "business_refs contains an invalid typed business reference" = "business_refs 包含无效的类型化业务引用"
 "bare object storage URLs are forbidden; use an opaque snapshot_ref" = "禁止直接使用对象存储 URL，请使用不透明的 snapshot_ref"
+"capture policy is not available" = "采集策略当前不可用"
+"capture policy is not configured" = "未配置采集策略"
 "causation_event_id must reference a previously committed event" = "causation_event_id 必须引用此前已提交的事件"
 "categories contains an unsupported value" = "categories 包含不支持的值"
 "claim supports contains an imprecise or unexplained support" = "声明支持项包含不精确或未说明的支持"
