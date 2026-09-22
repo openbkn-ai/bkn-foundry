@@ -21,7 +21,7 @@ func TestConnectorFactoryRegisterLocalConnector(t *testing.T) {
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionEnterprise))
 	t.Cleanup(entitlement.ResetForTest)
 
-	t.Run("registers a connector and its aliases in one operation", func(t *testing.T) {
+	t.Run("registers a connector", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		connector := vmock.NewMockConnector(ctrl)
 		connector.EXPECT().GetType().Return("private-db")
@@ -31,12 +31,14 @@ func TestConnectorFactoryRegisterLocalConnector(t *testing.T) {
 			connectorRequiredEditions: map[string]licverify.Edition{},
 		}
 
-		cf.registerLocalConnector(connector, licverify.EditionProfessional, "legacy-private-db")
+		cf.registerLocalConnector(connector, licverify.EditionProfessional)
 
 		assert.Same(t, connector, cf.connectors["private-db"])
-		assert.Same(t, connector, cf.connectors["legacy-private-db"])
 		assert.Equal(t, licverify.EditionProfessional, cf.connectorRequiredEditions["private-db"])
-		assert.Equal(t, licverify.EditionProfessional, cf.connectorRequiredEditions["legacy-private-db"])
+		assert.Contains(t, entitlement.Assembled(), entitlement.AssembledCap{
+			Name:       "private-db",
+			MinEdition: licverify.EditionProfessional,
+		})
 	})
 
 	t.Run("rejects registration after finalization", func(t *testing.T) {

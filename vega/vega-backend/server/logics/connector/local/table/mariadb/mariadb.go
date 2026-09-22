@@ -59,7 +59,8 @@ const (
 
 // MariaDBConnector implements TableConnector for MariaDB.
 type MariaDBConnector struct {
-	enabled bool
+	connectorType string
+	enabled       bool
 
 	config *mariadbConfig
 
@@ -72,14 +73,23 @@ func NewMariaDBConnector() interfaces.TableConnector {
 	return &MariaDBConnector{}
 }
 
+// NewMySQLConnector creates an independent MySQL connector builder backed by
+// the MariaDB-compatible implementation.
+func NewMySQLConnector() interfaces.TableConnector {
+	return &MariaDBConnector{connectorType: interfaces.ConnectorTypeMySQL}
+}
+
 // GetType returns the data source type.
 func (c *MariaDBConnector) GetType() string {
+	if c.connectorType != "" {
+		return c.connectorType
+	}
 	return interfaces.ConnectorTypeMariaDB
 }
 
 // GetName returns the connector name.
 func (c *MariaDBConnector) GetName() string {
-	return interfaces.ConnectorTypeMariaDB
+	return c.GetType()
 }
 
 // GetMode returns the connector mode.
@@ -150,7 +160,8 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 	}
 
 	return &MariaDBConnector{
-		config: &mCfg,
+		connectorType: c.GetType(),
+		config:        &mCfg,
 	}, nil
 }
 

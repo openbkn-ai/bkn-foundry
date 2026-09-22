@@ -31,19 +31,20 @@ func (cf *connectorFactory) RegisterLocalConnector(connector interfaces.Connecto
 func (cf *connectorFactory) RegisterCoreLocalConnectors() {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
-	cf.registerLocalConnectorLocked(mariadb.NewMariaDBConnector(), licverify.EditionCommunity, interfaces.ConnectorTypeMySQL)
+	cf.registerLocalConnectorLocked(mariadb.NewMySQLConnector(), licverify.EditionCommunity)
+	cf.registerLocalConnectorLocked(mariadb.NewMariaDBConnector(), licverify.EditionCommunity)
 	cf.registerLocalConnectorLocked(opensearch.NewOpenSearchConnector(), licverify.EditionCommunity)
 	cf.registerLocalConnectorLocked(postgresql.NewPostgresqlConnector(), licverify.EditionCommunity)
 	cf.registerLocalConnectorLocked(anyshare.NewAnyShareConnector(), licverify.EditionCommunity)
 }
 
-func (cf *connectorFactory) registerLocalConnector(connector interfaces.Connector, minEdition licverify.Edition, aliases ...string) {
+func (cf *connectorFactory) registerLocalConnector(connector interfaces.Connector, minEdition licverify.Edition) {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
-	cf.registerLocalConnectorLocked(connector, minEdition, aliases...)
+	cf.registerLocalConnectorLocked(connector, minEdition)
 }
 
-func (cf *connectorFactory) registerLocalConnectorLocked(connector interfaces.Connector, minEdition licverify.Edition, aliases ...string) {
+func (cf *connectorFactory) registerLocalConnectorLocked(connector interfaces.Connector, minEdition licverify.Edition) {
 	if cf.localConnectorsFrozen {
 		panic("vega connector factory: local connector registered after Finalize")
 	}
@@ -64,21 +65,11 @@ func (cf *connectorFactory) registerLocalConnectorLocked(connector interfaces.Co
 	if _, exists := cf.connectors[connectorType]; exists {
 		panic(fmt.Sprintf("vega connector factory: %q registered twice", connectorType))
 	}
-	for _, alias := range aliases {
-		if alias == "" || alias == connectorType {
-			panic(fmt.Sprintf("vega connector factory: %q has an invalid alias %q", connectorType, alias))
-		}
-		if _, exists := cf.connectors[alias]; exists {
-			panic(fmt.Sprintf("vega connector factory: %q registered twice", alias))
-		}
-	}
 
 	cf.connectors[connectorType] = connector
 	cf.connectorRequiredEditions[connectorType] = minEdition
-	for _, alias := range aliases {
-		cf.connectors[alias] = connector
-		cf.connectorRequiredEditions[alias] = minEdition
-	}
+
+	entitlement.MarkAssembled(connectorType, minEdition)
 }
 
 // applyPersistedConnectorTypes applies database connector-type configuration

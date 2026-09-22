@@ -51,6 +51,18 @@ func TestMariaDBConnectorMetadataAndConfig(t *testing.T) {
 	})
 }
 
+func TestMySQLConnectorMetadataAndConfig(t *testing.T) {
+	connector := NewMySQLConnector()
+
+	assert.Equal(t, interfaces.ConnectorTypeMySQL, connector.GetType())
+	assert.Equal(t, interfaces.ConnectorTypeMySQL, connector.GetName())
+
+	instance, err := connector.New(validMariaDBConfig(3306))
+
+	require.NoError(t, err)
+	assert.Equal(t, interfaces.ConnectorTypeMySQL, instance.GetType())
+}
+
 func TestMariaDBConnectorNew(t *testing.T) {
 	builder := &MariaDBConnector{}
 

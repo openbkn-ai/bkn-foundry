@@ -89,11 +89,11 @@ func (app *App) start() error {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	// Start the http service
+	// Start the http service.
 	go func() {
 		err := s.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
-			logger.Errorf("s.ListenAndServe err:%v", err)
+			logger.Fatalf("s.ListenAndServe err:%v", err)
 		}
 	}()
 
