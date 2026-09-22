@@ -5,7 +5,7 @@
 
 ########################### Stage 0 ########################
 ARG BUILD_IMAGE=golang:1.25.14
-ARG PYTHON_BASE_IMAGE=ghcr.io/openbkn-ai/vega-python-base:20260922-6e70dde
+ARG PYTHON_BASE_IMAGE=ghcr.io/openbkn-ai/vega-python-base:0.2.0
 
 FROM ${BUILD_IMAGE} AS builder
 
