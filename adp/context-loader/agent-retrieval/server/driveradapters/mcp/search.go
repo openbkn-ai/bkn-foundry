@@ -326,11 +326,22 @@ func (c *nativeCatalog) resolve(ctx context.Context, name string) (targetDefinit
 			Message: fmt.Sprintf("%s is published on this entry; call it directly.", name),
 		}
 	}
+	// The commonest miss is a mounted function called by the name or id
+	// search_capabilities returned. Those are not on-demand tools, and pointing
+	// the caller back at search_native_tools sends it in a circle, so the refusal
+	// spells out the one call that runs them. The text is the same for every
+	// name: it must not tell a real function from a made-up one.
 	return targetDefinition{}, &gatewayRefusal{
 		Code: refusalUnknownTool, Name: name,
-		Message: fmt.Sprintf("No on-demand tool is named %q. Find one with search_native_tools.", name),
+		Message: fmt.Sprintf("No on-demand tool is named %q. %s", name, unknownToolHint),
 	}
 }
+
+// unknownToolHint is the recovery path shown with every unknown_tool refusal.
+const unknownToolHint = `A function or MCP tool found by search_capabilities is not an on-demand tool: ` +
+	`run it with name "execute_tool" and arguments {"kn_id": "<kn_id>", "toolbox_id": "<owner_id>", ` +
+	`"tool_id": "<capability_id>", "arguments": {<its input>}}. A skill is read with name "get_skill_content". ` +
+	`For anything else, find the tool with search_native_tools.`
 
 // describe returns what a caller needs to run a target through the gateway.
 func (c *nativeCatalog) describe(ctx context.Context, name string, includeOutputSchema bool) (gatewayDescription, error) {

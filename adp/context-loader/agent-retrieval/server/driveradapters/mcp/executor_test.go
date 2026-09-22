@@ -192,6 +192,23 @@ func TestExecutorRefusesWhatItCannotRun(t *testing.T) {
 	}
 }
 
+// A model that found a mounted function with search_capabilities tends to call
+// it by that name. The refusal must name the call that runs it, not send the
+// model back to search_native_tools, where the function will never appear.
+func TestExecutorRefusalPointsMountedFunctionsAtExecuteTool(t *testing.T) {
+	h := newExecutorHarness(t)
+	refusal := refusalOf(t, h.call(t, `{"name":"bf2abe46-d177-4eec-a945-2514488a1a8f","arguments":{"product":"382-000005"},"bkn_context":`+testBKNContext+`}`))
+	message, _ := refusal["message"].(string)
+	if refusal["error"] != refusalUnknownTool {
+		t.Fatalf("refusal = %v, want unknown_tool", refusal)
+	}
+	for _, want := range []string{`"execute_tool"`, `"toolbox_id"`, `"tool_id"`, `"get_skill_content"`} {
+		if !strings.Contains(message, want) {
+			t.Errorf("message %q does not mention %s", message, want)
+		}
+	}
+}
+
 func TestExecutorPassesTheTargetErrorThrough(t *testing.T) {
 	h := newExecutorHarness(t)
 	h.reply = mcpsdk.NewToolResultError("ot_missing not found")
