@@ -211,10 +211,10 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return "", connectorInitializationError(ctx, err)
 		}
+		defer func() { _ = connector.Close(ctx) }()
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
-			_ = connector.Close(ctx)
 			if !allowUnhealthy {
 				return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
 					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
@@ -223,7 +223,6 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			healthStatus = interfaces.CatalogHealthStatusUnhealthy
 			healthResult = connectionTestFailedResult
 		} else {
-			defer func() { _ = connector.Close(ctx) }()
 			healthStatus = interfaces.CatalogHealthStatusHealthy
 			healthResult = "Connection test succeeded."
 		}
@@ -811,10 +810,10 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return connectorInitializationError(ctx, err)
 		}
+		defer func() { _ = connector.Close(ctx) }()
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
-			_ = connector.Close(ctx)
 			if !allowUnhealthy {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
@@ -826,8 +825,6 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 				HealthCheckResult: connectionTestFailedResult,
 			}
 		} else {
-			defer func() { _ = connector.Close(ctx) }()
-
 			catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
 				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
 				LastCheckTime:     time.Now().UnixMilli(),

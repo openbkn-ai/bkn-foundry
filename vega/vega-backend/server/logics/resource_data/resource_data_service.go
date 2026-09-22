@@ -548,13 +548,13 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, 0, connectorCreationError(ctx, err)
 	}
+	defer func() { _ = connector.Close(ctx) }()
 
 	if err := connector.Connect(ctx); err != nil {
 		otellog.LogError(ctx, "Connect to data source failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to connect to data source: %v", err))
 	}
-	defer func() { _ = connector.Close(ctx) }()
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryTable:

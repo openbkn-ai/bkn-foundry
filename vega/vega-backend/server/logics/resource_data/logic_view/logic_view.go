@@ -566,13 +566,13 @@ func (lvs *logicViewService) executeIndexQuery(ctx context.Context, catalog *int
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, 0, connectorCreationError(ctx, err)
 	}
+	defer func() { _ = connector.Close(ctx) }()
 
 	if err := connector.Connect(ctx); err != nil {
 		otellog.LogError(ctx, "Connect to data source failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to connect to data source: %v", err))
 	}
-	defer func() { _ = connector.Close(ctx) }()
 
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
@@ -607,13 +607,13 @@ func (lvs *logicViewService) executeTableQuery(ctx context.Context, catalog *int
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, 0, connectorCreationError(ctx, err)
 	}
+	defer func() { _ = connector.Close(ctx) }()
 
 	if err := connector.Connect(ctx); err != nil {
 		otellog.LogError(ctx, "Connect to data source failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to connect to data source: %v", err))
 	}
-	defer func() { _ = connector.Close(ctx) }()
 
 	tableConnector, ok := connector.(interfaces.TableConnector)
 	if !ok {
