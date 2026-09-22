@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/casbin/casbin/v2/util"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
@@ -310,6 +311,24 @@ type grantIndex struct {
 	wildcard   []grantRow
 	subjects   []string
 	superAdmin bool
+}
+
+// requiresCandidateFilter reports whether a wildcard allow can authorize
+// resources that AccessibleResources cannot enumerate as concrete IDs. In
+// that case callers must retain the legacy candidate-filter path so specific
+// deny rules and hierarchy precedence are still evaluated per candidate.
+func (idx *grantIndex) requiresCandidateFilter(resourceType, op string) bool {
+	prefix := resourceType + ":"
+	for _, rule := range idx.wildcard {
+		if rule.source == PolicySourceCommunityBundle || rule.effect != EffectAllow ||
+			(rule.act != op && rule.act != ActAll) {
+			continue
+		}
+		if rule.object == "*" || strings.HasPrefix(rule.object, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // grantIndex collects every policy row that can satisfy the matcher's subject

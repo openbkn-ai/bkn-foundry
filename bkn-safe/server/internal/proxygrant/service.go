@@ -527,9 +527,9 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 	return result, nil
 }
 
-// CheckDelta validates only bindings affected by one BKN mutation. It is
-// deliberately read-only: unlike the legacy full-set preflight, it neither
-// copies the Casbin model nor writes success audit rows.
+// CheckDelta validates only bindings affected by one BKN mutation. Unlike the
+// legacy full-set preflight, it neither copies the Casbin model nor writes
+// success audit rows. Denials remain durable security events.
 func (s *Service) CheckDelta(ctx context.Context, req DeltaCheckRequest) (BatchCheckResult, error) {
 	req.ProxyAccountID = strings.TrimSpace(req.ProxyAccountID)
 	req.GrantorID = strings.TrimSpace(req.GrantorID)
@@ -638,6 +638,20 @@ func (s *Service) CheckDelta(ctx context.Context, req DeltaCheckRequest) (BatchC
 			result.ResolvedSources = append(result.ResolvedSources, ResolvedSource{
 				SourceSpec: spec, GrantedBy: grantorID,
 			})
+		}
+	}
+	if len(result.DeniedSources) > 0 {
+		audits := make([]model.ProxyGrantAuditLog, 0, len(result.DeniedSources))
+		for _, spec := range result.DeniedSources {
+			audit, err := newAudit("check_delta", "deny", ErrForbidden.Error(),
+				req.GrantorID, req.ProxyAccountID, spec)
+			if err != nil {
+				return BatchCheckResult{}, err
+			}
+			audits = append(audits, audit)
+		}
+		if err := s.db.WithContext(ctx).Create(&audits).Error; err != nil {
+			return BatchCheckResult{}, err
 		}
 	}
 	return result, nil
@@ -840,7 +854,14 @@ func (s *Service) SyncDelta(ctx context.Context, req DeltaSyncRequest) (SyncResu
 	})
 	if err != nil {
 		if !errors.Is(err, authz.ErrPolicyReloadAfterCommit) {
-			for _, spec := range explicit {
+			auditSpecs := explicit
+			if len(auditSpecs) == 0 {
+				auditSpecs = removals
+			}
+			if len(auditSpecs) == 0 {
+				auditSpecs = []SourceSpec{{}}
+			}
+			for _, spec := range auditSpecs {
 				s.recordDenied(ctx, "sync_delta", req.GrantorID, req.ProxyAccountID, spec, err)
 			}
 		}

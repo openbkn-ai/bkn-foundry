@@ -87,7 +87,7 @@ func TestPrepareProxyChildDeltaForRelationReadsOnlyRelationAndEndpoints(t *testi
 		}},
 	}
 	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"rt-new"}).
-		Return([]*interfaces.RelationType{}, nil).Times(2)
+		Return([]*interfaces.RelationType{}, nil)
 	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH,
 		[]string{"ot-1", "ot-2"}).Return(endpoints, nil)
 

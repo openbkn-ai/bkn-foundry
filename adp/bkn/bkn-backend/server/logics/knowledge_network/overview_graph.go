@@ -18,6 +18,7 @@ import (
 
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
+	"bkn-backend/logics/permission"
 )
 
 type overviewGraphCursor struct {
@@ -43,6 +44,70 @@ func overviewVisibleChildIDs(knID string, scope interfaces.PermissionResourceSco
 		ids = append(ids, childID)
 	}
 	return ids
+}
+
+func (kns *knowledgeNetworkService) resolveOverviewObjectScope(ctx context.Context, knID, branch string,
+	scope interfaces.PermissionResourceScope) (interfaces.PermissionResourceScope, error) {
+	if !scope.RequiresCandidateFilter {
+		return scope, nil
+	}
+	items, err := kns.ota.ListObjectTypeSummaries(ctx, nil, interfaces.ObjectTypesQueryParams{
+		KNID: knID, Branch: branch,
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+	})
+	if err != nil {
+		return scope, err
+	}
+	childIDs := make([]string, 0, len(items))
+	for _, item := range items {
+		childIDs = append(childIDs, item.OTID)
+	}
+	operations, err := permission.FilterKNChildResourceIDsWithOperations(ctx, kns.ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, interfaces.KNChildResourceIDs(knID, childIDs),
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return scope, err
+	}
+	visible := make([]string, 0, len(operations))
+	for _, childID := range childIDs {
+		resourceID := interfaces.KNChildResourceID(knID, childID)
+		if _, ok := operations[resourceID]; ok {
+			visible = append(visible, resourceID)
+		}
+	}
+	return interfaces.PermissionResourceScope{ResourceIDs: visible}, nil
+}
+
+func (kns *knowledgeNetworkService) resolveOverviewRelationScope(ctx context.Context, knID, branch string,
+	scope interfaces.PermissionResourceScope) (interfaces.PermissionResourceScope, error) {
+	if !scope.RequiresCandidateFilter {
+		return scope, nil
+	}
+	items, err := kns.rta.ListRelationTypeSummaries(ctx, interfaces.RelationTypesQueryParams{
+		KNID: knID, Branch: branch,
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+	})
+	if err != nil {
+		return scope, err
+	}
+	childIDs := make([]string, 0, len(items))
+	for _, item := range items {
+		childIDs = append(childIDs, item.RTID)
+	}
+	operations, err := permission.FilterKNChildResourceIDsWithOperations(ctx, kns.ps,
+		interfaces.RESOURCE_TYPE_RELATION_TYPE, interfaces.KNChildResourceIDs(knID, childIDs),
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return scope, err
+	}
+	visible := make([]string, 0, len(operations))
+	for _, childID := range childIDs {
+		resourceID := interfaces.KNChildResourceID(knID, childID)
+		if _, ok := operations[resourceID]; ok {
+			visible = append(visible, resourceID)
+		}
+	}
+	return interfaces.PermissionResourceScope{ResourceIDs: visible}, nil
 }
 
 func overviewSnapshot(knID, branch string, updateTime int64, objectTotal, relationTotal int) string {
@@ -238,6 +303,14 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 	if err != nil {
 		return nil, err
 	}
+	objectScope, err = kns.resolveOverviewObjectScope(ctx, knID, query.Branch, objectScope)
+	if err != nil {
+		return nil, err
+	}
+	relationScope, err = kns.resolveOverviewRelationScope(ctx, knID, query.Branch, relationScope)
+	if err != nil {
+		return nil, err
+	}
 	visibleObjectIDs := overviewVisibleChildIDs(knID, objectScope)
 	visibleRelationIDs := overviewVisibleChildIDs(knID, relationScope)
 	objectQuery := interfaces.ObjectTypesQueryParams{
@@ -320,7 +393,8 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 	}
 	result.Nodes = overviewNodes(objectTypes, edges)
 	result.ReturnedNodes = len(result.Nodes)
-	if query.FocusObjectTypeID == "" && query.ConceptGroupID == "" && offset+len(objectTypes) < objectTotal {
+	if query.FocusObjectTypeID == "" && query.ConceptGroupID == "" && len(objectTypes) > 0 &&
+		offset+len(objectTypes) < objectTotal {
 		result.NextCursor = encodeOverviewCursor(overviewGraphCursor{Offset: offset + len(objectTypes), Snapshot: snapshot})
 	}
 	result.Truncated = result.NextCursor != "" || len(relationTypes) >= query.EdgeLimit || len(edges) < relationTotal

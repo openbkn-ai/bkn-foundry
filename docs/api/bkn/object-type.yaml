@@ -1943,7 +1943,7 @@ components:
           description: Entry list
           type: array
           items:
-            $ref: "#/components/schemas/ObjectTypeDetail"
+            $ref: "#/components/schemas/ObjectTypeSummary"
         total_count:
           description: Total count
           type: integer
@@ -2176,6 +2176,74 @@ components:
         name:
           description: Name. Returned when retrieving details.
           type: string
+    ObjectTypeSummary:
+      description: Lightweight object type projection returned by list endpoints. Property definitions and primary keys are available from the detail endpoint.
+      required:
+        - id
+        - name
+        - tags
+        - comment
+        - icon
+        - color
+        - kn_id
+        - branch
+        - data_source
+        - creator
+        - create_time
+        - updater
+        - update_time
+        - module_type
+      type: object
+      properties:
+        id:
+          description: Object type ID
+          type: string
+        name:
+          description: Object type name
+          type: string
+        tags:
+          description: Tags. May be empty.
+          type: array
+          items:
+            type: string
+        comment:
+          description: Comment. May be empty.
+          type: string
+        icon:
+          description: Icon
+          type: string
+        color:
+          description: Color
+          type: string
+        branch:
+          description: Branch ID
+          type: string
+        kn_id:
+          description: Business knowledge network ID
+          type: string
+        data_source:
+          $ref: "#/components/schemas/DataSource"
+        creator:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
+        create_time:
+          format: int64
+          type: integer
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
+        update_time:
+          format: int64
+          type: integer
+        module_type:
+          enum:
+            - object_type
+          type: string
+        operations:
+          type: array
+          items:
+            type: string
+        status:
+          type: object
+          additionalProperties: true
     ObjectTypeDetail:
       description: Node (object type) information
       required:

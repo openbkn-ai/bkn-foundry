@@ -442,22 +442,27 @@ func ObjectTypeRefs(items []*interfaces.ObjectType) []EvidenceRef {
 			continue
 		}
 		objectTypeID := strings.TrimSpace(item.OTID)
+		summary := map[string]any{
+			"kind":        EntityKindObjectType,
+			"id":          strings.TrimSpace(item.OTID),
+			"kn_id":       strings.TrimSpace(item.KNID),
+			"branch":      strings.TrimSpace(item.Branch),
+			"module_type": strings.TrimSpace(item.ModuleType),
+			"has_status":  item.Status != nil,
+			"update_time": item.UpdateTime,
+		}
+		if item.DataProperties != nil || item.LogicProperties != nil {
+			summary["property_count"] = len(item.DataProperties) + len(item.LogicProperties)
+			summary["data_property_count"] = len(item.DataProperties)
+			summary["logic_property_count"] = len(item.LogicProperties)
+		}
+		if item.PrimaryKeys != nil {
+			summary["primary_key_count"] = len(item.PrimaryKeys)
+		}
 		refs = append(refs, EvidenceRef{
 			RefID:   "object:" + knID + ":" + objectTypeID,
 			RefType: RefTypeObject,
-			Summary: map[string]any{
-				"kind":                 EntityKindObjectType,
-				"id":                   strings.TrimSpace(item.OTID),
-				"kn_id":                strings.TrimSpace(item.KNID),
-				"branch":               strings.TrimSpace(item.Branch),
-				"module_type":          strings.TrimSpace(item.ModuleType),
-				"property_count":       len(item.DataProperties) + len(item.LogicProperties),
-				"data_property_count":  len(item.DataProperties),
-				"logic_property_count": len(item.LogicProperties),
-				"primary_key_count":    len(item.PrimaryKeys),
-				"has_status":           item.Status != nil,
-				"update_time":          item.UpdateTime,
-			},
+			Summary: summary,
 		})
 		for _, property := range item.DataProperties {
 			if property != nil && strings.TrimSpace(property.Name) != "" {

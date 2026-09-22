@@ -1575,6 +1575,42 @@ func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *te
 	assert.Equal(t, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, items[0].Operations)
 }
 
+func TestObjectTypeServiceListSummariesFallsBackForWildcardScope(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ums := bmock.NewMockUserMgmtService(ctrl)
+	service := &objectTypeService{ota: ota, ps: ps, ums: ums}
+	query := interfaces.ObjectTypesQueryParams{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Offset: 0, Limit: 1},
+	}
+	candidateQuery := query
+	candidateQuery.Offset = 0
+	candidateQuery.Limit = -1
+	candidates := []*interfaces.ObjectType{
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "denied"}, KNID: "kn-1"},
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "visible"}, KNID: "kn-1"},
+	}
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		RequiresCandidateFilter: true,
+	}, nil)
+	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), candidateQuery).Return(candidates, nil)
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/denied", "kn-1/visible"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
+		map[string]interfaces.PermissionResourceOps{
+			"kn-1/visible": {ResourceID: "kn-1/visible", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
+	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
+
+	items, total, err := service.ListObjectTypeSummaries(context.Background(), nil, query)
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Len(t, items, 1)
+	assert.Equal(t, "visible", items[0].OTID)
+}
+
 func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 	Convey("Test UpdateObjectType\n", t, func() {
 		ctx := context.Background()

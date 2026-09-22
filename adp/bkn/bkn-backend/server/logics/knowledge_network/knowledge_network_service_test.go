@@ -99,6 +99,66 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 	}
 }
 
+func TestResolveOverviewObjectScopeFiltersWildcardCandidates(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &knowledgeNetworkService{ota: ota, ps: ps}
+	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
+			if query.KNID != "kn-1" || query.Branch != interfaces.MAIN_BRANCH || query.Limit != -1 {
+				t.Fatalf("unexpected fallback query: %#v", query)
+			}
+			return []*interfaces.ObjectType{
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "denied"}},
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "visible"}},
+			}, nil
+		})
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/denied", "kn-1/visible"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
+		map[string]interfaces.PermissionResourceOps{
+			"kn-1/visible": {ResourceID: "kn-1/visible", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
+
+	scope, err := service.resolveOverviewObjectScope(context.Background(), "kn-1", interfaces.MAIN_BRANCH,
+		interfaces.PermissionResourceScope{RequiresCandidateFilter: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope.Unrestricted || scope.RequiresCandidateFilter || fmt.Sprint(scope.ResourceIDs) != "[kn-1/visible]" {
+		t.Fatalf("resolved scope = %#v", scope)
+	}
+}
+
+func TestListOverviewGraphDoesNotRepeatAnEmptyCursorPage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &knowledgeNetworkService{kna: kna, ota: ota, rta: rta, ps: ps}
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(
+		&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, UpdateTime: 1234}, nil)
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{Unrestricted: true}, nil)
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{Unrestricted: true}, nil)
+	ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+	rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(0, nil)
+	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), gomock.Any()).Return(
+		[]*interfaces.ObjectType{}, nil)
+
+	result, err := service.ListOverviewGraph(context.Background(), "kn-1", interfaces.OverviewGraphQuery{
+		Branch: interfaces.MAIN_BRANCH, NodeLimit: 2, EdgeLimit: 3, ExpandDepth: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NextCursor != "" {
+		t.Fatalf("empty page next cursor = %q, want none", result.NextCursor)
+	}
+}
+
 func Test_knowledgeNetworkService_CheckKNExistByID(t *testing.T) {
 	Convey("Test CheckKNExistByID\n", t, func() {
 		ctx := context.Background()

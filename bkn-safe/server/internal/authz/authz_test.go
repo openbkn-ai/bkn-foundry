@@ -234,21 +234,31 @@ func TestAccessibleResourceScopeDistinguishesSuperAdminFromConcreteGrants(t *tes
 	e := newTestEnforcer(t)
 	mustNoErr(t, e.GrantObjectPermission("reader", "object_type", "kn-1/orders", "view_detail"))
 
-	ids, unrestricted, err := e.AccessibleResourceScope("reader", "object_type", "view_detail")
+	ids, unrestricted, fallback, err := e.AccessibleResourceScope("reader", "object_type", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unrestricted || !sameSet(ids, []string{"kn-1/orders"}) {
-		t.Fatalf("reader scope = (%v, %v), want concrete orders grant", ids, unrestricted)
+	if unrestricted || fallback || !sameSet(ids, []string{"kn-1/orders"}) {
+		t.Fatalf("reader scope = (%v, %v, %v), want concrete orders grant", ids, unrestricted, fallback)
+	}
+
+	mustNoErr(t, e.GrantRolePermission("type-reader", "object_type", "*", "view_detail"))
+	mustNoErr(t, e.AssignRole("wildcard-reader", "type-reader"))
+	ids, unrestricted, fallback, err = e.AccessibleResourceScope("wildcard-reader", "object_type", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unrestricted || !fallback || len(ids) != 0 {
+		t.Fatalf("wildcard reader scope = (%v, %v, %v), want candidate filtering", ids, unrestricted, fallback)
 	}
 
 	mustNoErr(t, e.AssignRole("admin", SuperAdminRoleID))
-	ids, unrestricted, err = e.AccessibleResourceScope("admin", "object_type", "view_detail")
+	ids, unrestricted, fallback, err = e.AccessibleResourceScope("admin", "object_type", "view_detail")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !unrestricted || len(ids) != 0 {
-		t.Fatalf("super-admin scope = (%v, %v), want unrestricted", ids, unrestricted)
+	if !unrestricted || fallback || len(ids) != 0 {
+		t.Fatalf("super-admin scope = (%v, %v, %v), want unrestricted", ids, unrestricted, fallback)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -174,8 +175,9 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 
 	var err error
 	currentRelations := []*interfaces.RelationType{}
+	loadedRelationIDs := sortedProxyIDs(relationIDs)
 	if len(relationIDs) > 0 {
-		currentRelations, err = kns.rta.GetRelationTypesByIDs(ctx, knID, branch, sortedProxyIDs(relationIDs))
+		currentRelations, err = kns.rta.GetRelationTypesByIDs(ctx, knID, branch, loadedRelationIDs)
 		if err != nil {
 			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load changed relation proxy bindings")
 		}
@@ -192,8 +194,9 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 		}
 	}
 	currentMetrics := []*interfaces.MetricDefinition{}
+	loadedMetricIDs := sortedProxyIDs(metricIDs)
 	if len(metricIDs) > 0 {
-		currentMetrics, err = kns.ma.GetMetricsByIDs(ctx, knID, branch, sortedProxyIDs(metricIDs))
+		currentMetrics, err = kns.ma.GetMetricsByIDs(ctx, knID, branch, loadedMetricIDs)
 		if err != nil {
 			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load changed metric proxy bindings")
 		}
@@ -245,9 +248,10 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load affected object proxy bindings")
 		}
 	}
-	relations := []*interfaces.RelationType{}
-	if len(relationIDs) > 0 {
-		relations, err = kns.rta.GetRelationTypesByIDs(ctx, knID, branch, sortedProxyIDs(relationIDs))
+	relations := currentRelations
+	affectedRelationIDs := sortedProxyIDs(relationIDs)
+	if len(affectedRelationIDs) > 0 && !slices.Equal(loadedRelationIDs, affectedRelationIDs) {
+		relations, err = kns.rta.GetRelationTypesByIDs(ctx, knID, branch, affectedRelationIDs)
 		if err != nil {
 			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load affected relation proxy bindings")
 		}
@@ -260,8 +264,9 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 		}
 	}
 	metrics := currentMetrics
-	if len(metricIDs) > 0 {
-		metrics, err = kns.ma.GetMetricsByIDs(ctx, knID, branch, sortedProxyIDs(metricIDs))
+	affectedMetricIDs := sortedProxyIDs(metricIDs)
+	if len(affectedMetricIDs) > 0 && !slices.Equal(loadedMetricIDs, affectedMetricIDs) {
+		metrics, err = kns.ma.GetMetricsByIDs(ctx, knID, branch, affectedMetricIDs)
 		if err != nil {
 			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load affected metric proxy bindings")
 		}

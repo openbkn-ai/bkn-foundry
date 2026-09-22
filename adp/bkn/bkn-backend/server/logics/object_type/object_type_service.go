@@ -589,6 +589,32 @@ func (ots *objectTypeService) ListObjectTypeSummaries(ctx context.Context, tx *s
 		if err != nil {
 			return nil, 0, err
 		}
+		if scope.RequiresCandidateFilter {
+			candidateQuery := query
+			candidateQuery.Offset = 0
+			candidateQuery.Limit = -1
+			candidates, err := ots.ota.ListObjectTypeSummaries(ctx, tx, candidateQuery)
+			if err != nil {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+			}
+			visible, err := ots.filterObjectTypeSummaryOperations(ctx, query.KNID, candidates)
+			if err != nil {
+				return nil, 0, err
+			}
+			total := len(visible)
+			start := min(max(query.Offset, 0), total)
+			end := total
+			if query.Limit > 0 {
+				end = min(start+query.Limit, total)
+			}
+			page := visible[start:end]
+			if err := ots.loadObjectTypeSummaryAccounts(ctx, page); err != nil {
+				return nil, 0, err
+			}
+			span.SetStatus(codes.Ok, "")
+			return page, total, nil
+		}
 		if !scope.Unrestricted {
 			visible := make(map[string]struct{}, len(scope.ResourceIDs))
 			visibleIDs := make([]string, 0, len(scope.ResourceIDs))
@@ -628,37 +654,56 @@ func (ots *objectTypeService) ListObjectTypeSummaries(ctx context.Context, tx *s
 	if interfaces.IsAuthorizationResourceCatalog(ctx) || len(items) == 0 {
 		return items, total, nil
 	}
+	visibleItems, err := ots.filterObjectTypeSummaryOperations(ctx, query.KNID, items)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := ots.loadObjectTypeSummaryAccounts(ctx, visibleItems); err != nil {
+		return nil, 0, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return visibleItems, total, nil
+}
 
+func (ots *objectTypeService) filterObjectTypeSummaryOperations(ctx context.Context, knID string,
+	items []*interfaces.ObjectType) ([]*interfaces.ObjectType, error) {
 	childIDs := make([]string, 0, len(items))
 	for _, item := range items {
 		childIDs = append(childIDs, item.OTID)
 	}
 	operations, err := permission.FilterKNChildResourceIDsWithOperations(ctx, ots.ps,
-		interfaces.RESOURCE_TYPE_OBJECT_TYPE, interfaces.KNChildResourceIDs(query.KNID, childIDs),
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, interfaces.KNChildResourceIDs(knID, childIDs),
 		interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	visibleItems := make([]*interfaces.ObjectType, 0, len(items))
-	accountInfos := make([]*interfaces.AccountInfo, 0, len(items)*2)
 	for _, item := range items {
-		resourceID := interfaces.KNChildResourceID(query.KNID, item.OTID)
+		resourceID := interfaces.KNChildResourceID(knID, item.OTID)
 		resourceOps, ok := operations[resourceID]
 		if !ok {
 			continue
 		}
 		item.Operations = resourceOps.Operations
 		visibleItems = append(visibleItems, item)
+	}
+	return visibleItems, nil
+}
+
+func (ots *objectTypeService) loadObjectTypeSummaryAccounts(ctx context.Context,
+	items []*interfaces.ObjectType) error {
+	accountInfos := make([]*interfaces.AccountInfo, 0, len(items)*2)
+	for _, item := range items {
 		accountInfos = append(accountInfos, &item.Creator, &item.Updater)
 	}
-	if len(accountInfos) > 0 {
-		if err := ots.ums.GetAccountNames(ctx, accountInfos); err != nil {
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
-		}
+	if len(accountInfos) == 0 {
+		return nil
 	}
-	span.SetStatus(codes.Ok, "")
-	return visibleItems, total, nil
+	if err := ots.ums.GetAccountNames(ctx, accountInfos); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	}
+	return nil
 }
 
 func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx,

@@ -264,12 +264,13 @@ type RowFiltersResponse struct {
 	Entries []RowFilterDecisionEntry `json:"entries"`
 }
 
-// PermissionResourceScope describes the concrete resources visible to one accessor.
-// Unrestricted is reserved for accessors whose authorization is independent of
-// concrete resource IDs, such as the super administrator role.
+// PermissionResourceScope describes the storage-planning scope for one accessor.
+// RequiresCandidateFilter preserves exact wildcard and deny semantics when the
+// visible set cannot be expressed as a finite list of concrete IDs.
 type PermissionResourceScope struct {
-	Unrestricted bool     `json:"unrestricted"`
-	ResourceIDs  []string `json:"ids"`
+	Unrestricted            bool     `json:"unrestricted"`
+	RequiresCandidateFilter bool     `json:"requires_candidate_filter"`
+	ResourceIDs             []string `json:"ids"`
 }
 
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go

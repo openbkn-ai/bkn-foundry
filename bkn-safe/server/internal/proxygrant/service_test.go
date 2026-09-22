@@ -1260,6 +1260,62 @@ func TestCheckDeltaIsReadOnlyAndSyncDeltaAppliesFencedTransition(t *testing.T) {
 	}
 }
 
+func TestCheckDeltaAuditsDenialAndDoesNotReuseRemovedDelegator(t *testing.T) {
+	f := newFixture(t)
+	const historical = "grantor-historical"
+	if err := f.db.Create(&model.User{ID: historical, Account: historical, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, historical, "r-1", "query_data")
+	oldSource := f.request("source-old", "ot-old", "r-1").Source
+	newSource := f.request("source-new", "ot-new", "r-1").Source
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: historical, SyncGeneration: 1,
+		SnapshotVersion: "sha256:base", Sources: []proxygrant.SourceSpec{oldSource},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	checked, err := f.service.CheckDelta(t.Context(), proxygrant.DeltaCheckRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor,
+		Upserts: []proxygrant.SourceSpec{newSource}, Removals: []proxygrant.SourceSpec{oldSource},
+	})
+	if err != nil || len(checked.DeniedSources) != 1 || checked.DeniedSources[0].SourceID != newSource.SourceID {
+		t.Fatalf("CheckDelta() = (%+v, %v), want denied replacement", checked, err)
+	}
+	var audit model.ProxyGrantAuditLog
+	if err := f.db.Where("action = ? AND decision = ? AND source_id = ?",
+		"check_delta", "deny", newSource.SourceID).First(&audit).Error; err != nil {
+		t.Fatalf("load CheckDelta denial audit: %v", err)
+	}
+}
+
+func TestPureRemovalDeltaFailureAuditsRemovedSource(t *testing.T) {
+	f := newFixture(t)
+	f.authorize(t, "r-1", "query_data")
+	source := f.request("source-1", "ot-1", "r-1").Source
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, SyncGeneration: 1,
+		SnapshotVersion: "sha256:base", Sources: []proxygrant.SourceSpec{source},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := f.service.SyncDelta(t.Context(), proxygrant.DeltaSyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, SyncGeneration: 2,
+		BaseSnapshotVersion: "sha256:wrong", TargetSnapshotVersion: "sha256:target",
+		Removals: []proxygrant.SourceSpec{source},
+	})
+	if !errors.Is(err, proxygrant.ErrSnapshotConflict) {
+		t.Fatalf("SyncDelta() error = %v, want ErrSnapshotConflict", err)
+	}
+	var audit model.ProxyGrantAuditLog
+	if err := f.db.Where("action = ? AND decision = ? AND source_id = ?",
+		"sync_delta", "deny", source.SourceID).First(&audit).Error; err != nil {
+		t.Fatalf("load pure-removal denial audit: %v", err)
+	}
+}
+
 func TestTouchedOnlyDeltaTransfersInvalidHistoricalDelegatorWithoutChangingSnapshot(t *testing.T) {
 	f := newFixture(t)
 	const historical = "grantor-historical"
