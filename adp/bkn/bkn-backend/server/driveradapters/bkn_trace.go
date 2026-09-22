@@ -53,9 +53,10 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.Request
 	if accountType == "" {
 		accountType = strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_TYPE))
 	}
-	attempt, _ := strconv.Atoi(strings.TrimSpace(c.GetHeader(headerBKNAttempt)))
-	if attempt < 1 || attempt > 1000 {
-		attempt = 1
+	attempt := uint32(1)
+	parsedAttempt, err := strconv.ParseUint(strings.TrimSpace(c.GetHeader(headerBKNAttempt)), 10, 32)
+	if err == nil && parsedAttempt >= 1 && parsedAttempt <= 1000 {
+		attempt = uint32(parsedAttempt)
 	}
 	interactionID := strings.TrimSpace(c.GetHeader(headerBKNInteractionID))
 	if interactionID == "" {
