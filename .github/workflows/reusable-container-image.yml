@@ -1,86 +1,75 @@
-name: reusable-build
+name: reusable-container-image
 
-# Each architecture builds on a runner of its own architecture, then the legs
-# are stitched into one multi-arch tag. The previous single-job build asked one
-# amd64 runner for `platforms: linux/amd64,linux/arm64`, which ran the arm64 leg
-# under QEMU. None of the Dockerfiles cross-compile (no `--platform=$BUILDPLATFORM`
-# builder stage), so `go build` with CGO and every `pip install` were interpreted
-# instruction by instruction: bkn-backend spent 16 minutes in the build step,
-# almost all of it in the arm64 leg.
+# Each architecture builds on its own native runner, then the legs are stitched
+# into one multi-architecture tag. A single amd64 runner would run the arm64 leg
+# under QEMU; these Dockerfiles do not configure cross-compilation builders.
 #
-# Registry shape after this change: every published version has the plain
-# `:<version>` manifest list (what charts and deploys reference) plus one
-# arch-suffixed tag per leg, `:<version>-amd64` / `:<version>-arm64`. The
-# suffixed tags are the list's children — a retention policy must keep them
-# alive as long as the list they back — and they double as a plain
-# `docker pull` handle for users who need a specific architecture without
-# skopeo or `--platform`.
+# Every published version has the plain `:<version>` manifest list (what charts
+# and deploys reference) plus one arch-suffixed tag per leg,
+# `:<version>-amd64` / `:<version>-arm64`. The suffixed tags are the list's
+# children and must be retained while the list references them.
 #
-# The list is assembled from the digests each leg just pushed, not by
-# resolving the arch tags again: a `v*` tag can be rebuilt and no caller sets
-# `concurrency`, so two runs of one version can interleave. Release branches
-# include commit time and SHA and are therefore immutable. Reading
-# tags back could pair an amd64 image from one commit with an arm64 image
-# from another; digests pin the list to this run's own builds. What remains
-# is that a leg can fail after the other already pushed its arch tag — then
-# `:<version>` keeps pointing at the previous list until the version builds
-# cleanly again, and the arch tag is ahead of it for that window.
+# The list is assembled from the digests each leg just pushed, rather than by
+# resolving tags again. Concurrent rebuilds of a version can otherwise combine
+# architectures from different runs; digests pin a manifest to this run.
 #
-# `ubuntu-24.04-arm` is GitHub-hosted and free for public repositories only;
-# a private fork of this workflow needs its own arm64 runner behind that label.
+# `ubuntu-24.04-arm` is GitHub-hosted and free for public repositories only; a
+# private repository needs an equivalent ARM64 runner behind that label.
 
 on:
   workflow_call:
     inputs:
-      service-path:
-        type: string
-        required: true
-      dockerfile:
-        type: string
-        required: true
-        description: 'Path to Dockerfile'
-      context:
-        type: string
-        default: '.'
-        description: 'Docker build context (relative to service-path)'
-      platforms:
-        type: string
-        default: 'linux/amd64,linux/arm64'
-        description: 'Docker platforms (comma-separated; each gets a native runner)'
-      image-name:
-        type: string
-        required: true
-        description: 'Image name (without registry/tag)'
-      version:
-        type: string
-        required: true
-      publish:
-        type: boolean
-        default: false
       build-args:
+        default: ""
+        description: "Extra docker build args, one KEY=VALUE per line (e.g. BASE_IMAGE=ubuntu:22.04)"
         type: string
-        default: ''
-        description: 'Extra docker build args, one KEY=VALUE per line (e.g. BASE_IMAGE=ubuntu:22.04)'
-      target:
+      context:
+        default: "."
+        description: "Docker build context (relative to service-path)"
         type: string
-        default: ''
-        description: 'Dockerfile target stage (empty = final stage)'
-      swr-registry:
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: true
         type: string
-        default: 'swr.cn-east-3.myhuaweicloud.com'
-        description: 'Huawei SWR registry host for the mirror push'
+      image-name:
+        description: "Image name (without registry/tag)"
+        required: true
+        type: string
+      platforms:
+        default: "linux/amd64,linux/arm64"
+        description: "Docker platforms (comma-separated; each gets a native runner)"
+        type: string
+      publish:
+        default: false
+        type: boolean
+      service-path:
+        required: true
+        type: string
       swr-namespace:
+        default: "openbkn-ai"
+        description: "Huawei SWR organization/namespace for app images"
         type: string
-        default: 'openbkn-ai'
-        description: 'Huawei SWR organization/namespace for app images'
+      swr-registry:
+        default: "swr.cn-east-3.myhuaweicloud.com"
+        description: "Huawei SWR registry host for the mirror push"
+        type: string
+      target:
+        default: ""
+        description: "Dockerfile target stage (empty = final stage)"
+        type: string
+      version:
+        required: true
+        type: string
     secrets:
       # Optional: when set, every published image is mirrored to Huawei SWR in
       # the same build. Absent (forks, credential-less runs) → mirror skipped,
       # GHCR push unaffected. Callers opt in with `secrets: inherit`.
-      HUAWEI_SWR_USERNAME:
-        required: false
-      HUAWEI_SWR_PASSWORD:
-        required: false
+      HUAWEI_SWR_USERNAME: {}
+      HUAWEI_SWR_PASSWORD: {}
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   # Turns the `platforms` input into the build matrix and settles the SWR
@@ -140,12 +129,9 @@ jobs:
   # leg publishes an arch-suffixed tag; the manifest job below unions them into
   # the plain `:<version>` tag.
   build:
-    name: build ${{ matrix.arch }}
+    name: Build ${{ matrix.arch }}
     needs: setup
     runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-      packages: write
     strategy:
       fail-fast: true
       matrix:
@@ -172,14 +158,14 @@ jobs:
           username: ${{ secrets.HUAWEI_SWR_USERNAME }}
           password: ${{ secrets.HUAWEI_SWR_PASSWORD }}
 
-      - name: Compute arch image tags
+      - name: Compute architecture image tags
         id: tags
         shell: bash
         env:
-          IMAGE: ${{ inputs.image-name }}
-          VERSION: ${{ inputs.version }}
           ARCH: ${{ matrix.arch }}
+          IMAGE: ${{ inputs.image-name }}
           SWR_REPO: ${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}
+          VERSION: ${{ inputs.version }}
         run: |
           # Arch-suffixed tags are the manifest list's children and are left in
           # the registry on purpose: deleting them breaks the list that
@@ -193,7 +179,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push image
+      - name: Build and push architecture image
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -218,11 +204,10 @@ jobs:
 
       # The manifest job pins the list to these digests (see header). One file
       # per leg, named by arch; the artifact name carries the image so several
-      # reusable-build calls in one workflow run don't collide. `__` is the
-      # delimiter because image names use `-` and can be prefixes of each other
-      # (vega-backend / vega-backend-python-base in one run): the manifest job
-      # matches `digest__<image>__*`, and `digest__vega-backend__*` cannot
-      # match `digest__vega-backend-python-base__amd64`.
+      # reusable-container-image calls in one workflow run don't collide. `__` is the
+      # delimiter because image names use `-` and can be prefixes of each other.
+      # The manifest job matches `digest__<image>__*`, so the delimiters avoid
+      # matching the digest artifact of a longer image name with the same prefix.
       - name: Record image digest
         if: ${{ inputs.publish }}
         shell: bash
@@ -254,9 +239,6 @@ jobs:
     needs: [setup, build]
     if: ${{ inputs.publish }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       # No merge-multiple: each artifact unpacks into its own directory named
       # after the artifact, and the union step reads the exact
@@ -286,11 +268,11 @@ jobs:
       - name: Union arch images into the version tag
         shell: bash
         env:
+          ARCHS: ${{ needs.setup.outputs.archs }}
+          DIGEST_DIR: ${{ runner.temp }}/digests
           IMAGE: ${{ inputs.image-name }}
           VERSION: ${{ inputs.version }}
-          ARCHS: ${{ needs.setup.outputs.archs }}
           SWR_REPO: ${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}
-          DIGEST_DIR: ${{ runner.temp }}/digests
         run: |
           set -euo pipefail
           read -ra archs <<< "${ARCHS}"

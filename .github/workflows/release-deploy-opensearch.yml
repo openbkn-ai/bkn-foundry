@@ -15,7 +15,7 @@ on:
       # deploy/scripts/lib/common.sh look stale against a byte-identical build.
       - 'deploy/images/opensearch/Dockerfile'
       - '.github/workflows/release-deploy-opensearch.yml'
-      - '.github/workflows/reusable-build.yml'
+      - '.github/workflows/reusable-container-image.yml'
   workflow_dispatch:
     inputs:
       publish:
@@ -54,7 +54,7 @@ jobs:
 
   build:
     needs: resolve-version
-    uses: ./.github/workflows/reusable-build.yml
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: deploy/images/opensearch

@@ -551,16 +551,23 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		pageCtx, cancel = context.WithTimeout(ctx, time.Duration(session.QueryTimeoutSec)*time.Second)
 		defer cancel()
 	}
+
 	connector, err := rqs.cf.CreateConnectorInstance(pageCtx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, connectorInitializationError(ctx, err)
 	}
 	defer func() { _ = connector.Close(pageCtx) }()
+
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("opensearch connector does not implement IndexConnector")
 	}
+
+	if err := indexConnector.Connect(pageCtx); err != nil {
+		return nil, connectorInitializationError(ctx, err)
+	}
+
 	result, err := indexConnector.ExecuteRawQuery(pageCtx, session.OpenSearchIndex, query)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
@@ -671,11 +678,16 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, connectorInitializationError(ctx, err)
 	}
 	defer func() { _ = connector.Close(queryCtx) }()
+
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("opensearch connector does not implement IndexConnector")
 	}
+	if err := indexConnector.Connect(queryCtx); err != nil {
+		return nil, connectorInitializationError(ctx, err)
+	}
+
 	result, err := indexConnector.ExecuteRawQuery(queryCtx, resource.SourceIdentifier, queryMap)
 	if err != nil {
 		var validationErr *opensearchconnector.RawAggregationValidationError
@@ -1016,6 +1028,14 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
 	}
+	// Establish the connection before any connector-specific operation. Some
+	// connectors probe server capabilities during Connect, which SQL builders
+	// need before selecting their syntax.
+	if err := tableConnector.Connect(ctx); err != nil {
+		otellog.LogError(ctx, "Connect connector before executing SQL failed", err)
+		return nil, connectorInitializationError(ctx, err)
+	}
+
 	if buildOptions != nil {
 		if buildOptions.count {
 			sql = tableConnector.BuildCountSQL(sql)

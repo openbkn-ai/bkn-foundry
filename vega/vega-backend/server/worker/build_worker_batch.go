@@ -334,10 +334,12 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	if err != nil {
 		return fmt.Errorf("create connector instance failed: %w", err)
 	}
+	defer func() { _ = connector.Close(ctx) }()
+
 	if err := connector.Connect(ctx); err != nil {
 		return fmt.Errorf("connect failed: %w", err)
 	}
-	defer func() { _ = connector.Close(ctx) }()
+
 	tableConnector, ok := connector.(interfaces.TableConnector)
 	if !ok {
 		return fmt.Errorf("connector is not a table connector")

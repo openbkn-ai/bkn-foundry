@@ -9,7 +9,9 @@ ARG PYTHON_BASE_IMAGE=ghcr.io/openbkn-ai/vega-backend-python-base:sha-c757948463
 
 FROM ${BUILD_IMAGE} AS builder
 
-COPY ./server /go/src
+WORKDIR /go/src
+
+COPY . .
 
 ARG SERVER_VERSION=0.1.0
 ARG GOPROXY_URL="https://proxy.golang.org,direct"
@@ -17,7 +19,6 @@ ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
 
 RUN set -ex; \
-    cd /go/src; \
     go mod download -x; \
     export flags="-X 'github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/version.ServerVersion=${SERVER_VERSION}'"; \
     CGO_ENABLED=1 go build -ldflags "-s -w $flags" -o ./bin/vega-backend-server ./cmd/vega-backend;
@@ -31,8 +32,8 @@ ARG GID=1001
 
 COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/vega-backend
 
-ADD server/config/vega-backend-config.yaml /opt/vega-backend/config/
-ADD server/locale /opt/vega-backend/locale
+COPY config/vega-backend-config.yaml /opt/vega-backend/config/
+COPY locale /opt/vega-backend/locale
 
 # 指定工作目录
 WORKDIR /opt/vega-backend/

@@ -28,8 +28,12 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: infra/mf-model-manager
       stack: chart-only
@@ -50,23 +54,23 @@ jobs:
           python -m unittest -v app.test.test_permission_manager_authz app.test.test_auth_middleware_identity
 
   build:
-    needs: [test, authz-unit]
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify, authz-unit]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/mf-model-manager
       dockerfile: Dockerfile
       context: '.'
       image-name: mf-model-manager
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
-    needs: [test, build]
+    needs: [version, verify, build]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: infra/mf-model-manager
       chart-path: charts
       chart-name: mf-model-manager
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

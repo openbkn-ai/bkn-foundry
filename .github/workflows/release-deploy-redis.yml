@@ -15,7 +15,7 @@ on:
       - 'deploy/images/redis/config-init.sh'
       - 'deploy/images/redis/liveness-check.sh'
       - '.github/workflows/release-deploy-redis.yml'
-      - '.github/workflows/reusable-build.yml'
+      - '.github/workflows/reusable-container-image.yml'
   workflow_dispatch:
     inputs:
       publish:
@@ -54,7 +54,7 @@ jobs:
 
   build:
     needs: resolve-version
-    uses: ./.github/workflows/reusable-build.yml
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: deploy/images/redis

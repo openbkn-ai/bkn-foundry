@@ -1,41 +1,27 @@
-name: reusable-test
+name: reusable-version
 
 on:
   workflow_call:
     inputs:
-      service-path:
-        type: string
-        required: true
-        description: 'Service directory (e.g., bkn-trace/agent-observability)'
-      stack:
-        type: string
-        required: true
-        description: 'go | python | chart-only'
-      go-mod-file:
-        type: string
-        default: 'go.mod'
-        description: 'Path to go.mod relative to service dir'
-      python-version:
-        type: string
-        default: '3.11'
-        description: 'Python version for setup'
-      test-flags:
-        type: string
-        default: ''
-        description: 'Extra flags for go test (e.g. -skip <pattern>)'
-      skip-lint:
-        type: boolean
+      publish:
         default: false
-        description: 'Skip golangci-lint (for services with incompatible lint config)'
+        type: boolean
     outputs:
+      publish:
+        value: ${{ jobs.resolve.outputs.publish }}
+        description: Whether the release may publish artifacts
       version:
-        value: ${{ jobs.resolve-version.outputs.version }}
-        description: 'Resolved version string'
+        value: ${{ jobs.resolve.outputs.version }}
+        description: Resolved version string
+
+permissions:
+  contents: read
 
 jobs:
-  resolve-version:
+  resolve:
     runs-on: ubuntu-latest
     outputs:
+      publish: ${{ steps.version.outputs.publish }}
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -96,60 +82,12 @@ jobs:
             VERSION="$BASE_VERSION-$SANITIZED_BRANCH.$COMMIT_DATE.sha$SHORT_SHA"
           fi
 
+          if [[ "$REF_TYPE" == "tag" || "${{ github.event_name }}" == "push" ]]; then
+            PUBLISH=true
+          else
+            PUBLISH='${{ inputs.publish }}'
+          fi
+
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
-
-  test:
-    runs-on: ubuntu-latest
-    needs: resolve-version
-    outputs:
-      version: ${{ needs.resolve-version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Test (Go)
-        if: ${{ inputs.stack == 'go' }}
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: ${{ inputs.service-path }}/${{ inputs.go-mod-file }}
-
-      - name: Run Go test
-        if: ${{ inputs.stack == 'go' }}
-        working-directory: ${{ inputs.service-path }}
-        run: go test ${{ inputs.test-flags }} ./...
-
-      - name: GolangCI-Lint
-        if: ${{ inputs.stack == 'go' && !inputs.skip-lint }}
-        uses: golangci/golangci-lint-action@v7
-        with:
-          version: v2.6.2
-          working-directory: ${{ inputs.service-path }}
-
-      - name: Setup Python
-        if: ${{ inputs.stack == 'python' }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version }}
-
-      - name: Run Python test
-        if: ${{ inputs.stack == 'python' }}
-        working-directory: ${{ inputs.service-path }}
-        run: |
-          pip install -r requirements.txt
-          # 单测专用依赖（pytest/httpx 等）不进运行镜像 requirements.txt，放 test-requirements.txt
-          [ -f test-requirements.txt ] && pip install -r test-requirements.txt || true
-          pytest
-
-      - name: Setup Helm
-        if: ${{ inputs.stack == 'chart-only' }}
-        uses: azure/setup-helm@v4
-
-      - name: Helm lint
-        if: ${{ inputs.stack == 'chart-only' }}
-        working-directory: ${{ inputs.service-path }}
-        run: |
-          # Chart-only services should have chart in specific subdirs
-          find . -name Chart.yaml -type f | while read chart; do
-            chart_dir=$(dirname "$chart")
-            helm lint "$chart_dir"
-          done

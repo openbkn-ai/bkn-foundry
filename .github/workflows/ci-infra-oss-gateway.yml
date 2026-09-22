@@ -26,5 +26,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: infra/oss-gateway-backend/go.mod
+      - name: Static analysis
+        uses: ./.github/actions/golangci-lint
+        with:
+          working-directory: infra/oss-gateway-backend
       - run: go build ./...
       - run: go test ./...

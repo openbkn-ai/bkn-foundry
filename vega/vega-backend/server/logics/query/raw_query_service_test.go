@@ -523,11 +523,14 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10).Return("TSQL SINGLE PAGE")
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "TSQL SINGLE PAGE").Return(&interfaces.RawQueryResponse{
-			Entries: []map[string]any{{"id": 1}},
-		}, nil)
+		gomock.InOrder(
+			connector.EXPECT().Connect(gomock.Any()).Return(nil),
+			connector.EXPECT().BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10).Return("TSQL SINGLE PAGE"),
+			connector.EXPECT().ExecuteRawSQL(gomock.Any(), "TSQL SINGLE PAGE").Return(&interfaces.RawQueryResponse{
+				Entries: []map[string]any{{"id": 1}},
+			}, nil),
+			connector.EXPECT().Close(gomock.Any()).Return(nil),
+		)
 
 		result, err := svc.executeSQL(context.Background(), catalog,
 			"SELECT id FROM dbo.orders", interfaces.PagingModeSingle, &rawSQLBuildOptions{offset: 20, limit: 10})
@@ -545,6 +548,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT no_such_column FROM brands").
 			Return(nil, fmt.Errorf("execute query failed: %w", &mysql.MySQLError{Number: 1054, Message: "Unknown column 'no_such_column' in 'field list'"}))
 
@@ -558,6 +562,23 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "no_such_column")
 	})
 
+	t.Run("connects before executing unpaged SQL", func(t *testing.T) {
+		catalog := rawQuerySQLServerCatalog()
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockTableConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
+			Return(connector, nil)
+		svc := &rawQueryService{cf: connectorFactory}
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(errors.New("connection refused"))
+
+		_, err := svc.executeSQL(context.Background(), catalog,
+			"SELECT id FROM dbo.orders", interfaces.PagingModeSingle, nil)
+
+		assertHTTPError(t, err, http.StatusInternalServerError)
+	})
+
 	t.Run("returns invalid parameter for an unknown PostgreSQL column", func(t *testing.T) {
 		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "postgresql-catalog", ConnectorType: interfaces.ConnectorTypePostgreSQL}
 		ctrl := gomock.NewController(t)
@@ -567,6 +588,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT no_such_column FROM brands").
 			Return(nil, fmt.Errorf("execute query failed: %w", &pq.Error{Code: "42703", Message: "column \"no_such_column\" does not exist"}))
 
@@ -589,6 +611,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT id FROM brands").
 			Return(nil, errors.New("database connection lost"))
 
@@ -617,6 +640,7 @@ func TestRawQueryServiceExecuteSQLCursorPage(t *testing.T) {
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().BuildPagedSQL("SELECT id FROM dbo.orders", 4, 3).Return("TSQL CURSOR PAGE")
 		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "TSQL CURSOR PAGE").Return(&interfaces.RawQueryResponse{
 			Entries: []map[string]any{{"id": 5}, {"id": 6}, {"id": 7}},
@@ -641,14 +665,17 @@ func TestRawQueryServiceExecuteSQLTotalCount(t *testing.T) {
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().BuildCountSQL("SELECT id FROM dbo.orders").Return(
-			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total")
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(),
-			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total").
-			Return(&interfaces.RawQueryResponse{
-				Entries: []map[string]any{{rawQueryTotalCountColumn: int64(42)}},
-			}, nil)
+		gomock.InOrder(
+			connector.EXPECT().Connect(gomock.Any()).Return(nil),
+			connector.EXPECT().BuildCountSQL("SELECT id FROM dbo.orders").Return(
+				"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total"),
+			connector.EXPECT().ExecuteRawSQL(gomock.Any(),
+				"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total").
+				Return(&interfaces.RawQueryResponse{
+					Entries: []map[string]any{{rawQueryTotalCountColumn: int64(42)}},
+				}, nil),
+			connector.EXPECT().Close(gomock.Any()).Return(nil),
+		)
 
 		count, err := svc.executeSQLTotalCount(context.Background(), catalog, "SELECT id FROM dbo.orders")
 
@@ -701,6 +728,7 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil).Times(4)
 		svc.cf = connectorFactory
+		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil).Times(4)
 
 		callCount := 0
 		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
@@ -764,6 +792,38 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 			Paging:          interfaces.PagingRequest{Limit: 2},
 		})
 		assertHTTPError(t, err, http.StatusBadRequest)
+	})
+
+	t.Run("fails before executing DSL when connector connection fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		expectIndexConnectorClose(indexConnector)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &rawQueryService{cs: mockCS, rs: mockRS}
+		resource := &interfaces.Resource{
+			ID:               "resource-1",
+			Enabled:          true,
+			CatalogID:        "catalog-1",
+			SourceIdentifier: "events",
+			Status:           interfaces.ResourceStatusActive,
+			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+		}
+		catalog := &interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}
+		expectRawQueryResource(mockRS, "resource-1", resource)
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(catalog, nil)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
+			Return(indexConnector, nil)
+		svc.cf = connectorFactory
+		indexConnector.EXPECT().Connect(gomock.Any()).Return(errors.New("connection refused"))
+
+		_, err := svc.executeInitialDSLQuery(context.Background(), &interfaces.RawQueryRequest{
+			Query:  map[string]any{"resource_id": "resource-1"},
+			Paging: interfaces.PagingRequest{Limit: 10},
+		})
+
+		assertHTTPError(t, err, http.StatusInternalServerError)
 	})
 }
 
@@ -887,6 +947,7 @@ func TestRawQueryServiceExecuteInitialOpenSearchCursor(t *testing.T) {
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil)
 		svc.cf = connectorFactory
+		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
 
 		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
@@ -920,6 +981,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 		indexConnector.EXPECT().Close(gomock.Any()).Return(nil).Times(2)
+		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil).Times(2)
 		manager := newCursorSessionManager(10)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
@@ -980,6 +1042,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
+		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
 		manager := newCursorSessionManager(10)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
@@ -1016,6 +1079,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
+		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
 		manager := newCursorSessionManager(10)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
@@ -1038,6 +1102,31 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, expiresAt, atomic.LoadInt64(&session.ExpiresAtSec))
 	})
+
+	t.Run("fails before executing when connector connection fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		expectIndexConnectorClose(indexConnector)
+		indexConnector.EXPECT().Connect(gomock.Any()).Return(errors.New("connection refused"))
+		manager := newCursorSessionManager(10)
+		previousManager := rawQueryCursorSessions
+		rawQueryCursorSessions = manager
+		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 1, 60, 0)
+		require.NoError(t, err)
+		session.OpenSearchIndex = "events"
+		session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "size": 1}
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
+			Return(indexConnector, nil)
+		svc := &rawQueryService{cf: connectorFactory}
+
+		_, err = svc.executeOpenSearchCursorPage(context.Background(), session,
+			&interfaces.Catalog{ID: "catalog-1", ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
+
+		assertHTTPError(t, err, http.StatusInternalServerError)
+	})
 }
 
 func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
@@ -1045,6 +1134,7 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
+		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		manager := newCursorSessionManager(10)

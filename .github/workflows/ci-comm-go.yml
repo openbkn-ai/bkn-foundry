@@ -1,8 +1,8 @@
 name: ci-comm-go
 
 # Compile + test gate for the shared Go library. It has no image and no chart,
-# so it does not go through reusable-test/reusable-build — those resolve a
-# version and publish artefacts, neither of which applies to a library.
+# so it does not go through reusable-version/reusable-release-verify/reusable-container-image —
+# those resolve a version and publish artefacts, neither of which applies to a library.
 #
 # Two exclusions carried over from the library's own CI before it moved into
 # this repository:

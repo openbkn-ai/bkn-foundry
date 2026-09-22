@@ -52,6 +52,26 @@ func TestDiscoverTaskWorkerUpdateProgress(t *testing.T) {
 	})
 }
 
+func TestDiscoverTaskWorkerCreateAndConnectConnector(t *testing.T) {
+	t.Run("closes the connector when connecting fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockConnector(ctrl)
+		factory := vmock.NewMockConnectorFactory(ctrl)
+		worker := &DiscoverTaskWorker{cf: factory}
+		catalog := &interfaces.Catalog{ConnectorType: "mariadb"}
+
+		factory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
+			Return(connector, nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(errors.New("connection refused"))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+
+		result, err := worker.createAndConnectConnector(context.Background(), catalog)
+
+		assert.Nil(t, result)
+		assert.ErrorContains(t, err, "failed to connect: connection refused")
+	})
+}
+
 func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)

@@ -114,7 +114,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if limit > 500 {
 		limit = 500
 	}
-	query := "SELECT event_id,event_time,recorded_at,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM " + tableName + " WHERE event_time>=? AND event_time<?"
+	query := "SELECT event_id,event_time,recorded_at,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM " + tableName + " WHERE event_time>=? AND event_time<?" // #nosec G202 -- tableName is selected from the store's static table mapping.
 	args := []any{filter.From, filter.To}
 	for _, condition := range []struct{ column, value string }{
 		{"actor_id", filter.ActorID}, {"action", filter.Action}, {"target_type", filter.TargetType}, {"target_id", filter.TargetID}, {"outcome", filter.Outcome},

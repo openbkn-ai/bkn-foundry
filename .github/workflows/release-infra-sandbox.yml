@@ -30,6 +30,9 @@ permissions:
   packages: write
 
 jobs:
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
   # 沙箱镜像里的 BKN 能力面是签入产物，由 context-loader 的渲染器生成。产物签入
   # 就得有人盯着它别过期：漂了只在调用失败时才暴露，而那时错误里看不出根因。
   bkn-tools:
@@ -42,16 +45,17 @@ jobs:
           cache-dependency-path: adp/context-loader/agent-retrieval/go.sum
       - run: make -C infra/sandbox bkn-tools-check
 
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: infra/sandbox/deploy/helm
       stack: chart-only
 
   # ===== Bases (稳定 v1，链顶) =====
   build-python-base:
-    needs: test
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/sandbox/images/bases/python
@@ -62,8 +66,8 @@ jobs:
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-multi-language-base:
-    needs: [test, build-python-base]
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify, build-python-base]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/sandbox/images/bases/multi-language
@@ -77,75 +81,75 @@ jobs:
 
   # ===== 业务镜像（repo VERSION） =====
   build-control-plane:
-    needs: test
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/sandbox
       dockerfile: sandbox_control_plane/Dockerfile
       context: '.'
       image-name: sandbox-control-plane
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-web:
-    needs: test
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/sandbox/sandbox_web
       dockerfile: Dockerfile
       context: '.'
       image-name: sandbox-web
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-template-python-basic:
-    needs: [bkn-tools, test, build-python-base]
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [bkn-tools, version, verify, build-python-base]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/sandbox
       dockerfile: images/templates/executor/Dockerfile
       context: '.'
       image-name: sandbox-template-python-basic
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-python-executor-base:v1
         PREINSTALL_COMMON=true
 
   build-template-multi-language:
-    needs: [bkn-tools, test, build-multi-language-base]
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [bkn-tools, version, verify, build-multi-language-base]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: infra/sandbox
       dockerfile: images/templates/executor/Dockerfile
       context: '.'
       image-name: sandbox-template-multi-language
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-multi-executor-base:v1
 
   # ===== Charts =====
   chart-sandbox:
-    needs: [test, build-control-plane, build-web, build-template-python-basic, build-template-multi-language]
+    needs: [version, verify, build-control-plane, build-web, build-template-python-basic, build-template-multi-language]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: infra/sandbox/deploy/helm/sandbox
       chart-path: .
       chart-name: sandbox
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart-sandbox-standalone:
-    needs: [test, build-control-plane, build-web, build-template-python-basic, build-template-multi-language]
+    needs: [version, verify, build-control-plane, build-web, build-template-python-basic, build-template-multi-language]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: infra/sandbox/deploy/helm/sandbox_standalone
       chart-path: .
       chart-name: sandbox-standalone
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
