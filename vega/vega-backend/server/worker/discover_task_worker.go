@@ -488,6 +488,7 @@ func (dtw *DiscoverTaskWorker) createAndConnectConnector(ctx context.Context, ca
 
 	// Connect to the data source.
 	if err := connector.Connect(ctx); err != nil {
+		_ = connector.Close(ctx)
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
