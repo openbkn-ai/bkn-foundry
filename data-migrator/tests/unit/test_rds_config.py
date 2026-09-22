@@ -135,7 +135,7 @@ class TestSecretLoading:
 
         assert cfg.rds.host == "secret-host"
         assert cfg.rds.password == secret_value
-        assert "加载 secret-config 文件" in caplog.text
+        assert "Loading secret configuration" in caplog.text
         assert str(secret_path) not in caplog.text
         assert secret_marker not in caplog.text
         assert secret_value not in caplog.text

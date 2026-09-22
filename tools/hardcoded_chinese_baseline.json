@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2532,
+  "violation_count": 2531,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -688,7 +688,6 @@
       "08795f34708bd70eb0c8"
     ],
     "data-migrator/server/config/loader.py": [
-      "32f02b84d08c1c834e94",
       "e0882b6c2b9b24704833",
       "7ae413d94a0d88af418d"
     ],

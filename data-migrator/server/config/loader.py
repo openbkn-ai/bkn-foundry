@@ -100,7 +100,7 @@ def _load_secret_config(cfg: dict, logger: Logger, secret_config_path: Optional[
     # Secret mount paths may contain tenant or credential identifiers. Keep the
     # operational signal without exposing the path (or encouraging callers to
     # include secrets in a filename).
-    logger.info("加载 secret-config 文件")
+    logger.info("Loading secret configuration")
     with open(path, "r", encoding="utf-8") as f:
         secret_config = yaml.safe_load(f) or {}
     if "depServices" in secret_config:
