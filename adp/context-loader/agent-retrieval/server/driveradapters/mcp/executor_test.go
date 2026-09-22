@@ -9,6 +9,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -141,6 +142,25 @@ func TestExecutorRefusesInvalidArgumentsWithTheSchema(t *testing.T) {
 	}
 	if len(h.intents) != 0 || len(h.calls) != 0 {
 		t.Fatalf("an invalid call reached the guard (%d) or the target (%d)", len(h.intents), len(h.calls))
+	}
+}
+
+// describe_native_tool refuses a schema over maxExecutableSchemaChars; a failed
+// call must not hand back more than that. The violations still name the field.
+func TestInvalidArgumentsOmitAnOversizedSchema(t *testing.T) {
+	schema := json.RawMessage(`{"type":"object","description":"` + strings.Repeat("x", maxExecutableSchemaChars) +
+		`","properties":{"kn_id":{"type":"string"}},"required":["kn_id"],"additionalProperties":false}`)
+	err := validateTargetArguments("big_target", schema, map[string]json.RawMessage{})
+	var refusal *invalidArguments
+	if !errors.As(err, &refusal) {
+		t.Fatalf("err = %v, want an invalid-arguments refusal", err)
+	}
+	if refusal.ArgumentsSchema != nil {
+		t.Fatalf("an oversized schema came back (%d bytes)", len(refusal.ArgumentsSchema))
+	}
+	raw, _ := json.Marshal(refusal)
+	if len(refusal.Violations) == 0 || !strings.Contains(string(raw), "kn_id") || strings.Contains(string(raw), "arguments_schema") {
+		t.Fatalf("refusal = %s, want the missing kn_id named and no schema", raw)
 	}
 }
 
