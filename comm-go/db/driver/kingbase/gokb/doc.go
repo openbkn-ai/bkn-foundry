@@ -49,9 +49,11 @@ libkci支持的连接参数gokb也均支持
 sslmode的有效值:
 
   - disable - 不使用SSL
-  - require - 总是使用SSL(跳过验证)
-  - verify-ca - 使用SSL(验证证书是否为信任的CA签名)
+  - require - 总是使用SSL，并验证证书链与主机名
+  - verify-ca - verify-full 的兼容别名；验证证书链与主机名
   - verify-full - 使用SSL(验证证书是否为信任的CA签名并且主机名与证书中的匹配)
+
+私有CA部署必须通过sslrootcert提供根证书。驱动拒绝旧的MD5口令认证，服务端必须使用SCRAM-SHA-256。
 
 当参数值中包含空格时需要使用单引号，比如:
 

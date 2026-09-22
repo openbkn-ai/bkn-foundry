@@ -59,8 +59,13 @@ func NewRawHTTPClient() *http.Client {
 
 // NewHTTPClientWithOptions creates an HTTP client with the supplied options.
 func NewHTTPClientWithOptions(opts HttpClientOptions) HTTPClient {
+	return NewHTTPClientWithOptionsAndTLS(opts, nil)
+}
+
+// NewHTTPClientWithOptionsAndTLS creates an HTTP client with custom TLS trust settings.
+func NewHTTPClientWithOptionsAndTLS(opts HttpClientOptions, tlsConfig *tls.Config) HTTPClient {
 	client := &httpClient{
-		client: NewRawHTTPClientWithOptions(opts),
+		client: NewRawHTTPClientWithOptionsAndTLS(opts, tlsConfig),
 	}
 
 	return client
@@ -68,13 +73,18 @@ func NewHTTPClientWithOptions(opts HttpClientOptions) HTTPClient {
 
 // NewRawHTTPClientWithOptions creates a raw HTTP client with the supplied options.
 func NewRawHTTPClientWithOptions(opts HttpClientOptions) *http.Client {
+	return NewRawHTTPClientWithOptionsAndTLS(opts, nil)
+}
+
+// NewRawHTTPClientWithOptionsAndTLS creates a raw HTTP client with custom TLS
+// roots or a server name. Certificate verification is always enabled.
+func NewRawHTTPClientWithOptionsAndTLS(opts HttpClientOptions, tlsConfig *tls.Config) *http.Client {
 	rawClient := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 		Transport: &http.Transport{
-			//nolint:gosec // Existing deployments may use self-signed certificates.
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig:       cloneTLSConfig(tlsConfig),
 			MaxIdleConnsPerHost:   100,
 			MaxIdleConns:          100,
 			IdleConnTimeout:       90 * time.Second,
@@ -86,6 +96,15 @@ func NewRawHTTPClientWithOptions(opts HttpClientOptions) *http.Client {
 	}
 
 	return rawClient
+}
+
+func cloneTLSConfig(config *tls.Config) *tls.Config {
+	if config == nil {
+		return nil
+	}
+	cloned := config.Clone()
+	cloned.InsecureSkipVerify = false
+	return cloned
 }
 
 func NewHTTPClientWithRawClient(rawClient *http.Client) *httpClient {
