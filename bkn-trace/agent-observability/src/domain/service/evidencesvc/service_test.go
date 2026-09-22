@@ -123,7 +123,7 @@ func TestIngestAcceptsIntegratedProducerTwoPointOneFixtures(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", "..", "..", "..", "..", ".."))
 	fixtures := []string{
 		filepath.Join(repositoryRoot, "adp", "context-loader", "agent-retrieval", "fixtures", "bkn-trace", "phase2", "retrieval_completed_2_1_positive.json"),
-		filepath.Join(repositoryRoot, "adp", "vega", "vega-backend", "fixtures", "bkn-trace", "phase2", "data_query_observed_2_1_positive.json"),
+		filepath.Join(repositoryRoot, "vega", "vega-backend", "fixtures", "bkn-trace", "phase2", "data_query_observed_2_1_positive.json"),
 	}
 	for _, fixture := range fixtures {
 		t.Run(filepath.Base(fixture), func(t *testing.T) {
