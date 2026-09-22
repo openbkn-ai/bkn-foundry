@@ -308,7 +308,7 @@ func compileStatsRowFilter(ctx context.Context, predicate interfaces.RowFilterPr
 		return "", nil
 	case "false":
 		return "1 = 0", nil
-	case "in":
+	case "in", "not_in":
 		property, err := statsRowFilterProperty(objectType, predicate.Property)
 		if err != nil {
 			return "", err
@@ -321,7 +321,67 @@ func compileStatsRowFilter(ctx context.Context, predicate interfaces.RowFilterPr
 		if err != nil {
 			return "", err
 		}
-		return column + " IN (" + strings.Join(values, ", ") + ")", nil
+		operator := " IN ("
+		if predicate.Kind == "not_in" {
+			operator = " NOT IN ("
+		}
+		return column + operator + strings.Join(values, ", ") + ")", nil
+	case "gt", "gte", "lt", "lte":
+		property, err := statsRowFilterProperty(objectType, predicate.Property)
+		if err != nil {
+			return "", err
+		}
+		column, err := quoteIdentifier(ctx, property.MappedField.Name)
+		if err != nil {
+			return "", err
+		}
+		values, err := statsRowFilterValues(predicate.Values, property.Type)
+		if err != nil || len(values) != 1 {
+			if err != nil {
+				return "", err
+			}
+			return "", fmt.Errorf("comparison row-filter requires one value")
+		}
+		operators := map[string]string{"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+		return column + " " + operators[predicate.Kind] + " " + values[0], nil
+	case "between":
+		property, err := statsRowFilterProperty(objectType, predicate.Property)
+		if err != nil {
+			return "", err
+		}
+		column, err := quoteIdentifier(ctx, property.MappedField.Name)
+		if err != nil {
+			return "", err
+		}
+		values, err := statsRowFilterValues(predicate.Values, property.Type)
+		if err != nil || len(values) != 2 {
+			if err != nil {
+				return "", err
+			}
+			return "", fmt.Errorf("between row-filter requires two values")
+		}
+		return "(" + column + " >= " + values[0] + " AND " + column + " <= " + values[1] + ")", nil
+	case "and":
+		parts := make([]string, 0, len(predicate.Predicates))
+		for _, child := range predicate.Predicates {
+			compiled, err := compileStatsRowFilter(ctx, child, objectType)
+			if err != nil {
+				return "", err
+			}
+			if compiled == "1 = 0" {
+				return "1 = 0", nil
+			}
+			if compiled != "" {
+				parts = append(parts, compiled)
+			}
+		}
+		if len(parts) == 0 {
+			return "", nil
+		}
+		if len(parts) == 1 {
+			return parts[0], nil
+		}
+		return "(" + strings.Join(parts, " AND ") + ")", nil
 	case "or":
 		parts := make([]string, 0, len(predicate.Predicates))
 		for _, child := range predicate.Predicates {

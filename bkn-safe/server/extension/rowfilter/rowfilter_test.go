@@ -118,6 +118,44 @@ func TestNormalizeSupportsFixedConditionGroupsAndComparisons(t *testing.T) {
 	}
 }
 
+func TestNormalizeAndAbsorbsConstantsAndFlattensChildren(t *testing.T) {
+	condition := Predicate{Kind: PredicateIn, Property: "region", Values: []Value{{Type: ValueString, String: "east"}}}
+
+	absorbed, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateAnd, Predicates: []Predicate{
+		{Kind: PredicateTrue},
+		{Kind: PredicateFalse},
+		condition,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if absorbed.Predicate.Kind != PredicateFalse {
+		t.Fatalf("AND with FALSE = %+v, want FALSE", absorbed.Predicate)
+	}
+
+	identity, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateAnd, Predicates: []Predicate{
+		{Kind: PredicateTrue},
+		{Kind: PredicateTrue},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.Predicate.Kind != PredicateTrue {
+		t.Fatalf("AND with only TRUE = %+v, want TRUE", identity.Predicate)
+	}
+
+	flattened, err := Normalize(Plan{Predicate: Predicate{Kind: PredicateAnd, Predicates: []Predicate{
+		condition,
+		{Kind: PredicateAnd, Predicates: []Predicate{{Kind: PredicateTrue}, condition}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flattened.Predicate.Kind != PredicateIn || flattened.Predicate.Property != condition.Property || len(flattened.Predicate.Values) != 1 || flattened.Predicate.Values[0].String != "east" {
+		t.Fatalf("flattened AND = %+v, want the single region condition", flattened.Predicate)
+	}
+}
+
 func TestEnterpriseWithoutResolverFailsClosed(t *testing.T) {
 	setEdition(t, licverify.EditionEnterprise)
 	if _, err := Resolve(t.Context(), testRequest()); !errors.Is(err, ErrResolverUnavailable) {

@@ -55,7 +55,7 @@ type rowFilterResponse struct {
 // graph exactly once before invoking the EE policy socket. Low-edition
 // binaries receive the documented TRUE fallback; active EE with no resolver
 // and all resolver failures are unavailable decisions, never permissive ones.
-func registerRowFilter(group *gin.RouterGroup, enforcer *authz.Enforcer, directoryService *directory.Service, _ int) {
+func registerRowFilter(group *gin.RouterGroup, enforcer *authz.Enforcer, directoryService *directory.Service) {
 	group.POST("/row-filters", func(c *gin.Context) {
 		var body rowFilterRequest
 		if !bind(c, &body) {

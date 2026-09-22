@@ -59,10 +59,6 @@ type Deps struct {
 	// AuthorizationResources is the provider registry for the admin resource
 	// picker. Its downstream paths are fixed in code; only base URLs are config.
 	AuthorizationResources AuthorizationResourceCatalog
-	// RowFilterMaxDepartmentIDs is the deployment's measured safe department
-	// predicate bound. Zero keeps the conservative core default for lightweight
-	// tests and embedders that do not configure the production server.
-	RowFilterMaxDepartmentIDs int
 	// RowFilterPublishedObjectTypes validates one published object type and its
 	// exact-filterable data properties through ontology-query. A nil resolver
 	// keeps the EE management route closed rather than accepting unsafe writes.
@@ -106,7 +102,7 @@ func New(deps Deps) *gin.Engine {
 	// local intermediate mode relies on the platform network boundary (#333),
 	// never on a caller-supplied service-name header. Callers resolve the end-user
 	// identity at their own boundary and pass accessor_id.
-	registerAuthz(r, deps.Enforcer, deps.DB, deps.Audit, deps.Directory, deps.RowFilterMaxDepartmentIDs)
+	registerAuthz(r, deps.Enforcer, deps.DB, deps.Audit, deps.Directory)
 
 	// AppKey (user-issued API key) store. Verification is internal, tokenless and
 	// ClusterIP-only (same trust face as /authz) — the Context Loader MCP/REST

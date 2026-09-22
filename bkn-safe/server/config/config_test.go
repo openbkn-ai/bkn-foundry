@@ -121,8 +121,8 @@ db:
 	if cfg.DB.MaxOpenConns != 50 || cfg.DB.ConnMaxIdleTime != 2*time.Minute || cfg.DB.ConnMaxLifetime != 30*time.Minute {
 		t.Fatalf("pool defaults = %d/%v/%v", cfg.DB.MaxOpenConns, cfg.DB.ConnMaxIdleTime, cfg.DB.ConnMaxLifetime)
 	}
-	if cfg.Authz.PolicyRefreshInterval != 10*time.Minute || cfg.Authz.RowFilterMaxDepartmentIDs != 1000 {
-		t.Fatalf("authz defaults = refresh %v, row-filter department bound %d", cfg.Authz.PolicyRefreshInterval, cfg.Authz.RowFilterMaxDepartmentIDs)
+	if cfg.Authz.PolicyRefreshInterval != 10*time.Minute {
+		t.Fatalf("authz default refresh = %v", cfg.Authz.PolicyRefreshInterval)
 	}
 
 	if err := os.WriteFile(path, []byte(`
@@ -131,7 +131,6 @@ db:
   conn_max_idle_time: 1m
 authz:
   policy_refresh_interval: 5m
-  row_filter_max_department_ids: 750
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -143,19 +142,18 @@ authz:
 	if cfg.DB.MaxOpenConns != 20 || cfg.DB.ConnMaxIdleTime != time.Minute || cfg.DB.ConnMaxLifetime != 10*time.Minute {
 		t.Fatalf("pool from file/env = %d/%v/%v", cfg.DB.MaxOpenConns, cfg.DB.ConnMaxIdleTime, cfg.DB.ConnMaxLifetime)
 	}
-	if cfg.Authz.PolicyRefreshInterval != 5*time.Minute || cfg.Authz.RowFilterMaxDepartmentIDs != 750 {
-		t.Fatalf("authz values from file = refresh %v, row-filter department bound %d", cfg.Authz.PolicyRefreshInterval, cfg.Authz.RowFilterMaxDepartmentIDs)
+	if cfg.Authz.PolicyRefreshInterval != 5*time.Minute {
+		t.Fatalf("authz refresh from file = %v", cfg.Authz.PolicyRefreshInterval)
 	}
 
 	// 0 is a documented value for both: no cap, and no periodic reload.
 	t.Setenv("SAFE_DB_MAX_OPEN_CONNS", "0")
 	t.Setenv("SAFE_AUTHZ_POLICY_REFRESH_INTERVAL", "0s")
-	t.Setenv("SAFE_AUTHZ_ROW_FILTER_MAX_DEPARTMENT_IDS", "500")
 	cfg, err = config.LoadWithOptions(config.LoadOptions{ConfigPath: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.DB.MaxOpenConns != 0 || cfg.Authz.PolicyRefreshInterval != 0 || cfg.Authz.RowFilterMaxDepartmentIDs != 500 {
-		t.Fatalf("overrides = %d / %v / %d", cfg.DB.MaxOpenConns, cfg.Authz.PolicyRefreshInterval, cfg.Authz.RowFilterMaxDepartmentIDs)
+	if cfg.DB.MaxOpenConns != 0 || cfg.Authz.PolicyRefreshInterval != 0 {
+		t.Fatalf("overrides = %d / %v", cfg.DB.MaxOpenConns, cfg.Authz.PolicyRefreshInterval)
 	}
 }

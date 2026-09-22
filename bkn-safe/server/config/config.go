@@ -48,11 +48,6 @@ type AuthzConfig struct {
 	// PolicyRefreshInterval reloads the in-memory policy from the store on a
 	// timer, picking up rows changed outside bkn-safe. 0 disables it.
 	PolicyRefreshInterval time.Duration `yaml:"policy_refresh_interval"`
-	// RowFilterMaxDepartmentIDs is the measured minimum number of exact IN
-	// values accepted safely by every configured object-query backend. A caller
-	// whose direct or descendant department scope exceeds it is denied before a
-	// data backend is reached. It must stay positive when row filtering is used.
-	RowFilterMaxDepartmentIDs int `yaml:"row_filter_max_department_ids"`
 }
 
 // AuditConfig tunes what the audit subsystem does beyond recording rows.

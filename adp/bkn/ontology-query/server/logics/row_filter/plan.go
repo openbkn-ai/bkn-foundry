@@ -41,7 +41,7 @@ func compilePredicate(predicate interfaces.RowFilterPredicate,
 		return nil, false, nil
 	case "false":
 		return nil, true, nil
-	case "in":
+	case "in", "not_in":
 		property, exists := properties[predicate.Property]
 		if !exists || strings.TrimSpace(property.MappedField.Name) == "" {
 			return nil, false, fmt.Errorf("row-filter property %q is not a mapped data property", predicate.Property)
@@ -51,8 +51,64 @@ func compilePredicate(predicate interfaces.RowFilterPredicate,
 			return nil, false, fmt.Errorf("row-filter property %q: %w", predicate.Property, err)
 		}
 		fields[property.Name] = struct{}{}
-		return &cond.CondCfg{Name: property.Name, Operation: cond.OperationIn,
+		operation := cond.OperationIn
+		if predicate.Kind == "not_in" {
+			operation = cond.OperationNotIn
+		}
+		return &cond.CondCfg{Name: property.Name, Operation: operation,
 			ValueOptCfg: cond.ValueOptCfg{Value: values}}, false, nil
+	case "gt", "gte", "lt", "lte":
+		property, exists := properties[predicate.Property]
+		if !exists || strings.TrimSpace(property.MappedField.Name) == "" {
+			return nil, false, fmt.Errorf("row-filter property %q is not a mapped data property", predicate.Property)
+		}
+		values, err := valuesForProperty(predicate.Values, property)
+		if err != nil {
+			return nil, false, fmt.Errorf("row-filter property %q: %w", predicate.Property, err)
+		}
+		if len(values) != 1 {
+			return nil, false, fmt.Errorf("row-filter comparison requires one value")
+		}
+		operations := map[string]string{"gt": cond.OperationGt, "gte": cond.OperationGte, "lt": cond.OperationLt, "lte": cond.OperationLte}
+		fields[property.Name] = struct{}{}
+		return &cond.CondCfg{Name: property.Name, Operation: operations[predicate.Kind],
+			ValueOptCfg: cond.ValueOptCfg{Value: values[0]}}, false, nil
+	case "between":
+		property, exists := properties[predicate.Property]
+		if !exists || strings.TrimSpace(property.MappedField.Name) == "" {
+			return nil, false, fmt.Errorf("row-filter property %q is not a mapped data property", predicate.Property)
+		}
+		values, err := valuesForProperty(predicate.Values, property)
+		if err != nil {
+			return nil, false, fmt.Errorf("row-filter property %q: %w", predicate.Property, err)
+		}
+		if len(values) != 2 {
+			return nil, false, fmt.Errorf("row-filter between requires two values")
+		}
+		fields[property.Name] = struct{}{}
+		return &cond.CondCfg{Name: property.Name, Operation: cond.OperationBetween,
+			ValueOptCfg: cond.ValueOptCfg{Value: values}}, false, nil
+	case "and":
+		children := make([]*cond.CondCfg, 0, len(predicate.Predicates))
+		for _, child := range predicate.Predicates {
+			compiled, noResults, err := compilePredicate(child, properties, fields)
+			if err != nil {
+				return nil, false, err
+			}
+			if noResults {
+				return nil, true, nil
+			}
+			if compiled != nil {
+				children = append(children, compiled)
+			}
+		}
+		if len(children) == 0 {
+			return nil, false, nil
+		}
+		if len(children) == 1 {
+			return children[0], false, nil
+		}
+		return &cond.CondCfg{Operation: cond.OperationAnd, SubConds: children}, false, nil
 	case "or":
 		children := make([]*cond.CondCfg, 0, len(predicate.Predicates))
 		for _, child := range predicate.Predicates {
