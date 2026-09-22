@@ -52,7 +52,7 @@ func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 	return &batchBuildWorker{
 		appSetting: appSetting,
 		bts:        build_task.NewBuildTaskService(appSetting, rs),
-		cf:         factory.GetFactory(appSetting),
+		cf:         factory.NewConnectorFactory(appSetting),
 		rs:         rs,
 		cs:         catalog.NewCatalogService(appSetting),
 		lim:        lim,

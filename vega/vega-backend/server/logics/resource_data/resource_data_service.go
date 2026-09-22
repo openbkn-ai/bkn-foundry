@@ -54,7 +54,7 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 		localIndexManager := local_index.NewLocalIndexManager(appSetting)
 		rdService = &resourceDataService{
 			appSetting: appSetting,
-			cf:         factory.GetFactory(appSetting),
+			cf:         factory.NewConnectorFactory(appSetting),
 			ds:         datasetService,
 			lim:        localIndexManager,
 			cs:         catalog.NewCatalogService(appSetting),

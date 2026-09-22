@@ -43,7 +43,7 @@ func NewConnectorTypeService(appSetting *common.AppSetting) interfaces.Connector
 		ctService = &connectorTypeService{
 			appSetting: appSetting,
 			cta:        logics.CTA,
-			cf:         factory.GetFactory(appSetting),
+			cf:         factory.NewConnectorFactory(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
 		}
 	})

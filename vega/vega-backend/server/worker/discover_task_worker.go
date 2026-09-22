@@ -63,7 +63,7 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 	queueSize := workerCount * taskQueueSizeMultiplier
 	worker := &DiscoverTaskWorker{
 		appSetting: appSetting,
-		cf:         factory.GetFactory(appSetting),
+		cf:         factory.NewConnectorFactory(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
 		dts:        discover_task.NewDiscoverTaskService(appSetting),
 		rs:         resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),

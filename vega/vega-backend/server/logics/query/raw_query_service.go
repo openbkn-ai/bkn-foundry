@@ -54,7 +54,7 @@ func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryServic
 	rawQueryCursorSessions.configure(appSetting.QuerySetting.CursorMaxSessions)
 	rqServiceOnce.Do(func() {
 		rqService = &rawQueryService{
-			cf: factory.GetFactory(appSetting),
+			cf: factory.NewConnectorFactory(appSetting),
 			cs: catalog.NewCatalogService(appSetting),
 			rs: resourcelogic.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 		}

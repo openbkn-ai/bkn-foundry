@@ -41,6 +41,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/semantic_understanding_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/user_mgmt"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/worker"
@@ -52,21 +53,27 @@ type Options struct{}
 // App is booted but not yet serving. Enterprise code registers connectors
 // between Boot and Run.
 type App struct {
-	appSetting    *common.AppSetting
-	otelProviders *otel.Providers
-	restHandler   driveradapters.RestHandler
-	workerManager *worker.WorkerManager
-	refresh       func(stop <-chan struct{})
-	stop          chan struct{}
+	appSetting       *common.AppSetting
+	otelProviders    *otel.Providers
+	restHandler      driveradapters.RestHandler
+	connectorFactory interfaces.ConnectorFactory
+	workerManager    *worker.WorkerManager
+	refresh          func(stop <-chan struct{})
+	stop             chan struct{}
 }
 
-func (server *App) start() error {
+// AppSetting returns the configuration instance resolved during Boot.
+func (app *App) AppSetting() *common.AppSetting {
+	return app.appSetting
+}
+
+func (app *App) start() error {
 	logger.Info("Server Starting")
 
 	// Create gin.engine and register the API
 	engine := gin.New()
 
-	server.restHandler.RegisterPublic(engine)
+	app.restHandler.RegisterPublic(engine)
 	logger.Info("Server Register API Success")
 
 	// server observes process signals and starts graceful shutdown when one arrives.
@@ -75,10 +82,10 @@ func (server *App) start() error {
 
 	// Initialize the http service
 	s := &http.Server{
-		Addr:           ":" + strconv.Itoa(server.appSetting.ServerSetting.HttpPort),
+		Addr:           ":" + strconv.Itoa(app.appSetting.ServerSetting.HttpPort),
 		Handler:        engine,
-		ReadTimeout:    time.Duration(server.appSetting.ServerSetting.ReadTimeOut) * time.Second,
-		WriteTimeout:   time.Duration(server.appSetting.ServerSetting.WriteTimeout) * time.Second,
+		ReadTimeout:    time.Duration(app.appSetting.ServerSetting.ReadTimeOut) * time.Second,
+		WriteTimeout:   time.Duration(app.appSetting.ServerSetting.WriteTimeout) * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 
@@ -90,11 +97,11 @@ func (server *App) start() error {
 		}
 	}()
 
-	logger.Infof("Server Started on Port:%d", server.appSetting.ServerSetting.HttpPort)
+	logger.Infof("Server Started on Port:%d", app.appSetting.ServerSetting.HttpPort)
 
 	<-runCtx.Done()
 
-	server.restHandler.SetReady(false)
+	app.restHandler.SetReady(false)
 
 	// Set the last processing time of the system
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -106,17 +113,18 @@ func (server *App) start() error {
 		logger.Errorf("Server Shutdown: %v", err)
 	}
 
-	server.workerManager.Stop()
-	close(server.stop)
+	app.workerManager.Stop()
+	close(app.stop)
 
-	server.otelProviders.Shutdown(context.Background())
+	app.otelProviders.Shutdown(context.Background())
 
 	logger.Info("Server Exited")
 	return nil
 }
 
-// Boot initializes all core dependencies but does not materialize the
-// connector factory, start workers, or listen for HTTP requests.
+// Boot initializes all core dependencies and assembles built-in local
+// connectors, but does not finalize the factory, start workers, or listen for
+// HTTP requests.
 func Boot(_ Options) (*App, error) {
 	logger.Info("Server Initializing")
 
@@ -163,33 +171,37 @@ func Boot(_ Options) (*App, error) {
 
 	gate, refresh := entitlement.GateWithRunner()
 	entitlement.SetGate(gate)
-	factory.RegisterCoreLocalConnectors()
+
+	connectorFactory := factory.NewConnectorFactory(appSetting)
+	connectorFactory.RegisterCoreLocalConnectors()
+
+	workerManager := worker.NewWorkerManager(appSetting)
 
 	return &App{
-		appSetting:    appSetting,
-		otelProviders: otelProviders,
-		refresh:       refresh,
-		stop:          make(chan struct{}),
+		appSetting:       appSetting,
+		otelProviders:    otelProviders,
+		refresh:          refresh,
+		stop:             make(chan struct{}),
+		connectorFactory: connectorFactory,
+		workerManager:    workerManager,
 	}, nil
 }
 
-// Run freezes connector registration assembly, materializes the connector
-// factory, then starts workers and the HTTP service.
-func (server *App) Run() error {
-	factory.FreezeLocalConnectorRegistrations()
-	if server.refresh != nil {
-		go server.refresh(server.stop)
+// Run finalizes connector assembly, then starts workers and the HTTP service.
+func (app *App) Run() error {
+	app.connectorFactory.Finalize()
+
+	if app.refresh != nil {
+		go app.refresh(app.stop)
 	}
 
-	factory.GetFactory(server.appSetting)
 	logger.Info("VEGA Manager Init Connector Factory Success")
 
-	server.workerManager = worker.NewWorkerManager(server.appSetting)
-	if err := server.workerManager.Start(context.Background()); err != nil {
+	if err := app.workerManager.Start(context.Background()); err != nil {
 		return fmt.Errorf("start background workers: %w", err)
 	}
 	logger.Info("VEGA Manager Init Background Workers Success")
 
-	server.restHandler = driveradapters.NewRestHandler(server.appSetting)
-	return server.start()
+	app.restHandler = driveradapters.NewRestHandler(app.appSetting)
+	return app.start()
 }

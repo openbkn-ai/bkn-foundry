@@ -50,7 +50,7 @@ func NewLogicViewService(appSetting *common.AppSetting) interfaces.LogicViewServ
 	lvServiceOnce.Do(func() {
 		lvService = &logicViewService{
 			appSetting: appSetting,
-			cf:         factory.GetFactory(appSetting),
+			cf:         factory.NewConnectorFactory(appSetting),
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 			ps:         permission.NewPermissionService(appSetting),

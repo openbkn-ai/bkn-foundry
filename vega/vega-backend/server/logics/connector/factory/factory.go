@@ -32,6 +32,10 @@ var (
 	// implementations during a binary downgrade, so this condition must not
 	// prevent the service from starting.
 	ErrConnectorUnavailable = errors.New("connector unavailable in this binary")
+
+	// ErrConnectorEntitlementDenied indicates that the connector implementation
+	// exists in this binary but requires an edition unavailable to this process.
+	ErrConnectorEntitlementDenied = errors.New("connector entitlement denied")
 )
 
 // ConnectorFactory creates and manages data source connectors
@@ -44,50 +48,23 @@ type connectorFactory struct {
 	appSetting *common.AppSetting
 	cta        interfaces.ConnectorTypeAccess // Database Access layer
 
-	connectors      map[string]interfaces.Connector // Built-in connector builder
-	minimumEditions map[string]licverify.Edition
+	connectors                map[string]interfaces.Connector // Built-in connector builder
+	connectorRequiredEditions map[string]licverify.Edition
+
+	localConnectorsFrozen bool
 }
 
-// Init initializes the connector factory
-func GetFactory(appSetting *common.AppSetting) interfaces.ConnectorFactory {
+// NewConnectorFactory creates the process-wide connector factory in assembly state.
+func NewConnectorFactory(appSetting *common.AppSetting) interfaces.ConnectorFactory {
 	cFactoryOnce.Do(func() {
-		cf := &connectorFactory{
-			appSetting:      appSetting,
-			cta:             logics.CTA,
-			connectors:      make(map[string]interfaces.Connector, 0),
-			minimumEditions: make(map[string]licverify.Edition),
+		cFactory = &connectorFactory{
+			appSetting:                appSetting,
+			cta:                       logics.CTA,
+			connectors:                make(map[string]interfaces.Connector),
+			connectorRequiredEditions: make(map[string]licverify.Edition),
 		}
-
-		cf.initLocalConnectors()
-		cf.registerAllConnectors()
-		cFactory = cf
 	})
 	return cFactory
-}
-
-// registerAllConnectors registers all connector builders
-func (cf *connectorFactory) registerAllConnectors() {
-
-	ctx := context.Background()
-	cts, _, err := cf.cta.List(ctx, interfaces.ConnectorTypesQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{
-			Limit: -1,
-		},
-	})
-	if err != nil {
-		panic(fmt.Errorf("failed to get all connector types: %w", err))
-	}
-
-	for _, ct := range cts {
-		err = cf.RegisterConnector(ctx, ct.Type, ct)
-		if errors.Is(err, ErrConnectorUnavailable) {
-			logger.Warnf("Skipping connector type %s:%s because it is unavailable in this binary", ct.Type, ct.Name)
-			continue
-		}
-		if err != nil {
-			panic(fmt.Errorf("failed to register connector type %s:%s: %w", ct.Type, ct.Name, err))
-		}
-	}
 }
 
 // RegisterConnector is a registered connector builder
@@ -179,8 +156,8 @@ func (cf *connectorFactory) GetConnectorFieldConfig(ctx context.Context, ct *int
 	if !exists {
 		return nil, fmt.Errorf("local connector %s:%s not implemented: %w", ct.Type, ct.Name, ErrConnectorUnavailable)
 	}
-	if minimumEdition, private := cf.minimumEditions[ct.Type]; private && !entitlement.AtLeast(minimumEdition) {
-		return nil, fmt.Errorf("local connector %s:%s not implemented: %w", ct.Type, ct.Name, ErrConnectorUnavailable)
+	if minimumEdition, hasMinimumEdition := cf.connectorRequiredEditions[ct.Type]; hasMinimumEdition && !entitlement.AtLeast(minimumEdition) {
+		return nil, fmt.Errorf("local connector %s:%s requires edition %s: %w", ct.Type, ct.Name, minimumEdition, ErrConnectorEntitlementDenied)
 	}
 	if err := cf.validateConnectorRegistration(ct.Type, ct, connector); err != nil {
 		return nil, err
@@ -229,8 +206,8 @@ func (cf *connectorFactory) IsConnectorAvailable(tp string) bool {
 	if !exists {
 		return false
 	}
-	minimumEdition, private := cf.minimumEditions[tp]
-	return !private || entitlement.AtLeast(minimumEdition)
+	minimumEdition, hasMinimumEdition := cf.connectorRequiredEditions[tp]
+	return !hasMinimumEdition || entitlement.AtLeast(minimumEdition)
 }
 
 // CreateConnector creates connector instances based on the type name
@@ -239,8 +216,8 @@ func (cf *connectorFactory) CreateConnectorInstance(ctx context.Context, tp stri
 	defer cf.mu.Unlock()
 
 	if connector, ok := cf.connectors[tp]; ok {
-		if minimumEdition, private := cf.minimumEditions[tp]; private && !entitlement.AtLeast(minimumEdition) {
-			return nil, fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
+		if minimumEdition, hasMinimumEdition := cf.connectorRequiredEditions[tp]; hasMinimumEdition && !entitlement.AtLeast(minimumEdition) {
+			return nil, fmt.Errorf("connector %s requires edition %s: %w", tp, minimumEdition, ErrConnectorEntitlementDenied)
 		}
 		if !connector.GetEnabled() {
 			return nil, fmt.Errorf("connector %s is disabled", tp)
@@ -261,7 +238,7 @@ func (cf *connectorFactory) GetSensitiveFields(tp string) []string {
 	defer cf.mu.RUnlock()
 
 	if connector, ok := cf.connectors[tp]; ok {
-		if minimumEdition, private := cf.minimumEditions[tp]; private && !entitlement.AtLeast(minimumEdition) {
+		if minimumEdition, hasMinimumEdition := cf.connectorRequiredEditions[tp]; hasMinimumEdition && !entitlement.AtLeast(minimumEdition) {
 			return nil
 		}
 		return connector.GetSensitiveFields()

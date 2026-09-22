@@ -20,16 +20,17 @@ import (
 	"github.com/openbkn-ai/licverify"
 )
 
-func TestConnectorFactoryInitLocalConnectors(t *testing.T) {
-	t.Run("connector factory init local connectors", func(t *testing.T) {
+func TestConnectorFactoryRegisterCoreLocalConnectors(t *testing.T) {
+	t.Run("registers built-in local connectors directly with the factory", func(t *testing.T) {
 		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
-		ResetLocalConnectorRegistrationsForTest()
-		t.Cleanup(resetLocalConnectorRegistrationsForTest)
-		RegisterCoreLocalConnectors()
+		t.Cleanup(entitlement.ResetForTest)
 
-		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
+		cf := &connectorFactory{
+			connectors:                map[string]interfaces.Connector{},
+			connectorRequiredEditions: map[string]licverify.Edition{},
+		}
 
-		cf.initLocalConnectors()
+		cf.RegisterCoreLocalConnectors()
 
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMySQL)
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMariaDB)
@@ -38,10 +39,11 @@ func TestConnectorFactoryInitLocalConnectors(t *testing.T) {
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeAnyShare)
 		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeSQLServer)
 		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeOracle)
+		assert.Equal(t, licverify.EditionCommunity, cf.connectorRequiredEditions[interfaces.ConnectorTypeMySQL])
 	})
 }
 
-func TestConnectorFactoryRegisterAllConnectors(t *testing.T) {
+func TestConnectorFactoryApplyPersistedConnectorTypes(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	connectorTypeAccess := vmock.NewMockConnectorTypeAccess(ctrl)
@@ -62,12 +64,13 @@ func TestConnectorFactoryRegisterAllConnectors(t *testing.T) {
 		},
 	}, int64(2), nil)
 	cf := &connectorFactory{
-		cta:        connectorTypeAccess,
-		connectors: map[string]interfaces.Connector{},
+		cta:                       connectorTypeAccess,
+		connectors:                map[string]interfaces.Connector{},
+		connectorRequiredEditions: map[string]licverify.Edition{},
 	}
 
 	assert.NotPanics(t, func() {
-		cf.registerAllConnectors()
+		cf.applyPersistedConnectorTypes()
 	})
 	assert.NotContains(t, cf.connectors, "future-local")
 	require.Contains(t, cf.connectors, "remote-api")
@@ -98,7 +101,7 @@ func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
 		connectors: map[string]interfaces.Connector{
 			"sqlserver": nil,
 		},
-		minimumEditions: map[string]licverify.Edition{
+		connectorRequiredEditions: map[string]licverify.Edition{
 			"sqlserver": licverify.EditionProfessional,
 		},
 	}
@@ -107,7 +110,14 @@ func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
 	connector, err := cf.CreateConnectorInstance(context.Background(), "sqlserver", nil)
 	require.Error(t, err)
 	assert.Nil(t, connector)
-	assert.ErrorIs(t, err, ErrConnectorUnavailable)
+	assert.ErrorIs(t, err, ErrConnectorEntitlementDenied)
+
+	_, err = cf.GetConnectorFieldConfig(context.Background(), &interfaces.ConnectorType{
+		Type: "sqlserver",
+		Mode: interfaces.ConnectorModeLocal,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrConnectorEntitlementDenied)
 
 	entitlement.SetGate(entitlement.FixedGate(licverify.EditionProfessional))
 	assert.True(t, cf.IsConnectorAvailable("sqlserver"))
@@ -286,12 +296,13 @@ func TestConnectorFactoryValidateConnectorTypeRegistration(t *testing.T) {
 
 	t.Run("supports mysql registration through mariadb implementation", func(t *testing.T) {
 		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
-		ResetLocalConnectorRegistrationsForTest()
-		t.Cleanup(resetLocalConnectorRegistrationsForTest)
-		RegisterCoreLocalConnectors()
+		t.Cleanup(entitlement.ResetForTest)
 
-		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
-		cf.initLocalConnectors()
+		cf := &connectorFactory{
+			connectors:                map[string]interfaces.Connector{},
+			connectorRequiredEditions: map[string]licverify.Edition{},
+		}
+		cf.RegisterCoreLocalConnectors()
 		request := &interfaces.ConnectorType{
 			Type: interfaces.ConnectorTypeMySQL, Name: "MySQL", Mode: interfaces.ConnectorModeLocal,
 			Category: interfaces.ConnectorCategoryTable, Enabled: true,

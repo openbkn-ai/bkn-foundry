@@ -12,8 +12,9 @@ package mock_interfaces
 import (
 	context "context"
 	reflect "reflect"
-	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 
+	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	licverify "github.com/openbkn-ai/licverify"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -66,6 +67,18 @@ func (m *MockConnectorFactory) DeleteConnector(tp string) {
 func (mr *MockConnectorFactoryMockRecorder) DeleteConnector(tp any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConnector", reflect.TypeOf((*MockConnectorFactory)(nil).DeleteConnector), tp)
+}
+
+// Finalize mocks base method.
+func (m *MockConnectorFactory) Finalize() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Finalize")
+}
+
+// Finalize indicates an expected call of Finalize.
+func (mr *MockConnectorFactoryMockRecorder) Finalize() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Finalize", reflect.TypeOf((*MockConnectorFactory)(nil).Finalize))
 }
 
 // GetConnectorFieldConfig mocks base method.
@@ -123,6 +136,30 @@ func (m *MockConnectorFactory) RegisterConnector(ctx context.Context, tp string,
 func (mr *MockConnectorFactoryMockRecorder) RegisterConnector(ctx, tp, ct any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterConnector", reflect.TypeOf((*MockConnectorFactory)(nil).RegisterConnector), ctx, tp, ct)
+}
+
+// RegisterCoreLocalConnectors mocks base method.
+func (m *MockConnectorFactory) RegisterCoreLocalConnectors() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterCoreLocalConnectors")
+}
+
+// RegisterCoreLocalConnectors indicates an expected call of RegisterCoreLocalConnectors.
+func (mr *MockConnectorFactoryMockRecorder) RegisterCoreLocalConnectors() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterCoreLocalConnectors", reflect.TypeOf((*MockConnectorFactory)(nil).RegisterCoreLocalConnectors))
+}
+
+// RegisterLocalConnector mocks base method.
+func (m *MockConnectorFactory) RegisterLocalConnector(connector interfaces.Connector, minEdition licverify.Edition) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterLocalConnector", connector, minEdition)
+}
+
+// RegisterLocalConnector indicates an expected call of RegisterLocalConnector.
+func (mr *MockConnectorFactoryMockRecorder) RegisterLocalConnector(connector, minEdition any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterLocalConnector", reflect.TypeOf((*MockConnectorFactory)(nil).RegisterLocalConnector), connector, minEdition)
 }
 
 // SetConnectorEnabled mocks base method.

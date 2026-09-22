@@ -85,7 +85,7 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 			}
 		}
 
-		cf := factory.GetFactory(appSetting)
+		cf := factory.NewConnectorFactory(appSetting)
 		hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
 		ps := permission.NewPermissionService(appSetting)
 		ums := user_mgmt.NewUserMgmtService(appSetting)
