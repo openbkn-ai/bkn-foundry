@@ -250,7 +250,7 @@ func New(deps Deps) *gin.Engine {
 				rowFilterAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 			}
 			if rowfiltersocket.MountManagement(rowFilterAdmin, newRowFilterManagementServices(
-				deps.Enforcer, deps.Directory, deps.RowFilterMaxDepartmentIDs, deps.RowFilterPublishedObjectTypes,
+				deps.Enforcer, deps.Directory, deps.RowFilterPublishedObjectTypes,
 			), func(c *gin.Context) (string, bool) {
 				operatorID := c.GetString(ctxAccessorID)
 				return operatorID, operatorID != ""
