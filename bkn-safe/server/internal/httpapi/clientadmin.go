@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/oauthorigin"
 )
 
 // ClientManager is the slice of hydra's OAuth2 client admin that bkn-safe exposes:
@@ -22,6 +24,14 @@ type ClientManager interface {
 	GetClientRedirectURIs(ctx context.Context, clientID string) ([]string, error)
 	AddClientRedirectURI(ctx context.Context, clientID, uri string) ([]string, error)
 	RemoveClientRedirectURI(ctx context.Context, clientID, uri string) ([]string, error)
+}
+
+// StudioOriginManager backs the legacy openbkn-studio redirect-URI endpoint
+// with the same durable origin store as the dedicated admin API.
+type StudioOriginManager interface {
+	Callbacks(context.Context) ([]string, error)
+	AddCallback(context.Context, string, string) ([]string, error)
+	RemoveCallback(context.Context, string) ([]string, error)
 }
 
 // manageableClients are the first-party login clients whose redirect_uris an admin
@@ -36,10 +46,10 @@ var manageableClients = map[string]bool{
 }
 
 // registerClientAdmin mounts redirect-uri management for the platform's login
-// clients under the admin group (RequireAdmin + audited). This is a runtime
-// convenience: a helm upgrade re-seeds clients from chart values, so durable
-// redirect_uris still belong in clientSeed.extraWebRedirectUris.
-func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforcer) {
+// clients under the admin group (RequireAdmin + audited). Studio mutations are
+// routed through the durable access-origin service; the CLI and SDK retain the
+// legacy direct-Hydra behavior for backward compatibility.
+func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOriginManager, e *authz.Enforcer) {
 	// GET /clients/:id/redirect-uris -> { "redirect_uris": [...] }
 	g.GET("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
@@ -47,7 +57,13 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforce
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
-		uris, err := mgr.GetClientRedirectURIs(c.Request.Context(), id)
+		var uris []string
+		var err error
+		if id == "openbkn-studio" && origins != nil {
+			uris, err = origins.Callbacks(c.Request.Context())
+		} else {
+			uris, err = mgr.GetClientRedirectURIs(c.Request.Context(), id)
+		}
 		if err != nil {
 			serverError(c, err)
 			return
@@ -73,8 +89,18 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforce
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		uris, err := mgr.AddClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
+		var uris []string
+		var err error
+		if id == "openbkn-studio" && origins != nil {
+			uris, err = origins.AddCallback(c.Request.Context(), req.RedirectURI, c.GetString(ctxAccessorID))
+		} else {
+			uris, err = mgr.AddClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
+		}
 		if err != nil {
+			if errors.Is(err, oauthorigin.ErrInvalidOrigin) {
+				replyPublicError(c, http.StatusBadRequest)
+				return
+			}
 			serverError(c, err)
 			return
 		}
@@ -94,8 +120,22 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforce
 		if !bind(c, &req) {
 			return
 		}
-		uris, err := mgr.RemoveClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
+		var uris []string
+		var err error
+		if id == "openbkn-studio" && origins != nil {
+			uris, err = origins.RemoveCallback(c.Request.Context(), req.RedirectURI)
+		} else {
+			uris, err = mgr.RemoveClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
+		}
 		if err != nil {
+			if errors.Is(err, oauthorigin.ErrInvalidOrigin) {
+				replyPublicError(c, http.StatusBadRequest)
+				return
+			}
+			if errors.Is(err, oauthorigin.ErrReadOnly) {
+				replyPublicError(c, http.StatusForbidden)
+				return
+			}
 			serverError(c, err)
 			return
 		}

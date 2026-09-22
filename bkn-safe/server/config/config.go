@@ -16,6 +16,7 @@ type Config struct {
 	HTTPAddr string `yaml:"http_addr"` // listen address (login/consent/device + APIs)
 	DB       DBConfig
 	Hydra    HydraConfig
+	OAuth    OAuthConfig
 	LDAP     LDAPConfig
 	License  LicenseConfig `yaml:"license"`
 	// SeedOnStart controls whether roles/resource-types/operations/grants are
@@ -129,8 +130,17 @@ func (d DBConfig) DSN() string {
 // HydraConfig is how bkn-safe reaches hydra's admin API (login/consent/device
 // accept + client mgmt). Admin is internal-only.
 type HydraConfig struct {
-	AdminURL  string `yaml:"admin_url"`  // e.g. http://hydra-admin:4445
-	PublicURL string `yaml:"public_url"` // e.g. http://hydra-public:4444
+	AdminURL         string `yaml:"admin_url"`          // e.g. http://hydra-admin:4445
+	PublicURL        string `yaml:"public_url"`         // internal SDK endpoint, e.g. http://hydra-public:4444
+	BrowserPublicURL string `yaml:"browser_public_url"` // canonical browser-facing issuer origin
+}
+
+// OAuthConfig contains the deployment-owned OAuth client baseline. Runtime
+// access origins are stored in the database; these redirect URIs are supplied
+// by Helm and cannot be removed through the admin API.
+type OAuthConfig struct {
+	StudioBaselineRedirectURIs []string      `yaml:"studio_baseline_redirect_uris"`
+	ReconcileInterval          time.Duration `yaml:"reconcile_interval"`
 }
 
 // LDAPConfig enables the light external-directory federation (Phase 5). When

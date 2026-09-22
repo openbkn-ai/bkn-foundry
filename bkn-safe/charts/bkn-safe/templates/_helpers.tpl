@@ -38,6 +38,51 @@ would travel with any copy of the config. Derive from the host or render nothing
 {{- end -}}
 {{- end -}}
 
+{{/* Canonical browser-facing Hydra origin (the single OIDC issuer). */}}
+{{- define "bkn-safe.hydraBrowserPublicURL" -}}
+{{- if .Values.bundledDeps.publicBaseURL -}}
+{{- .Values.bundledDeps.publicBaseURL | trimSuffix "/" -}}
+{{- else if and .Values.accessAddress .Values.accessAddress.host -}}
+{{- $aa := .Values.accessAddress -}}
+{{- $scheme := $aa.scheme | default "https" -}}
+{{- $port := $aa.port | toString -}}
+{{- if or (and (eq $scheme "https") (eq $port "443")) (and (eq $scheme "http") (eq $port "80")) -}}
+{{- printf "%s://%s" $scheme $aa.host -}}
+{{- else -}}
+{{- printf "%s://%s:%s" $scheme $aa.host $port -}}
+{{- end -}}
+{{- else if .Values.config.hydra.browserPublicURL -}}
+{{- .Values.config.hydra.browserPublicURL | trimSuffix "/" -}}
+{{- else if .Values.bundledDeps.enabled -}}
+{{- printf "http://%s-hydra-public:4444" .Release.Name -}}
+{{- else -}}
+{{- .Values.config.hydra.publicURL | trimSuffix "/" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Deployment-owned Studio callback baseline as a JSON array. */}}
+{{- define "bkn-safe.studioRedirectURIs" -}}
+{{- $web := .Values.clientSeed.webRedirectUri -}}
+{{- if and .Values.accessAddress .Values.accessAddress.host -}}
+{{- $web = printf "%s/studio/callback" (include "bkn-safe.hydraBrowserPublicURL" .) -}}
+{{- end -}}
+{{- $uris := list $web -}}
+{{- range .Values.clientSeed.extraWebRedirectUris -}}
+{{- if not (has . $uris) -}}{{- $uris = append $uris . -}}{{- end -}}
+{{- end -}}
+{{- $uris | toJson -}}
+{{- end -}}
+
+{{/* Deployment-owned Studio post-logout baseline as a JSON array. */}}
+{{- define "bkn-safe.studioLogoutURIs" -}}
+{{- $redirects := include "bkn-safe.studioRedirectURIs" . | fromJsonArray -}}
+{{- $uris := list -}}
+{{- range $redirects -}}
+{{- $uris = append $uris (trimSuffix "/callback" .) -}}
+{{- end -}}
+{{- $uris | toJson -}}
+{{- end -}}
+
 {{/*
 bkn-safe.hydraSecret resolves the hydra SECRETS_SYSTEM value.
 

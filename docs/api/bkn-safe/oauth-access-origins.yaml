@@ -1,0 +1,210 @@
+openapi: 3.0.3
+info:
+  title: BKN Safe OAuth Access Origins API
+  version: 0.1.0
+  description: |
+    Manages the browser origins from which BKN Studio may complete its OAuth
+    authorization-code flow. Each origin deterministically produces a
+    `/studio/callback` redirect URI and `/studio` post-logout URI. The primary
+    access address and Helm-provided extras are read-only; administrators may
+    add and remove database-backed runtime origins without restarting Hydra.
+servers:
+  - url: /api/safe/v1/admin
+security:
+  - OAuth2: []
+paths:
+  /oauth/access-origins:
+    get:
+      operationId: listOAuthAccessOrigins
+      summary: List effective BKN Studio access origins
+      responses:
+        '200':
+          description: Deployment-owned and runtime origins in stable order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthAccessOriginList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createOAuthAccessOrigin
+      summary: Register a runtime BKN Studio access origin
+      description: |
+        Persists the normalized origin and immediately attempts to synchronize
+        Hydra. Returns 202 when persistence succeeded but Hydra is unavailable;
+        the server retries automatically in the background.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [origin]
+              properties:
+                origin:
+                  type: string
+                  format: uri
+                  example: http://10.0.0.8:30080
+                  description: HTTP(S) origin only; path, query, fragment, credentials, and wildcards are rejected.
+      responses:
+        '201':
+          description: Origin persisted and synchronized to Hydra.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthAccessOrigin'
+        '202':
+          description: Origin persisted; Hydra synchronization is pending retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthAccessOrigin'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: The normalized origin already exists or the runtime-origin limit was reached.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /oauth/access-origins/{id}:
+    delete:
+      operationId: deleteOAuthAccessOrigin
+      summary: Remove a runtime BKN Studio access origin
+      description: Deployment-owned system and Helm origins are read-only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Origin removed from Hydra and durable storage.
+        '202':
+          description: Deletion persisted; Hydra synchronization is pending retry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, desired_state, sync_state]
+                properties:
+                  id:
+                    type: string
+                  desired_state:
+                    type: string
+                    enum: [deleting]
+                  sync_state:
+                    type: string
+                    enum: [error]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks permission or the requested origin is deployment-owned.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  responses:
+    BadRequest:
+      description: Invalid JSON or origin.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Forbidden:
+      description: Caller lacks the admin-client manage permission.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    NotFound:
+      description: Access origin not found.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    InternalError:
+      description: Storage or reconciliation failure.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+  schemas:
+    OAuthAccessOriginList:
+      type: object
+      required: [entries, total]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthAccessOrigin'
+        total:
+          type: integer
+          minimum: 0
+    OAuthAccessOrigin:
+      type: object
+      required:
+        - id
+        - origin
+        - redirect_uri
+        - post_logout_redirect_uri
+        - source
+        - read_only
+        - desired_state
+        - sync_state
+      properties:
+        id:
+          type: string
+        origin:
+          type: string
+          format: uri
+        redirect_uri:
+          type: string
+          format: uri
+        post_logout_redirect_uri:
+          type: string
+          format: uri
+        source:
+          type: string
+          enum: [system, deployment, runtime]
+        read_only:
+          type: boolean
+        desired_state:
+          type: string
+          enum: [active, deleting]
+        sync_state:
+          type: string
+          enum: [pending, synced, error]
+        last_sync_error:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time

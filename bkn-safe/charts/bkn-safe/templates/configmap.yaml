@@ -47,6 +47,8 @@ data:
   SAFE_ONTOLOGY_QUERY_TIMEOUT: {{ $ontologyQuery.timeout | default "3s" | quote }}
   SAFE_HYDRA_ADMIN_URL: {{ .Values.config.hydra.adminURL | quote }}
   SAFE_HYDRA_PUBLIC_URL: {{ .Values.config.hydra.publicURL | quote }}
+  SAFE_HYDRA_BROWSER_PUBLIC_URL: {{ include "bkn-safe.hydraBrowserPublicURL" . | quote }}
+  SAFE_OAUTH_STUDIO_BASELINE_REDIRECT_URIS: {{ include "bkn-safe.studioRedirectURIs" . | quote }}
   SAFE_LDAP_URL: {{ .Values.config.ldap.url | quote }}
   SAFE_LDAP_BIND_DN: {{ .Values.config.ldap.bindDN | quote }}
   {{- /* SAFE_LDAP_BIND_PASSWORD and BKN_SAFE_INITIAL_PASSWORD are NOT here —
