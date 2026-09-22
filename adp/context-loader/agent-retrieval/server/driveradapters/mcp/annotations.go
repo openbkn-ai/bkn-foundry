@@ -99,6 +99,13 @@ var toolAnnotations = map[string]func() mcp.ToolAnnotation{
 	toolKeySearchCapabilities: readOnlyTool,
 	toolKeyExecuteTool:        arbitraryEffectTool,
 
+	// Compact gateway: search and describe read the catalogue. The executor runs
+	// whatever target it is given, actions and mounted functions included, so it
+	// carries the pessimistic answer like the tools it can reach.
+	toolKeySearchNativeTools:  readOnlyTool,
+	toolKeyDescribeNativeTool: readOnlyTool,
+	toolKeyExecuteNativeTool:  arbitraryEffectTool,
+
 	// Execution: the caller supplies the program.
 	toolKeyRunCode:  arbitraryEffectTool,
 	toolKeyRunShell: arbitraryEffectTool,

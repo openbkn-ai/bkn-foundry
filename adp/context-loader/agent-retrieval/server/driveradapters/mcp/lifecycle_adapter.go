@@ -42,6 +42,11 @@ func lifecycleToolMiddleware(client *bkntrace.LifecycleClient) server.ToolHandle
 			if _, lifecycle := lifecycleToolNames[req.Params.Name]; lifecycle {
 				return next(ctx, req)
 			}
+			// Guarding the executor as well would record two Operations for one
+			// call, the outer one under a name that ran nothing.
+			if _, executor := executorSkipsServerGuard[req.Params.Name]; executor {
+				return next(ctx, req)
+			}
 			return guardBusinessToolCallWithCompletion(
 				ensureOperationAdapter(client),
 				completeOperationAdapter(client),
@@ -67,7 +72,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 			CapabilityProfile: capabilityProfileJSON(intent.ToolName),
 		})
 		if apiErr != nil {
-			value := lifecycleError(*apiErr)
+			value := traceCoreError(*apiErr)
 			return nil, &value, nil
 		}
 		if err != nil {
@@ -448,9 +453,26 @@ func lifecycleCallResult(target any, apiErr *bkntrace.APIError, err error) (*mcp
 		return lifecycleToolError(lifecycleAvailabilityError(err)), nil
 	}
 	if apiErr != nil {
-		return lifecycleToolError(lifecycleError(*apiErr)), nil
+		return lifecycleToolError(traceCoreError(*apiErr)), nil
 	}
 	return lifecycleSuccessResult(target)
+}
+
+// lifecycleIdentifierHint follows every resource_not_disclosed from Trace Core.
+// The commonest cause on this surface is an ID the model copied wrong, and the
+// Core message alone ("not within the authorized scope") read to one as a
+// permission problem, so it gave up instead of fixing the ID. The sentence is
+// the same whatever the ID, so it discloses no more than the code does.
+const lifecycleIdentifierHint = "If you passed conversation_id or interaction_id, copy them exactly as " +
+	"bkn_start_interaction returned them."
+
+// traceCoreError turns a Trace Core refusal into the error this surface returns.
+func traceCoreError(apiErr bkntrace.APIError) lifecycleError {
+	value := lifecycleError(apiErr)
+	if value.Code == "resource_not_disclosed" {
+		value.Message = strings.TrimSpace(value.Message + " " + lifecycleIdentifierHint)
+	}
+	return value
 }
 
 func lifecycleSuccessResult(target any) (*mcpsdk.CallToolResult, error) {

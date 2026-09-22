@@ -27,17 +27,48 @@
   "query_instance_subgraph": {
     "title": "Query Subgraph",
     "group_title": "Instance Queries",
-    "description": "Fetch instance subgraphs by following relation paths across object types. Use this when the question needs related objects around one or more seed instances."
+    "description": "Fetch instance subgraphs by following relation paths across object types. Use this when the question needs related objects around one or more seed instances.",
+    "gateway": {
+      "summary": "Fetch the instance subgraph along a known relation path, across several hops.",
+      "use_when": "You already know which object types and relation types to follow (for example order → item → product) and want the instances on that path.",
+      "not_for": "When you do not know the path, use explore_subgraph. For one object type filtered by conditions, use query_object_instance.",
+      "next_step": "Take object type and relation type IDs from search_schema or get_relation_types; never guess them from names."
+    }
   },
   "explore_subgraph": {
     "title": "Explore Subgraph",
     "group_title": "Instance Queries",
-    "description": "Explore what an object type connects to by giving a source, a direction and a hop count, without knowing the path in advance. Use this when the topology is unknown; use query_instance_subgraph when you can already name the path."
+    "description": "Explore what an object type connects to by giving a source, a direction and a hop count, without knowing the path in advance. Use this when the topology is unknown; use query_instance_subgraph when you can already name the path.",
+    "gateway": {
+      "summary": "Start from one object type and explore related instances by direction and number of hops, without knowing the path in advance.",
+      "use_when": "You only know the starting point (a customer, say) and want to see what it is connected to.",
+      "not_for": "When you know the full path, query_instance_subgraph is more precise.",
+      "next_step": "Once you see the path you need, switch to query_instance_subgraph to fetch it exactly."
+    }
   },
   "get_logic_properties_values": {
     "title": "Compute Logic Properties",
     "group_title": "Instance Queries",
-    "description": "Resolve calculated logic properties, such as metrics or operator-backed properties, for a batch of object instances. This is the instance-level branch of the metric path (a metric already bound to a logic property); class-level metrics and metrics not bound to a logic property go to query_metric."
+    "description": "Resolve calculated logic properties, such as metrics or operator-backed properties, for a batch of object instances. This is the instance-level branch of the metric path (a metric already bound to a logic property); class-level metrics and metrics not bound to a logic property go to query_metric.",
+    "gateway": {
+      "summary": "Compute bound logic properties (instance-level metrics or operators) for given instances.",
+      "use_when": "You need a logic property of a few specific instances, such as the gross margin of one order.",
+      "not_for": "For metrics at object-type level, or metrics with no logic property bound, use query_metric. For plain fields, use query_object_instance.",
+      "next_step": "Take logic property names and their parameter definitions from get_object_types, and instance identities from query results.",
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "ot_id": "ot_order",
+        "query": "Compute the gross margin of order SO-0001",
+        "_instance_identities": [
+          {
+            "order_no": "SO-0001"
+          }
+        ],
+        "properties": [
+          "gross_margin"
+        ]
+      }
+    }
   },
   "query_metric": {
     "title": "Query Metrics",
@@ -47,22 +78,46 @@
   "get_action_info": {
     "title": "Action Info",
     "group_title": "Actions",
-    "description": "Return executable action definitions for object instances, including the input schema and, when the tool declares one, output_schema: the shape of the execution result."
+    "description": "Return executable action definitions for object instances, including the input schema and, when the tool declares one, output_schema: the shape of the execution result.",
+    "gateway": {
+      "summary": "See which actions can run on an object and what parameters they take. Read-only: nothing is executed.",
+      "use_when": "You want to know what operations an object type supports and what each one needs.",
+      "not_for": "This entry cannot execute actions; execution needs execute_action on the full entry.",
+      "next_step": "Take action type IDs from get_kn_detail or search_schema."
+    }
   },
   "execute_action": {
     "title": "Execute Action",
     "group_title": "Actions",
-    "description": "Execute an action. First call get_action_info to obtain the action's dynamic_params schema, then fill in the real dynamic parameter values to trigger execution (asynchronous, returns an execution_id). Duplicate submissions for the same kn + action type + instance set + dynamic_params within the duplicate window return HTTP 409; do not retry—use get_action_execution to poll the existing execution instead."
+    "description": "Execute an action. First call get_action_info to obtain the action's dynamic_params schema, then fill in the real dynamic parameter values to trigger execution (asynchronous, returns an execution_id). Duplicate submissions for the same kn + action type + instance set + dynamic_params within the duplicate window return HTTP 409; do not retry—use get_action_execution to poll the existing execution instead.",
+    "gateway": {
+      "summary": "Execute an action on the network (asynchronous; it changes business data or triggers external work) and return its execution ID.",
+      "use_when": "The user explicitly asks to run an action, such as raising a purchase order, closing a monitoring task or sending a notice.",
+      "not_for": "To see which actions exist and what they need, use get_action_info; for results, use get_action_execution.",
+      "next_step": "Get the dynamic_params definition from get_action_info first; afterwards check the result with get_action_execution. A duplicate submission returns 409; do not retry."
+    }
   },
   "get_action_execution": {
     "title": "Action Result",
     "group_title": "Actions",
-    "description": "Query the status and results of a single action execution. Use the execution_id returned by execute_action to fetch the overall status and per-object results."
+    "description": "Query the status and results of a single action execution. Use the execution_id returned by execute_action to fetch the overall status and per-object results.",
+    "gateway": {
+      "summary": "Look up one action execution by its ID: overall status and the result for each object.",
+      "use_when": "You have an execution ID and want to know whether it succeeded and what each object's result was.",
+      "not_for": "Without an execution ID, list the history with list_action_executions first.",
+      "next_step": "Take execution IDs from list_action_executions."
+    }
   },
   "list_action_executions": {
     "title": "Action History",
     "group_title": "Actions",
-    "description": "List action execution history, filterable by action type, status, and trigger type, with pagination."
+    "description": "List action execution history, filterable by action type, status, and trigger type, with pagination.",
+    "gateway": {
+      "summary": "List the history of action executions, filtered by action type, status or trigger, with paging.",
+      "use_when": "You want to see which actions ran recently, or which of them failed.",
+      "not_for": "For the per-object result of one execution, use get_action_execution.",
+      "next_step": "To see the details of an execution, pass its ID to get_action_execution."
+    }
   },
   "list_knowledge_networks": {
     "title": "Knowledge Networks",
@@ -77,52 +132,112 @@
   "get_object_types": {
     "title": "Object Type Detail",
     "group_title": "Networks & Schema",
-    "description": "Fetch full object type definitions by id (data_properties carry mapped_field/condition_operations, logic_properties carry data_source/parameters). For progressive drill-down: call get_kn_detail (summary) for the object ids first, then expand only the ones you need. ids takes several at once; ids that match nothing come back under missing."
+    "description": "Fetch full object type definitions by id (data_properties carry mapped_field/condition_operations, logic_properties carry data_source/parameters). For progressive drill-down: call get_kn_detail (summary) for the object ids first, then expand only the ones you need. ids takes several at once; ids that match nothing come back under missing.",
+    "gateway": {
+      "summary": "Get the full definition of object types by ID: fields, the query operators each field supports, logic properties and related metrics.",
+      "use_when": "You need an object type's fields and how they can be filtered, or its metrics and logic properties.",
+      "not_for": "Without the object type ID, use search_schema or get_kn_detail first.",
+      "next_step": "Query instances with query_object_instance; query related metrics with query_metric."
+    }
   },
   "get_relation_types": {
     "title": "Relation Type Detail",
     "group_title": "Networks & Schema",
-    "description": "Fetch full relation type definitions by id (including mapping_rules and the source/target object names). For progressive drill-down: call get_kn_detail (summary) for the relation ids first, then expand them here. ids takes several at once; ids that match nothing come back under missing."
+    "description": "Fetch full relation type definitions by id (including mapping_rules and the source/target object names). For progressive drill-down: call get_kn_detail (summary) for the relation ids first, then expand them here. ids takes several at once; ids that match nothing come back under missing.",
+    "gateway": {
+      "summary": "Get the full definition of relation types by ID: the object types on each end and the mapping rules.",
+      "use_when": "You need to confirm which two object types a relation connects and on which fields.",
+      "not_for": "Without the relation type ID, use search_schema or get_kn_detail first.",
+      "next_step": "Once the path is confirmed, fetch instances with query_instance_subgraph."
+    }
   },
   "run_sql": {
     "title": "Run SQL",
     "group_title": "Instance Queries",
-    "description": "Physical-resource surface: run one read-only MySQL SELECT under the caller's own Vega resource permissions. It may return raw physical columns and is not constrained by object-property none/schema/masked/full levels; object-query tools must never call it internally. The caller must hold view_detail on every Vega resource the statement references: unlike the other query tools, which follow knowledge-network authorization, grants received through object types do not cover run_sql, so callers authorized only through object types should use query_object_instance or run_cypher. Use object instance, subgraph, logic-property, and metric tools for modeled object queries, and use run_sql only for explicitly authorized physical-resource analysis. Obtain resource ids and columns through list_resources and describe_resource. Use {{.resource_id}} placeholders and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog; WITH/CTE, set operations, multiple statements, writes/DDL, and cross-catalog joins are unsupported."
+    "description": "Physical-resource surface: run one read-only MySQL SELECT under the caller's own Vega resource permissions. It may return raw physical columns and is not constrained by object-property none/schema/masked/full levels; object-query tools must never call it internally. The caller must hold view_detail on every Vega resource the statement references: unlike the other query tools, which follow knowledge-network authorization, grants received through object types do not cover run_sql, so callers authorized only through object types should use query_object_instance or run_cypher. Use object instance, subgraph, logic-property, and metric tools for modeled object queries, and use run_sql only for explicitly authorized physical-resource analysis. Obtain resource ids and columns through list_resources and describe_resource. Use {{.resource_id}} placeholders and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog; WITH/CTE, set operations, multiple statements, writes/DDL, and cross-catalog joins are unsupported.",
+    "gateway": {
+      "summary": "Run one read-only SQL statement (MySQL syntax) against resources bound to the network, for statistics Cypher cannot express.",
+      "use_when": "You need statistics the Cypher subset cannot write (complex expressions, window-style measures), or the resource is not modelled as an object type.",
+      "not_for": "Statistics you can state with object and relation types go to run_cypher; modelled metrics to query_metric; business calculations to published functions (search_capabilities).",
+      "next_step": "Write table names as {{.<data_source.id>}} placeholders, with IDs and columns from data_source.id and data_property.column in search_schema."
+    }
   },
   "run_cypher": {
     "title": "Cypher Query",
     "group_title": "Instance Queries",
-    "description": "Ask a knowledge network in the terms it is modelled in: write Cypher over object type and relation type names, and the server compiles it into a single read-only SQL statement. Division with run_sql — this tool speaks the model (a label is an object type, a relationship is a modelled relation, a property is its logical name), so physical table and column names are never needed; run_sql is for what the model cannot express.\nAccepted: one MATCH or several, and several comma-separated paths in one; a variable written twice is the same node, and paths sharing no variable are a cartesian product. A relationship is written -[:R]->, <-[:R]- or undirected -[:R]-, and names exactly one relation type; a node names exactly one object type on first mention and may carry an inline property map {prop: value}. WHERE takes =, <>, <, >, <=, >=, IN [...] (or IN $list, the whole list passed as one parameter: a non-empty array of scalars of one kind, at most 500 elements), IS NULL / IS NOT NULL, STARTS WITH / ENDS WITH / CONTAINS (the right side is a string literal or a string parameter and is matched as a literal substring -- % and _ are not wildcards; string properties only; case sensitivity follows the data source collation), combined with AND / OR / NOT and grouped by parentheses; values are literals or $name parameters supplied in `parameters` — parameters are values only, never table or column names. RETURN takes properties, AS aliases, DISTINCT, and the aggregates count/sum/avg/min/max including count(*) and DISTINCT forms; Cypher has no GROUP BY, so aggregating groups by whatever else is returned. ORDER BY takes a property, a returned column name, or an aggregate. SKIP / LIMIT page the result.\nRefused, each by name with the construct and its position: OPTIONAL MATCH, WITH, UNION, variable-length paths [:R*1..3], XOR, returning a whole node, function calls and arithmetic, relationship variables. A query holds at most 8 relationships and 9 nodes; a query without LIMIT is capped at 1000 rows and LIMIT itself at 10000. A result collapsed by an aggregate or by DISTINCT can only be ordered by a value it returns."
+    "description": "Ask a knowledge network in the terms it is modelled in: write Cypher over object type and relation type names, and the server compiles it into a single read-only SQL statement. Division with run_sql — this tool speaks the model (a label is an object type, a relationship is a modelled relation, a property is its logical name), so physical table and column names are never needed; run_sql is for what the model cannot express.\nAccepted: one MATCH or several, and several comma-separated paths in one; a variable written twice is the same node, and paths sharing no variable are a cartesian product. A relationship is written -[:R]->, <-[:R]- or undirected -[:R]-, and names exactly one relation type; a node names exactly one object type on first mention and may carry an inline property map {prop: value}. WHERE takes =, <>, <, >, <=, >=, IN [...] (or IN $list, the whole list passed as one parameter: a non-empty array of scalars of one kind, at most 500 elements), IS NULL / IS NOT NULL, STARTS WITH / ENDS WITH / CONTAINS (the right side is a string literal or a string parameter and is matched as a literal substring -- % and _ are not wildcards; string properties only; case sensitivity follows the data source collation), combined with AND / OR / NOT and grouped by parentheses; values are literals or $name parameters supplied in `parameters` — parameters are values only, never table or column names. RETURN takes properties, AS aliases, DISTINCT, and the aggregates count/sum/avg/min/max including count(*) and DISTINCT forms; Cypher has no GROUP BY, so aggregating groups by whatever else is returned. ORDER BY takes a property, a returned column name, or an aggregate. SKIP / LIMIT page the result.\nRefused, each by name with the construct and its position: OPTIONAL MATCH, WITH, UNION, variable-length paths [:R*1..3], XOR, returning a whole node, function calls and arithmetic, relationship variables. A query holds at most 8 relationships and 9 nodes; a query without LIMIT is capped at 1000 rows and LIMIT itself at 10000. A result collapsed by an aggregate or by DISTINCT can only be ordered by a value it returns.",
+    "gateway": {
+      "summary": "Write read-only Cypher over object type and relation type names; the server compiles it into one SQL statement. For multi-hop queries and aggregates across objects.",
+      "use_when": "Statistics, rankings and totals across relations (count/sum/avg/min/max), or multi-hop queries with filters on the path.",
+      "not_for": "Filtering one object type goes to query_object_instance; business calculations go to published functions (search_capabilities).",
+      "next_step": "Use the names search_schema and get_object_types return for labels, relations and properties; no physical table names are needed."
+    }
   },
   "list_resources": {
     "title": "Data Resources",
     "group_title": "Data Resources",
-    "description": "Physical-resource surface: list resources visible under the caller's own Vega resource permissions. This boundary is independent of object-property none/schema/masked/full levels, and subsequent describe_resource/run_sql calls may expose physical columns that an object model hides or masks; object-query tools must never call it internally. Use only for explicit physical-resource analysis. Pass kn_id for resources bound to one knowledge network, or omit it to page the account-wide pool."
+    "description": "Physical-resource surface: list resources visible under the caller's own Vega resource permissions. This boundary is independent of object-property none/schema/masked/full levels, and subsequent describe_resource/run_sql calls may expose physical columns that an object model hides or masks; object-query tools must never call it internally. Use only for explicit physical-resource analysis. Pass kn_id for resources bound to one knowledge network, or omit it to page the account-wide pool.",
+    "gateway": {
+      "summary": "List the data resources (physical tables, views and so on) available to the network, filtered by the caller's own resource permissions.",
+      "use_when": "You need to analyse physical data resources directly, or find a table for run_sql.",
+      "not_for": "Query business objects with the object type tools, not with resource tools.",
+      "next_step": "To see a resource's columns, use describe_resource."
+    }
   },
   "describe_resource": {
     "title": "Resource Detail",
     "group_title": "Data Resources",
-    "description": "Physical-resource surface: describe connector type and physical columns under the caller's own Vega resource permissions. It is not constrained by object-property none/schema/masked/full levels, may list columns hidden by an object model, and must never be called internally by object-query tools. Use only for explicit physical-resource analysis before run_sql."
+    "description": "Physical-resource surface: describe connector type and physical columns under the caller's own Vega resource permissions. It is not constrained by object-property none/schema/masked/full levels, may list columns hidden by an object model, and must never be called internally by object-query tools. Use only for explicit physical-resource analysis before run_sql.",
+    "gateway": {
+      "summary": "Show a data resource's connector type and physical columns.",
+      "use_when": "You need the physical column names before writing run_sql.",
+      "not_for": "An object type's fields come from get_object_types.",
+      "next_step": "Take resource_id from list_resources or the data_source.id in search_schema."
+    }
   },
   "list_skills": {
     "title": "Skill List",
     "group_title": "Skills",
-    "description": "Browse the platform's published Skills (the marketplace). **Not scoped by knowledge network mounts** — a Skill listed here is not necessarily readable or runnable in the current network. Use search_capabilities for what this network can actually use; these results are a catalogue, not a permission."
+    "description": "Browse the platform's published Skills (the marketplace). **Not scoped by knowledge network mounts** — a Skill listed here is not necessarily readable or runnable in the current network. Use search_capabilities for what this network can actually use; these results are a catalogue, not a permission.",
+    "gateway": {
+      "summary": "Browse the catalogue of skills published on the platform (the skill market), not limited to those mounted on the network.",
+      "use_when": "You want to know which skills exist on the platform.",
+      "not_for": "Skills this network can use are found with search_capabilities.",
+      "next_step": "To read a skill, use get_skill_content."
+    }
   },
   "get_skill_content": {
     "title": "Skill Content",
     "group_title": "Skills",
-    "description": "Read a skill's SKILL.md body and the file listing of its bundle (files[].rel_path). Usage and entry commands are documented there; fetch individual bundled files with read_skill_file instead of reading the whole package.\nNeeds view permission on the knowledge network itself: a mounted Skill is read through the network's managed proxy, so no separate grant on the Skill is needed. Permissions on object types or other child resources alone, or a standalone Skill grant, are refused."
+    "description": "Read a skill's SKILL.md body and the file listing of its bundle (files[].rel_path). Usage and entry commands are documented there; fetch individual bundled files with read_skill_file instead of reading the whole package.\nNeeds view permission on the knowledge network itself: a mounted Skill is read through the network's managed proxy, so no separate grant on the Skill is needed. Permissions on object types or other child resources alone, or a standalone Skill grant, are refused.",
+    "gateway": {
+      "summary": "Read a skill's main document, SKILL.md, and the list of files in the skill package.",
+      "use_when": "You want to understand what a skill does and how to use it.",
+      "not_for": "To run a skill's script, use execute_skill.",
+      "next_step": "To read one of the listed files, use read_skill_file."
+    }
   },
   "read_skill_file": {
     "title": "Read Skill File",
     "group_title": "Skills",
-    "description": "Read one file from a skill bundle; rel_path comes from the files listing returned by get_skill_content. For progressive loading — large files need not stay in context. Binary files return metadata only, no body.\nSame permission as get_skill_content: view on the knowledge network itself, no separate Skill grant."
+    "description": "Read one file from a skill bundle; rel_path comes from the files listing returned by get_skill_content. For progressive loading — large files need not stay in context. Binary files return metadata only, no body.\nSame permission as get_skill_content: view on the knowledge network itself, no separate Skill grant.",
+    "gateway": {
+      "summary": "Read one file from a skill package.",
+      "use_when": "The skill document mentions a supporting file and you need its content.",
+      "not_for": "Without the file path, get the file list with get_skill_content first.",
+      "next_step": "Take the file path from the files returned by get_skill_content."
+    }
   },
   "execute_skill": {
     "title": "Execute Skill",
     "group_title": "Skills",
-    "description": "Run a skill's entry command inside the sandbox and return exit_code / stdout / stderr. entry_shell must come from the entry declared in SKILL.md — read it with get_skill_content first."
+    "description": "Run a skill's entry command inside the sandbox and return exit_code / stdout / stderr. entry_shell must come from the entry declared in SKILL.md — read it with get_skill_content first.",
+    "gateway": {
+      "summary": "Run the entry script of a skill mounted on the network in the sandbox.",
+      "use_when": "The skill's instructions tell you to run its script.",
+      "not_for": "To read a skill's instructions, use get_skill_content.",
+      "next_step": "Fill entry_shell as the skill's instructions say."
+    }
   },
   "run_code": {
     "title": "Run Code",
@@ -135,11 +250,42 @@
   "search_capabilities": {
     "title": "Capability Search",
     "group_title": "Tools",
-    "description": "Search everything one knowledge network has mounted -- Skills, Function tools (including API tools) and MCP tools -- ranked together in one space and returned interleaved by relevance. Use it when looking for something that can do a job, without first guessing whether it is a Skill or a tool.\nEvery hit carries capability_type, which decides what to do next: function / mcp_tool are called through execute_tool (their hits carry input_schema), a skill is read through get_skill_content and run through execute_skill.\nOptional types narrows to skill / function / mcp_tool; Function tools can be narrowed further with metadata_types into openapi (API tools) and function. Needs view permission on the knowledge network itself; permissions on object types or other child resources alone, or a standalone Skill or tool grant, are refused. The scope is what the network mounted; Function tools this account cannot see are left out, and a network that mounted none returns nothing."
+    "description": "Search everything one knowledge network has mounted -- Skills, Function tools (including API tools) and MCP tools -- ranked together in one space and returned interleaved by relevance. Use it when looking for something that can do a job, without first guessing whether it is a Skill or a tool.\nEvery hit carries capability_type, which decides what to do next: function / mcp_tool are called through execute_tool (their hits carry input_schema), a skill is read through get_skill_content and run through execute_skill.\nOptional types narrows to skill / function / mcp_tool; Function tools can be narrowed further with metadata_types into openapi (API tools) and function. Needs view permission on the knowledge network itself; permissions on object types or other child resources alone, or a standalone Skill or tool grant, are refused. The scope is what the network mounted; Function tools this account cannot see are left out, and a network that mounted none returns nothing.",
+    "gateway": {
+      "summary": "Find the published functions, skills and external tools mounted on the network, with their IDs, purpose and input definitions.",
+      "use_when": "Business calculations (for example sellable quantity, kitting and shortages, capacity, delivery dates, substitutes) or using the skills and tools the network mounts; published functions define these measures.",
+      "not_for": "This service's own query tools are found with search_native_tools.",
+      "next_step": "Run a function with execute_tool: toolbox_id is owner_id, tool_id is capability_id, and arguments follow the returned input_schema.",
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "query": "kitting shortage"
+      }
+    }
   },
   "execute_tool": {
     "title": "Execute Tool",
     "group_title": "Tools",
-    "description": "Invoke one Function or MCP tool mounted on the knowledge network and return its raw response. Needs execute permission on the knowledge network itself: the tool runs through the network's managed proxy, so no separate grant on the tool is needed. kn_id, toolbox_id and tool_id must come from search_capabilities, and arguments follows the input_schema it returned. A tool may write to external systems irreversibly, so read its description and use_rule before calling."
+    "description": "Invoke one Function or MCP tool mounted on the knowledge network and return its raw response. Needs execute permission on the knowledge network itself: the tool runs through the network's managed proxy, so no separate grant on the tool is needed. kn_id, toolbox_id and tool_id must come from search_capabilities, and arguments follows the input_schema it returned. A tool may write to external systems irreversibly, so read its description and use_rule before calling.",
+    "gateway": {
+      "summary": "Run one function or external tool mounted on the network and return its raw result.",
+      "use_when": "You found the function or tool with search_capabilities.",
+      "not_for": "Without toolbox_id and tool_id, use search_capabilities first.",
+      "next_step": "Fill arguments from the input_schema search_capabilities returned; an external tool may write to external systems, so read its description first."
+    }
+  },
+  "search_native_tools": {
+    "title": "Find Query Tools",
+    "group_title": "On-demand Queries",
+    "description": "Find the right tool for a task among the tools this entry offers on demand. Returns up to 5 candidates with their name, purpose, when to use them, when not to, the next step and an argument signature. The search covers every capability this entry does not publish directly, including statistics, actions, skills and the tool that finds mounted functions. Candidates cannot be called by name: get the arguments schema with describe_native_tool, then run them through the executor; when you know the name and arguments, run them directly. Tools this entry publishes directly are not searched."
+  },
+  "describe_native_tool": {
+    "title": "Describe Query Tool",
+    "group_title": "On-demand Queries",
+    "description": "Describe one on-demand tool: its purpose, its executable arguments schema, a call template that passes that schema, and hints about the output fields; with include_output_schema=true the full output schema is added. Take name from the results of search_native_tools. The executable arguments schema has no bkn_context; the executor carries it over from the outer call."
+  },
+  "execute_native_tool": {
+    "title": "Run On-demand Tool",
+    "group_title": "On-demand Queries",
+    "description": "Run one on-demand tool: name is the target tool, and arguments follows the executable arguments schema returned by describe_native_tool, without bkn_context. The target may be any tool this entry does not publish directly, including tools that change data or call external systems (actions, mounted functions and so on), so confirm the user's intent before running one. When the arguments are invalid, the error carries the target's executable arguments schema and the failing fields, so you can fix them and retry. Call the tools this entry publishes directly yourself."
   }
 }

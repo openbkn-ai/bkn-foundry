@@ -30,6 +30,7 @@
     "output_schema.properties.concept_groups.items.properties.id.description": "Concept group id, accepted by the concept_groups parameter of search_instance",
     "output_schema.properties.concept_groups.items.properties.name.description": "Group name",
     "output_schema.properties.concept_groups.items.properties.object_type_ids.description": "Ids of the object types in the group",
+    "output_schema.properties.object_types.items.properties.effective_permissions.description": "This account's effective permission on each property: full reads the value, masked reads a masked value, schema sees the field but not the value. In the default summary the field is omitted when every property is full; with any restricted property it is listed in full.",
     "output_schema.properties.object_types.items.properties.id.description": "Object type id. Note that the equivalent field in a search_schema response is called concept_id.",
     "output_schema.properties.object_types.items.properties.name.description": "Object type name. As above, search_schema calls this concept_name.",
     "output_schema.properties.object_types.items.properties.comment.description": "Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
@@ -443,8 +444,21 @@
     "output_schema.properties.capabilities.items.properties.description.description": "What the capability does",
     "output_schema.properties.capabilities.items.properties.use_rule.description": "Usage rule, tools only",
     "output_schema.properties.capabilities.items.properties.input_schema.description": "Business input contract, tools only; fill execute_tool's arguments from it. A Skill carries none: it is read, not called",
+    "output_schema.properties.capabilities.items.properties.call.description": "The next call that uses this capability, IDs already filled in: tool is the tool to call and arguments its arguments. For a function or MCP tool, fill arguments.arguments from input_schema; for a Skill, call it as is to read the instructions",
     "output_schema.properties.total_matched.description": "How many capabilities matched, which may exceed the length of capabilities",
     "output_schema.properties.truncated.description": "True when more matched than the page holds and only the first were returned",
     "output_schema.properties.message.description": "Why the answer is empty or truncated, named by cause"
+  },
+  "search_native_tools": {
+    "input_schema.properties.query.description": "What you want to do, in one sentence, in English or Chinese; for example \"fetch the items of an order along its relation\".",
+    "input_schema.properties.limit.description": "Maximum number of candidates to return; default 3, at most 5."
+  },
+  "describe_native_tool": {
+    "input_schema.properties.name.description": "Name of the target tool, taken from the results of search_native_tools.",
+    "input_schema.properties.include_output_schema.description": "Whether to include the target's full output schema; off by default. The result already hints at the output fields, so leave it off unless you need the exact shape."
+  },
+  "execute_native_tool": {
+    "input_schema.properties.name.description": "Name of the target tool, taken from the results of search_native_tools.",
+    "input_schema.properties.arguments.description": "The target tool's arguments, filled in against the executable arguments schema returned by describe_native_tool. Do not put bkn_context here; the gateway carries it over from this call."
   }
 }

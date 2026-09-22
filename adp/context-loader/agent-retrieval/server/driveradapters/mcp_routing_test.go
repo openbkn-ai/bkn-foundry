@@ -6,11 +6,16 @@
 package driveradapters
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 )
 
 // The catch-all under /mcp used to carry an ordering trap: /ptc matched by
@@ -71,5 +76,84 @@ func TestMCPRoutingDispatch(t *testing.T) {
 				t.Fatalf("%s %s reached %q, want %q", tc.method, tc.path, *hit, tc.want)
 			}
 		})
+	}
+}
+
+// newRegisteredRouter registers the real public routes, with stub business
+// handlers and probes standing in for the MCP servers, so routing is checked
+// together with the middlewares the group shares.
+func newRegisteredRouter(t *testing.T) (*gin.Engine, *string) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	var hit string
+	probe := func(name string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			hit = name
+			w.WriteHeader(http.StatusOK)
+		})
+	}
+	handler := &restPublicHandler{
+		Hydra:                          stubPublicHydra{},
+		MCPHandler:                     probe("mcp"),
+		CompactMCPHandler:              probe("mcp-compact"),
+		KnLogicPropertyResolverHandler: stubLogicPropertyResolverHandler{},
+		KnActionRecallHandler:          stubActionRecallHandler{},
+		KnQueryObjectInstanceHandler:   stubQueryObjectInstanceHandler{},
+		KnQuerySubgraphHandler:         stubQuerySubgraphHandler{},
+		KnSearchHandler:                stubKnSearchHandler{},
+		KnQueryToolsHandler:            stubKnQueryToolsHandler{},
+		KnSkillsHandler:                stubKnSkillsHandler{},
+		KnToolsHandler:                 stubKnToolsHandler{},
+		LifecycleClient:                inProcessLifecycleClient(t),
+		Logger:                         logger.DefaultLogger(),
+	}
+	previousFull, previousCompact := buildMCPInfo, buildCompactMCPInfo
+	buildMCPInfo = func(endpoint, _ string) (*mcp.MCPInfo, error) {
+		return &mcp.MCPInfo{Service: "full", Endpoint: endpoint}, nil
+	}
+	buildCompactMCPInfo = func(endpoint, _ string) (*mcp.MCPInfo, error) {
+		return &mcp.MCPInfo{Service: "compact", Endpoint: endpoint}, nil
+	}
+	t.Cleanup(func() { buildMCPInfo, buildCompactMCPInfo = previousFull, previousCompact })
+
+	engine := gin.New()
+	handler.RegisterRouter(engine.Group("/api/agent-retrieval/v1"))
+	return engine, &hit
+}
+
+func serveRoute(engine *gin.Engine, method, path string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, http.NoBody)
+	req.Header.Set("Authorization", "Bearer token")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	return w
+}
+
+func TestCompactRouteSitsBesideTheFullRoute(t *testing.T) {
+	engine, hit := newRegisteredRouter(t)
+
+	for path, want := range map[string]string{
+		"/api/agent-retrieval/v1/mcp/":         "mcp",
+		"/api/agent-retrieval/v1/mcp-compact/": "mcp-compact",
+	} {
+		*hit = ""
+		if w := serveRoute(engine, http.MethodPost, path); w.Code != http.StatusOK || *hit != want {
+			t.Fatalf("POST %s: status %d reached %q, want %q", path, w.Code, *hit, want)
+		}
+	}
+
+	for path, want := range map[string]string{
+		"/api/agent-retrieval/v1/mcp/info":         "full",
+		"/api/agent-retrieval/v1/mcp-compact/info": "compact",
+	} {
+		w := serveRoute(engine, http.MethodGet, path)
+		var info mcp.MCPInfo
+		if err := json.Unmarshal(w.Body.Bytes(), &info); err != nil {
+			t.Fatalf("GET %s: status %d, body %s", path, w.Code, w.Body.String())
+		}
+		if info.Service != want || !strings.HasSuffix(info.Endpoint, strings.TrimSuffix(path, "/info")) {
+			t.Fatalf("GET %s answered %+v, want the %s description of its own endpoint", path, info, want)
+		}
 	}
 }

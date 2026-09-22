@@ -45,9 +45,14 @@ type restPublicHandler struct {
 	KnToolsHandler                 kntools.KnToolsHandler
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
+	// CompactMCPHandler serves /mcp-compact.
+	CompactMCPHandler http.Handler
 }
 
-var buildMCPInfo = mcp.BuildMCPInfoForLocale
+var (
+	buildMCPInfo        = mcp.BuildMCPInfoForLocale
+	buildCompactMCPInfo = mcp.BuildCompactMCPInfoForLocale
+)
 
 // NewRestPublicHandler createrestHandlerinstance.
 // sandboxPort is used to derive the sandbox return address; the sandbox is within the cluster and cannot reach the gateway address on the browser side.
@@ -56,6 +61,7 @@ func NewRestPublicHandler(logger interfaces.Logger, sandboxPort int) interfaces.
 		Hydra:                          drivenadapters.NewHydra(),
 		AppKeys:                        drivenadapters.NewAppKeyVerifier(),
 		MCPHandler:                     mcp.NewMCPHandlerForSandboxPort(sandboxPort),
+		CompactMCPHandler:              mcp.NewCompactMCPHandler(),
 		KnLogicPropertyResolverHandler: knlogicpropertyresolver.NewKnLogicPropertyResolverHandler(),
 		KnActionRecallHandler:          knactionrecall.NewKnActionRecallHandler(),
 		KnQueryObjectInstanceHandler:   knqueryobjectinstance.NewKnQueryObjectInstanceHandler(),
@@ -119,6 +125,11 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	// details). All other
 	// requests use standard MCP Streamable HTTP.
 	engine.Any("/mcp/*path", r.handleMCP)
+
+	// The compact profile is a sibling of /mcp, not a child: under /mcp the
+	// catch-all above would take it. It shares every middleware registered on
+	// this group.
+	engine.Any("/mcp-compact/*path", r.handleCompactMCP)
 }
 
 // handleMCP dispatches requests inside the MCP catch-all route.
@@ -136,11 +147,23 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 // build time by cmd/ptc-stub rather than fetched. The rendering they shared is
 // untouched - only the two HTTP surfaces are.
 func (r *restPublicHandler) handleMCP(c *gin.Context) {
+	r.serveMCP(c, r.MCPHandler, buildMCPInfo)
+}
+
+// handleCompactMCP dispatches /mcp-compact the same way: /mcp-compact/info is
+// the compact self-description, everything else goes to the compact server.
+func (r *restPublicHandler) handleCompactMCP(c *gin.Context) {
+	r.serveMCP(c, r.CompactMCPHandler, buildCompactMCPInfo)
+}
+
+type mcpInfoBuilder func(endpoint, locale string) (*mcp.MCPInfo, error)
+
+func (r *restPublicHandler) serveMCP(c *gin.Context, handler http.Handler, info mcpInfoBuilder) {
 	if c.Request.Method == http.MethodGet && c.Param("path") == mcpInfoPath {
-		r.replyMCPInfo(c, mcpEndpointURL(c.Request))
+		r.replyMCPInfo(c, mcpEndpointURL(c.Request), info)
 		return
 	}
-	r.MCPHandler.ServeHTTP(c.Writer, c.Request)
+	handler.ServeHTTP(c.Writer, c.Request)
 }
 
 // MCP catch-all subpaths are centralized so this list matches dispatch order.
@@ -149,9 +172,9 @@ const (
 	mcpInfoPath = "/info"
 )
 
-// replyMCPInfo returns the self-description for the MCP endpoint.
-func (r *restPublicHandler) replyMCPInfo(c *gin.Context, endpoint string) {
-	info, err := buildMCPInfo(endpoint, string(common.GetLanguageFromCtx(c.Request.Context())))
+// replyMCPInfo returns the self-description for an MCP endpoint.
+func (r *restPublicHandler) replyMCPInfo(c *gin.Context, endpoint string, build mcpInfoBuilder) {
+	info, err := build(endpoint, string(common.GetLanguageFromCtx(c.Request.Context())))
 	if err != nil {
 		if r.Logger != nil {
 			r.Logger.Errorf("BuildMCPInfo failed: %v", err)

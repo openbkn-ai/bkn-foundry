@@ -122,6 +122,7 @@
             },
             "effective_permissions": {
               "type": "object",
+              "description": "当前账户对各属性的有效权限：full 可读原值，masked 读到脱敏值，schema 只见字段不见值。默认 summary 下，所有属性都是 full 时省略此字段；只要有一个受限属性就完整列出",
               "additionalProperties": {
                 "type": "string",
                 "enum": [

@@ -214,10 +214,25 @@ func middlewareRequestLog(logger interfaces.Logger) gin.HandlerFunc {
 }
 
 func requestBodyForLog(path string, body []byte) interface{} {
-	if strings.Contains(path, "/mcp/") || strings.HasSuffix(path, "/mcp") {
+	if isMCPRequestPath(path) {
 		return mcpRequestBodyForLog(body)
 	}
 	return redactSensitiveFields(byteToInterface(body))
+}
+
+// mcpPathSegments are the route segments that serve MCP. Their request bodies
+// carry tool arguments, which are governed evidence and never go to the
+// general log. The compact profile is a sibling of /mcp, not a child of it,
+// so the check matches whole segments rather than a "/mcp/" substring.
+var mcpPathSegments = map[string]bool{"mcp": true, "mcp-compact": true}
+
+func isMCPRequestPath(path string) bool {
+	for _, segment := range strings.Split(path, "/") {
+		if mcpPathSegments[segment] {
+			return true
+		}
+	}
+	return false
 }
 
 func mcpRequestBodyForLog(body []byte) map[string]interface{} {

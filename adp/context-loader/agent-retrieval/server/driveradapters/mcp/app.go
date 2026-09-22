@@ -98,10 +98,16 @@ type localizedMCPHandler struct {
 }
 
 func newLocalizedMCPHandler(lifecycleClient *bkntrace.LifecycleClient, sandboxPort int) http.Handler {
+	return newLocalizedMCPHandlerForProfile(lifecycleClient, sandboxPort, fullProfile)
+}
+
+func newLocalizedMCPHandlerForProfile(
+	lifecycleClient *bkntrace.LifecycleClient, sandboxPort int, profile mcpProfile,
+) http.Handler {
 	handlers := make(map[string]http.Handler, 2)
 	for _, locale := range []sharedrest.Language{sharedrest.SimplifiedChinese, sharedrest.AmericanEnglish} {
-		srv, _ := newMCPServerForLocaleAtSandboxPort(lifecycleClient, string(locale), sandboxPort)
-		handlers[normalizeMCPLocale(string(locale))] = newMCPStreamableHTTPHandler(srv, endpointPath)
+		srv, _ := newMCPServerForProfile(lifecycleClient, string(locale), sandboxPort, profile)
+		handlers[normalizeMCPLocale(string(locale))] = newMCPStreamableHTTPHandler(srv, profile.endpointPath)
 	}
 	return &localizedMCPHandler{handlers: handlers}
 }
@@ -156,6 +162,14 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 
 func newMCPServerForLocaleAtSandboxPort(
 	lifecycleClient *bkntrace.LifecycleClient, locale string, sandboxPort int,
+) (*server.MCPServer, *toolBuilder) {
+	return newMCPServerForProfile(lifecycleClient, locale, sandboxPort, fullProfile)
+}
+
+// newMCPServerForProfile assembles every tool for every profile and lets the
+// profile narrow what is published afterwards (see mcpProfile).
+func newMCPServerForProfile(
+	lifecycleClient *bkntrace.LifecycleClient, locale string, sandboxPort int, profile mcpProfile,
 ) (*server.MCPServer, *toolBuilder) {
 	localeBundle := loadMCPLocaleBundle(locale)
 	b := newToolBuilder(localeBundle)
@@ -226,14 +240,40 @@ func newMCPServerForLocaleAtSandboxPort(
 	// the same, so an enterprise tool cannot shadow one of them — mcp-go's
 	// AddTool replaces a same-named tool silently, and these are core capability.
 	b.claimLifecycleNames()
+	b.claimGatewayNames()
 
 	b.addExtras()
 	b.verifyDecoratorsLanded()
 
-	mcpServer := server.NewMCPServer(serverName, serverVersion,
+	var mcpServer *server.MCPServer
+	options := []server.ServerOption{
 		server.WithToolCapabilities(true),
-		server.WithInstructions(localeBundle.ServerInstructions()),
-		// The licence gate goes first. mcp-go applies middlewares in reverse,
+		server.WithInstructions(profile.instructions(localeBundle)),
+	}
+	if profile.textResults {
+		// Outermost of all, so it projects the result the guard completed.
+		options = append(options, server.WithToolHandlerMiddleware(compactResultMiddleware()))
+	}
+	if profile.strictArguments {
+		// Before the guard, so a refused call leaves no Operation.
+		options = append(options, server.WithToolHandlerMiddleware(compactArgumentsMiddleware(
+			func(ctx context.Context, name string) (mcp.Tool, bool) {
+				registered := mcpServer.GetTool(name)
+				if registered == nil {
+					return mcp.Tool{}, false
+				}
+				tools := b.filter(ctx, []mcp.Tool{registered.Tool})
+				if profile.published != nil {
+					tools = profile.filter(ctx, tools)
+				}
+				if len(tools) == 0 {
+					return mcp.Tool{}, false
+				}
+				return tools[0], true
+			})))
+	}
+	options = append(options,
+		// Of the per-call checks, the licence gate goes first. mcp-go applies middlewares in reverse,
 		// so the first one registered is the outermost and runs before the
 		// lifecycle guard — an under-licensed enterprise tool must answer
 		// "no such tool", not "conversation_required", or the paid surface
@@ -251,9 +291,21 @@ func newMCPServerForLocaleAtSandboxPort(
 		// notices.
 		server.WithToolFilter(b.filter),
 	)
+	if profile.published != nil {
+		// Filters stack and run in order, on tools/list and tools/call alike,
+		// so the licence filter above still applies and a tool this profile
+		// does not publish is refused exactly like an unknown one.
+		options = append(options, server.WithToolFilter(profile.filter))
+	}
+	mcpServer = server.NewMCPServer(serverName, serverVersion, options...)
 	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 	b.attach(mcpServer)
-	registerInlinePTCTools(mcpServer, localeBundle, locale, sandboxPort)
+	if profile.inlinePTC {
+		registerInlinePTCTools(mcpServer, localeBundle, locale, sandboxPort)
+	}
+	if profile.gateway {
+		registerGatewayTools(mcpServer, b, lifecycleClient)
+	}
 	return mcpServer, b
 }
 
