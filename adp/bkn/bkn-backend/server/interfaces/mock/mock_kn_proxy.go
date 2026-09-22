@@ -175,6 +175,35 @@ func (mr *MockKNProxyAccessMockRecorder) ReplacePublishedSnapshotAndMarkReady(ct
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplacePublishedSnapshotAndMarkReady", reflect.TypeOf((*MockKNProxyAccess)(nil).ReplacePublishedSnapshotAndMarkReady), ctx, knID, generation, lockOwner, snapshotVersion, sources, updatedAt)
 }
 
+// ListPublishedSources mocks base method.
+func (m *MockKNProxyAccess) ListPublishedSources(ctx context.Context, knID string, bindings []interfaces.KNProxyBindingRef) ([]interfaces.ProxyGrantSourceSpec, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPublishedSources", ctx, knID, bindings)
+	ret0, _ := ret[0].([]interfaces.ProxyGrantSourceSpec)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPublishedSources indicates an expected call of ListPublishedSources.
+func (mr *MockKNProxyAccessMockRecorder) ListPublishedSources(ctx, knID, bindings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPublishedSources", reflect.TypeOf((*MockKNProxyAccess)(nil).ListPublishedSources), ctx, knID, bindings)
+}
+
+// ReplacePublishedBindingsAndMarkReady mocks base method.
+func (m *MockKNProxyAccess) ReplacePublishedBindingsAndMarkReady(ctx context.Context, knID string, generation int64, lockOwner, snapshotVersion string, bindings []interfaces.KNProxyBindingRef, sources []interfaces.ProxyGrantSourceSpec, updatedAt int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplacePublishedBindingsAndMarkReady", ctx, knID, generation, lockOwner, snapshotVersion, bindings, sources, updatedAt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReplacePublishedBindingsAndMarkReady indicates an expected call of ReplacePublishedBindingsAndMarkReady.
+func (mr *MockKNProxyAccessMockRecorder) ReplacePublishedBindingsAndMarkReady(ctx, knID, generation, lockOwner, snapshotVersion, bindings, sources, updatedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplacePublishedBindingsAndMarkReady", reflect.TypeOf((*MockKNProxyAccess)(nil).ReplacePublishedBindingsAndMarkReady), ctx, knID, generation, lockOwner, snapshotVersion, bindings, sources, updatedAt)
+}
+
 // ReserveSyncGeneration mocks base method.
 func (m *MockKNProxyAccess) ReserveSyncGeneration(ctx context.Context, knID, lockOwner string, updatedAt int64) (int64, error) {
 	m.ctrl.T.Helper()

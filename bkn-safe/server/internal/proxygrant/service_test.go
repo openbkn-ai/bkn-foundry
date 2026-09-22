@@ -1260,6 +1260,86 @@ func TestCheckDeltaIsReadOnlyAndSyncDeltaAppliesFencedTransition(t *testing.T) {
 	}
 }
 
+func TestTouchedOnlyDeltaTransfersInvalidHistoricalDelegatorWithoutChangingSnapshot(t *testing.T) {
+	f := newFixture(t)
+	const historical = "grantor-historical"
+	if err := f.db.Create(&model.User{ID: historical, Account: historical, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.grantOperations(t, historical, "r-1", "query_data")
+	f.grantOperations(t, f.grantor, "r-1", "query_data")
+	source := f.request("source-1", "ot-1", "r-1").Source
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: historical, SyncGeneration: 1,
+		SnapshotVersion: "sha256:base", Sources: []proxygrant.SourceSpec{source},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.enforcer.RevokeObjectPermission(historical, "resource", "r-1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+
+	checked, err := f.service.CheckDelta(t.Context(), proxygrant.DeltaCheckRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, Upserts: []proxygrant.SourceSpec{source},
+	})
+	if err != nil || len(checked.ResolvedSources) != 1 || checked.ResolvedSources[0].GrantedBy != f.grantor {
+		t.Fatalf("CheckDelta() = (%+v, %v)", checked, err)
+	}
+	result, err := f.service.SyncDelta(t.Context(), proxygrant.DeltaSyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, SyncGeneration: 2,
+		BaseSnapshotVersion: "sha256:base", TargetSnapshotVersion: "sha256:base",
+		Upserts: []proxygrant.SourceSpec{source},
+	})
+	if err != nil || result.Transferred != 1 {
+		t.Fatalf("SyncDelta() = (%+v, %v)", result, err)
+	}
+	var row model.ProxyGrantSource
+	if err := f.db.First(&row, "proxy_account_id = ? AND source_id = ?", f.proxyID, source.SourceID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.GrantedBy != f.grantor {
+		t.Fatalf("touched source granted_by = %q, want %q", row.GrantedBy, f.grantor)
+	}
+	var mapping model.ManagedProxyAccount
+	if err := f.db.First(&mapping, "proxy_account_id = ?", f.proxyID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if mapping.GrantSyncGeneration != 2 || mapping.GrantSnapshotVersion != "sha256:base" {
+		t.Fatalf("touched fence = (%d, %q)", mapping.GrantSyncGeneration, mapping.GrantSnapshotVersion)
+	}
+}
+
+func TestDeltaRemovalCannotCrossManagedNetworkOrBindingIdentity(t *testing.T) {
+	f := newFixture(t)
+	f.authorize(t, "r-1", "query_data")
+	source := f.request("source-1", "ot-1", "r-1").Source
+	if _, err := f.service.Sync(t.Context(), proxygrant.SyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, SyncGeneration: 1,
+		SnapshotVersion: "sha256:base", Sources: []proxygrant.SourceSpec{source},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	crossNetwork := source
+	crossNetwork.KNID = "kn-other"
+	if _, err := f.service.CheckDelta(t.Context(), proxygrant.DeltaCheckRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor,
+		Removals: []proxygrant.SourceSpec{crossNetwork},
+	}); !errors.Is(err, proxygrant.ErrForbidden) {
+		t.Fatalf("cross-network CheckDelta() error = %v, want ErrForbidden", err)
+	}
+
+	wrongBinding := source
+	wrongBinding.BindingID = "ot-other"
+	if _, err := f.service.SyncDelta(t.Context(), proxygrant.DeltaSyncRequest{
+		ProxyAccountID: f.proxyID, GrantorID: f.grantor, SyncGeneration: 2,
+		BaseSnapshotVersion: "sha256:base", TargetSnapshotVersion: "sha256:target",
+		Removals: []proxygrant.SourceSpec{wrongBinding},
+	}); !errors.Is(err, proxygrant.ErrInvalidRequest) {
+		t.Fatalf("mismatched-binding SyncDelta() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func TestConcurrentGrantReplayCreatesOneSourceAndPolicy(t *testing.T) {
 	f := newFixture(t)
 	f.authorize(t, "r-1", "query_data")

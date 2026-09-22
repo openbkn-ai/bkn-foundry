@@ -557,6 +557,11 @@ func (s *Service) CheckDelta(ctx context.Context, req DeltaCheckRequest) (BatchC
 	}
 	rows := []model.ProxyGrantSource{}
 	if mappingErr == nil {
+		for _, spec := range removals {
+			if spec.KNID != mapping.ManagedResourceID {
+				return BatchCheckResult{}, ErrForbidden
+			}
+		}
 		rows, err = loadDeltaRows(s.db.WithContext(ctx), req.ProxyAccountID, normalized, removals)
 		if err != nil {
 			return BatchCheckResult{}, err
@@ -571,7 +576,14 @@ func (s *Service) CheckDelta(ctx context.Context, req DeltaCheckRequest) (BatchC
 	}
 	removed := removalSet(removals)
 	current := make(map[sourceKey]model.ProxyGrantSource, len(rows))
+	removalSpecs := make(map[sourceKey]SourceSpec, len(removals))
+	for _, spec := range removals {
+		removalSpecs[keyForSpec(spec)] = spec
+	}
 	for _, row := range rows {
+		if spec, ok := removalSpecs[keyForModel(row)]; ok && !sameBinding(specFromModel(row), spec) {
+			return BatchCheckResult{}, ErrInvalidRequest
+		}
 		current[keyForModel(row)] = row
 	}
 	reusable := reusableDelegatorsForDelta(rows, mapping.ManagedResourceID, validCurrent, removed, desired)
@@ -671,10 +683,12 @@ func (s *Service) SyncDelta(ctx context.Context, req DeltaSyncRequest) (SyncResu
 		if req.SyncGeneration == mapping.GrantSyncGeneration {
 			return nil
 		}
-		if mapping.GrantSnapshotVersion == req.TargetSnapshotVersion {
-			return tx.DB().Model(&mapping).Update("grant_sync_generation", req.SyncGeneration).Error
-		}
-		if mapping.GrantSnapshotVersion != req.BaseSnapshotVersion {
+		// A higher-generation request whose target is already current is replayed
+		// idempotently instead of being skipped. This is required for touched-only
+		// transitions where base and target are intentionally equal: the upserts
+		// must still revalidate and, if needed, transfer their delegator.
+		if mapping.GrantSnapshotVersion != req.BaseSnapshotVersion &&
+			mapping.GrantSnapshotVersion != req.TargetSnapshotVersion {
 			return ErrSnapshotConflict
 		}
 		if len(normalized) > 0 && mapping.LifecycleStatus != managedproxy.StatusActive {
@@ -684,6 +698,11 @@ func (s *Service) SyncDelta(ctx context.Context, req DeltaSyncRequest) (SyncResu
 			return err
 		}
 		for _, spec := range normalized {
+			if spec.KNID != mapping.ManagedResourceID {
+				return ErrForbidden
+			}
+		}
+		for _, spec := range removals {
 			if spec.KNID != mapping.ManagedResourceID {
 				return ErrForbidden
 			}
@@ -698,7 +717,14 @@ func (s *Service) SyncDelta(ctx context.Context, req DeltaSyncRequest) (SyncResu
 		}
 		removed := removalSet(removals)
 		current := make(map[sourceKey]model.ProxyGrantSource, len(rows))
+		removalSpecs := make(map[sourceKey]SourceSpec, len(removals))
+		for _, spec := range removals {
+			removalSpecs[keyForSpec(spec)] = spec
+		}
 		for _, row := range rows {
+			if spec, ok := removalSpecs[keyForModel(row)]; ok && !sameBinding(specFromModel(row), spec) {
+				return ErrInvalidRequest
+			}
 			current[keyForModel(row)] = row
 		}
 		reusable := reusableDelegatorsForDelta(rows, mapping.ManagedResourceID, validCurrent, removed, desired)
