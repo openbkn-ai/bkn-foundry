@@ -699,7 +699,11 @@ components:
           description: "`schema_definition` 的字段数"
           type: integer
         row_count:
-          description: dataset 为当前本地索引文档数；其他资源类型来自最近一次发现记录的源端行数估算；无法计算时省略
+          description: 精确行数；dataset 为当前本地索引文档数，其他资源仅在源端提供精确值时返回；无法计算时省略
+          type: integer
+          format: int64
+        estimated_row_count:
+          description: 最近一次发现记录的源端行数估算；无法提供时省略。若同时存在 row_count，应优先使用精确值
           type: integer
           format: int64
         logic_type:

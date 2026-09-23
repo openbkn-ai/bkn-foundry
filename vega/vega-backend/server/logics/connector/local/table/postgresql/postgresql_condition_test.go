@@ -27,6 +27,16 @@ func testFieldsMap() map[string]*interfaces.Property {
 	}
 }
 
+func TestBooleanConditionRejectsNumericField(t *testing.T) {
+	fields := testFieldsMap()
+	for _, operation := range []string{"true", "false"} {
+		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "age", Operation: operation}, fields)
+		require.NoError(t, err)
+		_, err = (&PostgresqlConnector{}).ConvertFilterCondition(context.Background(), condition, fields)
+		require.ErrorContains(t, err, "requires BOOLEAN")
+	}
+}
+
 func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCondition {
 	t.Helper()
 	cfg := &interfaces.FilterCondCfg{

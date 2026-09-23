@@ -221,6 +221,14 @@ func TestLogicViewDSLBuildDSLQuery(t *testing.T) {
 func TestLogicViewDSLConvertFilterCondition(t *testing.T) {
 	fields := testFieldMap()
 	generator := NewlogicViewDSLGenerator(testDSLView())
+	t.Run("rejects numeric boolean predicates", func(t *testing.T) {
+		for _, operation := range []string{filter_condition.OperationTrue, filter_condition.OperationFalse} {
+			condition := mustDSLCondition(t, dslConditionCfg("age", operation, interfaces.ValueFrom_Const, nil), fields)
+			got, err := generator.ConvertFilterCondition(context.Background(), condition, fields)
+			require.ErrorContains(t, err, "requires BOOLEAN")
+			assert.Nil(t, got)
+		}
+	})
 
 	t.Run("equal text uses keyword feature suffix", func(t *testing.T) {
 		cond := mustDSLCondition(t, &interfaces.FilterCondCfg{

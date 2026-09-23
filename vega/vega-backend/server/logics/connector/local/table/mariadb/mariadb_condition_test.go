@@ -452,6 +452,48 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
+	t.Run("tinyint flag treats nonzero as true", func(t *testing.T) {
+		field := &interfaces.Property{Name: "flag", OriginalName: "flag", OriginalType: "tinyint(1)", Type: interfaces.DataType_Integer}
+		fields := map[string]*interfaces.Property{"flag": field}
+		connector := &MariaDBConnector{}
+		for _, test := range []struct {
+			operation string
+			sql       string
+		}{
+			{operation: "true", sql: "`flag` <> ?"},
+			{operation: "false", sql: "`flag` = ?"},
+		} {
+			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "flag", Operation: test.operation}, fields)
+			if err != nil {
+				t.Fatalf("build %s condition: %v", test.operation, err)
+			}
+			expression, err := connector.ConvertFilterCondition(context.Background(), condition, fields)
+			if err != nil {
+				t.Fatalf("convert %s condition: %v", test.operation, err)
+			}
+			statement, args, err := expression.ToSql()
+			if err != nil {
+				t.Fatalf("render %s condition: %v", test.operation, err)
+			}
+			if statement != test.sql || len(args) != 1 || args[0] != 0 {
+				t.Fatalf("%s condition: sql=%q args=%v", test.operation, statement, args)
+			}
+		}
+	})
+	t.Run("rejects ordinary integer", func(t *testing.T) {
+		field := &interfaces.Property{Name: "count", OriginalName: "count", OriginalType: "int(11)", Type: interfaces.DataType_Integer}
+		fields := map[string]*interfaces.Property{"count": field}
+		for _, operation := range []string{"true", "false"} {
+			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "count", Operation: operation}, fields)
+			if err != nil {
+				t.Fatalf("build %s condition: %v", operation, err)
+			}
+			_, err = (&MariaDBConnector{}).ConvertFilterCondition(context.Background(), condition, fields)
+			if err == nil {
+				t.Fatalf("expected MariaDB to reject %s for INT", operation)
+			}
+		}
+	})
 }
 func TestMariaDBConnectorConvertFilterConditionPrefix(t *testing.T) {
 	t.Run("convert prefix", func(t *testing.T) {
