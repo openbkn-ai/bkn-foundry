@@ -65,6 +65,11 @@ type SemanticQueryRelation struct {
 	SourceAlias string `json:"source_alias"`
 	TargetAlias string `json:"target_alias"`
 	Direction   string `json:"direction"`
+	// Optional records that an OPTIONAL MATCH wrote this relationship, so a
+	// reader of the descriptor can tell a row that found nothing from one that
+	// was never asked for. It is omitted when unset, which keeps the bytes of
+	// every descriptor written before outer joins existed unchanged.
+	Optional bool `json:"optional,omitempty"`
 }
 
 type SemanticQueryPredicate struct {
@@ -139,10 +144,22 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 			RelationRef: "relation:" + plan.NetworkID + ":" + relation.RelationTypeID,
 			SourceAlias: semanticAlias(plan.Tables[source], source),
 			TargetAlias: semanticAlias(plan.Tables[target], target), Direction: direction,
+			Optional: relation.Optional,
 		})
 	}
 	if err := appendSemanticPredicates(descriptor, plan, plan.Where, ""); err != nil {
 		return nil, err
+	}
+	// A condition carried by an outer join decides what that join matched
+	// rather than which rows survive. It is recorded under the relationship it
+	// qualifies, so the descriptor says which of the two it was.
+	for index, relation := range plan.Joins {
+		path := semanticPath("", "OPTIONAL", index)
+		for position, condition := range relation.Conditions {
+			if err := appendSemanticPredicates(descriptor, plan, condition, semanticPath(path, "AND", position)); err != nil {
+				return nil, err
+			}
+		}
 	}
 	for index, column := range plan.Select {
 		projection := SemanticQueryProjection{
