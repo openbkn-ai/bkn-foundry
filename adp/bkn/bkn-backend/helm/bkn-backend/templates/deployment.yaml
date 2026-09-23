@@ -107,7 +107,7 @@ spec:
           - name: BKN_TRACE_KAFKA_BROKERS
             value: {{ required "bknTrace.evidencePublisher.brokers is required" .Values.bknTrace.evidencePublisher.brokers | quote }}
           - name: BKN_TRACE_KAFKA_SASL_MECHANISM
-            value: {{ required "bknTrace.evidencePublisher.saslMechanism is required" .Values.bknTrace.evidencePublisher.saslMechanism | quote }}
+            value: "PLAIN"
           - name: BKN_TRACE_KAFKA_USERNAME
             valueFrom:
               secretKeyRef:
