@@ -145,6 +145,22 @@ func (mr *MockRelationTypeServiceMockRecorder) InsertDatasetData(ctx, relationTy
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertDatasetData", reflect.TypeOf((*MockRelationTypeService)(nil).InsertDatasetData), ctx, relationTypes)
 }
 
+// ListRelationTypeSummaries mocks base method.
+func (m *MockRelationTypeService) ListRelationTypeSummaries(ctx context.Context, query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRelationTypeSummaries", ctx, query)
+	ret0, _ := ret[0].([]*interfaces.RelationType)
+	ret1, _ := ret[1].(int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListRelationTypeSummaries indicates an expected call of ListRelationTypeSummaries.
+func (mr *MockRelationTypeServiceMockRecorder) ListRelationTypeSummaries(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRelationTypeSummaries", reflect.TypeOf((*MockRelationTypeService)(nil).ListRelationTypeSummaries), ctx, query)
+}
+
 // ListRelationTypes mocks base method.
 func (m *MockRelationTypeService) ListRelationTypes(ctx context.Context, query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, int, error) {
 	m.ctrl.T.Helper()

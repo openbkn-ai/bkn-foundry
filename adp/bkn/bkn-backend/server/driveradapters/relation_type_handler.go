@@ -697,7 +697,7 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	// var result map[string]any
 	// if simpleInfo {
 	// Get relation type summaries.
-	otList, total, err := r.rts.ListRelationTypes(ctx, parameter)
+	otList, total, err := r.rts.ListRelationTypeSummaries(ctx, parameter)
 	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)

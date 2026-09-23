@@ -310,8 +310,8 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 	return relationTypes, nil
 }
 
-// ListRelationTypeSummaries reads the graph projection without mapping rules,
-// raw model content, audit principals, or other detail-only fields.
+// ListRelationTypeSummaries reads the list projection without mapping rules,
+// raw model content, creator metadata, or other detail-only fields.
 func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 	query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListRelationTypeSummaries")
@@ -320,6 +320,8 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 	builder := processQueryCondition(query, sq.Select(
 		"f_id",
 		"f_name",
+		"f_tags",
+		"f_comment",
 		"f_icon",
 		"f_color",
 		"f_kn_id",
@@ -327,6 +329,8 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 		"f_source_object_type_id",
 		"f_target_object_type_id",
 		"f_type",
+		"f_updater",
+		"f_updater_type",
 		"f_update_time",
 	).From(RT_TABLE_NAME))
 	if query.Sort != "" {
@@ -355,9 +359,12 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 	result := make([]*interfaces.RelationType, 0)
 	for rows.Next() {
 		item := &interfaces.RelationType{ModuleType: interfaces.MODULE_TYPE_RELATION_TYPE}
+		tags := ""
 		if err := rows.Scan(
 			&item.RTID,
 			&item.RTName,
+			&tags,
+			&item.Comment,
 			&item.Icon,
 			&item.Color,
 			&item.KNID,
@@ -365,10 +372,13 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 			&item.SourceObjectTypeID,
 			&item.TargetObjectTypeID,
 			&item.Type,
+			&item.Updater.ID,
+			&item.Updater.Type,
 			&item.UpdateTime,
 		); err != nil {
 			return nil, err
 		}
+		item.Tags = libCommon.TagString2TagSlice(tags)
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {

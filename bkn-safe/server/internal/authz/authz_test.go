@@ -262,6 +262,48 @@ func TestAccessibleResourceScopeDistinguishesSuperAdminFromConcreteGrants(t *tes
 	}
 }
 
+func TestAccessibleResourceScopeAnyOperationIncludesQueryOnlyResources(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	if err := db.Create(&model.ResourceType{ID: "object_type", Name: "Object type"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&[]model.Operation{
+		{ResourceTypeID: "object_type", ID: "query_data", Name: "Query data"},
+		{ResourceTypeID: "object_type", ID: "view_detail", Name: "View detail"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	mustNoErr(t, e.GrantObjectPermission("reader", "object_type", "kn-1/orders", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission("reader", "object_type", "kn-1/customers", "query_data"))
+
+	ids, unrestricted, fallback, err := e.AccessibleResourceScopeAnyOperation("reader", "object_type")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unrestricted || fallback || !sameSet(ids, []string{"kn-1/customers", "kn-1/orders"}) {
+		t.Fatalf("reader any-operation scope = (%v, %v, %v), want both concrete grants", ids, unrestricted, fallback)
+	}
+
+	mustNoErr(t, e.GrantRolePermission("query-role", "object_type", "*", "query_data"))
+	mustNoErr(t, e.AssignRole("wildcard-reader", "query-role"))
+	ids, unrestricted, fallback, err = e.AccessibleResourceScopeAnyOperation("wildcard-reader", "object_type")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unrestricted || !fallback || len(ids) != 0 {
+		t.Fatalf("wildcard any-operation scope = (%v, %v, %v), want candidate filtering", ids, unrestricted, fallback)
+	}
+
+	mustNoErr(t, e.AssignRole("admin", SuperAdminRoleID))
+	ids, unrestricted, fallback, err = e.AccessibleResourceScopeAnyOperation("admin", "object_type")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unrestricted || fallback || len(ids) != 0 {
+		t.Fatalf("admin any-operation scope = (%v, %v, %v), want unrestricted", ids, unrestricted, fallback)
+	}
+}
+
 func TestSuperAdminCannotBeDenied(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "break-glass-admin"

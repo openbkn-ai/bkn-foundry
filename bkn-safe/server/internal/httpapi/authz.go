@@ -453,7 +453,8 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		accessorID := c.Query("accessor_id")
 		rtype := c.Query("resource_type")
 		op := c.Query("operation")
-		if accessorID == "" || rtype == "" || op == "" {
+		anyOperation := c.Query("any_operation") == "true"
+		if accessorID == "" || rtype == "" || (!anyOperation && op == "") {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
@@ -466,7 +467,14 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			c.JSON(http.StatusOK, gin.H{"ids": []string{}, "requires_candidate_filter": false})
 			return
 		}
-		ids, unrestricted, requiresCandidateFilter, err := e.AccessibleResourceScope(accessorID, rtype, op)
+		var ids []string
+		var unrestricted bool
+		var requiresCandidateFilter bool
+		if anyOperation {
+			ids, unrestricted, requiresCandidateFilter, err = e.AccessibleResourceScopeAnyOperation(accessorID, rtype)
+		} else {
+			ids, unrestricted, requiresCandidateFilter, err = e.AccessibleResourceScope(accessorID, rtype, op)
+		}
 		if err != nil {
 			serverError(c, err)
 			return

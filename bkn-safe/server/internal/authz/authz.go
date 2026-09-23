@@ -1042,6 +1042,45 @@ func (en *Enforcer) AccessibleResourceScope(accessorID, resourceType, op string)
 	return ids, false, idx.requiresCandidateFilter(resourceType, op), err
 }
 
+// AccessibleResourceScopeAnyOperation is the query-planning form used when a
+// reference may be disclosed as long as the accessor has at least one
+// effective registered operation on it.
+func (en *Enforcer) AccessibleResourceScopeAnyOperation(accessorID,
+	resourceType string) ([]string, bool, bool, error) {
+	idx, err := en.grantIndex(accessorID)
+	if err != nil {
+		return nil, false, false, err
+	}
+	if idx.superAdmin {
+		return []string{}, true, false, nil
+	}
+	var operations []safemodel.Operation
+	if err := en.db.Where("resource_type_id = ?", resourceType).Order("id ASC").Find(&operations).Error; err != nil {
+		return nil, false, false, err
+	}
+	seen := make(map[string]struct{})
+	ids := make([]string, 0)
+	requiresCandidateFilter := false
+	for _, operation := range operations {
+		operationIDs, listErr := en.AccessibleResources(accessorID, resourceType, operation.ID)
+		if listErr != nil {
+			return nil, false, false, listErr
+		}
+		if idx.requiresCandidateFilter(resourceType, operation.ID) {
+			requiresCandidateFilter = true
+		}
+		for _, id := range operationIDs {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids, false, requiresCandidateFilter, nil
+}
+
 // accessibleResources is AccessibleResources plus the visited-type set that
 // keeps the ancestor recursion finite.
 func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, visitedTypes map[string]bool) ([]string, error) {
