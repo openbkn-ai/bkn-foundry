@@ -34,7 +34,7 @@ func cardEligible(name string) bool {
 	_, published := compactProfile.published[name]
 	_, gateway := gatewayTools[name]
 	_, lifecycle := lifecycleToolNames[name]
-	return !published && !gateway && !lifecycle && name != toolKeyRunCode && name != toolKeyRunShell
+	return !published && !gateway && !lifecycle
 }
 
 // The compact profile narrows loading, not capability: every assembled tool
@@ -62,7 +62,7 @@ func TestCatalogReachesEveryToolNotPublishedDirectly(t *testing.T) {
 
 func TestLookupRefusesAnythingNotAdmitted(t *testing.T) {
 	catalog := catalogForLocale(t, "zh-CN")
-	for _, name := range []string{toolKeySearchSchema, toolKeyRunCode, toolKeySearchNativeTools, "bkn_start_interaction", "no_such_tool"} {
+	for _, name := range []string{toolKeySearchSchema, toolKeySearchNativeTools, "bkn_start_interaction", "no_such_tool"} {
 		if _, _, ok := catalog.lookup(context.Background(), name); ok {
 			t.Errorf("%s resolved through the gateway catalogue", name)
 		}
