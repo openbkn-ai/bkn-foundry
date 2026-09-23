@@ -101,6 +101,9 @@ spec:
                 name: {{ required "bknTrace.projectionRead.publicKeysSecretName is required when projection reads are enabled" .Values.bknTrace.projectionRead.publicKeysSecretName | quote }}
                 key: {{ .Values.bknTrace.projectionRead.publicKeysSecretKey | quote }}
           {{- end }}
+          {{- if .Values.bknTrace.evidencePublisher.enabled }}
+          - name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED
+            value: "true"
           - name: BKN_TRACE_KAFKA_BROKERS
             value: {{ required "bknTrace.evidencePublisher.brokers is required" .Values.bknTrace.evidencePublisher.brokers | quote }}
           - name: BKN_TRACE_KAFKA_SASL_MECHANISM
@@ -133,6 +136,7 @@ spec:
             value: {{ .Values.bknTrace.evidencePublisher.maxAttempts | quote }}
           - name: BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS
             value: {{ .Values.bknTrace.evidencePublisher.retryBackoffMs | quote }}
+          {{- end }}
           - name: POD_IP
             valueFrom:
               fieldRef:

@@ -10,6 +10,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 
 	// _ "net/http/pprof"
 	"os/signal"
@@ -161,11 +162,14 @@ func main() {
 	// Initialize the database connection.
 	db := libdb.NewDB(&appSetting.DBSetting)
 	logics.SetDB(db)
-	publisherRuntime, err := bkntrace.NewEvidencePublisherRuntime()
-	if err != nil {
-		logger.Fatalf("Failed to configure Evidence Kafka publisher: %v", err)
+	var publisherRuntime *bkntrace.EvidencePublisherRuntime
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
+		publisherRuntime, err = bkntrace.NewEvidencePublisherRuntime()
+		if err != nil {
+			logger.Fatalf("Failed to configure Evidence Kafka publisher: %v", err)
+		}
+		bkntrace.SetEvidencePublisher(publisherRuntime.Publisher)
 	}
-	bkntrace.SetEvidencePublisher(publisherRuntime.Publisher)
 
 	audit.Init(&appSetting.MQSetting)
 
@@ -196,13 +200,15 @@ func main() {
 
 	// Create and start the service.
 	server := &mgrService{
-		appSetting:        appSetting,
-		otelProviders:     otelProviders,
-		restHandler:       driveradapters.NewRestHandler(appSetting, operationaudit.NewStore(db, "")),
-		conceptSyncer:     worker.NewConceptSyncer(appSetting),
-		scheduleWorker:    worker.NewScheduleWorker(appSetting),
-		evidencePublisher: publisherRuntime.Publisher,
-		evidenceProducer:  publisherRuntime.Producer,
+		appSetting:     appSetting,
+		otelProviders:  otelProviders,
+		restHandler:    driveradapters.NewRestHandler(appSetting, operationaudit.NewStore(db, "")),
+		conceptSyncer:  worker.NewConceptSyncer(appSetting),
+		scheduleWorker: worker.NewScheduleWorker(appSetting),
+	}
+	if publisherRuntime != nil {
+		server.evidencePublisher = publisherRuntime.Publisher
+		server.evidenceProducer = publisherRuntime.Producer
 	}
 	server.start()
 }

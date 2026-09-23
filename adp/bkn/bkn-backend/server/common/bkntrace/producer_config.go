@@ -21,7 +21,7 @@ type evidencePublisherConfig struct {
 	Password  string
 }
 
-type evidencePublisherRuntime struct {
+type EvidencePublisherRuntime struct {
 	Publisher *evidencepublisher.Publisher
 	Producer  interface{ Close() error }
 }
@@ -33,7 +33,7 @@ func CloseEvidenceProducer(producer interface{ Close() error }) error {
 	return producer.Close()
 }
 
-func newEvidencePublisher() (*evidencePublisherRuntime, error) {
+func newEvidencePublisher() (*EvidencePublisherRuntime, error) {
 	cfg, err := loadEvidencePublisherConfig()
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func newEvidencePublisher() (*evidencePublisherRuntime, error) {
 		_ = producer.Close()
 		return nil, err
 	}
-	return &evidencePublisherRuntime{Publisher: publisher, Producer: producer}, nil
+	return &EvidencePublisherRuntime{Publisher: publisher, Producer: producer}, nil
 }
 
 func NewEvidencePublisher() (*evidencepublisher.Publisher, error) {
@@ -58,7 +58,7 @@ func NewEvidencePublisher() (*evidencepublisher.Publisher, error) {
 	return runtime.Publisher, nil
 }
 
-func NewEvidencePublisherRuntime() (*evidencePublisherRuntime, error) { return newEvidencePublisher() }
+func NewEvidencePublisherRuntime() (*EvidencePublisherRuntime, error) { return newEvidencePublisher() }
 
 func loadEvidencePublisherConfig() (evidencePublisherConfig, error) {
 	get := func(key string) string { return strings.TrimSpace(os.Getenv(key)) }

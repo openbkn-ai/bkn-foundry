@@ -152,6 +152,7 @@ bknTrace:
     publicKeysSecretName: ""
     publicKeysSecretKey: "projection-grant-public-keys"
   evidencePublisher:
+    enabled: false
     brokers: "kafka-headless.resource.svc.cluster.local.:9097"
     saslMechanism: "PLAIN"
     usernameSecretName: ""

@@ -309,13 +309,52 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
+type timestampValue struct{ time.Time }
+
+func (value *timestampValue) Scan(src any) error {
+	switch typed := src.(type) {
+	case time.Time:
+		value.Time = typed
+		return nil
+	case []byte:
+		parsed, err := parseDatabaseTime(string(typed))
+		if err != nil {
+			return err
+		}
+		value.Time = parsed
+		return nil
+	case string:
+		parsed, err := parseDatabaseTime(typed)
+		if err != nil {
+			return err
+		}
+		value.Time = parsed
+		return nil
+	case nil:
+		value.Time = time.Time{}
+		return nil
+	default:
+		return fmt.Errorf("unsupported database time type %T", src)
+	}
+}
+
+func parseDatabaseTime(value string) (time.Time, error) {
+	for _, layout := range []string{"2006-01-02 15:04:05.999999", "2006-01-02 15:04:05", time.RFC3339Nano} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid database time %q", value)
+}
+
 func scanEntry(row scanner) (Entry, error) {
 	var entry Entry
 	var summary []byte
+	var eventTime, recordedAt timestampValue
 	err := row.Scan(
 		&entry.EventID,
-		&entry.EventTime,
-		&entry.RecordedAt,
+		&eventTime,
+		&recordedAt,
 		&entry.KnowledgeNetworkID,
 		&entry.ActorID,
 		&entry.ActorName,
@@ -338,6 +377,7 @@ func scanEntry(row scanner) (Entry, error) {
 	if err != nil {
 		return Entry{}, err
 	}
+	entry.EventTime, entry.RecordedAt = eventTime.Time, recordedAt.Time
 	if len(summary) > 0 {
 		if err := json.Unmarshal(summary, &entry.ChangeSummary); err != nil {
 			return Entry{}, fmt.Errorf("decode operation audit change summary: %w", err)
