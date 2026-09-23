@@ -252,6 +252,13 @@ type KNProxyBinding struct {
 	Operation  string `json:"operation"`
 }
 
+// KNProxyBindingRef identifies all published grant sources owned by one BKN
+// child binding, independently of its current downstream target.
+type KNProxyBindingRef struct {
+	BindingType string `json:"binding_type"`
+	BindingID   string `json:"binding_id"`
+}
+
 //go:generate mockgen -source ../interfaces/kn_proxy.go -destination ../interfaces/mock/mock_kn_proxy.go
 type KNProxyAccess interface {
 	Get(ctx context.Context, knID string) (*KNProxyAccount, error)
@@ -262,6 +269,10 @@ type KNProxyAccess interface {
 	MarkSyncFailed(ctx context.Context, knID string, generation int64, lockOwner, lastError string, updatedAt int64) (bool, error)
 	ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID string, generation int64,
 		lockOwner, snapshotVersion string, sources []ProxyGrantSourceSpec, updatedAt int64) error
+	ListPublishedSources(ctx context.Context, knID string, bindings []KNProxyBindingRef) ([]ProxyGrantSourceSpec, error)
+	ReplacePublishedBindingsAndMarkReady(ctx context.Context, knID string, generation int64,
+		lockOwner, snapshotVersion string, bindings []KNProxyBindingRef,
+		sources []ProxyGrantSourceSpec, updatedAt int64) error
 	DeletePublishedSnapshot(ctx context.Context, knID string) error
 	ResolvePublishedBinding(ctx context.Context, knID string, binding KNProxyBinding) (*KNProxyBinding, error)
 	ResolvePublishedBindings(ctx context.Context, knID string, bindings []KNProxyBinding) ([]KNProxyBinding, error)
@@ -289,7 +300,11 @@ type ManagedProxyAccess interface {
 	Archive(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	CheckGrant(ctx context.Context, proxyAccountID, grantorID string, source ProxyGrantSourceSpec) (ProxyGrantCheckResult, error)
 	CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantBatchCheckResult, error)
+	CheckGrantDelta(ctx context.Context, proxyAccountID, grantorID string,
+		upserts, removals []ProxyGrantSourceSpec) (ProxyGrantBatchCheckResult, error)
 	SyncGrants(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64,
 		snapshotVersion string, sources []ProxyGrantSourceSpec) (ProxyGrantSyncResult, error)
+	SyncGrantDelta(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64,
+		baseSnapshotVersion, targetSnapshotVersion string, upserts, removals []ProxyGrantSourceSpec) (ProxyGrantSyncResult, error)
 	ReconcileGrants(ctx context.Context, proxyAccountID, requestedBy string) (ProxyGrantReconcileResult, error)
 }

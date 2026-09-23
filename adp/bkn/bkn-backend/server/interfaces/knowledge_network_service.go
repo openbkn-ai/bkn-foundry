@@ -40,6 +40,7 @@ type KNService interface {
 
 	GetStatByKN(ctx context.Context, kn *KN) (*Statistics, error)
 	GetRelationTypePaths(ctx context.Context, query RelationTypePathsBaseOnSource) ([]RelationTypePath, error)
+	ListOverviewGraph(ctx context.Context, knID string, query OverviewGraphQuery) (*OverviewGraph, error)
 
 	ListKnSrcs(ctx context.Context, query KNsQueryParams) ([]PermissionResource, int, error)
 

@@ -175,6 +175,35 @@ func (mr *MockKNProxyAccessMockRecorder) ReplacePublishedSnapshotAndMarkReady(ct
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplacePublishedSnapshotAndMarkReady", reflect.TypeOf((*MockKNProxyAccess)(nil).ReplacePublishedSnapshotAndMarkReady), ctx, knID, generation, lockOwner, snapshotVersion, sources, updatedAt)
 }
 
+// ListPublishedSources mocks base method.
+func (m *MockKNProxyAccess) ListPublishedSources(ctx context.Context, knID string, bindings []interfaces.KNProxyBindingRef) ([]interfaces.ProxyGrantSourceSpec, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPublishedSources", ctx, knID, bindings)
+	ret0, _ := ret[0].([]interfaces.ProxyGrantSourceSpec)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPublishedSources indicates an expected call of ListPublishedSources.
+func (mr *MockKNProxyAccessMockRecorder) ListPublishedSources(ctx, knID, bindings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPublishedSources", reflect.TypeOf((*MockKNProxyAccess)(nil).ListPublishedSources), ctx, knID, bindings)
+}
+
+// ReplacePublishedBindingsAndMarkReady mocks base method.
+func (m *MockKNProxyAccess) ReplacePublishedBindingsAndMarkReady(ctx context.Context, knID string, generation int64, lockOwner, snapshotVersion string, bindings []interfaces.KNProxyBindingRef, sources []interfaces.ProxyGrantSourceSpec, updatedAt int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplacePublishedBindingsAndMarkReady", ctx, knID, generation, lockOwner, snapshotVersion, bindings, sources, updatedAt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReplacePublishedBindingsAndMarkReady indicates an expected call of ReplacePublishedBindingsAndMarkReady.
+func (mr *MockKNProxyAccessMockRecorder) ReplacePublishedBindingsAndMarkReady(ctx, knID, generation, lockOwner, snapshotVersion, bindings, sources, updatedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplacePublishedBindingsAndMarkReady", reflect.TypeOf((*MockKNProxyAccess)(nil).ReplacePublishedBindingsAndMarkReady), ctx, knID, generation, lockOwner, snapshotVersion, bindings, sources, updatedAt)
+}
+
 // ReserveSyncGeneration mocks base method.
 func (m *MockKNProxyAccess) ReserveSyncGeneration(ctx context.Context, knID, lockOwner string, updatedAt int64) (int64, error) {
 	m.ctrl.T.Helper()
@@ -358,6 +387,21 @@ func (mr *MockManagedProxyAccessMockRecorder) CheckGrant(ctx, proxyAccountID, gr
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckGrant", reflect.TypeOf((*MockManagedProxyAccess)(nil).CheckGrant), ctx, proxyAccountID, grantorID, source)
 }
 
+// CheckGrantDelta mocks base method.
+func (m *MockManagedProxyAccess) CheckGrantDelta(ctx context.Context, proxyAccountID, grantorID string, upserts, removals []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckGrantDelta", ctx, proxyAccountID, grantorID, upserts, removals)
+	ret0, _ := ret[0].(interfaces.ProxyGrantBatchCheckResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckGrantDelta indicates an expected call of CheckGrantDelta.
+func (mr *MockManagedProxyAccessMockRecorder) CheckGrantDelta(ctx, proxyAccountID, grantorID, upserts, removals any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckGrantDelta", reflect.TypeOf((*MockManagedProxyAccess)(nil).CheckGrantDelta), ctx, proxyAccountID, grantorID, upserts, removals)
+}
+
 // CheckGrants mocks base method.
 func (m *MockManagedProxyAccess) CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
 	m.ctrl.T.Helper()
@@ -447,4 +491,19 @@ func (m *MockManagedProxyAccess) SyncGrants(ctx context.Context, proxyAccountID,
 func (mr *MockManagedProxyAccessMockRecorder) SyncGrants(ctx, proxyAccountID, grantorID, syncGeneration, snapshotVersion, sources any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncGrants", reflect.TypeOf((*MockManagedProxyAccess)(nil).SyncGrants), ctx, proxyAccountID, grantorID, syncGeneration, snapshotVersion, sources)
+}
+
+// SyncGrantDelta mocks base method.
+func (m *MockManagedProxyAccess) SyncGrantDelta(ctx context.Context, proxyAccountID, grantorID string, syncGeneration int64, baseSnapshotVersion, targetSnapshotVersion string, upserts, removals []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncGrantDelta", ctx, proxyAccountID, grantorID, syncGeneration, baseSnapshotVersion, targetSnapshotVersion, upserts, removals)
+	ret0, _ := ret[0].(interfaces.ProxyGrantSyncResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SyncGrantDelta indicates an expected call of SyncGrantDelta.
+func (mr *MockManagedProxyAccessMockRecorder) SyncGrantDelta(ctx, proxyAccountID, grantorID, syncGeneration, baseSnapshotVersion, targetSnapshotVersion, upserts, removals any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncGrantDelta", reflect.TypeOf((*MockManagedProxyAccess)(nil).SyncGrantDelta), ctx, proxyAccountID, grantorID, syncGeneration, baseSnapshotVersion, targetSnapshotVersion, upserts, removals)
 }

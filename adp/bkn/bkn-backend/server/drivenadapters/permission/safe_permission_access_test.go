@@ -113,6 +113,45 @@ func TestSafeCheckUsesDefaultEffectiveDecision(t *testing.T) {
 	}
 }
 
+func TestSafeListAccessibleResourcesUsesQueryAndRequiresIDs(t *testing.T) {
+	t.Run("valid response", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet || r.URL.Path != "/api/safe/v1/authz/resources" {
+				t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+			}
+			if r.URL.Query().Get("accessor_id") != "u-1" ||
+				r.URL.Query().Get("resource_type") != interfaces.RESOURCE_TYPE_OBJECT_TYPE ||
+				r.URL.Query().Get("operation") != interfaces.OPERATION_TYPE_VIEW_DETAIL {
+				t.Fatalf("unexpected query: %v", r.URL.Query())
+			}
+			_, _ = w.Write([]byte(`{"ids":["kn-1/orders"],"unrestricted":false,"requires_candidate_filter":true}`))
+		}))
+		defer srv.Close()
+
+		scope, err := NewPermissionAccess(srv.URL).ListAccessibleResources(context.Background(),
+			interfaces.PermissionAccessor{ID: "u-1", Type: interfaces.ACCESSOR_TYPE_USER},
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil || scope.Unrestricted || !scope.RequiresCandidateFilter ||
+			!reflect.DeepEqual(scope.ResourceIDs, []string{"kn-1/orders"}) {
+			t.Fatalf("ListAccessibleResources() = %#v, %v", scope, err)
+		}
+	})
+
+	t.Run("missing ids fails closed", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"unrestricted":true}`))
+		}))
+		defer srv.Close()
+
+		_, err := NewPermissionAccess(srv.URL).ListAccessibleResources(context.Background(),
+			interfaces.PermissionAccessor{ID: "u-1"}, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err == nil {
+			t.Fatal("ListAccessibleResources() error = nil")
+		}
+	})
+}
+
 func TestSafeResolvePropertyLevels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/safe/v1/authz/property-levels" {

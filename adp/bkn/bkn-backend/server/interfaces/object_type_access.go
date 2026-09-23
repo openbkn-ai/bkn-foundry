@@ -19,6 +19,7 @@ type ObjectTypeAccess interface {
 	CreateObjectType(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
 	CreateObjectTypeStatus(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
 	ListObjectTypes(ctx context.Context, tx *sql.Tx, query ObjectTypesQueryParams) ([]*ObjectType, error)
+	ListObjectTypeSummaries(ctx context.Context, tx *sql.Tx, query ObjectTypesQueryParams) ([]*ObjectType, error)
 	GetObjectTypesTotal(ctx context.Context, query ObjectTypesQueryParams) (int, error)
 	GetObjectTypeByID(ctx context.Context, tx *sql.Tx, knID string, branch string, otID string) (*ObjectType, error)
 	GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) ([]*ObjectType, error)

@@ -256,6 +256,124 @@ func (a *access) ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID 
 	return tx.Commit()
 }
 
+func (a *access) ListPublishedSources(ctx context.Context, knID string,
+	bindings []interfaces.KNProxyBindingRef) ([]interfaces.ProxyGrantSourceSpec, error) {
+	if len(bindings) == 0 {
+		return []interfaces.ProxyGrantSourceSpec{}, nil
+	}
+	result := make([]interfaces.ProxyGrantSourceSpec, 0)
+	for start := 0; start < len(bindings); start += maxSnapshotInsertRows {
+		end := min(start+maxSnapshotInsertRows, len(bindings))
+		conditions := publishedBindingConditions(bindings[start:end])
+		query, args, err := sq.Select(
+			"f_resource_type", "f_resource_id", "f_operation", "f_source_type", "f_source_id",
+			"f_kn_id", "f_binding_type", "f_binding_id",
+		).From(publishedGrantSourceTable).Where(sq.Eq{"f_kn_id": knID}).Where(conditions).
+			OrderBy("f_binding_type, f_binding_id, f_source_id, f_resource_type, f_resource_id, f_operation").ToSql()
+		if err != nil {
+			return nil, err
+		}
+		rows, err := a.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var source interfaces.ProxyGrantSourceSpec
+			if err := rows.Scan(&source.ResourceType, &source.ResourceID, &source.Operation,
+				&source.SourceType, &source.SourceID, &source.KNID, &source.BindingType, &source.BindingID); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			result = append(result, source)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func publishedBindingConditions(bindings []interfaces.KNProxyBindingRef) sq.Or {
+	conditions := make(sq.Or, 0, len(bindings))
+	for _, binding := range bindings {
+		conditions = append(conditions, sq.Eq{
+			"f_binding_type": binding.BindingType,
+			"f_binding_id":   binding.BindingID,
+		})
+	}
+	return conditions
+}
+
+// ReplacePublishedBindingsAndMarkReady atomically replaces only the affected
+// binding slice of the BKN snapshot and advances the publication state.
+func (a *access) ReplacePublishedBindingsAndMarkReady(ctx context.Context, knID string, generation int64,
+	lockOwner, snapshotVersion string, bindings []interfaces.KNProxyBindingRef,
+	sources []interfaces.ProxyGrantSourceSpec, updatedAt int64) error {
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for start := 0; start < len(bindings); start += maxSnapshotInsertRows {
+		end := min(start+maxSnapshotInsertRows, len(bindings))
+		deleteQuery, deleteArgs, err := sq.Delete(publishedGrantSourceTable).
+			Where(sq.Eq{"f_kn_id": knID}).Where(publishedBindingConditions(bindings[start:end])).ToSql()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, deleteQuery, deleteArgs...); err != nil {
+			return err
+		}
+	}
+	for start := 0; start < len(sources); start += maxSnapshotInsertRows {
+		end := min(start+maxSnapshotInsertRows, len(sources))
+		insert := sq.Insert(publishedGrantSourceTable).Columns(
+			"f_kn_id", "f_binding_type", "f_binding_id", "f_resource_type", "f_resource_id", "f_operation",
+			"f_source_type", "f_source_id", "f_created_at", "f_updated_at",
+		)
+		for _, source := range sources[start:end] {
+			insert = insert.Values(source.KNID, source.BindingType, source.BindingID,
+				source.ResourceType, source.ResourceID, source.Operation, source.SourceType,
+				source.SourceID, updatedAt, updatedAt)
+		}
+		insertQuery, insertArgs, err := insert.ToSql()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, insertQuery, insertArgs...); err != nil {
+			return err
+		}
+	}
+	updateQuery, updateArgs, err := sq.Update(tableName).SetMap(map[string]any{
+		"f_sync_status":             interfaces.KNProxySyncReady,
+		"f_published_model_version": snapshotVersion,
+		"f_synced_model_version":    snapshotVersion,
+		"f_pending_model_version":   "",
+		"f_last_sync_error":         "",
+		"f_last_sync_succeeded_at":  updatedAt,
+		"f_version":                 sq.Expr("f_version + 1"),
+		"f_updated_at":              updatedAt,
+	}).Where(sq.Eq{
+		"f_kn_id": knID, "f_sync_status": interfaces.KNProxySyncPending,
+		"f_sync_generation": generation, "f_lock_owner": lockOwner,
+	}).ToSql()
+	if err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, updateQuery, updateArgs...)
+	if err != nil {
+		return err
+	}
+	if err := requireOneRow(result, "mark incremental knowledge network proxy snapshot ready"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // DeletePublishedSnapshot removes the persisted authorization source snapshot
 // after bkn-safe has successfully revoked a proxy's full grant set. Keeping it
 // would permit a later restore to resolve stale bindings before republishing.

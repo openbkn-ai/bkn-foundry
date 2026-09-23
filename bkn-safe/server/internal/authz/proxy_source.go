@@ -60,12 +60,36 @@ func (tx *PolicyTransaction) CurrentProxySourceIDs(ctx context.Context, proxyID 
 	return valid, err
 }
 
+// ValidProxySourceIDs evaluates only the supplied source rows. Delta grant
+// publication uses this bounded read path so an unrelated model edit never
+// scans every source owned by a large managed proxy.
+func (en *Enforcer) ValidProxySourceIDs(ctx context.Context,
+	sources []safemodel.ProxyGrantSource) (map[string]bool, error) {
+	return en.validProxySourceIDs(ctx, sources)
+}
+
+// ValidProxySourceIDs evaluates only the supplied rows against the policy
+// snapshot owned by this transaction.
+func (tx *PolicyTransaction) ValidProxySourceIDs(ctx context.Context,
+	sources []safemodel.ProxyGrantSource) (map[string]bool, error) {
+	return tx.enforcer.validProxySourceIDs(ctx, sources)
+}
+
 // FilterResourceOpsRaw evaluates a non-managed delegator without applying
 // managed-proxy provenance. Callers must validate that the accessor is an
 // enabled, non-managed identity before using it.
 func (tx *PolicyTransaction) FilterResourceOpsRaw(ctx context.Context, accessorID string,
 	resources []ResourceRef, candidates []string) ([]FilteredResource, error) {
 	return tx.enforcer.filterResourceOps(ctx, accessorID, resources,
+		nil, candidates, VisibilityMatchAll, ScopeEffective, false)
+}
+
+// FilterResourceOpsRaw evaluates a non-managed delegator without applying
+// managed-proxy provenance. It is the read-only counterpart of the transaction
+// helper and is used by delta preflight.
+func (en *Enforcer) FilterResourceOpsRaw(ctx context.Context, accessorID string,
+	resources []ResourceRef, candidates []string) ([]FilteredResource, error) {
+	return en.filterResourceOps(ctx, accessorID, resources,
 		nil, candidates, VisibilityMatchAll, ScopeEffective, false)
 }
 

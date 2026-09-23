@@ -21,6 +21,7 @@ import (
 type MockPermissionAccess struct {
 	ctrl     *gomock.Controller
 	recorder *MockPermissionAccessMockRecorder
+	isgomock struct{}
 }
 
 // MockPermissionAccessMockRecorder is the mock recorder for MockPermissionAccess.
@@ -125,6 +126,21 @@ func (m *MockPermissionAccess) FilterResources(ctx context.Context, filter inter
 func (mr *MockPermissionAccessMockRecorder) FilterResources(ctx, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterResources", reflect.TypeOf((*MockPermissionAccess)(nil).FilterResources), ctx, filter)
+}
+
+// ListAccessibleResources mocks base method.
+func (m *MockPermissionAccess) ListAccessibleResources(ctx context.Context, accessor interfaces.PermissionAccessor, resourceType, operation string) (interfaces.PermissionResourceScope, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAccessibleResources", ctx, accessor, resourceType, operation)
+	ret0, _ := ret[0].(interfaces.PermissionResourceScope)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAccessibleResources indicates an expected call of ListAccessibleResources.
+func (mr *MockPermissionAccessMockRecorder) ListAccessibleResources(ctx, accessor, resourceType, operation any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAccessibleResources", reflect.TypeOf((*MockPermissionAccess)(nil).ListAccessibleResources), ctx, accessor, resourceType, operation)
 }
 
 // ResolvePropertyLevels mocks base method.

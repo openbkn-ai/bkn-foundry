@@ -1025,6 +1025,23 @@ func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]
 	return out, nil
 }
 
+// AccessibleResourceScope is the query-planning form of AccessibleResources.
+// Super administrators are returned as unrestricted so callers can avoid a
+// potentially enormous IN predicate. A non-admin wildcard allow cannot be
+// represented by concrete IDs without losing its deny exceptions, so the
+// third result asks callers to filter their storage candidates through Safe.
+func (en *Enforcer) AccessibleResourceScope(accessorID, resourceType, op string) ([]string, bool, bool, error) {
+	idx, err := en.grantIndex(accessorID)
+	if err != nil {
+		return nil, false, false, err
+	}
+	if idx.superAdmin {
+		return []string{}, true, false, nil
+	}
+	ids, err := en.AccessibleResources(accessorID, resourceType, op)
+	return ids, false, idx.requiresCandidateFilter(resourceType, op), err
+}
+
 // accessibleResources is AccessibleResources plus the visited-type set that
 // keeps the ancestor recursion finite.
 func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, visitedTypes map[string]bool) ([]string, error) {

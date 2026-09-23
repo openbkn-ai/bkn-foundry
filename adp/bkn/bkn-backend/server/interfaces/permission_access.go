@@ -119,6 +119,12 @@ func KNChildResourceID(knID, childID string) string {
 	return knID + "/" + childID
 }
 
+// KNChildIDFromResourceID extracts a child ID from one network-scoped Safe ID.
+func KNChildIDFromResourceID(knID, resourceID string) (string, bool) {
+	childID, ok := strings.CutPrefix(resourceID, knID+"/")
+	return childID, ok && IsValidAuthorizationID(childID)
+}
+
 // KNChildPermissionResource builds the canonical Safe reference for a KN child.
 func KNChildPermissionResource(resourceType, knID, childID string) PermissionResource {
 	return PermissionResource{Type: resourceType, ID: KNChildResourceID(knID, childID)}
@@ -258,11 +264,21 @@ type RowFiltersResponse struct {
 	Entries []RowFilterDecisionEntry `json:"entries"`
 }
 
+// PermissionResourceScope describes the storage-planning scope for one accessor.
+// RequiresCandidateFilter preserves exact wildcard and deny semantics when the
+// visible set cannot be expressed as a finite list of concrete IDs.
+type PermissionResourceScope struct {
+	Unrestricted            bool     `json:"unrestricted"`
+	RequiresCandidateFilter bool     `json:"requires_candidate_filter"`
+	ResourceIDs             []string `json:"ids"`
+}
+
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go
 type PermissionAccess interface {
 	CheckPermission(ctx context.Context, check PermissionCheck) (bool, error)
 	CheckPermissions(ctx context.Context, request PermissionChecksRequest) (PermissionChecksResponse, error)
 	FilterResources(ctx context.Context, filter PermissionResourcesFilter) (map[string]PermissionResourceOps, error)
+	ListAccessibleResources(ctx context.Context, accessor PermissionAccessor, resourceType, operation string) (PermissionResourceScope, error)
 	ResolvePropertyLevels(ctx context.Context, request PropertyLevelsRequest) (PropertyLevelsResponse, error)
 	ResolveRowFilters(ctx context.Context, request RowFiltersRequest) (RowFiltersResponse, error)
 

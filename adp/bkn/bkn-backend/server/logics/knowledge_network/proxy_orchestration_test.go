@@ -109,6 +109,39 @@ func (s *proxyAccessStub) ReplacePublishedSnapshotAndMarkReady(_ context.Context
 	s.syncedVersion = version
 	return nil
 }
+func (s *proxyAccessStub) ListPublishedSources(_ context.Context, knID string,
+	bindings []interfaces.KNProxyBindingRef) ([]interfaces.ProxyGrantSourceSpec, error) {
+	wanted := map[string]bool{}
+	for _, binding := range bindings {
+		wanted[binding.BindingType+"\x00"+binding.BindingID] = true
+	}
+	result := make([]interfaces.ProxyGrantSourceSpec, 0)
+	for _, source := range s.published {
+		if source.KNID == knID && wanted[source.BindingType+"\x00"+source.BindingID] {
+			result = append(result, source)
+		}
+	}
+	return result, nil
+}
+func (s *proxyAccessStub) ReplacePublishedBindingsAndMarkReady(_ context.Context, _ string, _ int64,
+	_ string, version string, bindings []interfaces.KNProxyBindingRef,
+	sources []interfaces.ProxyGrantSourceSpec, _ int64) error {
+	replaced := map[string]bool{}
+	for _, binding := range bindings {
+		replaced[binding.BindingType+"\x00"+binding.BindingID] = true
+	}
+	published := make([]interfaces.ProxyGrantSourceSpec, 0, len(s.published)+len(sources))
+	for _, source := range s.published {
+		if !replaced[source.BindingType+"\x00"+source.BindingID] {
+			published = append(published, source)
+		}
+	}
+	published = append(published, sources...)
+	s.published = published
+	s.syncStatus = interfaces.KNProxySyncReady
+	s.syncedVersion = version
+	return nil
+}
 func (s *proxyAccessStub) DeletePublishedSnapshot(_ context.Context, _ string) error {
 	s.published = nil
 	s.deletedSnapshot = true
@@ -186,6 +219,10 @@ type managedProxyAccessStub struct {
 	syncGenerations  []int64
 	syncVersions     []string
 	syncCalls        int
+	fullSyncCalls    int
+	deltaSyncCalls   int
+	checkedRemovals  []interfaces.ProxyGrantSourceSpec
+	syncedRemovals   []interfaces.ProxyGrantSourceSpec
 	reconciled       []string
 	reconcileResult  interfaces.ProxyGrantReconcileResult
 	syncErr          error
@@ -263,6 +300,12 @@ func (s *managedProxyAccessStub) CheckGrants(_ context.Context, _, grantorID str
 	return result, nil
 }
 
+func (s *managedProxyAccessStub) CheckGrantDelta(ctx context.Context, proxyID, grantorID string,
+	upserts, removals []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantBatchCheckResult, error) {
+	s.checkedRemovals = append([]interfaces.ProxyGrantSourceSpec(nil), removals...)
+	return s.CheckGrants(ctx, proxyID, grantorID, upserts)
+}
+
 func TestPreflightProxySourcesRejectsLegacySafeResponseWithoutDelegators(t *testing.T) {
 	service := &knowledgeNetworkService{mpa: &managedProxyAccessStub{allowed: true, omitResolved: true}}
 	_, err := service.preflightProxySources(t.Context(), "proxy-1", "editor-1", []interfaces.ProxyGrantSourceSpec{{
@@ -297,11 +340,26 @@ func TestProxySourceResolutionKeyIncludesBindingIdentity(t *testing.T) {
 func (s *managedProxyAccessStub) SyncGrants(_ context.Context, _, _ string, generation int64, snapshotVersion string,
 	sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	s.syncCalls++
+	s.fullSyncCalls++
 	s.synced = append([]interfaces.ProxyGrantSourceSpec(nil), sources...)
 	s.syncGenerations = append(s.syncGenerations, generation)
 	s.syncVersions = append(s.syncVersions, snapshotVersion)
 	if s.events != nil {
 		*s.events = append(*s.events, "grants:sync")
+	}
+	return interfaces.ProxyGrantSyncResult{}, s.syncErr
+}
+
+func (s *managedProxyAccessStub) SyncGrantDelta(_ context.Context, _, _ string, generation int64,
+	_, targetSnapshotVersion string, upserts, removals []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
+	s.syncCalls++
+	s.deltaSyncCalls++
+	s.synced = append([]interfaces.ProxyGrantSourceSpec(nil), upserts...)
+	s.syncedRemovals = append([]interfaces.ProxyGrantSourceSpec(nil), removals...)
+	s.syncGenerations = append(s.syncGenerations, generation)
+	s.syncVersions = append(s.syncVersions, targetSnapshotVersion)
+	if s.events != nil {
+		*s.events = append(*s.events, "grants:sync-delta")
 	}
 	return interfaces.ProxyGrantSyncResult{}, s.syncErr
 }

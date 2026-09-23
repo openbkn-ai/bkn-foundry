@@ -155,6 +155,46 @@ type KN struct {
 	Score  *float64  `json:"_score,omitempty"` // OpenSearch score used by concept search
 }
 
+// OverviewGraphQuery selects a bounded, mergeable ontology graph projection.
+type OverviewGraphQuery struct {
+	Branch            string
+	NodeLimit         int
+	EdgeLimit         int
+	Cursor            string
+	FocusObjectTypeID string
+	ExpandDepth       int
+	ConceptGroupID    string
+}
+
+type OverviewGraphNode struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Icon    string `json:"icon,omitempty"`
+	Color   string `json:"color,omitempty"`
+	Indexed bool   `json:"indexed,omitempty"`
+	Degree  int    `json:"degree,omitempty"`
+}
+
+type OverviewGraphEdge struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SourceID    string `json:"source_id"`
+	TargetID    string `json:"target_id"`
+	MappingMode string `json:"mapping_mode"`
+}
+
+type OverviewGraph struct {
+	Nodes             []OverviewGraphNode `json:"nodes"`
+	Edges             []OverviewGraphEdge `json:"edges"`
+	ObjectTypeTotal   int                 `json:"object_type_total"`
+	RelationTypeTotal int                 `json:"relation_type_total"`
+	ReturnedNodes     int                 `json:"returned_nodes"`
+	ReturnedEdges     int                 `json:"returned_edges"`
+	Truncated         bool                `json:"truncated"`
+	Snapshot          string              `json:"snapshot"`
+	NextCursor        string              `json:"next_cursor,omitempty"`
+}
+
 // SlimForSummary trims the exported KN detail for detail_level=summary.
 //
 // It keeps object / relation / action skeletons plus each property's
