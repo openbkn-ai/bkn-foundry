@@ -583,10 +583,20 @@ _openbkn_trace_profile_sets() {
             ;;
         bkn-agent)
             CORE_RELEASE_EXTRA_SETS+=(
-                "observability.bknTraceEvidenceIngestUrl=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
                 "observability.bknTraceArtifactIngestUrl=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}"
-                "observability.bknTraceEvidenceIngestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
-                "observability.bknTraceEvidenceIngestTokenSecretKey=token"
+                "observability.bknTraceArtifactIngestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
+                "observability.bknTraceArtifactIngestTokenSecretKey=token"
+                "observability.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
+                "observability.evidencePublisher.credentialsSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "observability.evidencePublisher.usernameSecretKey=username"
+                "observability.evidencePublisher.passwordSecretKey=password"
+                "observability.evidencePublisher.capturePolicyRevision=${OPENBKN_TRACE_CAPTURE_POLICY_REVISION}"
+                "observability.evidencePublisher.queueMaxRecords=4096"
+                "observability.evidencePublisher.queueMaxBytes=67108864"
+                "observability.evidencePublisher.maxRecordBytes=1048576"
+                "observability.evidencePublisher.maxAgeS=30"
+                "observability.evidencePublisher.maxAttempts=3"
+                "observability.evidencePublisher.retryBackoffMs=100"
             )
             ;;
     esac
@@ -604,10 +614,11 @@ _OPENBKN_TRACE_EVIDENCE_PRODUCERS=(
     agent-operator-integration
 )
 
-# Env vars that used to be written into the Deployment as a literal value and
-# are now sourced from a Secret.
+# Remove legacy Evidence HTTP credentials and any previous artifact token value
+# before the chart switches to the Artifact-only Secret-backed variable.
 _OPENBKN_ENV_MOVED_TO_SECRET=(
     BKN_TRACE_EVIDENCE_INGEST_TOKEN
+    BKN_TRACE_ARTIFACT_INGEST_TOKEN
 )
 _OPENBKN_AGENT_RETRIEVAL_LEGACY_EVIDENCE_ENVS=(
     BKN_TRACE_EVIDENCE_INGEST_URL
@@ -800,10 +811,12 @@ _openbkn_warn_unwired_evidence_producers() {
             esac
             [[ "${set_value}" == "bknTrace.evidencePublisher.enabled=true" || "${set_value}" == "observability.evidencePublisher.enabled=true" ]] && has_kafka_publisher=true
             [[ "${set_value}" == "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" || "${set_value}" == "observability.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
-            [[ "${set_value}" == "observability.evidence.artifact_endpoint=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}" ]] && has_artifact_url=true
-            [[ "${set_value}" == "observability.evidence.artifact_secret_name=${OPENBKN_TRACE_INGEST_SECRET}" ]] && has_artifact_secret=true
+            [[ "${set_value}" == "observability.evidence.artifact_endpoint=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}" || "${set_value}" == "observability.bknTraceArtifactIngestUrl=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}" ]] && has_artifact_url=true
+            [[ "${set_value}" == "observability.evidence.artifact_secret_name=${OPENBKN_TRACE_INGEST_SECRET}" || "${set_value}" == "observability.bknTraceArtifactIngestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}" ]] && has_artifact_secret=true
+            [[ "${set_value}" == "observability.evidencePublisher.credentialsSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
+            [[ "${set_value}" == "observability.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)" ]] && has_kafka_publisher=true
         done
-        if [[ "${release_name}" == "agent-retrieval" ]]; then
+        if [[ "${release_name}" == "agent-retrieval" || "${release_name}" == "bkn-agent" ]]; then
             [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true && "${has_artifact_url}" == true && "${has_artifact_secret}" == true ]] || unwired+=("${release_name}")
         elif [[ "${release_name}" == "bkn-backend" || "${release_name}" == "ontology-query" ]]; then
             [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true ]] || unwired+=("${release_name}")

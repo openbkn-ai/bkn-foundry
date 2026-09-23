@@ -22,6 +22,7 @@ sqlalchemy[asyncio]~=2.0.51
 # 上验证，单测覆盖不到，不与本次升级同批冒险
 aiomysql~=0.2.0
 aiohttp~=3.14.0
+aiokafka[snappy]~=0.14.0
 
 # 契约（docs/api/bkn-agent.yaml 导出与漂移测试）
 pyyaml~=6.0
