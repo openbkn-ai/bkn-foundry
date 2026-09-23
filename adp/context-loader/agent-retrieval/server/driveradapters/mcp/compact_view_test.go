@@ -101,8 +101,41 @@ func TestFullProfileKeepsItsSchemas(t *testing.T) {
 	if len(tool.OutputSchema) == 0 || !slices.Contains(properties, "response_format") {
 		t.Fatal("the full profile lost query_object_instance's output schema or response_format")
 	}
-	if contextFields := bknContextFields(t, tool.InputSchema); !slices.Contains(contextFields, "business_refs") {
-		t.Fatalf("the full profile's bkn_context lost business_refs: %v", contextFields)
+	// bkn_context is the one thing the full profile does rewrite: the model
+	// view is the two IDs on both entries. The adapter contract is unchanged,
+	// which TestFullInfoDescribesTheWholeAdapterContract holds to.
+	if contextFields := bknContextFields(t, tool.InputSchema); !slices.Equal(
+		contextFields, []string{"conversation_id", "interaction_id"},
+	) {
+		t.Fatalf("the full profile's published bkn_context = %v, want the two IDs", contextFields)
+	}
+}
+
+// The three extension fields are filled in by programs - the PTC stub, the
+// SDKs, function-to-function calls - and the server still accepts them. They
+// stay described where those integrations read: GET /mcp/info, the REST
+// definitions and the developer documentation.
+func TestFullInfoDescribesTheWholeAdapterContract(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		info, err := BuildMCPInfoForLocale("http://example.invalid/mcp", locale)
+		if err != nil {
+			t.Fatalf("%s: build info: %v", locale, err)
+		}
+		for _, tool := range info.Tools {
+			if _, lifecycle := lifecycleToolNames[tool.Name]; lifecycle {
+				continue
+			}
+			fields := bknContextFields(t, tool.InputSchema)
+			for _, field := range []string{
+				"conversation_id", "interaction_id",
+				"parent_operation_id", "causation_event_ids", "business_refs",
+			} {
+				if !slices.Contains(fields, field) {
+					t.Fatalf("%s %s: info lost %s from the adapter contract: %v",
+						locale, tool.Name, field, fields)
+				}
+			}
+		}
 	}
 }
 
@@ -142,8 +175,8 @@ func bknContextFields(t *testing.T, raw json.RawMessage) []string {
 	return fields
 }
 
-func TestCompactInputSchema(t *testing.T) {
-	got := compactInputSchema("t", json.RawMessage(`{"type":"object","properties":{"response_format":{"type":"string"},"kn_id":{"type":"string"},"limit":{"type":"integer","maximum":9007199254740993}},"required":["kn_id","response_format"]}`))
+func TestPublishedInputSchema(t *testing.T) {
+	got := publishedInputSchema("t", json.RawMessage(`{"type":"object","properties":{"response_format":{"type":"string"},"kn_id":{"type":"string"},"limit":{"type":"integer","maximum":9007199254740993}},"required":["kn_id","response_format"]}`), compactHiddenInputFields)
 	properties, required := schemaFields(t, got)
 	if slices.Contains(properties, "response_format") || !slices.Equal(required, []string{"kn_id"}) {
 		t.Fatalf("compact schema = %s", got)
@@ -152,10 +185,34 @@ func TestCompactInputSchema(t *testing.T) {
 		t.Fatalf("a wide integer bound was rewritten: %s", got)
 	}
 	unchanged := json.RawMessage(`{"type":"object","properties":{"kn_id":{"type":"string"}}}`)
-	if string(compactInputSchema("t", unchanged)) != string(unchanged) {
+	if string(publishedInputSchema("t", unchanged, compactHiddenInputFields)) != string(unchanged) {
 		t.Fatal("a schema without hidden fields should be published byte for byte")
 	}
-	if string(compactInputSchema("t", json.RawMessage(`{`))) != "{" {
+	if string(publishedInputSchema("t", json.RawMessage(`{`), compactHiddenInputFields)) != "{" {
 		t.Fatal("an unreadable schema should be published unchanged")
 	}
+}
+
+// The view runs when a tool is published, not when it is assembled. The
+// Capability Profile digests, GET /mcp/info and the PTC stub are all computed
+// from the assembled schema; moving the rewrite earlier would change every
+// digest, and Trace Core compares those for equality, so replays of existing
+// Operations would resolve as schema_digest_mismatch.
+func TestTheModelContextViewIsAppliedOnlyOnPublish(t *testing.T) {
+	published := listedTools(t, mustServer(newMCPServerForLocale(nil, defaultMCPLocale)))
+	for _, tool := range assembledTools(t) {
+		if _, lifecycle := lifecycleToolNames[tool.Name]; lifecycle {
+			continue
+		}
+		if fields := bknContextFields(t, tool.RawInputSchema); !slices.Contains(fields, "business_refs") {
+			t.Fatalf("%s: the assembled schema lost the adapter contract: %v", tool.Name, fields)
+		}
+		if len(published[tool.Name].InputSchema) >= len(tool.RawInputSchema) {
+			t.Fatalf("%s: the published schema is not shorter than the assembled one", tool.Name)
+		}
+	}
+}
+
+func mustServer(srv *server.MCPServer, _ *toolBuilder) *server.MCPServer {
+	return srv
 }
