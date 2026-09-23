@@ -16,11 +16,9 @@ name: security-codeql
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
-    # Keep a weekly full scan so main is covered even in quiet weeks.
-    - cron: '26 4 * * 1'
+    # Run at 04:00 China Standard Time (20:00 UTC) on Monday and Thursday.
+    - cron: '0 20 * * 0,3'
 
 concurrency:
   group: security-codeql-${{ github.ref }}
