@@ -77,9 +77,75 @@ func Test_queryLogicMetricViaKN(t *testing.T) {
 
 			_, err := service.queryLogicMetricViaKN(
 				ctx, "kn1", "main", "ot1", logicProp, nil,
-				interfaces.MetricPropertyDynamicParams{}, 0, 0, true, "",
+				interfaces.MetricPropertyDynamicParams{}, nil, nil, true, "",
 			)
 			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+// A caller that asks for no time range must not have one invented for it. The
+// window used to default to the last thirty minutes, which told the metric
+// layer a time filter had been requested: a metric without a time_dimension
+// was then refused with "time range filter requires metric
+// time_dimension.property" for a filter nobody asked for, and a metric with
+// one answered for half an hour instead of its own default_range_policy.
+func Test_buildMetricQueryRequestFromLogicProperty_TimeWindow(t *testing.T) {
+	Convey("buildMetricQueryRequestFromLogicProperty", t, func() {
+		Convey("no time asked for leaves the window open", func() {
+			req := buildMetricQueryRequestFromLogicProperty(
+				nil, interfaces.MetricPropertyDynamicParams{}, nil, nil, true, "")
+			So(req.Time, ShouldNotBeNil)
+			So(req.Time.Start, ShouldBeNil)
+			So(req.Time.End, ShouldBeNil)
+			So(*req.Time.Instant, ShouldBeTrue)
+		})
+		Convey("a supplied range is passed through", func() {
+			start, end := int64(1754006400000), int64(1756684800000)
+			req := buildMetricQueryRequestFromLogicProperty(
+				nil, interfaces.MetricPropertyDynamicParams{}, &start, &end, false, "day")
+			So(*req.Time.Start, ShouldEqual, start)
+			So(*req.Time.End, ShouldEqual, end)
+			So(*req.Time.Step, ShouldEqual, "day")
+		})
+	})
+}
+
+// The metric layer uses a request window only when both ends are present and
+// otherwise falls back to the metric's default_range_policy, so one end on its
+// own must not reach it: the filter would disappear and the number would be
+// computed over everything, without an error.
+func Test_logicMetricTimeWindow(t *testing.T) {
+	Convey("logicMetricTimeWindow", t, func() {
+		now := int64(1756684800000)
+
+		Convey("nothing supplied asks for no window", func() {
+			start, end := logicMetricTimeWindow(interfaces.MetricPropertyDynamicParams{}, now)
+			So(start, ShouldBeNil)
+			So(end, ShouldBeNil)
+		})
+		Convey("start alone runs to now", func() {
+			supplied := int64(1754006400000)
+			start, end := logicMetricTimeWindow(
+				interfaces.MetricPropertyDynamicParams{Start: &supplied}, now)
+			So(*start, ShouldEqual, supplied)
+			So(*end, ShouldEqual, now)
+		})
+		Convey("end alone keeps the half-hour lookback", func() {
+			supplied := int64(1754006400000)
+			start, end := logicMetricTimeWindow(
+				interfaces.MetricPropertyDynamicParams{End: &supplied}, now)
+			So(*end, ShouldEqual, supplied)
+			So(*start, ShouldEqual, supplied-30*60*1000)
+		})
+		Convey("both supplied pass through", func() {
+			// end differs from now, or this cannot tell a passed-through end
+			// from one the implementation replaced with now.
+			s, e := int64(1754006400000), int64(1755000000000)
+			start, end := logicMetricTimeWindow(
+				interfaces.MetricPropertyDynamicParams{Start: &s, End: &e}, now)
+			So(*start, ShouldEqual, s)
+			So(*end, ShouldEqual, e)
 		})
 	})
 }
