@@ -94,6 +94,9 @@ func TestTryPublishBuildsFrozenRecordAndUsesGoLedgerHash(t *testing.T) {
 	if value["payload_hash"] != "2a1cf0c9bbb7146106feb3d0d5139e0bf67a6700e2585d77d20d78289dfafae6" {
 		t.Fatalf("payload_hash = %v", value["payload_hash"])
 	}
+	if ack := publisher.Close(context.Background()); ack.Published != 1 || len(sender.records) != 1 {
+		t.Fatalf("sender records = %d, ack = %+v; want one delivered record", len(sender.records), ack)
+	}
 }
 
 func TestTryPublishIsFailOpenWhenQueueIsFullAndDoesNotConsumeSequence(t *testing.T) {
