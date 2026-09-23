@@ -8,6 +8,7 @@ package knlogicpropertyresolver
 
 import (
 	"context"
+	stderrors "errors"
 	"strings"
 	"testing"
 
@@ -672,5 +673,99 @@ func TestValidateToolParamsChecksDeclaredTypes(t *testing.T) {
 		convey.So(service.validateToolParams(ctx, property, map[string]any{
 			"undeclared": "value",
 		}), convey.ShouldBeNil)
+	})
+}
+
+// A business filter is something only the caller knows, so leaving one out
+// must not be read as "complete". Validation cannot see it: it checks the
+// metric time window and nothing else, which is how a set missing
+// closestatus_title used to reach the engine as if the caller had meant it.
+func TestResolveSinglePropertyParamsGeneratesWhenABusinessInputIsMissing(t *testing.T) {
+	convey.Convey("TestResolveSinglePropertyParamsGeneratesWhenABusinessInputIsMissing", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		service := &knLogicPropertyResolverService{logger: mockLogger}
+
+		property := &interfaces.LogicPropertyDef{
+			Name: "open_forecast_count",
+			Type: interfaces.LogicPropertyTypeMetric,
+			Parameters: []interfaces.PropertyParameter{
+				{Name: "material_number", ValueFrom: "property", Value: "material_number"},
+				{Name: "closestatus_title", ValueFrom: "input"},
+				{Name: "instant", ValueFrom: "input", IfSystemGenerate: true},
+				{Name: "start", ValueFrom: "input", IfSystemGenerate: true},
+				{Name: "end", ValueFrom: "input", IfSystemGenerate: true},
+			},
+		}
+		// Everything the time window needs, and no closestatus_title. The set
+		// validates, so only the business-input check keeps it out of the
+		// caller path.
+		req := &interfaces.ResolveLogicPropertiesRequest{
+			KnID: "kn-001", OtID: "ot-001",
+			Properties: []string{"open_forecast_count"},
+			DynamicParams: map[string]map[string]any{
+				"open_forecast_count": {
+					"instant": true,
+					"start":   int64(1704067200000),
+					"end":     int64(1706745600000),
+				},
+			},
+		}
+
+		// No query, so generation cannot run either: the error says what the
+		// caller has to supply rather than pretending the set was complete.
+		_, source, _, err := service.resolveSinglePropertyParams(
+			context.Background(), req, "open_forecast_count", property, nil)
+		convey.So(source, convey.ShouldBeEmpty)
+		convey.So(err, convey.ShouldNotBeNil)
+		convey.So(err.Error(), convey.ShouldContainSubstring, "closestatus_title")
+
+		var callerErr callerParamError
+		convey.So(stderrors.As(err, &callerErr), convey.ShouldBeTrue)
+	})
+}
+
+// A value the caller got wrong is a 400, not a generation failure: it should
+// name the parameter rather than raise an alert about the model.
+func TestResolveSinglePropertyParamsMarksCallerMistakes(t *testing.T) {
+	convey.Convey("TestResolveSinglePropertyParamsMarksCallerMistakes", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		service := &knLogicPropertyResolverService{logger: mockLogger}
+
+		property := &interfaces.LogicPropertyDef{
+			Name: "forecast_qty_sum",
+			Type: interfaces.LogicPropertyTypeMetric,
+			Parameters: []interfaces.PropertyParameter{
+				{Name: "instant", ValueFrom: "input", IfSystemGenerate: true},
+				{Name: "start", ValueFrom: "input", IfSystemGenerate: true},
+				{Name: "end", ValueFrom: "input", IfSystemGenerate: true},
+			},
+		}
+		req := &interfaces.ResolveLogicPropertiesRequest{
+			KnID: "kn-001", OtID: "ot-001",
+			Query:      "任意问题",
+			Properties: []string{"forecast_qty_sum"},
+			DynamicParams: map[string]map[string]any{
+				"forecast_qty_sum": {"instant": true, "start": int64(1), "end": int64(1706745600000)},
+			},
+		}
+
+		_, _, _, err := service.resolveSinglePropertyParams(
+			context.Background(), req, "forecast_qty_sum", property, nil)
+		convey.So(err, convey.ShouldNotBeNil)
+		var callerErr callerParamError
+		convey.So(stderrors.As(err, &callerErr), convey.ShouldBeTrue)
 	})
 }
