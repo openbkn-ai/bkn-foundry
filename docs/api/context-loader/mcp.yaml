@@ -38,6 +38,11 @@ info:
 
     不想先握手就想知道有哪些工具时，直接 `GET /mcp/info`——它返回完整的工具目录
     （含每个工具的输入输出 schema）与一份可直接粘贴的客户端配置。
+
+    **精简入口**：`/api/agent-retrieval/v1/mcp-compact` 是同一进程里的第二个 MCP
+    端点，鉴权、受管生命周期和工具语义与 `/mcp` 相同，面向每次模型调用都携带全部
+    工具定义的宿主。它只公布 11 个工具，其余能力经按需网关使用，见下文
+    `/mcp-compact` 与 `GET /mcp-compact/info`。
   version: 0.1.3
 servers:
   - url: /api/agent-retrieval/v1
@@ -153,6 +158,142 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
 
+  /mcp-compact/info:
+    get:
+      tags:
+        - MCP
+      summary: 精简入口自描述文档
+      operationId: getCompactMCPInfo
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      description: |
+        `/mcp-compact` 的自描述，结构与 `GET /mcp/info` 相同，区别只有：
+
+        - `endpoint` 指向精简入口；
+        - `tools` 只含本入口公布的 11 个工具，schema 与本入口 `tools/list` 一致
+          （业务工具无输出 schema，`bkn_context` 只声明两个 ID，见 `/mcp-compact`）；
+        - 不返回 `toolkit_version`：本入口不公布沙箱执行工具。
+      responses:
+        '200':
+          description: 自描述文档
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPInfo'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: 服务内部错误（内嵌的工具元数据读取失败）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /mcp-compact:
+    post:
+      tags:
+        - MCP
+      summary: 精简入口的 MCP Streamable HTTP 端点
+      operationId: compactMCPStreamableHTTP
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      description: |
+        与 `/mcp` 相同的 MCP Streamable HTTP 协议、鉴权与受管生命周期，工具定义更少，
+        适合每次模型调用都携带全部工具定义的宿主。
+
+        **公布的工具**（固定 11 个，不随连接变化）：
+
+        - 生命周期：`bkn_start_interaction`、`bkn_finish_interaction`；
+        - 直接查询：`list_knowledge_networks`、`get_kn_detail`、`search_schema`、
+          `search_instance`、`query_object_instance`、`query_metric`；
+        - 按需网关：`search_native_tools`、`describe_native_tool`、`execute_native_tool`。
+
+        **按需网关**：`/mcp` 上的其余业务工具（含 `run_cypher`、`run_sql`、
+        `execute_action`、`search_capabilities`、`execute_tool`、技能工具，以及许可证
+        覆盖的企业版工具）不出现在 `tools/list`，经网关使用：
+
+        1. `search_native_tools`：用一句话说明要做的事，返回候选工具及其适用场景；
+        2. `describe_native_tool`：取目标的参数 schema 与调用模板，已知参数时可跳过；
+        3. `execute_native_tool`：`name` 填目标工具名，`arguments` 填目标参数，
+           `bkn_context` 放在外层。目标按自身名称经过与直接调用相同的许可证闸门和受管
+           guard，Trace 记录的是目标工具名。
+
+        `run_code`、`run_shell` 目前不在网关内。本入口未公布的工具直接用
+        `tools/call` 调用时，按不存在的工具返回协议标准错误。
+
+        **与 `/mcp` 的差异**：
+
+        - 业务工具不公布输出 schema，也不接受 `response_format`；结果为文本，
+          受管回执放在结果的 `_meta["openbkn.ai/receipt"]`，不返回
+          `structuredContent`。两个生命周期工具的结果与 `/mcp` 相同。
+        - 输入 schema 中的 `bkn_context` 只声明 `conversation_id` 与
+          `interaction_id`；`business_refs` 等其余字段仍被接受。
+        - 传入工具未声明的参数时直接拒绝（`unknown_arguments`，附允许的参数列表），
+          拒绝发生在受管 Operation 创建之前。
+        - `execute_native_tool` 会解析字符串形式的 `arguments`，并去掉与外层一致的
+          内层 `bkn_context`；发生这类归一时，实际执行的参数回显在结果的
+          `_meta["openbkn.ai/normalized_arguments"]`。
+
+        **网关的拒绝码**（结果 `isError=true`，正文为 JSON，`error` 字段取值如下）：
+
+        | 取值 | 含义 |
+        | --- | --- |
+        | `unknown_tool` | 网关里没有这个名字；正文说明挂载函数与技能的正确调用方式 |
+        | `published_directly` | 目标已在本入口直接公布，应直接调用 |
+        | `invalid_arguments` | 参数不符合目标 schema；附 `violations`，schema 不超过 8000 字符时一并返回 |
+        | `schema_too_large` | 目标的参数 schema 超过 8000 字符，`describe_native_tool` 不返回 |
+        | `bkn_context_mismatch` | 内层 `bkn_context` 与外层不一致 |
+        | `response_format_not_accepted` | 目标参数里带了 `response_format` |
+        | `unknown_arguments` | 调用了未声明的参数 |
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: JSON-RPC 2.0 请求（`initialize` / `tools/list` / `tools/call` 等）。
+              additionalProperties: true
+            examples:
+              经网关调用:
+                value:
+                  jsonrpc: '2.0'
+                  id: 3
+                  method: tools/call
+                  params:
+                    name: execute_native_tool
+                    arguments:
+                      name: run_cypher
+                      arguments:
+                        kn_id: kn_demo
+                        query: MATCH (o:orders) RETURN o.status, count(o.id) AS n
+                      bkn_context:
+                        conversation_id: conv_...
+                        interaction_id: int_...
+      responses:
+        '200':
+          description: JSON-RPC 2.0 响应或 SSE 事件流
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
 components:
   securitySchemes:
     OAuth2:
@@ -223,6 +364,7 @@ components:
             当前工具面的内容哈希，与沙箱镜像里的 `__toolkit_version__` 同源同算法。
             镜像滞后于服务端时，症状只是签名对不上、失败信息里看不出根因；
             比对这两个值即可判定。
+            `GET /mcp-compact/info` 不返回此字段。
           example: "sha256:55dd56a2d9df5a549923c85826e6cfeec4a49c4f3fce6a25f19bd7c807d24843"
         tools:
           type: array
@@ -251,7 +393,8 @@ components:
           type: string
           description: |
             分组标识，稳定值，供客户端分组或分支判断。当前取值：
-            `lifecycle` / `discovery` / `query` / `action` / `resource`。
+            `lifecycle` / `discovery` / `query` / `action` / `resource` /
+            `skill` / `tool` / `execution` / `gateway`（`gateway` 只出现在精简入口）。
             扩展工具未声明时不返回。
         group_title:
           type: string
