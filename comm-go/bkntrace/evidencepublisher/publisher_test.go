@@ -94,6 +94,9 @@ func TestTryPublishBuildsFrozenRecordAndUsesGoLedgerHash(t *testing.T) {
 	if value["payload_hash"] != "2a1cf0c9bbb7146106feb3d0d5139e0bf67a6700e2585d77d20d78289dfafae6" {
 		t.Fatalf("payload_hash = %v", value["payload_hash"])
 	}
+	if ack := publisher.Close(context.Background()); ack.Published != 1 || len(sender.records) != 1 {
+		t.Fatalf("sender records = %d, ack = %+v; want one delivered record", len(sender.records), ack)
+	}
 }
 
 func TestTryPublishIsFailOpenWhenQueueIsFullAndDoesNotConsumeSequence(t *testing.T) {
@@ -162,5 +165,66 @@ func TestPublisherCloseHonorsShutdownTimeout(t *testing.T) {
 	}
 	if ack.Dropped != 1 || ack.QueueEmpty != true {
 		t.Fatalf("close ack = %+v", ack)
+	}
+}
+
+func TestPublisherFlushSendsWithoutClosing(t *testing.T) {
+	sender := &fakeSender{}
+	publisher, err := New(publisherTestConfig(), sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer publisher.Close(context.Background())
+	if publisher.TryPublish(publisherTestEvent()).Disposition != Accepted {
+		t.Fatal("publish rejected")
+	}
+	ack := publisher.Flush(context.Background())
+	if ack.Published != 1 || !ack.QueueEmpty || len(sender.records) != 1 {
+		t.Fatalf("flush ack=%+v records=%d", ack, len(sender.records))
+	}
+	second := publisherTestEvent()
+	second.EventID = "evt-flush-second"
+	if publisher.TryPublish(second).Disposition != Accepted {
+		t.Fatal("publisher closed after flush")
+	}
+}
+
+func TestPublisherFlushHonorsContextTimeoutAndCanRetry(t *testing.T) {
+	publisher, err := New(publisherTestConfig(), blockingSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if publisher.TryPublish(publisherTestEvent()).Disposition != Accepted {
+		t.Fatal("publish rejected")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	ack := publisher.Flush(ctx)
+	if ack.Dropped != 1 || !ack.QueueEmpty {
+		t.Fatalf("flush ack=%+v", ack)
+	}
+	if publisher.TryPublish(publisherTestEvent()).Disposition != Accepted {
+		t.Fatal("publisher closed after timeout flush")
+	}
+}
+
+func TestPublisherFlushConcurrentCallsAreSafe(t *testing.T) {
+	sender := &fakeSender{}
+	publisher, err := New(publisherTestConfig(), sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer publisher.Close(context.Background())
+	if publisher.TryPublish(publisherTestEvent()).Disposition != Accepted {
+		t.Fatal("publish rejected")
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); publisher.Flush(context.Background()) }()
+	}
+	wg.Wait()
+	if len(sender.records) != 1 {
+		t.Fatalf("records=%d, want 1", len(sender.records))
 	}
 }

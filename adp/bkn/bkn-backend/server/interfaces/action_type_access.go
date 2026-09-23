@@ -18,6 +18,7 @@ type ActionTypeAccess interface {
 
 	CreateActionType(ctx context.Context, tx *sql.Tx, actionType *ActionType) error
 	ListActionTypes(ctx context.Context, query ActionTypesQueryParams) ([]*ActionType, error)
+	ListActionTypeSummaries(ctx context.Context, query ActionTypesQueryParams) ([]*ActionType, error)
 	GetActionTypesTotal(ctx context.Context, query ActionTypesQueryParams) (int, error)
 	GetActionTypesByIDs(ctx context.Context, knID string, branch string, atIDs []string) ([]*ActionType, error)
 	UpdateActionType(ctx context.Context, tx *sql.Tx, actionType *ActionType) error

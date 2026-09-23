@@ -319,6 +319,10 @@ type MetricsListQueryParams struct {
 	ScopeType   string
 	ScopeRef    string
 	ScopeRefs   []string
+	MetricIDs   []string
+	// ValidAuthorizationIDsOnly excludes stored IDs that cannot be represented
+	// as canonical Safe child resources.
+	ValidAuthorizationIDsOnly bool
 }
 
 // MetricsList is the list response for GET .../metrics (bkn-metrics.yaml ListMetrics: entries, total_count).

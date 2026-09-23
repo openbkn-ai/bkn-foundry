@@ -174,7 +174,11 @@ type ActionTypesQueryParams struct {
 	Branch        string
 	KNID          string
 	ObjectTypeIDs []string
+	ATIDs         []string
 	ActionType    string
+	// ValidAuthorizationIDsOnly excludes stored IDs that cannot be represented
+	// as canonical Safe child resources.
+	ValidAuthorizationIDsOnly bool
 }
 
 // Action type search list.

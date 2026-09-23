@@ -739,7 +739,13 @@ func (c *MariaDBConnector) ConvertFilterConditionTrue(ctx context.Context, condi
 		return nil, fmt.Errorf("condition is not *filter_condition.TrueCond")
 	}
 
-	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): true}, nil
+	if cond.Lfield.Type == interfaces.DataType_Boolean {
+		return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): true}, nil
+	}
+	if !isMariaDBNumericBoolean(cond.Lfield) {
+		return nil, fmt.Errorf("mariadb true condition requires BOOLEAN or TINYINT(1): %s", cond.Lfield.Name)
+	}
+	return sq.NotEq{quoteColumnName(cond.Lfield.OriginalName): 0}, nil
 }
 
 func (c *MariaDBConnector) ConvertFilterConditionFalse(ctx context.Context, condition interfaces.FilterCondition,
@@ -750,7 +756,18 @@ func (c *MariaDBConnector) ConvertFilterConditionFalse(ctx context.Context, cond
 		return nil, fmt.Errorf("condition is not *filter_condition.FalseCond")
 	}
 
-	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): false}, nil
+	if cond.Lfield.Type == interfaces.DataType_Boolean {
+		return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): false}, nil
+	}
+	if !isMariaDBNumericBoolean(cond.Lfield) {
+		return nil, fmt.Errorf("mariadb false condition requires BOOLEAN or TINYINT(1): %s", cond.Lfield.Name)
+	}
+	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): 0}, nil
+}
+
+// isMariaDBNumericBoolean recognizes the numeric type stored for BOOL aliases.
+func isMariaDBNumericBoolean(field *interfaces.Property) bool {
+	return field.Type == interfaces.DataType_Integer && strings.EqualFold(strings.TrimSpace(field.OriginalType), "tinyint(1)")
 }
 
 func (c *MariaDBConnector) ConvertFilterConditionBefore(ctx context.Context, condition interfaces.FilterCondition,

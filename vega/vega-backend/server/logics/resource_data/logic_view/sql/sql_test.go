@@ -335,6 +335,14 @@ func TestLogicViewSQLBuilderApplyParams(t *testing.T) {
 func TestLogicViewSQLConvertFilterCondition(t *testing.T) {
 	fields := testSQLFieldMap()
 	generator := NewlogicDefinitionSQLGenerator(testSQLView())
+	t.Run("rejects numeric boolean predicates", func(t *testing.T) {
+		for _, operation := range []string{filter_condition.OperationTrue, filter_condition.OperationFalse} {
+			condition := mustSQLCondition(t, sqlConditionCfg("age", operation, interfaces.ValueFrom_Const, nil), fields)
+			got, err := generator.ConvertFilterCondition(context.Background(), condition, fields)
+			require.ErrorContains(t, err, "requires BOOLEAN")
+			assert.Nil(t, got)
+		}
+	})
 
 	t.Run("equal condition converts to sqlizer", func(t *testing.T) {
 		cond := mustSQLCondition(t, &interfaces.FilterCondCfg{

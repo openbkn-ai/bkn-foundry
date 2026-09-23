@@ -976,6 +976,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionTrue(condition interfaces.Fi
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.TrueCond")
 	}
+	if cond.Lfield.Type != interfaces.DataType_Boolean {
+		return nil, fmt.Errorf("opensearch true condition requires BOOLEAN: %s", cond.Lfield.Name)
+	}
 
 	return map[string]any{
 		"term": map[string]any{
@@ -990,6 +993,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionFalse(condition interfaces.F
 	cond, ok := condition.(*filter_condition.FalseCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.FalseCond")
+	}
+	if cond.Lfield.Type != interfaces.DataType_Boolean {
+		return nil, fmt.Errorf("opensearch false condition requires BOOLEAN: %s", cond.Lfield.Name)
 	}
 
 	return map[string]any{

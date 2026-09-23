@@ -398,6 +398,13 @@ func processMetricQueryCondition(query interfaces.MetricsListQueryParams, subBui
 	if query.Tag != "" {
 		subBuilder = subBuilder.Where(sq.Expr("instr(f_tags, ?) > 0", `"`+query.Tag+`"`))
 	}
+	if query.MetricIDs != nil {
+		subBuilder = subBuilder.Where(sq.Eq{"f_id": query.MetricIDs})
+	}
+	if query.ValidAuthorizationIDsOnly {
+		subBuilder = subBuilder.Where(sq.Expr(
+			"f_id <> '' AND f_id = TRIM(f_id) AND instr(f_id, '/') = 0 AND instr(f_id, '*') = 0"))
+	}
 	return subBuilder
 }
 
@@ -419,6 +426,12 @@ func (ma *metricAccess) ListMetrics(ctx context.Context, query interfaces.Metric
 		// Use f_id as a tie-breaker because same-batch metrics can share identical f_update_time values.
 		// Without a tie-breaker, ordering across page boundaries is unstable and rows can repeat or be skipped.
 		builder = builder.OrderBy(orderBy, "f_id ASC")
+	}
+	if query.Limit > 0 {
+		builder = builder.Limit(uint64(query.Limit))
+		if query.Offset > 0 {
+			builder = builder.Offset(uint64(query.Offset))
+		}
 	}
 
 	sqlStr, vals, err := builder.ToSql()

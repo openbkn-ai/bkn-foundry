@@ -116,7 +116,7 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 		meta.Properties = make(map[string]any)
 		meta.Properties["engine"] = engine.String
 		meta.Properties["collation"] = collation.String
-		meta.Properties["row_count"] = tableRows.Int64
+		meta.Properties["estimated_row_count"] = tableRows.Int64
 		meta.Properties["data_length"] = dataLength.Int64
 		meta.Properties["index_length"] = indexLength.Int64
 
@@ -281,7 +281,7 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 
 	table.Properties["engine"] = engine.String
 	table.Properties["collation"] = collation.String
-	table.Properties["row_count"] = tableRows.Int64
+	table.Properties["estimated_row_count"] = tableRows.Int64
 	table.Properties["data_length"] = dataLength.Int64
 	table.Properties["index_length"] = indexLength.Int64
 	if autoIncrement.Valid {

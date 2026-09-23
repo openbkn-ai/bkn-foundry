@@ -405,7 +405,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) (map[strin
 }
 
 // GetSummariesByIDs retrieves resource list summaries keyed by ID without loading extended JSON fields.
-// Only lazy extract the scale information (column_count/row_count) from the original JSON, without deserializing the complete structure;
+// Only lazy extract the scale information (column_count/estimated_row_count) from the original JSON, without deserializing the complete structure;
 // Counting is completed on the Go side to be compatible with multi-dialect databases (such as MariaDB/DM8/KDB9, etc.) and does not rely on MySQL JSON functions.
 func (ra *resourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*interfaces.ResourceSummary, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource summaries by IDs")
