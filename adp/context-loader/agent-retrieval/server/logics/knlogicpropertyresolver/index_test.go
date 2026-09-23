@@ -634,3 +634,43 @@ func TestResolveSinglePropertyParamsValidatesWhatTheCallerSupplied(t *testing.T)
 		convey.So(err, convey.ShouldNotBeNil)
 	})
 }
+
+// Tool properties had no validation at all: whatever a model produced, or a
+// caller now supplies, went straight to the engine.
+func TestValidateToolParamsChecksDeclaredTypes(t *testing.T) {
+	convey.Convey("TestValidateToolParamsChecksDeclaredTypes", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		service := &knLogicPropertyResolverService{logger: mockLogger}
+
+		property := &interfaces.LogicPropertyDef{
+			Name: "exchange_rate",
+			Type: interfaces.LogicPropertyTypeTool,
+			Parameters: []interfaces.PropertyParameter{
+				{Name: "target_currency", Type: "string", ValueFrom: "input"},
+				{Name: "rounding", Type: "integer", ValueFrom: "input"},
+				{Name: "live", Type: "boolean", ValueFrom: "input"},
+			},
+		}
+		ctx := context.Background()
+
+		convey.So(service.validateToolParams(ctx, property, map[string]any{
+			"target_currency": "USD", "rounding": float64(2), "live": true,
+		}), convey.ShouldBeNil)
+
+		// A number where a string is declared is what a model gets wrong.
+		convey.So(service.validateToolParams(ctx, property, map[string]any{
+			"target_currency": 1,
+		}), convey.ShouldNotBeNil)
+
+		// A tool's own schema may name arguments the property does not
+		// declare, and those travelled long before this check existed.
+		convey.So(service.validateToolParams(ctx, property, map[string]any{
+			"undeclared": "value",
+		}), convey.ShouldBeNil)
+	})
+}

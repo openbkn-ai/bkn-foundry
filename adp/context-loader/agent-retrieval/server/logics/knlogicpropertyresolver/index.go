@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -824,13 +825,64 @@ func (s *knLogicPropertyResolverService) validateTimestamp(
 }
 
 // validateToolParams validates ToolBox dynamic parameters.
+// validateToolParams checks a tool property's parameters against the types the
+// model declares. It used to accept anything, which mattered little while a
+// model produced the values from the tool's own schema and matters now that a
+// caller can supply them.
+//
+// Only declared parameters are checked, and a name that is not declared is
+// logged rather than refused: a ToolBox tool's own schema can name arguments
+// the logic property does not declare, and those were being passed through
+// long before this check existed.
 func (s *knLogicPropertyResolverService) validateToolParams(
 	ctx context.Context,
-	_ *interfaces.LogicPropertyDef,
-	_ map[string]interface{},
+	property *interfaces.LogicPropertyDef,
+	params map[string]interface{},
 ) error {
+	declared := make(map[string]string, len(property.Parameters))
+	for _, parameter := range property.Parameters {
+		declared[parameter.Name] = parameter.Type
+	}
+	for name, value := range params {
+		declaredType, isDeclared := declared[name]
+		if !isDeclared {
+			s.logger.WithContext(ctx).Debugf(
+				"[KnLogicPropertyResolver] %s: parameter %q is not declared by the logic property, passing it through",
+				property.Name, name)
+			continue
+		}
+		if !valueMatchesDeclaredType(value, declaredType) {
+			return fmt.Errorf("tool property %s: param %q should be %s, got %T",
+				property.Name, name, declaredType, value)
+		}
+	}
 	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Tool parameter validation passed")
 	return nil
+}
+
+// valueMatchesDeclaredType is deliberately lenient about numbers. A value that
+// arrived as JSON is a float64 or a json.Number whatever the definition calls
+// it, and refusing 3 because it is not an int would reject what every caller
+// and every model actually sends. An unknown or empty declared type passes:
+// the definition, not this check, decides what a parameter is.
+func valueMatchesDeclaredType(value any, declaredType string) bool {
+	switch strings.ToLower(strings.TrimSpace(declaredType)) {
+	case "string":
+		_, ok := value.(string)
+		return ok
+	case "boolean", "bool":
+		_, ok := value.(bool)
+		return ok
+	case "integer", "int", "number", "float", "double":
+		switch value.(type) {
+		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
+			return true
+		default:
+			return false
+		}
+	default:
+		return true
+	}
 }
 
 // queryLogicProperties calls ontology-query to query logical property values.
