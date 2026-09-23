@@ -91,19 +91,41 @@ spec:
               value: {{ .Values.observability.otelEnabled | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.observability.otlpEndpoint | quote }}
-            - name: BKN_TRACE_EVIDENCE_INGEST_URL
-              value: {{ .Values.observability.bknTraceEvidenceIngestUrl | quote }}
             - name: BKN_TRACE_ARTIFACT_INGEST_URL
               value: {{ .Values.observability.bknTraceArtifactIngestUrl | quote }}
-            {{- if .Values.observability.bknTraceEvidenceIngestTokenSecretName }}
-            - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+            - name: BKN_TRACE_ARTIFACT_INGEST_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.observability.bknTraceEvidenceIngestTokenSecretName | quote }}
-                  key: {{ .Values.observability.bknTraceEvidenceIngestTokenSecretKey | quote }}
-            {{- end }}
-            - name: BKN_TRACE_EVIDENCE_TIMEOUT_S
-              value: {{ .Values.observability.bknTraceEvidenceTimeoutS | quote }}
+                  name: {{ required "observability.bknTraceArtifactIngestTokenSecretName is required" .Values.observability.bknTraceArtifactIngestTokenSecretName | quote }}
+                  key: {{ required "observability.bknTraceArtifactIngestTokenSecretKey is required" .Values.observability.bknTraceArtifactIngestTokenSecretKey | quote }}
+            - name: BKN_TRACE_KAFKA_BROKERS
+              value: {{ required "observability.evidencePublisher.brokers is required" .Values.observability.evidencePublisher.brokers | quote }}
+            - name: BKN_TRACE_KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "observability.evidencePublisher.credentialsSecretName is required" .Values.observability.evidencePublisher.credentialsSecretName | quote }}
+                  key: {{ required "observability.evidencePublisher.usernameSecretKey is required" .Values.observability.evidencePublisher.usernameSecretKey | quote }}
+            - name: BKN_TRACE_KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "observability.evidencePublisher.credentialsSecretName is required" .Values.observability.evidencePublisher.credentialsSecretName | quote }}
+                  key: {{ required "observability.evidencePublisher.passwordSecretKey is required" .Values.observability.evidencePublisher.passwordSecretKey | quote }}
+            - name: BKN_TRACE_CAPTURE_POLICY_REVISION
+              value: {{ required "observability.evidencePublisher.capturePolicyRevision is required" .Values.observability.evidencePublisher.capturePolicyRevision | quote }}
+            - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS
+              value: {{ .Values.observability.evidencePublisher.queueMaxRecords | quote }}
+            - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES
+              value: {{ .Values.observability.evidencePublisher.queueMaxBytes | quote }}
+            - name: BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES
+              value: {{ .Values.observability.evidencePublisher.maxRecordBytes | quote }}
+            - name: BKN_TRACE_EVIDENCE_MAX_AGE_S
+              value: {{ .Values.observability.evidencePublisher.maxAgeS | quote }}
+            - name: BKN_TRACE_EVIDENCE_MAX_ATTEMPTS
+              value: {{ .Values.observability.evidencePublisher.maxAttempts | quote }}
+            - name: BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS
+              value: {{ .Values.observability.evidencePublisher.retryBackoffMs | quote }}
+            - name: BKN_TRACE_EVIDENCE_DRAIN_TIMEOUT_S
+              value: {{ .Values.observability.evidencePublisher.drainTimeoutS | quote }}
           volumeMounts:
             - name: host-time
               mountPath: /etc/localtime

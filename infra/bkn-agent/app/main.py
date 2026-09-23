@@ -56,6 +56,7 @@ async def _recover_stale_tasks() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    await evidence.start_publisher()
     await _recover_stale_tasks()
     try:
         yield

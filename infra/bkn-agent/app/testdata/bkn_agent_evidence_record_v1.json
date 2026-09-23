@@ -1,0 +1,41 @@
+{
+  "fixture_id": "bkn_agent_evidence_record_v1",
+  "fixture_version": 1,
+  "topic": "openbkn.evidence.v1",
+  "process_boot_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "producer_id": "bkn-agent",
+  "base_stream_id": "bkn-agent",
+  "workload_identity": "bkn-agent",
+  "capture_policy_revision": "41",
+  "event": {
+    "event_id": "evt-publisher-test",
+    "event_type": "object_type.get.observed",
+    "bkn.trace.schema.version": "3.0.0",
+    "conversation_id": "conv-1",
+    "interaction_id": "int-1",
+    "started_at": "2026-09-22T08:00:00Z",
+    "observed_at": "2026-09-22T08:00:01Z",
+    "emitted_at": "2026-09-22T08:00:02Z",
+    "envelope": {
+      "event": {
+        "bkn.trace.schema.version": "2.1.0",
+        "event_type": "object_type.get.observed"
+      },
+      "owner": {
+        "application_principal_id": "openbkn-studio",
+        "effective_subject_type": "user",
+        "effective_subject_id": "user-1"
+      }
+    }
+  },
+  "record": {
+    "key": "bkn-agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "headers": [
+      {"key": "content-type", "value": "application/json"},
+      {"key": "bkn-trace-schema-version", "value": "3.0.0"},
+      {"key": "capture_policy_revision", "value": "41"},
+      {"key": "producer_instance_id", "value": "bkn-agent#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+      {"key": "bkn-evidence-record-class", "value": "live"}
+    ]
+  }
+}

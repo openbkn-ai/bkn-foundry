@@ -346,10 +346,12 @@ contains "operator integration reads the token key the receiver writes" "${opera
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_release_extra_sets bkn-agent openbkn
 bkn_agent_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
-contains "bkn-agent posts evidence to the ingest route" "${bkn_agent_sets}" "observability.bknTraceEvidenceIngestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
 contains "bkn-agent posts artifacts to the artifact route" "${bkn_agent_sets}" "observability.bknTraceArtifactIngestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
-contains "bkn-agent uses the evidence ingest Secret" "${bkn_agent_sets}" "observability.bknTraceEvidenceIngestTokenSecretName=bkn-trace-evidence-ingest"
-contains "bkn-agent reads the token key the receiver writes" "${bkn_agent_sets}" "observability.bknTraceEvidenceIngestTokenSecretKey=token"
+contains "bkn-agent uses Kafka brokers" "${bkn_agent_sets}" "observability.evidencePublisher.brokers="
+contains "bkn-agent uses Kafka credential Secret" "${bkn_agent_sets}" "observability.evidencePublisher.credentialsSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+contains "bkn-agent has capture policy revision" "${bkn_agent_sets}" "observability.evidencePublisher.capturePolicyRevision=1"
+contains "bkn-agent has bounded queue settings" "${bkn_agent_sets}" "observability.evidencePublisher.queueMaxRecords=4096"
+not_contains "bkn-agent has no legacy Evidence HTTP route" "${bkn_agent_sets}" "observability.bknTraceEvidenceIngestUrl="
 
 # The full release manifest contains all declared producers. A new producer
 # must either be wired above or make this installer-level assertion fail.
