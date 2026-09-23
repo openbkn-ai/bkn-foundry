@@ -1036,10 +1036,18 @@ func TestSessionGuardAcceptsCanonicalBusinessRefsForCurrentKnowledgeNetwork(t *t
 	if err != nil || result.IsError {
 		t.Fatalf("canonical business refs rejected: result=%#v err=%v", result, err)
 	}
-	if len(seen.Context.BusinessRefs) != 1 ||
-		seen.Context.BusinessRefs[0].RefID != "object:kn_demo:customer" ||
-		seen.Context.BusinessRefs[0].Version != "unversioned" {
-		t.Fatalf("business refs not propagated: %#v", seen.Context.BusinessRefs)
+	// A canonical declaration is accepted and carried as a declaration. It does
+	// not become an authoritative ref: only what the server derives from the
+	// request, and what evidence observes, decide what the receipt records.
+	if len(seen.Context.DeclaredBusinessRefs) != 1 ||
+		seen.Context.DeclaredBusinessRefs[0].RefID != "object:kn_demo:customer" ||
+		seen.Context.DeclaredBusinessRefs[0].Version != "unversioned" {
+		t.Fatalf("declared business refs not propagated: %#v", seen.Context.DeclaredBusinessRefs)
+	}
+	for _, ref := range seen.Context.BusinessRefs {
+		if ref.RefID == "object:kn_demo:customer" {
+			t.Fatalf("a declared ref became authoritative: %#v", seen.Context.BusinessRefs)
+		}
 	}
 }
 
@@ -1094,7 +1102,7 @@ func TestParseBusinessRefsRejectsMalformedDeclarations(t *testing.T) {
 }
 
 func TestObservedToolBusinessRefsAddsMetricScopeWithoutDomainKnowledge(t *testing.T) {
-	refs := observedToolBusinessRefs(toolKeyQueryMetric, map[string]any{
+	refs := derivedToolBusinessRefs(toolKeyQueryMetric, map[string]any{
 		"kn_id":     "network-any",
 		"metric_id": "metric-any",
 	}, "network-any")
@@ -1154,7 +1162,7 @@ func TestObservedToolBusinessRefsAddsSchemaScopeFromValidatedInputs(t *testing.T
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			refs := observedToolBusinessRefs(tc.toolName, tc.arguments, "network-any")
+			refs := derivedToolBusinessRefs(tc.toolName, tc.arguments, "network-any")
 			if len(refs) != len(tc.want) {
 				t.Fatalf("derived refs = %#v, want %d refs", refs, len(tc.want))
 			}
@@ -1177,7 +1185,7 @@ func TestObservedToolBusinessRefsRejectsMismatchedSchemaNetwork(t *testing.T) {
 			if toolName != toolKeyGetKnDetail {
 				arguments["ids"] = []any{"known"}
 			}
-			if refs := observedToolBusinessRefs(toolName, arguments, "network-any"); len(refs) != 0 {
+			if refs := derivedToolBusinessRefs(toolName, arguments, "network-any"); len(refs) != 0 {
 				t.Fatalf("refs = %#v, want none", refs)
 			}
 		})
@@ -1196,7 +1204,7 @@ func TestObservedToolBusinessRefsRejectsIncompleteOrMismatchedMetricScope(t *tes
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if refs := observedToolBusinessRefs(toolKeyQueryMetric, tc.arguments, tc.knID); len(refs) != 0 {
+			if refs := derivedToolBusinessRefs(toolKeyQueryMetric, tc.arguments, tc.knID); len(refs) != 0 {
 				t.Fatalf("refs = %#v, want none", refs)
 			}
 		})

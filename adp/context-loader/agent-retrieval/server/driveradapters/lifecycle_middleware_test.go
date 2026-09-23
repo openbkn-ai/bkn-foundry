@@ -371,8 +371,14 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			if gotAction != test.wantAction {
 				t.Fatalf("finish action = %q, want %q", gotAction, test.wantAction)
 			}
-			if gotOperationKey == "" || len(gotBusinessRefs) != 1 || gotBusinessRefs[0].RefID != "object:kn-demo:order" {
-				t.Fatalf("derived operation or declared refs not preserved: key=%q refs=%#v", gotOperationKey, gotBusinessRefs)
+			if gotOperationKey == "" {
+				t.Fatalf("derived operation key missing: key=%q", gotOperationKey)
+			}
+			// The request declared object:kn-demo:order. This path derives no
+			// refs of its own, so the receipt carries none: a declaration is a
+			// hint, never the record of what the call read.
+			if len(gotBusinessRefs) != 0 {
+				t.Fatalf("declared business refs reached the receipt: %#v", gotBusinessRefs)
 			}
 		})
 	}

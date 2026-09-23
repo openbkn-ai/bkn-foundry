@@ -20,7 +20,7 @@ var testContextArgument = map[string]any{"conversation_id": "conv-1", "interacti
 // guard, naming what is allowed; nothing reaches Trace.
 func TestCompactProfileRefusesUnknownArguments(t *testing.T) {
 	t.Setenv("CONFIG_PROFILE", "../../infra/config")
-	client, ensured := fakeTraceCore(t)
+	client, ensured, _ := fakeTraceCore(t)
 	srv, _ := newMCPServerForProfile(client, "zh-CN", defaultPTCServicePort, compactProfile)
 	for _, arguments := range []map[string]any{
 		{"kn_id": "kn_demo", "ot_id": "ot_order", "limt": 5, "bkn_context": testContextArgument},
@@ -41,7 +41,7 @@ func TestCompactProfileRefusesUnknownArguments(t *testing.T) {
 // Declared arguments pass the check and reach the guard.
 func TestCompactProfileLetsDeclaredArgumentsThrough(t *testing.T) {
 	t.Setenv("CONFIG_PROFILE", "../../infra/config")
-	client, ensured := fakeTraceCore(t)
+	client, ensured, _ := fakeTraceCore(t)
 	srv, _ := newMCPServerForProfile(client, "zh-CN", defaultPTCServicePort, compactProfile)
 	result := callTrustedTool(t, srv, toolKeySearchNativeTools, map[string]any{"query": "子图", "limit": 2, "bkn_context": testContextArgument})
 	if result.IsError {
