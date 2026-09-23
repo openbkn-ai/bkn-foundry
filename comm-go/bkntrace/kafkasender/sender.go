@@ -100,6 +100,9 @@ func NewAudit(producer Producer) auditpublisher.Sender {
 }
 
 func (s auditSender) Send(_ context.Context, record auditpublisher.Record) error {
+	if record.Topic != auditpublisher.Topic {
+		return errors.New("invalid audit Kafka topic")
+	}
 	headers := make([]sarama.RecordHeader, 0, len(record.Headers))
 	for _, header := range record.Headers {
 		headers = append(headers, sarama.RecordHeader{Key: []byte(header.Key), Value: append([]byte(nil), header.Value...)})

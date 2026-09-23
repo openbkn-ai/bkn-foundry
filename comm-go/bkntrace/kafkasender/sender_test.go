@@ -103,3 +103,20 @@ func TestAuditSenderPreservesFrozenWireRecord(t *testing.T) {
 		t.Fatalf("headers = %#v", producer.message.Headers)
 	}
 }
+
+func TestAuditSenderRejectsNonCanonicalTopic(t *testing.T) {
+	producer := &capturedProducer{}
+	sender := NewAudit(producer)
+	record := auditpublisher.Record{
+		Topic: "wrong.audit.topic",
+		Key:   []byte("source\x1ftool\x1f1"), Value: []byte(`{"schema_version":"1.0"}`),
+		Headers: []auditpublisher.Header{{Key: auditpublisher.SchemaVersionHeader, Value: []byte(auditpublisher.SchemaVersion)}},
+	}
+
+	if err := sender.Send(context.Background(), record); err == nil {
+		t.Fatal("Send() error = nil, want noncanonical topic rejection")
+	}
+	if producer.message != nil {
+		t.Fatalf("Kafka message = %#v, want no send", producer.message)
+	}
+}
