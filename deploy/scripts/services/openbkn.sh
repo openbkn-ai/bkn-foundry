@@ -576,9 +576,19 @@ _openbkn_trace_profile_sets() {
             ;;
         agent-operator-integration)
             CORE_RELEASE_EXTRA_SETS+=(
-                "observability.evidence.ingest_url=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
-                "observability.evidence.ingest_token_secret_name=${OPENBKN_TRACE_INGEST_SECRET}"
-                "observability.evidence.ingest_token_secret_key=token"
+                "observability.evidence.publisher.brokers=$(_openbkn_trace_kafka_brokers)"
+                "observability.evidence.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "observability.evidence.publisher.username_secret_key=username"
+                "observability.evidence.publisher.password_secret_key=password"
+                "observability.evidence.publisher.producer_id=agent-operator-integration"
+                "observability.evidence.publisher.producer_stream_id=agent-operator-integration"
+                "observability.evidence.publisher.workload_identity=agent-operator-integration"
+                "observability.evidence.publisher.capture_policy_revision=${OPENBKN_TRACE_CAPTURE_POLICY_REVISION}"
+                "observability.evidence.publisher.queue_max_records=4096"
+                "observability.evidence.publisher.queue_max_bytes=67108864"
+                "observability.evidence.publisher.max_record_bytes=1048576"
+                "observability.evidence.publisher.max_attempts=3"
+                "observability.evidence.publisher.retry_backoff_ms=100"
             )
             ;;
         bkn-agent)
@@ -815,10 +825,12 @@ _openbkn_warn_unwired_evidence_producers() {
             [[ "${set_value}" == "observability.evidence.artifact_secret_name=${OPENBKN_TRACE_INGEST_SECRET}" || "${set_value}" == "observability.bknTraceArtifactIngestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}" ]] && has_artifact_secret=true
             [[ "${set_value}" == "observability.evidencePublisher.credentialsSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
             [[ "${set_value}" == "observability.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)" ]] && has_kafka_publisher=true
+            [[ "${set_value}" == "observability.evidence.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
+            [[ "${set_value}" == "observability.evidence.publisher.brokers=$(_openbkn_trace_kafka_brokers)" ]] && has_kafka_publisher=true
         done
         if [[ "${release_name}" == "agent-retrieval" || "${release_name}" == "bkn-agent" ]]; then
             [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true && "${has_artifact_url}" == true && "${has_artifact_secret}" == true ]] || unwired+=("${release_name}")
-        elif [[ "${release_name}" == "bkn-backend" || "${release_name}" == "ontology-query" ]]; then
+        elif [[ "${release_name}" == "bkn-backend" || "${release_name}" == "ontology-query" || "${release_name}" == "agent-operator-integration" ]]; then
             [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true ]] || unwired+=("${release_name}")
         else
             [[ "${has_ingest_url}" == true && "${has_ingest_secret}" == true ]] || unwired+=("${release_name}")

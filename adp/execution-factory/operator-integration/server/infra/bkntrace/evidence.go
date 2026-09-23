@@ -1,14 +1,11 @@
 package bkntrace
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +36,7 @@ type Event struct {
 
 type Action struct {
 	traceparent, traceID, spanID, requestID           string
-	interactionID, operationID                        string
+	conversationID, interactionID, operationID        string
 	causationEventID, claimID, instanceID, observedAt string
 	approvalRequestedEventID                          string
 	actionType, policyRef, actorRef, toolRef          string
@@ -47,7 +44,7 @@ type Action struct {
 	attempt                                           int
 }
 
-func ParseAction(headers map[string]any, boxID, toolID, userID string) (Action, bool) {
+func ParseAction(headers map[string]any, boxID, toolID, userID string, conversationContext ...string) (Action, bool) {
 	get := func(key string) string {
 		for header, value := range headers {
 			if strings.EqualFold(header, key) {
@@ -76,6 +73,10 @@ func ParseAction(headers map[string]any, boxID, toolID, userID string) (Action, 
 		toolRef:                  hashRef("tool", toolID),
 		accountID:                get("x-account-id"), accountType: get("x-account-type"),
 		attempt: attempt,
+	}
+	if len(conversationContext) > 0 {
+		// Conversation is correlation metadata only; it does not participate in execution authorization.
+		action.conversationID = strings.TrimSpace(conversationContext[0])
 	}
 	complete := action.traceID != "" && action.spanID != "" && action.requestID != "" &&
 		action.interactionID != "" && action.operationID != "" && action.causationEventID != "" &&
@@ -151,73 +152,6 @@ func (a Action) eventID(eventType string) string {
 
 type Emitter interface {
 	Emit(ctx context.Context, action Action, events []Event) error
-}
-
-type HTTPEmitter struct {
-	URL          string
-	Token        string
-	Client       *http.Client
-	MaxAttempts  int
-	RetryBackoff time.Duration
-}
-
-func NewHTTPEmitter() *HTTPEmitter {
-	return &HTTPEmitter{
-		URL: os.Getenv("BKN_TRACE_EVIDENCE_INGEST_URL"), Token: os.Getenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN"),
-		Client:      &http.Client{Timeout: 3 * time.Second},
-		MaxAttempts: 3, RetryBackoff: 100 * time.Millisecond,
-	}
-}
-
-func (e *HTTPEmitter) Emit(ctx context.Context, action Action, events []Event) error {
-	if e == nil || e.URL == "" || len(events) == 0 {
-		return errors.New("bkn trace evidence emitter is not configured")
-	}
-	body, err := json.Marshal(map[string]any{
-		"bkn.trace.schema.version": schemaVersion,
-		"trace": map[string]any{
-			"trace_id": action.traceID, "traceparent": action.traceparent,
-			"bkn.request.id":   action.requestID,
-			"bkn.account.id":   action.accountID,
-			"bkn.account.type": action.accountType,
-		},
-		"events": events,
-	})
-	if err != nil {
-		return err
-	}
-	attempts := e.MaxAttempts
-	if attempts < 1 {
-		attempts = 1
-	}
-	var lastErr error
-	for attempt := 1; attempt <= attempts; attempt++ {
-		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, e.URL, bytes.NewReader(body))
-		if reqErr != nil {
-			return reqErr
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if token := strings.TrimSpace(e.Token); token != "" {
-			req.Header.Set("X-BKN-Trace-Ingest-Token", token)
-		}
-		resp, doErr := e.Client.Do(req)
-		if doErr == nil && resp != nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return nil
-			}
-			doErr = errors.New("bkn trace evidence ingest returned " + resp.Status)
-		}
-		lastErr = doErr
-		if attempt < attempts && e.RetryBackoff > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(e.RetryBackoff * time.Duration(attempt)):
-			}
-		}
-	}
-	return lastErr
 }
 
 func MustJSON(value any) []byte {

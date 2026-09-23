@@ -81,7 +81,7 @@ func NewToolServiceImpl() interfaces.IToolService {
 			AuditLog:         metric.NewAuditLogBuilder(),
 			MetadataService:  metadata.NewMetadataService(),
 			CapabilityIndex:  capabilityindex.NewReconciler(),
-			ActionEvidence:   bkntrace.NewHTTPEmitter(),
+			ActionEvidence:   bkntrace.NewConfiguredKafkaEmitter(conf.GetLogger()),
 			ActionExecutions: bkntrace.NewRedisExecutionGate(redisClient),
 			ProxyAuthorizer: proxyexecution.NewAuthorizer(
 				drivenadapters.NewProxyExecutionAuthorizationAccess(),

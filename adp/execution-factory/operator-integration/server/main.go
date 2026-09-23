@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -129,6 +130,7 @@ func (s *Server) Stop(ctx context.Context) {
 	s.config.Logger.Info("stop agent-operator-integration server")
 	// sandbox.Close() // Close and destroy the sandbox session pool.
 	s.outboxMessageEvent.Stop(ctx)
+	bkntrace.CloseEvidencePublisher(ctx)
 	if s.capabilityCancel != nil {
 		s.capabilityCancel()
 	}
