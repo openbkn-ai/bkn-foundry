@@ -56,7 +56,7 @@ func TestKafkaEmitterAdmitsCanonicalActionEvidence(t *testing.T) {
 	}
 }
 
-func TestKafkaEmitterDoesNotAdmitEvidenceWithoutTrustedConversation(t *testing.T) {
+func TestKafkaEmitterDoesNotAdmitEvidenceWithoutConversationContext(t *testing.T) {
 	publisher, err := evidencepublisher.New(evidencepublisher.Config{
 		ProducerID: "agent-operator-integration", BaseStreamID: "agent-operator-integration",
 		WorkloadIdentity: "agent-operator-integration", ProcessBootID: "boot-test",
@@ -67,11 +67,11 @@ func TestKafkaEmitterDoesNotAdmitEvidenceWithoutTrustedConversation(t *testing.T
 	}
 	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
 	if !ok {
-		t.Fatal("missing conversation id must not disable ActionExecutions control flow")
+		t.Fatal("missing correlation metadata must not disable ActionExecutions control flow")
 	}
 	events, _ := action.AfterPermission(nil)
 	if err := NewKafkaEmitter(publisher).Emit(context.Background(), action, events); err == nil {
-		t.Fatal("Evidence without canonical conversation_id was accepted")
+		t.Fatal("Evidence without conversation correlation metadata was accepted")
 	}
 	if got := len(publisher.SnapshotQueue()); got != 0 {
 		t.Fatalf("queued non-canonical Evidence: %d", got)

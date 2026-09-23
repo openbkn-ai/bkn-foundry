@@ -44,7 +44,7 @@ type Action struct {
 	attempt                                           int
 }
 
-func ParseAction(headers map[string]any, boxID, toolID, userID string, trustedConversationID ...string) (Action, bool) {
+func ParseAction(headers map[string]any, boxID, toolID, userID string, conversationContext ...string) (Action, bool) {
 	get := func(key string) string {
 		for header, value := range headers {
 			if strings.EqualFold(header, key) {
@@ -74,8 +74,9 @@ func ParseAction(headers map[string]any, boxID, toolID, userID string, trustedCo
 		accountID:                get("x-account-id"), accountType: get("x-account-type"),
 		attempt: attempt,
 	}
-	if len(trustedConversationID) > 0 {
-		action.conversationID = strings.TrimSpace(trustedConversationID[0])
+	if len(conversationContext) > 0 {
+		// Conversation is correlation metadata only; it does not participate in execution authorization.
+		action.conversationID = strings.TrimSpace(conversationContext[0])
 	}
 	complete := action.traceID != "" && action.spanID != "" && action.requestID != "" &&
 		action.interactionID != "" && action.operationID != "" && action.causationEventID != "" &&
