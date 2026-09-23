@@ -133,7 +133,7 @@ func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 	// The caller's own input is reported before anything else: it is the one
 	// failure here that the caller can act on, and it is not a fault of ours.
 	if len(callerFailures) > 0 {
-		s.logger.WithContext(ctx).Warnf("[Step 2] ⚠️ 调用方传入的参数无效: %d 个属性", len(callerFailures))
+		s.logger.WithContext(ctx).Warnf("[Step 2] invalid caller-supplied parameters: %d properties", len(callerFailures))
 		return nil, s.buildCallerParamsError(ctx, callerFailures)
 	}
 
