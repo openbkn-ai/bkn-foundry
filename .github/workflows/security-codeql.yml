@@ -1,0 +1,104 @@
+name: security-codeql
+
+# CodeQL advanced setup.
+#
+# Why this is not GitHub's generated default: the repository has no go.mod at
+# its root — Go lives in 13 independent modules under comm-go/, adp/, vega/,
+# bkn-safe/, bkn-trace/, infra/ and deploy/. The Go autobuilder cannot find a
+# root module, falls back to "run the repository's build script", and ends up
+# executing the root Makefile, which is the redocly API-documentation
+# toolchain. That burns minutes rendering and linting OpenAPI YAML and extracts
+# no Go at all. This workflow builds each module explicitly instead.
+#
+# Go is the only language here that needs a build: build-mode "none" is
+# supported for C/C++, C#, Java and Rust, not for Go.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Keep a weekly full scan so main is covered even in quiet weeks.
+    - cron: '26 4 * * 1'
+
+concurrency:
+  group: security-codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        if: matrix.language == 'go'
+        with:
+          go-version-file: comm-go/go.mod
+          # Deliberately no build cache. CodeQL extracts Go by tracing the
+          # compiler, so a restored build cache turns `go build` into a no-op
+          # and the database comes out empty or partial.
+          cache: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Build Go modules
+        if: matrix.build-mode == 'manual'
+        env:
+          # The repo-root go.work is gitignored; a developer's local copy must
+          # never change what CI resolves. Matches ci-comm-go.yml.
+          GOWORK: off
+        run: |
+          set -euo pipefail
+          # Discovered rather than hardcoded so a newly added module is scanned
+          # without anyone remembering to edit this list.
+          mapfile -t modules < <(
+            find . -name go.mod \
+              -not -path './node_modules/*' \
+              -not -path '*/vendor/*' \
+              -not -path '*/node_modules/*' \
+              -print0 | xargs -0 -n1 dirname | sort
+          )
+          if [[ ${#modules[@]} -eq 0 ]]; then
+            echo "::error::no Go modules found; CodeQL would produce an empty database"
+            exit 1
+          fi
+          echo "Building ${#modules[@]} Go modules:"
+          printf '  %s\n' "${modules[@]}"
+          for m in "${modules[@]}"; do
+            echo "::group::go build $m"
+            (cd "$m" && go build ./...)
+            echo "::endgroup::"
+          done
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
