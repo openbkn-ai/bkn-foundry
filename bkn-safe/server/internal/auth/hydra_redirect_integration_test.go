@@ -33,9 +33,10 @@ func TestHydraRedirectLive(t *testing.T) {
 
 	const clientID = "it-redirect-test"
 	const initial = "https://init.example/callback"
+	const initialLogout = "https://init.example/logout"
 	const added = "http://localhost:8000/studio/callback"
 
-	createClient(t, base, clientID, initial)
+	createClient(t, base, clientID, initial, initialLogout)
 	t.Cleanup(func() { deleteClient(t, base, clientID) })
 
 	h := NewHydraAdmin(base)
@@ -88,14 +89,38 @@ func TestHydraRedirectLive(t *testing.T) {
 	if !has(got, initial) {
 		t.Fatalf("remove dropped the wrong uri: %v", got)
 	}
+
+	// access-origin reconciliation replaces redirect and post-logout arrays in
+	// one patch so Hydra never observes a half-updated Studio client.
+	wantClientURIs := OAuthClientURIs{
+		RedirectURIs:           []string{initial, added},
+		PostLogoutRedirectURIs: []string{initialLogout, "http://localhost:8000/studio"},
+	}
+	if err := h.SetOAuthClientURIs(ctx, clientID, wantClientURIs); err != nil {
+		t.Fatalf("set client URIs: %v", err)
+	}
+	clientURIs, err := h.GetOAuthClientURIs(ctx, clientID)
+	if err != nil {
+		t.Fatalf("get client URIs: %v", err)
+	}
+	for _, uri := range wantClientURIs.RedirectURIs {
+		if !has(clientURIs.RedirectURIs, uri) {
+			t.Fatalf("redirect %q missing after combined patch: %v", uri, clientURIs.RedirectURIs)
+		}
+	}
+	for _, uri := range wantClientURIs.PostLogoutRedirectURIs {
+		if !has(clientURIs.PostLogoutRedirectURIs, uri) {
+			t.Fatalf("logout %q missing after combined patch: %v", uri, clientURIs.PostLogoutRedirectURIs)
+		}
+	}
 }
 
-func createClient(t *testing.T, base, id, redirect string) {
+func createClient(t *testing.T, base, id, redirect, logout string) {
 	t.Helper()
 	deleteClient(t, base, id) // idempotent: clear any leftover from a prior run
 	body := `{"client_id":"` + id + `","grant_types":["authorization_code"],` +
 		`"response_types":["code"],"token_endpoint_auth_method":"none",` +
-		`"redirect_uris":["` + redirect + `"]}`
+		`"redirect_uris":["` + redirect + `"],"post_logout_redirect_uris":["` + logout + `"]}`
 	req, _ := http.NewRequest(http.MethodPost, base+"/admin/clients", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)

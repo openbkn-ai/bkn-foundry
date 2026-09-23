@@ -662,6 +662,10 @@ func auditAction(method, fullPath string) string {
 			return "remove_redirect_uri"
 		}
 		return "add_redirect_uri"
+	case "/api/safe/v1/admin/oauth/access-origins":
+		return "add_access_origin"
+	case "/api/safe/v1/admin/oauth/access-origins/:id":
+		return "remove_access_origin"
 	case "/api/safe/v1/me":
 		return "update_profile"
 	}

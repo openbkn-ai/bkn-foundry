@@ -25,6 +25,12 @@ type HydraAdmin struct {
 	http     *http.Client
 }
 
+// OAuthClientURIs is the browser-facing URI subset of a Hydra OAuth2 client.
+type OAuthClientURIs struct {
+	RedirectURIs           []string
+	PostLogoutRedirectURIs []string
+}
+
 // NewHydraAdmin builds an admin client pointed at hydra's admin base URL
 // (e.g. http://hydra-admin:4445).
 func NewHydraAdmin(adminURL string) *HydraAdmin {
@@ -86,6 +92,31 @@ func (h *HydraAdmin) GetClientRedirectURIs(ctx context.Context, clientID string)
 		return nil, fmt.Errorf("get oauth2 client %q: %w", clientID, err)
 	}
 	return cl.GetRedirectUris(), nil
+}
+
+// GetOAuthClientURIs returns both callback and post-logout URI sets so the
+// access-origin reconciler can update them atomically from one client snapshot.
+func (h *HydraAdmin) GetOAuthClientURIs(ctx context.Context, clientID string) (OAuthClientURIs, error) {
+	cl, _, err := h.api.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	if err != nil {
+		return OAuthClientURIs{}, fmt.Errorf("get oauth2 client %q: %w", clientID, err)
+	}
+	return OAuthClientURIs{
+		RedirectURIs:           append([]string(nil), cl.GetRedirectUris()...),
+		PostLogoutRedirectURIs: append([]string(nil), cl.GetPostLogoutRedirectUris()...),
+	}, nil
+}
+
+// SetOAuthClientURIs replaces the two managed URI arrays in one JSON Patch.
+func (h *HydraAdmin) SetOAuthClientURIs(ctx context.Context, clientID string, uris OAuthClientURIs) error {
+	patch := []hydra.JsonPatch{
+		{Op: "add", Path: "/redirect_uris", Value: uris.RedirectURIs},
+		{Op: "add", Path: "/post_logout_redirect_uris", Value: uris.PostLogoutRedirectURIs},
+	}
+	if _, _, err := h.api.OAuth2API.PatchOAuth2Client(ctx, clientID).JsonPatch(patch).Execute(); err != nil {
+		return fmt.Errorf("patch oauth2 client %q uris: %w", clientID, err)
+	}
+	return nil
 }
 
 // AddClientRedirectURI registers uri on the client (idempotent: a duplicate is a
