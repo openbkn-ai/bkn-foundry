@@ -10,7 +10,7 @@
   },
   "get_action_info": {
     "input_schema.properties.response_format.description": "Response format is ignored; this tool always returns JSON-compatible tool definitions.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.at_id.description": "Action type id returned by search_schema or get_kn_detail.",
     "input_schema.properties._instance_identities.description": "Object instances for which executable action tools should be generated.",
     "output_schema.properties.headers.description": "Headers required when calling the returned action tools.",
@@ -56,7 +56,7 @@
   },
   "get_logic_properties_values": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.ot_id.description": "Object type id for the requested instances.",
     "input_schema.properties.query.description": "Natural-language explanation of the logic properties to resolve.",
     "input_schema.properties._instance_identities.description": "Instances whose logic property values should be calculated.",
@@ -110,7 +110,7 @@
   },
   "query_instance_subgraph": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.include_logic_params.description": "Whether to include logic property parameters in returned nodes.",
     "input_schema.properties.relation_type_paths.description": "Relation traversal paths used to fetch a subgraph. object_types and relation_types must line up: an n-hop path has n+1 object_types and n relation_types, and relation_types cannot be empty. A path may walk a relation against its definition (backward); list the nodes in the order they are walked. Value rules for per-node filters: like/not_like take a literal substring (do not add % yourself; an unescaped % is rejected) and regex anchoring and case sensitivity depend on the resource storage (write .*term.* for \"contains\").",
     "input_schema.properties.relation_type_paths.items.properties.object_types.description": "Object type steps and optional conditions in this path.",
@@ -139,7 +139,7 @@
   },
   "explore_subgraph": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.source_object_type_id.description": "Object type the exploration starts from. Confirm it with search_schema or get_object_types first.",
     "input_schema.properties.direction.description": "Direction to explore. forward follows relations as declared, backward follows them in reverse, bidirectional follows both. Use bidirectional when you are unsure how the relation was modelled.",
     "input_schema.properties.path_length.description": "Maximum number of hops, 1 to 3; anything higher returns a 400. Path counts grow fast with depth, so start at 1 or 2 and raise it only if the answer is not there.",
@@ -166,7 +166,7 @@
   },
   "query_object_instance": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.ot_id.description": "Object type id to query.",
     "input_schema.properties.include_logic_params.description": "Whether to include logic property parameters in returned instances.",
     "input_schema.properties.condition.description": "Structured filter condition for object instances.",
@@ -220,7 +220,7 @@
   },
   "search_schema": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.query.description": "Natural-language question or keywords to search.",
     "input_schema.properties.search_scope.description": "Schema search scope. Defaults to all schema types when omitted.",
     "input_schema.properties.search_scope.properties.concept_groups.description": "BKN concept group ids used to limit recalled schema.",
@@ -259,7 +259,7 @@
     "output_schema.properties.object_types.items.properties.logic_properties.items.properties.parameters.description": "Parameter definitions. value_from=property is read by the server from that column of the instance and is not supplied by the caller; const is fixed at modelling time; input has to come from outside, and of those the ones with if_system_generate=true - the time window (instant/start/end/step) - are generated by the server, while the rest, such as a business filter, are currently inferred by a server-side model from query."
   },
   "execute_action": {
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.at_id.description": "Action type id returned by search_schema or get_kn_detail.",
     "input_schema.properties._instance_identities.description": "Target instances; when empty the action driver scans all instances matching the action condition. Each element must be taken from the _instance_identity field of query_object_instance or query_instance_subgraph, never fabricated.",
     "input_schema.properties.dynamic_params.description": "Dynamic parameter values for the action (parameters whose value_from=input). First call get_action_info to obtain this action's dynamic_params schema and parameter names, then fill in the real values by name. Each parameter is a separate key; do not concatenate multiple parameter names into one key.",
@@ -270,7 +270,7 @@
     "input_schema.properties._instance_identities.items.description": "Instance identity object, holding dynamic property key/value pairs"
   },
   "get_action_execution": {
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.execution_id.description": "Action execution id, returned by execute_action.",
     "output_schema.description": "Details of a single action execution, including overall status and per-object results.",
     "output_schema.properties.id.description": "Execution id.",
@@ -282,7 +282,7 @@
     "input_schema.properties.response_format.description": "Response format: json or toon, default toon (fewer tokens)."
   },
   "list_action_executions": {
-    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.action_type_id.description": "Filter by action type id (optional).",
     "input_schema.properties.status.description": "Filter by execution status (optional): pending/running/completed/failed/cancelled.",
     "input_schema.properties.trigger_type.description": "Filter by trigger type (optional): manual/scheduled.",
@@ -313,7 +313,7 @@
   },
   "get_object_types": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.ids.description": "Object type ids to expand, taken from object_types[].id of the get_kn_detail summary; a name is accepted too. Several may be given and are fetched in one batch.",
     "output_schema.properties.kn_id.description": "Knowledge network id",
     "output_schema.properties.object_types.items.properties.id.description": "Object type id. Note that the equivalent field in a search_schema response is called concept_id.",
@@ -332,7 +332,7 @@
   },
   "get_relation_types": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.ids.description": "Relation type ids to expand, taken from relation_types[].id of the get_kn_detail summary; a name is accepted too. Several may be given and are fetched in one batch.",
     "output_schema.properties.kn_id.description": "Knowledge network id",
     "output_schema.properties.relation_types.items.properties.id.description": "Relation type id",
@@ -372,7 +372,7 @@
   },
   "query_metric": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.metric_id.description": "Metric id, taken from related_metrics[].id of a get_object_types response. Do not invent one.",
     "input_schema.properties.time.description": "Time window. It may be omitted entirely for a metric with no time dimension, meaning related_metrics[].time_dimension is empty. Note that omitting instant is the same as instant=false, a series query, which requires step. Either give both start and end or neither.",
     "input_schema.properties.time.properties.instant.description": "true takes a single point, the current value; false or omitted takes a series, which requires step.",
@@ -405,7 +405,7 @@
   },
   "search_instance": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",
+    "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.query.description": "A natural-language question or keywords. Pass the whole sentence; there is no need to split it into field conditions, because the vector channel takes the sentence and the full-text channel tokenizes it with an analyzer.",
     "input_schema.properties.concept_groups.description": "Restrict recall to the named BKN concept groups; without it recall runs across the whole knowledge network.",
     "input_schema.properties.object_types.description": "Pin recall to these object types. Takes object type ids (for example material), never names. Ids come from concept_id in a search_schema response, object_type_id in a search_instance response, or object_types[].id from get_kn_detail. Without it recall is not restricted. The filter runs before relevance ranking and the max_object_types cut, so a pinned object type cannot be squeezed out by ranking below the cut.",

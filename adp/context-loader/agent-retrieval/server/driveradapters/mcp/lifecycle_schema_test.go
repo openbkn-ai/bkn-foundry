@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -579,6 +580,56 @@ func sameStringSet(left, right []string) bool {
 		}
 	}
 	return true
+}
+
+// A model reaching this server over MCP cannot set a transport header, so
+// telling it that X-Kn-ID carries the knowledge network sends it to a dead
+// end: the handler then refuses the call for a missing kn_id. This scans what
+// each entry publishes, which is what a model reads; the header fallback
+// itself stays for REST callers, and the adapter contract at GET /mcp/info
+// still describes it.
+func TestPublishedTextDoesNotOfferTheKnIDHeader(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		bundle := loadMCPLocaleBundle(locale)
+		if strings.Contains(bundle.ServerInstructions(), "X-Kn-ID") ||
+			strings.Contains(bundle.CompactServerInstructions(), "X-Kn-ID") {
+			t.Errorf("%s: the server instructions offer the X-Kn-ID header", locale)
+		}
+		full, _ := newMCPServerForLocale(nil, locale)
+		for entry, tools := range map[string]map[string]listedTool{
+			"/mcp":         listedTools(t, full),
+			"/mcp-compact": listedTools(t, compactServer(t, locale)),
+		} {
+			for name, tool := range tools {
+				if strings.Contains(string(tool.InputSchema), "X-Kn-ID") {
+					t.Errorf("%s %s %s: the published input schema offers the X-Kn-ID header",
+						locale, entry, name)
+				}
+			}
+			meta := bundle.ToolMeta(toolKeySearchInstance)
+			if strings.Contains(meta.Description, "X-Kn-ID") {
+				t.Errorf("%s: search_instance's description offers the X-Kn-ID header", locale)
+			}
+		}
+	}
+}
+
+// search_instance declared only query as required while the handler refused a
+// call without kn_id, so the first attempt of a client that cannot set
+// X-Kn-ID always failed.
+func TestSearchInstanceRequiresTheKnowledgeNetwork(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		input, _ := loadMCPLocaleBundle(locale).ToolSchemas(toolKeySearchInstance)
+		var schema struct {
+			Required []string `json:"required"`
+		}
+		if err := json.Unmarshal(input, &schema); err != nil {
+			t.Fatalf("%s: decode search_instance schema: %v", locale, err)
+		}
+		if !slices.Contains(schema.Required, "kn_id") {
+			t.Errorf("%s: search_instance required = %v, want kn_id among them", locale, schema.Required)
+		}
+	}
 }
 
 // Logic properties reach the caller through get_object_types and

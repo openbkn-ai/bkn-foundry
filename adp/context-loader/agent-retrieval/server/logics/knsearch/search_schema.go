@@ -83,10 +83,7 @@ func NormalizeSearchSchemaReq(req *interfaces.SearchSchemaReq) (*interfaces.KnSe
 		return nil, scope, errors.New("search_scope must enable at least one concept type")
 	}
 
-	knID := strings.TrimSpace(req.XKnID)
-	if knID == "" {
-		knID = strings.TrimSpace(req.KnID)
-	}
+	knID := req.ResolvedKnID()
 	if knID == "" {
 		return nil, scope, errors.New("kn_id is required (configure X-Kn-ID header or pass kn_id in body)")
 	}
@@ -169,10 +166,7 @@ func (s *knSearchService) resolveMetricTypes(ctx context.Context, req *interface
 		return []any{}, nil
 	}
 
-	directReq := buildMetricRecallQuery(strings.TrimSpace(req.KnID), strings.TrimSpace(req.Query), *req.MaxConcepts, scope.ConceptGroups)
-	if strings.TrimSpace(req.XKnID) != "" {
-		directReq.KnID = strings.TrimSpace(req.XKnID)
-	}
+	directReq := buildMetricRecallQuery(req.ResolvedKnID(), strings.TrimSpace(req.Query), *req.MaxConcepts, scope.ConceptGroups)
 
 	directResp, err := backend.SearchMetricTypes(ctx, directReq)
 	if err != nil {

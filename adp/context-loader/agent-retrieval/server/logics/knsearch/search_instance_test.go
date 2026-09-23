@@ -302,3 +302,20 @@ func TestNormalizeSearchInstanceReq_PassesObjectTypeScope(t *testing.T) {
 		t.Fatalf("deny list lost on the way to concept retrieval: %v", concept.ExcludeObjectTypes)
 	}
 }
+
+// A host that configures X-Kn-ID once per connection and a caller that passes
+// kn_id for this call used to disagree: the managed guard derived its business
+// refs from the argument while retrieval ran against the header, so a receipt
+// recorded one network and the query read another. The argument wins
+// everywhere now, and the header stays as the per-connection default.
+func TestNormalizeSearchInstanceReqPrefersTheArgumentOverTheHeader(t *testing.T) {
+	knReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{
+		Query: "q", KnID: "kn-argument", XKnID: "kn-header",
+	})
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if knReq.KnID != "kn-argument" {
+		t.Errorf("kn id = %q, want the argument", knReq.KnID)
+	}
+}
