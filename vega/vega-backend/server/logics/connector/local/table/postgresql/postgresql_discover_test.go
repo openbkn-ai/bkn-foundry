@@ -8,6 +8,7 @@ package postgresql
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -33,7 +34,7 @@ func TestPostgresqlConnectorTableTypeFromRelKind(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := connector.tableTypeFromRelKind(tt.relKind); got != tt.want {
+			if got := connector.mapTableType(tt.relKind); got != tt.want {
 				t.Fatalf("expected %s, got %s", tt.want, got)
 			}
 		})
@@ -90,6 +91,76 @@ func TestPostgresqlConnectorListTables(t *testing.T) {
 			t.Fatalf("sqlmock expectations were not met: %v", err)
 		}
 	})
+}
+
+func TestPostgresqlConnectorGetMetadata(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		versionErr  error
+		versionNull bool
+		want        map[string]any
+	}{
+		{
+			name: "includes version when available",
+			want: map[string]any{
+				"version":        "PostgreSQL 16",
+				"server_version": "16",
+				"TimeZone":       "UTC",
+				"schemas":        []string{"public"},
+				"cluster_mode":   "standalone",
+			},
+		},
+		{
+			name:       "returns version query error",
+			versionErr: errors.New("permission denied"),
+		},
+		{
+			name:        "rejects null version",
+			versionNull: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				mock.ExpectClose()
+				require.NoError(t, db.Close())
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+
+			connector := &PostgresqlConnector{config: &postgresqlConfig{}, connected: true, db: db}
+			versionQuery := mock.ExpectQuery(`SELECT version\(\)`)
+			if tt.versionErr != nil {
+				versionQuery.WillReturnError(tt.versionErr)
+			} else if tt.versionNull {
+				versionQuery.WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(nil))
+			} else {
+				versionQuery.WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow("PostgreSQL 16"))
+			}
+			if tt.versionErr == nil && !tt.versionNull {
+				mock.ExpectQuery(`SELECT name, setting\s+FROM pg_settings`).
+					WillReturnRows(sqlmock.NewRows([]string{"name", "setting"}).
+						AddRow("server_version", "16").
+						AddRow("TimeZone", "UTC"))
+				mock.ExpectQuery(`FROM pg_catalog\.pg_namespace`).
+					WillReturnRows(sqlmock.NewRows([]string{"nspname"}).AddRow("public"))
+			}
+
+			metadata, err := connector.GetMetadata(context.Background())
+			if tt.versionErr != nil {
+				require.ErrorIs(t, err, tt.versionErr)
+				assert.Nil(t, metadata)
+				return
+			}
+			if tt.versionNull {
+				require.ErrorContains(t, err, "required database metadata contains NULL")
+				assert.Nil(t, metadata)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, metadata)
+		})
+	}
 }
 
 func TestPostgresqlConnectorFetchColumns(t *testing.T) {

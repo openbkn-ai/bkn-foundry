@@ -19,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 )
 
+// convertRawValue converts driver byte values to strings unless binary output is requested.
 func convertRawValue(v any, preserveBinary bool) any {
 	if b, ok := v.([]byte); ok {
 		if preserveBinary {
@@ -252,7 +253,8 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 
 	// Build query
-	builder := pgSq.Select(selectFields...).From(tableRef)
+	builder := stmtBuilder.Select(selectFields...).
+		From(tableRef)
 
 	// Add the WHERE condition
 	if condition != nil {
@@ -367,7 +369,8 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	// Total number of processed items (for detailed inquiries only)
 	if params.NeedTotal && !isAggregate {
-		countBuilder := pgSq.Select("COUNT(1)").From(tableRef)
+		countBuilder := stmtBuilder.Select("COUNT(1)").
+			From(tableRef)
 		if condition != nil {
 			countBuilder = countBuilder.Where(condition)
 		}
@@ -387,6 +390,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	return result, nil
 }
 
+// buildDateFormat formats a date field for the requested calendar grouping.
 func (c *PostgresqlConnector) buildDateFormat(dateField, calendarInterval string) string {
 	switch calendarInterval {
 	case interfaces.CALENDAR_UNIT_MINUTE:

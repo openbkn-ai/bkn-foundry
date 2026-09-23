@@ -27,6 +27,7 @@ func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableM
 	return c.listTables(ctx, "", "")
 }
 
+// listTables filters readable tables by optional database and table name.
 func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName string) ([]*interfaces.TableMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
@@ -49,7 +50,7 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	// A qualified source identifier selects one database. It must still remain
 	// within the connector's configured database scope.
 	if database != "" {
-		if len(c.config.Databases) > 0 && !containsMariaDBDatabase(c.config.Databases, database) {
+		if len(c.config.Databases) > 0 && !containsDatabase(c.config.Databases, database) {
 			return nil, fmt.Errorf("database %q is outside the connector scope", database)
 		}
 		builder = builder.Where(sq.Eq{"TABLE_SCHEMA": database})
@@ -146,7 +147,8 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	return tables, nil
 }
 
-func containsMariaDBDatabase(databases []string, database string) bool {
+// containsDatabase reports whether a database is included in the connector configuration.
+func containsDatabase(databases []string, database string) bool {
 	for _, configuredDatabase := range databases {
 		if configuredDatabase == database {
 			return true
@@ -185,8 +187,9 @@ func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.T
 	return nil
 }
 
+// GetTableMetaByIdentifier loads complete metadata for a database.table identifier.
 func (c *MariaDBConnector) GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.TableMeta, error) {
-	database, tableName, err := splitMariaDBTableIdentifier(sourceIdentifier)
+	database, tableName, err := c.splitTableIdentifier(sourceIdentifier)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +203,8 @@ func (c *MariaDBConnector) GetTableMetaByIdentifier(ctx context.Context, sourceI
 	return table, nil
 }
 
-func splitMariaDBTableIdentifier(sourceIdentifier string) (database, tableName string, err error) {
+// splitTableIdentifier parses a database.table identifier into database and table names.
+func (c *MariaDBConnector) splitTableIdentifier(sourceIdentifier string) (database, tableName string, err error) {
 	separator := strings.LastIndex(sourceIdentifier, ".")
 	if separator <= 0 || separator == len(sourceIdentifier)-1 {
 		return "", "", fmt.Errorf("invalid MariaDB table source identifier %q", sourceIdentifier)
@@ -208,6 +212,7 @@ func splitMariaDBTableIdentifier(sourceIdentifier string) (database, tableName s
 	return sourceIdentifier[:separator], sourceIdentifier[separator+1:], nil
 }
 
+// findTableByIdentifier locates a table within the connector scope.
 func (c *MariaDBConnector) findTableByIdentifier(ctx context.Context, database, tableName string) (*interfaces.TableMeta, error) {
 	tables, err := c.listTables(ctx, database, tableName)
 	if err != nil {
@@ -457,7 +462,7 @@ func (c *MariaDBConnector) fetchIndexes(ctx context.Context, table *interfaces.T
 		return err
 	}
 
-	var indices []interfaces.TableIndexMeta
+	indices := make([]interfaces.TableIndexMeta, 0)
 	for _, idx := range indexMap {
 		indices = append(indices, *idx)
 	}
@@ -493,10 +498,8 @@ func (c *MariaDBConnector) fetchForeignKeys(ctx context.Context, table *interfac
 	defer func() { _ = rows.Close() }()
 
 	fkMap := make(map[string]*interfaces.TableForeignKeyMeta)
-
 	for rows.Next() {
 		var constraintName, columnName, refTableName, refColumnName sql.NullString
-
 		if err := rows.Scan(
 			&constraintName,
 			&columnName,
@@ -612,27 +615,29 @@ func (c *MariaDBConnector) GetMetadata(ctx context.Context) (map[string]any, err
 	return metadata, nil
 }
 
+// listSchemas lists databases within the connector scope.
 func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
-	schemaBuilder := sq.Select("SCHEMA_NAME").From("information_schema.SCHEMATA")
+	builder := sq.Select("SCHEMA_NAME").
+		From("information_schema.SCHEMATA")
 	if len(c.config.Databases) > 0 {
-		schemaBuilder = schemaBuilder.Where(sq.Eq{"SCHEMA_NAME": c.config.Databases})
+		builder = builder.Where(sq.Eq{"SCHEMA_NAME": c.config.Databases})
 	} else {
-		schemaBuilder = schemaBuilder.Where(sq.NotEq{"SCHEMA_NAME": SYSTEM_DBS})
+		builder = builder.Where(sq.NotEq{"SCHEMA_NAME": SYSTEM_DBS})
 	}
-	schemaQuery, schemaArgs, err := schemaBuilder.OrderBy("SCHEMA_NAME").ToSql()
+	sqlStr, args, err := builder.OrderBy("SCHEMA_NAME").ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build list schemas query: %w", err)
 	}
-	schemaRows, err := c.db.QueryContext(ctx, schemaQuery, schemaArgs...)
+	rows, err := c.db.QueryContext(ctx, sqlStr, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list schemas: %w", err)
 	}
-	defer func() { _ = schemaRows.Close() }()
+	defer func() { _ = rows.Close() }()
 
 	schemas := make([]string, 0)
-	for schemaRows.Next() {
+	for rows.Next() {
 		var schema sql.NullString
-		if err := schemaRows.Scan(&schema); err != nil {
+		if err := rows.Scan(&schema); err != nil {
 			return nil, fmt.Errorf("scan schema: %w", err)
 		}
 		if !schema.Valid {
@@ -640,7 +645,7 @@ func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
 		}
 		schemas = append(schemas, schema.String)
 	}
-	if err := schemaRows.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate schemas: %w", err)
 	}
 	return schemas, nil
