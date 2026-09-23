@@ -322,6 +322,29 @@ func Test_conceptGroupAccess_ListConceptGroups(t *testing.T) {
 	})
 }
 
+func Test_conceptGroupAccess_ListConceptGroupTags(t *testing.T) {
+	Convey("test ListConceptGroupTags\n", t, func() {
+		cga, smock := MockNewConceptGroupAccess(&common.AppSetting{})
+		query := interfaces.ConceptGroupsQueryParams{
+			KNID: "kn1", Branch: interfaces.MAIN_BRANCH, CGIDs: []string{"cg1", "cg2"},
+			ValidAuthorizationIDsOnly: true,
+		}
+		sqlStr, _, err := processQueryCondition(query,
+			sq.Select("f_tags").From(CONCEPT_GROUP_TABLE_NAME)).ToSql()
+		So(err, ShouldBeNil)
+
+		rows := sqlmock.NewRows([]string{"f_tags"}).
+			AddRow(`"zeta","alpha"`).
+			AddRow(`"alpha","beta"`)
+		smock.ExpectQuery(sqlStr).WithArgs("kn1", interfaces.MAIN_BRANCH, "cg1", "cg2").WillReturnRows(rows)
+
+		tags, err := cga.ListConceptGroupTags(testCtx, query)
+		So(err, ShouldBeNil)
+		So(tags, ShouldResemble, []string{"alpha", "beta", "zeta"})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 func Test_conceptGroupAccess_GetConceptGroupsTotal(t *testing.T) {
 	Convey("test GetConceptGroupsTotal\n", t, func() {
 		appSetting := &common.AppSetting{}

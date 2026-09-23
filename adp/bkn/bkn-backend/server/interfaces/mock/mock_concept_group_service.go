@@ -223,13 +223,14 @@ func (mr *MockConceptGroupServiceMockRecorder) ListConceptGroups(ctx, query any)
 }
 
 // ListConceptGroupSummaries mocks base method.
-func (m *MockConceptGroupService) ListConceptGroupSummaries(ctx context.Context, query interfaces.ConceptGroupsQueryParams) ([]*interfaces.ConceptGroup, int, error) {
+func (m *MockConceptGroupService) ListConceptGroupSummaries(ctx context.Context, query interfaces.ConceptGroupsQueryParams) ([]*interfaces.ConceptGroup, int, []string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListConceptGroupSummaries", ctx, query)
 	ret0, _ := ret[0].([]*interfaces.ConceptGroup)
 	ret1, _ := ret[1].(int)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret2, _ := ret[2].([]string)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
 }
 
 // ListConceptGroupSummaries indicates an expected call of ListConceptGroupSummaries.

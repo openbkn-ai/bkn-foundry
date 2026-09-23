@@ -38,6 +38,9 @@ func TestListConceptGroupSummariesPushesAuthorizationAndBatchesMembers(t *testin
 	cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), visibleQuery).Return(2, nil)
 	page := []*interfaces.ConceptGroup{{CGID: "cg-2", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}}
 	cga.EXPECT().ListConceptGroups(gomock.Any(), visibleQuery).Return(page, nil)
+	tagQuery := visibleQuery
+	tagQuery.Tag = ""
+	cga.EXPECT().ListConceptGroupTags(gomock.Any(), tagQuery).Return([]string{"core"}, nil)
 	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
 		[]string{"kn-1/cg-2"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
 		map[string]interfaces.PermissionResourceOps{
@@ -47,12 +50,15 @@ func TestListConceptGroupSummariesPushesAuthorizationAndBatchesMembers(t *testin
 	cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
 		[]string{"cg-2"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{"cg-2": {}}, nil)
 
-	items, total, err := service.ListConceptGroupSummaries(context.Background(), query)
+	items, total, tags, err := service.ListConceptGroupSummaries(context.Background(), query)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if total != 2 || len(items) != 1 || items[0].CGID != "cg-2" {
 		t.Fatalf("result = (%v, %d), want cg-2 and total 2", items, total)
+	}
+	if !reflect.DeepEqual(tags, []string{"core"}) {
+		t.Fatalf("tags = %v, want [core]", tags)
 	}
 	if !reflect.DeepEqual(items[0].ObjectTypeIDs, []string{}) || items[0].Statistics == nil {
 		t.Fatalf("members were not hydrated: %#v", items[0])
@@ -66,9 +72,9 @@ func TestListConceptGroupSummariesReturnsEmptyForEmptyScope(t *testing.T) {
 	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
 		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{}, nil)
 
-	items, total, err := service.ListConceptGroupSummaries(context.Background(),
+	items, total, tags, err := service.ListConceptGroupSummaries(context.Background(),
 		interfaces.ConceptGroupsQueryParams{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH})
-	if err != nil || total != 0 || len(items) != 0 {
+	if err != nil || total != 0 || len(items) != 0 || len(tags) != 0 {
 		t.Fatalf("result = (%v, %d, %v), want empty", items, total, err)
 	}
 }

@@ -705,8 +705,8 @@ func (r *restHandler) ListConceptGroups(c *gin.Context, visitor hydra.Visitor) {
 	parameter.Offset = pageParam.Offset
 
 	// Get concept group summaries.
-	knList, total, err := r.cgs.ListConceptGroupSummaries(ctx, parameter)
-	result := map[string]any{"entries": knList, "total_count": total}
+	knList, total, tags, err := r.cgs.ListConceptGroupSummaries(ctx, parameter)
+	result := map[string]any{"entries": knList, "total_count": total, "available_tags": tags}
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 

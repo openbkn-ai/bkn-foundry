@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -300,6 +301,58 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 
 	span.SetStatus(codes.Ok, "")
 	return conceptGroups, nil
+}
+
+// ListConceptGroupTags returns the distinct tags in the requested authorization scope.
+func (cga *conceptGroupAccess) ListConceptGroupTags(ctx context.Context,
+	query interfaces.ConceptGroupsQueryParams) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListConceptGroupTags")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+	)
+
+	builder := processQueryCondition(query,
+		sq.Select("f_tags").From(CONCEPT_GROUP_TABLE_NAME))
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to build the sql of select concept group tags, error", err)
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+
+	rows, err := cga.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "List concept group tags error", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	uniqueTags := make(map[string]struct{})
+	for rows.Next() {
+		var tagsStr string
+		if err := rows.Scan(&tagsStr); err != nil {
+			common.LogSafeError(ctx, "Row scan error", err)
+			return nil, err
+		}
+		for _, tag := range libCommon.TagString2TagSlice(tagsStr) {
+			uniqueTags[tag] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		common.LogSafeError(ctx, "Iterate concept group tags error", err)
+		return nil, err
+	}
+
+	tags := make([]string, 0, len(uniqueTags))
+	for tag := range uniqueTags {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	span.SetStatus(codes.Ok, "")
+	return tags, nil
 }
 
 // Get concept groups in bulk.

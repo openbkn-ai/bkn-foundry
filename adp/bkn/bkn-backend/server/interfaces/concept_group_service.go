@@ -17,7 +17,7 @@ type ConceptGroupService interface {
 	CheckConceptGroupExistByName(ctx context.Context, knID string, branch string, cgName string) (string, bool, error)
 	CreateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *ConceptGroup, mode string, strictMode bool) (string, error)
 	ListConceptGroups(ctx context.Context, query ConceptGroupsQueryParams) ([]*ConceptGroup, int, error)
-	ListConceptGroupSummaries(ctx context.Context, query ConceptGroupsQueryParams) ([]*ConceptGroup, int, error)
+	ListConceptGroupSummaries(ctx context.Context, query ConceptGroupsQueryParams) ([]*ConceptGroup, int, []string, error)
 	GetConceptGroupByID(ctx context.Context, knID string, branch string, cgID string, mode string) (*ConceptGroup, error)
 	UpdateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *ConceptGroup, strictMode bool) error
 	UpdateConceptGroupDetail(ctx context.Context, knID string, branch string, cgID string, detail string) error

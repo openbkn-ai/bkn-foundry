@@ -342,6 +342,21 @@ func (mr *MockConceptGroupAccessMockRecorder) ListConceptGroups(ctx, query any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConceptGroups", reflect.TypeOf((*MockConceptGroupAccess)(nil).ListConceptGroups), ctx, query)
 }
 
+// ListConceptGroupTags mocks base method.
+func (m *MockConceptGroupAccess) ListConceptGroupTags(ctx context.Context, query interfaces.ConceptGroupsQueryParams) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListConceptGroupTags", ctx, query)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListConceptGroupTags indicates an expected call of ListConceptGroupTags.
+func (mr *MockConceptGroupAccessMockRecorder) ListConceptGroupTags(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConceptGroupTags", reflect.TypeOf((*MockConceptGroupAccess)(nil).ListConceptGroupTags), ctx, query)
+}
+
 // UpdateConceptGroup mocks base method.
 func (m *MockConceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *interfaces.ConceptGroup) error {
 	m.ctrl.T.Helper()

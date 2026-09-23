@@ -17,6 +17,7 @@ type ConceptGroupAccess interface {
 	CheckConceptGroupExistByName(ctx context.Context, knID string, branch string, cgName string) (string, bool, error)
 	CreateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *ConceptGroup) error
 	ListConceptGroups(ctx context.Context, query ConceptGroupsQueryParams) ([]*ConceptGroup, error)
+	ListConceptGroupTags(ctx context.Context, query ConceptGroupsQueryParams) ([]string, error)
 	GetConceptGroupByID(ctx context.Context, knID string, branch string, cgID string) (*ConceptGroup, error)
 	UpdateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *ConceptGroup) error
 	UpdateConceptGroupDetail(ctx context.Context, knID string, branch string, cgID string, detail string) error
