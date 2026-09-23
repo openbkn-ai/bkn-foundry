@@ -15,6 +15,14 @@ import (
 func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 	conn := &OpenSearchConnector{}
 	schema := opensearchConditionSchema()
+	t.Run("rejects numeric boolean predicates", func(t *testing.T) {
+		for _, operation := range []string{filter_condition.OperationTrue, filter_condition.OperationFalse} {
+			condition := mustOSCondition(t, osConstCfg("age", operation, nil))
+			got, err := conn.ConvertFilterCondition(condition, schema)
+			require.ErrorContains(t, err, "requires BOOLEAN")
+			assert.Nil(t, got)
+		}
+	})
 	tests := []struct {
 		name string
 		cfg  *interfaces.FilterCondCfg
