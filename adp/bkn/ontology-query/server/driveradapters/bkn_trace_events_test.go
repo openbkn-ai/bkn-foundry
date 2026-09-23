@@ -8,17 +8,16 @@ package driveradapters
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
+	"ontology-query/common/bkntrace"
 	"ontology-query/interfaces"
 )
 
 func TestOntologyEvidenceEmittersReturnBeforeWorkWhenDisabled(t *testing.T) {
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", "")
-	_ = os.Unsetenv("BKN_TRACE_EVIDENCE_INGEST_URL")
+	bkntrace.SetEvidencePublisher(nil)
 
 	visitor := hydra.Visitor{ID: "acct_demo", Type: hydra.VisitorType_User}
 

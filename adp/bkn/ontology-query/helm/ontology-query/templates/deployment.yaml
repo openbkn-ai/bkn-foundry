@@ -94,33 +94,41 @@ spec:
                 name: {{ .Values.cursorEncryption.existingSecret | quote }}
                 key: {{ .Values.cursorEncryption.secretKey | quote }}
           {{- end }}
-          {{- if .Values.bknTrace.evidence.ingestUrl }}
-          - name: BKN_TRACE_EVIDENCE_INGEST_URL
-            value: {{ .Values.bknTrace.evidence.ingestUrl | quote }}
-          - name: BKN_TRACE_EVIDENCE_TIMEOUT_MS
-            value: {{ .Values.bknTrace.evidence.timeoutMs | quote }}
-          {{- end }}
-          {{- if .Values.bknTrace.evidence.ingestTokenSecretName }}
-          - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+          {{- if .Values.bknTrace.evidencePublisher.enabled }}
+          - name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED
+            value: "true"
+          - name: BKN_TRACE_KAFKA_BROKERS
+            value: {{ required "bknTrace.evidencePublisher.brokers is required" .Values.bknTrace.evidencePublisher.brokers | quote }}
+          - name: BKN_TRACE_KAFKA_SASL_MECHANISM
+            value: "PLAIN"
+          - name: BKN_TRACE_KAFKA_USERNAME
             valueFrom:
               secretKeyRef:
-                name: {{ .Values.bknTrace.evidence.ingestTokenSecretName | quote }}
-                key: {{ .Values.bknTrace.evidence.ingestTokenSecretKey | quote }}
-          {{- end }}
-          - name: BKN_TRACE_OUTBOX_ENABLED
-            value: {{ .Values.bknTrace.producerOutbox.enabled | quote }}
-          - name: BKN_TRACE_OUTBOX_WORKER_ENABLED
-            value: {{ .Values.bknTrace.producerOutbox.workerEnabled | quote }}
+                name: {{ required "bknTrace.evidencePublisher.usernameSecretName is required" .Values.bknTrace.evidencePublisher.usernameSecretName | quote }}
+                key: {{ .Values.bknTrace.evidencePublisher.usernameSecretKey | quote }}
+          - name: BKN_TRACE_KAFKA_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "bknTrace.evidencePublisher.passwordSecretName is required" .Values.bknTrace.evidencePublisher.passwordSecretName | quote }}
+                key: {{ .Values.bknTrace.evidencePublisher.passwordSecretKey | quote }}
+          - name: BKN_TRACE_PRODUCER_ID
+            value: {{ .Values.bknTrace.evidencePublisher.producerId | quote }}
+          - name: BKN_TRACE_WORKLOAD_IDENTITY
+            value: {{ .Values.bknTrace.evidencePublisher.workloadIdentity | quote }}
           - name: BKN_TRACE_PRODUCER_STREAM_ID
-            value: {{ .Values.bknTrace.producerOutbox.producerStreamID | quote }}
-          - name: BKN_TRACE_APPLICATION_PRINCIPAL_ID
-            value: {{ .Values.bknTrace.producerOutbox.applicationPrincipalID | quote }}
-          {{- if .Values.bknTrace.producerOutbox.queryGatewayTokenSecretName }}
-          - name: BKN_TRACE_QUERY_GATEWAY_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: {{ .Values.bknTrace.producerOutbox.queryGatewayTokenSecretName | quote }}
-                key: {{ .Values.bknTrace.producerOutbox.queryGatewayTokenSecretKey | quote }}
+            value: {{ .Values.bknTrace.evidencePublisher.producerStreamId | quote }}
+          - name: BKN_TRACE_CAPTURE_POLICY_REVISION
+            value: {{ required "bknTrace.evidencePublisher.capturePolicyRevision is required" .Values.bknTrace.evidencePublisher.capturePolicyRevision | quote }}
+          - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS
+            value: {{ .Values.bknTrace.evidencePublisher.queueMaxRecords | quote }}
+          - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES
+            value: {{ .Values.bknTrace.evidencePublisher.queueMaxBytes | quote }}
+          - name: BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES
+            value: {{ .Values.bknTrace.evidencePublisher.maxRecordBytes | quote }}
+          - name: BKN_TRACE_EVIDENCE_MAX_ATTEMPTS
+            value: {{ .Values.bknTrace.evidencePublisher.maxAttempts | quote }}
+          - name: BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS
+            value: {{ .Values.bknTrace.evidencePublisher.retryBackoffMs | quote }}
           {{- end }}
           - name: POD_IP
             valueFrom:
