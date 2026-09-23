@@ -64,6 +64,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 				ConversationID: intent.Context.ConversationID, InteractionID: intent.Context.InteractionID,
 				OperationKey: intent.Context.OperationKey, ParentOperationID: intent.Context.ParentOperationID,
 				CausationEventIDs: intent.Context.CausationEventIDs, BusinessRefs: intent.Context.BusinessRefs,
+				DeclaredBusinessRefs: intent.Context.DeclaredBusinessRefs,
 			},
 			ToolName:          intent.ToolName,
 			Protocol:          "mcp",

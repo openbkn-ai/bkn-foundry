@@ -30,8 +30,6 @@ type mcpProfile struct {
 	// published lists the tool names the profile offers. Nil offers every
 	// assembled tool.
 	published map[string]struct{}
-	// inlinePTC registers run_code and run_shell.
-	inlinePTC bool
 	// gateway registers search_native_tools, describe_native_tool and
 	// execute_native_tool over the long-tail targets.
 	gateway bool
@@ -71,13 +69,12 @@ func (p mcpProfile) rewritesListing() bool {
 	return p.published != nil || p.view != nil
 }
 
-// fullProfile is /mcp: every assembled tool, the full instructions and the
-// inline sandbox execution tools. Its only rewrite is the model view of
-// bkn_context, which both entries publish.
+// fullProfile is /mcp: every assembled tool, the inline sandbox execution
+// tools among them, with the full instructions. Its only rewrite is the model
+// view of bkn_context, which both entries publish.
 var fullProfile = mcpProfile{
 	endpointPath: endpointPath,
 	instructions: (*mcpLocaleBundle).ServerInstructions,
-	inlinePTC:    true,
 	view:         modelContextToolView,
 }
 
@@ -99,12 +96,12 @@ var compactProfileTools = []string{
 
 // compactProfile is /mcp-compact: a small fixed tool list for hosts that load
 // every tool definition into the model, with instructions that route only
-// between those tools, the gateway to the long tail, and no sandbox execution.
+// between those tools and the gateway to the long tail — sandbox execution
+// included, reachable through the gateway rather than published.
 var compactProfile = mcpProfile{
 	endpointPath:    compactEndpointPath,
 	instructions:    (*mcpLocaleBundle).CompactServerInstructions,
 	published:       toolNameSet(append(slices.Clone(compactProfileTools), gatewayToolOrder...)),
-	inlinePTC:       false,
 	gateway:         true,
 	view:            compactToolView,
 	textResults:     true,
@@ -129,7 +126,9 @@ func NewCompactMCPHandler() http.Handler {
 // BuildCompactMCPInfoForLocale describes /mcp-compact: the full catalogue
 // narrowed to the profile's tools, plus the gateway tools the full catalogue
 // leaves out, so it agrees with the profile's tools/list. It carries no
-// toolkit_version, because the profile publishes no sandbox execution tools.
+// toolkit_version: run_code and run_shell are reachable here but not
+// published, and the hash describes the published surface of /mcp, which is
+// what the sandbox image is built against. Compare it at GET /mcp/info.
 func BuildCompactMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 	info, err := buildMCPInfoForLocale(endpoint, localeName, false)
 	if err != nil {

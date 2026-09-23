@@ -311,7 +311,7 @@ func TestBuildSchemaDefinitionEventsUsesKnowledgeNetworkAndSchemaRefs(t *testing
 }
 
 func TestBuildRunSQLEventsUsesDataQueryFactWithoutLeakingSQLOrRows(t *testing.T) {
-	ctx := withDeclaredBusinessRefs(testTraceContext(), []BusinessRef{{
+	ctx := withRequestDerivedBusinessRefs(testTraceContext(), []BusinessRef{{
 		RefType: "object_type", RefID: "object:supplychain_hd0202:bkn_supply_forecast",
 		Version: "schema-v3",
 	}})
@@ -1117,7 +1117,7 @@ func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
 				}},
 			},
 		}},
-		DeclaredBusinessRefs: []BusinessRef{{
+		RequestDerivedBusinessRefs: []BusinessRef{{
 			RefType: "data_resource", RefID: "resource:forecast_resource", Version: "schema-v3",
 		}},
 	}

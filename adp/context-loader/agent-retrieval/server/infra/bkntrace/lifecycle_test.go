@@ -522,16 +522,141 @@ func TestLifecycleValueTypesPreserveCore30RequiredFields(t *testing.T) {
 	}
 }
 
-func TestMergeBusinessRefsPreservesDeclaredVersionAndAddsObservedResources(t *testing.T) {
+// A model asked to fill in business refs has been observed declaring a version
+// that does not exist, an object type it never read and an instance that is not
+// there, and the receipt used to carry all three. A declaration now goes no
+// further than the guard.
+func TestGuardKeepsFabricatedDeclaredRefsOutOfTheReceipt(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "http://trace.local/ingest")
+	var finishBody struct {
+		BusinessRefs []BusinessRef `json:"business_refs"`
+	}
+	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/api/agent-observability/v1/interactions/int-1":
+			return lifecycleJSONResponse(http.StatusOK, Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1,
+			}), nil
+		case "/api/agent-observability/v1/conversations/conv-1/interactions/int-1/operations:ensure":
+			return lifecycleJSONResponse(http.StatusCreated, OperationResult{
+				Created: true, Execute: true,
+				Operation: Operation{
+					OperationID: "op-1", ConversationID: "conv-1", InteractionID: "int-1",
+					Attempt: 1, AttemptStatus: "pending",
+				},
+				Receipt: Receipt{ReceiptID: "receipt-1", ReceiptStatus: "pending"},
+			}), nil
+		default:
+			if err := json.NewDecoder(request.Body).Decode(&finishBody); err != nil {
+				t.Fatalf("decode finish request: %v", err)
+			}
+			return lifecycleJSONResponse(http.StatusOK, OperationResult{
+				Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+				Receipt: Receipt{
+					ReceiptID: "receipt-1", OperationID: "op-1", Attempt: 1, ReceiptStatus: "completed",
+				},
+			}), nil
+		}
+	})
+	ctx := trustedLifecycleTestContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.RequestID = "req_fabricated_refs_0001"
+	ctx, _ = EnsureTraceCorrelation(common.SetTraceContextToCtx(ctx, traceContext))
+
+	lifecycleContext, state, _, apiErr, err := NewGuard(client).Begin(ctx, GuardIntent{
+		Context: BusinessContext{
+			ConversationID: "conv-1", InteractionID: "int-1", OperationKey: "metric-1",
+			BusinessRefs: []BusinessRef{
+				{RefType: "knowledge_network", RefID: "kn:kn_demo", Version: "unversioned"},
+			},
+			DeclaredBusinessRefs: []BusinessRef{
+				{RefType: "knowledge_network", RefID: "kn:kn_demo", Version: "v999-fabricated"},
+				{RefType: "object_type", RefID: "object:kn_demo:never_read", Version: "v999-fabricated"},
+			},
+		},
+		ToolName: "query_metric", Protocol: "mcp", SourceModule: "context-loader",
+		Input: json.RawMessage(`{"metric_id":"metric:kn_demo:revenue"}`),
+	})
+	if err != nil || apiErr != nil {
+		t.Fatalf("begin operation failed: api=%#v err=%v", apiErr, err)
+	}
+	outcome := evidenceOutcomeFromContext(lifecycleContext)
+	outcome.attempted, outcome.durable = true, true
+	outcome.eventIDs = []string{"ev-1"}
+	outcome.businessRefs = []BusinessRef{
+		{RefType: "metric", RefID: "metric:kn_demo:revenue", Version: "versioned"},
+	}
+	if _, apiErr, err := NewGuard(client).Finish(lifecycleContext, state, "sha256:result", false, false); err != nil || apiErr != nil {
+		t.Fatalf("finish operation failed: api=%#v err=%v", apiErr, err)
+	}
+	if len(finishBody.BusinessRefs) != 2 {
+		t.Fatalf("receipt refs = %#v, want the observed metric and the derived network only", finishBody.BusinessRefs)
+	}
+	for _, ref := range finishBody.BusinessRefs {
+		if ref.Version == "v999-fabricated" || ref.RefID == "object:kn_demo:never_read" {
+			t.Fatalf("a declared ref reached the receipt: %#v", finishBody.BusinessRefs)
+		}
+	}
+}
+
+// Evidence that never became durable must not promote a declaration. The
+// receipt still carries what the request derived, which is the honest record
+// of what the call set out to read.
+func TestGuardKeepsDeclaredRefsOutOfAPendingEvidenceReceipt(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "")
+	var finishBody struct {
+		BusinessRefs       []BusinessRef `json:"business_refs"`
+		EvidenceDurability string        `json:"evidence_durability"`
+	}
+	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
+		if err := json.NewDecoder(request.Body).Decode(&finishBody); err != nil {
+			t.Fatalf("decode finish request: %v", err)
+		}
+		return lifecycleJSONResponse(http.StatusOK, OperationResult{
+			Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+			Receipt: Receipt{
+				ReceiptID: "receipt-1", OperationID: "op-1", Attempt: 1, ReceiptStatus: "completed",
+			},
+		}), nil
+	})
+	ctx := trustedLifecycleTestContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.RequestID = "req_pending_evidence_refs_0001"
+	ctx, _ = EnsureTraceCorrelation(common.SetTraceContextToCtx(ctx, traceContext))
+	ctx = withEvidenceOutcome(ctx)
+	ctx = withRequestDerivedBusinessRefs(ctx, []BusinessRef{
+		{RefType: "knowledge_network", RefID: "kn:kn_demo", Version: "unversioned"},
+	})
+
+	if _, apiErr, err := NewGuard(client).Finish(ctx, pendingGuardState(), "sha256:result", false, false); err != nil || apiErr != nil {
+		t.Fatalf("finish with evidence pending: api=%#v err=%v", apiErr, err)
+	}
+	if finishBody.EvidenceDurability != "pending" {
+		t.Fatalf("evidence durability = %q, want pending", finishBody.EvidenceDurability)
+	}
+	if len(finishBody.BusinessRefs) != 1 || finishBody.BusinessRefs[0].RefID != "kn:kn_demo" {
+		t.Fatalf("pending receipt refs = %#v, want the derived network only", finishBody.BusinessRefs)
+	}
+}
+
+// The observed version wins over the one the request implied. Before the
+// reference tiers, the other order let a caller's version - including one a
+// model invented - overwrite what evidence had actually seen.
+func TestMergeBusinessRefsPrefersTheObservedVersionAndKeepsDerivedRefs(t *testing.T) {
 	refs := mergeBusinessRefs(
-		[]BusinessRef{{RefType: "object_type", RefID: "object:kn_demo:forecast", Version: "schema-v3"}},
 		[]BusinessRef{
 			{RefType: "object_type", RefID: "object:kn_demo:forecast", Version: "versioned"},
 			{RefType: "data_resource", RefID: "resource:forecast", Version: "unversioned"},
 		},
+		[]BusinessRef{
+			{RefType: "object_type", RefID: "object:kn_demo:forecast", Version: "schema-v3"},
+			{RefType: "knowledge_network", RefID: "kn:kn_demo", Version: "unversioned"},
+		},
 	)
-	if len(refs) != 2 || refs[0].Version != "schema-v3" || refs[1].RefID != "resource:forecast" {
-		t.Fatalf("merged business refs lost declared identity or observed resource: %#v", refs)
+	if len(refs) != 3 || refs[0].Version != "versioned" || refs[1].RefID != "resource:forecast" ||
+		refs[2].RefID != "kn:kn_demo" {
+		t.Fatalf("merged business refs lost the observed version or a derived ref: %#v", refs)
 	}
 }
 

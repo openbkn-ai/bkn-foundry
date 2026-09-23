@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -21,12 +22,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 )
 
-// fakeTraceCore answers the lifecycle calls a managed tool makes and records
-// the tool name of every Operation it is asked to ensure.
-func fakeTraceCore(t *testing.T) (*bkntrace.LifecycleClient, func() []string) {
+// fakeTraceCore answers the lifecycle calls a managed tool makes. It records
+// the tool name of every Operation it is asked to ensure, and the business
+// refs of every receipt it is asked to finish.
+func fakeTraceCore(t *testing.T) (*bkntrace.LifecycleClient, func() []string, func() [][]bkntrace.BusinessRef) {
 	t.Helper()
 	var mu sync.Mutex
 	var ensured []string
+	var finished [][]bkntrace.BusinessRef
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/interactions/"):
@@ -56,6 +59,13 @@ func fakeTraceCore(t *testing.T) (*bkntrace.LifecycleClient, func() []string) {
 				},
 			})
 		case r.Method == http.MethodPost && (strings.HasSuffix(r.URL.Path, ":complete") || strings.HasSuffix(r.URL.Path, ":fail")):
+			var body struct {
+				BusinessRefs []bkntrace.BusinessRef `json:"business_refs"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			finished = append(finished, body.BusinessRefs)
+			mu.Unlock()
 			status := "completed"
 			if strings.HasSuffix(r.URL.Path, ":fail") {
 				status = "failed"
@@ -73,10 +83,14 @@ func fakeTraceCore(t *testing.T) (*bkntrace.LifecycleClient, func() []string) {
 	}))
 	t.Cleanup(core.Close)
 	return bkntrace.NewLifecycleClient(core.URL, core.Client()), func() []string {
-		mu.Lock()
-		defer mu.Unlock()
-		return append([]string(nil), ensured...)
-	}
+			mu.Lock()
+			defer mu.Unlock()
+			return append([]string(nil), ensured...)
+		}, func() [][]bkntrace.BusinessRef {
+			mu.Lock()
+			defer mu.Unlock()
+			return append([][]bkntrace.BusinessRef(nil), finished...)
+		}
 }
 
 func callTrustedTool(t *testing.T, srv *server.MCPServer, name string, arguments map[string]any) *mcpsdk.CallToolResult {
@@ -98,7 +112,7 @@ func callTrustedTool(t *testing.T, srv *server.MCPServer, name string, arguments
 // name, and execute is recorded once, under the target's.
 func TestCompactGatewayRunsEndToEnd(t *testing.T) {
 	t.Setenv("CONFIG_PROFILE", "../../infra/config")
-	client, ensured := fakeTraceCore(t)
+	client, ensured, _ := fakeTraceCore(t)
 	srv, _ := newMCPServerForProfile(client, "zh-CN", defaultPTCServicePort, compactProfile)
 	bknContext := map[string]any{"conversation_id": "conv-1", "interaction_id": "int-1"}
 
@@ -159,4 +173,48 @@ func TestGatewayToolsResolveTheirCapabilityProfiles(t *testing.T) {
 			t.Errorf("%s: resolution %q (%s), role %q", name, profile.Resolution, profile.Reason, profile.ExecutionRole)
 		}
 	}
+}
+
+// Derivation must run on the target, not on the executor. The executor call
+// carries no kn_id of its own, so if the guard derived refs from the outer
+// arguments the receipt would record none - and the compact entry's receipts
+// would be poorer than the full entry's for the same work.
+func TestGatewayDerivesTheTargetsBusinessRefs(t *testing.T) {
+	t.Setenv("CONFIG_PROFILE", "../../infra/config")
+	bknContext := map[string]any{"conversation_id": "conv-1", "interaction_id": "int-1"}
+	arguments := map[string]any{"kn_id": "kn-1", "ids": []any{"ot-1"}}
+
+	gatewayClient, _, gatewayFinished := fakeTraceCore(t)
+	gateway, _ := newMCPServerForProfile(gatewayClient, "zh-CN", defaultPTCServicePort, compactProfile)
+	callTrustedTool(t, gateway, toolKeyExecuteNativeTool, map[string]any{
+		"name": toolKeyGetObjectTypes, "arguments": arguments, "bkn_context": bknContext,
+	})
+
+	directClient, _, directFinished := fakeTraceCore(t)
+	direct, _ := newMCPServerForProfile(directClient, "zh-CN", defaultPTCServicePort, fullProfile)
+	callTrustedTool(t, direct, toolKeyGetObjectTypes, mergedArguments(arguments, bknContext))
+
+	throughGateway, directly := lastFinishedRefs(t, gatewayFinished()), lastFinishedRefs(t, directFinished())
+	if len(directly) == 0 {
+		t.Fatalf("the direct call derived no refs, so this test proves nothing")
+	}
+	if !reflect.DeepEqual(throughGateway, directly) {
+		t.Fatalf("refs through the gateway = %#v, directly = %#v", throughGateway, directly)
+	}
+}
+
+func mergedArguments(arguments, bknContext map[string]any) map[string]any {
+	merged := map[string]any{"bkn_context": bknContext}
+	for key, value := range arguments {
+		merged[key] = value
+	}
+	return merged
+}
+
+func lastFinishedRefs(t *testing.T, finished [][]bkntrace.BusinessRef) []bkntrace.BusinessRef {
+	t.Helper()
+	if len(finished) == 0 {
+		t.Fatalf("no Operation was finished")
+	}
+	return finished[len(finished)-1]
 }

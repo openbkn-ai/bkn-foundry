@@ -24,12 +24,16 @@ import (
 )
 
 type bknContext struct {
-	ConversationID    string                 `json:"conversation_id"`
-	InteractionID     string                 `json:"interaction_id"`
-	OperationKey      string                 `json:"operation_key"`
-	ParentOperationID string                 `json:"parent_operation_id,omitempty"`
-	CausationEventIDs []string               `json:"causation_event_ids,omitempty"`
-	BusinessRefs      []bkntrace.BusinessRef `json:"business_refs,omitempty"`
+	ConversationID    string   `json:"conversation_id"`
+	InteractionID     string   `json:"interaction_id"`
+	OperationKey      string   `json:"operation_key"`
+	ParentOperationID string   `json:"parent_operation_id,omitempty"`
+	CausationEventIDs []string `json:"causation_event_ids,omitempty"`
+	// BusinessRefs are derived from the validated request; DeclaredBusinessRefs
+	// are what the caller sent. Only the first kind reaches a receipt, see
+	// bkntrace.BusinessContext.
+	BusinessRefs         []bkntrace.BusinessRef `json:"business_refs,omitempty"`
+	DeclaredBusinessRefs []bkntrace.BusinessRef `json:"-"`
 }
 
 type operationIntent struct {
@@ -115,25 +119,22 @@ func guardBusinessToolCallWithCompletion(
 			return nil, fmt.Errorf("lifecycle operation client is not configured")
 		}
 		currentKnID := getStringArg(req, "kn_id", getKnIDFromHeader(req))
-		businessRefs, validationErr := parseBusinessRefs(
+		declaredRefs, validationErr := parseBusinessRefs(
 			rawContext["business_refs"],
 			currentKnID,
 		)
 		if validationErr != nil {
 			return lifecycleToolError(*validationErr), nil
 		}
-		businessRefs = mergeToolBusinessRefs(
-			businessRefs,
-			observedToolBusinessRefs(req.Params.Name, arguments, currentKnID),
-		)
 		intent := operationIntent{
 			Context: bknContext{
-				ConversationID:    conversationID,
-				InteractionID:     interactionID,
-				OperationKey:      operationKey,
-				ParentOperationID: stringValue(rawContext["parent_operation_id"]),
-				CausationEventIDs: stringSliceValue(rawContext["causation_event_ids"]),
-				BusinessRefs:      businessRefs,
+				ConversationID:       conversationID,
+				InteractionID:        interactionID,
+				OperationKey:         operationKey,
+				ParentOperationID:    stringValue(rawContext["parent_operation_id"]),
+				CausationEventIDs:    stringSliceValue(rawContext["causation_event_ids"]),
+				BusinessRefs:         derivedToolBusinessRefs(req.Params.Name, arguments, currentKnID),
+				DeclaredBusinessRefs: declaredRefs,
 			},
 			ToolName:    req.Params.Name,
 			MCPToolName: req.Params.Name,
@@ -303,10 +304,13 @@ func parseBusinessRefs(value any, currentKnID string) ([]bkntrace.BusinessRef, *
 	}
 }
 
-// observedToolBusinessRefs derives references only from validated, structured
+// derivedToolBusinessRefs derives references only from validated, structured
 // tool inputs. It is deliberately capability-specific: answer text, labels and
 // domain names never participate in evidence scope.
-func observedToolBusinessRefs(toolName string, arguments map[string]any, currentKnID string) []bkntrace.BusinessRef {
+//
+// These are the request tier of the reference hierarchy: what evidence
+// observes outranks them, and what the caller declared never does.
+func derivedToolBusinessRefs(toolName string, arguments map[string]any, currentKnID string) []bkntrace.BusinessRef {
 	if currentKnID == "" {
 		return nil
 	}
@@ -333,22 +337,6 @@ func observedToolBusinessRefs(toolName string, arguments map[string]any, current
 	default:
 		return nil
 	}
-}
-
-func mergeToolBusinessRefs(declared, observed []bkntrace.BusinessRef) []bkntrace.BusinessRef {
-	merged := make([]bkntrace.BusinessRef, 0, len(declared)+len(observed))
-	seen := make(map[string]struct{}, len(declared)+len(observed))
-	for _, refs := range [][]bkntrace.BusinessRef{declared, observed} {
-		for _, ref := range refs {
-			key := ref.RefType + "\x00" + ref.RefID
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-			merged = append(merged, ref)
-		}
-	}
-	return merged
 }
 
 func callBusinessTool(
