@@ -44,6 +44,7 @@ func TestListRelationTypeSummariesPushesAuthorizationIntoCountAndPage(t *testing
 		},
 	}
 	visibleQuery := query
+	visibleQuery.ValidAuthorizationIDsOnly = true
 	visibleQuery.RTIDS = []string{"rt-orders", "rt-customers"}
 	visibleQuery.SourceObjectTypeIDs = []string{"orders", "customers", "query-only"}
 	visibleQuery.TargetObjectTypeIDs = []string{"orders", "customers", "query-only"}
@@ -75,7 +76,7 @@ func TestListRelationTypeSummariesPushesAuthorizationIntoCountAndPage(t *testing
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "query-only", OTName: "Query only"},
 		},
 	}, nil)
-	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(1)).Return(nil)
+	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
 
 	items, total, err := service.ListRelationTypeSummaries(context.Background(), query)
 	if err != nil {
@@ -100,6 +101,7 @@ func TestListRelationTypeSummariesFallsBackOnlyForWildcardDimension(t *testing.T
 		PaginationQueryParameters: interfaces.PaginationQueryParameters{Offset: 1, Limit: 1},
 	}
 	candidateQuery := query
+	candidateQuery.ValidAuthorizationIDsOnly = true
 	candidateQuery.Offset = 0
 	candidateQuery.Limit = -1
 	candidateQuery.SourceObjectTypeIDs = []string{"a", "b"}
@@ -127,7 +129,7 @@ func TestListRelationTypeSummariesFallsBackOnlyForWildcardDimension(t *testing.T
 	}, nil)
 	ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
 		[]string{"b", "a"}, false).Return(map[string]*interfaces.ObjectType{}, nil)
-	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(1)).Return(nil)
+	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
 
 	items, total, err := service.ListRelationTypeSummaries(context.Background(), query)
 	if err != nil {
@@ -150,5 +152,42 @@ func TestListRelationTypeSummariesReturnsEmptyWithoutStorageReadWhenEndpointScop
 	})
 	if err != nil || total != 0 || len(items) != 0 {
 		t.Fatalf("result = (%v, %d, %v), want empty", items, total, err)
+	}
+}
+
+func TestFilterRelationSummaryOperationsDropsInvalidAuthorizationIDs(t *testing.T) {
+	service, _, ps, _, _ := newRelationSummaryTestService(t)
+	items := []*interfaces.RelationType{
+		summaryRelation("valid", "source", "target"),
+		summaryRelation("bad/id", "source", "target"),
+		summaryRelation("*", "source", "target"),
+	}
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		[]string{"kn-1/valid"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
+		map[string]interfaces.PermissionResourceOps{
+			"kn-1/valid": {ResourceID: "kn-1/valid", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
+
+	visible, err := service.filterRelationSummaryOperations(context.Background(), "kn-1", items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(relationIDs(visible), []string{"valid"}) {
+		t.Fatalf("visible relation IDs = %v, want only valid", relationIDs(visible))
+	}
+}
+
+func TestRelationSummaryAuthorizationPredicateCountIncludesRepeatedBoundPredicate(t *testing.T) {
+	query := interfaces.RelationTypesQueryParams{
+		RTIDS:               []string{"r1", "r2"},
+		SourceObjectTypeIDs: []string{"s1"},
+		TargetObjectTypeIDs: []string{"t1", "t2"},
+		BoundObjectTypeIDs:  []string{"b1", "b2"},
+	}
+	if got := relationSummaryAuthorizationPredicateCount(query, true, true); got != 9 {
+		t.Fatalf("predicate count = %d, want 9", got)
+	}
+	if got := relationSummaryAuthorizationPredicateCount(query, false, true); got != 7 {
+		t.Fatalf("object-only predicate count = %d, want 7", got)
 	}
 }

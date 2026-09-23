@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/casbin/casbin/v2"
@@ -1058,27 +1059,116 @@ func (en *Enforcer) AccessibleResourceScopeAnyOperation(accessorID,
 	if err := en.db.Where("resource_type_id = ?", resourceType).Order("id ASC").Find(&operations).Error; err != nil {
 		return nil, false, false, err
 	}
-	seen := make(map[string]struct{})
-	ids := make([]string, 0)
-	requiresCandidateFilter := false
+	operationIDs := make([]string, 0, len(operations))
 	for _, operation := range operations {
-		operationIDs, listErr := en.AccessibleResources(accessorID, resourceType, operation.ID)
-		if listErr != nil {
-			return nil, false, false, listErr
-		}
+		operationIDs = append(operationIDs, operation.ID)
 		if idx.requiresCandidateFilter(resourceType, operation.ID) {
-			requiresCandidateFilter = true
+			return []string{}, false, true, nil
 		}
-		for _, id := range operationIDs {
-			if _, ok := seen[id]; ok {
-				continue
-			}
-			seen[id] = struct{}{}
-			ids = append(ids, id)
+	}
+	candidates, err := en.accessibleResourceCandidatesAnyOperation(idx, resourceType,
+		operationIDs, map[string]bool{})
+	if err != nil {
+		return nil, false, false, err
+	}
+	resources := make([]ResourceRef, 0, len(candidates))
+	for _, id := range candidates {
+		resources = append(resources, ResourceRef{Type: resourceType, ID: id})
+	}
+	filtered, err := en.FilterResourceOps(accessorID, resources, nil, operationIDs)
+	if err != nil {
+		return nil, false, false, err
+	}
+	ids := make([]string, 0, len(filtered))
+	for _, resource := range filtered {
+		if len(resource.Operations) > 0 {
+			ids = append(ids, resource.ID)
 		}
 	}
 	sort.Strings(ids)
-	return ids, false, requiresCandidateFilter, nil
+	return ids, false, false, nil
+}
+
+// accessibleResourceCandidatesAnyOperation collects concrete policy targets
+// once, then expands inherited candidates by resource hierarchy. Authorization
+// is deliberately deferred to one FilterResourceOps call by the caller.
+func (en *Enforcer) accessibleResourceCandidatesAnyOperation(idx *grantIndex, resourceType string,
+	operations []string, visitedTypes map[string]bool) ([]string, error) {
+	if visitedTypes[resourceType] {
+		return nil, nil
+	}
+	visitedTypes[resourceType] = true
+	prefix := resourceType + ":"
+	seen := make(map[string]struct{})
+	ids := make([]string, 0)
+	for object := range idx.exact {
+		if !strings.HasPrefix(object, prefix) || len(object) == len(prefix) {
+			continue
+		}
+		id := object[len(prefix):]
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if en.db == nil {
+		return ids, nil
+	}
+	operationMap, err := en.parentOpMap(resourceType)
+	if err != nil {
+		return nil, err
+	}
+	parentOperations := make([]string, 0, len(operations))
+	seenParentOperation := make(map[string]struct{}, len(operations))
+	for _, operation := range operations {
+		parentOperation := operationMap[operation]
+		if parentOperation == "" {
+			continue
+		}
+		if _, ok := seenParentOperation[parentOperation]; ok {
+			continue
+		}
+		seenParentOperation[parentOperation] = struct{}{}
+		parentOperations = append(parentOperations, parentOperation)
+	}
+	if len(parentOperations) == 0 {
+		return ids, nil
+	}
+	parentType, err := en.parentTypeOf(resourceType)
+	if err != nil || parentType == "" {
+		return nil, err
+	}
+	allChildren := false
+	for _, operation := range parentOperations {
+		if idx.requiresCandidateFilter(parentType, operation) {
+			allChildren = true
+			break
+		}
+	}
+	var parentIDs []string
+	if !allChildren {
+		parentIDs, err = en.accessibleResourceCandidatesAnyOperation(idx, parentType,
+			parentOperations, visitedTypes)
+		if err != nil {
+			return nil, err
+		}
+		if len(parentIDs) == 0 {
+			return ids, nil
+		}
+	}
+	children, err := en.childrenOf(resourceType, parentType, parentIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range children {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // accessibleResources is AccessibleResources plus the visited-type set that

@@ -449,21 +449,25 @@ func Test_relationTypeAccess_GetRelationTypesTotal(t *testing.T) {
 func TestRelationTypeAccessListSummariesReadsListFields(t *testing.T) {
 	rta, smock := MockNewRelationTypeAccess(&common.AppSetting{})
 	query := interfaces.RelationTypesQueryParams{
-		KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+		KNID: "kn1", Branch: interfaces.MAIN_BRANCH, ValidAuthorizationIDsOnly: true,
 		PaginationQueryParameters: interfaces.PaginationQueryParameters{
 			Offset: 20, Limit: 10, Sort: "f_update_time", Direction: interfaces.DESC_DIRECTION,
 		},
 	}
 	sqlStr := "SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_kn_id, f_branch, " +
-		"f_source_object_type_id, f_target_object_type_id, f_type, f_updater, f_updater_type, " +
+		"f_source_object_type_id, f_target_object_type_id, f_type, f_mapping_rules, f_creator, " +
+		"f_creator_type, f_create_time, f_updater, f_updater_type, " +
 		"f_update_time FROM t_relation_type WHERE f_kn_id = ? AND f_branch = ? " +
+		"AND f_id <> '' AND f_id = TRIM(f_id) AND instr(f_id, '/') = 0 AND instr(f_id, '*') = 0 " +
 		"ORDER BY f_update_time DESC, f_id ASC LIMIT 10 OFFSET 20"
 	rows := sqlmock.NewRows([]string{
 		"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_kn_id", "f_branch",
-		"f_source_object_type_id", "f_target_object_type_id", "f_type", "f_updater", "f_updater_type",
+		"f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules", "f_creator",
+		"f_creator_type", "f_create_time", "f_updater", "f_updater_type",
 		"f_update_time",
 	}).AddRow("rt1", "Relation 1", `"core"`, "comment", "icon", "#fff", "kn1", "main",
-		"ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, "admin", "user", int64(123))
+		"ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, `[]`, "creator", "user", int64(100),
+		"admin", "user", int64(123))
 	smock.ExpectQuery(sqlStr).WithArgs("kn1", interfaces.MAIN_BRANCH).WillReturnRows(rows)
 
 	items, err := rta.ListRelationTypeSummaries(testCtx, query)
@@ -471,7 +475,9 @@ func TestRelationTypeAccessListSummariesReadsListFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(items) != 1 || items[0].RTID != "rt1" || items[0].Comment != "comment" ||
-		!reflect.DeepEqual(items[0].Tags, []string{"core"}) || items[0].Updater.ID != "admin" {
+		!reflect.DeepEqual(items[0].Tags, []string{"core"}) || items[0].Creator.ID != "creator" ||
+		items[0].CreateTime != 100 || items[0].Updater.ID != "admin" ||
+		!reflect.DeepEqual(items[0].MappingRules, []interfaces.Mapping{}) {
 		t.Fatalf("summary = %#v", items)
 	}
 	if err := smock.ExpectationsWereMet(); err != nil {

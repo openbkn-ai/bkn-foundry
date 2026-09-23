@@ -304,6 +304,23 @@ func TestAccessibleResourceScopeAnyOperationIncludesQueryOnlyResources(t *testin
 	}
 }
 
+func TestAccessibleResourceScopeAnyOperationIncludesInheritedResources(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "inherited", "catalog-1")
+	ownedBy(t, db, "other", "catalog-2")
+	mustNoErr(t, e.GrantObjectPermission("reader", "catalog", "catalog-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission("reader", "resource", "direct", "view_detail"))
+
+	ids, unrestricted, fallback, err := e.AccessibleResourceScopeAnyOperation("reader", "resource")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unrestricted || fallback || !sameSet(ids, []string{"direct", "inherited"}) {
+		t.Fatalf("inherited any-operation scope = (%v, %v, %v), want direct and inherited", ids, unrestricted, fallback)
+	}
+}
+
 func TestSuperAdminCannotBeDenied(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "break-glass-admin"

@@ -461,7 +461,7 @@ func Test_RelationTypeRestHandler_ListRelationTypes(t *testing.T) {
 
 		Convey("Success ListRelationTypes\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
+			rts.EXPECT().ListRelationTypeSummaries(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)
 			w := httptest.NewRecorder()
@@ -490,7 +490,7 @@ func Test_RelationTypeRestHandler_ListRelationTypes(t *testing.T) {
 			}
 
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, 0, err)
+			rts.EXPECT().ListRelationTypeSummaries(gomock.Any(), gomock.Any()).Return(nil, 0, err)
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)
 			w := httptest.NewRecorder()
@@ -889,7 +889,7 @@ func Test_RelationTypeRestHandler_ListRelationTypesByIn(t *testing.T) {
 
 		Convey("Success\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
+			rts.EXPECT().ListRelationTypeSummaries(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
 
 			urlIn := "/api/bkn-backend/in/v1/knowledge-networks/" + knID + "/relation-types"
 			req := httptest.NewRequest(http.MethodGet, urlIn, nil)

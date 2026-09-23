@@ -16,6 +16,10 @@ import (
 	"bkn-backend/logics/permission"
 )
 
+// Keep authorization-derived predicates below a conservative database
+// parameter budget. Larger scopes use Safe's chunked candidate-filter path.
+const relationSummaryAuthorizationPredicateLimit = 1000
+
 func relationScopeChildIDs(knID string, scope interfaces.PermissionResourceScope) []string {
 	if scope.Unrestricted {
 		return nil
@@ -85,9 +89,22 @@ func applyRelationSummaryScopes(query *interfaces.RelationTypesQueryParams, knID
 	return true
 }
 
+func relationSummaryAuthorizationPredicateCount(query interfaces.RelationTypesQueryParams,
+	relationRestricted, objectRestricted bool) int {
+	count := 0
+	if relationRestricted {
+		count += len(query.RTIDS)
+	}
+	if objectRestricted {
+		count += len(query.SourceObjectTypeIDs) + len(query.TargetObjectTypeIDs) +
+			2*len(query.BoundObjectTypeIDs)
+	}
+	return count
+}
+
 // ListRelationTypeSummaries resolves authorization scopes before storage count
 // and pagination. Only the returned page is hydrated with operations, endpoint
-// names, and updater names.
+// names, and account names.
 func (rts *relationTypeService) ListRelationTypeSummaries(ctx context.Context,
 	query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, int, error) {
 	if query.Branch == "" {
@@ -96,6 +113,7 @@ func (rts *relationTypeService) ListRelationTypeSummaries(ctx context.Context,
 	if interfaces.IsAuthorizationResourceCatalog(ctx) {
 		return rts.listRelationSummaryPage(ctx, query, false)
 	}
+	query.ValidAuthorizationIDsOnly = true
 
 	relationScope, err := rts.ps.ListAccessibleResources(ctx, interfaces.RESOURCE_TYPE_RELATION_TYPE,
 		interfaces.OPERATION_TYPE_VIEW_DETAIL)
@@ -113,6 +131,14 @@ func (rts *relationTypeService) ListRelationTypeSummaries(ctx context.Context,
 	pageQuery := query
 	if !applyRelationSummaryScopes(&pageQuery, query.KNID, relationScope, objectScope) {
 		return []*interfaces.RelationType{}, 0, nil
+	}
+	if relationSummaryAuthorizationPredicateCount(pageQuery, !relationScope.Unrestricted,
+		!objectScope.Unrestricted) > relationSummaryAuthorizationPredicateLimit {
+		fallbackRelationScope := relationScope
+		fallbackRelationScope.RequiresCandidateFilter = true
+		fallbackObjectScope := objectScope
+		fallbackObjectScope.RequiresCandidateFilter = true
+		return rts.listRelationSummaryFallback(ctx, query, fallbackRelationScope, fallbackObjectScope)
 	}
 	return rts.listRelationSummaryPage(ctx, pageQuery, true)
 }
@@ -194,9 +220,20 @@ func (rts *relationTypeService) listRelationSummaryFallback(ctx context.Context,
 
 func (rts *relationTypeService) filterRelationSummaryOperations(ctx context.Context, knID string,
 	items []*interfaces.RelationType) ([]*interfaces.RelationType, error) {
+	validItems := make([]*interfaces.RelationType, 0, len(items))
 	childIDs := make([]string, 0, len(items))
 	for _, item := range items {
+		if !interfaces.IsValidAuthorizationID(item.RTID) {
+			continue
+		}
+		validItems = append(validItems, item)
 		childIDs = append(childIDs, item.RTID)
+	}
+	if len(validItems) == 0 {
+		return []*interfaces.RelationType{}, nil
+	}
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, childIDs); err != nil {
+		return nil, err
 	}
 	operations, err := permission.FilterKNChildResourceIDsWithOperations(ctx, rts.ps,
 		interfaces.RESOURCE_TYPE_RELATION_TYPE, interfaces.KNChildResourceIDs(knID, childIDs),
@@ -204,8 +241,8 @@ func (rts *relationTypeService) filterRelationSummaryOperations(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	visible := make([]*interfaces.RelationType, 0, len(items))
-	for _, item := range items {
+	visible := make([]*interfaces.RelationType, 0, len(validItems))
+	for _, item := range validItems {
 		resourceID := interfaces.KNChildResourceID(knID, item.RTID)
 		resourceOps, ok := operations[resourceID]
 		if !ok {
@@ -231,7 +268,7 @@ func (rts *relationTypeService) hydrateRelationSummaries(ctx context.Context, kn
 	if err != nil {
 		return err
 	}
-	accounts := make([]*interfaces.AccountInfo, 0, len(items))
+	accounts := make([]*interfaces.AccountInfo, 0, len(items)*2)
 	for _, item := range items {
 		if source := objectTypeMap[item.SourceObjectTypeID]; source != nil {
 			item.SourceObjectType = interfaces.SimpleObjectType{
@@ -243,7 +280,7 @@ func (rts *relationTypeService) hydrateRelationSummaries(ctx context.Context, kn
 				OTID: target.OTID, OTName: target.OTName, Icon: target.Icon, Color: target.Color,
 			}
 		}
-		accounts = append(accounts, &item.Updater)
+		accounts = append(accounts, &item.Creator, &item.Updater)
 	}
 	if err := rts.ums.GetAccountNames(ctx, accounts); err != nil {
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
