@@ -646,6 +646,37 @@ func TestNullCondValid(t *testing.T) {
 	})
 }
 
+func TestBooleanPredicateFieldTypes(t *testing.T) {
+	fields := map[string]*interfaces.Property{
+		"native_boolean":     {Name: "native_boolean", Type: interfaces.DataType_Boolean},
+		"oracle_flag":        {Name: "oracle_flag", Type: interfaces.DataType_Decimal, OriginalType: "number"},
+		"mariadb_flag":       {Name: "mariadb_flag", Type: interfaces.DataType_Integer, OriginalType: "tinyint(1)"},
+		"number_two":         {Name: "number_two", Type: interfaces.DataType_Decimal, OriginalType: "number"},
+		"fractional_number":  {Name: "fractional_number", Type: interfaces.DataType_Decimal, OriginalType: "number"},
+		"unqualified_number": {Name: "unqualified_number", Type: interfaces.DataType_Decimal, OriginalType: "number"},
+		"integer":            {Name: "integer", Type: interfaces.DataType_Integer, OriginalType: "int"},
+		"tinyint_two":        {Name: "tinyint_two", Type: interfaces.DataType_Integer, OriginalType: "tinyint(2)"},
+		"unsigned_integer":   {Name: "unsigned_integer", Type: interfaces.DataType_UnsignedInteger},
+		"float":              {Name: "float", Type: interfaces.DataType_Float},
+		"name":               {Name: "name", Type: interfaces.DataType_String},
+	}
+
+	for _, operation := range []string{OperationTrue, OperationFalse} {
+		t.Run(operation, func(t *testing.T) {
+			for _, field := range []string{"native_boolean", "oracle_flag", "mariadb_flag", "number_two", "fractional_number", "unqualified_number", "integer", "tinyint_two", "unsigned_integer"} {
+				condition, err := NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: field, Operation: operation}, fields)
+				require.NoError(t, err)
+				require.NotNil(t, condition)
+			}
+			for _, field := range []string{"float", "name"} {
+				condition, err := NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: field, Operation: operation}, fields)
+				require.ErrorContains(t, err, "not a boolean or supported numeric field")
+				assert.Nil(t, condition)
+			}
+		})
+	}
+}
+
 func TestConditionMetadata(t *testing.T) {
 	tests := []struct {
 		name             string

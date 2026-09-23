@@ -20,7 +20,7 @@ type ResourceService interface {
 	// Get retrieves a Resource by ID.
 	GetByID(ctx context.Context, id string) (*Resource, error)
 	// GetByIDs retrieves Resources by IDs. Callers must provide unique IDs;
-	// includeRowCount controls whether source metadata estimates and dataset document counts are included.
+	// includeRowCount controls whether source metadata counts and dataset document counts are included.
 	GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*Resource, error)
 	// List lists resource summaries with filters.
 	List(ctx context.Context, params ResourcesQueryParams) ([]*ResourceSummary, int64, error)

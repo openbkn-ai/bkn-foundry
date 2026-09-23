@@ -38,12 +38,22 @@ func (c *TrueCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if !ok {
 		return nil, fmt.Errorf("condition [true] left field '%s' not found", cfg.Name)
 	}
-	if field.Type != interfaces.DataType_Boolean {
-		return nil, fmt.Errorf("condition [true] left field is not a boolean field: %s:%s", cfg.Name, field.Type)
+	if !supportsBooleanPredicate(field) {
+		return nil, fmt.Errorf("condition [true] left field is not a boolean or supported numeric field: %s:%s", cfg.Name, field.Type)
 	}
 
 	return &TrueCond{
 		Cfg:    cfg,
 		Lfield: field,
 	}, nil
+}
+
+// supportsBooleanPredicate checks broad types; each connector validates its native type.
+func supportsBooleanPredicate(field *interfaces.Property) bool {
+	switch field.Type {
+	case interfaces.DataType_Boolean, interfaces.DataType_Integer, interfaces.DataType_UnsignedInteger, interfaces.DataType_Decimal:
+		return true
+	default:
+		return false
+	}
 }

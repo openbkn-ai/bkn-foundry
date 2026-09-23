@@ -104,9 +104,12 @@ func TestFullProfileKeepsItsSchemas(t *testing.T) {
 	// bkn_context is the one thing the full profile does rewrite: the model
 	// view is the two IDs on both entries. The adapter contract is unchanged,
 	// which TestFullInfoDescribesTheWholeAdapterContract holds to.
-	if contextFields := bknContextFields(t, tool.InputSchema); !slices.Equal(
-		contextFields, []string{"conversation_id", "interaction_id"},
-	) {
+	contextFields := bknContextFields(t, tool.InputSchema)
+	// bknContextFields walks a map, so the order it returns is whatever the
+	// runtime chose this time: comparing without sorting passes locally and
+	// fails when the iteration order flips.
+	slices.Sort(contextFields)
+	if !slices.Equal(contextFields, []string{"conversation_id", "interaction_id"}) {
 		t.Fatalf("the full profile's published bkn_context = %v, want the two IDs", contextFields)
 	}
 }

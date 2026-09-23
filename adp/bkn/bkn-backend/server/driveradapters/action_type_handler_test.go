@@ -381,7 +381,7 @@ func Test_ActionTypeRestHandler_ListActionTypes(t *testing.T) {
 
 		Convey("Success ListActionTypes\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, 0, nil)
+			ats.EXPECT().ListActionTypeSummaries(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, 0, nil)
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)
 			w := httptest.NewRecorder()
@@ -758,7 +758,7 @@ func Test_ActionTypeRestHandler_ListActionTypesByIn(t *testing.T) {
 
 		Convey("Success\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, 0, nil)
+			ats.EXPECT().ListActionTypeSummaries(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, 0, nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/action-types", nil)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")

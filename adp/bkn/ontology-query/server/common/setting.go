@@ -138,10 +138,6 @@ func loadSetting(vp *viper.Viper) {
 	APP_LOCATION = loc
 
 	SetLogSetting(appSetting.LogSetting)
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_OUTBOX_ENABLED")), "true") {
-		SetDBSetting()
-	}
-
 	SetOpenSearchSetting()
 	SetHydraAdminSetting()
 

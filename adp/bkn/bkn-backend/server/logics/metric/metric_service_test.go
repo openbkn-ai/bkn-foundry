@@ -218,6 +218,8 @@ func Test_metricService_ListMetrics(t *testing.T) {
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{Unrestricted: true}, nil).AnyTimes()
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllMetricPermissionResources).AnyTimes()
 		service := &metricService{
@@ -235,6 +237,7 @@ func Test_metricService_ListMetrics(t *testing.T) {
 				},
 			}
 			entries := []*interfaces.MetricDefinition{{ID: "m1", KnID: "kn1", Name: "n1"}}
+			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(entries, nil)
 
 			out, err := service.ListMetrics(ctx, q)
@@ -251,11 +254,8 @@ func Test_metricService_ListMetrics(t *testing.T) {
 					Limit:  10,
 				},
 			}
-			entries := []*interfaces.MetricDefinition{
-				{ID: "m1", KnID: "kn1"},
-				{ID: "m2", KnID: "kn1"},
-			}
-			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(entries, nil)
+			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return([]*interfaces.MetricDefinition{}, nil)
 
 			out, err := service.ListMetrics(ctx, q)
 			So(err, ShouldBeNil)
@@ -265,6 +265,7 @@ func Test_metricService_ListMetrics(t *testing.T) {
 
 		Convey("Failed when ListMetrics returns error\n", func() {
 			q := interfaces.MetricsListQueryParams{KNID: "kn1"}
+			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(0, nil)
 			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, sql.ErrConnDone)
 
 			out, err := service.ListMetrics(ctx, q)

@@ -477,6 +477,7 @@ func (rs *resourceService) populateResourceRowCounts(ctx context.Context, resour
 	if !includeRowCount {
 		for _, resource := range resources {
 			resource.RowCount = nil
+			resource.EstimatedRowCount = nil
 		}
 		return
 	}
@@ -486,17 +487,14 @@ func (rs *resourceService) populateResourceRowCounts(ctx context.Context, resour
 			if err != nil {
 				logger.Warnf("Failed to populate dataset row count for resource %s: %v", resource.ID, err)
 				resource.RowCount = nil
+				resource.EstimatedRowCount = nil
 				continue
 			}
 			resource.RowCount = &count
+			resource.EstimatedRowCount = nil
 			continue
 		}
-		count, ok := sourceMetadataRowCount(resource.SourceMetadata)
-		if !ok {
-			resource.RowCount = nil
-			continue
-		}
-		resource.RowCount = &count
+		resource.RowCount, resource.EstimatedRowCount = sourceMetadataRowCounts(resource.SourceMetadata)
 	}
 }
 
@@ -512,23 +510,23 @@ func populateResourceColumnCount(resource *interfaces.Resource) {
 	resource.ColumnCount = &count
 }
 
-func sourceMetadataRowCount(sourceMetadata map[string]any) (int64, bool) {
+func sourceMetadataRowCounts(sourceMetadata map[string]any) (*int64, *int64) {
 	if sourceMetadata == nil {
-		return 0, false
+		return nil, nil
 	}
 	properties, ok := sourceMetadata["properties"].(map[string]any)
 	if !ok {
-		return 0, false
+		return nil, nil
 	}
-	value, ok := properties["row_count"]
-	if !ok {
-		return 0, false
-	}
+	return sourceMetadataRowCount(properties["row_count"]), sourceMetadataRowCount(properties["estimated_row_count"])
+}
+
+func sourceMetadataRowCount(value any) *int64 {
 	count, ok := common.NumberAsInt64(value)
 	if !ok || count < 0 {
-		return 0, false
+		return nil
 	}
-	return count, true
+	return &count
 }
 
 // List lists Resources with filters.

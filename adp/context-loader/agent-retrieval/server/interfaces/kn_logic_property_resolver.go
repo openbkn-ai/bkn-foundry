@@ -21,6 +21,16 @@ type ResolveLogicPropertiesRequest struct {
 	Properties         []string                 `json:"properties" validate:"required"`
 
 	// Optional fields
+
+	// DynamicParams are the parameter values the caller supplies, keyed by
+	// logic property name and then by parameter name. A value given here is
+	// used as it stands: the server generates only the parameters that are
+	// missing, and generates nothing for a property whose input parameters are
+	// all supplied. Supplying them is what makes an answer reproducible - the
+	// same question asked twice otherwise yields whatever the model inferred
+	// that time.
+	DynamicParams map[string]map[string]any `json:"dynamic_params,omitempty"`
+
 	AdditionalContext string          `json:"additional_context,omitempty"`
 	Options           *ResolveOptions `json:"options,omitempty"`
 	// LLMModel overrides the model used for metric/tool dynamic parameter generation.
@@ -42,6 +52,13 @@ type ResolveOptions struct {
 type ResolveLogicPropertiesResponse struct {
 	Datas                []map[string]any               `json:"datas"`
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+
+	// DynamicParams are the parameters each logic property was resolved with,
+	// and DynamicParamsSource says where they came from: caller, generated, or
+	// merged when the caller supplied some and the server generated the rest.
+	// Without this a caller cannot tell what its question was turned into.
+	DynamicParams       map[string]any    `json:"dynamic_params,omitempty"`
+	DynamicParamsSource map[string]string `json:"dynamic_params_source,omitempty"`
 
 	// Debug information (returned only when return_debug=true)
 	Debug *ResolveDebugInfo `json:"debug,omitempty"`

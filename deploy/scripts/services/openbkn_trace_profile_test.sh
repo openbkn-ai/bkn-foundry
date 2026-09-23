@@ -301,33 +301,37 @@ contains "vega uses the evidence ingest Secret" "${vega_sets}" "bknTrace.evidenc
 contains "vega reads the token key the receiver writes" "${vega_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
 not_contains "vega does not keep the pre-rename key" "${vega_sets}" "ingestTokenSecretKey=ingest-token"
 
-# A full OpenBKN installation must wire every declared producer through the
-# real installer entrypoint. bkn-backend and ontology-query are durable
-# producers, so the shared trusted-delivery Secret and both outbox switches are
-# required in addition to the ingest route. The remaining two post directly.
+# bkn-backend is migrated to Kafka; ontology-query deliberately remains on its
+# Ontology uses the same frozen Kafka producer contract as bkn-backend.
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_release_extra_sets bkn-backend openbkn
 bkn_backend_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
-contains "bkn-backend posts evidence to the ingest route" "${bkn_backend_sets}" "bknTrace.evidence.ingestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
-contains "bkn-backend uses the evidence ingest Secret" "${bkn_backend_sets}" "bknTrace.evidence.ingestTokenSecretName=bkn-trace-evidence-ingest"
-contains "bkn-backend reads the token key the receiver writes" "${bkn_backend_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
-contains "bkn-backend enables its durable outbox" "${bkn_backend_sets}" "bknTrace.producerOutbox.enabled=true"
-contains "bkn-backend starts its durable outbox worker" "${bkn_backend_sets}" "bknTrace.producerOutbox.workerEnabled=true"
-contains "bkn-backend enables delivered outbox cleanup" "${bkn_backend_sets}" "bknTrace.producerOutbox.cleanup.enabled=true"
-contains "bkn-backend uses the trusted delivery Secret" "${bkn_backend_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretName=bkn-trace-evidence-ingest"
-contains "bkn-backend reads the trusted delivery token key" "${bkn_backend_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
+contains "bkn-backend enables Kafka evidence publisher" "${bkn_backend_sets}" "bknTrace.evidencePublisher.enabled=true"
+contains "bkn-backend uses Kafka bootstrap" "${bkn_backend_sets}" "bknTrace.evidencePublisher.brokers="
+contains "bkn-backend uses Kafka username Secret" "${bkn_backend_sets}" "bknTrace.evidencePublisher.usernameSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+contains "bkn-backend uses Kafka password Secret" "${bkn_backend_sets}" "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+contains "bkn-backend has stable producer identity" "${bkn_backend_sets}" "bknTrace.evidencePublisher.producerId=bkn-backend"
+contains "bkn-backend has stable workload identity" "${bkn_backend_sets}" "bknTrace.evidencePublisher.workloadIdentity=bkn-backend"
+contains "bkn-backend has stable stream identity" "${bkn_backend_sets}" "bknTrace.evidencePublisher.producerStreamId=bkn-backend"
+contains "bkn-backend has capture policy revision" "${bkn_backend_sets}" "bknTrace.evidencePublisher.capturePolicyRevision=1"
+contains "bkn-backend bounds queue records" "${bkn_backend_sets}" "bknTrace.evidencePublisher.queueMaxRecords=4096"
+contains "bkn-backend bounds retry attempts" "${bkn_backend_sets}" "bknTrace.evidencePublisher.maxAttempts=3"
+not_contains "bkn-backend has no legacy ingest URL" "${bkn_backend_sets}" "bknTrace.evidence.ingestUrl="
+not_contains "bkn-backend has no legacy outbox" "${bkn_backend_sets}" "bknTrace.producerOutbox."
 
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_release_extra_sets ontology-query openbkn
 ontology_query_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
-contains "ontology-query posts evidence to the ingest route" "${ontology_query_sets}" "bknTrace.evidence.ingestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
-contains "ontology-query uses the evidence ingest Secret" "${ontology_query_sets}" "bknTrace.evidence.ingestTokenSecretName=bkn-trace-evidence-ingest"
-contains "ontology-query reads the token key the receiver writes" "${ontology_query_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
-contains "ontology-query enables its durable outbox" "${ontology_query_sets}" "bknTrace.producerOutbox.enabled=true"
-contains "ontology-query starts its durable outbox worker" "${ontology_query_sets}" "bknTrace.producerOutbox.workerEnabled=true"
-contains "ontology-query enables delivered outbox cleanup" "${ontology_query_sets}" "bknTrace.producerOutbox.cleanup.enabled=true"
-contains "ontology-query uses the trusted delivery Secret" "${ontology_query_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretName=bkn-trace-evidence-ingest"
-contains "ontology-query reads the trusted delivery token key" "${ontology_query_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
+contains "ontology-query enables Kafka evidence publisher" "${ontology_query_sets}" "bknTrace.evidencePublisher.enabled=true"
+contains "ontology-query uses Kafka bootstrap" "${ontology_query_sets}" "bknTrace.evidencePublisher.brokers="
+contains "ontology-query uses Kafka username Secret" "${ontology_query_sets}" "bknTrace.evidencePublisher.usernameSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+contains "ontology-query uses Kafka password Secret" "${ontology_query_sets}" "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+contains "ontology-query has stable producer identity" "${ontology_query_sets}" "bknTrace.evidencePublisher.producerId=ontology-query"
+contains "ontology-query has stable workload identity" "${ontology_query_sets}" "bknTrace.evidencePublisher.workloadIdentity=ontology-query"
+contains "ontology-query has stable stream identity" "${ontology_query_sets}" "bknTrace.evidencePublisher.producerStreamId=ontology-query"
+contains "ontology-query has capture policy revision" "${ontology_query_sets}" "bknTrace.evidencePublisher.capturePolicyRevision=1"
+not_contains "ontology-query has no legacy ingest URL" "${ontology_query_sets}" "bknTrace.evidence.ingestUrl="
+not_contains "ontology-query has no legacy outbox" "${ontology_query_sets}" "bknTrace.producerOutbox."
 
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_release_extra_sets agent-operator-integration openbkn

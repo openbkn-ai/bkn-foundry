@@ -39,8 +39,8 @@ func (c *FalseCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if !ok {
 		return nil, fmt.Errorf("condition [false] left field '%s' not found", cfg.Name)
 	}
-	if field.Type != interfaces.DataType_Boolean {
-		return nil, fmt.Errorf("condition [false] left field is not a boolean field: %s:%s", cfg.Name, field.Type)
+	if !supportsBooleanPredicate(field) {
+		return nil, fmt.Errorf("condition [false] left field is not a boolean or supported numeric field: %s:%s", cfg.Name, field.Type)
 	}
 
 	return &FalseCond{

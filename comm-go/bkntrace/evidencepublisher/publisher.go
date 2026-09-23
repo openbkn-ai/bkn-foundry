@@ -144,7 +144,15 @@ func (p *Publisher) NextSequence() uint64 {
 	return p.sequence + 1
 }
 
+func (p *Publisher) Flush(ctx context.Context) DrainResult {
+	return p.drain(ctx, false)
+}
+
 func (p *Publisher) Close(ctx context.Context) DrainResult {
+	return p.drain(ctx, true)
+}
+
+func (p *Publisher) drain(ctx context.Context, closePublisher bool) DrainResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -159,7 +167,9 @@ func (p *Publisher) Close(ctx context.Context) DrainResult {
 		p.mu.Unlock()
 		return ack
 	}
-	p.closed = true
+	if closePublisher {
+		p.closed = true
+	}
 	items := append([]queuedRecord(nil), p.queue...)
 	p.queue = nil
 	p.queueBytes = 0

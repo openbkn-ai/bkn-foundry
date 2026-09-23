@@ -334,7 +334,7 @@ WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN (%s)`, relKinds)
 	if desc.Valid {
 		table.Description = desc.String
 	}
-	table.Properties["row_count"] = estRows.Int64
+	table.Properties["estimated_row_count"] = estRows.Int64
 	table.Properties["data_length"] = totalBytes.Int64
 	table.Properties["index_length"] = indexBytes.Int64
 	return nil
