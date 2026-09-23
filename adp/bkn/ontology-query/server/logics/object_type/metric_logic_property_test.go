@@ -139,7 +139,9 @@ func Test_logicMetricTimeWindow(t *testing.T) {
 			So(*start, ShouldEqual, supplied-30*60*1000)
 		})
 		Convey("both supplied pass through", func() {
-			s, e := int64(1754006400000), int64(1756684800000)
+			// end differs from now, or this cannot tell a passed-through end
+			// from one the implementation replaced with now.
+			s, e := int64(1754006400000), int64(1755000000000)
 			start, end := logicMetricTimeWindow(
 				interfaces.MetricPropertyDynamicParams{Start: &s, End: &e}, now)
 			So(*start, ShouldEqual, s)

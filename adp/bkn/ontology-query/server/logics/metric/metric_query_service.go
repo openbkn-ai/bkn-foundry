@@ -666,6 +666,17 @@ func vegaEntriesToMetricData(ctx context.Context, def interfaces.MetricDefinitio
 	}
 
 	bknRows := make([]interfaces.BknMetricData, 0, len(entries))
+	// An instant reading is stamped with the moment it was taken, once for the
+	// whole result: a grouped query returns several rows of the same reading,
+	// and stamping each row as it is built spreads them over a few
+	// milliseconds. The caller's end bounds the query when it gives one; when
+	// it does not, the stamp is now, not the epoch - a point that falls back
+	// to the zero value reads as 1970-01-01.
+	instantMs := time.Now().UnixMilli()
+	if query != nil && query.Time != nil && query.Time.End != nil {
+		instantMs = *query.Time.End
+	}
+
 	for _, entry := range entries {
 		labels := make(map[string]string, len(groupDims))
 		values := make([]any, 0, 1)
@@ -724,14 +735,6 @@ func vegaEntriesToMetricData(ctx context.Context, def interfaces.MetricDefinitio
 			}
 		}
 
-		// An instant reading is stamped with the moment it was taken. The
-		// caller's end bounds the query when it gives one; when it does not,
-		// the stamp is now, not the epoch - a point labelled 1970-01-01 is
-		// what a caller sees if this falls back to the zero value.
-		instantMs := time.Now().UnixMilli()
-		if query != nil && query.Time != nil && query.Time.End != nil {
-			instantMs = *query.Time.End
-		}
 		timeStr := common.FormatRFC3339Milli(instantMs)
 		mData := interfaces.BknMetricData{
 			Labels:       labels,
