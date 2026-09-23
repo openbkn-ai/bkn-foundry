@@ -141,12 +141,9 @@ func (a *App) Run() error {
 	defer cancel()
 	var flushStop chan struct{}
 	var flushDone chan struct{}
-	var periodicFlushCancel context.CancelFunc
 	if a.evidence != nil {
 		flushStop = make(chan struct{})
 		flushDone = make(chan struct{})
-		periodicFlushCtx, cancel := context.WithCancel(context.Background())
-		periodicFlushCancel = cancel
 		go func() {
 			defer close(flushDone)
 			ticker := time.NewTicker(time.Second)
@@ -154,7 +151,7 @@ func (a *App) Run() error {
 			for {
 				select {
 				case <-ticker.C:
-					flushCtx, flushCancel := context.WithTimeout(periodicFlushCtx, 5*time.Second)
+					flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
 					result := bkntrace.FlushEvidencePublisher(flushCtx)
 					flushCancel()
 					if result.Dropped > 0 {
@@ -169,13 +166,15 @@ func (a *App) Run() error {
 	<-ctx.Done()
 	close(a.stop)
 	if flushStop != nil {
-		periodicFlushCancel()
+		// Do not cancel an in-flight Flush: comm-go detaches the current batch
+		// before sending it, so cancellation would drop its unsent tail and the
+		// final shutdown drain could not recover those records.
 		close(flushStop)
 		periodicFlushStopped := false
 		select {
 		case <-flushDone:
 			periodicFlushStopped = true
-		case <-time.After(time.Second):
+		case <-time.After(10 * time.Second):
 			a.config.Logger.Warnf("BKN Trace Kafka evidence periodic flush did not stop before shutdown deadline")
 		}
 		if periodicFlushStopped {
