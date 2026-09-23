@@ -243,6 +243,11 @@ func newMCPServerForProfile(
 	b.claimGatewayNames()
 
 	b.addExtras()
+	// Through the builder, like every business tool: the compact profile does
+	// not publish these two, and only what the builder assembled is reachable
+	// through its gateway. Registering them straight onto the server kept them
+	// out of that catalogue, so the compact entry could not run code at all.
+	addInlinePTCTools(b, localeBundle, locale, sandboxPort)
 	b.verifyDecoratorsLanded()
 
 	var mcpServer *server.MCPServer
@@ -300,9 +305,6 @@ func newMCPServerForProfile(
 	mcpServer = server.NewMCPServer(serverName, serverVersion, options...)
 	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 	b.attach(mcpServer)
-	if profile.inlinePTC {
-		registerInlinePTCTools(mcpServer, localeBundle, locale, sandboxPort)
-	}
 	if profile.gateway {
 		registerGatewayTools(mcpServer, b, lifecycleClient)
 	}
@@ -324,8 +326,8 @@ func newMCPServerForProfile(
 // Instructions at rest_public_handler.go.
 //
 // Only log when installation fails: When the embedded tool metadata cannot be read, the other twenty or so business tools should not be affected.
-func registerInlinePTCTools(
-	mcpServer *server.MCPServer, localeBundle *mcpLocaleBundle, locale string, sandboxPort int,
+func addInlinePTCTools(
+	b *toolBuilder, localeBundle *mcpLocaleBundle, locale string, sandboxPort int,
 ) {
 	toolkit, err := buildInlinePTCToolkit(sandboxPort, locale)
 	if err != nil {
@@ -341,10 +343,7 @@ func registerInlinePTCTools(
 		meta := localeBundle.ToolMeta(tool.Name)
 		meta.Description = tool.Description
 		input, output := tryLoadToolSchemas(localeBundle, tool.Name)
-		mcpServer.AddTool(
-			newToolWithSchemas(meta, input, output),
-			handlePTCExecuteForLocale(executor, toolkit, tool, localeBundle),
-		)
+		b.addWith(tool.Name, meta, input, output, handlePTCExecuteForLocale(executor, toolkit, tool, localeBundle))
 	}
 }
 

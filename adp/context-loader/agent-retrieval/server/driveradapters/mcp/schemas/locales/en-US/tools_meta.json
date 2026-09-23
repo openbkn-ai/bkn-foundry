@@ -241,11 +241,47 @@
   },
   "run_code": {
     "title": "Run Code",
-    "group_title": "Code Execution"
+    "group_title": "Code Execution",
+    "gateway": {
+      "summary": "Run Python in the sandbox, with this service's tools callable from the code; for combining, reshaping or batching the results of several queries locally.",
+      "use_when": "One question needs several queries and then a computation, or a loop, paging sweep or throwaway script.",
+      "not_for": "A single query goes to the matching query tool; sellable quantity, kitting, capacity and other business measures go to published functions (search_capabilities).",
+      "next_step": "Call this service's tools by name from the code; run_code and run_shell share one session-isolated working directory.",
+      "keywords": [
+        "run code",
+        "python",
+        "script",
+        "batch",
+        "loop",
+        "local computation",
+        "sandbox"
+      ],
+      "example_arguments": {
+        "code": "print(1 + 1)"
+      }
+    }
   },
   "run_shell": {
     "title": "Run Command",
-    "group_title": "Code Execution"
+    "group_title": "Code Execution",
+    "gateway": {
+      "summary": "Run one shell command in the sandbox and return stdout and stderr; for inspecting the environment and what run_code wrote.",
+      "use_when": "Looking at files, directories or the environment in the sandbox, usually to check what run_code produced.",
+      "not_for": "Do not fetch knowledge network data with it: object types, instances and SQL each have their own tool.",
+      "next_step": "The command runs under sh -c, in the same working directory as run_code.",
+      "keywords": [
+        "run shell",
+        "command",
+        "shell",
+        "inspect files",
+        "directory",
+        "sandbox",
+        "ls"
+      ],
+      "example_arguments": {
+        "command": "ls -la"
+      }
+    }
   },
   "search_capabilities": {
     "title": "Capability Search",

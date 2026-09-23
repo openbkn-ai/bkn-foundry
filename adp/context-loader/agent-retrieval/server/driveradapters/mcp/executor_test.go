@@ -197,7 +197,6 @@ func TestExecutorNormalizesArgumentsByFixedRules(t *testing.T) {
 func TestExecutorRefusesWhatItCannotRun(t *testing.T) {
 	h := newExecutorHarness(t)
 	for name, code := range map[string]string{
-		toolKeyRunCode:           refusalUnknownTool,
 		toolKeySearchSchema:      refusalPublishedDirectly,
 		"no_such_tool":           refusalUnknownTool,
 		toolKeyExecuteNativeTool: refusalPublishedDirectly,

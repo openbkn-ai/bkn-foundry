@@ -175,6 +175,23 @@ func (c *nativeCatalog) targetMeta(name string, tool mcp.Tool) ToolMeta {
 	return ToolMeta{Name: name, Title: tool.Title, Description: tool.Description}
 }
 
+// targetDescription is what describe_native_tool says a target does.
+//
+// A tool whose description is rendered at assembly time - run_code carries the
+// whole tool digest - has none in tools_meta.json, and its rendered one runs to
+// thousands of characters, which is the cost this entry exists to avoid. The
+// card's summary is the one-line form written for exactly this place; the
+// rendered text, cut short, is the last resort.
+func targetDescription(meta ToolMeta, tool mcp.Tool) string {
+	if meta.Description != "" {
+		return meta.Description
+	}
+	if meta.Gateway != nil && meta.Gateway.Summary != "" {
+		return meta.Gateway.Summary
+	}
+	return firstRunes(tool.Description, maxUncardedSummaryRunes)
+}
+
 // firstRunes cuts text to at most n runes at a sentence end when it can.
 func firstRunes(text string, n int) string {
 	runes := []rune(strings.TrimSpace(text))
@@ -363,7 +380,7 @@ func (c *nativeCatalog) describe(ctx context.Context, name string, includeOutput
 	meta := c.targetMeta(name, tool)
 	description := gatewayDescription{
 		Name:            name,
-		Description:     meta.Description,
+		Description:     targetDescription(meta, tool),
 		ArgumentsSchema: schema,
 		CallTemplate:    gatewayCall{Name: name, Arguments: json.RawMessage(`{}`)},
 		OutputFields:    fieldSignature(target.output),

@@ -628,14 +628,56 @@
     "title": "运行代码",
     "group": "execution",
     "group_title": "代码执行",
-    "order": 610
+    "order": 610,
+    "gateway": {
+      "summary": "在沙箱里跑一段 Python，代码里可以直接调用本服务的工具；适合把多次查询的结果在本地汇总、转换或批量处理。",
+      "use_when": "一次问题要串起多次查询再算，或需要循环、分页遍历、临时脚本这类本地计算。",
+      "not_for": "单次取数用对应的查询工具；可售、齐套、产能这类业务口径用已发布函数（search_capabilities）。",
+      "next_step": "代码里按工具名调用本服务的工具；run_code 与 run_shell 共用一个按会话隔离的工作目录。",
+      "keywords": [
+        "跑代码",
+        "运行代码",
+        "Python",
+        "脚本",
+        "批量",
+        "本地计算",
+        "循环",
+        "run code",
+        "python",
+        "script",
+        "sandbox"
+      ],
+      "example_arguments": {
+        "code": "print(1 + 1)"
+      }
+    }
   },
   "run_shell": {
     "name": "run_shell",
     "title": "运行命令",
     "group": "execution",
     "group_title": "代码执行",
-    "order": 620
+    "order": 620,
+    "gateway": {
+      "summary": "在沙箱里执行一条 shell 命令，返回 stdout 与 stderr；用来看环境和 run_code 落盘的文件。",
+      "use_when": "查看沙箱里的文件、目录或环境，通常是核对 run_code 写出来的结果。",
+      "not_for": "取知识网络的数据不要用它，对象类、实例、SQL 都有各自的工具。",
+      "next_step": "命令交给 sh -c 执行，工作目录与 run_code 相同。",
+      "keywords": [
+        "shell",
+        "命令",
+        "执行命令",
+        "查看文件",
+        "目录",
+        "沙箱",
+        "run shell",
+        "command",
+        "ls"
+      ],
+      "example_arguments": {
+        "command": "ls -la"
+      }
+    }
   },
   "search_capabilities": {
     "name": "search_capabilities",
