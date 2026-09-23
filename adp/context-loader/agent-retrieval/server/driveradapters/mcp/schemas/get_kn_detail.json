@@ -135,7 +135,7 @@
           },
           "additionalProperties": true
         },
-        "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细"
+        "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细。logic_properties 只给名称与类型，要看取数来源与参数定义（谁来填）用 get_object_types 或 search_schema"
       },
       "relation_types": {
         "type": "array",

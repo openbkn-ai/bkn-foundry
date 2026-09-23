@@ -68,6 +68,37 @@
               },
               "description": "数据属性 [{name, type, condition_operations}]"
             },
+            "logic_properties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "逻辑属性名。调用 get_logic_properties_values 时按此名填 properties"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "metric（已建模指标）或 tool（挂载工具）"
+                  },
+                  "data_source": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "取数来源；tool 类型含 box_id / tool_id"
+                  },
+                  "parameters": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "description": "参数定义。value_from=property 由服务端按该实例的这一列取值，调用方不填；const 为建模时固定的值；input 需要外部给出，其中 if_system_generate=true 的（instant/start/end/step 等时间窗参数）由服务端生成，其余（如业务口径的筛选项）目前由服务端模型从 query 推断。"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "description": "逻辑属性定义 [{name, type, data_source, parameters}]。值要用 get_logic_properties_values 取，本接口只给定义"
+            },
             "primary_keys": {
               "type": "array",
               "items": {
@@ -79,7 +110,11 @@
               "type": "object",
               "additionalProperties": {
                 "type": "string",
-                "enum": ["schema", "masked", "full"]
+                "enum": [
+                  "schema",
+                  "masked",
+                  "full"
+                ]
               }
             }
           },
