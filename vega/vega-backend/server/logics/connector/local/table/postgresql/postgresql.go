@@ -153,6 +153,7 @@ func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Co
 	}, nil
 }
 
+// connectionString builds the PostgreSQL connection URL from connector settings.
 func (c *PostgresqlConnector) connectionString() string {
 	u := &url.URL{
 		Scheme: "postgres",
@@ -232,6 +233,7 @@ func (c *PostgresqlConnector) TestConnection(ctx context.Context) error {
 	return nil
 }
 
+// validateSchemas checks that every configured schema exists and is accessible.
 func (c *PostgresqlConnector) validateSchemas(ctx context.Context) error {
 	for _, s := range c.config.Schemas {
 		var exists bool

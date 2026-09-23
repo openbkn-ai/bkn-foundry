@@ -165,6 +165,7 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 	}, nil
 }
 
+// connectionString builds the MariaDB driver connection string from connector settings.
 func (c *MariaDBConnector) connectionString() string {
 	values := url.Values{}
 	values.Set("charset", "utf8mb4")

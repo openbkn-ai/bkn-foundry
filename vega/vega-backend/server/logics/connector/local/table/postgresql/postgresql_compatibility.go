@@ -28,6 +28,7 @@ type postgresqlCompatibility struct {
 	withOrdinality bool
 }
 
+// detectPostgresqlCompatibility probes metadata-query features supported by the connected database.
 func detectPostgresqlCompatibility(ctx context.Context, db *sql.DB) postgresqlCompatibility {
 	var compatibility postgresqlCompatibility
 	var probeResult int
@@ -44,10 +45,12 @@ func detectPostgresqlCompatibility(ctx context.Context, db *sql.DB) postgresqlCo
 	return compatibility
 }
 
+// supportsLateral reports whether LATERAL metadata queries are supported.
 func (c postgresqlCompatibility) supportsLateral() bool {
 	return c.lateral
 }
 
+// supportsWithOrdinality reports whether WITH ORDINALITY metadata queries are supported.
 func (c postgresqlCompatibility) supportsWithOrdinality() bool {
 	return c.withOrdinality
 }

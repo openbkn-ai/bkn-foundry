@@ -132,7 +132,7 @@ func TestPostgresqlDateCompareExprUsesSessionTimezoneForTimestampWithoutTimezone
 				OriginalType: originalType,
 			}
 
-			expr, err := postgresqlDateCompareExpr(field, ">=", float64(1785295334428))
+			expr, err := dateCompareExpr(field, ">=", float64(1785295334428))
 			require.NoError(t, err)
 			sql, args, err := expr.ToSql()
 			require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestPostgresqlDateExpressionsKeepCursorTimestampsNative(t *testing.T) {
 			"RFC3339":   wantTime.Format(time.RFC3339Nano),
 		} {
 			t.Run(test.originalType+"/"+name, func(t *testing.T) {
-				expr, err := postgresqlDateCompareExpr(field, ">", value)
+				expr, err := dateCompareExpr(field, ">", value)
 				require.NoError(t, err)
 				sql, args, err := expr.ToSql()
 				require.NoError(t, err)
@@ -186,7 +186,7 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 			Type:         interfaces.DataType_Time,
 		}
 
-		expr, err := postgresqlDateCompareExpr(field, ">=", "14:30:00")
+		expr, err := dateCompareExpr(field, ">=", "14:30:00")
 		require.NoError(t, err)
 		sql, args, err := expr.ToSql()
 		require.NoError(t, err)
@@ -201,7 +201,7 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 				OriginalType: originalType,
 			}
 
-			expr, err := postgresqlDateCompareExpr(field, ">=", "14:30:00")
+			expr, err := dateCompareExpr(field, ">=", "14:30:00")
 			require.NoError(t, err)
 			sql, args, err := expr.ToSql()
 			require.NoError(t, err)
@@ -331,14 +331,14 @@ func TestPgIntervalUnit(t *testing.T) {
 			"seconds": "second",
 		}
 		for input, want := range tests {
-			got, err := pgIntervalUnit(input)
+			got, err := intervalUnit(input)
 			require.NoError(t, err)
 			assert.Equal(t, want, got)
 		}
 	})
 
 	t.Run("returns error for unsupported unit", func(t *testing.T) {
-		got, err := pgIntervalUnit("week")
+		got, err := intervalUnit("week")
 
 		require.Error(t, err)
 		assert.Empty(t, got)

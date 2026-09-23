@@ -279,6 +279,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 	return builder.Limit(uint64(params.Paging.Limit)), nil
 }
 
+// ExecuteQuery runs a structured single-table query and returns rows and optional totals.
 func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 
