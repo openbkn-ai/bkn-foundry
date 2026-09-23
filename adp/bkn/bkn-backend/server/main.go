@@ -87,6 +87,7 @@ func (server *mgrService) start() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Receiving a signal triggers ctx.Done. stop stops receiving registered signals and releases those resources.
 	defer stop()
+	flushDone := startEvidenceFlushLoop(ctx, server.evidencePublisher, time.Second)
 
 	// Initialize the HTTP service.
 	s := &http.Server{
@@ -112,6 +113,7 @@ func (server *mgrService) start() {
 	// Set the system's last processed time.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	<-flushDone
 
 	// Stop the HTTP service.
 	logger.Info("Server Start Shutdown")
@@ -119,6 +121,7 @@ func (server *mgrService) start() {
 		logger.Fatalf("Server Shutdown:%v", err)
 	}
 	if server.evidencePublisher != nil {
+		server.evidencePublisher.Flush(ctx)
 		server.evidencePublisher.Close(ctx)
 	}
 	if server.evidenceProducer != nil {
@@ -130,6 +133,28 @@ func (server *mgrService) start() {
 	server.otelProviders.Shutdown(ctx)
 
 	logger.Info("Server Exited")
+}
+
+func startEvidenceFlushLoop(ctx context.Context, publisher *evidencepublisher.Publisher, interval time.Duration) <-chan struct{} {
+	done := make(chan struct{})
+	if publisher == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		defer close(done)
+		for {
+			select {
+			case <-ticker.C:
+				publisher.Flush(context.Background())
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return done
 }
 
 func main() {
