@@ -59,6 +59,10 @@ type PlanTable struct {
 	ObjectTypeID string
 	ResourceID   string
 	Label        string
+	// Optional marks a table an OPTIONAL MATCH introduced: it is read through
+	// an outer join, so its columns are null on a row that found nothing. Every
+	// condition over it belongs to that join rather than to WHERE.
+	Optional bool
 }
 
 // PlanJoin joins two tables on the key pairs of a direct relation type.
@@ -72,6 +76,17 @@ type PlanJoin struct {
 	RelationTypeID string
 	Direction      Direction
 	Readings       [][]PlanJoinKey
+	// Optional makes this an outer join: the row on the anchor side survives
+	// whether or not the other side has a match.
+	Optional bool
+	// OptionalTable is the table the outer join attaches, which is the side
+	// that goes null. It is meaningful only when Optional is set.
+	OptionalTable int
+	// Conditions qualify the match rather than the result, so they are written
+	// into the join and not into WHERE. On an outer join that difference is
+	// the whole semantics: in WHERE they would turn it back into an inner one
+	// and drop the rows it exists to keep.
+	Conditions []PlanPredicate
 }
 
 // PlanJoinKey is one equality between a column of the left table and a column
@@ -309,7 +324,8 @@ func (p *planner) keepRelationshipsDistinct(pattern Pattern) error {
 	for i := 0; i < len(p.hops); i++ {
 		for j := i + 1; j < len(p.hops); j++ {
 			if p.hops[i].clause != p.hops[j].clause ||
-				p.hops[i].relationType != p.hops[j].relationType {
+				p.hops[i].relationType != p.hops[j].relationType ||
+				p.hops[i].optional || p.hops[j].optional {
 				continue
 			}
 			distinct, err := p.differentEdges(p.hops[i], p.hops[j])
@@ -409,7 +425,11 @@ type plannedHop struct {
 	source       int
 	target       int
 	clause       int
-	pos          Position
+	// optional marks a hop an OPTIONAL MATCH wrote. The uniqueness rule does
+	// not reach it: the condition it would add belongs in WHERE, where it
+	// would drop the very rows the outer join kept.
+	optional bool
+	pos      Position
 }
 
 func (p *planner) addTable(node NodeRef) error {
@@ -440,6 +460,7 @@ func (p *planner) addTable(node NodeRef) error {
 		ObjectTypeID: objectType.OTID,
 		ResourceID:   resourceID,
 		Label:        node.Label,
+		Optional:     node.Optional,
 	})
 	p.objectType = append(p.objectType, objectType)
 	return nil
@@ -470,7 +491,10 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 		return planErrorf(edge.Pos, "relation type %q has no key mapping to join on", relationType.RTName)
 	}
 
-	join := PlanJoin{Left: left, Right: right, RelationTypeID: relationType.RTID, Direction: edge.Direction}
+	join := PlanJoin{
+		Left: left, Right: right, RelationTypeID: relationType.RTID, Direction: edge.Direction,
+		Optional: edge.Optional, OptionalTable: edge.OptionalNode,
+	}
 	for _, forwards := range p.readings(edge.Direction) {
 		source, target := left, right
 		if !forwards {
@@ -495,6 +519,7 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 				source:       source,
 				target:       target,
 				clause:       edge.Clause,
+				optional:     edge.Optional,
 				pos:          edge.Pos,
 			})
 		}
@@ -505,6 +530,13 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 			"relation type %q goes from %q to %q, which does not connect %q and %q the way this pattern reads it",
 			relationType.RTName, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID,
 			p.objectType[left].OTID, p.objectType[right].OTID)
+	}
+	for _, condition := range edge.Conditions {
+		planned, err := p.planPredicate(condition)
+		if err != nil {
+			return err
+		}
+		join.Conditions = append(join.Conditions, planned)
 	}
 	p.plan.Joins = append(p.plan.Joins, join)
 	return nil

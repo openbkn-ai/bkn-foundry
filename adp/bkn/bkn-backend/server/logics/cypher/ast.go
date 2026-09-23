@@ -61,6 +61,10 @@ type Pattern struct {
 type NodeRef struct {
 	Variable string
 	Label    string
+	// Optional marks a node an OPTIONAL MATCH introduced. Nothing that would
+	// require it -- a later MATCH, or the query's WHERE -- may name it, since
+	// requiring it is exactly what OPTIONAL MATCH asks not to do.
+	Optional bool
 	// Anonymous marks a variable the compiler invented for a node the query
 	// did not name, so a message about it can say "the node" rather than
 	// quote a name the author never wrote.
@@ -76,6 +80,18 @@ type EdgeRef struct {
 	Direction Direction
 	Left      int
 	Right     int
+	// Optional marks a relationship an OPTIONAL MATCH wrote: a node on the
+	// other end of it may be missing without costing the row it hangs off.
+	Optional bool
+	// OptionalNode is the node the optional clause introduces, which is the
+	// one that goes missing. It is meaningful only when Optional is set.
+	OptionalNode int
+	// Conditions are what the optional clause wrote beside the relationship:
+	// its WHERE and any inline property map. They qualify the match rather
+	// than the result, so they belong to this relationship and not to the
+	// query's WHERE -- a row that fails them keeps its place and loses the
+	// optional node, which is what OPTIONAL MATCH means.
+	Conditions []Predicate
 	// Clause is which MATCH wrote this relationship. Several MATCH clauses
 	// describe one shape, but Cypher's rule that a pattern may not traverse
 	// the same relationship twice holds inside a single MATCH and not between

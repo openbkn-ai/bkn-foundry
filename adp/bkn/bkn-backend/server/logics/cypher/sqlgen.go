@@ -150,7 +150,17 @@ func (g *generator) writeFrom() {
 	// where each one joins to a table already in the statement. Anything left
 	// over belongs to a shape the query never connected, and is written as a
 	// cross join rather than silently dropped.
-	for pending := len(g.plan.Tables) - 1; pending > 0; pending-- {
+	//
+	// Only the required tables take part in this. An outer join has a side that
+	// may go null, so it cannot be reordered in among the inner ones: everything
+	// it hangs off has to be in the statement before it is written.
+	required := 0
+	for _, table := range g.plan.Tables {
+		if !table.Optional {
+			required++
+		}
+	}
+	for pending := required - 1; pending > 0; pending-- {
 		next, join := g.nextJoinable(joined, used)
 		if join < 0 {
 			next = g.firstUnjoined(joined)
@@ -163,22 +173,56 @@ func (g *generator) writeFrom() {
 		joined[next] = true
 		used[join] = true
 	}
+	g.writeOptionalJoins(joined, used)
 
 	// A join that attached no table still carries a condition: a cycle closing
 	// on tables already read, or a relationship from a node to itself. It is
 	// kept for WHERE, where a condition can stand on its own.
 	for i, join := range g.plan.Joins {
 		if !used[i] {
+			if join.Optional {
+				// An outer join's condition cannot stand in WHERE: there it
+				// filters the rows the join kept instead of deciding what it
+				// matched. The planner attaches every optional join to a table,
+				// so this is a broken plan rather than a query to reject.
+				g.fail(fmt.Errorf("optional join %d attaches no table", i))
+				return
+			}
 			g.deferred = append(g.deferred, join)
 		}
 	}
 }
 
-// nextJoinable finds a table not yet in the statement that some unused join
-// attaches to one that is.
+// writeOptionalJoins writes the outer joins, in the order the pattern wrote
+// them. That order is what makes them safe to chain: an OPTIONAL MATCH may
+// only attach to a node an earlier clause found, so whatever one hangs off is
+// already in the statement, and a second optional join hanging off the first
+// goes null with it.
+func (g *generator) writeOptionalJoins(joined, used []bool) {
+	for i, join := range g.plan.Joins {
+		if !join.Optional || used[i] {
+			continue
+		}
+		table := join.OptionalTable
+		anchor := join.Left
+		if anchor == table {
+			anchor = join.Right
+		}
+		if table < 0 || table >= len(joined) || joined[table] || !joined[anchor] {
+			g.fail(fmt.Errorf("optional join %d does not attach a new table to one already read", i))
+			return
+		}
+		g.writeJoin(join, table)
+		joined[table] = true
+		used[i] = true
+	}
+}
+
+// nextJoinable finds a required table not yet in the statement that some unused
+// required join attaches to one that is.
 func (g *generator) nextJoinable(joined, used []bool) (table int, join int) {
 	for i, candidate := range g.plan.Joins {
-		if used[i] {
+		if used[i] || candidate.Optional {
 			continue
 		}
 		if joined[candidate.Left] && !joined[candidate.Right] {
@@ -193,7 +237,7 @@ func (g *generator) nextJoinable(joined, used []bool) (table int, join int) {
 
 func (g *generator) firstUnjoined(joined []bool) int {
 	for i, in := range joined {
-		if !in {
+		if !in && !g.plan.Tables[i].Optional {
 			return i
 		}
 	}
@@ -201,10 +245,38 @@ func (g *generator) firstUnjoined(joined []bool) int {
 }
 
 func (g *generator) writeJoin(join PlanJoin, table int) {
-	g.out.WriteString(" JOIN ")
+	if join.Optional {
+		g.out.WriteString(" LEFT JOIN ")
+	} else {
+		g.out.WriteString(" JOIN ")
+	}
 	g.out.WriteString(g.table(table))
 	g.out.WriteString(" ON ")
+	// The key pairs are a disjunction when the relationship is undirected, so
+	// they are parenthesised before anything is ANDed onto them.
+	group := len(join.Readings) > 1 && len(join.Conditions) > 0
+	if group {
+		g.out.WriteString("(")
+	}
 	g.writeJoinCondition(join)
+	if group {
+		g.out.WriteString(")")
+	}
+	for _, condition := range join.Conditions {
+		g.out.WriteString(" AND ")
+		if err := g.writePredicate(condition, true); err != nil {
+			g.fail(err)
+			return
+		}
+	}
+}
+
+// fail records the first generation failure. Generate checks it once, after
+// every part of the statement has been written.
+func (g *generator) fail(err error) {
+	if g.err == nil {
+		g.err = err
+	}
 }
 
 func (g *generator) writeJoinCondition(join PlanJoin) {

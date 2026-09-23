@@ -657,9 +657,12 @@ func TestCompileMultiPatternRejections(t *testing.T) {
 			want:  "one variable with two labels",
 		},
 		{
-			name:  "OPTIONAL MATCH among them",
-			query: "MATCH (o:Order) OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) RETURN o.id",
-			want:  "OPTIONAL MATCH",
+			// An OPTIONAL MATCH is one of them, and what it introduces stays
+			// optional: a later MATCH may not walk through it.
+			name: "a MATCH requiring what an OPTIONAL MATCH introduced",
+			query: "MATCH (o:Order) OPTIONAL MATCH (o)<-[:BELONGS_TO]-(i:Item) " +
+				"MATCH (i)-[:BELONGS_TO]->(o2:Order) RETURN o.id",
+			want: "requiring what an OPTIONAL MATCH introduced",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

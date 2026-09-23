@@ -56,6 +56,12 @@ func unsupportedf(ctx antlr.ParserRuleContext, feature, detail string, args ...a
 	return &Unsupported{Pos: positionOf(ctx), Feature: feature, Detail: fmt.Sprintf(detail, args...)}
 }
 
+// unsupportedAt is unsupportedf for a construct the reader already reduced to
+// its own terms, where a parse tree node is no longer at hand.
+func unsupportedAt(pos Position, feature, detail string, args ...any) error {
+	return &Unsupported{Pos: pos, Feature: feature, Detail: fmt.Sprintf(detail, args...)}
+}
+
 // Analyze reads a parse tree as a query in the supported subset.
 func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	statement := tree.OC_Statement()
@@ -107,7 +113,11 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 			return nil, unsupported(clause, "procedure calls")
 		}
 		if match.OPTIONAL() != nil {
-			return nil, unsupported(match, "OPTIONAL MATCH")
+			if err := builder.addOptionalMatch(match); err != nil {
+				return nil, err
+			}
+			lastMatch = match
+			continue
 		}
 		if err := builder.addPattern(match.OC_Pattern()); err != nil {
 			return nil, err
@@ -127,10 +137,84 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	// Conditions from the pattern and from WHERE mean the same thing and are
 	// joined the way Cypher joins them.
 	query.Where = combine("AND", inline, positionOf(lastMatch))
+	if err := refuseRequiredUseOfOptional(query); err != nil {
+		return nil, err
+	}
 	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody()); err != nil {
 		return nil, err
 	}
 	return query, nil
+}
+
+// refuseRequiredUseOfOptional keeps what an OPTIONAL MATCH introduced out of
+// everything that would require it: a later MATCH that walks through it, or a
+// WHERE that tests it. Either one is an inner condition over an outer join, so
+// the rows the OPTIONAL MATCH set out to keep would be dropped again -- quietly,
+// and exactly where the author asked for the opposite.
+func refuseRequiredUseOfOptional(query *Query) error {
+	optional := map[string]NodeRef{}
+	for _, node := range query.Pattern.Nodes {
+		if node.Optional && node.Variable != "" {
+			optional[node.Variable] = node
+		}
+	}
+	if len(optional) == 0 {
+		return nil
+	}
+	for _, edge := range query.Pattern.Edges {
+		if edge.Optional {
+			continue
+		}
+		for _, side := range [2]int{edge.Left, edge.Right} {
+			if node := query.Pattern.Nodes[side]; node.Optional {
+				return requiredOptionalError(edge.Pos, node)
+			}
+		}
+	}
+	for _, ref := range predicateProperties(query.Where) {
+		if node, isOptional := optional[ref.Variable]; isOptional {
+			return requiredOptionalError(ref.Pos, node)
+		}
+	}
+	return nil
+}
+
+func requiredOptionalError(pos Position, node NodeRef) error {
+	name := node.Variable
+	if name == "" || node.Anonymous {
+		name = "the node " + node.Label
+	} else {
+		name = "\"" + name + "\""
+	}
+	return unsupportedAt(pos, "requiring what an OPTIONAL MATCH introduced",
+		"%s may be missing, so a MATCH or a WHERE over it would drop the rows the OPTIONAL MATCH keeps", name)
+}
+
+// predicateProperties lists every property a condition reads, which is how a
+// stage that cares about where a variable came from finds the mentions of it.
+func predicateProperties(predicate Predicate) []PropertyRef {
+	switch node := predicate.(type) {
+	case nil:
+		return nil
+	case Comparison:
+		return []PropertyRef{node.Left}
+	case NullCheck:
+		return []PropertyRef{node.Property}
+	case Membership:
+		return []PropertyRef{node.Property}
+	case StringMatch:
+		return []PropertyRef{node.Property}
+	case Negation:
+		return predicateProperties(node.Operand)
+	case LogicalOperator:
+		var refs []PropertyRef
+		for _, operand := range node.Operands {
+			refs = append(refs, predicateProperties(operand)...)
+		}
+		return refs
+	default:
+		return nil
+	}
 }
 
 // patternBuilder collects everything the MATCH clauses describe into one
@@ -170,6 +254,97 @@ func (b *patternBuilder) addPattern(ctx parsing.IOC_PatternContext) error {
 		if err := b.addPath(element); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// addOptionalMatch reads one OPTIONAL MATCH. The subset accepts the shape a
+// left join has and no more: one relationship attaching one new node to
+// something an earlier clause already found. A wider optional pattern matches
+// as a whole or not at all -- two hops where the second fails leave the first
+// unbound too -- and a flat list of joins cannot say that, so it is refused
+// rather than approximated into something that quietly returns other rows.
+//
+// What the clause writes beside the relationship, its WHERE and any inline
+// property map, moves onto the relationship. Those conditions decide whether
+// the optional node is found, not whether the row survives: that is the
+// difference between an ON and a WHERE, and it is the whole point of the
+// clause.
+func (b *patternBuilder) addOptionalMatch(match parsing.IOC_MatchContext) error {
+	if b.clause == 0 {
+		return unsupportedf(match, "a query that starts with OPTIONAL MATCH",
+			"an OPTIONAL MATCH attaches to what an earlier clause found; write the first clause as MATCH")
+	}
+	edgesBefore, nodesBefore, inlineBefore := len(b.pattern.Edges), len(b.pattern.Nodes), len(b.inline)
+
+	if err := b.addPattern(match.OC_Pattern()); err != nil {
+		return err
+	}
+	if written := len(b.pattern.Edges) - edgesBefore; written != 1 {
+		return unsupportedf(match, "an OPTIONAL MATCH over anything but one relationship",
+			"an OPTIONAL MATCH may hold exactly one relationship, got %d", written)
+	}
+	switch introduced := len(b.pattern.Nodes) - nodesBefore; {
+	case introduced == 0:
+		return unsupportedf(match, "an OPTIONAL MATCH that introduces no node",
+			"both ends of this relationship are already matched, so there is nothing for it to leave missing")
+	case introduced > 1:
+		return unsupportedf(match, "an OPTIONAL MATCH that introduces more than one node",
+			"an OPTIONAL MATCH must attach to a node an earlier clause already found, and may introduce one node of its own")
+	}
+
+	edge := &b.pattern.Edges[edgesBefore]
+	node := nodesBefore
+	if edge.Left != node && edge.Right != node {
+		return unsupportedf(match, "an OPTIONAL MATCH whose new node is not on its relationship",
+			"the node this clause introduces has to be an end of the relationship it writes")
+	}
+	b.pattern.Nodes[node].Optional = true
+	edge.Optional, edge.OptionalNode = true, node
+	edge.Conditions = append(edge.Conditions, b.inline[inlineBefore:]...)
+	b.inline = b.inline[:inlineBefore]
+
+	if where := match.OC_Where(); where != nil {
+		written, err := analyzePredicate(where.OC_Expression())
+		if err != nil {
+			return err
+		}
+		edge.Conditions = append(edge.Conditions, written)
+	}
+	return b.refuseConditionsThatFilterNothing(match, edge, b.pattern.Nodes[node])
+}
+
+// refuseConditionsThatFilterNothing turns away a condition written inside an
+// OPTIONAL MATCH that names nothing the clause introduces.
+//
+// openCypher scopes a WHERE to the clause it is written on, so one written
+// here decides what the optional match looks for and never which rows come
+// back. An author who writes `MATCH (s)-->(t) OPTIONAL MATCH (t)<--(x) WHERE
+// s.id = $doc` reads it as a filter on s and gets every s instead -- the
+// statement runs, returns far too much, and says nothing about it. That is a
+// wrong answer rather than a slow one, and the shape is common enough that it
+// is refused with the fix in the message rather than compiled faithfully.
+func (b *patternBuilder) refuseConditionsThatFilterNothing(match parsing.IOC_MatchContext,
+	edge *EdgeRef, node NodeRef) error {
+	for _, condition := range edge.Conditions {
+		named := false
+		for _, ref := range predicateProperties(condition) {
+			if node.Variable != "" && ref.Variable == node.Variable {
+				named = true
+				break
+			}
+		}
+		if named {
+			continue
+		}
+		subject := "the node it introduces"
+		if node.Variable != "" && !node.Anonymous {
+			subject = fmt.Sprintf("%q", node.Variable)
+		}
+		return unsupportedAt(condition.predicatePosition(),
+			"a condition in an OPTIONAL MATCH that names nothing it introduces",
+			"a condition written here decides whether %s is looked for, never which rows come back; "+
+				"write it on the MATCH it is meant to filter", subject)
 	}
 	return nil
 }
