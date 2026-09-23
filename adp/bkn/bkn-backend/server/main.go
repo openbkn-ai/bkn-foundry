@@ -169,6 +169,8 @@ func main() {
 			logger.Fatalf("Failed to configure Evidence Kafka publisher: %v", err)
 		}
 		bkntrace.SetEvidencePublisher(publisherRuntime.Publisher)
+	} else {
+		logger.Warn("BKN Trace Evidence Kafka publisher is disabled; workload is not 0.2-ready and evidence events will be dropped")
 	}
 
 	audit.Init(&appSetting.MQSetting)
