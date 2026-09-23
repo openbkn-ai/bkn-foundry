@@ -631,3 +631,47 @@ func TestSearchInstanceRequiresTheKnowledgeNetwork(t *testing.T) {
 		}
 	}
 }
+
+// Logic properties reach the caller through get_object_types and
+// search_schema, and their parameter definitions are what tells a caller
+// which values it has to supply. Both responses carried them only because
+// additionalProperties is open, with nothing declaring them, so a caller
+// reading the contract could not know they were there.
+func TestSchemaDeclaresLogicPropertyParameters(t *testing.T) {
+	for _, toolKey := range []string{toolKeyGetObjectTypes, toolKeySearchSchema} {
+		for _, locale := range []string{"zh-CN", "en-US"} {
+			_, output := loadMCPLocaleBundle(locale).ToolSchemas(toolKey)
+			var schema struct {
+				Properties struct {
+					ObjectTypes struct {
+						Items struct {
+							Properties struct {
+								LogicProperties struct {
+									Description string `json:"description"`
+									Items       struct {
+										Properties map[string]struct {
+											Description string `json:"description"`
+										} `json:"properties"`
+									} `json:"items"`
+								} `json:"logic_properties"`
+							} `json:"properties"`
+						} `json:"items"`
+					} `json:"object_types"`
+				} `json:"properties"`
+			}
+			if err := json.Unmarshal(output, &schema); err != nil {
+				t.Fatalf("%s %s: decode output schema: %v", locale, toolKey, err)
+			}
+			declared := schema.Properties.ObjectTypes.Items.Properties.LogicProperties
+			if declared.Description == "" {
+				t.Errorf("%s %s: logic_properties is not declared", locale, toolKey)
+				continue
+			}
+			for _, field := range []string{"name", "type", "data_source", "parameters"} {
+				if declared.Items.Properties[field].Description == "" {
+					t.Errorf("%s %s: logic_properties.%s has no description", locale, toolKey, field)
+				}
+			}
+		}
+	}
+}
