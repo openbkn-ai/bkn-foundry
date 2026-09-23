@@ -278,8 +278,11 @@ ar_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
 contains "retrieval targets internal Trace Core" "${ar_sets}" "observability.lifecycle.core_url=http://agent-observability-internal:8081"
 contains "retrieval emits Trace spans" "${ar_sets}" "observability.trace.enabled=true"
 contains "retrieval emits searchable runtime logs" "${ar_sets}" "observability.log.enabled=true"
-contains "retrieval emits evidence through token-protected ingest" "${ar_sets}" "observability.evidence.ingest_url=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
-contains "retrieval uses evidence ingest Secret" "${ar_sets}" "observability.evidence.ingest_token_secret_name=bkn-trace-evidence-ingest"
+contains "retrieval keeps independent artifact endpoint" "${ar_sets}" "observability.evidence.artifact_endpoint=http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
+contains "retrieval uses the standard Core token Secret for artifacts" "${ar_sets}" "observability.evidence.artifact_secret_name=bkn-trace-evidence-ingest"
+contains "retrieval enables Kafka evidence publisher" "${ar_sets}" "observability.evidencePublisher.enabled=true"
+contains "retrieval uses Kafka credentials" "${ar_sets}" "observability.evidencePublisher.passwordSecretName=bkn-trace-evidence-kafka"
+not_contains "retrieval has no HTTP evidence ingest" "${ar_sets}" "observability.evidence.ingest_url="
 not_contains "retrieval has no query gateway Secret" "${ar_sets}" "gateway_token_secret_name="
 
 # vega-backend is an Evidence producer on an older chart generation: same three

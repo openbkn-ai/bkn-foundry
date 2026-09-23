@@ -54,12 +54,12 @@ Different transports preserve the native shape of the business response, so Rece
 | MCP executes normally | `structuredContent.bkn_receipt` | Returned together with tool structured results as a projection: `receipt_status`, `evidence_durability`, `observed_evidence_refs`, `business_refs`, plus `partial_reasons` when set. The complete Receipt stays in Core |
 | MCP terminal replay or pending | `receipt` field of text content JSON | The downstream is no longer executed and the persistent state is returned; the error result does not carry `structuredContent` |
 
-`receipt_status` indicates whether the business Attempt has been completed, and `evidence_durability` indicates whether the evidence has received Core durable ACK. The two cannot be mixed:
+`receipt_status` indicates whether the business Attempt has been completed, and `evidence_durability` indicates whether the evidence has received Core Evidence Ledger durable ACK. The two cannot be mixed:
 
-- Without Evidence Ledger durable ACK, successful calls can only be completed with `receipt_status=completed`, `evidence_durability=pending`.
+- Agent Retrieval publishes Evidence events asynchronously to the canonical Kafka producer. Queue acceptance and Kafka broker ACK do not prove that Core has written the event to its Evidence Ledger and Projection Outbox. Successful calls therefore remain `receipt_status=completed`, `evidence_durability=pending` until the authoritative consumer/ledger evidence is observed; do not upgrade the lifecycle receipt based on producer flush results.
 - `evidence_durability=durable` cannot be submitted until the Evidence event has been written to the Core Evidence Ledger and Projection Outbox and received `durable_ack=true`.
 - Failed Attempts use `receipt_status=failed`, `evidence_durability=failed`.
-- Currently #541 lifecycle access does not forge durable ACK; #544's 3.0 Evidence Producer is responsible for passing the real ACK and evidence refs to the Attempt completion interface after access.
+- This producer does not reconcile Kafka ACKs back into Core lifecycle receipts. If authoritative evidence is not observed by the assembler deadline, the Interaction retains partial / coverage-gap semantics rather than treating broker delivery as durable completion.
 
 ## 5. Facts and references
 
@@ -74,10 +74,11 @@ Different transports preserve the native shape of the business response, so Rece
 
 - `event_id = evt_ + sha256(trace_id|operation_id|event_type|attempt)`.
 - `observed_at/emitted_at` reuse the stable time from the caller envelope.
-- The emission function explicitly returns the real event ID; the HTTP object query also returns `bkn-evidence-event-id`.
-- Existing 2.1 fire-and-forget transmitters do not constitute 3.0 durable ACKs and cannot be used to mark Receipts as durable.
+- Artifact content remains on the artifact-only HTTP endpoint; only `RecordInteractionArtifact` uses this path. It is separate from Evidence event delivery.
+- Evidence events are serialized and published with the canonical `comm-go/bkntrace/evidencepublisher` Kafka contract. The bounded in-memory queue is fail-open for business operations; queue/retry failures are observable in logs and producer metrics.
+- Kafka broker ACKs and producer flush results do not constitute Core Evidence Ledger durable ACKs and cannot be used to mark Receipts as durable.
 - When there is no valid inbound OTel Span, in order to satisfy the Core correlation field constraints, the Context Loader stably derives the synthesized trace/span ID from `request_id`; this ID is only used for lifecycle correlation and does not mean that the corresponding Span must exist in the OTel backend.
-- 3.0 Evidence Producer must use #533 durable Outbox and only mark local events as delivered after Core returns durable ACK.
+- Agent Retrieval does not use the retired HTTP Evidence-event ingest path or a source-side outbox. Core's authoritative consumer/ledger and assembler remain responsible for evidence durability and convergence.
 
 ## 7. Acceptance
 
@@ -86,7 +87,7 @@ Different transports preserve the native shape of the business response, so Rece
 - Given the downstream returns an error or panic, when Context Loader completes the Attempt, then the Receipt becomes failed, no permanent pending state remains, and panic details are not leaked to the caller.
 - Given a retryable failed Attempt, when the trusted adapter creates the next Attempt and re-invokes the business tool, then the new Attempt executes only once; concurrent replays return only the pending Receipt.
 - Given a third-party Agent obtains a pending Receipt, when lifecycle tools are enumerated, then there is no finalize tool that lets it declare platform output or terminal state by itself.
-- Given Core durable ACK has not been received, when the Attempt completes successfully, then the Receipt is completed + pending.
+- Given an event is accepted by the producer and Kafka flush receives a broker ACK, when the Attempt completes successfully, then the Receipt is still completed + pending until Core Evidence Ledger durability is authoritative.
 - Given there is no valid OTel Span and the same request is replayed, when the Attempt completes, then the same synthetic trace ID is used; different requests use different IDs.
 
 ## 8. Known limitations

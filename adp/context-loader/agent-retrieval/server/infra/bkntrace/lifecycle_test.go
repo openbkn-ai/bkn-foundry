@@ -22,6 +22,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -340,6 +341,16 @@ func TestEnsureFinishCorrelationDerivesStableSyntheticTraceFromRequest(t *testin
 }
 
 func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
+	sender := &captureEvidenceSender{}
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{
+		ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval",
+		ProcessBootID: "test", CapturePolicyRevision: "1",
+	}, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 	var requestBody map[string]any
 	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
 		if request.Method != http.MethodPost ||
@@ -364,13 +375,18 @@ func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
 	traceContext.RequestID = "req_finish_without_span_0001"
 	ctx = common.SetTraceContextToCtx(ctx, traceContext)
 	ctx = withEvidenceOutcome(ctx)
-	outcome := evidenceOutcomeFromContext(ctx)
-	outcome.durable = true
-	outcome.eventIDs = []string{"evt_durable"}
-	outcome.businessRefs = []BusinessRef{{
-		RefType: "data_resource", RefID: "resource:forecast_resource",
-		Version: "unversioned",
-	}}
+	if result := publishEvidenceEvent(Event{
+		"event_id": "evt-1", "event_type": "retrieval.completed", "conversation_id": "conv-1",
+		"interaction_id": "int-1", "operation_id": "op-1", "attempt": 1,
+		"observed_at": "2026-09-23T00:00:00Z", "emitted_at": "2026-09-23T00:00:01Z",
+	}); result.Disposition != evidencepublisher.Accepted {
+		t.Fatalf("queue evidence event: %#v", result)
+	}
+	recordEvidenceAttempt(ctx)
+	recordQueuedEvidenceOutcome(ctx)
+	if result := FlushEvidencePublisher(context.Background()); result.Published != 1 || result.Dropped != 0 {
+		t.Fatalf("expected successful Kafka ACK before lifecycle completion: %#v", result)
+	}
 
 	_, apiErr, err := NewGuard(client).Finish(
 		ctx, pendingGuardState(), "sha256:result", false, false,
@@ -385,21 +401,21 @@ func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
 	if len(traceID) != 32 {
 		t.Fatalf("finish request did not derive a valid trace ID: %#v", requestBody)
 	}
-	if requestBody["evidence_durability"] != "durable" {
-		t.Fatalf("finish request lost durable evidence ACK: %#v", requestBody)
+	if requestBody["evidence_durability"] != "pending" {
+		t.Fatalf("Kafka broker ACK must not be mistaken for Core Evidence Ledger durability: %#v", requestBody)
 	}
-	refs, _ := requestBody["observed_evidence_refs"].([]any)
-	if len(refs) != 1 || refs[0] != "evt_durable" {
-		t.Fatalf("finish request lost evidence refs: %#v", requestBody)
-	}
-	businessRefs, _ := requestBody["business_refs"].([]any)
-	if len(businessRefs) != 1 {
-		t.Fatalf("finish request lost business refs: %#v", requestBody)
+	if refs, _ := requestBody["observed_evidence_refs"].([]any); len(refs) != 0 {
+		t.Fatalf("Kafka broker ACK must not be reported as a Core durable evidence ref: %#v", refs)
 	}
 }
 
 func TestGuardFinishTerminalizesReceiptWhenToolEmitsNoEvidenceEvent(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "http://trace.local/ingest")
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval", ProcessBootID: "test", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 	var requestBody map[string]any
 	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
 		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
@@ -424,7 +440,6 @@ func TestGuardFinishTerminalizesReceiptWhenToolEmitsNoEvidenceEvent(t *testing.T
 }
 
 func TestGuardFinishKeepsEvidencePendingWhenIngestIsDisabled(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "")
 	var requestBody map[string]any
 	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
 		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
@@ -527,7 +542,6 @@ func TestLifecycleValueTypesPreserveCore30RequiredFields(t *testing.T) {
 // there, and the receipt used to carry all three. A declaration now goes no
 // further than the guard.
 func TestGuardKeepsFabricatedDeclaredRefsOutOfTheReceipt(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "http://trace.local/ingest")
 	var finishBody struct {
 		BusinessRefs []BusinessRef `json:"business_refs"`
 	}
@@ -582,16 +596,12 @@ func TestGuardKeepsFabricatedDeclaredRefsOutOfTheReceipt(t *testing.T) {
 		t.Fatalf("begin operation failed: api=%#v err=%v", apiErr, err)
 	}
 	outcome := evidenceOutcomeFromContext(lifecycleContext)
-	outcome.attempted, outcome.durable = true, true
-	outcome.eventIDs = []string{"ev-1"}
-	outcome.businessRefs = []BusinessRef{
-		{RefType: "metric", RefID: "metric:kn_demo:revenue", Version: "versioned"},
-	}
+	outcome.attempted, outcome.accepted = true, true
 	if _, apiErr, err := NewGuard(client).Finish(lifecycleContext, state, "sha256:result", false, false); err != nil || apiErr != nil {
 		t.Fatalf("finish operation failed: api=%#v err=%v", apiErr, err)
 	}
-	if len(finishBody.BusinessRefs) != 2 {
-		t.Fatalf("receipt refs = %#v, want the observed metric and the derived network only", finishBody.BusinessRefs)
+	if len(finishBody.BusinessRefs) != 1 || finishBody.BusinessRefs[0].RefID != "kn:kn_demo" {
+		t.Fatalf("pending receipt refs = %#v, want the request-derived network only", finishBody.BusinessRefs)
 	}
 	for _, ref := range finishBody.BusinessRefs {
 		if ref.Version == "v999-fabricated" || ref.RefID == "object:kn_demo:never_read" {
@@ -604,7 +614,6 @@ func TestGuardKeepsFabricatedDeclaredRefsOutOfTheReceipt(t *testing.T) {
 // receipt still carries what the request derived, which is the honest record
 // of what the call set out to read.
 func TestGuardKeepsDeclaredRefsOutOfAPendingEvidenceReceipt(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "")
 	var finishBody struct {
 		BusinessRefs       []BusinessRef `json:"business_refs"`
 		EvidenceDurability string        `json:"evidence_durability"`

@@ -78,7 +78,7 @@ func (evidencePayloadArtifactWriter) Put(ctx context.Context, mediaType string, 
 		"effective_subject_id": ec.accountID, "application_principal_id": ec.applicationID,
 		"initiator": "account:" + ec.accountID, "agent_or_app": agentOrApp(ec),
 	}
-	if err := postArtifactWithRetry(evidenceArtifactURL(), evidenceTimeout(), traceBlockFromEventContext(ec), artifact); err != nil {
+	if err := postArtifactWithRetry(evidenceArtifactURL(), artifactTimeout(), traceBlockFromEventContext(ec), artifact); err != nil {
 		return "", "", err
 	}
 	return "artifact:" + artifactID, digest, nil

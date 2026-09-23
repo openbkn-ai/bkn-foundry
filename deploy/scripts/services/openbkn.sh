@@ -514,9 +514,14 @@ _openbkn_trace_profile_sets() {
                 "observability.trace.enabled=true"
                 "observability.log.enabled=true"
                 "observability.lifecycle.core_url=http://agent-observability-internal:8081"
-                "observability.evidence.ingest_url=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
-                "observability.evidence.ingest_token_secret_name=${OPENBKN_TRACE_INGEST_SECRET}"
-                "observability.evidence.ingest_token_secret_key=token"
+                "observability.evidence.artifact_endpoint=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}"
+                "observability.evidence.artifact_secret_name=${OPENBKN_TRACE_INGEST_SECRET}"
+                "observability.evidence.artifact_secret_key=token"
+                "observability.evidencePublisher.enabled=true"
+                "observability.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
+                "observability.evidencePublisher.usernameSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "observability.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "observability.evidencePublisher.capturePolicyRevision=${OPENBKN_TRACE_CAPTURE_POLICY_REVISION}"
             )
             ;;
         vega-backend)
@@ -604,6 +609,11 @@ _OPENBKN_TRACE_EVIDENCE_PRODUCERS=(
 _OPENBKN_ENV_MOVED_TO_SECRET=(
     BKN_TRACE_EVIDENCE_INGEST_TOKEN
 )
+_OPENBKN_AGENT_RETRIEVAL_LEGACY_EVIDENCE_ENVS=(
+    BKN_TRACE_EVIDENCE_INGEST_URL
+    BKN_TRACE_EVIDENCE_INGEST_TOKEN
+    BKN_TRACE_EVIDENCE_TIMEOUT_MS
+)
 
 # Kubernetes merges a container's env list by name, so an entry that carried a
 # literal `value` keeps it while the new render adds `valueFrom` — and a
@@ -649,6 +659,24 @@ _openbkn_drop_literal_env_now_from_secret() {
             log_warn "${release_name}: could not drop literal ${env_name}; the upgrade will fail while both value and valueFrom are set"
         fi
     done
+
+    # Helm preserves list entries omitted by the new chart because env is a
+    # strategic-merge list. Remove the retired HTTP Evidence settings entirely
+    # for agent-retrieval so upgrades cannot leave stale endpoint/credential
+    # values in the pod template.
+    if [[ "${release_name}" == "agent-retrieval" ]]; then
+        for env_name in "${_OPENBKN_AGENT_RETRIEVAL_LEGACY_EVIDENCE_ENVS[@]}"; do
+            current_value="$(kubectl get deployment "${release_name}" -n "${namespace}" \
+                -o "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='${env_name}')].name}" 2>/dev/null)"
+            [[ -n "${current_value}" ]] || continue
+            if kubectl patch deployment "${release_name}" -n "${namespace}" --type=strategic \
+                -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"${container_name}\",\"env\":[{\"name\":\"${env_name}\",\"\$patch\":\"delete\"}]}]}}}}" >/dev/null 2>&1; then
+                log_info "${release_name}: removed retired ${env_name} from the pod template"
+            else
+                log_warn "${release_name}: could not remove retired ${env_name} from the pod template"
+            fi
+        done
+    fi
 }
 
 # Run one release's helm upgrade, adopting pre-Helm objects if that is what
@@ -751,7 +779,7 @@ _openbkn_adopt_unowned_resources() {
 _openbkn_warn_unwired_evidence_producers() {
     local -a unwired=()
     local release_name set_value
-    local has_ingest_url has_ingest_secret has_kafka_publisher has_kafka_secret
+    local has_ingest_url has_ingest_secret has_kafka_publisher has_kafka_secret has_artifact_url has_artifact_secret
     for release_name in "$@"; do
         _openbkn_release_list_contains "${release_name}" "${_OPENBKN_TRACE_EVIDENCE_PRODUCERS[@]}" || continue
         _openbkn_release_extra_sets "${release_name}"
@@ -759,6 +787,8 @@ _openbkn_warn_unwired_evidence_producers() {
         has_ingest_secret=false
         has_kafka_publisher=false
         has_kafka_secret=false
+        has_artifact_url=false
+        has_artifact_secret=false
         for set_value in "${CORE_RELEASE_EXTRA_SETS[@]:-}"; do
             [[ "${set_value}" == *"=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}" ]] && has_ingest_url=true
             case "${set_value}" in
@@ -768,10 +798,14 @@ _openbkn_warn_unwired_evidence_producers() {
                     has_ingest_secret=true
                     ;;
             esac
-            [[ "${set_value}" == "bknTrace.evidencePublisher.enabled=true" ]] && has_kafka_publisher=true
-            [[ "${set_value}" == "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
+            [[ "${set_value}" == "bknTrace.evidencePublisher.enabled=true" || "${set_value}" == "observability.evidencePublisher.enabled=true" ]] && has_kafka_publisher=true
+            [[ "${set_value}" == "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" || "${set_value}" == "observability.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
+            [[ "${set_value}" == "observability.evidence.artifact_endpoint=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}" ]] && has_artifact_url=true
+            [[ "${set_value}" == "observability.evidence.artifact_secret_name=${OPENBKN_TRACE_INGEST_SECRET}" ]] && has_artifact_secret=true
         done
-        if [[ "${release_name}" == "bkn-backend" || "${release_name}" == "ontology-query" ]]; then
+        if [[ "${release_name}" == "agent-retrieval" ]]; then
+            [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true && "${has_artifact_url}" == true && "${has_artifact_secret}" == true ]] || unwired+=("${release_name}")
+        elif [[ "${release_name}" == "bkn-backend" || "${release_name}" == "ontology-query" ]]; then
             [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true ]] || unwired+=("${release_name}")
         else
             [[ "${has_ingest_url}" == true && "${has_ingest_secret}" == true ]] || unwired+=("${release_name}")
@@ -839,6 +873,7 @@ _openbkn_prepare_trace_ingest_secret() {
         return 1
     fi
 }
+
 
 # Kubernetes Secrets cannot cross namespaces. Copy only the Kafka client
 # credential into the Backend namespace under the key names its chart reads.
