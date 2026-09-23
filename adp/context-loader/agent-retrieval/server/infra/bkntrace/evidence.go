@@ -436,10 +436,7 @@ func BuildSearchInstanceEvents(ctx context.Context, req *interfaces.SearchInstan
 	knID := ""
 	if req != nil {
 		query = strings.TrimSpace(req.Query)
-		knID = strings.TrimSpace(req.XKnID)
-		if knID == "" {
-			knID = strings.TrimSpace(req.KnID)
-		}
+		knID = req.ResolvedKnID()
 	}
 	candidateCount := 0
 	var refs []map[string]any
@@ -1663,10 +1660,7 @@ func resolvedKnID(req *interfaces.SearchSchemaReq) string {
 	if req == nil {
 		return ""
 	}
-	if strings.TrimSpace(req.XKnID) != "" {
-		return strings.TrimSpace(req.XKnID)
-	}
-	return strings.TrimSpace(req.KnID)
+	return req.ResolvedKnID()
 }
 
 func objectInstanceEvidenceRefs(req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) []map[string]any {
