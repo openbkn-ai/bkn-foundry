@@ -443,6 +443,17 @@ OPENBKN_TRACE_INGEST_SECRET="${OPENBKN_TRACE_INGEST_SECRET:-bkn-trace-evidence-i
 OPENBKN_TRACE_EVIDENCE_INGEST_URL="${OPENBKN_TRACE_EVIDENCE_INGEST_URL:-http://agent-observability:8080/api/agent-observability/v1/evidence/events}"
 OPENBKN_TRACE_ARTIFACT_INGEST_URL="${OPENBKN_TRACE_ARTIFACT_INGEST_URL:-http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts}"
 OPENBKN_TRACE_OPENSEARCH_SECRET="${OPENBKN_TRACE_OPENSEARCH_SECRET:-bkn-trace-opensearch}"
+OPENBKN_TRACE_KAFKA_SECRET="${OPENBKN_TRACE_KAFKA_SECRET:-${KAFKA_SASL_SECRET_NAME:-kafka-sasl}}"
+OPENBKN_TRACE_CAPTURE_POLICY_REVISION="${OPENBKN_TRACE_CAPTURE_POLICY_REVISION:-1}"
+
+_openbkn_trace_kafka_brokers() {
+    local host port
+    host="$(config_yaml_dep_field mq mqHost)"
+    port="$(config_yaml_dep_field mq mqPort)"
+    host="${host:-${KAFKA_RELEASE_NAME:-kafka}.${KAFKA_NAMESPACE:-resource}.svc.cluster.local}"
+    port="${port:-9092}"
+    printf '%s:%s' "${host}" "${port}"
+}
 
 _openbkn_trace_opensearch_protocol() {
     local protocol="${1:-}"
@@ -519,11 +530,27 @@ _openbkn_trace_profile_sets() {
                 "bknTrace.evidence.ingestTokenSecretKey=token"
             )
             ;;
-        bkn-backend|ontology-query)
-            # These producers enqueue evidence in their durable outbox. Its
-            # configuration requires a trusted-delivery token, so reuse the
-            # installer-managed ingest Secret rather than introduce another
-            # unrotated cluster credential.
+        bkn-backend)
+            CORE_RELEASE_EXTRA_SETS+=(
+                "bknTrace.evidencePublisher.enabled=true"
+                "bknTrace.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
+                "bknTrace.evidencePublisher.usernameSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "bknTrace.evidencePublisher.usernameSecretKey=username"
+                "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "bknTrace.evidencePublisher.passwordSecretKey=password"
+                "bknTrace.evidencePublisher.producerId=bkn-backend"
+                "bknTrace.evidencePublisher.workloadIdentity=bkn-backend"
+                "bknTrace.evidencePublisher.producerStreamId=bkn-backend"
+                "bknTrace.evidencePublisher.capturePolicyRevision=${OPENBKN_TRACE_CAPTURE_POLICY_REVISION}"
+                "bknTrace.evidencePublisher.queueMaxRecords=4096"
+                "bknTrace.evidencePublisher.queueMaxBytes=67108864"
+                "bknTrace.evidencePublisher.maxRecordBytes=1048576"
+                "bknTrace.evidencePublisher.maxAttempts=3"
+                "bknTrace.evidencePublisher.retryBackoffMs=100"
+            )
+            ;;
+        ontology-query)
+            # Ontology remains on the legacy path until its C5 producer lands.
             CORE_RELEASE_EXTRA_SETS+=(
                 "bknTrace.evidence.ingestUrl=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
                 "bknTrace.evidence.ingestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
@@ -717,12 +744,14 @@ _openbkn_adopt_unowned_resources() {
 _openbkn_warn_unwired_evidence_producers() {
     local -a unwired=()
     local release_name set_value
-    local has_ingest_url has_ingest_secret
+    local has_ingest_url has_ingest_secret has_kafka_publisher has_kafka_secret
     for release_name in "$@"; do
         _openbkn_release_list_contains "${release_name}" "${_OPENBKN_TRACE_EVIDENCE_PRODUCERS[@]}" || continue
         _openbkn_release_extra_sets "${release_name}"
         has_ingest_url=false
         has_ingest_secret=false
+        has_kafka_publisher=false
+        has_kafka_secret=false
         for set_value in "${CORE_RELEASE_EXTRA_SETS[@]:-}"; do
             [[ "${set_value}" == *"=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}" ]] && has_ingest_url=true
             case "${set_value}" in
@@ -732,8 +761,14 @@ _openbkn_warn_unwired_evidence_producers() {
                     has_ingest_secret=true
                     ;;
             esac
+            [[ "${set_value}" == "bknTrace.evidencePublisher.enabled=true" ]] && has_kafka_publisher=true
+            [[ "${set_value}" == "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
         done
-        [[ "${has_ingest_url}" == true && "${has_ingest_secret}" == true ]] || unwired+=("${release_name}")
+        if [[ "${release_name}" == "bkn-backend" ]]; then
+            [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true ]] || unwired+=("${release_name}")
+        else
+            [[ "${has_ingest_url}" == true && "${has_ingest_secret}" == true ]] || unwired+=("${release_name}")
+        fi
     done
     if [[ ${#unwired[@]} -gt 0 ]]; then
         log_warn "BKN Trace: no Evidence ingest token wired for ${unwired[*]} — their Evidence writes will be rejected until their charts are wired here"
