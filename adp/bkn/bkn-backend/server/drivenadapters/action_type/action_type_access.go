@@ -420,7 +420,7 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 	return actionTypes, nil
 }
 
-// ListActionTypeSummaries reads only fields used by list and related-resource pages.
+// ListActionTypeSummaries reads the public list schema without the raw import payload.
 func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 	query interfaces.ActionTypesQueryParams) ([]*interfaces.ActionType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListActionTypeSummaries")
@@ -437,7 +437,13 @@ func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 		"f_branch",
 		"f_action_type",
 		"f_action_intent",
+		"f_impact_contracts",
 		"f_object_type_id",
+		"f_condition",
+		"f_affect",
+		"f_action_source",
+		"f_parameters",
+		"f_schedule",
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
@@ -474,6 +480,14 @@ func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 	for rows.Next() {
 		item := &interfaces.ActionType{ModuleType: interfaces.MODULE_TYPE_ACTION_TYPE}
 		tags := ""
+		var (
+			conditionBytes     []byte
+			affectBytes        []byte
+			actionSourceBytes  []byte
+			parametersBytes    []byte
+			scheduleBytes      []byte
+			impactContractsRaw []byte
+		)
 		if err := rows.Scan(
 			&item.ATID,
 			&item.ATName,
@@ -485,7 +499,13 @@ func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 			&item.Branch,
 			&item.ActionType,
 			&item.ActionIntent,
+			&impactContractsRaw,
 			&item.ObjectTypeID,
+			&conditionBytes,
+			&affectBytes,
+			&actionSourceBytes,
+			&parametersBytes,
+			&scheduleBytes,
 			&item.Creator.ID,
 			&item.Creator.Type,
 			&item.CreateTime,
@@ -496,6 +516,24 @@ func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 			return nil, err
 		}
 		item.Tags = libCommon.TagString2TagSlice(tags)
+		if err := common.UnmarshalStoredJSON(conditionBytes, &item.Condition); err != nil {
+			return nil, err
+		}
+		if err := common.UnmarshalStoredJSON(affectBytes, &item.Affect); err != nil {
+			return nil, err
+		}
+		if err := common.UnmarshalStoredJSON(actionSourceBytes, &item.ActionSource); err != nil {
+			return nil, err
+		}
+		if err := common.UnmarshalStoredJSON(parametersBytes, &item.Parameters); err != nil {
+			return nil, err
+		}
+		if err := common.UnmarshalStoredJSON(scheduleBytes, &item.Schedule); err != nil {
+			return nil, err
+		}
+		if err := unmarshalImpactContractsJSON(impactContractsRaw, item); err != nil {
+			return nil, err
+		}
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {

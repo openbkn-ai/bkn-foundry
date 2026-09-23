@@ -239,7 +239,7 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 		if err != nil {
 			return nil, err
 		}
-		builder = builder.OrderBy(orderBy)
+		builder = builder.OrderBy(orderBy, "f_id ASC")
 	}
 	if query.Limit > 0 {
 		builder = builder.Limit(uint64(query.Limit))

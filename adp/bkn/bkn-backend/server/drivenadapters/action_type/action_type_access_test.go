@@ -547,6 +547,58 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 	})
 }
 
+func Test_ActionTypeAccess_ListActionTypeSummariesPreservesPublicSchema(t *testing.T) {
+	Convey("test ListActionTypeSummaries preserves public fields\n", t, func() {
+		ata, smock := MockNewActionTypeAccess(&common.AppSetting{})
+		conditionBytes, _ := sonic.Marshal(&interfaces.ActionCondCfg{})
+		affectBytes, _ := sonic.Marshal(&interfaces.ActionAffect{})
+		actionSourceBytes, _ := sonic.Marshal(interfaces.ActionSource{
+			Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box1", ToolID: "tool1",
+		})
+		parametersBytes, _ := sonic.Marshal([]interfaces.Parameter{})
+		scheduleBytes, _ := sonic.Marshal(interfaces.Schedule{Type: "cron", Expression: "0 0 * * *"})
+		impactContractsBytes, _ := sonic.Marshal([]interfaces.ImpactContractItem{})
+
+		query := interfaces.ActionTypesQueryParams{
+			KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+			PaginationQueryParameters: interfaces.PaginationQueryParameters{
+				Sort: "f_name", Direction: interfaces.ASC_DIRECTION, Limit: 10,
+			},
+		}
+		sqlStr, _, err := processQueryCondition(query, sq.Select(
+			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_kn_id", "f_branch",
+			"f_action_type", "f_action_intent", "f_impact_contracts", "f_object_type_id", "f_condition",
+			"f_affect", "f_action_source", "f_parameters", "f_schedule", "f_creator", "f_creator_type",
+			"f_create_time", "f_updater", "f_updater_type", "f_update_time",
+		).From(AT_TABLE_NAME)).OrderBy("f_name ASC", "f_id ASC").Limit(10).ToSql()
+		So(err, ShouldBeNil)
+
+		rows := sqlmock.NewRows([]string{
+			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_kn_id", "f_branch",
+			"f_action_type", "f_action_intent", "f_impact_contracts", "f_object_type_id", "f_condition",
+			"f_affect", "f_action_source", "f_parameters", "f_schedule", "f_creator", "f_creator_type",
+			"f_create_time", "f_updater", "f_updater_type", "f_update_time",
+		}).AddRow(
+			"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "kn1", "main",
+			interfaces.ACTION_SOURCE_TYPE_TOOL, "", impactContractsBytes, "ot1", conditionBytes,
+			affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "admin", "admin",
+			testUpdateTime, "admin", "admin", testUpdateTime,
+		)
+		smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
+
+		items, err := ata.ListActionTypeSummaries(testCtx, query)
+		So(err, ShouldBeNil)
+		So(len(items), ShouldEqual, 1)
+		So(items[0].Condition, ShouldNotBeNil)
+		So(items[0].Affect, ShouldNotBeNil)
+		So(items[0].ActionSource.ToolID, ShouldEqual, "tool1")
+		So(items[0].Parameters, ShouldNotBeNil)
+		So(items[0].Schedule.Expression, ShouldEqual, "0 0 * * *")
+		So(items[0].ImpactContracts, ShouldNotBeNil)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 func Test_ActionTypeAccess_GetActionTypesTotal(t *testing.T) {
 	Convey("test GetActionTypesTotal\n", t, func() {
 		appSetting := &common.AppSetting{}

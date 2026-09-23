@@ -78,3 +78,43 @@ func TestListConceptGroupSummariesReturnsEmptyForEmptyScope(t *testing.T) {
 		t.Fatalf("result = (%v, %d, %v), want empty", items, total, err)
 	}
 }
+
+func TestListConceptGroupSummariesFallbackUsesOneCandidateScanForTagsAndPage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &conceptGroupService{cga: cga, ps: ps}
+	query := interfaces.ConceptGroupsQueryParams{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, Tag: "missing",
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: 10},
+	}
+	candidateQuery := query
+	candidateQuery.ValidAuthorizationIDsOnly = true
+	candidateQuery.Tag = ""
+	candidateQuery.Offset = 0
+	candidateQuery.Limit = -1
+
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		RequiresCandidateFilter: true,
+	}, nil)
+	candidates := []*interfaces.ConceptGroup{
+		{CGID: "cg-1", KNID: "kn-1", CommonInfo: interfaces.CommonInfo{Tags: []string{"alpha"}}},
+		{CGID: "cg-2", KNID: "kn-1", CommonInfo: interfaces.CommonInfo{Tags: []string{"beta"}}},
+	}
+	cga.EXPECT().ListConceptGroups(gomock.Any(), candidateQuery).Return(candidates, nil).Times(1)
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		[]string{"kn-1/cg-1", "kn-1/cg-2"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
+		map[string]interfaces.PermissionResourceOps{
+			"kn-1/cg-1": {ResourceID: "kn-1/cg-1", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+			"kn-1/cg-2": {ResourceID: "kn-1/cg-2", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
+
+	items, total, tags, err := service.ListConceptGroupSummaries(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 0 || len(items) != 0 || !reflect.DeepEqual(tags, []string{"alpha", "beta"}) {
+		t.Fatalf("result = (%v, %d, %v), want empty page and both tags", items, total, tags)
+	}
+}

@@ -130,6 +130,7 @@ func (cgs *conceptGroupService) listConceptGroupSummaryPage(ctx context.Context,
 func (cgs *conceptGroupService) listConceptGroupSummaryFallback(ctx context.Context,
 	query interfaces.ConceptGroupsQueryParams) ([]*interfaces.ConceptGroup, int, []string, error) {
 	candidateQuery := query
+	candidateQuery.Tag = ""
 	candidateQuery.Offset = 0
 	candidateQuery.Limit = -1
 	candidates, err := cgs.cga.ListConceptGroups(ctx, candidateQuery)
@@ -140,25 +141,30 @@ func (cgs *conceptGroupService) listConceptGroupSummaryFallback(ctx context.Cont
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	tagQuery := query
-	tagQuery.Tag = ""
-	tagQuery.Offset = 0
-	tagQuery.Limit = -1
-	tagCandidates, err := cgs.cga.ListConceptGroups(ctx, tagQuery)
-	if err != nil {
-		return nil, 0, nil, cgs.conceptGroupSummaryError(ctx, err)
+	tags := collectConceptGroupSummaryTags(candidates)
+	if query.Tag != "" {
+		candidates = filterConceptGroupSummariesByTag(candidates, query.Tag)
 	}
-	tagCandidates, err = cgs.filterConceptGroupSummaryOperations(ctx, query.KNID, tagCandidates)
-	if err != nil {
-		return nil, 0, nil, err
-	}
-	tags := collectConceptGroupSummaryTags(tagCandidates)
 	total := len(candidates)
 	page := permission.PaginateKNChildCandidates(candidates, query.Offset, query.Limit)
 	if err := cgs.hydrateConceptGroupSummaries(ctx, query.KNID, query.Branch, page); err != nil {
 		return nil, 0, nil, err
 	}
 	return page, total, tags, nil
+}
+
+func filterConceptGroupSummariesByTag(items []*interfaces.ConceptGroup,
+	tag string) []*interfaces.ConceptGroup {
+	filtered := make([]*interfaces.ConceptGroup, 0, len(items))
+	for _, item := range items {
+		for _, itemTag := range item.Tags {
+			if itemTag == tag {
+				filtered = append(filtered, item)
+				break
+			}
+		}
+	}
+	return filtered
 }
 
 func collectConceptGroupSummaryTags(items []*interfaces.ConceptGroup) []string {

@@ -423,10 +423,16 @@ components:
     ListConceptGroups:
       description: Concept group list
       required:
+        - available_tags
         - entries
         - total_count
       type: object
       properties:
+        available_tags:
+          description: Available tags in the authorized result set, independent of the current tag filter
+          type: array
+          items:
+            type: string
         entries:
           description: Entry list
           type: array
