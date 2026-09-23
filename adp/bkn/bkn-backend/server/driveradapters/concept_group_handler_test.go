@@ -358,7 +358,7 @@ func Test_ConceptGroupRestHandler_ListConceptGroups(t *testing.T) {
 
 		Convey("Success ListConceptGroups\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			cgs.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, 0, nil)
+			cgs.EXPECT().ListConceptGroupSummaries(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, 0, nil)
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)
 			w := httptest.NewRecorder()
@@ -905,7 +905,7 @@ func Test_ConceptGroupRestHandler_ListConceptGroupsByIn(t *testing.T) {
 
 		Convey("Success\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			cgs.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, 0, nil)
+			cgs.EXPECT().ListConceptGroupSummaries(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{}, 0, nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/concept-groups", nil)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -1340,7 +1340,7 @@ func Test_ConceptGroupRestHandler_ListConceptGroups_extraCases(t *testing.T) {
 				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
-			cgs.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, 0, httpErr)
+			cgs.EXPECT().ListConceptGroupSummaries(gomock.Any(), gomock.Any()).Return(nil, 0, httpErr)
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)
 			w := httptest.NewRecorder()

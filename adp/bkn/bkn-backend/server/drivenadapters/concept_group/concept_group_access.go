@@ -801,6 +801,10 @@ func processQueryCondition(query interfaces.ConceptGroupsQueryParams, subBuilder
 	if len(query.CGIDs) > 0 {
 		subBuilder = subBuilder.Where(sq.Eq{"f_id": query.CGIDs})
 	}
+	if query.ValidAuthorizationIDsOnly {
+		subBuilder = subBuilder.Where(sq.Expr(
+			"f_id <> '' AND f_id = TRIM(f_id) AND instr(f_id, '/') = 0 AND instr(f_id, '*') = 0"))
+	}
 
 	return subBuilder
 }
@@ -1130,6 +1134,45 @@ func (cga *conceptGroupAccess) GetConceptIDsByConceptGroupIDs(ctx context.Contex
 
 	span.SetStatus(codes.Ok, "")
 	return conceptIDs, nil
+}
+
+// GetConceptIDsGroupedByConceptGroupIDs reads memberships for a page of groups in one query.
+func (cga *conceptGroupAccess) GetConceptIDsGroupedByConceptGroupIDs(ctx context.Context, knID string,
+	branch string, cgIDs []string, conceptType string) (map[string][]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetConceptIDsGroupedByConceptGroupIDs")
+	defer span.End()
+
+	result := make(map[string][]string, len(cgIDs))
+	if len(cgIDs) == 0 {
+		return result, nil
+	}
+	builder := sq.Select("f_group_id", "f_concept_id").From(CONCEPT_GROUP_RELATION_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.Eq{"f_concept_type": conceptType}).
+		Where(sq.Eq{"f_group_id": cgIDs})
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	rows, err := cga.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var groupID, conceptID string
+		if err := rows.Scan(&groupID, &conceptID); err != nil {
+			return nil, err
+		}
+		result[groupID] = append(result[groupID], conceptID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 // Get relation type IDs in a concept group.

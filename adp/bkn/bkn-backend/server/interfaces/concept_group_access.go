@@ -37,6 +37,7 @@ type ConceptGroupAccess interface {
 	// Get object type IDs from concept-group relations joined with the object type table.
 
 	GetConceptIDsByConceptGroupIDs(ctx context.Context, knID string, branch string, cgIDs []string, conceptType string) ([]string, error)
+	GetConceptIDsGroupedByConceptGroupIDs(ctx context.Context, knID string, branch string, cgIDs []string, conceptType string) (map[string][]string, error)
 	GetRelationTypeIDsFromConceptGroupRelation(ctx context.Context, query ConceptGroupRelationsQueryParams) ([]string, error)
 	GetActionTypeIDsFromConceptGroupRelation(ctx context.Context, query ConceptGroupRelationsQueryParams) ([]string, error)
 	GetConceptGroupsByOTIDs(ctx context.Context, tx *sql.Tx, query ConceptGroupRelationsQueryParams) (map[string][]*ConceptGroup, error)

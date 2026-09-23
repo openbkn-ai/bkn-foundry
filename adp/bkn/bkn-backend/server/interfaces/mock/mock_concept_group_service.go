@@ -222,6 +222,22 @@ func (mr *MockConceptGroupServiceMockRecorder) ListConceptGroups(ctx, query any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConceptGroups", reflect.TypeOf((*MockConceptGroupService)(nil).ListConceptGroups), ctx, query)
 }
 
+// ListConceptGroupSummaries mocks base method.
+func (m *MockConceptGroupService) ListConceptGroupSummaries(ctx context.Context, query interfaces.ConceptGroupsQueryParams) ([]*interfaces.ConceptGroup, int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListConceptGroupSummaries", ctx, query)
+	ret0, _ := ret[0].([]*interfaces.ConceptGroup)
+	ret1, _ := ret[1].(int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListConceptGroupSummaries indicates an expected call of ListConceptGroupSummaries.
+func (mr *MockConceptGroupServiceMockRecorder) ListConceptGroupSummaries(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConceptGroupSummaries", reflect.TypeOf((*MockConceptGroupService)(nil).ListConceptGroupSummaries), ctx, query)
+}
+
 // UpdateConceptGroup mocks base method.
 func (m *MockConceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *interfaces.ConceptGroup, strictMode bool) error {
 	m.ctrl.T.Helper()
