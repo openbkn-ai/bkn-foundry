@@ -339,9 +339,12 @@ not_contains "ontology-query has no legacy outbox" "${ontology_query_sets}" "bkn
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_release_extra_sets agent-operator-integration openbkn
 operator_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
-contains "operator integration posts evidence to the ingest route" "${operator_sets}" "observability.evidence.ingest_url=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
-contains "operator integration uses the evidence ingest Secret" "${operator_sets}" "observability.evidence.ingest_token_secret_name=bkn-trace-evidence-ingest"
-contains "operator integration reads the token key the receiver writes" "${operator_sets}" "observability.evidence.ingest_token_secret_key=token"
+contains "operator integration uses Kafka brokers" "${operator_sets}" "observability.evidence.publisher.brokers="
+contains "operator integration uses Kafka credential Secret" "${operator_sets}" "observability.evidence.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
+contains "operator integration has capture policy revision" "${operator_sets}" "observability.evidence.publisher.capture_policy_revision=1"
+contains "operator integration has bounded Evidence queue" "${operator_sets}" "observability.evidence.publisher.queue_max_records=4096"
+not_contains "operator integration has no legacy HTTP Evidence URL" "${operator_sets}" "observability.evidence.ingest_url="
+not_contains "operator integration has no legacy HTTP Evidence Secret" "${operator_sets}" "observability.evidence.ingest_token_secret_name="
 
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_release_extra_sets bkn-agent openbkn

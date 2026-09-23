@@ -2,20 +2,12 @@ package bkntrace
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
 
 type memoryExecutionStore struct {
 	mu     sync.Mutex
@@ -76,90 +68,6 @@ func TestParseActionRejectsInvalidW3CTraceparent(t *testing.T) {
 		if _, ok := ParseAction(headers, "box", "tool", "user"); ok {
 			t.Fatalf("invalid traceparent accepted: %s", traceparent)
 		}
-	}
-}
-
-func TestHTTPEmitterRetriesNon2xxAndIncludesOriginalTraceparent(t *testing.T) {
-	attempts := 0
-	var envelope map[string]any
-	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		attempts++
-		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
-			t.Fatal(err)
-		}
-		status := http.StatusAccepted
-		if attempts < 3 {
-			status = http.StatusServiceUnavailable
-		}
-		return &http.Response{
-			StatusCode: status, Status: http.StatusText(status), Body: io.NopCloser(strings.NewReader("")),
-		}, nil
-	})}
-
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
-	if !ok {
-		t.Fatal("expected action")
-	}
-	events, _ := action.AfterPermission(nil)
-	emitter := &HTTPEmitter{
-		URL: "http://trace.invalid/events", Client: client, MaxAttempts: 3, RetryBackoff: time.Millisecond,
-	}
-	if err := emitter.Emit(context.Background(), action, events); err != nil {
-		t.Fatal(err)
-	}
-	if attempts != 3 {
-		t.Fatalf("attempts=%d", attempts)
-	}
-	trace := envelope["trace"].(map[string]any)
-	if trace["traceparent"] != testHeaders()["traceparent"] {
-		t.Fatalf("traceparent lost: %#v", trace)
-	}
-}
-
-func TestHTTPEmitterSendsDedicatedIngestToken(t *testing.T) {
-	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "producer-token" {
-			t.Fatalf("ingest token header=%q", got)
-		}
-		return &http.Response{StatusCode: http.StatusAccepted, Status: "202 Accepted", Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
-	if !ok {
-		t.Fatal("expected action")
-	}
-	events, _ := action.AfterPermission(nil)
-	emitter := &HTTPEmitter{URL: "http://trace.invalid/events", Token: "producer-token", Client: client, MaxAttempts: 1}
-	if err := emitter.Emit(context.Background(), action, events); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestHTTPEmitterRetriesTimeout(t *testing.T) {
-	attempts := 0
-	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
-		attempts++
-		if attempts < 3 {
-			return nil, context.DeadlineExceeded
-		}
-		return &http.Response{
-			StatusCode: http.StatusAccepted,
-			Status:     http.StatusText(http.StatusAccepted),
-			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
-	})}
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
-	if !ok {
-		t.Fatal("expected action")
-	}
-	events, _ := action.AfterPermission(nil)
-	emitter := &HTTPEmitter{
-		URL: "http://trace.invalid/events", Client: client, MaxAttempts: 3,
-	}
-	if err := emitter.Emit(context.Background(), action, events); err != nil {
-		t.Fatal(err)
-	}
-	if attempts != 3 {
-		t.Fatalf("timeout attempts=%d", attempts)
 	}
 }
 
