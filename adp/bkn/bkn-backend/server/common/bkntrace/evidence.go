@@ -7,27 +7,21 @@
 package bkntrace
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"os"
 	"regexp"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
 
-	"bkn-backend/common/bkntrace/outbox"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
+
 	"bkn-backend/interfaces"
 )
 
@@ -39,18 +33,7 @@ const (
 )
 
 const (
-	envEvidenceIngestURL       = "BKN_TRACE_EVIDENCE_INGEST_URL"
-	envEvidenceIngestToken     = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
-	envEvidenceIngestTimeoutMS = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
-	envOutboxEnabled           = "BKN_TRACE_OUTBOX_ENABLED"
-	envOutboxWorkerEnabled     = "BKN_TRACE_OUTBOX_WORKER_ENABLED"
-	envOutboxCleanupOnly       = "BKN_TRACE_OUTBOX_CLEANUP_ONLY"
-	envOutboxCleanupBatchSize  = "BKN_TRACE_OUTBOX_CLEANUP_BATCH_SIZE"
-	envOutboxDeliveredDays     = "BKN_TRACE_OUTBOX_DELIVERED_RETENTION_DAYS"
-	envOutboxAbandonedDays     = "BKN_TRACE_OUTBOX_ABANDONED_RETENTION_DAYS"
-	envQueryGatewayToken       = "BKN_TRACE_QUERY_GATEWAY_TOKEN"
-	envApplicationPrincipalID  = "BKN_TRACE_APPLICATION_PRINCIPAL_ID"
-	envProducerStreamID        = "BKN_TRACE_PRODUCER_STREAM_ID"
+	envProducerStreamID = "BKN_TRACE_PRODUCER_STREAM_ID"
 )
 
 const (
@@ -104,12 +87,6 @@ type EvidenceRef struct {
 	Summary        map[string]any
 }
 
-type batch struct {
-	ContractVersion string         `json:"bkn.trace.schema.version"`
-	Trace           map[string]any `json:"trace"`
-	Events          []Event        `json:"events"`
-}
-
 type eventContext struct {
 	traceID           string
 	spanID            string
@@ -126,117 +103,12 @@ type eventContext struct {
 }
 
 var (
-	evidenceHTTPClient = &http.Client{}
-	safeErrorCodeRE    = regexp.MustCompile(`^[0-9A-Za-z_.-]{1,128}$`)
-	safeErrorPathRE    = regexp.MustCompile(`^\$(?:\.[0-9A-Za-z_.-]+|\[[0-9]+\])+$`)
-	producerOutboxMu   sync.RWMutex
-	producerOutbox     *outbox.Repository
+	safeErrorCodeRE = regexp.MustCompile(`^[0-9A-Za-z_.-]{1,128}$`)
+	safeErrorPathRE = regexp.MustCompile(`^\$(?:\.[0-9A-Za-z_.-]+|\[[0-9]+\])+$`)
 )
 
 func EvidenceEnabled() bool {
-	producerOutboxMu.RLock()
-	defer producerOutboxMu.RUnlock()
-	return producerOutbox != nil
-}
-
-func ProducerOutboxEnabled() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv(envOutboxEnabled)), "true")
-}
-
-func ProducerOutboxCleanupOnly() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv(envOutboxCleanupOnly)), "true")
-}
-
-func CleanupProducerOutbox(ctx context.Context) (outbox.CleanupResult, error) {
-	producerOutboxMu.RLock()
-	repository := producerOutbox
-	producerOutboxMu.RUnlock()
-	if repository == nil {
-		return outbox.CleanupResult{}, errors.New("BKN Trace producer outbox is not configured")
-	}
-	now := time.Now().UTC()
-	return repository.Cleanup(ctx,
-		now.AddDate(0, 0, -positiveEnvInt(envOutboxDeliveredDays, 30)),
-		now.AddDate(0, 0, -positiveEnvInt(envOutboxAbandonedDays, 180)),
-		now.AddDate(0, 0, -positiveEnvInt(envOutboxAbandonedDays, 180)),
-		positiveEnvInt(envOutboxCleanupBatchSize, 1000),
-	)
-}
-
-func positiveEnvInt(key string, fallback int) int {
-	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
-	if err != nil || value < 1 {
-		return fallback
-	}
-	return value
-}
-
-// ProducerOutbox returns the process-local repository used by the durable
-// producer. It is nil when the feature is disabled or initialization failed.
-func ProducerOutbox() *outbox.Repository {
-	producerOutboxMu.RLock()
-	defer producerOutboxMu.RUnlock()
-	return producerOutbox
-}
-
-// ConfigureProducerOutbox enables durable 3.0 evidence delivery for this
-// process. The service starts only the Worker after the database migration has
-// been applied; an unset BKN_TRACE_OUTBOX_ENABLED preserves the old opt-out.
-func ConfigureProducerOutbox(db *sql.DB) (*outbox.Worker, error) {
-	if !ProducerOutboxEnabled() {
-		WarnIfLegacyEvidenceMisconfigured()
-		return nil, nil
-	}
-	if ProducerOutboxCleanupOnly() {
-		repository, err := outbox.NewCleanupRepository(db, strings.TrimSpace(os.Getenv("DB_TYPE")))
-		if err != nil {
-			return nil, err
-		}
-		producerOutboxMu.Lock()
-		producerOutbox = repository
-		producerOutboxMu.Unlock()
-		return nil, nil
-	}
-	workerEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv(envOutboxWorkerEnabled)), "true")
-	repository, err := outbox.NewRepository(db, outbox.Config{
-		ProducerID:         ModuleName,
-		ProducerStreamID:   producerStreamID(),
-		DatabaseType:       strings.TrimSpace(os.Getenv("DB_TYPE")),
-		IngestURL:          evidenceIngestURL(),
-		IngestToken:        strings.TrimSpace(os.Getenv(envEvidenceIngestToken)),
-		QueryGatewayToken:  strings.TrimSpace(os.Getenv(envQueryGatewayToken)),
-		CoreRequestTimeout: evidenceTimeout(),
-		LeaseDuration:      30 * time.Second,
-		PollInterval:       250 * time.Millisecond,
-		BumpEpochOnStart:   workerEnabled,
-	})
-	if err != nil {
-		return nil, err
-	}
-	producerOutboxMu.Lock()
-	producerOutbox = repository
-	producerOutboxMu.Unlock()
-	if !workerEnabled {
-		return nil, nil
-	}
-	return outbox.NewWorker(repository), nil
-}
-
-func producerStreamID() string {
-	if streamID := strings.TrimSpace(os.Getenv(envProducerStreamID)); streamID != "" {
-		return streamID
-	}
-	return ModuleName
-}
-
-func WarnIfLegacyEvidenceMisconfigured() {
-	if ProducerOutboxEnabled() || strings.TrimSpace(os.Getenv(envEvidenceIngestURL)) == "" {
-		return
-	}
-	log.Printf(
-		"WARN: %s is set but %s is not true; BKN Trace evidence production is disabled until producer outbox is enabled and migrated",
-		envEvidenceIngestURL, envOutboxEnabled,
-	)
+	return currentEvidencePublisher() != nil
 }
 
 func HashValue(value any) string {
@@ -342,93 +214,58 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 	if !ok {
 		return
 	}
-	owner := trustedOwner(reqCtx, ec)
-	producerOutboxMu.RLock()
-	repository := producerOutbox
-	producerOutboxMu.RUnlock()
-	if repository == nil {
-		return
-	}
 	for _, event := range events {
 		coreEvent, err := toCoreEvent(event, ec)
 		if err != nil {
-			log.Printf("BKN Trace evidence outbox rejected event: %v", err)
+			log.Printf("BKN Trace evidence publisher rejected event: %v", err)
 			continue
 		}
-		if _, err := repository.Enqueue(ctx, coreEvent, owner); err != nil {
-			// Query evidence is intentionally fail-open. The business response must
-			// not wait for observability persistence, but the loss is observable.
-			log.Printf("BKN Trace evidence outbox write failed: %v", err)
+		if publisher := currentEvidencePublisher(); publisher != nil {
+			result := publishEvidenceEvent(ctx, Event{
+				"event_id": coreEvent.EventID, "event_type": coreEvent.EventType,
+				"interaction_id": coreEvent.InteractionID, "operation_id": coreEvent.OperationID,
+				"attempt": coreEvent.Attempt, "request_id": coreEvent.RequestID, "trace_id": coreEvent.TraceID,
+				"span_id": coreEvent.SpanID, "started_at": coreEvent.StartedAt.Format(time.RFC3339Nano),
+				"observed_at": coreEvent.ObservedAt.Format(time.RFC3339Nano), "emitted_at": coreEvent.EmittedAt.Format(time.RFC3339Nano),
+				"envelope": json.RawMessage(coreEvent.Envelope),
+			})
+			if result.Disposition != evidencepublisher.Accepted {
+				log.Printf("BKN Trace evidence publisher dropped event_id=%s reason=%s", coreEvent.EventID, result.Reason)
+			}
+			continue
 		}
+		log.Printf("BKN Trace evidence publisher unavailable; dropped event_id=%s", coreEvent.EventID)
 	}
 }
 
-func trustedOwner(reqCtx RequestContext, ec eventContext) outbox.Owner {
-	subjectID := strings.TrimSpace(reqCtx.EffectiveSubjectID)
-	if subjectID == "" {
-		subjectID = ec.accountID
-	}
-	subjectType := strings.TrimSpace(reqCtx.EffectiveSubjectType)
-	if subjectType == "" {
-		subjectType = coreSubjectType(ec.accountType)
-	}
-	return outbox.Owner{
-		ApplicationPrincipalID: strings.TrimSpace(reqCtx.ApplicationPrincipalID),
-		EffectiveSubjectType:   subjectType,
-		EffectiveSubjectID:     subjectID,
-		DelegationID:           strings.TrimSpace(reqCtx.DelegationID),
-	}
+type coreEvidenceEvent struct {
+	EventID, EventType, InteractionID, OperationID string
+	Attempt                                        uint32
+	RequestID, TraceID, SpanID                     string
+	StartedAt, ObservedAt, EmittedAt               time.Time
+	Envelope                                       json.RawMessage
 }
 
-func coreSubjectType(accountType string) string {
-	if strings.EqualFold(strings.TrimSpace(accountType), "service") || strings.EqualFold(strings.TrimSpace(accountType), "app") {
-		return "service"
-	}
-	return "user"
-}
-
-func toCoreEvent(event Event, ec eventContext) (outbox.Event, error) {
+func toCoreEvent(event Event, ec eventContext) (coreEvidenceEvent, error) {
 	raw, err := json.Marshal(event)
 	if err != nil {
-		return outbox.Event{}, err
+		return coreEvidenceEvent{}, err
 	}
 	observedAt, err := time.Parse(time.RFC3339Nano, ec.observedAt)
 	if err != nil {
-		return outbox.Event{}, err
+		return coreEvidenceEvent{}, err
 	}
 	eventID, _ := event["event_id"].(string)
 	eventType, _ := event["event_type"].(string)
 	if eventID == "" || eventType == "" {
-		return outbox.Event{}, errors.New("evidence event ID and type are required")
+		return coreEvidenceEvent{}, errors.New("evidence event ID and type are required")
 	}
-	conversationID := "conv_" + ec.requestID
-	return outbox.Event{
-		EventID: eventID, EventType: eventType, ConversationID: conversationID,
+	return coreEvidenceEvent{
+		EventID: eventID, EventType: eventType,
 		InteractionID: ec.interactionID, OperationID: ec.operationID,
 		Attempt: ec.attempt, RequestID: ec.requestID, TraceID: ec.traceID, SpanID: ec.spanID,
-		CausationIDs: nonEmptyStrings(ec.causationEventID),
-		StartedAt:    observedAt, ObservedAt: observedAt, EmittedAt: observedAt, Envelope: raw,
+		StartedAt: observedAt, ObservedAt: observedAt, EmittedAt: observedAt, Envelope: raw,
 	}, nil
-}
-
-func nonEmptyStrings(value string) []string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	return []string{strings.TrimSpace(value)}
-}
-
-func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {
-	var err error
-	for attempt := 0; attempt < 3; attempt++ {
-		if err = postBatch(ingestURL, timeout, payload); err == nil {
-			return nil
-		}
-		if attempt < 2 {
-			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
-		}
-	}
-	return err
 }
 
 func ObjectTypeRefs(items []*interfaces.ObjectType) []EvidenceRef {
@@ -570,79 +407,6 @@ func MetricRefs(items []*interfaces.MetricDefinition) []EvidenceRef {
 		})
 	}
 	return refs
-}
-
-func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	postCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(postCtx, http.MethodPost, ingestURL, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if token := strings.TrimSpace(os.Getenv(envEvidenceIngestToken)); token != "" {
-		req.Header.Set("X-BKN-Trace-Ingest-Token", token)
-	}
-
-	resp, err := evidenceHTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("%s", safeIngestFailureSummary(resp.StatusCode, resp.Body))
-	}
-	return nil
-}
-
-func safeIngestFailureSummary(status int, body io.Reader) string {
-	summary := fmt.Sprintf("HTTP %d", status)
-	var response struct {
-		Code    string `json:"code"`
-		Details []struct {
-			Path string `json:"path"`
-		} `json:"details"`
-	}
-	if err := json.NewDecoder(io.LimitReader(body, 64<<10)).Decode(&response); err != nil {
-		return summary
-	}
-	if safeErrorCodeRE.MatchString(response.Code) {
-		summary += " code=" + response.Code
-	}
-	paths := make([]string, 0, 3)
-	for _, detail := range response.Details {
-		if safeErrorPathRE.MatchString(detail.Path) {
-			paths = append(paths, detail.Path)
-			if len(paths) == 3 {
-				break
-			}
-		}
-	}
-	if len(paths) > 0 {
-		summary += " paths=" + strings.Join(paths, ",")
-	}
-	return summary
-}
-
-func evidenceIngestURL() string {
-	return strings.TrimSpace(os.Getenv(envEvidenceIngestURL))
-}
-
-func evidenceTimeout() time.Duration {
-	value := strings.TrimSpace(os.Getenv(envEvidenceIngestTimeoutMS))
-	if value == "" {
-		return 2 * time.Second
-	}
-	var ms int
-	if _, err := fmt.Sscanf(value, "%d", &ms); err != nil || ms <= 0 {
-		return 2 * time.Second
-	}
-	return time.Duration(ms) * time.Millisecond
 }
 
 func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContext, bool) {

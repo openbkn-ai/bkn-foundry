@@ -138,6 +138,26 @@ func TestGetRequiresAuthorizedNetwork(t *testing.T) {
 	}
 }
 
+func TestListScansMariaDBDatetimeBytes(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := NewStore(db, "MARIADB")
+	when := "2026-08-13 10:00:00.123456"
+	mock.ExpectQuery(`SELECT .* FROM t_operation_audit`).WillReturnRows(
+		sqlmock.NewRows(auditColumns()).AddRow(append([]driver.Value{"evt-bytes", []byte(when), []byte(when)}, auditRow("evt-unused", time.Time{})[3:]...)...),
+	)
+	page, err := store.List(context.Background(), Filter{From: time.Date(2026, 8, 1, 0, 0, 0, 0, time.Local), To: time.Date(2026, 8, 20, 0, 0, 0, 0, time.Local), Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].EventTime.Nanosecond() != 123456000 {
+		t.Fatalf("entries=%+v", page.Entries)
+	}
+}
+
 func auditColumns() []string {
 	return []string{
 		"event_id", "event_time", "recorded_at", "knowledge_network_id",

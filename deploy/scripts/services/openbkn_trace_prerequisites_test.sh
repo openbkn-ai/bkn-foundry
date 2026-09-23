@@ -11,6 +11,8 @@ EXISTING_TOKEN_DATA=""
 EXISTING_LEGACY_TOKEN_DATA=""
 EXISTING_OPENSEARCH_USERNAME_DATA=""
 EXISTING_OPENSEARCH_PASSWORD_DATA=""
+EXISTING_KAFKA_CLIENT_PASSWORD_DATA="c2VjcmV0LWthZmthLXBhc3N3b3Jk"
+EXISTING_KAFKA_SOURCE_SECRET=true
 KUBECTL_LOG="$(mktemp)"
 LAST_ERROR=""
 
@@ -42,7 +44,9 @@ kubectl() {
         *"get secret"*)
             local name
             name="$(printf '%s' "$*" | awk '{print $3}')"
-            if [[ " ${EXISTING_SECRETS} " != *" ${name} "* ]]; then
+            if [[ "${name}" == "${OPENBKN_TRACE_KAFKA_SOURCE_SECRET}" && "${EXISTING_KAFKA_SOURCE_SECRET}" == true ]]; then
+                :
+            elif [[ " ${EXISTING_SECRETS} " != *" ${name} "* ]]; then
                 return 1
             fi
             if [[ "$*" == *"jsonpath={.data.dsn}"* ]]; then
@@ -55,6 +59,8 @@ kubectl() {
                 printf '%s' "${EXISTING_OPENSEARCH_USERNAME_DATA}"
             elif [[ "$*" == *"jsonpath={.data.password}"* ]]; then
                 printf '%s' "${EXISTING_OPENSEARCH_PASSWORD_DATA}"
+            elif [[ "$*" == *"jsonpath={.data.client-passwords}"* ]]; then
+                printf '%s' "${EXISTING_KAFKA_CLIENT_PASSWORD_DATA}"
             fi
             return 0
             ;;
@@ -97,8 +103,10 @@ depServices:
     port: "9200"
     protocol: https
 EOF
+EXISTING_SECRETS="${OPENBKN_TRACE_KAFKA_SOURCE_SECRET}"
 _openbkn_prepare_trace_profile openbkn
 assert_contains "creates the Evidence ingest Secret before releases" "create secret generic bkn-trace-evidence-ingest"
+assert_contains "copies Kafka client Secret into the Backend namespace" "create secret generic bkn-trace-evidence-kafka"
 assert_contains "keeps the Evidence token out of process arguments" "--from-file=token=/dev/stdin"
 if grep -Fq -- "--from-literal=token=" "${KUBECTL_LOG}"; then
     fail "Evidence ingest token must not be exposed in kubectl process arguments"
@@ -118,6 +126,11 @@ else
 fi
 if grep -Fq -- "opensearch-password" "${KUBECTL_LOG}" || grep -Fq -- "--from-literal=password=" "${KUBECTL_LOG}"; then
     fail "OpenSearch password must not be exposed in kubectl process arguments or logs"
+else
+    ok
+fi
+if grep -Fq -- "secret-kafka-password" "${KUBECTL_LOG}" || grep -Fq -- "--from-literal=password=" "${KUBECTL_LOG}"; then
+    fail "Kafka password must not be exposed in kubectl process arguments or logs"
 else
     ok
 fi
@@ -206,6 +219,7 @@ fi
 
 CALLS=()
 : >"${KUBECTL_LOG}"
+EXISTING_SECRETS="${OPENBKN_TRACE_KAFKA_SOURCE_SECRET}"
 cat > "${CONFIG_YAML_PATH}" <<'EOF'
 depServices:
   rds:
@@ -316,6 +330,19 @@ if [[ "${LAST_ERROR}" == *"Evidence ingest Secret"*"must contain key token"* ]];
 else
     fail "Trace profile must preserve the Evidence ingest Secret validation error"
 fi
+
+CALLS=()
+: >"${KUBECTL_LOG}"
+EXISTING_SECRETS=""
+EXISTING_KAFKA_SOURCE_SECRET=false
+if _openbkn_prepare_trace_kafka_secret openbkn; then
+    fail "Kafka client Secret preparation must fail when the source credential is absent"
+elif [[ "${LAST_ERROR}" == *"Kafka Secret"*"client-passwords"* ]]; then
+    ok
+else
+    fail "missing Kafka source credential must explain the required Secret key"
+fi
+EXISTING_KAFKA_SOURCE_SECRET=true
 
 if grep -Eq -- '^[[:space:]]{2}-[[:space:]]+bkn_trace([[:space:]]|$)' "${SCRIPT_DIR}/../data-migrator/config.monorepo.yaml"; then
     ok

@@ -9,21 +9,13 @@ package bkntrace
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"net/http"
 	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"go.opentelemetry.io/otel/trace"
 
 	"bkn-backend/interfaces"
 )
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
 
 func testTraceContext() context.Context {
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
@@ -46,95 +38,11 @@ func testRequestContext() RequestContext {
 	}
 }
 
-func TestProducerStreamIDUsesEnvOrModuleDefault(t *testing.T) {
-	t.Setenv("BKN_TRACE_PRODUCER_STREAM_ID", "custom-stream")
-	if got := producerStreamID(); got != "custom-stream" {
-		t.Fatalf("producerStreamID() = %q, want custom-stream", got)
-	}
-	t.Setenv("BKN_TRACE_PRODUCER_STREAM_ID", "  ")
-	if got := producerStreamID(); got != ModuleName {
-		t.Fatalf("producerStreamID() = %q, want %q", got, ModuleName)
-	}
-}
-
 func TestBuildSchemaReadEventsRejectsMissingReplayEnvelope(t *testing.T) {
 	req := testRequestContext()
 	req.ObservedAt = ""
 	if events := BuildSchemaReadEvents(testTraceContext(), req, ReadSubject{EntityKind: EntityKindObjectType}, nil); len(events) != 0 {
 		t.Fatalf("missing bkn-event-observed-at must not create conflicting replay: %#v", events)
-	}
-}
-
-func TestPostBatchWithRetryRetriesNon2xx(t *testing.T) {
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	var calls atomic.Int32
-	evidenceHTTPClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		status := http.StatusServiceUnavailable
-		if calls.Add(1) == 3 {
-			status = http.StatusNoContent
-		}
-		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-	if err := postBatchWithRetry("http://trace.local", time.Second, batch{}); err != nil {
-		t.Fatal(err)
-	}
-	if calls.Load() != 3 {
-		t.Fatalf("calls=%d, want 3", calls.Load())
-	}
-}
-
-func TestPostBatchSendsDedicatedIngestToken(t *testing.T) {
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "producer-token")
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "producer-token" {
-			t.Fatalf("ingest token header=%q", got)
-		}
-		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-	if err := postBatch("http://trace.local", time.Second, batch{}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestPostBatchReportsOnlySafeValidationCodeAndPaths(t *testing.T) {
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		body := `{
-			"code":"BKN_TRACE_REQUIRED_FIELD_MISSING",
-			"message":"sensitive customer value",
-			"details":[
-				{"code":"BKN_TRACE_REQUIRED_FIELD_MISSING","path":"$.events[0].payload.business_refs","message":"secret one"},
-				{"code":"BKN_TRACE_REFERENCE_ID_INVALID","path":"$.events[0].payload.business_refs[0].ref_id","message":"secret two"}
-			]
-		}`
-		return &http.Response{
-			StatusCode: http.StatusBadRequest,
-			Body:       io.NopCloser(strings.NewReader(body)),
-		}, nil
-	})}
-
-	err := postBatch("http://trace.local", time.Second, batch{})
-	if err == nil {
-		t.Fatal("expected validation failure")
-	}
-	got := err.Error()
-	for _, want := range []string{
-		"HTTP 400",
-		"code=BKN_TRACE_REQUIRED_FIELD_MISSING",
-		"paths=$.events[0].payload.business_refs,$.events[0].payload.business_refs[0].ref_id",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("missing %q from %q", want, got)
-		}
-	}
-	for _, forbidden := range []string{"sensitive customer value", "secret one", "secret two"} {
-		if strings.Contains(got, forbidden) {
-			t.Fatalf("unsafe response value %q leaked in %q", forbidden, got)
-		}
 	}
 }
 
