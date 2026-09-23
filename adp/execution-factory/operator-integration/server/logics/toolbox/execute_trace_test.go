@@ -83,6 +83,7 @@ func TestExecuteToolReturnsCompletedActionAfterValidatingToolMembership(t *testi
 
 	resp, err := service.ExecuteTool(context.Background(), &interfaces.ExecuteToolReq{
 		UserID: "user-secret", BoxID: "box-secret", ToolID: "tool-secret",
+		BKNConversationID: "conv_action_001",
 		HTTPRequestParams: interfaces.HTTPRequestParams{Headers: actionHeaders()},
 	})
 	if err != nil || resp == nil || resp.StatusCode != 200 {
@@ -111,6 +112,7 @@ func TestExecuteToolRejectsActionAtRealPermissionBoundary(t *testing.T) {
 
 	resp, err := service.ExecuteTool(context.Background(), &interfaces.ExecuteToolReq{
 		UserID: "user-secret", BoxID: "box-secret", ToolID: "tool-secret",
+		BKNConversationID: "conv_action_001",
 		HTTPRequestParams: interfaces.HTTPRequestParams{Headers: actionHeaders()},
 	})
 	if err == nil || resp != nil {
@@ -127,6 +129,7 @@ func TestExecuteToolEvidenceAdmissionFailureDoesNotGateAuthorizedCall(t *testing
 	fixture.service.ActionEvidence = emitter
 	fixture.service.ActionExecutions = &acquiredActionGate{}
 	req := &interfaces.ExecuteToolReq{UserID: "u1", BoxID: "b1", ToolID: "t1"}
+	req.BKNConversationID = "conv_action_001"
 	req.Headers = actionHeaders()
 
 	resp, err := fixture.service.ExecuteTool(context.Background(), req)
@@ -163,6 +166,7 @@ func TestExecuteToolRecordsApprovedFailureAsHashOnlyTerminalLifecycle(t *testing
 
 	resp, err := service.ExecuteTool(context.Background(), &interfaces.ExecuteToolReq{
 		UserID: "user-secret", BoxID: "box-secret", ToolID: "tool-secret",
+		BKNConversationID: "conv_action_001",
 		HTTPRequestParams: interfaces.HTTPRequestParams{Headers: actionHeaders()},
 	})
 	if err == nil || resp != nil {

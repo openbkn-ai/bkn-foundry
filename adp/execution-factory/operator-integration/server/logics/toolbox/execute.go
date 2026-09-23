@@ -115,7 +115,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		}))
 		oteltrace.EndSpan(ctx, err)
 	}()
-	action, actionEnabled := bkntrace.ParseAction(req.Headers, req.BoxID, req.ToolID, req.UserID)
+	action, actionEnabled := bkntrace.ParseAction(req.Headers, req.BoxID, req.ToolID, req.UserID, req.BKNConversationID)
 	actionEvents := []bkntrace.Event{}
 	actionApproved := false
 	actionClaimed := false

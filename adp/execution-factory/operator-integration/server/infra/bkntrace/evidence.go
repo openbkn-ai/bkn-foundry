@@ -36,7 +36,7 @@ type Event struct {
 
 type Action struct {
 	traceparent, traceID, spanID, requestID           string
-	interactionID, operationID                        string
+	conversationID, interactionID, operationID        string
 	causationEventID, claimID, instanceID, observedAt string
 	approvalRequestedEventID                          string
 	actionType, policyRef, actorRef, toolRef          string
@@ -44,7 +44,7 @@ type Action struct {
 	attempt                                           int
 }
 
-func ParseAction(headers map[string]any, boxID, toolID, userID string) (Action, bool) {
+func ParseAction(headers map[string]any, boxID, toolID, userID string, trustedConversationID ...string) (Action, bool) {
 	get := func(key string) string {
 		for header, value := range headers {
 			if strings.EqualFold(header, key) {
@@ -73,6 +73,9 @@ func ParseAction(headers map[string]any, boxID, toolID, userID string) (Action, 
 		toolRef:                  hashRef("tool", toolID),
 		accountID:                get("x-account-id"), accountType: get("x-account-type"),
 		attempt: attempt,
+	}
+	if len(trustedConversationID) > 0 {
+		action.conversationID = strings.TrimSpace(trustedConversationID[0])
 	}
 	complete := action.traceID != "" && action.spanID != "" && action.requestID != "" &&
 		action.interactionID != "" && action.operationID != "" && action.causationEventID != "" &&

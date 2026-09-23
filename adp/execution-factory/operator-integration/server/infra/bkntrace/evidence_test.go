@@ -56,6 +56,10 @@ func testHeaders() map[string]any {
 	}
 }
 
+func parseTestAction() (Action, bool) {
+	return ParseAction(testHeaders(), "box", "tool", "user", "conv_action_001")
+}
+
 func TestParseActionRejectsInvalidW3CTraceparent(t *testing.T) {
 	for _, traceparent := range []string{
 		"00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-abcdef1234567890-01",
@@ -72,7 +76,7 @@ func TestParseActionRejectsInvalidW3CTraceparent(t *testing.T) {
 }
 
 func TestActionStagesHaveDistinctReplayStableObservedAt(t *testing.T) {
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	action, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected action")
 	}
@@ -91,7 +95,7 @@ func TestActionStagesHaveDistinctReplayStableObservedAt(t *testing.T) {
 }
 
 func TestExecutionGateAllowsOneConcurrentSideEffectAndReplaysResult(t *testing.T) {
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	action, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected action")
 	}
@@ -129,7 +133,7 @@ func TestExecutionGateAllowsOneConcurrentSideEffectAndReplaysResult(t *testing.T
 func TestExecutionGateDeduplicatesSameActionAcrossAttempts(t *testing.T) {
 	store := &memoryExecutionStore{values: map[string]string{}}
 	gate := NewExecutionGate(store)
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	action, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected action")
 	}
@@ -151,7 +155,7 @@ func TestExecutionGateDeduplicatesSameActionAcrossAttempts(t *testing.T) {
 
 func TestExecutionGateIsolatesSameActionIDAcrossAccounts(t *testing.T) {
 	gate := NewExecutionGate(&memoryExecutionStore{values: map[string]string{}})
-	first, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	first, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected first action")
 	}
@@ -166,7 +170,7 @@ func TestExecutionGateIsolatesSameActionIDAcrossAccounts(t *testing.T) {
 }
 
 func TestLifecycleBuildsStableAllowlistedMonitorEvents(t *testing.T) {
-	action, ok := ParseAction(testHeaders(), "box-secret", "tool-secret", "user-secret")
+	action, ok := ParseAction(testHeaders(), "box-secret", "tool-secret", "user-secret", "conv_action_001")
 	if !ok {
 		t.Fatal("expected complete action context")
 	}
@@ -221,7 +225,7 @@ func TestLifecycleBuildsStableAllowlistedMonitorEvents(t *testing.T) {
 }
 
 func TestLifecycleRejectsBeforeExecutionAndHashesFailure(t *testing.T) {
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	action, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected complete action context")
 	}
