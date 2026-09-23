@@ -17,6 +17,7 @@ type ActionTypeService interface {
 	CheckActionTypeExistByName(ctx context.Context, knID string, branch string, atName string) (string, bool, error)
 	CreateActionTypes(ctx context.Context, tx *sql.Tx, actionTypes []*ActionType, mode string, strictMode bool) ([]string, error)
 	ListActionTypes(ctx context.Context, query ActionTypesQueryParams) ([]*ActionType, int, error)
+	ListActionTypeSummaries(ctx context.Context, query ActionTypesQueryParams) ([]*ActionType, int, error)
 	GetActionTypesByIDs(ctx context.Context, knID string, branch string, atIDs []string) ([]*ActionType, error)
 	UpdateActionType(ctx context.Context, tx *sql.Tx, actionType *ActionType, strictMode bool) error
 	DeleteActionTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, atIDs []string) error

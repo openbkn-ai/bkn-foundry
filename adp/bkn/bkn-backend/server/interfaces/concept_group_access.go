@@ -17,6 +17,7 @@ type ConceptGroupAccess interface {
 	CheckConceptGroupExistByName(ctx context.Context, knID string, branch string, cgName string) (string, bool, error)
 	CreateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *ConceptGroup) error
 	ListConceptGroups(ctx context.Context, query ConceptGroupsQueryParams) ([]*ConceptGroup, error)
+	ListConceptGroupTags(ctx context.Context, query ConceptGroupsQueryParams) ([]string, error)
 	GetConceptGroupByID(ctx context.Context, knID string, branch string, cgID string) (*ConceptGroup, error)
 	UpdateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *ConceptGroup) error
 	UpdateConceptGroupDetail(ctx context.Context, knID string, branch string, cgID string, detail string) error
@@ -37,6 +38,7 @@ type ConceptGroupAccess interface {
 	// Get object type IDs from concept-group relations joined with the object type table.
 
 	GetConceptIDsByConceptGroupIDs(ctx context.Context, knID string, branch string, cgIDs []string, conceptType string) ([]string, error)
+	GetConceptIDsGroupedByConceptGroupIDs(ctx context.Context, knID string, branch string, cgIDs []string, conceptType string) (map[string][]string, error)
 	GetRelationTypeIDsFromConceptGroupRelation(ctx context.Context, query ConceptGroupRelationsQueryParams) ([]string, error)
 	GetActionTypeIDsFromConceptGroupRelation(ctx context.Context, query ConceptGroupRelationsQueryParams) ([]string, error)
 	GetConceptGroupsByOTIDs(ctx context.Context, tx *sql.Tx, query ConceptGroupRelationsQueryParams) (map[string][]*ConceptGroup, error)

@@ -393,22 +393,22 @@ func TestMetricListAuthorizationFiltersBeforeTotalAndPagination(t *testing.T) {
 			Limit:  1,
 		},
 	}
-	ma.EXPECT().ListMetrics(gomock.Any(), gomock.AssignableToTypeOf(query)).DoAndReturn(
-		func(_ context.Context, candidateQuery interfaces.MetricsListQueryParams) ([]*interfaces.MetricDefinition, error) {
-			if candidateQuery.Offset != 0 || candidateQuery.Limit != -1 {
-				t.Fatalf("candidate query offset/limit = %d/%d", candidateQuery.Offset, candidateQuery.Limit)
-			}
-			return []*interfaces.MetricDefinition{
-				{ID: "metric-1", KnID: "kn-1"},
-				{ID: "metric-2", KnID: "kn-1"},
-				{ID: "metric-3", KnID: "kn-1"},
-			}, nil
-		})
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		ResourceIDs: []string{"kn-1/metric-1", "kn-1/metric-3"},
+	}, nil)
+	visibleQuery := query
+	visibleQuery.Branch = interfaces.MAIN_BRANCH
+	visibleQuery.ValidAuthorizationIDsOnly = true
+	visibleQuery.MetricIDs = []string{"metric-1", "metric-3"}
+	ma.EXPECT().GetMetricsTotal(gomock.Any(), visibleQuery).Return(2, nil)
+	ma.EXPECT().ListMetrics(gomock.Any(), visibleQuery).Return([]*interfaces.MetricDefinition{
+		{ID: "metric-3", KnID: "kn-1"},
+	}, nil)
 	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
-		[]string{"kn-1/metric-1", "kn-1/metric-2", "kn-1/metric-3"},
+		[]string{"kn-1/metric-3"},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 		Return(map[string]interfaces.PermissionResourceOps{
-			"kn-1/metric-1": {ResourceID: "kn-1/metric-1"},
 			"kn-1/metric-3": {ResourceID: "kn-1/metric-3"},
 		}, nil)
 

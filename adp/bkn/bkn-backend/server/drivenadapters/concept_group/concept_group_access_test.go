@@ -274,7 +274,7 @@ func Test_conceptGroupAccess_ListConceptGroups(t *testing.T) {
 		Convey("ListConceptGroups with Sort ASC\n", func() {
 			sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 				"f_kn_id, f_branch, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
-				"FROM %s WHERE f_kn_id = ? AND f_branch = ? ORDER BY f_name ASC LIMIT 20 OFFSET 10", CONCEPT_GROUP_TABLE_NAME)
+				"FROM %s WHERE f_kn_id = ? AND f_branch = ? ORDER BY f_name ASC, f_id ASC LIMIT 20 OFFSET 10", CONCEPT_GROUP_TABLE_NAME)
 
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
@@ -319,6 +319,29 @@ func Test_conceptGroupAccess_ListConceptGroups(t *testing.T) {
 				t.Errorf("there were unfulfilled expectations: %s", err)
 			}
 		})
+	})
+}
+
+func Test_conceptGroupAccess_ListConceptGroupTags(t *testing.T) {
+	Convey("test ListConceptGroupTags\n", t, func() {
+		cga, smock := MockNewConceptGroupAccess(&common.AppSetting{})
+		query := interfaces.ConceptGroupsQueryParams{
+			KNID: "kn1", Branch: interfaces.MAIN_BRANCH, CGIDs: []string{"cg1", "cg2"},
+			ValidAuthorizationIDsOnly: true,
+		}
+		sqlStr, _, err := processQueryCondition(query,
+			sq.Select("f_tags").From(CONCEPT_GROUP_TABLE_NAME)).ToSql()
+		So(err, ShouldBeNil)
+
+		rows := sqlmock.NewRows([]string{"f_tags"}).
+			AddRow(`"zeta","alpha"`).
+			AddRow(`"alpha","beta"`)
+		smock.ExpectQuery(sqlStr).WithArgs("kn1", interfaces.MAIN_BRANCH, "cg1", "cg2").WillReturnRows(rows)
+
+		tags, err := cga.ListConceptGroupTags(testCtx, query)
+		So(err, ShouldBeNil)
+		So(tags, ShouldResemble, []string{"alpha", "beta", "zeta"})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
 
