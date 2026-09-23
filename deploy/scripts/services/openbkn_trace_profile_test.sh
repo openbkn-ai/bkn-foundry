@@ -432,6 +432,7 @@ _openbkn_release_extra_sets() {
     )
 }
 LAST_WARN=""
+log_warn() { LAST_WARN+="${LAST_WARN:+$'\n'}$*"; }
 _openbkn_warn_unwired_evidence_producers agent-operator-integration
 if [[ "${LAST_WARN}" == *"BKN Audit: Kafka publisher configuration is not wired for agent-operator-integration"* && "${LAST_WARN}" != *"BKN Trace:"* ]]; then
     ok
