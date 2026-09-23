@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.5
 	github.com/swaggo/http-swagger/v2 v2.0.2

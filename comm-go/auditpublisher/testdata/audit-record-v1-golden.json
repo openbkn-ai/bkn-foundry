@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f6a61-9f2f-7ea1-9fb5-9f2474e6b310",
+  "source_id": "bkn-backend",
+  "category": "audit.admin",
+  "event_name": "resource_config.changed",
+  "occurred_at": "2026-09-22T08:30:00Z",
+  "actor": {
+    "id": "user-a",
+    "display_name_snapshot": "user-a",
+    "type": "user",
+    "auth_method": "oauth",
+    "effective_subject": "user-a"
+  },
+  "target": {
+    "type": "knowledge_network",
+    "id": "kn-123",
+    "name": "customer-network"
+  },
+  "outcome": "success",
+  "http_status": 200,
+  "scope": {
+    "business_module": "domain_knowledge_network",
+    "environment": "production",
+    "platform_scope": false,
+    "knowledge_network_ids": ["kn-123"]
+  },
+  "request_context": {
+    "source_channel": "studio",
+    "transport": "http",
+    "method": "PUT"
+  },
+  "correlation": {
+    "request_id": "req-123",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "causation_id": "req-123"
+  },
+  "summary": "updated knowledge network",
+  "facts": {
+    "action": "update",
+    "decision": "allowed",
+    "changed_fields": ["name"],
+    "before_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "after_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  }
+}
