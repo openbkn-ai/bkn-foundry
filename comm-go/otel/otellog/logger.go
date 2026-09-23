@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
@@ -28,25 +29,25 @@ func SetServiceName(name string) {
 }
 
 // LogDebug emits a Debug-level structured log with trace context and writes to zap stdout.
-func LogDebug(ctx context.Context, message string, attrs ...otellog.KeyValue) {
+func LogDebug(ctx context.Context, message string, attrs ...attribute.KeyValue) {
 	emitLog(ctx, otellog.SeverityDebug, message, attrs...)
 	logger.Debug(formatForStdout(ctx, message, attrs))
 }
 
 // LogInfo emits an Info-level structured log with trace context and writes to zap stdout.
-func LogInfo(ctx context.Context, message string, attrs ...otellog.KeyValue) {
+func LogInfo(ctx context.Context, message string, attrs ...attribute.KeyValue) {
 	emitLog(ctx, otellog.SeverityInfo, message, attrs...)
 	logger.Info(formatForStdout(ctx, message, attrs))
 }
 
 // LogWarn emits a Warn-level structured log with trace context and writes to zap stdout.
-func LogWarn(ctx context.Context, message string, attrs ...otellog.KeyValue) {
+func LogWarn(ctx context.Context, message string, attrs ...attribute.KeyValue) {
 	emitLog(ctx, otellog.SeverityWarn, message, attrs...)
 	logger.Warn(formatForStdout(ctx, message, attrs))
 }
 
 // LogError emits an Error-level structured log, records it on the current span, and writes to zap stdout.
-func LogError(ctx context.Context, message string, err error, attrs ...otellog.KeyValue) {
+func LogError(ctx context.Context, message string, err error, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 	if err != nil {
 		span.RecordError(err)
@@ -55,7 +56,7 @@ func LogError(ctx context.Context, message string, err error, attrs ...otellog.K
 
 	allAttrs := baseLogAttributes(span)
 	if err != nil {
-		allAttrs = append(allAttrs, otellog.String("error.message", err.Error()))
+		allAttrs = append(allAttrs, attribute.String("error.message", err.Error()))
 	}
 	allAttrs = append(allAttrs, attrs...)
 
@@ -65,7 +66,7 @@ func LogError(ctx context.Context, message string, err error, attrs ...otellog.K
 	record.SetTimestamp(time.Now())
 	record.SetSeverity(otellog.SeverityError)
 	record.SetSeverityText("ERROR")
-	record.SetBody(otellog.StringValue(message))
+	record.SetBody(attribute.StringValue(message))
 	record.AddAttributes(allAttrs...)
 	otelLogger.Emit(ctx, record)
 
@@ -73,7 +74,7 @@ func LogError(ctx context.Context, message string, err error, attrs ...otellog.K
 }
 
 // emitLog sends an OpenTelemetry log record.
-func emitLog(ctx context.Context, severity otellog.Severity, message string, attrs ...otellog.KeyValue) {
+func emitLog(ctx context.Context, severity otellog.Severity, message string, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 
 	allAttrs := baseLogAttributes(span)
@@ -85,31 +86,31 @@ func emitLog(ctx context.Context, severity otellog.Severity, message string, att
 	record.SetTimestamp(time.Now())
 	record.SetSeverity(severity)
 	record.SetSeverityText(severity.String())
-	record.SetBody(otellog.StringValue(message))
+	record.SetBody(attribute.StringValue(message))
 	record.AddAttributes(allAttrs...)
 	otelLogger.Emit(ctx, record)
 }
 
 // baseLogAttributes builds base log attributes, including trace correlation metadata.
-func baseLogAttributes(span trace.Span) []otellog.KeyValue {
-	attrs := []otellog.KeyValue{
-		otellog.String("service.name", globalServiceName),
+func baseLogAttributes(span trace.Span) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String("service.name", globalServiceName),
 	}
 
 	spanCtx := span.SpanContext()
 	if spanCtx.HasTraceID() {
-		attrs = append(attrs, otellog.String("trace_id", spanCtx.TraceID().String()))
+		attrs = append(attrs, attribute.String("trace_id", spanCtx.TraceID().String()))
 	}
 
 	if spanCtx.HasSpanID() {
-		attrs = append(attrs, otellog.String("span_id", spanCtx.SpanID().String()))
+		attrs = append(attrs, attribute.String("span_id", spanCtx.SpanID().String()))
 	}
 
 	return attrs
 }
 
 // formatForStdout formats a stdout log line: [trace=... span=...] message k=v k=v.
-func formatForStdout(ctx context.Context, message string, attrs []otellog.KeyValue) string {
+func formatForStdout(ctx context.Context, message string, attrs []attribute.KeyValue) string {
 	var b strings.Builder
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if sc.HasTraceID() {
