@@ -13,7 +13,7 @@
       },
       "kn_id": {
         "type": "string",
-        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+        "description": "知识网络 ID，来自 list_knowledge_networks 或 get_kn_detail，不可凭名称猜测。"
       },
       "query": {
         "type": "string",
@@ -64,6 +64,7 @@
       }
     },
     "required": [
+      "kn_id",
       "query"
     ]
   },

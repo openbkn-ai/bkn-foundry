@@ -51,10 +51,7 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 		return nil, errors.New("failed to apply defaults: " + err.Error())
 	}
 
-	knID := strings.TrimSpace(req.XKnID)
-	if knID == "" {
-		knID = strings.TrimSpace(req.KnID)
-	}
+	knID := req.ResolvedKnID()
 	if knID == "" {
 		return nil, errors.New("kn_id is required (configure X-Kn-ID header or pass kn_id in body)")
 	}
