@@ -11,8 +11,6 @@ const (
 const (
 	// AuthResourceNameModifyTopic Resource name change Topic.
 	AuthResourceNameModifyTopic = "authorization.resource.name.modify"
-	// AuditLogTopic audit log topic.
-	AuditLogTopic = "isf.audit_log.log"
 )
 
 // Notify external event Topick list.

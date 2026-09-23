@@ -35,7 +35,7 @@ func TestOutboxMessageEventPublishFallbackUsesDetachedContextOnCanceledRequest(t
 
 		req := &interfaces.OutboxMessageReq{
 			EventID:   "evt-1",
-			EventType: interfaces.OutboxMessageEventTypeAuditLog,
+			EventType: interfaces.OutboxMessageEventType("test"),
 			Topic:     "topic.test",
 			Payload:   `{"hello":"world"}`,
 		}
@@ -91,7 +91,7 @@ func TestOutboxMessageEventPublishFallbackUsesDetachedContextOnCanceledRequest(t
 
 		req := &interfaces.OutboxMessageReq{
 			EventID:   "evt-2",
-			EventType: interfaces.OutboxMessageEventTypeAuditLog,
+			EventType: interfaces.OutboxMessageEventType("test"),
 			Topic:     "topic.test",
 			Payload:   `{"hello":"wrapped"}`,
 		}
@@ -139,7 +139,7 @@ func TestOutboxMessageEventPublishFallbackUsesDetachedContextOnCanceledRequest(t
 
 		req := &interfaces.OutboxMessageReq{
 			EventID:   "evt-3",
-			EventType: interfaces.OutboxMessageEventTypeAuditLog,
+			EventType: interfaces.OutboxMessageEventType("test"),
 			Topic:     "topic.test",
 			Payload:   `{"hello":"timeout"}`,
 		}

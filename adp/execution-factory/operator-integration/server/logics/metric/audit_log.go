@@ -5,15 +5,19 @@ package metric
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bknaudit"
+	infraCommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
 // constant definition.
@@ -140,19 +144,25 @@ const (
 
 // AuditLogBuilder audit log builder.
 type AuditLogBuilder struct {
-	ts                 *localize.I18nTranslator
-	logger             interfaces.Logger
-	topic              string
-	outboxMessageEvent interfaces.IOutboxMessageEvent
+	ts        *localize.I18nTranslator
+	logger    interfaces.Logger
+	publisher auditPublisher
+	env       string
+}
+
+type auditPublisher interface {
+	TryPublish([]byte) auditpublisher.Disposition
 }
 
 // NewAuditLogBuilder creates an audit log builder.
 func NewAuditLogBuilder() *AuditLogBuilder {
+	cfg := config.NewConfigLoader()
+	logger := cfg.GetLogger()
 	return &AuditLogBuilder{
-		ts:                 localize.NewI18nTranslator(config.NewConfigLoader().Project.Language),
-		logger:             config.NewConfigLoader().GetLogger(),
-		topic:              interfaces.AuditLogTopic,
-		outboxMessageEvent: common.NewOutboxMessageEvent(),
+		ts:        localize.NewI18nTranslator(cfg.Project.Language),
+		logger:    logger,
+		publisher: bknaudit.ConfiguredPublisher(logger),
+		env:       strings.TrimSpace(os.Getenv("BKN_AUDIT_ENVIRONMENT")),
 	}
 }
 
@@ -166,6 +176,8 @@ type AuditLogBuilderParams struct {
 	ExMsg        string                   // Exception information.
 	Detils       interface{}              // Operation details.
 	OperatorType AuditLogOperatorType     // Operator type.
+	Outcome      string                   // Optional frozen outcome (success/failure).
+	FailureCode  string                   // Optional allowlisted failure code.
 }
 
 // AuditLogToolDetil tool operation details.
@@ -354,25 +366,94 @@ func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	newCtx, cancel := context.WithTimeout(ctx, DefaultTimeout)
-	defer cancel() // Ensure resource release.
-	logObj, err := b.build(p)
-	if err != nil {
-		b.logger.WithContext(newCtx).Errorf("build audit log failed: %v", err)
+	if b == nil || b.publisher == nil {
+		return
+	}
+	if p == nil || p.TokenInfo == nil || p.Accessor == nil || p.Object == nil {
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: missing authenticated context or target")
+		return
+	}
+	if b.env == "" || len(b.env) > 32 || strings.ContainsAny(b.env, " \t\r\n") {
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: invalid environment")
+		return
+	}
+	var targetType string
+	switch p.Object.Type {
+	case AuditLogObjectOperator:
+		targetType = "operator"
+	case AuditLogObjectMCP:
+		targetType = "mcp"
+	case AuditLogObjectTool:
+		targetType = "toolbox"
+	default:
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: unsupported target type")
+		return
+	}
+	if p.Object.ID == "" {
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: missing target id")
+		return
+	}
+	var actorType string
+	switch p.TokenInfo.VisitorTyp {
+	case interfaces.RealName:
+		actorType = "user"
+	case interfaces.Business:
+		actorType = "service_account"
+	case interfaces.Anonymous:
+		actorType = "anonymous"
+	default:
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: unsupported actor type")
+		return
+	}
+	actorID := p.TokenInfo.VisitorID
+	if actorID == "" {
+		actorID = "unknown"
+	}
+	name := p.Accessor.Name
+	if name == "" {
+		name = actorID
+	}
+	action := string(p.Operation)
+	switch AuditLogOperationType(action) {
+	case AuditLogOperationCreate, AuditLogOperationDelete, AuditLogOperationEdit, AuditLogOperationPublish, AuditLogOperationUnpublish, AuditLogOperationExecute:
+	default:
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: unsupported action")
+		return
+	}
+	outcome := p.Outcome
+	if outcome == "" {
+		outcome = "success"
+	}
+	if outcome != "success" && outcome != "failure" {
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: unsupported outcome")
 		return
 	}
 	eventID, err := uuid.NewV7()
 	if err != nil {
-		b.logger.WithContext(newCtx).Errorf("generate audit event UUIDv7 failed: %v", err)
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: unable to generate event id")
 		return
 	}
-	err = b.outboxMessageEvent.Publish(newCtx, &interfaces.OutboxMessageReq{
-		EventID:   eventID.String(),
-		EventType: interfaces.OutboxMessageEventTypeAuditLog,
-		Topic:     interfaces.AuditLogTopic,
-		Payload:   utils.ObjectToJSON(logObj),
-	})
-	if err != nil {
-		b.logger.WithContext(newCtx).Errorf("write audit log failed: %v", err)
+	requestID := "unknown"
+	if traceCtx, ok := infraCommon.GetTraceContextFromCtx(ctx); ok && infraCommon.IsValidBKNRequestID(traceCtx.RequestID) {
+		requestID = traceCtx.RequestID
+	}
+	event := map[string]any{
+		"schema_version": "1.0", "event_id": eventID.String(), "source_id": "execution-factory",
+		"category": "audit.admin", "event_name": "execution_factory.operation.observed",
+		"occurred_at": time.Now().UTC().Format(time.RFC3339Nano),
+		"actor":       map[string]any{"id": actorID, "effective_subject": actorID, "display_name_snapshot": name, "type": actorType, "auth_method": "unknown"},
+		"target":      map[string]any{"type": targetType, "id": p.Object.ID}, "outcome": outcome,
+		"scope":           map[string]any{"business_module": "execution_factory", "environment": b.env, "platform_scope": true, "knowledge_network_ids": []string{}},
+		"request_context": map[string]any{"source_channel": "unknown", "transport": "unknown", "method": "unknown"},
+		"correlation":     map[string]any{"request_id": requestID, "causation_id": requestID},
+		"summary":         "execution_factory.operation.observed " + action + " " + targetType,
+		"facts":           map[string]any{"action": action},
+	}
+	if outcome == "failure" && p.FailureCode == "TOOL_EXECUTION_FAILED" {
+		event["failure_code"] = p.FailureCode
+	}
+	value, err := json.Marshal(event)
+	if err != nil || b.publisher.TryPublish(value) != auditpublisher.Accepted {
+		b.logger.WithContext(ctx).Warn("audit coverage_gap: record was not accepted")
 	}
 }

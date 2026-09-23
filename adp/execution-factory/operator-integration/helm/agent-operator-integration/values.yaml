@@ -231,6 +231,12 @@ observability:
       max_record_bytes: 1048576
       max_attempts: 3
       retry_backoff_ms: 100
+  audit:
+    publisher:
+      brokers: ""
+      credentials_secret_name: ""
+      username_secret_key: "username"
+      password_secret_key: "password"
   log:
     enabled: false
     level: info

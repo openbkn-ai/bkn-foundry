@@ -170,6 +170,10 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 	if err != nil {
 		return
 	}
+	outcome, failureCode := "success", ""
+	if callToolResult.IsError {
+		outcome, failureCode = "failure", "TOOL_EXECUTION_FAILED"
+	}
 	// Asynchronous recording of audit logs.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
@@ -178,9 +182,11 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 			return
 		}
 		s.AuditLog.Logger(ctx, &metric.AuditLogBuilderParams{
-			TokenInfo: accountAuthContext.TokenInfo,
-			Accessor:  accessor,
-			Operation: metric.AuditLogOperationExecute,
+			TokenInfo:   accountAuthContext.TokenInfo,
+			Accessor:    accessor,
+			Operation:   metric.AuditLogOperationExecute,
+			Outcome:     outcome,
+			FailureCode: failureCode,
 			Object: &metric.AuditLogObject{
 				Type: metric.AuditLogObjectMCP,
 				Name: req.ToolName,
