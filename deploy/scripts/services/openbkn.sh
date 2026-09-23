@@ -443,7 +443,8 @@ OPENBKN_TRACE_INGEST_SECRET="${OPENBKN_TRACE_INGEST_SECRET:-bkn-trace-evidence-i
 OPENBKN_TRACE_EVIDENCE_INGEST_URL="${OPENBKN_TRACE_EVIDENCE_INGEST_URL:-http://agent-observability:8080/api/agent-observability/v1/evidence/events}"
 OPENBKN_TRACE_ARTIFACT_INGEST_URL="${OPENBKN_TRACE_ARTIFACT_INGEST_URL:-http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts}"
 OPENBKN_TRACE_OPENSEARCH_SECRET="${OPENBKN_TRACE_OPENSEARCH_SECRET:-bkn-trace-opensearch}"
-OPENBKN_TRACE_KAFKA_SECRET="${OPENBKN_TRACE_KAFKA_SECRET:-${KAFKA_SASL_SECRET_NAME:-kafka-sasl}}"
+OPENBKN_TRACE_KAFKA_SECRET="${OPENBKN_TRACE_KAFKA_SECRET:-bkn-trace-evidence-kafka}"
+OPENBKN_TRACE_KAFKA_SOURCE_SECRET="${OPENBKN_TRACE_KAFKA_SOURCE_SECRET:-${KAFKA_SASL_SECRET_NAME:-kafka-sasl}}"
 OPENBKN_TRACE_CAPTURE_POLICY_REVISION="${OPENBKN_TRACE_CAPTURE_POLICY_REVISION:-1}"
 
 _openbkn_trace_kafka_brokers() {
@@ -833,6 +834,38 @@ _openbkn_prepare_trace_ingest_secret() {
     fi
 }
 
+# Kubernetes Secrets cannot cross namespaces. Copy only the Kafka client
+# credential into the Backend namespace under the key names its chart reads.
+# Keep the password base64-encoded throughout the shell/manifest path so it is
+# never added to a command argument or installer log.
+_openbkn_prepare_trace_kafka_secret() {
+    local namespace="$1"
+    local username_data password_data
+    if kubectl get secret "${OPENBKN_TRACE_KAFKA_SECRET}" -n "${namespace}" >/dev/null 2>&1; then
+        username_data="$(kubectl get secret "${OPENBKN_TRACE_KAFKA_SECRET}" -n "${namespace}" -o jsonpath='{.data.username}' 2>/dev/null)"
+        password_data="$(kubectl get secret "${OPENBKN_TRACE_KAFKA_SECRET}" -n "${namespace}" -o jsonpath='{.data.password}' 2>/dev/null)"
+        if [[ -n "${username_data}" && -n "${password_data}" ]]; then
+            return 0
+        fi
+        log_error "BKN Trace Kafka Secret ${OPENBKN_TRACE_KAFKA_SECRET} must contain username and password"
+        return 1
+    fi
+    password_data="$(kubectl get secret "${OPENBKN_TRACE_KAFKA_SOURCE_SECRET}" -n "${KAFKA_NAMESPACE}" -o jsonpath='{.data.client-passwords}' 2>/dev/null)"
+    if [[ -z "${password_data}" ]]; then
+        log_error "BKN Trace requires Kafka Secret ${OPENBKN_TRACE_KAFKA_SOURCE_SECRET} in namespace ${KAFKA_NAMESPACE} with key client-passwords"
+        return 1
+    fi
+    password_data="${password_data%%,*}"
+    username_data="$(printf '%s' "${KAFKA_CLIENT_USER:-kafkauser}" | base64 | tr -d '\n')"
+    if ! kubectl create secret generic "${OPENBKN_TRACE_KAFKA_SECRET}" -n "${namespace}" \
+        --from-file=username=<(printf '%s' "${username_data}" | base64 --decode) \
+        --from-file=password=<(printf '%s' "${password_data}" | base64 --decode) \
+        --dry-run=client -o yaml | kubectl apply -f - >/dev/null; then
+        log_error "BKN Trace cannot create Kafka client Secret ${OPENBKN_TRACE_KAFKA_SECRET}"
+        return 1
+    fi
+}
+
 _openbkn_prepare_trace_opensearch_secret() {
     local namespace="$1"
     local protocol host user password username_data password_data
@@ -935,6 +968,9 @@ _openbkn_prepare_trace_profile() {
     fi
 
     if ! _openbkn_prepare_trace_ingest_secret "${namespace}"; then
+        return 1
+    fi
+    if ! _openbkn_prepare_trace_kafka_secret "${namespace}"; then
         return 1
     fi
     _openbkn_prepare_trace_opensearch_secret "${namespace}"
