@@ -56,6 +56,16 @@ func NewKnLogicPropertyResolverService() interfaces.IKnLogicPropertyResolverServ
 }
 
 // ResolveLogicProperties parselogical property.
+const (
+	// parameterValueFromInput is the only parameter source a caller supplies;
+	// property is read from the instance and const is fixed at modelling time.
+	parameterValueFromInput = "input"
+
+	paramsSourceCaller    = "caller"
+	paramsSourceGenerated = "generated"
+	paramsSourceMerged    = "merged"
+)
+
 func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 	ctx context.Context,
 	req *interfaces.ResolveLogicPropertiesRequest,
@@ -109,7 +119,7 @@ func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 	// Step 4: Generate dynamic_params.
 	s.logger.WithContext(ctx).Debugf("[Step 2] 生成 dynamic_params（Agent 并发调用）")
 	startTime := time.Now()
-	dynamicParams, missingParams, genFailures, err := s.generateDynamicParams(ctx, req, logicPropertiesDef, debugCollector)
+	dynamicParams, paramSources, missingParams, genFailures, err := s.generateDynamicParams(ctx, req, logicPropertiesDef, debugCollector)
 	generateParamsDuration := time.Since(startTime)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[Step 2] ❌ 失败: %v", err)
@@ -166,6 +176,10 @@ func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 	resp := &interfaces.ResolveLogicPropertiesResponse{
 		Datas:                result.Datas,
 		EffectivePermissions: result.EffectivePermissions,
+		// What the question was turned into. Without it a caller cannot tell
+		// a pinned parameter from one a model inferred, nor reproduce either.
+		DynamicParams:       dynamicParams,
+		DynamicParamsSource: paramSources,
 	}
 
 	// Return debug information if necessary.
@@ -186,8 +200,11 @@ func (s *knLogicPropertyResolverService) validateRequest(req *interfaces.Resolve
 	if req.OtID == "" {
 		return fmt.Errorf("ot_id is required")
 	}
-	if req.Query == "" {
-		return fmt.Errorf("query is required")
+	// query feeds parameter generation and nothing else, so it is required
+	// only when something still has to be generated. A caller that supplies
+	// every property's parameters has nothing left for a model to infer.
+	if req.Query == "" && !supplierCoversEveryProperty(req) {
+		return fmt.Errorf("query is required unless dynamic_params supplies the parameters of every requested property")
 	}
 	if len(req.InstanceIdentities) == 0 {
 		return fmt.Errorf("_instance_identities is required and cannot be empty")
@@ -286,7 +303,8 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 	req *interfaces.ResolveLogicPropertiesRequest,
 	logicPropertiesDef map[string]*interfaces.LogicPropertyDef,
 	debugCollector *DebugCollector,
-) (dynamicParams map[string]interface{}, missingParams []interfaces.MissingPropertyParams,
+) (dynamicParams map[string]interface{}, sources map[string]string,
+	missingParams []interfaces.MissingPropertyParams,
 	genFailures []interfaces.MissingPropertyParams, err error) {
 	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generating dynamic params for %d properties", len(logicPropertiesDef))
 
@@ -311,6 +329,7 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 	type PropertyResult struct {
 		Name          string
 		DynamicParams map[string]interface{}
+		Source        string
 		MissingParams *interfaces.MissingPropertyParams
 		Error         error
 	}
@@ -331,11 +350,13 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 				debugCollector.AddPropertyType(t.Name, string(t.Property.Type))
 			}
 
-			// Generate dynamic_params for a single property.
-			params, missingParams, err := s.generateSinglePropertyParams(ctx, req, t.Name, t.Property, debugCollector)
+			// Resolve this property's parameters: what the caller supplied
+			// stands, and generation fills only what is missing.
+			params, source, missingParams, err := s.resolveSinglePropertyParams(ctx, req, t.Name, t.Property, debugCollector)
 			results <- PropertyResult{
 				Name:          t.Name,
 				DynamicParams: params,
+				Source:        source,
 				MissingParams: missingParams,
 				Error:         err,
 			}
@@ -344,6 +365,7 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 
 	// Step 3: Collect results.
 	dynamicParams = make(map[string]interface{})
+	sources = make(map[string]string, len(tasks))
 	missingParams = []interfaces.MissingPropertyParams{}
 	genFailures = []interfaces.MissingPropertyParams{}
 
@@ -379,6 +401,7 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 		// ontology-query expected format: {"property_name": {"param1": value1, ...}}
 		if result.DynamicParams != nil {
 			dynamicParams[result.Name] = result.DynamicParams
+			sources[result.Name] = result.Source
 			s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Collected params for %s: %+v",
 				result.Name, result.DynamicParams)
 		}
@@ -387,10 +410,104 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generated dynamic params for %d properties, %d missing, %d failed",
 		len(dynamicParams), len(missingParams), len(genFailures))
 
-	return dynamicParams, missingParams, genFailures, nil
+	return dynamicParams, sources, missingParams, genFailures, nil
 }
 
 // generateSinglePropertyParams generates dynamic_params for a single property.
+// supplierCoversEveryProperty reports whether the caller supplied an entry for
+// every requested property. It is a cheap pre-check for the query argument;
+// whether those entries are complete is only known once the definitions are
+// read, and resolveSinglePropertyParams says so per property.
+func supplierCoversEveryProperty(req *interfaces.ResolveLogicPropertiesRequest) bool {
+	if len(req.DynamicParams) == 0 {
+		return false
+	}
+	for _, name := range req.Properties {
+		if len(req.DynamicParams[name]) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// missingInputParams lists the parameters the caller still has to supply for
+// this property. Only value_from=input is asked of a caller: property is read
+// by the server from the instance and const is fixed at modelling time.
+func missingInputParams(property *interfaces.LogicPropertyDef, supplied map[string]any) []string {
+	missing := make([]string, 0, len(property.Parameters))
+	for _, parameter := range property.Parameters {
+		if parameter.ValueFrom != parameterValueFromInput {
+			continue
+		}
+		if _, given := supplied[parameter.Name]; !given {
+			missing = append(missing, parameter.Name)
+		}
+	}
+	return missing
+}
+
+// resolveSinglePropertyParams decides where one property's parameters come
+// from. What the caller supplied always stands; generation only fills what is
+// missing, and does not run at all when nothing is.
+func (s *knLogicPropertyResolverService) resolveSinglePropertyParams(
+	ctx context.Context,
+	req *interfaces.ResolveLogicPropertiesRequest,
+	propertyName string,
+	property *interfaces.LogicPropertyDef,
+	debugCollector *DebugCollector,
+) (dynamicParams map[string]interface{}, source string, missingParams *interfaces.MissingPropertyParams, err error) {
+	supplied := req.DynamicParams[propertyName]
+	if len(supplied) > 0 {
+		// Validate what the caller gave before deciding anything else. A
+		// parameter set can be valid while not naming every declared input -
+		// an instant metric query takes no step, and demanding one would make
+		// that case impossible to supply - and it can be complete and still
+		// wrong. Validation answers both, where a coverage count cannot.
+		resolved := make(map[string]interface{}, len(supplied))
+		for name, value := range supplied {
+			resolved[name] = value
+		}
+		err := s.validatePropertyParams(ctx, propertyName, property, resolved)
+		if err == nil {
+			s.logger.WithContext(ctx).Debugf(
+				"[KnLogicPropertyResolver] %s: the supplied parameters are complete, no generation", propertyName)
+			return resolved, paramsSourceCaller, nil, nil
+		}
+		if len(missingInputParams(property, supplied)) == 0 {
+			// Nothing is missing, so generation cannot help: the caller's own
+			// values are wrong and it should hear which ones.
+			return nil, "", nil, err
+		}
+		s.logger.WithContext(ctx).Debugf(
+			"[KnLogicPropertyResolver] %s: supplied parameters are incomplete (%v), generating the rest",
+			propertyName, missingInputParams(property, supplied))
+	}
+	if req.Query == "" {
+		return nil, "", nil, fmt.Errorf(
+			"query is required: %s still needs %v, which is what query is used to infer",
+			propertyName, missingInputParams(property, supplied))
+	}
+
+	generated, missingParams, err := s.generateSinglePropertyParams(ctx, req, propertyName, property, debugCollector)
+	if err != nil || missingParams != nil {
+		return nil, "", missingParams, err
+	}
+	source = paramsSourceGenerated
+	if len(supplied) > 0 {
+		if generated == nil {
+			generated = make(map[string]interface{}, len(supplied))
+		}
+		for name, value := range supplied {
+			generated[name] = value
+		}
+		source = paramsSourceMerged
+	}
+	if err := s.validatePropertyParams(ctx, propertyName, property, generated); err != nil {
+		return nil, "", nil, err
+	}
+	return generated, source, nil, nil
+}
+
 func (s *knLogicPropertyResolverService) generateSinglePropertyParams(
 	ctx context.Context,
 	req *interfaces.ResolveLogicPropertiesRequest,
@@ -429,29 +546,38 @@ func (s *knLogicPropertyResolverService) generateSinglePropertyParams(
 		}
 	}
 
-	// If there are dynamic_params returned, perform type verification.
-	if dynamicParams != nil {
-		// Detailed log: check parameter content before verification.
-		s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Validating params for %s (type: %s), params: %+v",
-			propertyName, property.Type, dynamicParams)
-
-		switch property.Type {
-		case interfaces.LogicPropertyTypeMetric:
-			err = s.validateMetricParams(ctx, property, dynamicParams)
-		case interfaces.LogicPropertyTypeTool:
-			err = s.validateToolParams(ctx, property, dynamicParams)
-		}
-
-		if err != nil {
-			s.logger.WithContext(ctx).Errorf("[KnLogicPropertyResolver] Validation failed for %s: %v", propertyName, err)
-			// When verification fails, a verification error is returned (missingParams is not returned, because this is a verification failure, not a missing parameter)
-			return nil, nil, fmt.Errorf("validate params failed for %s: %w", propertyName, err)
-		}
-
-		s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Validation passed for %s", propertyName)
-	}
-
 	return dynamicParams, missingParams, nil
+}
+
+// validatePropertyParams checks a resolved parameter set, whoever produced it.
+// Parameters the caller supplied are checked exactly like generated ones: a
+// caller that pins a broken time window should hear about it here, not from
+// the engine.
+func (s *knLogicPropertyResolverService) validatePropertyParams(
+	ctx context.Context,
+	propertyName string,
+	property *interfaces.LogicPropertyDef,
+	dynamicParams map[string]interface{},
+) error {
+	if dynamicParams == nil {
+		return nil
+	}
+	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Validating params for %s (type: %s), params: %+v",
+		propertyName, property.Type, dynamicParams)
+
+	var err error
+	switch property.Type {
+	case interfaces.LogicPropertyTypeMetric:
+		err = s.validateMetricParams(ctx, property, dynamicParams)
+	case interfaces.LogicPropertyTypeTool:
+		err = s.validateToolParams(ctx, property, dynamicParams)
+	}
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("[KnLogicPropertyResolver] Validation failed for %s: %v", propertyName, err)
+		return fmt.Errorf("validate params failed for %s: %w", propertyName, err)
+	}
+	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Validation passed for %s", propertyName)
+	return nil
 }
 
 // generateMetricParams generates dynamic parameters of metric type through Agent.

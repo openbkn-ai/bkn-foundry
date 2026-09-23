@@ -534,3 +534,103 @@ func TestExtractLogicProperties_PropertyNotFound(t *testing.T) {
 		convey.So(err.Error(), convey.ShouldContainSubstring, "nonexistent_prop")
 	})
 }
+
+// A caller that supplies every input parameter should not have to invent a
+// question for a model that is no longer asked anything.
+func TestValidateRequestAcceptsSuppliedParametersInsteadOfQuery(t *testing.T) {
+	convey.Convey("TestValidateRequestAcceptsSuppliedParametersInsteadOfQuery", t, func() {
+		service := &knLogicPropertyResolverService{}
+
+		req := &interfaces.ResolveLogicPropertiesRequest{
+			KnID:               "kn-001",
+			OtID:               "ot-001",
+			InstanceIdentities: []map[string]interface{}{{"id": "obj-001"}},
+			Properties:         []string{"forecast_qty_sum"},
+			DynamicParams: map[string]map[string]any{
+				"forecast_qty_sum": {"closestatus_title": "未关闭"},
+			},
+		}
+		convey.So(service.validateRequest(req), convey.ShouldBeNil)
+
+		// One property supplied, another not: the question is still needed.
+		req.Properties = append(req.Properties, "open_forecast_count")
+		err := service.validateRequest(req)
+		convey.So(err, convey.ShouldNotBeNil)
+		convey.So(err.Error(), convey.ShouldContainSubstring, "query")
+	})
+}
+
+// Only value_from=input is asked of a caller: property is read by the server
+// from the instance and const is fixed at modelling time, so supplying the
+// input ones is enough to skip generation.
+func TestMissingInputParamsCountsOnlyWhatACallerSupplies(t *testing.T) {
+	convey.Convey("TestMissingInputParamsCountsOnlyWhatACallerSupplies", t, func() {
+		property := &interfaces.LogicPropertyDef{
+			Name: "forecast_qty_sum",
+			Type: interfaces.LogicPropertyTypeMetric,
+			Parameters: []interfaces.PropertyParameter{
+				{Name: "material_number", ValueFrom: "property", Value: "material_number"},
+				{Name: "closestatus_title", ValueFrom: "input"},
+				{Name: "instant", ValueFrom: "input", IfSystemGenerate: true},
+				{Name: "fixed", ValueFrom: "const", Value: 1},
+			},
+		}
+
+		convey.So(missingInputParams(property, map[string]any{}),
+			convey.ShouldResemble, []string{"closestatus_title", "instant"})
+		convey.So(missingInputParams(property, map[string]any{"closestatus_title": "未关闭"}),
+			convey.ShouldResemble, []string{"instant"})
+		convey.So(missingInputParams(property, map[string]any{"closestatus_title": "未关闭", "instant": true}),
+			convey.ShouldBeEmpty)
+	})
+}
+
+// Skipping generation must not skip validation: a caller that pins a broken
+// time window hears about it here, not from the engine.
+func TestResolveSinglePropertyParamsValidatesWhatTheCallerSupplied(t *testing.T) {
+	convey.Convey("TestResolveSinglePropertyParamsValidatesWhatTheCallerSupplied", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		service := &knLogicPropertyResolverService{logger: mockLogger}
+
+		property := &interfaces.LogicPropertyDef{
+			Name: "forecast_qty_sum",
+			Type: interfaces.LogicPropertyTypeMetric,
+			Parameters: []interfaces.PropertyParameter{
+				{Name: "instant", ValueFrom: "input", IfSystemGenerate: true},
+				{Name: "start", ValueFrom: "input", IfSystemGenerate: true},
+				{Name: "end", ValueFrom: "input", IfSystemGenerate: true},
+			},
+		}
+		req := &interfaces.ResolveLogicPropertiesRequest{
+			KnID: "kn-001", OtID: "ot-001",
+			Properties: []string{"forecast_qty_sum"},
+			DynamicParams: map[string]map[string]any{
+				"forecast_qty_sum": {
+					"instant": true,
+					"start":   int64(1704067200000),
+					"end":     int64(1706745600000),
+				},
+			},
+		}
+
+		params, source, missing, err := service.resolveSinglePropertyParams(
+			context.Background(), req, "forecast_qty_sum", property, nil)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(missing, convey.ShouldBeNil)
+		convey.So(source, convey.ShouldEqual, paramsSourceCaller)
+		convey.So(params["start"], convey.ShouldEqual, int64(1704067200000))
+
+		// The same path refuses a window the engine would have rejected later.
+		req.DynamicParams["forecast_qty_sum"]["start"] = int64(1)
+		_, _, _, err = service.resolveSinglePropertyParams(
+			context.Background(), req, "forecast_qty_sum", property, nil)
+		convey.So(err, convey.ShouldNotBeNil)
+	})
+}
