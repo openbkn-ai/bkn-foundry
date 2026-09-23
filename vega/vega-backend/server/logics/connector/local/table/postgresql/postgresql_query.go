@@ -171,7 +171,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	var condition sq.Sqlizer
 	var err error
 	if params.ActualFilterCond != nil {
-		condition, err = c.ConvertFilterCondition(ctx, params.ActualFilterCond, fieldMap)
+		condition, err = c.ConvertFilterCondition(params.ActualFilterCond)
 		if err != nil {
 			return nil, err
 		}

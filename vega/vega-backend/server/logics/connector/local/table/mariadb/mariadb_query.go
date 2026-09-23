@@ -295,7 +295,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	var condition sq.Sqlizer
 	var err error
 	if params.ActualFilterCond != nil {
-		condition, err = c.ConvertFilterCondition(ctx, params.ActualFilterCond, fieldMap)
+		condition, err = c.ConvertFilterCondition(params.ActualFilterCond)
 		if err != nil {
 			return nil, err
 		}

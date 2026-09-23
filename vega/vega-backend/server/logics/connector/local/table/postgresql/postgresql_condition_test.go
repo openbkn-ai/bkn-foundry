@@ -32,7 +32,7 @@ func TestBooleanConditionRejectsNumericField(t *testing.T) {
 	for _, operation := range []string{"true", "false"} {
 		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "age", Operation: operation}, fields)
 		require.NoError(t, err)
-		_, err = (&PostgresqlConnector{}).ConvertFilterCondition(context.Background(), condition, fields)
+		_, err = (&PostgresqlConnector{}).ConvertFilterCondition(condition)
 		require.ErrorContains(t, err, "requires BOOLEAN")
 	}
 }
@@ -54,11 +54,37 @@ func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCond
 
 func toSQL(t *testing.T, connector *PostgresqlConnector, cond interfaces.FilterCondition) (string, []interface{}) {
 	t.Helper()
-	sqlizer, err := connector.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+	sqlizer, err := connector.ConvertFilterCondition(cond)
 	require.NoError(t, err)
 	sql, args, err := sqlizer.ToSql()
 	require.NoError(t, err)
 	return sql, args
+}
+
+func TestPostgresqlConnectorConvertFilterConditionPrefix(t *testing.T) {
+	field := &interfaces.Property{Name: "name", OriginalName: "name", Type: interfaces.DataType_String}
+
+	t.Run("convert constant prefix", func(t *testing.T) {
+		cond := &filter_condition.PrefixCond{
+			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const}},
+			Lfield: field, Value: "ali",
+		}
+		expr, err := (&PostgresqlConnector{}).ConvertFilterConditionPrefix(cond)
+		require.NoError(t, err)
+		sql, args, err := expr.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t, `"name" LIKE ?`, sql)
+		assert.Equal(t, []any{"ali%"}, args)
+	})
+	t.Run("reject field source", func(t *testing.T) {
+		cond := &filter_condition.PrefixCond{
+			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field}},
+			Lfield: field, Value: "ali",
+		}
+		expr, err := (&PostgresqlConnector{}).ConvertFilterConditionPrefix(cond)
+		require.ErrorContains(t, err, "only supports ValueFrom_Const")
+		assert.Nil(t, expr)
+	})
 }
 
 func TestConvertGteKeepsNonDateFieldAsParameter(t *testing.T) {
@@ -223,7 +249,7 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 		c := &PostgresqlConnector{}
 		cond := mustNewCond(t, "event_time", ">=", float64(1785295334428))
 
-		expr, err := c.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+		expr, err := c.ConvertFilterCondition(cond)
 		require.Error(t, err)
 		assert.Nil(t, expr)
 		assert.Contains(t, err.Error(), "requires a time string")
@@ -286,7 +312,7 @@ func TestPostgresqlConnectorConvertFilterConditionBefore(t *testing.T) {
 		c := &PostgresqlConnector{}
 		cond := mustNewCond(t, "created_at", "before", []any{float64(2), "fortnight"})
 
-		got, err := c.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+		got, err := c.ConvertFilterCondition(cond)
 
 		require.Error(t, err)
 		assert.Nil(t, got)
@@ -312,7 +338,7 @@ func TestPostgresqlConnectorConvertFilterConditionCurrent(t *testing.T) {
 			Value:  "quarter",
 		}
 
-		got, err := c.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+		got, err := c.ConvertFilterCondition(cond)
 
 		require.Error(t, err)
 		assert.Nil(t, got)

@@ -84,7 +84,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 	t.Run("reject date literal before mysql numeric coercion", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "==", "2026-01-01 00:00:00")
-		expr, err := c.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+		expr, err := c.ConvertFilterCondition(cond)
 		if err == nil {
 			t.Fatal("expected non-epoch date value error")
 		}
@@ -275,7 +275,7 @@ func TestMariaDBDateExpressionsKeepTimeValuesRaw(t *testing.T) {
 	t.Run("rejects numeric time values", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "event_time", ">=", float64(1785295334428))
-		expr, err := c.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+		expr, err := c.ConvertFilterCondition(cond)
 		if err == nil {
 			t.Fatal("expected numeric time value error")
 		}
@@ -467,7 +467,7 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 			if err != nil {
 				t.Fatalf("build %s condition: %v", test.operation, err)
 			}
-			expression, err := connector.ConvertFilterCondition(context.Background(), condition, fields)
+			expression, err := connector.ConvertFilterCondition(condition)
 			if err != nil {
 				t.Fatalf("convert %s condition: %v", test.operation, err)
 			}
@@ -488,7 +488,7 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 			if err != nil {
 				t.Fatalf("build %s condition: %v", operation, err)
 			}
-			_, err = (&MariaDBConnector{}).ConvertFilterCondition(context.Background(), condition, fields)
+			_, err = (&MariaDBConnector{}).ConvertFilterCondition(condition)
 			if err == nil {
 				t.Fatalf("expected MariaDB to reject %s for INT", operation)
 			}
@@ -505,6 +505,17 @@ func TestMariaDBConnectorConvertFilterConditionPrefix(t *testing.T) {
 		}
 		if len(args) != 1 || args[0] != "ali%" {
 			t.Errorf("unexpected args: %v", args)
+		}
+	})
+	t.Run("reject field source", func(t *testing.T) {
+		field := testFieldsMap()["name"]
+		cond := &filter_condition.PrefixCond{
+			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field}},
+			Lfield: field, Value: "ali",
+		}
+		expr, err := (&MariaDBConnector{}).ConvertFilterConditionPrefix(cond)
+		if expr != nil || err == nil || !strings.Contains(err.Error(), "only supports ValueFrom_Const") {
+			t.Fatalf("expected constant-source error and nil expression, got expr=%v err=%v", expr, err)
 		}
 	})
 }
@@ -592,7 +603,7 @@ func testFieldsMap() map[string]*interfaces.Property {
 
 func toSQL(t *testing.T, connector *MariaDBConnector, cond interfaces.FilterCondition) (string, []interface{}) {
 	t.Helper()
-	sqlizer, err := connector.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+	sqlizer, err := connector.ConvertFilterCondition(cond)
 	if err != nil {
 		t.Fatalf("ConvertFilterCondition failed: %v", err)
 	}
