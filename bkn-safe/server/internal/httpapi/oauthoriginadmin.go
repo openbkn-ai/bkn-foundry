@@ -19,6 +19,7 @@ type accessOriginManager interface {
 	List(context.Context) ([]oauthorigin.Entry, error)
 	Add(context.Context, string, string) (oauthorigin.Entry, error)
 	Delete(context.Context, string) (bool, error)
+	Reconcile(context.Context) error
 }
 
 func registerOAuthAccessOriginAdmin(g *gin.RouterGroup, manager accessOriginManager, e *authz.Enforcer) {
@@ -58,6 +59,23 @@ func registerOAuthAccessOriginAdmin(g *gin.RouterGroup, manager accessOriginMana
 			status = http.StatusAccepted
 		}
 		c.JSON(status, entry)
+	})
+
+	// Reconcile writes the complete desired origin set to Hydra in one operation.
+	// A Hydra outage is reported as accepted because desired state is retained and
+	// the background reconciler will retry it.
+	g.POST("/oauth/access-origins/reconcile", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
+		reconcileErr := manager.Reconcile(c.Request.Context())
+		entries, err := manager.List(c.Request.Context())
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		status := http.StatusOK
+		if reconcileErr != nil {
+			status = http.StatusAccepted
+		}
+		c.JSON(status, gin.H{"entries": entries, "total": len(entries)})
 	})
 
 	g.DELETE("/oauth/access-origins/:id", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {

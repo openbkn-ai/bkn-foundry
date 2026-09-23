@@ -197,3 +197,22 @@ func TestOAuthAccessOriginAdminReturnsAcceptedDuringHydraOutage(t *testing.T) {
 		t.Fatalf("outage status/body = %d: %s", response.Code, response.Body.String())
 	}
 }
+
+func TestOAuthAccessOriginAdminReconcilesAllOriginsOnDemand(t *testing.T) {
+	router, client := newAccessOriginAdminServer(t)
+	const reconcile = "/api/safe/v1/admin/oauth/access-origins/reconcile"
+
+	response := adminReq(t, router, http.MethodPost, reconcile, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reconcile status = %d: %s", response.Code, response.Body.String())
+	}
+	if !contains(client.uris.RedirectURIs, "https://public.example/studio/callback") {
+		t.Fatalf("Hydra callbacks after reconcile = %v", client.uris.RedirectURIs)
+	}
+
+	client.getErr = errors.New("hydra unavailable")
+	response = adminReq(t, router, http.MethodPost, reconcile, nil)
+	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"sync_state":"error"`) {
+		t.Fatalf("failed reconcile status/body = %d: %s", response.Code, response.Body.String())
+	}
+}

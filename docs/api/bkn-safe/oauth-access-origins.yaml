@@ -120,6 +120,33 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /oauth/access-origins/reconcile:
+    post:
+      operationId: reconcileOAuthAccessOrigins
+      summary: Immediately synchronize all BKN Studio access origins
+      description: |
+        Reconciles the complete desired origin set to Hydra. Returns 202 when
+        the desired state remains durable but Hydra synchronization must be
+        retried by the background reconciler.
+      responses:
+        '200':
+          description: All effective origins were synchronized to Hydra.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthAccessOriginList'
+        '202':
+          description: Synchronization was attempted but remains pending retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthAccessOriginList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     OAuth2:
