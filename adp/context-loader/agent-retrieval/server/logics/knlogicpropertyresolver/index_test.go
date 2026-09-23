@@ -548,7 +548,7 @@ func TestValidateRequestAcceptsSuppliedParametersInsteadOfQuery(t *testing.T) {
 			InstanceIdentities: []map[string]interface{}{{"id": "obj-001"}},
 			Properties:         []string{"forecast_qty_sum"},
 			DynamicParams: map[string]map[string]any{
-				"forecast_qty_sum": {"closestatus_title": "未关闭"},
+				"forecast_qty_sum": {"closestatus_title": "open"},
 			},
 		}
 		convey.So(service.validateRequest(req), convey.ShouldBeNil)
@@ -579,9 +579,9 @@ func TestMissingInputParamsCountsOnlyWhatACallerSupplies(t *testing.T) {
 
 		convey.So(missingInputParams(property, map[string]any{}),
 			convey.ShouldResemble, []string{"closestatus_title", "instant"})
-		convey.So(missingInputParams(property, map[string]any{"closestatus_title": "未关闭"}),
+		convey.So(missingInputParams(property, map[string]any{"closestatus_title": "open"}),
 			convey.ShouldResemble, []string{"instant"})
-		convey.So(missingInputParams(property, map[string]any{"closestatus_title": "未关闭", "instant": true}),
+		convey.So(missingInputParams(property, map[string]any{"closestatus_title": "open", "instant": true}),
 			convey.ShouldBeEmpty)
 	})
 }
@@ -755,7 +755,7 @@ func TestResolveSinglePropertyParamsMarksCallerMistakes(t *testing.T) {
 		}
 		req := &interfaces.ResolveLogicPropertiesRequest{
 			KnID: "kn-001", OtID: "ot-001",
-			Query:      "任意问题",
+			Query:      "any question",
 			Properties: []string{"forecast_qty_sum"},
 			DynamicParams: map[string]map[string]any{
 				"forecast_qty_sum": {"instant": true, "start": int64(1), "end": int64(1706745600000)},
