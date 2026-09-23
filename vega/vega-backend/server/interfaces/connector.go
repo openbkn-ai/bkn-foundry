@@ -16,7 +16,7 @@ type TableMeta struct {
 	Database    string                `json:"database"`   // The name of the affiliated database (used for instance-level connections)
 	Schema      string                `json:"schema"`     // The name of the schema to which it belongs (used when making instance-level connections)
 	TableType   string                `json:"table_type"` // table | view | materialized_view
-	Properties  map[string]any        `json:"properties"` // Extended attributes: charset, collation, engine, row_count, etc
+	Properties  map[string]any        `json:"properties"` // Extended attributes: charset, collation, engine, estimated_row_count, etc
 	Columns     []TableColumnMeta     `json:"columns"`
 	PKs         []string              `json:"primary_keys"`
 	Indices     []TableIndexMeta      `json:"indices"`      // Index list

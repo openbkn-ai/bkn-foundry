@@ -504,12 +504,12 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 		table := &interfaces.Resource{
 			ID:             "table-1",
 			Category:       interfaces.ResourceCategoryTable,
-			SourceMetadata: map[string]any{"properties": map[string]any{"row_count": float64(42)}},
+			SourceMetadata: map[string]any{"properties": map[string]any{"row_count": float64(42), "estimated_row_count": float64(41)}},
 		}
 		fileset := &interfaces.Resource{
 			ID:             "fileset-1",
 			Category:       interfaces.ResourceCategoryFileset,
-			SourceMetadata: map[string]any{"properties": map[string]any{"row_count": json.Number("9007199254740993")}},
+			SourceMetadata: map[string]any{"properties": map[string]any{"estimated_row_count": json.Number("9007199254740993")}},
 		}
 		withoutMetadata := &interfaces.Resource{ID: "api-1", Category: interfaces.ResourceCategoryAPI}
 		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
@@ -528,8 +528,11 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resources[0].RowCount)
 		assert.Equal(t, int64(42), *resources[0].RowCount)
-		require.NotNil(t, resources[1].RowCount)
-		assert.Equal(t, int64(9007199254740993), *resources[1].RowCount)
+		require.NotNil(t, resources[0].EstimatedRowCount)
+		assert.Equal(t, int64(41), *resources[0].EstimatedRowCount)
+		assert.Nil(t, resources[1].RowCount)
+		require.NotNil(t, resources[1].EstimatedRowCount)
+		assert.Equal(t, int64(9007199254740993), *resources[1].EstimatedRowCount)
 		assert.Nil(t, resources[2].RowCount)
 		require.NotNil(t, resources[3].RowCount)
 		assert.Equal(t, int64(7), *resources[3].RowCount)
@@ -660,9 +663,9 @@ func TestSourceMetadataRowCountHandlesMissingMetadata(t *testing.T) {
 		{},
 		{"properties": map[string]any{}},
 	} {
-		count, ok := sourceMetadataRowCount(metadata)
-		assert.False(t, ok)
-		assert.Zero(t, count)
+		rowCount, estimatedRowCount := sourceMetadataRowCounts(metadata)
+		assert.Nil(t, rowCount)
+		assert.Nil(t, estimatedRowCount)
 	}
 }
 
