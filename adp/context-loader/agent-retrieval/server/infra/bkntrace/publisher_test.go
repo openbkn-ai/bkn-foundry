@@ -95,3 +95,37 @@ func TestSubmitEventsQueueFullFailsOpen(t *testing.T) {
 		t.Fatalf("queue drop was not observable in logs: %q", logOutput.String())
 	}
 }
+
+func TestSubmitEventsContinuesAfterIndividualDrop(t *testing.T) {
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{
+		ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval",
+		ProcessBootID: "boot-1", CapturePolicyRevision: "41", MaxRecordBytes: 512,
+	}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
+	ctx := withEvidenceOutcome(testTraceContext())
+	events := []Event{
+		{"event_id": "evt-too-large", "event_type": "retrieval.completed", "oversized": strings.Repeat("x", 2048)},
+		{"event_id": "evt-small", "event_type": "retrieval.completed"},
+	}
+	if err := SubmitEvents(ctx, nil, nil, events); err != nil {
+		t.Fatalf("event drop changed the business result: %v", err)
+	}
+	queued := publisher.SnapshotQueue()
+	if len(queued) != 1 {
+		t.Fatalf("queued records=%d, want the valid event after the oversized event was dropped", len(queued))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(queued[0].Value, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["event_id"] != "evt-small" {
+		t.Fatalf("queued event_id=%v, want evt-small", payload["event_id"])
+	}
+	if outcome := evidenceOutcomeFromContext(ctx); outcome == nil || !outcome.attempted || !outcome.accepted {
+		t.Fatalf("mixed batch outcome=%#v, want attempted and partially accepted", outcome)
+	}
+}
