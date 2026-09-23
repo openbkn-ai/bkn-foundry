@@ -3,7 +3,6 @@ package metric
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 
@@ -11,16 +10,26 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
-func TestAuditLogBuilderNoLongerPublishesLegacyTopic(t *testing.T) {
-	source, err := os.ReadFile("audit_log.go")
-	if err != nil {
-		t.Fatal(err)
+func TestNewAuditLogBuilderWithoutKafkaConfigFailsOpen(t *testing.T) {
+	t.Setenv("CONFIG_PROFILE", "../../infra/config")
+	for _, key := range []string{
+		"BKN_AUDIT_KAFKA_BROKERS", "BKN_AUDIT_KAFKA_USERNAME", "BKN_AUDIT_KAFKA_PASSWORD",
+		"BKN_AUDIT_KAFKA_SASL_MECHANISM", "BKN_AUDIT_ENVIRONMENT",
+	} {
+		t.Setenv(key, "")
 	}
-	for _, legacy := range []string{"AuditLogTopic", "OutboxMessageReq", "outboxMessageEvent"} {
-		if strings.Contains(string(source), legacy) {
-			t.Errorf("AuditLogBuilder still references legacy outbox path %q", legacy)
-		}
+	builder := NewAuditLogBuilder()
+	if builder.publisher != nil {
+		t.Fatal("publisher must remain disabled when the Kafka configuration is empty")
 	}
+	// Logger is the production audit boundary; missing Kafka config must not panic
+	// or change the successful business operation that called it.
+	builder.Logger(context.Background(), &AuditLogBuilderParams{
+		TokenInfo: &interfaces.TokenInfo{VisitorID: "user-1", VisitorTyp: interfaces.RealName},
+		Accessor:  &interfaces.AuthAccessor{ID: "user-1"},
+		Operation: AuditLogOperationExecute,
+		Object:    &AuditLogObject{Type: AuditLogObjectOperator, ID: "operator-1"},
+	})
 }
 
 type captureAuditPublisher struct {

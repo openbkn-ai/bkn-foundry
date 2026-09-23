@@ -158,10 +158,14 @@ type auditPublisher interface {
 func NewAuditLogBuilder() *AuditLogBuilder {
 	cfg := config.NewConfigLoader()
 	logger := cfg.GetLogger()
+	var publisher auditPublisher
+	if configuredPublisher := bknaudit.ConfiguredPublisher(logger); configuredPublisher != nil {
+		publisher = configuredPublisher
+	}
 	return &AuditLogBuilder{
 		ts:        localize.NewI18nTranslator(cfg.Project.Language),
 		logger:    logger,
-		publisher: bknaudit.ConfiguredPublisher(logger),
+		publisher: publisher,
 		env:       strings.TrimSpace(os.Getenv("BKN_AUDIT_ENVIRONMENT")),
 	}
 }
