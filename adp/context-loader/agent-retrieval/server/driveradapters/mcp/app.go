@@ -263,7 +263,7 @@ func newMCPServerForProfile(
 					return mcp.Tool{}, false
 				}
 				tools := b.filter(ctx, []mcp.Tool{registered.Tool})
-				if profile.published != nil {
+				if profile.rewritesListing() {
 					tools = profile.filter(ctx, tools)
 				}
 				if len(tools) == 0 {
@@ -291,7 +291,7 @@ func newMCPServerForProfile(
 		// notices.
 		server.WithToolFilter(b.filter),
 	)
-	if profile.published != nil {
+	if profile.rewritesListing() {
 		// Filters stack and run in order, on tools/list and tools/call alike,
 		// so the licence filter above still applies and a tool this profile
 		// does not publish is refused exactly like an unknown one.

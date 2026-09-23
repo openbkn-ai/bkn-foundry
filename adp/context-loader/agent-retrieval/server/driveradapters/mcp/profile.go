@@ -46,25 +46,39 @@ type mcpProfile struct {
 	strictArguments bool
 }
 
+// filter narrows a listing to what the profile publishes and rewrites each
+// definition through its view. A nil published set offers every assembled
+// tool, so a profile can rewrite definitions without narrowing the list.
 func (p mcpProfile) filter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
-	out := make([]mcp.Tool, 0, len(p.published))
+	out := make([]mcp.Tool, 0, len(tools))
 	for _, tool := range tools {
-		if _, ok := p.published[tool.Name]; ok {
-			if p.view != nil {
-				tool = p.view(tool)
+		if p.published != nil {
+			if _, ok := p.published[tool.Name]; !ok {
+				continue
 			}
-			out = append(out, tool)
 		}
+		if p.view != nil {
+			tool = p.view(tool)
+		}
+		out = append(out, tool)
 	}
 	return out
 }
 
+// rewritesListing reports whether the profile changes what tools/list returns,
+// either by narrowing it or by rewriting a definition.
+func (p mcpProfile) rewritesListing() bool {
+	return p.published != nil || p.view != nil
+}
+
 // fullProfile is /mcp: every assembled tool, the full instructions and the
-// inline sandbox execution tools.
+// inline sandbox execution tools. Its only rewrite is the model view of
+// bkn_context, which both entries publish.
 var fullProfile = mcpProfile{
 	endpointPath: endpointPath,
 	instructions: (*mcpLocaleBundle).ServerInstructions,
 	inlinePTC:    true,
+	view:         modelContextToolView,
 }
 
 const compactEndpointPath = "/api/agent-retrieval/v1/mcp-compact"

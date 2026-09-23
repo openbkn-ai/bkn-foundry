@@ -34,14 +34,29 @@ func compactToolView(tool mcp.Tool) mcp.Tool {
 	}
 	tool.RawOutputSchema = nil
 	tool.OutputSchema = mcp.ToolOutputSchema{}
-	tool.RawInputSchema = compactInputSchema(tool.Name, tool.RawInputSchema)
+	tool.RawInputSchema = publishedInputSchema(tool.Name, tool.RawInputSchema, compactHiddenInputFields)
 	return tool
 }
 
-// compactInputSchema drops the hidden fields from an input schema and from
-// its required list. A schema that cannot be read is published unchanged:
-// a slightly wider definition is better than a missing tool.
-func compactInputSchema(name string, input json.RawMessage) json.RawMessage {
+// modelContextToolView is what every entry publishes of bkn_context: the two
+// IDs the caller copies from bkn_start_interaction. The adapter contract is
+// unchanged - the guard reads the arguments, not this schema - and the full
+// contract is still described at GET /mcp/info, in the REST definitions and in
+// the developer documentation.
+func modelContextToolView(tool mcp.Tool) mcp.Tool {
+	if _, lifecycle := lifecycleToolNames[tool.Name]; lifecycle {
+		return tool
+	}
+	tool.RawInputSchema = publishedInputSchema(tool.Name, tool.RawInputSchema, nil)
+	return tool
+}
+
+// publishedInputSchema narrows an input schema to what the model is asked to
+// fill in: bkn_context becomes the two IDs, and the named fields are dropped
+// from the schema and from its required list. A schema that cannot be read is
+// published unchanged: a slightly wider definition is better than a missing
+// tool.
+func publishedInputSchema(name string, input json.RawMessage, hidden []string) json.RawMessage {
 	if len(input) == 0 {
 		return input
 	}
@@ -55,10 +70,10 @@ func compactInputSchema(name string, input json.RawMessage) json.RawMessage {
 	properties, _ := schema["properties"].(map[string]any)
 	changed := false
 	if _, present := properties["bkn_context"]; present {
-		properties["bkn_context"] = compactBKNContextSchema()
+		properties["bkn_context"] = modelBKNContextSchema()
 		changed = true
 	}
-	for _, field := range compactHiddenInputFields {
+	for _, field := range hidden {
 		if _, present := properties[field]; present {
 			delete(properties, field)
 			changed = true
@@ -67,7 +82,7 @@ func compactInputSchema(name string, input json.RawMessage) json.RawMessage {
 	if required, ok := schema["required"].([]any); ok {
 		kept := make([]any, 0, len(required))
 		for _, field := range required {
-			if field, isString := field.(string); isString && slices.Contains(compactHiddenInputFields, field) {
+			if field, isString := field.(string); isString && slices.Contains(hidden, field) {
 				changed = true
 				continue
 			}
@@ -86,16 +101,17 @@ func compactInputSchema(name string, input json.RawMessage) json.RawMessage {
 	return raw
 }
 
-// compactBKNContextSchema is the bkn_context the compact profile publishes: the
-// two IDs every call needs and nothing else.
+// modelBKNContextSchema is the bkn_context every entry publishes: the two IDs
+// every call needs and nothing else.
 //
-// The full declaration repeats about 2.5K characters of business_refs,
-// causation and parent-operation documentation on every tool, which on this
-// entry was half of all tool definitions, while agents almost never send those
-// fields. They are still accepted: the guard reads bkn_context from the
+// The full declaration repeats about 2.4K bytes of business_refs, causation
+// and parent-operation documentation on every business tool - 58% of all
+// published input schemas on the full entry, and half of the compact entry's
+// definitions - while agents almost never send those fields, and a model that
+// does has been seen inventing their contents. They are still accepted: the guard reads bkn_context from the
 // arguments, not from this schema, so a host that declares business refs keeps
 // working. additionalProperties is left open for the same reason.
-func compactBKNContextSchema() map[string]any {
+func modelBKNContextSchema() map[string]any {
 	return map[string]any{
 		"type":        "object",
 		"description": "BKN Trace managed context. Copy both IDs from bkn_start_interaction.",
