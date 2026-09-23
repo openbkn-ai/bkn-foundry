@@ -175,13 +175,24 @@ observability:
     # on public port 8080; existing custom values must migrate to this URL.
     core_url: "http://agent-observability-internal:8081"
   evidence:
-    ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
-    timeout_ms: 2000
-    # Standard installs create this Secret through agent-observability. A
-    # standalone retrieval install must clear ingest_url to disable evidence;
-    # otherwise a missing Secret leaves evidence delivery unauthorized.
-    ingest_token_secret_name: "bkn-trace-evidence-ingest"
-    ingest_token_secret_key: "token"
+    # Core-backed Artifact persistence; standalone installations without Core
+    # should clear both artifact_endpoint and artifact_secret_name.
+    artifact_endpoint: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
+    # Artifact has its own endpoint/token env contract; existing Core installs
+    # provide the credential through the standard Evidence token Secret.
+    artifact_secret_name: "bkn-trace-evidence-ingest"
+    artifact_secret_key: "token"
+  evidencePublisher:
+    enabled: false
+    brokers: ""
+    usernameSecretName: ""
+    passwordSecretName: ""
+    capturePolicyRevision: ""
+    queueMaxRecords: 4096
+    queueMaxBytes: 67108864
+    maxRecordBytes: 1048576
+    maxAttempts: 5
+    retryBackoffMs: 100
   log:
     enabled: false
     level: info

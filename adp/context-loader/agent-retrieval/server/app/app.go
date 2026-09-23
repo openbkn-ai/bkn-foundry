@@ -32,10 +32,16 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -51,8 +57,9 @@ type App struct {
 	config *config.Config
 	// refresh keeps the licence snapshot current. Nil when this deployment has
 	// no licence hub configured, which is every community deployment.
-	refresh func(stop <-chan struct{})
-	stop    chan struct{}
+	refresh  func(stop <-chan struct{})
+	stop     chan struct{}
+	evidence *bkntrace.EvidencePublisherRuntime
 }
 
 // Server Service
@@ -73,13 +80,22 @@ type Server struct {
 // state rather than a misconfiguration to fail on.
 func Boot(opts Options) (*App, error) {
 	cfg := config.NewConfigLoader()
+	var evidence *bkntrace.EvidencePublisherRuntime
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
+		runtime, err := bkntrace.NewEvidencePublisherRuntime()
+		if err != nil {
+			return nil, err
+		}
+		bkntrace.SetEvidencePublisher(runtime.Publisher)
+		evidence = runtime
+	}
 	// Set error code language
 	common.SetLang(cfg.Project.Language)
 
 	gate, refresh := entitlement.GateWithRunner()
 	entitlement.SetGate(gate)
 
-	return &App{config: cfg, refresh: refresh, stop: make(chan struct{})}, nil
+	return &App{config: cfg, refresh: refresh, stop: make(chan struct{}), evidence: evidence}, nil
 }
 
 // Run freezes the assembly registry, builds the handlers and serves. It does
@@ -121,7 +137,60 @@ func (a *App) Run() error {
 	}
 	defer s.config.Logger.Info("stop agent-retrieval server")
 	s.Start()
-	select {}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	var flushStop chan struct{}
+	var flushDone chan struct{}
+	var periodicFlushCancel context.CancelFunc
+	if a.evidence != nil {
+		flushStop = make(chan struct{})
+		flushDone = make(chan struct{})
+		periodicFlushCtx, cancel := context.WithCancel(context.Background())
+		periodicFlushCancel = cancel
+		go func() {
+			defer close(flushDone)
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					flushCtx, flushCancel := context.WithTimeout(periodicFlushCtx, 5*time.Second)
+					result := bkntrace.FlushEvidencePublisher(flushCtx)
+					flushCancel()
+					if result.Dropped > 0 {
+						a.config.Logger.Warnf("BKN Trace Kafka evidence flush dropped %d records", result.Dropped)
+					}
+				case <-flushStop:
+					return
+				}
+			}
+		}()
+	}
+	<-ctx.Done()
+	close(a.stop)
+	if flushStop != nil {
+		periodicFlushCancel()
+		close(flushStop)
+		periodicFlushStopped := false
+		select {
+		case <-flushDone:
+			periodicFlushStopped = true
+		case <-time.After(time.Second):
+			a.config.Logger.Warnf("BKN Trace Kafka evidence periodic flush did not stop before shutdown deadline")
+		}
+		if periodicFlushStopped {
+			flushCtx, flushCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if result := bkntrace.FlushEvidencePublisher(flushCtx); result.Dropped > 0 {
+				a.config.Logger.Warnf("BKN Trace Kafka evidence shutdown flush dropped %d records", result.Dropped)
+			}
+			if result := bkntrace.CloseEvidencePublisher(flushCtx); result.Dropped > 0 {
+				a.config.Logger.Warnf("BKN Trace Kafka evidence shutdown close dropped %d records", result.Dropped)
+			}
+			flushCancel()
+			_ = a.evidence.Producer.Close()
+		}
+	}
+	return nil
 }
 
 func validatePorts(project config.Project) error {

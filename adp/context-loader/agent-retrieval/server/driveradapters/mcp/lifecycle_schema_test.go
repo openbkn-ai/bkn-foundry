@@ -469,11 +469,11 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if !strings.Contains(string(values), `core_url: "http://agent-observability-internal:8081"`) {
 		t.Fatalf("Helm lifecycle default must target the internal agent-observability service: %s", values)
 	}
-	if !strings.Contains(string(values), `ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"`) {
-		t.Fatal("Helm must preserve the token-protected public evidence producer contract")
+	if !strings.Contains(string(values), `artifact_endpoint: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"`) {
+		t.Fatal("Helm must configure the independent Artifact endpoint")
 	}
-	if !strings.Contains(string(values), `ingest_token_secret_name: "bkn-trace-evidence-ingest"`) {
-		t.Fatal("Helm must wire the standard evidence ingest Secret by default")
+	if !strings.Contains(string(values), `artifact_secret_name: "bkn-trace-evidence-ingest"`) {
+		t.Fatal("Helm must wire the existing Core credential Secret for Artifact persistence")
 	}
 	deploymentPath := filepath.Clean("../../../helm/agent-retrieval/templates/deployment.yaml")
 	deployment, err := os.ReadFile(deploymentPath)
@@ -493,8 +493,20 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if strings.Contains(rendering, `BKN_TRACE_QUERY_GATEWAY_TOKEN`) {
 		t.Fatal("Helm must not inject a shared lifecycle token into agent-retrieval")
 	}
-	if !strings.Contains(rendering, `BKN_TRACE_EVIDENCE_INGEST_TOKEN`) {
-		t.Fatal("Helm must retain the evidence ingest token for the public producer contract")
+	if !strings.Contains(rendering, `BKN_TRACE_ARTIFACT_TOKEN`) {
+		t.Fatal("Helm must inject Artifact credentials using their explicit runtime env name")
+	}
+	if strings.Contains(rendering, `BKN_TRACE_EVIDENCE_INGEST_URL`) {
+		t.Fatal("Helm must not render an HTTP Evidence event endpoint")
+	}
+	for _, env := range []string{
+		"BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS", "BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES",
+		"BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES", "BKN_TRACE_EVIDENCE_MAX_ATTEMPTS",
+		"BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS",
+	} {
+		if !strings.Contains(rendering, env) {
+			t.Fatalf("Helm must render the bounded publisher setting %s", env)
+		}
 	}
 	if !strings.Contains(rendering, `optional: true`) {
 		t.Fatal("evidence ingest Secret reference must stay optional so standalone retrieval still starts")

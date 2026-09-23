@@ -47,9 +47,9 @@ func TestLargePayloadUsesReferencedArtifactInsteadOfOmission(t *testing.T) {
 
 func TestPayloadArtifactHashMatchesPostedPreciseContent(t *testing.T) {
 	var artifact map[string]any
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+	previous := artifactHTTPClient
+	t.Cleanup(func() { artifactHTTPClient = previous })
+	artifactHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Path != "/api/agent-observability/v1/evidence/artifacts" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -59,8 +59,8 @@ func TestPayloadArtifactHashMatchesPostedPreciseContent(t *testing.T) {
 		}
 		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
 	})}
-	t.Setenv(envEvidenceIngestURL, "http://trace.local/api/agent-observability/v1/evidence/events")
-	t.Setenv(envEvidenceIngestToken, "test-ingest-token")
+	t.Setenv(envArtifactEndpoint, "http://trace.local/api/agent-observability/v1/evidence/artifacts")
+	t.Setenv(envArtifactToken, "test-artifact-token")
 
 	ctx := withPayloadArtifactScope(testTraceContext(), payloadArtifactScope{Direction: "output"})
 	_, digest, err := (evidencePayloadArtifactWriter{}).Put(ctx, "application/json", []byte(`{"value":9007199254740993,"label":"<stock>"}`))

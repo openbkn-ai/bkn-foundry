@@ -84,21 +84,53 @@ spec:
                 value: {{ printf "http://%s.%s.svc.cluster.local:%v/api/agent-retrieval/v1/mcp/" .Release.Name .Values.namespace .Values.service.sandboxPort | quote }}
               - name: BKN_TRACE_CORE_URL
                 value: {{ required "observability.lifecycle.core_url is required" .Values.observability.lifecycle.core_url | quote }}
-            {{- if .Values.observability.evidence.ingest_url }}
-              - name: BKN_TRACE_EVIDENCE_INGEST_URL
-                value: {{ .Values.observability.evidence.ingest_url | quote }}
+            {{- if .Values.observability.evidence.artifact_endpoint }}
+              - name: BKN_TRACE_ARTIFACT_ENDPOINT
+                value: {{ .Values.observability.evidence.artifact_endpoint | quote }}
             {{- end}}
-            {{- if .Values.observability.evidence.timeout_ms }}
-              - name: BKN_TRACE_EVIDENCE_TIMEOUT_MS
-                value: {{ .Values.observability.evidence.timeout_ms | quote }}
-            {{- end}}
-            {{- if .Values.observability.evidence.ingest_token_secret_name }}
-              - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+            {{- if .Values.observability.evidence.artifact_secret_name }}
+              - name: BKN_TRACE_ARTIFACT_TOKEN
                 valueFrom:
                   secretKeyRef:
-                    name: {{ .Values.observability.evidence.ingest_token_secret_name | quote }}
-                    key: {{ .Values.observability.evidence.ingest_token_secret_key | quote }}
+                    name: {{ .Values.observability.evidence.artifact_secret_name | quote }}
+                    key: {{ .Values.observability.evidence.artifact_secret_key | quote }}
                     optional: true
+            {{- end}}
+            {{- if .Values.observability.evidencePublisher.enabled }}
+              - name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED
+                value: "true"
+              - name: BKN_TRACE_KAFKA_BROKERS
+                value: {{ required "observability.evidencePublisher.brokers is required" .Values.observability.evidencePublisher.brokers | quote }}
+              - name: BKN_TRACE_KAFKA_SASL_MECHANISM
+                value: "PLAIN"
+              - name: BKN_TRACE_KAFKA_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ required "observability.evidencePublisher.usernameSecretName is required" .Values.observability.evidencePublisher.usernameSecretName | quote }}
+                    key: "username"
+              - name: BKN_TRACE_KAFKA_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ required "observability.evidencePublisher.passwordSecretName is required" .Values.observability.evidencePublisher.passwordSecretName | quote }}
+                    key: "password"
+              - name: BKN_TRACE_PRODUCER_ID
+                value: "agent-retrieval"
+              - name: BKN_TRACE_WORKLOAD_IDENTITY
+                value: "agent-retrieval"
+              - name: BKN_TRACE_PRODUCER_STREAM_ID
+                value: "agent-retrieval"
+              - name: BKN_TRACE_CAPTURE_POLICY_REVISION
+                value: {{ required "observability.evidencePublisher.capturePolicyRevision is required" .Values.observability.evidencePublisher.capturePolicyRevision | quote }}
+              - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS
+                value: {{ .Values.observability.evidencePublisher.queueMaxRecords | quote }}
+              - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES
+                value: {{ .Values.observability.evidencePublisher.queueMaxBytes | quote }}
+              - name: BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES
+                value: {{ .Values.observability.evidencePublisher.maxRecordBytes | quote }}
+              - name: BKN_TRACE_EVIDENCE_MAX_ATTEMPTS
+                value: {{ .Values.observability.evidencePublisher.maxAttempts | quote }}
+              - name: BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS
+                value: {{ .Values.observability.evidencePublisher.retryBackoffMs | quote }}
             {{- end}}
 
           ports:

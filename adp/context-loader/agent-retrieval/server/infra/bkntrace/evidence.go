@@ -26,6 +26,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -35,12 +36,11 @@ const (
 )
 
 const (
-	envEvidenceIngestURL       = "BKN_TRACE_EVIDENCE_INGEST_URL"
-	envEvidenceIngestToken     = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
-	envEvidenceIngestTimeoutMS = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
+	envArtifactEndpoint  = "BKN_TRACE_ARTIFACT_ENDPOINT"
+	envArtifactToken     = "BKN_TRACE_ARTIFACT_TOKEN"
+	envArtifactTimeoutMS = "BKN_TRACE_ARTIFACT_TIMEOUT_MS"
 )
 
-const maxInFlightEvidenceBatches = 64
 const maxSubgraphEvidenceRefs = 100
 const maxCoreErrorBodyBytes = 4 << 10
 
@@ -80,24 +80,12 @@ const (
 type evidenceOutcomeContextKey struct{}
 
 type evidenceOutcome struct {
-	mu           sync.Mutex
-	attempted    bool
-	durable      bool
-	eventIDs     []string
-	businessRefs []BusinessRef
+	mu        sync.Mutex
+	attempted bool
+	accepted  bool
 }
 
-var (
-	evidenceHTTPClient = &http.Client{}
-	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
-)
-
-type batch struct {
-	ContractVersion            string         `json:"bkn.trace.schema.version"`
-	Trace                      map[string]any `json:"trace"`
-	Events                     []Event        `json:"events"`
-	RequestDerivedBusinessRefs []BusinessRef  `json:"-"`
-}
+var artifactHTTPClient = &http.Client{}
 
 type eventContext struct {
 	traceID           string
@@ -167,8 +155,10 @@ func canonicalArtifactContent(value any) ([]byte, error) {
 }
 
 func EvidenceEnabled() bool {
-	return evidenceIngestURL() != ""
+	return currentEvidencePublisher() != nil
 }
+
+func artifactEnabled() bool { return strings.TrimSpace(os.Getenv(envArtifactEndpoint)) != "" }
 
 func RecordInteractionArtifact(
 	ctx context.Context,
@@ -177,7 +167,7 @@ func RecordInteractionArtifact(
 	artifactType InteractionArtifactType,
 	content any,
 ) (string, error) {
-	if !EvidenceEnabled() {
+	if !artifactEnabled() {
 		return "", nil
 	}
 	ec, ok := baseEventContext(ctx)
@@ -233,7 +223,7 @@ func RecordInteractionArtifact(
 	if ec.applicationName != "" {
 		eventPayload["app_ref"] = ec.applicationName
 	}
-	if err := postArtifactWithRetry(evidenceArtifactURL(), evidenceTimeout(), traceBlock, artifact); err != nil {
+	if err := postArtifactWithRetry(evidenceArtifactURL(), artifactTimeout(), traceBlock, artifact); err != nil {
 		return "", err
 	}
 	event := buildEvent(
@@ -241,10 +231,10 @@ func RecordInteractionArtifact(
 		eventPayload, "", "",
 	)
 	event["event_id"] = stableEventID(ec.traceID, ec.interactionID, eventType, 1)
-	if err := postBatchWithRetry(evidenceIngestURL(), evidenceTimeout(), batch{
-		ContractVersion: ContractVersion, Trace: traceBlock, Events: []Event{event},
-	}); err != nil {
-		return "", err
+	// Artifact persistence is the governed operation. The supplementary Kafka
+	// event is best effort and must not turn a committed artifact into a failure.
+	if result := publishEvidenceEvent(event); result.Disposition != evidencepublisher.Accepted {
+		log.Printf("BKN Trace Kafka artifact event dropped: %s", result.Reason)
 	}
 	return artifactRef, nil
 }
@@ -276,8 +266,8 @@ func postArtifactWithRetry(
 			cancel()
 			return requestErr
 		}
-		setEvidenceIngestHeaders(req.Header, traceBlock)
-		resp, requestErr := evidenceHTTPClient.Do(req)
+		setArtifactHeaders(req.Header, traceBlock)
+		resp, requestErr := artifactHTTPClient.Do(req)
 		if requestErr == nil {
 			if resp.StatusCode < http.StatusBadRequest {
 				_ = resp.Body.Close()
@@ -912,51 +902,24 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 	if !ok || ec.accountID == "" || ec.accountType == "" {
 		return nil
 	}
-	ingestURL := evidenceIngestURL()
-	if ingestURL == "" {
+	if currentEvidencePublisher() == nil {
 		return nil
 	}
 	recordEvidenceAttempt(ctx)
-	timeout := evidenceTimeout()
-	traceBlock := map[string]any{
-		"trace_id":                     ec.traceID,
-		"traceparent":                  ec.traceparent,
-		"bkn.request.id":               ec.requestID,
-		"bkn.account.id":               ec.accountID,
-		"bkn.account.type":             ec.accountType,
-		"bkn.application.principal.id": ec.applicationID,
-		"bkn.effective.subject.type":   ec.subjectType,
-	}
-	if ec.conversationID != "" {
-		traceBlock["bkn.conversation.id"] = ec.conversationID
-	}
-	payload := batch{
-		ContractVersion:            ContractVersion,
-		Trace:                      traceBlock,
-		Events:                     events,
-		RequestDerivedBusinessRefs: requestDerivedBusinessRefsFromContext(ctx),
-	}
-
-	select {
-	case evidenceInFlight <- struct{}{}:
-	default:
-		if logger != nil {
-			logger.WithContext(ctx).Warn("BKN Trace evidence ingestion dropped: in-flight limit reached")
-		} else {
-			log.Printf("BKN Trace evidence ingestion dropped: in-flight limit reached")
+	for _, event := range events {
+		if stringValue(event["conversation_id"]) == "" && ec.conversationID != "" {
+			event["conversation_id"] = ec.conversationID
 		}
-		return fmt.Errorf("evidence ingestion in-flight limit reached")
-	}
-	defer func() { <-evidenceInFlight }()
-	if err := postBatchWithRetry(ingestURL, timeout, payload); err != nil {
-		if logger != nil {
-			logger.WithContext(ctx).Warnf("BKN Trace evidence ingestion unavailable: %v", err)
-		} else {
-			log.Printf("BKN Trace evidence ingestion unavailable: %v", err)
+		if result := publishEvidenceEvent(event); result.Disposition != evidencepublisher.Accepted {
+			if logger != nil {
+				logger.WithContext(ctx).Warnf("BKN Trace Kafka evidence dropped: %s", result.Reason)
+			} else {
+				log.Printf("BKN Trace Kafka evidence dropped: %s", result.Reason)
+			}
+			return nil
 		}
-		return err
+		recordQueuedEvidenceOutcome(ctx)
 	}
-	recordDurableEvidenceOutcome(ctx, payload)
 	return nil
 }
 
@@ -986,41 +949,14 @@ func evidenceOutcomeFromContext(ctx context.Context) *evidenceOutcome {
 	return value
 }
 
-func recordDurableEvidenceOutcome(ctx context.Context, payload batch) {
+func recordQueuedEvidenceOutcome(ctx context.Context) {
 	outcome := evidenceOutcomeFromContext(ctx)
 	if outcome == nil {
 		return
 	}
 	outcome.mu.Lock()
-	defer outcome.mu.Unlock()
-	outcome.durable = true
-	seenEvents := make(map[string]struct{}, len(outcome.eventIDs))
-	for _, eventID := range outcome.eventIDs {
-		seenEvents[eventID] = struct{}{}
-	}
-	seenRefs := make(map[string]struct{}, len(outcome.businessRefs))
-	for _, ref := range outcome.businessRefs {
-		seenRefs[ref.RefType+"\x00"+ref.RefID+"\x00"+ref.Version] = struct{}{}
-	}
-	for _, event := range payload.Events {
-		if eventID := stringValue(event["event_id"]); eventID != "" {
-			if _, exists := seenEvents[eventID]; !exists {
-				outcome.eventIDs = append(outcome.eventIDs, eventID)
-				seenEvents[eventID] = struct{}{}
-			}
-		}
-		for _, ref := range trace30BusinessRefs(event, payload.RequestDerivedBusinessRefs) {
-			key := ref.RefType + "\x00" + ref.RefID + "\x00" + ref.Version
-			if _, exists := seenRefs[key]; exists {
-				continue
-			}
-			outcome.businessRefs = append(outcome.businessRefs, BusinessRef{
-				RefType: ref.RefType, RefID: ref.RefID,
-				Version: ref.Version, DisplayHint: ref.DisplayHint,
-			})
-			seenRefs[key] = struct{}{}
-		}
-	}
+	outcome.accepted = true
+	outcome.mu.Unlock()
 }
 
 func recordEvidenceAttempt(ctx context.Context) {
@@ -1033,85 +969,14 @@ func recordEvidenceAttempt(ctx context.Context) {
 	outcome.mu.Unlock()
 }
 
-func snapshotEvidenceOutcome(ctx context.Context) (bool, bool, []string, []BusinessRef) {
+func snapshotEvidenceOutcome(ctx context.Context) (bool, bool) {
 	outcome := evidenceOutcomeFromContext(ctx)
 	if outcome == nil {
-		return false, false, nil, nil
+		return false, false
 	}
 	outcome.mu.Lock()
 	defer outcome.mu.Unlock()
-	return outcome.attempted, outcome.durable, append([]string(nil), outcome.eventIDs...), append([]BusinessRef(nil), outcome.businessRefs...)
-}
-
-// postBatchWithRetry delivers every event in the batch, resuming after the last
-// one Trace Core accepted.
-//
-// Each attempt used to start again from the first event, so a batch that failed
-// on its third event re-sent the first two on every retry - more load on the
-// store that was already too slow to answer. A rejection Core marks as not
-// retryable ends the attempt as well: the same event sent again gets the same
-// answer, which is how the artifact path already behaves.
-func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {
-	var err error
-	next := 0
-	for attempt := 0; attempt < 3; attempt++ {
-		if next, err = postEventsFrom(ingestURL, timeout, payload, next); err == nil {
-			return nil
-		}
-		var coreErr *CoreHTTPError
-		if errors.As(err, &coreErr) && !coreErr.Retryable() {
-			return err
-		}
-		if attempt < 2 {
-			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
-		}
-	}
-	return err
-}
-
-func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
-	_, err := postEventsFrom(ingestURL, timeout, payload, 0)
-	return err
-}
-
-// postEventsFrom sends payload.Events[start:] in order. It returns the index of
-// the first event Core did not accept, or len(payload.Events) once all landed.
-func postEventsFrom(ingestURL string, timeout time.Duration, payload batch, start int) (int, error) {
-	for index := start; index < len(payload.Events); index++ {
-		event := payload.Events[index]
-		requestPayload, err := trace30EvidenceEvent(payload.Trace, event, payload.RequestDerivedBusinessRefs)
-		if err != nil {
-			return index, err
-		}
-		// payload_hash is taken over the receiver's canonical form of the envelope
-		// (canonicalPayloadHash), so these bytes only have to decode to the same JSON value the
-		// digest was computed from. ConfigStd, as in trace30EvidenceEvent, for sorted output.
-		body, err := sonic.ConfigStd.Marshal(requestPayload)
-		if err != nil {
-			return index, err
-		}
-		postCtx, cancel := context.WithTimeout(context.Background(), timeout)
-		req, err := http.NewRequestWithContext(postCtx, http.MethodPost, ingestURL, bytes.NewReader(body))
-		if err != nil {
-			cancel()
-			return index, err
-		}
-		setEvidenceIngestHeaders(req.Header, payload.Trace)
-
-		resp, err := evidenceHTTPClient.Do(req)
-		if err != nil {
-			cancel()
-			return index, err
-		}
-		if resp.StatusCode >= http.StatusBadRequest {
-			err = coreHTTPError(resp)
-			cancel()
-			return index, err
-		}
-		_ = resp.Body.Close()
-		cancel()
-	}
-	return len(payload.Events), nil
+	return outcome.attempted, outcome.accepted
 }
 
 func coreHTTPError(resp *http.Response) error {
@@ -1317,9 +1182,9 @@ func trace30RefType(value string) string {
 	}
 }
 
-func setEvidenceIngestHeaders(headers http.Header, traceBlock map[string]any) {
+func setArtifactHeaders(headers http.Header, traceBlock map[string]any) {
 	headers.Set("Content-Type", "application/json")
-	if token := strings.TrimSpace(os.Getenv(envEvidenceIngestToken)); token != "" {
+	if token := strings.TrimSpace(os.Getenv(envArtifactToken)); token != "" {
 		headers.Set("X-BKN-Trace-Ingest-Token", token)
 	}
 	accountID := stringValue(traceBlock["bkn.account.id"])
@@ -1381,20 +1246,12 @@ func floatValue(value any) (float64, bool) {
 	}
 }
 
-func evidenceIngestURL() string {
-	return strings.TrimSpace(os.Getenv(envEvidenceIngestURL))
-}
-
 func evidenceArtifactURL() string {
-	value := strings.TrimRight(evidenceIngestURL(), "/")
-	if strings.HasSuffix(value, "/events") {
-		return strings.TrimSuffix(value, "/events") + "/artifacts"
-	}
-	return ""
+	return strings.TrimSpace(os.Getenv(envArtifactEndpoint))
 }
 
-func evidenceTimeout() time.Duration {
-	value := strings.TrimSpace(os.Getenv(envEvidenceIngestTimeoutMS))
+func artifactTimeout() time.Duration {
+	value := strings.TrimSpace(os.Getenv(envArtifactTimeoutMS))
 	if value == "" {
 		return 2 * time.Second
 	}

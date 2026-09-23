@@ -81,7 +81,7 @@ func TestStartInteractionWithoutConversationEnsuresManagedConversationFirst(t *t
 			}), nil
 		}
 	})}
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", "")
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", "")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		RequestID: "req_cursor_first_turn_0001"})
@@ -281,16 +281,13 @@ func TestStartInteractionCreatesCorrelationAndUsesCoreCreatedAtForQuestionEviden
 			}
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"created":true}`))
-		case "/api/agent-observability/v1/evidence/events":
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"accepted":true}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer backend.Close()
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", backend.URL+"/api/agent-observability/v1/evidence/artifacts")
+	t.Setenv("BKN_TRACE_ARTIFACT_TOKEN", "artifact-token")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		RequestID: "req_cursor_native_0001"})
@@ -320,7 +317,7 @@ func TestStartInteractionCreatesCorrelationAndUsesCoreCreatedAtForQuestionEviden
 	}
 }
 
-func TestStartInteractionReportsIngestConfigurationFailureWithoutRetryGuidance(t *testing.T) {
+func TestStartInteractionDoesNotUseLegacyEvidenceIngestURL(t *testing.T) {
 	startCalls := 0
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -333,19 +330,14 @@ func TestStartInteractionReportsIngestConfigurationFailureWithoutRetryGuidance(t
 			})
 		case "/api/agent-observability/v1/evidence/artifacts":
 			w.WriteHeader(http.StatusCreated)
-		case "/api/agent-observability/v1/evidence/events":
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
-				"code":    "INGEST_AUTH_NOT_CONFIGURED",
-				"message": "evidence ingest authentication is not configured",
-			}})
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer backend.Close()
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", backend.URL+"/api/agent-observability/v1/evidence/artifacts")
+	t.Setenv("BKN_TRACE_ARTIFACT_TOKEN", "artifact-token")
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "req-ingest-config-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
@@ -358,17 +350,11 @@ func TestStartInteractionReportsIngestConfigurationFailureWithoutRetryGuidance(t
 	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
 		"conversation_id": "conv-1", "conversation_mode": "continue", "question": "查询 BOM", "agent_name": "供应链分析助手",
 	}}})
-	if err != nil || !result.IsError {
-		t.Fatalf("start must stop after evidence configuration failure: result=%#v err=%v", result, err)
+	if err != nil || result.IsError {
+		t.Fatalf("legacy Evidence URL must not interfere with Artifact persistence: result=%#v err=%v", result, err)
 	}
 	if startCalls != 1 {
 		t.Fatalf("start interaction calls = %d, want 1", startCalls)
-	}
-	errorValue := lifecycleErrorFromResult(t, result)
-	if errorValue["code"] != "evidence_capture_failed" ||
-		errorValue["required_action"] != "contact_platform_operator" ||
-		errorValue["retryable"] != false {
-		t.Fatalf("start returned retry guidance for a configuration defect: %#v", errorValue)
 	}
 }
 
@@ -392,8 +378,8 @@ func TestStartInteractionReturnsCommittedIDsWhenQuestionArtifactStoreIsUnavailab
 		}
 	}))
 	defer backend.Close()
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", backend.URL+"/api/agent-observability/v1/evidence/artifacts")
+	t.Setenv("BKN_TRACE_ARTIFACT_TOKEN", "artifact-token")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "req-artifact-store-down-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
@@ -418,7 +404,7 @@ func TestStartInteractionReturnsCommittedIDsWhenQuestionArtifactStoreIsUnavailab
 	}
 }
 
-func TestStartInteractionReportsUnderivableArtifactEndpointWithoutDegrading(t *testing.T) {
+func TestStartInteractionDoesNotDeriveArtifactEndpointFromLegacyEvidenceURL(t *testing.T) {
 	startCalls := 0
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -434,9 +420,10 @@ func TestStartInteractionReportsUnderivableArtifactEndpointWithoutDegrading(t *t
 		}
 	}))
 	defer backend.Close()
-	// The ingest URL must end in /events for the artifact endpoint to be derived.
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/ingest")
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
+	// A legacy Evidence URL must not be used to derive the Artifact endpoint.
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", "")
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
+	t.Setenv("BKN_TRACE_ARTIFACT_TOKEN", "artifact-token")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "req-artifact-url-missing-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
@@ -449,17 +436,11 @@ func TestStartInteractionReportsUnderivableArtifactEndpointWithoutDegrading(t *t
 	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
 		"conversation_id": "conv-1", "conversation_mode": "continue", "question": "查询 BOM", "agent_name": "供应链分析助手",
 	}}})
-	if err != nil || !result.IsError {
-		t.Fatalf("an underivable artifact endpoint must fail start rather than degrade: result=%#v err=%v", result, err)
+	if err != nil || result.IsError {
+		t.Fatalf("missing optional Artifact endpoint must not block a committed interaction: result=%#v err=%v", result, err)
 	}
 	if startCalls != 1 {
 		t.Fatalf("start interaction calls = %d, want 1", startCalls)
-	}
-	errorValue := lifecycleErrorFromResult(t, result)
-	if errorValue["code"] != "evidence_capture_failed" ||
-		errorValue["required_action"] != "contact_platform_operator" ||
-		errorValue["retryable"] != false {
-		t.Fatalf("start reported a deployment defect as a transient outage: %#v", errorValue)
 	}
 }
 
@@ -481,7 +462,7 @@ func TestFinishInteractionUsesCoreUpdatedAtForServerOwnedResultEvidence(t *testi
 			}
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"created":true}`))
-		case r.URL.Path == "/api/agent-observability/v1/evidence/events":
+		case r.URL.Path == "/api/agent-observability/v1/evidence/artifacts":
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"accepted":true}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/agent-observability/v1/interactions/int-1/finish":
@@ -497,8 +478,8 @@ func TestFinishInteractionUsesCoreUpdatedAtForServerOwnedResultEvidence(t *testi
 		}
 	}))
 	defer backend.Close()
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", backend.URL+"/api/agent-observability/v1/evidence/artifacts")
+	t.Setenv("BKN_TRACE_ARTIFACT_TOKEN", "artifact-token")
 
 	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID: trace.TraceID{2}, SpanID: trace.SpanID{2}, TraceFlags: trace.FlagsSampled,
@@ -559,7 +540,7 @@ func TestFinishInteractionRetryReusesCommittedResultArtifact(t *testing.T) {
 		}
 	}))
 	defer backend.Close()
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", backend.URL+"/api/agent-observability/v1/evidence/artifacts")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		RequestID: "req_cursor_retry_0001"})

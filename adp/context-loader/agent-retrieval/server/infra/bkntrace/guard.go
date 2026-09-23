@@ -182,21 +182,21 @@ func (g *Guard) Finish(
 	// even while observed evidence is still awaiting a durable acknowledgement.
 	// What the caller declared is not here: see BusinessContext.
 	input.BusinessRefs = requestDerivedBusinessRefsFromContext(ctx)
-	attempted, durable, evidenceRefs, businessRefs := snapshotEvidenceOutcome(ctx)
+	attempted, accepted := snapshotEvidenceOutcome(ctx)
 	switch {
-	case durable:
-		input.EvidenceDurability = "durable"
-		input.ObservedEvidenceRefs = evidenceRefs
-		input.BusinessRefs = mergeBusinessRefs(businessRefs, input.BusinessRefs)
 	case attempted:
-		input.EvidenceDurability = "failed"
-	default:
-		if evidenceIngestURL() == "" {
+		if accepted {
 			input.EvidenceDurability = "pending"
 		} else {
-			// The receipt is itself the durable record for tools that do not emit a
-			// separate business-evidence event and for rejected downstream calls.
+			input.EvidenceDurability = "failed"
+		}
+	default:
+		if EvidenceEnabled() {
+			// The lifecycle receipt is the durable record for tools that do not emit
+			// a separate business-evidence event.
 			input.EvidenceDurability = "durable"
+		} else {
+			input.EvidenceDurability = "pending"
 		}
 	}
 	finishContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)

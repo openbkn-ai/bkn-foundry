@@ -112,7 +112,7 @@ func TestStartInteractionRetryUsesStableHostHintsAcrossTransportSessions(t *test
 			}), nil
 		}
 	})}
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", "")
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", "")
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		RequestID: "req-host-retry-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{

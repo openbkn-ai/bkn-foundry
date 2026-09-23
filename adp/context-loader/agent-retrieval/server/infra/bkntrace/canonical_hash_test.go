@@ -126,7 +126,7 @@ func TestEvidenceEnvelopeHashMatchesReceiverWhenEnvelopeCarriesStruct(t *testing
 		t.Fatalf("trace30EvidenceEvent failed: %v", err)
 	}
 
-	// What the receiver sees is the envelope inside the request body postBatch sends.
+	// The canonical publisher wraps the event envelope in its Kafka record value.
 	body, err := sonic.ConfigStd.Marshal(built)
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
