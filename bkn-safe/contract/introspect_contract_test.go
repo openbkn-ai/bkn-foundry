@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 )
 
 // goldenDir resolves testdata/introspect next to this test file — the frozen
