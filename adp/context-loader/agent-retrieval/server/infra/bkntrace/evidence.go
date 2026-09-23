@@ -93,10 +93,10 @@ var (
 )
 
 type batch struct {
-	ContractVersion      string         `json:"bkn.trace.schema.version"`
-	Trace                map[string]any `json:"trace"`
-	Events               []Event        `json:"events"`
-	DeclaredBusinessRefs []BusinessRef  `json:"-"`
+	ContractVersion            string         `json:"bkn.trace.schema.version"`
+	Trace                      map[string]any `json:"trace"`
+	Events                     []Event        `json:"events"`
+	RequestDerivedBusinessRefs []BusinessRef  `json:"-"`
 }
 
 type eventContext struct {
@@ -934,10 +934,10 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 		traceBlock["bkn.conversation.id"] = ec.conversationID
 	}
 	payload := batch{
-		ContractVersion:      ContractVersion,
-		Trace:                traceBlock,
-		Events:               events,
-		DeclaredBusinessRefs: declaredBusinessRefsFromContext(ctx),
+		ContractVersion:            ContractVersion,
+		Trace:                      traceBlock,
+		Events:                     events,
+		RequestDerivedBusinessRefs: requestDerivedBusinessRefsFromContext(ctx),
 	}
 
 	select {
@@ -970,17 +970,17 @@ func withEvidenceOutcome(ctx context.Context) context.Context {
 	return context.WithValue(ctx, evidenceOutcomeContextKey{}, &evidenceOutcome{})
 }
 
-type declaredBusinessRefsContextKey struct{}
+type requestDerivedBusinessRefsContextKey struct{}
 
-func withDeclaredBusinessRefs(ctx context.Context, refs []BusinessRef) context.Context {
+func withRequestDerivedBusinessRefs(ctx context.Context, refs []BusinessRef) context.Context {
 	if len(refs) == 0 {
 		return ctx
 	}
-	return context.WithValue(ctx, declaredBusinessRefsContextKey{}, append([]BusinessRef(nil), refs...))
+	return context.WithValue(ctx, requestDerivedBusinessRefsContextKey{}, append([]BusinessRef(nil), refs...))
 }
 
-func declaredBusinessRefsFromContext(ctx context.Context) []BusinessRef {
-	refs, _ := ctx.Value(declaredBusinessRefsContextKey{}).([]BusinessRef)
+func requestDerivedBusinessRefsFromContext(ctx context.Context) []BusinessRef {
+	refs, _ := ctx.Value(requestDerivedBusinessRefsContextKey{}).([]BusinessRef)
 	return refs
 }
 
@@ -1012,7 +1012,7 @@ func recordDurableEvidenceOutcome(ctx context.Context, payload batch) {
 				seenEvents[eventID] = struct{}{}
 			}
 		}
-		for _, ref := range trace30BusinessRefs(event, payload.DeclaredBusinessRefs) {
+		for _, ref := range trace30BusinessRefs(event, payload.RequestDerivedBusinessRefs) {
 			key := ref.RefType + "\x00" + ref.RefID + "\x00" + ref.Version
 			if _, exists := seenRefs[key]; exists {
 				continue
@@ -1082,7 +1082,7 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 func postEventsFrom(ingestURL string, timeout time.Duration, payload batch, start int) (int, error) {
 	for index := start; index < len(payload.Events); index++ {
 		event := payload.Events[index]
-		requestPayload, err := trace30EvidenceEvent(payload.Trace, event, payload.DeclaredBusinessRefs)
+		requestPayload, err := trace30EvidenceEvent(payload.Trace, event, payload.RequestDerivedBusinessRefs)
 		if err != nil {
 			return index, err
 		}
@@ -1179,7 +1179,7 @@ type trace30OperationEdge struct {
 	ObservedAt  string             `json:"observed_at"`
 }
 
-func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs []BusinessRef) (trace30Event, error) {
+func trace30EvidenceEvent(traceBlock map[string]any, event Event, derivedRefs []BusinessRef) (trace30Event, error) {
 	// agent-observability admits an event only if payload_hash equals the canonical hash of the
 	// envelope it receives (ledgervo.CanonicalPayloadHash), so the digest is taken over that same
 	// canonical form rather than over these bytes. Hashing the bytes as marshalled held only while
@@ -1199,7 +1199,7 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs [
 	if emittedAt == "" {
 		emittedAt = observedAt
 	}
-	refs := trace30BusinessRefs(event, declaredRefs)
+	refs := trace30BusinessRefs(event, derivedRefs)
 	edges := make([]trace30OperationEdge, 0, len(refs))
 	for _, ref := range refs {
 		edges = append(edges, trace30OperationEdge{
@@ -1244,7 +1244,7 @@ func canonicalPayloadHash(envelope []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func trace30BusinessRefs(event Event, declaredRefs []BusinessRef) []trace30BusinessRef {
+func trace30BusinessRefs(event Event, derivedRefs []BusinessRef) []trace30BusinessRef {
 	payload, _ := event["payload"].(map[string]any)
 	items := make([]map[string]any, 0)
 	for _, field := range []string{"source_refs", "resource_refs", "field_refs"} {
@@ -1254,9 +1254,9 @@ func trace30BusinessRefs(event Event, declaredRefs []BusinessRef) []trace30Busin
 	}
 	refs := make([]trace30BusinessRef, 0)
 	seen := map[string]struct{}{}
-	declaredVersions := make(map[string]string, len(declaredRefs))
-	for _, ref := range declaredRefs {
-		declaredVersions[ref.RefType+"\x00"+ref.RefID] = ref.Version
+	derivedVersions := make(map[string]string, len(derivedRefs))
+	for _, ref := range derivedRefs {
+		derivedVersions[ref.RefType+"\x00"+ref.RefID] = ref.Version
 	}
 	for _, item := range items {
 		refID := stringValue(item["ref_id"])
@@ -1264,7 +1264,7 @@ func trace30BusinessRefs(event Event, declaredRefs []BusinessRef) []trace30Busin
 		if refID == "" || refType == "" {
 			continue
 		}
-		version := strings.TrimSpace(declaredVersions[refType+"\x00"+refID])
+		version := strings.TrimSpace(derivedVersions[refType+"\x00"+refID])
 		if version == "" {
 			version = stringValue(item["version_status"])
 		}
@@ -1281,7 +1281,7 @@ func trace30BusinessRefs(event Event, declaredRefs []BusinessRef) []trace30Busin
 			Version: version, DisplayHint: stringValue(item["display_hint"]),
 		})
 	}
-	for _, ref := range declaredRefs {
+	for _, ref := range derivedRefs {
 		refType := trace30RefType(ref.RefType)
 		refID := strings.TrimSpace(ref.RefID)
 		if refType == "" || refID == "" {

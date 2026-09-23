@@ -97,7 +97,7 @@ func TestProjectionLeavesTheLifecyclePairAlone(t *testing.T) {
 // structuredContent, and the receipt the guard attached is in _meta.
 func TestCompactResultsGoOutAsTextWithTheReceiptInMeta(t *testing.T) {
 	t.Setenv("CONFIG_PROFILE", "../../infra/config")
-	client, _ := fakeTraceCore(t)
+	client, _, _ := fakeTraceCore(t)
 	srv, _ := newMCPServerForProfile(client, "zh-CN", defaultPTCServicePort, compactProfile)
 	req, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
