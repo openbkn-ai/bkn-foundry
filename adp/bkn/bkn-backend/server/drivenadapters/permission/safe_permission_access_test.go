@@ -152,6 +152,30 @@ func TestSafeListAccessibleResourcesUsesQueryAndRequiresIDs(t *testing.T) {
 	})
 }
 
+func TestSafeListAccessibleResourcesWithAnyOperationUsesQuery(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/safe/v1/authz/resources" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		query := r.URL.Query()
+		if query.Get("accessor_id") != "u-1" ||
+			query.Get("resource_type") != interfaces.RESOURCE_TYPE_OBJECT_TYPE ||
+			query.Get("any_operation") != "true" || query.Has("operation") {
+			t.Fatalf("unexpected query: %v", query)
+		}
+		_, _ = w.Write([]byte(`{"ids":["kn-1/query-only"],"unrestricted":false,"requires_candidate_filter":false}`))
+	}))
+	defer srv.Close()
+
+	scope, err := NewPermissionAccess(srv.URL).ListAccessibleResourcesWithAnyOperation(
+		context.Background(), interfaces.PermissionAccessor{ID: "u-1", Type: interfaces.ACCESSOR_TYPE_USER},
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE)
+	if err != nil || scope.Unrestricted || scope.RequiresCandidateFilter ||
+		!reflect.DeepEqual(scope.ResourceIDs, []string{"kn-1/query-only"}) {
+		t.Fatalf("ListAccessibleResourcesWithAnyOperation() = %#v, %v", scope, err)
+	}
+}
+
 func TestSafeResolvePropertyLevels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/safe/v1/authz/property-levels" {

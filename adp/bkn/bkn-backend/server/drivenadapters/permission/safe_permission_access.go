@@ -122,11 +122,25 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 
 func (c *safeClient) listAccessibleResources(ctx context.Context, accessorID, resourceType,
 	operation string) (interfaces.PermissionResourceScope, error) {
+	return c.listAccessibleResourceScope(ctx, accessorID, resourceType, operation, false)
+}
+
+func (c *safeClient) listAccessibleResourcesWithAnyOperation(ctx context.Context, accessorID,
+	resourceType string) (interfaces.PermissionResourceScope, error) {
+	return c.listAccessibleResourceScope(ctx, accessorID, resourceType, "", true)
+}
+
+func (c *safeClient) listAccessibleResourceScope(ctx context.Context, accessorID, resourceType,
+	operation string, anyOperation bool) (interfaces.PermissionResourceScope, error) {
 	var response interfaces.PermissionResourceScope
 	query := url.Values{}
 	query.Set("accessor_id", accessorID)
 	query.Set("resource_type", resourceType)
-	query.Set("operation", operation)
+	if anyOperation {
+		query.Set("any_operation", "true")
+	} else {
+		query.Set("operation", operation)
+	}
 	if err := c.do(ctx, http.MethodGet, "/api/safe/v1/authz/resources?"+query.Encode(), nil, &response); err != nil {
 		return response, err
 	}
@@ -261,6 +275,11 @@ func (s *safePermissionAccess) FilterResources(ctx context.Context, filter inter
 func (s *safePermissionAccess) ListAccessibleResources(ctx context.Context, accessor interfaces.PermissionAccessor,
 	resourceType, operation string) (interfaces.PermissionResourceScope, error) {
 	return s.safe.listAccessibleResources(ctx, accessor.ID, resourceType, operation)
+}
+
+func (s *safePermissionAccess) ListAccessibleResourcesWithAnyOperation(ctx context.Context,
+	accessor interfaces.PermissionAccessor, resourceType string) (interfaces.PermissionResourceScope, error) {
+	return s.safe.listAccessibleResourcesWithAnyOperation(ctx, accessor.ID, resourceType)
 }
 
 func (s *safePermissionAccess) CreateResources(ctx context.Context, policies []interfaces.PermissionPolicy) error {

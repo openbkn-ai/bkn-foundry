@@ -16,6 +16,7 @@ type RelationTypeService interface {
 	CheckRelationTypeExistByID(ctx context.Context, knID string, branch string, rtID string) (string, bool, error)
 	CreateRelationTypes(ctx context.Context, tx *sql.Tx, relationTypes []*RelationType, mode string, validateDependency bool) ([]string, error)
 	ListRelationTypes(ctx context.Context, query RelationTypesQueryParams) ([]*RelationType, int, error)
+	ListRelationTypeSummaries(ctx context.Context, query RelationTypesQueryParams) ([]*RelationType, int, error)
 	GetRelationTypesByIDs(ctx context.Context, knID string, branch string, rtIDs []string) ([]*RelationType, error)
 	UpdateRelationType(ctx context.Context, tx *sql.Tx, relationType *RelationType, strictMode bool) error
 	DeleteRelationTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, rtIDs []string) error

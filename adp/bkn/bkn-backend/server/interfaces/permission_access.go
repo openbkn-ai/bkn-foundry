@@ -279,6 +279,7 @@ type PermissionAccess interface {
 	CheckPermissions(ctx context.Context, request PermissionChecksRequest) (PermissionChecksResponse, error)
 	FilterResources(ctx context.Context, filter PermissionResourcesFilter) (map[string]PermissionResourceOps, error)
 	ListAccessibleResources(ctx context.Context, accessor PermissionAccessor, resourceType, operation string) (PermissionResourceScope, error)
+	ListAccessibleResourcesWithAnyOperation(ctx context.Context, accessor PermissionAccessor, resourceType string) (PermissionResourceScope, error)
 	ResolvePropertyLevels(ctx context.Context, request PropertyLevelsRequest) (PropertyLevelsResponse, error)
 	ResolveRowFilters(ctx context.Context, request RowFiltersRequest) (RowFiltersResponse, error)
 

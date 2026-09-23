@@ -310,8 +310,8 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 	return relationTypes, nil
 }
 
-// ListRelationTypeSummaries reads the graph projection without mapping rules,
-// raw model content, audit principals, or other detail-only fields.
+// ListRelationTypeSummaries reads the documented list projection without raw
+// model content or other detail-only fields.
 func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 	query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListRelationTypeSummaries")
@@ -320,6 +320,8 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 	builder := processQueryCondition(query, sq.Select(
 		"f_id",
 		"f_name",
+		"f_tags",
+		"f_comment",
 		"f_icon",
 		"f_color",
 		"f_kn_id",
@@ -327,6 +329,12 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 		"f_source_object_type_id",
 		"f_target_object_type_id",
 		"f_type",
+		"f_mapping_rules",
+		"f_creator",
+		"f_creator_type",
+		"f_create_time",
+		"f_updater",
+		"f_updater_type",
 		"f_update_time",
 	).From(RT_TABLE_NAME))
 	if query.Sort != "" {
@@ -355,9 +363,13 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 	result := make([]*interfaces.RelationType, 0)
 	for rows.Next() {
 		item := &interfaces.RelationType{ModuleType: interfaces.MODULE_TYPE_RELATION_TYPE}
+		tags := ""
+		var mappingRulesBytes []byte
 		if err := rows.Scan(
 			&item.RTID,
 			&item.RTName,
+			&tags,
+			&item.Comment,
 			&item.Icon,
 			&item.Color,
 			&item.KNID,
@@ -365,9 +377,36 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 			&item.SourceObjectTypeID,
 			&item.TargetObjectTypeID,
 			&item.Type,
+			&mappingRulesBytes,
+			&item.Creator.ID,
+			&item.Creator.Type,
+			&item.CreateTime,
+			&item.Updater.ID,
+			&item.Updater.Type,
 			&item.UpdateTime,
 		); err != nil {
 			return nil, err
+		}
+		item.Tags = libCommon.TagString2TagSlice(tags)
+		switch item.Type {
+		case interfaces.RELATION_TYPE_DIRECT:
+			var mappings []interfaces.Mapping
+			if err := common.UnmarshalStoredJSON(mappingRulesBytes, &mappings); err != nil {
+				return nil, err
+			}
+			item.MappingRules = mappings
+		case interfaces.RELATION_TYPE_INDIRECT:
+			var mappings interfaces.InDirectMapping
+			if err := common.UnmarshalStoredJSON(mappingRulesBytes, &mappings); err != nil {
+				return nil, err
+			}
+			item.MappingRules = &mappings
+		case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
+			var mapping interfaces.FilteredCrossJoinMapping
+			if err := common.UnmarshalStoredJSON(mappingRulesBytes, &mapping); err != nil {
+				return nil, err
+			}
+			item.MappingRules = &mapping
 		}
 		result = append(result, item)
 	}
@@ -892,6 +931,10 @@ func processQueryCondition(query interfaces.RelationTypesQueryParams, subBuilder
 
 	if query.RTIDS != nil {
 		subBuilder = subBuilder.Where(sq.Eq{"f_id": query.RTIDS})
+	}
+	if query.ValidAuthorizationIDsOnly {
+		subBuilder = subBuilder.Where(sq.Expr(
+			"f_id <> '' AND f_id = TRIM(f_id) AND instr(f_id, '/') = 0 AND instr(f_id, '*') = 0"))
 	}
 
 	return subBuilder

@@ -566,6 +566,23 @@ func (ps *PermissionServiceImpl) ListAccessibleResources(ctx context.Context, re
 	return scope, nil
 }
 
+func (ps *PermissionServiceImpl) ListAccessibleResourcesWithAnyOperation(ctx context.Context,
+	resourceType string) (interfaces.PermissionResourceScope, error) {
+	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if !ok || accountInfo.ID == "" || accountInfo.Type == "" {
+		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusForbidden,
+			rest.PublicError_Forbidden).WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+	}
+	scope, err := ps.pa.ListAccessibleResourcesWithAnyOperation(ctx, interfaces.PermissionAccessor{
+		ID: accountInfo.ID, Type: accountInfo.Type,
+	}, resourceType)
+	if err != nil {
+		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
+	}
+	return scope, nil
+}
+
 func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceType string, ids []string,
 	visibilityOperations []string, includeOperations bool) (map[string]interfaces.PermissionResourceOps, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "FilterPermissionResources")
