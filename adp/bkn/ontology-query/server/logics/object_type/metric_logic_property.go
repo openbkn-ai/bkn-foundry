@@ -7,6 +7,8 @@
 package object_type
 
 import (
+	"time"
+
 	"context"
 	"net/http"
 	"strings"
@@ -70,6 +72,34 @@ func havingToMetricHaving(h *interfaces.HavingCondition) *interfaces.MetricHavin
 		Operation: h.Operation,
 		Value:     h.Value,
 	}
+}
+
+// logicMetricTimeWindow decides the window one logic property call asks for.
+//
+// Nothing supplied means no window: a metric without a time_dimension has
+// nothing to filter on, and one with a time_dimension applies its own
+// default_range_policy. One end supplied derives the other, because the metric
+// layer uses a request window only when both ends are present and otherwise
+// falls back to that policy - a caller that gives one end and silently gets no
+// filter at all reads a number computed over everything.
+func logicMetricTimeWindow(params interfaces.MetricPropertyDynamicParams, now int64) (start, end *int64) {
+	if params.Start != nil {
+		supplied := *params.Start
+		start = &supplied
+	}
+	if params.End != nil {
+		supplied := *params.End
+		end = &supplied
+	}
+	switch {
+	case start != nil && end == nil:
+		derived := now
+		end = &derived
+	case end != nil && start == nil:
+		derived := *end - 30*time.Minute.Milliseconds()
+		start = &derived
+	}
+	return start, end
 }
 
 // buildMetricQueryRequestFromLogicProperty turns one logic property call into

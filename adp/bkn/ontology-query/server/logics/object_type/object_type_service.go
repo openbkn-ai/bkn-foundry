@@ -1041,18 +1041,7 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 			}))
 	}
 
-	if metricParams.Start != nil {
-		supplied := *metricParams.Start
-		start = &supplied
-	}
-	if metricParams.End != nil {
-		supplied := *metricParams.End
-		end = &supplied
-		if metricParams.Start == nil {
-			derived := supplied - 30*time.Minute.Milliseconds()
-			start = &derived
-		}
-	}
+	start, end = logicMetricTimeWindow(metricParams, time.Now().UnixMilli())
 	if metricParams.Instant != nil {
 		isInstant = *metricParams.Instant
 	}

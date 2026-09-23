@@ -110,3 +110,40 @@ func Test_buildMetricQueryRequestFromLogicProperty_TimeWindow(t *testing.T) {
 		})
 	})
 }
+
+// The metric layer uses a request window only when both ends are present and
+// otherwise falls back to the metric's default_range_policy, so one end on its
+// own must not reach it: the filter would disappear and the number would be
+// computed over everything, without an error.
+func Test_logicMetricTimeWindow(t *testing.T) {
+	Convey("logicMetricTimeWindow", t, func() {
+		now := int64(1756684800000)
+
+		Convey("nothing supplied asks for no window", func() {
+			start, end := logicMetricTimeWindow(interfaces.MetricPropertyDynamicParams{}, now)
+			So(start, ShouldBeNil)
+			So(end, ShouldBeNil)
+		})
+		Convey("start alone runs to now", func() {
+			supplied := int64(1754006400000)
+			start, end := logicMetricTimeWindow(
+				interfaces.MetricPropertyDynamicParams{Start: &supplied}, now)
+			So(*start, ShouldEqual, supplied)
+			So(*end, ShouldEqual, now)
+		})
+		Convey("end alone keeps the half-hour lookback", func() {
+			supplied := int64(1754006400000)
+			start, end := logicMetricTimeWindow(
+				interfaces.MetricPropertyDynamicParams{End: &supplied}, now)
+			So(*end, ShouldEqual, supplied)
+			So(*start, ShouldEqual, supplied-30*60*1000)
+		})
+		Convey("both supplied pass through", func() {
+			s, e := int64(1754006400000), int64(1756684800000)
+			start, end := logicMetricTimeWindow(
+				interfaces.MetricPropertyDynamicParams{Start: &s, End: &e}, now)
+			So(*start, ShouldEqual, s)
+			So(*end, ShouldEqual, e)
+		})
+	})
+}
