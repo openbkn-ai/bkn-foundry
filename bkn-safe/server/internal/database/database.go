@@ -13,8 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	_ "github.com/openbkn-ai/bkn-comm-go/db/driver" // registers the "openbkn-rds" database/sql driver
-
+	_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver" // registers the "openbkn-rds" database/sql driver
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 

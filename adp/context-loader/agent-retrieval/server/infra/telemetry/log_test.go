@@ -39,7 +39,7 @@ func TestOperationLogAttributesCarryTrustedBusinessOperationScope(t *testing.T) 
 
 	values := map[string]string{}
 	for _, attr := range operationLogAttributes(ctx, false, "source-log-1") {
-		values[attr.Key] = attr.Value.String()
+		values[string(attr.Key)] = attr.Value.String()
 	}
 	want := map[string]string{
 		"log_id":               "context-loader:source-log-1",
@@ -71,7 +71,7 @@ func TestContextLogAttributesDoNotPretendInternalLinesAreCompletedOperations(t *
 
 	values := map[string]string{}
 	for _, attr := range contextLogAttributes(ctx) {
-		values[attr.Key] = attr.Value.String()
+		values[string(attr.Key)] = attr.Value.String()
 	}
 	for _, forbidden := range []string{"log_id", "source_log_id", "trust_level", "log_category", "event_name", "outcome"} {
 		if values[forbidden] != "" {

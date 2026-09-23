@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
-	otellogapi "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -205,8 +205,8 @@ func (s *spanLogger) WithContext(ctx context.Context) interfaces.Logger {
 	return s
 }
 
-func contextLogAttributes(ctx context.Context) []otellogapi.KeyValue {
-	attrs := []otellogapi.KeyValue{otellogapi.String("schema_version", "1.0.0")}
+func contextLogAttributes(ctx context.Context) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{attribute.String("schema_version", "1.0.0")}
 	traceContext, hasTraceContext := common.GetTraceContextFromCtx(ctx)
 	if hasTraceContext {
 		attrs = appendNonEmptyLogAttribute(attrs, "request_id", traceContext.RequestID)
@@ -229,27 +229,27 @@ func contextLogAttributes(ctx context.Context) []otellogapi.KeyValue {
 	return attrs
 }
 
-func operationLogAttributes(ctx context.Context, failed bool, sourceLogID string) []otellogapi.KeyValue {
+func operationLogAttributes(ctx context.Context, failed bool, sourceLogID string) []attribute.KeyValue {
 	attrs := contextLogAttributes(ctx)
 	attrs = append(attrs,
-		otellogapi.String("log_id", contextLoaderLogSource+":"+sourceLogID),
-		otellogapi.String("source_id", contextLoaderLogSource),
-		otellogapi.String("source_log_id", sourceLogID),
-		otellogapi.String("trust_level", "trusted"),
-		otellogapi.String("log_category", "runtime.business"),
-		otellogapi.String("ingress_principal", contextLoaderLogSource),
+		attribute.String("log_id", contextLoaderLogSource+":"+sourceLogID),
+		attribute.String("source_id", contextLoaderLogSource),
+		attribute.String("source_log_id", sourceLogID),
+		attribute.String("trust_level", "trusted"),
+		attribute.String("log_category", "runtime.business"),
+		attribute.String("ingress_principal", contextLoaderLogSource),
 	)
 	if failed {
 		return append(attrs,
-			otellogapi.String("event_name", "operation.failed"),
-			otellogapi.String("outcome", "failure"),
-			otellogapi.String("safe_summary", "OpenBKN operation failed"),
+			attribute.String("event_name", "operation.failed"),
+			attribute.String("outcome", "failure"),
+			attribute.String("safe_summary", "OpenBKN operation failed"),
 		)
 	}
 	return append(attrs,
-		otellogapi.String("event_name", "operation.completed"),
-		otellogapi.String("outcome", "success"),
-		otellogapi.String("safe_summary", "OpenBKN operation completed"),
+		attribute.String("event_name", "operation.completed"),
+		attribute.String("outcome", "success"),
+		attribute.String("safe_summary", "OpenBKN operation completed"),
 	)
 }
 
@@ -283,9 +283,9 @@ func newSourceLogID() string {
 	return fmt.Sprintf("log_fallback_%d", time.Now().UnixNano())
 }
 
-func appendNonEmptyLogAttribute(attrs []otellogapi.KeyValue, key, value string) []otellogapi.KeyValue {
+func appendNonEmptyLogAttribute(attrs []attribute.KeyValue, key, value string) []attribute.KeyValue {
 	if value == "" {
 		return attrs
 	}
-	return append(attrs, otellogapi.String(key, value))
+	return append(attrs, attribute.String(key, value))
 }
