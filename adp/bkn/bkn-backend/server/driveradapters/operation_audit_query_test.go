@@ -23,6 +23,15 @@ import (
 	berrors "bkn-backend/errors"
 )
 
+type traceOutboxAuthStub struct {
+	visitor hydra.Visitor
+	err     error
+}
+
+func (s traceOutboxAuthStub) VerifyToken(context.Context, *gin.Context) (hydra.Visitor, error) {
+	return s.visitor, s.err
+}
+
 type operationAuditQueryStoreStub struct {
 	filter  operationaudit.Filter
 	scope   operationaudit.Scope
