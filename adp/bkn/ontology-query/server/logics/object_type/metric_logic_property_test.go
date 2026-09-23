@@ -77,9 +77,36 @@ func Test_queryLogicMetricViaKN(t *testing.T) {
 
 			_, err := service.queryLogicMetricViaKN(
 				ctx, "kn1", "main", "ot1", logicProp, nil,
-				interfaces.MetricPropertyDynamicParams{}, 0, 0, true, "",
+				interfaces.MetricPropertyDynamicParams{}, nil, nil, true, "",
 			)
 			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+// A caller that asks for no time range must not have one invented for it. The
+// window used to default to the last thirty minutes, which told the metric
+// layer a time filter had been requested: a metric without a time_dimension
+// was then refused with "time range filter requires metric
+// time_dimension.property" for a filter nobody asked for, and a metric with
+// one answered for half an hour instead of its own default_range_policy.
+func Test_buildMetricQueryRequestFromLogicProperty_TimeWindow(t *testing.T) {
+	Convey("buildMetricQueryRequestFromLogicProperty", t, func() {
+		Convey("no time asked for leaves the window open", func() {
+			req := buildMetricQueryRequestFromLogicProperty(
+				nil, interfaces.MetricPropertyDynamicParams{}, nil, nil, true, "")
+			So(req.Time, ShouldNotBeNil)
+			So(req.Time.Start, ShouldBeNil)
+			So(req.Time.End, ShouldBeNil)
+			So(*req.Time.Instant, ShouldBeTrue)
+		})
+		Convey("a supplied range is passed through", func() {
+			start, end := int64(1754006400000), int64(1756684800000)
+			req := buildMetricQueryRequestFromLogicProperty(
+				nil, interfaces.MetricPropertyDynamicParams{}, &start, &end, false, "day")
+			So(*req.Time.Start, ShouldEqual, start)
+			So(*req.Time.End, ShouldEqual, end)
+			So(*req.Time.Step, ShouldEqual, "day")
 		})
 	})
 }

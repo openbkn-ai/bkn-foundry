@@ -72,18 +72,25 @@ func havingToMetricHaving(h *interfaces.HavingCondition) *interfaces.MetricHavin
 	}
 }
 
+// buildMetricQueryRequestFromLogicProperty turns one logic property call into
+// a metric query. start and end are nil when the caller asked for no time
+// range, and stay nil in the query: a metric without a time_dimension has
+// nothing to filter on, and one with a time_dimension applies its own
+// default_range_policy. Passing a fabricated window instead made both cases
+// wrong - the first was refused outright, the second answered for a window
+// nobody chose.
 func buildMetricQueryRequestFromLogicProperty(
 	filters []interfaces.Filter,
 	metricParams interfaces.MetricPropertyDynamicParams,
-	start, end int64,
+	start, end *int64,
 	isInstant bool,
 	step string,
 ) *interfaces.MetricQueryRequest {
 	instant := isInstant
 	req := &interfaces.MetricQueryRequest{
 		Time: &interfaces.MetricTimeWindow{
-			Start:   &start,
-			End:     &end,
+			Start:   start,
+			End:     end,
 			Instant: &instant,
 		},
 		Condition:          filtersToCondition(filters),
@@ -104,7 +111,7 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 	logicProp *interfaces.LogicProperty,
 	filters []interfaces.Filter,
 	metricParams interfaces.MetricPropertyDynamicParams,
-	start, end int64,
+	start, end *int64,
 	isInstant bool,
 	step string,
 ) (interfaces.MetricData, error) {

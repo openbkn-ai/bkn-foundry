@@ -1009,15 +1009,19 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	dynamicParams map[string]map[string]any) (interfaces.MetricData, error) {
 
 	var (
-		start     int64
-		end       int64
+		// start and end stay nil unless the caller asks for a time range.
+		// They used to default to the last thirty minutes, which made every
+		// call look like a time-filtered one: a metric without a
+		// time_dimension was then refused for a filter nobody had asked for,
+		// and a metric with one silently answered for half an hour instead of
+		// its own default_range_policy.
+		start     *int64
+		end       *int64
 		isInstant bool
 		step      string
 	)
 
 	metricValue := propValue.(interfaces.MetricProperty)
-	start = time.Now().Add(-30 * time.Minute).UnixMilli()
-	end = time.Now().UnixMilli()
 	isInstant = true
 
 	var metricParams interfaces.MetricPropertyDynamicParams
@@ -1038,12 +1042,15 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	}
 
 	if metricParams.Start != nil {
-		start = *metricParams.Start
+		supplied := *metricParams.Start
+		start = &supplied
 	}
 	if metricParams.End != nil {
-		end = *metricParams.End
+		supplied := *metricParams.End
+		end = &supplied
 		if metricParams.Start == nil {
-			start = end - 30*time.Minute.Milliseconds()
+			derived := supplied - 30*time.Minute.Milliseconds()
+			start = &derived
 		}
 	}
 	if metricParams.Instant != nil {
