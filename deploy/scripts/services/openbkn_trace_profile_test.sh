@@ -343,6 +343,10 @@ contains "operator integration uses Kafka brokers" "${operator_sets}" "observabi
 contains "operator integration uses Kafka credential Secret" "${operator_sets}" "observability.evidence.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
 contains "operator integration has capture policy revision" "${operator_sets}" "observability.evidence.publisher.capture_policy_revision=1"
 contains "operator integration has bounded Evidence queue" "${operator_sets}" "observability.evidence.publisher.queue_max_records=4096"
+contains "operator integration has independently wired Audit Kafka brokers" "${operator_sets}" "observability.audit.publisher.brokers=$(_openbkn_trace_kafka_brokers)"
+contains "operator integration has independently wired Audit credential Secret" "${operator_sets}" "observability.audit.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
+contains "operator integration has Audit username Secret key" "${operator_sets}" "observability.audit.publisher.username_secret_key=username"
+contains "operator integration has Audit password Secret key" "${operator_sets}" "observability.audit.publisher.password_secret_key=password"
 not_contains "operator integration has no legacy HTTP Evidence URL" "${operator_sets}" "observability.evidence.ingest_url="
 not_contains "operator integration has no legacy HTTP Evidence Secret" "${operator_sets}" "observability.evidence.ingest_token_secret_name="
 
@@ -418,6 +422,22 @@ not_contains "config application registries do not imply a third-party mirror" "
 sync_script="$(<"${SCRIPT_DIR}/scripts/sync-k8s-images.sh")"
 not_contains "offline sync excludes the deleted Hook image" "${sync_script}" 'curlimages/curl:8.10.1'
 not_contains "offline sync drops the Hook image array" "${sync_script}" 'HOOK_IMAGES'
+
+# Evidence wiring must not satisfy the Audit check for the same workload.
+# Keep Evidence correctly wired while omitting both Audit values.
+_openbkn_release_extra_sets() {
+    CORE_RELEASE_EXTRA_SETS=(
+        "observability.evidence.publisher.brokers=$(_openbkn_trace_kafka_brokers)"
+        "observability.evidence.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
+    )
+}
+LAST_WARN=""
+_openbkn_warn_unwired_evidence_producers agent-operator-integration
+if [[ "${LAST_WARN}" == *"BKN Audit: Kafka publisher configuration is not wired for agent-operator-integration"* && "${LAST_WARN}" != *"BKN Trace:"* ]]; then
+    ok
+else
+    fail "Evidence wiring masked the missing Audit profile: ${LAST_WARN}"
+fi
 
 if [[ "${FAILED}" -eq 0 ]]; then
     echo "openbkn_trace_profile_test: all ${PASS} checks passed"

@@ -373,7 +373,9 @@ func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) 
 		b.logger.WithContext(ctx).Warn("audit coverage_gap: missing authenticated context or target")
 		return
 	}
-	if b.env == "" || len(b.env) > 32 || strings.ContainsAny(b.env, " \t\r\n") {
+	switch b.env {
+	case "development", "test", "staging", "production":
+	default:
 		b.logger.WithContext(ctx).Warn("audit coverage_gap: invalid environment")
 		return
 	}
@@ -407,7 +409,14 @@ func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) 
 	}
 	actorID := p.TokenInfo.VisitorID
 	if actorID == "" {
-		actorID = "unknown"
+		actorID = p.Accessor.ID
+	}
+	if actorID == "" {
+		if actorType == "anonymous" {
+			actorID = "anonymous"
+		} else {
+			actorID = "unknown"
+		}
 	}
 	name := p.Accessor.Name
 	if name == "" {

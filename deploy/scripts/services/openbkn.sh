@@ -589,6 +589,10 @@ _openbkn_trace_profile_sets() {
                 "observability.evidence.publisher.max_record_bytes=1048576"
                 "observability.evidence.publisher.max_attempts=3"
                 "observability.evidence.publisher.retry_backoff_ms=100"
+                "observability.audit.publisher.brokers=$(_openbkn_trace_kafka_brokers)"
+                "observability.audit.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "observability.audit.publisher.username_secret_key=username"
+                "observability.audit.publisher.password_secret_key=password"
             )
             ;;
         bkn-agent)
@@ -798,9 +802,10 @@ _openbkn_adopt_unowned_resources() {
 }
 
 _openbkn_warn_unwired_evidence_producers() {
-    local -a unwired=()
+    local -a unwired_evidence=() unwired_audit=()
     local release_name set_value
     local has_ingest_url has_ingest_secret has_kafka_publisher has_kafka_secret has_artifact_url has_artifact_secret
+    local has_audit_kafka_publisher has_audit_kafka_secret
     for release_name in "$@"; do
         _openbkn_release_list_contains "${release_name}" "${_OPENBKN_TRACE_EVIDENCE_PRODUCERS[@]}" || continue
         _openbkn_release_extra_sets "${release_name}"
@@ -810,6 +815,8 @@ _openbkn_warn_unwired_evidence_producers() {
         has_kafka_secret=false
         has_artifact_url=false
         has_artifact_secret=false
+        has_audit_kafka_publisher=false
+        has_audit_kafka_secret=false
         for set_value in "${CORE_RELEASE_EXTRA_SETS[@]:-}"; do
             [[ "${set_value}" == *"=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}" ]] && has_ingest_url=true
             case "${set_value}" in
@@ -827,17 +834,25 @@ _openbkn_warn_unwired_evidence_producers() {
             [[ "${set_value}" == "observability.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)" ]] && has_kafka_publisher=true
             [[ "${set_value}" == "observability.evidence.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
             [[ "${set_value}" == "observability.evidence.publisher.brokers=$(_openbkn_trace_kafka_brokers)" ]] && has_kafka_publisher=true
+            [[ "${set_value}" == "observability.audit.publisher.brokers=$(_openbkn_trace_kafka_brokers)" ]] && has_audit_kafka_publisher=true
+            [[ "${set_value}" == "observability.audit.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_audit_kafka_secret=true
         done
         if [[ "${release_name}" == "agent-retrieval" || "${release_name}" == "bkn-agent" ]]; then
-            [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true && "${has_artifact_url}" == true && "${has_artifact_secret}" == true ]] || unwired+=("${release_name}")
+            [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true && "${has_artifact_url}" == true && "${has_artifact_secret}" == true ]] || unwired_evidence+=("${release_name}")
         elif [[ "${release_name}" == "bkn-backend" || "${release_name}" == "ontology-query" || "${release_name}" == "agent-operator-integration" ]]; then
-            [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true ]] || unwired+=("${release_name}")
+            [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true ]] || unwired_evidence+=("${release_name}")
         else
-            [[ "${has_ingest_url}" == true && "${has_ingest_secret}" == true ]] || unwired+=("${release_name}")
+            [[ "${has_ingest_url}" == true && "${has_ingest_secret}" == true ]] || unwired_evidence+=("${release_name}")
+        fi
+        if [[ "${release_name}" == "agent-operator-integration" ]]; then
+            [[ "${has_audit_kafka_publisher}" == true && "${has_audit_kafka_secret}" == true ]] || unwired_audit+=("${release_name}")
         fi
     done
-    if [[ ${#unwired[@]} -gt 0 ]]; then
-        log_warn "BKN Trace: no Evidence ingest token wired for ${unwired[*]} — their Evidence writes will be rejected until their charts are wired here"
+    if [[ ${#unwired_evidence[@]} -gt 0 ]]; then
+        log_warn "BKN Trace: Evidence producer configuration is not wired for ${unwired_evidence[*]}"
+    fi
+    if [[ ${#unwired_audit[@]} -gt 0 ]]; then
+        log_warn "BKN Audit: Kafka publisher configuration is not wired for ${unwired_audit[*]}"
     fi
 }
 

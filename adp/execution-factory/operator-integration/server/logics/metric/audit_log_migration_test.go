@@ -143,3 +143,47 @@ func TestAuditLogBuilderKeepsMCPToolResultFailure(t *testing.T) {
 		t.Fatalf("MCP tool result failure was lost: %#v", payload)
 	}
 }
+
+func TestAuditLogBuilderUsesFrozenActorFallbacks(t *testing.T) {
+	tests := []struct {
+		name, visitorID, accessorID string
+		visitorType                 interfaces.VisitorType
+		want                        string
+	}{
+		{name: "verified token identity wins", visitorID: "token-user", accessorID: "accessor-user", visitorType: interfaces.RealName, want: "token-user"},
+		{name: "accessor identity fallback", accessorID: "accessor-user", visitorType: interfaces.RealName, want: "accessor-user"},
+		{name: "anonymous sentinel", visitorType: interfaces.Anonymous, want: "anonymous"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			publisher := &captureAuditPublisher{disposition: auditpublisher.Accepted}
+			builder := &AuditLogBuilder{logger: auditTestLogger{}, publisher: publisher, env: "test"}
+			builder.Logger(context.Background(), &AuditLogBuilderParams{
+				TokenInfo: &interfaces.TokenInfo{VisitorID: tc.visitorID, VisitorTyp: tc.visitorType},
+				Accessor:  &interfaces.AuthAccessor{ID: tc.accessorID}, Operation: AuditLogOperationExecute,
+				Object: &AuditLogObject{Type: AuditLogObjectOperator, ID: "operator-1"},
+			})
+			var payload map[string]any
+			if err := json.Unmarshal(publisher.value, &payload); err != nil {
+				t.Fatal(err)
+			}
+			actor := payload["actor"].(map[string]any)
+			if actor["id"] != tc.want || actor["effective_subject"] != tc.want {
+				t.Fatalf("actor fallback=%#v, want id/effective_subject %q", actor, tc.want)
+			}
+		})
+	}
+}
+
+func TestAuditLogBuilderDropsInvalidEnvironment(t *testing.T) {
+	publisher := &captureAuditPublisher{disposition: auditpublisher.Accepted}
+	builder := &AuditLogBuilder{logger: auditTestLogger{}, publisher: publisher, env: "foo"}
+	builder.Logger(context.Background(), &AuditLogBuilderParams{
+		TokenInfo: &interfaces.TokenInfo{VisitorID: "user-1", VisitorTyp: interfaces.RealName},
+		Accessor:  &interfaces.AuthAccessor{ID: "user-1"}, Operation: AuditLogOperationExecute,
+		Object: &AuditLogObject{Type: AuditLogObjectOperator, ID: "operator-1"},
+	})
+	if len(publisher.value) != 0 {
+		t.Fatalf("invalid environment was published: %s", publisher.value)
+	}
+}
