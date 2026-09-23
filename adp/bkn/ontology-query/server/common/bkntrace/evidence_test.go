@@ -9,19 +9,19 @@ package bkntrace
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"net/http"
 	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"go.opentelemetry.io/otel/trace"
 )
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
+type captureEvidenceSender struct{ records []evidencepublisher.Record }
 
-func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
+func (s *captureEvidenceSender) Send(_ context.Context, record evidencepublisher.Record) error {
+	s.records = append(s.records, record)
+	return nil
+}
 
 func testTraceContext() context.Context {
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
@@ -47,37 +47,55 @@ func TestBuildDataQueryEventsRejectsMissingReplayEnvelope(t *testing.T) {
 	}
 }
 
-func TestPostBatchWithRetryRetriesNon2xx(t *testing.T) {
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	var calls atomic.Int32
-	evidenceHTTPClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		status := http.StatusServiceUnavailable
-		if calls.Add(1) == 3 {
-			status = http.StatusNoContent
-		}
-		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-	if err := postBatchWithRetry("http://trace.local", time.Second, batch{}); err != nil {
+func TestSubmitEventsMatchesCanonicalEvidenceFixture(t *testing.T) {
+	sender := &captureEvidenceSender{}
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{
+		ProducerID: "ontology-query", BaseStreamID: "ontology-query", WorkloadIdentity: "ontology-query",
+		ProcessBootID: "boot-1", CapturePolicyRevision: "41",
+	}, sender)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 3 {
-		t.Fatalf("calls=%d, want 3", calls.Load())
-	}
-}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() {
+		SetEvidencePublisher(nil)
+		_ = publisher.Close(context.Background())
+	})
 
-func TestPostBatchSendsDedicatedIngestToken(t *testing.T) {
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "producer-token")
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "producer-token" {
-			t.Fatalf("ingest token header=%q", got)
-		}
-		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-	if err := postBatch("http://trace.local", time.Second, batch{}); err != nil {
+	events := BuildDataQueryEvents(testTraceContext(), testRequestContext(), DataQuerySubject{
+		EntityKind: EntityKindObjectInstance, Operation: "bkn.object.query", KNID: "kn_demo",
+	}, nil)
+	SubmitEvents(testTraceContext(), testRequestContext(), events)
+	queued := publisher.SnapshotQueue()
+	if len(queued) != 1 {
+		t.Fatalf("queued records = %d, want 1", len(queued))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(queued[0].Value, &payload); err != nil {
 		t.Fatal(err)
+	}
+	for key, want := range map[string]any{
+		"event_id": events[0]["event_id"], "event_type": "data.query.observed", "conversation_id": "conv_req_ontology_data_0001",
+		"producer_id": "ontology-query", "producer_stream_id": "ontology-query:boot-1",
+	} {
+		if payload[key] != want {
+			t.Fatalf("payload[%q] = %#v, want %#v; payload=%s", key, payload[key], want, queued[0].Value)
+		}
+	}
+	wantHeaders := []evidencepublisher.Header{
+		{Key: "content-type", Value: "application/json"},
+		{Key: "bkn-trace-schema-version", Value: "3.0.0"},
+		{Key: "capture_policy_revision", Value: "41"},
+		{Key: "producer_instance_id", Value: "ontology-query#boot-1"},
+		{Key: "bkn-evidence-record-class", Value: "live"},
+	}
+	if len(queued[0].Headers) != len(wantHeaders) {
+		t.Fatalf("headers = %+v", queued[0].Headers)
+	}
+	for i := range wantHeaders {
+		if queued[0].Headers[i] != wantHeaders[i] {
+			t.Fatalf("header[%d] = %+v, want %+v", i, queued[0].Headers[i], wantHeaders[i])
+		}
 	}
 }
 

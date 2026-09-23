@@ -551,16 +551,22 @@ _openbkn_trace_profile_sets() {
             )
             ;;
         ontology-query)
-            # Ontology remains on the legacy path until its C5 producer lands.
             CORE_RELEASE_EXTRA_SETS+=(
-                "bknTrace.evidence.ingestUrl=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
-                "bknTrace.evidence.ingestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
-                "bknTrace.evidence.ingestTokenSecretKey=token"
-                "bknTrace.producerOutbox.enabled=true"
-                "bknTrace.producerOutbox.workerEnabled=true"
-                "bknTrace.producerOutbox.cleanup.enabled=true"
-                "bknTrace.producerOutbox.queryGatewayTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
-                "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
+                "bknTrace.evidencePublisher.enabled=true"
+                "bknTrace.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
+                "bknTrace.evidencePublisher.usernameSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "bknTrace.evidencePublisher.usernameSecretKey=username"
+                "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
+                "bknTrace.evidencePublisher.passwordSecretKey=password"
+                "bknTrace.evidencePublisher.producerId=ontology-query"
+                "bknTrace.evidencePublisher.workloadIdentity=ontology-query"
+                "bknTrace.evidencePublisher.producerStreamId=ontology-query"
+                "bknTrace.evidencePublisher.capturePolicyRevision=${OPENBKN_TRACE_CAPTURE_POLICY_REVISION}"
+                "bknTrace.evidencePublisher.queueMaxRecords=4096"
+                "bknTrace.evidencePublisher.queueMaxBytes=67108864"
+                "bknTrace.evidencePublisher.maxRecordBytes=1048576"
+                "bknTrace.evidencePublisher.maxAttempts=3"
+                "bknTrace.evidencePublisher.retryBackoffMs=100"
             )
             ;;
         agent-operator-integration)
@@ -765,7 +771,7 @@ _openbkn_warn_unwired_evidence_producers() {
             [[ "${set_value}" == "bknTrace.evidencePublisher.enabled=true" ]] && has_kafka_publisher=true
             [[ "${set_value}" == "bknTrace.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}" ]] && has_kafka_secret=true
         done
-        if [[ "${release_name}" == "bkn-backend" ]]; then
+        if [[ "${release_name}" == "bkn-backend" || "${release_name}" == "ontology-query" ]]; then
             [[ "${has_kafka_publisher}" == true && "${has_kafka_secret}" == true ]] || unwired+=("${release_name}")
         else
             [[ "${has_ingest_url}" == true && "${has_ingest_secret}" == true ]] || unwired+=("${release_name}")

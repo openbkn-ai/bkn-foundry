@@ -78,11 +78,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1 := c.Group("/api/ontology-query/v1")
 	apiV1.Use(rest.PrivateNoCacheMiddleware())
 	{
-		apiV1.GET("/trace/outbox", r.ListTraceOutbox)
-		apiV1.GET("/trace/outbox/:outbox_id", r.GetTraceOutbox)
-		apiV1.POST("/trace/outbox/:outbox_id/retry", r.verifyJsonContentType(), r.RetryTraceOutbox)
-		apiV1.POST("/trace/outbox/:outbox_id/abandon", r.verifyJsonContentType(), r.AbandonTraceOutbox)
-
 		// Query object data for the specified object type.
 		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_id/schema", r.GetObjectTypeSchemaByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_id/sample-data", r.GetObjectTypeSampleDataByEx)

@@ -8,8 +8,9 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
+	"os"
+	"strings"
 
 	// _ "net/http/pprof"
 	"os/signal"
@@ -24,9 +25,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	_ "go.uber.org/automaxprocs"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"ontology-query/common"
 	"ontology-query/common/bkntrace"
-	"ontology-query/common/bkntrace/outbox"
 	"ontology-query/drivenadapters/agent_operator"
 	"ontology-query/drivenadapters/auth"
 	knproxy "ontology-query/drivenadapters/kn_proxy"
@@ -41,11 +42,11 @@ import (
 )
 
 type mgrService struct {
-	appSetting    *common.AppSetting
-	otelProviders *otel.Providers
-	restHandler   driveradapters.RestHandler
-	traceOutbox   *outbox.Worker
-	outboxDB      *sql.DB
+	appSetting        *common.AppSetting
+	otelProviders     *otel.Providers
+	restHandler       driveradapters.RestHandler
+	evidencePublisher *evidencepublisher.Publisher
+	evidenceProducer  interface{ Close() error }
 }
 
 func (server *mgrService) start() {
@@ -56,14 +57,12 @@ func (server *mgrService) start() {
 
 	server.restHandler.RegisterPublic(engine)
 	logger.Info("Server Register API Success")
-	if server.traceOutbox != nil {
-		server.traceOutbox.Start()
-	}
 
 	// Listen for interrupt signals (SIGINT and SIGTERM).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Receiving a signal triggers ctx.Done. stop stops receiving registered signals and releases those resources.
 	defer stop()
+	flushDone := startEvidenceFlushLoop(ctx, server.evidencePublisher, time.Second)
 
 	// Initialize the HTTP service.
 	s := &http.Server{
@@ -89,21 +88,22 @@ func (server *mgrService) start() {
 	// Set the system's last processed time.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	<-flushDone
 
 	// Stop the HTTP service.
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(ctx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
 	}
-	if server.traceOutbox != nil {
-		if err := server.traceOutbox.Stop(ctx); err != nil {
-			logger.Warnf("BKN Trace outbox shutdown: %v", err)
+	if server.evidencePublisher != nil {
+		server.evidencePublisher.Flush(ctx)
+		server.evidencePublisher.Close(ctx)
+	}
+	if server.evidenceProducer != nil {
+		if err := server.evidenceProducer.Close(); err != nil {
+			logger.Warnf("Evidence Kafka producer close failed: %v", err)
 		}
 	}
-	if server.outboxDB != nil {
-		_ = server.outboxDB.Close()
-	}
-
 	server.otelProviders.Shutdown(ctx)
 
 	logger.Info("Server Exited")
@@ -135,32 +135,15 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Failed to initialize OpenTelemetry provider: %v", err)
 	}
-	var traceOutbox *outbox.Worker
-	var outboxDB *sql.DB
-	bkntrace.WarnIfLegacyEvidenceMisconfigured()
-	if bkntrace.ProducerOutboxEnabled() {
-		outboxDB, err = bkntrace.OpenProducerOutboxDB(appSetting.DBSetting)
+	var publisherRuntime *bkntrace.EvidencePublisherRuntime
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
+		publisherRuntime, err = bkntrace.NewEvidencePublisherRuntime()
 		if err != nil {
-			logger.Fatalf("Failed to open BKN Trace producer outbox database: %v", err)
+			logger.Fatalf("Failed to configure Evidence Kafka publisher: %v", err)
 		}
-		traceOutbox, err = bkntrace.ConfigureProducerOutbox(outboxDB)
-		if err != nil {
-			logger.Fatalf("Failed to configure BKN Trace producer outbox: %v", err)
-		}
-	}
-	if bkntrace.ProducerOutboxCleanupOnly() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		result, err := bkntrace.CleanupProducerOutbox(ctx)
-		if err != nil {
-			logger.Fatalf("Failed to clean BKN Trace producer outbox: %v", err)
-		}
-		logger.Infof("BKN Trace producer outbox cleanup complete: delivered=%d abandoned=%d audits=%d", result.Delivered, result.Abandoned, result.Audits)
-		if outboxDB != nil {
-			_ = outboxDB.Close()
-		}
-		otelProviders.Shutdown(ctx)
-		return
+		bkntrace.SetEvidencePublisher(publisherRuntime.Publisher)
+	} else {
+		logger.Warn("BKN Trace Evidence Kafka publisher is disabled; workload is not 0.2-ready and evidence events will be dropped")
 	}
 	if action_logs.RetentionCleanupOnly() {
 		runActionLogRetention(appSetting)
@@ -180,10 +163,34 @@ func main() {
 		appSetting:    appSetting,
 		otelProviders: otelProviders,
 		restHandler:   driveradapters.NewRestHandler(appSetting),
-		traceOutbox:   traceOutbox,
-		outboxDB:      outboxDB,
+	}
+	if publisherRuntime != nil {
+		server.evidencePublisher = publisherRuntime.Publisher
+		server.evidenceProducer = publisherRuntime.Producer
 	}
 	server.start()
+}
+
+func startEvidenceFlushLoop(ctx context.Context, publisher *evidencepublisher.Publisher, interval time.Duration) <-chan struct{} {
+	done := make(chan struct{})
+	if publisher == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		defer close(done)
+		for {
+			select {
+			case <-ticker.C:
+				publisher.Flush(context.Background())
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return done
 }
 
 // runActionLogRetention runs one retention cleanup of action execution logs, as the retention

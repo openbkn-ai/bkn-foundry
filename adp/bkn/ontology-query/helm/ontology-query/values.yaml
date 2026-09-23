@@ -44,8 +44,6 @@ bknSafe:
 depServices:
   class-443:
     ingressClass: class-443
-  # Only required when bknTrace.producerOutbox.enabled is true. It shares the
-  # bkn-backend instance and the openbkn schema, but owns separate tables.
   rds:
     host: mariadb-mariadb-master.resource.svc.cluster.local.
     port: 3330
@@ -138,24 +136,22 @@ cursorEncryption:
   secretKey: "cursor-key"
 
 bknTrace:
-  evidence:
-    ingestUrl: ""
-    timeoutMs: "2000"
-    ingestTokenSecretName: ""
-    ingestTokenSecretKey: "ingest-token"
-  producerOutbox:
+  evidencePublisher:
     enabled: false
-    workerEnabled: false
-    producerStreamID: "ontology-query"
-    applicationPrincipalID: "ontology-query"
-    queryGatewayTokenSecretName: ""
-    queryGatewayTokenSecretKey: "query-gateway-token"
-    cleanup:
-      enabled: false
-      schedule: "0 3 * * *"
-      batchSize: 1000
-      deliveredRetentionDays: 30
-      abandonedRetentionDays: 180
+    brokers: ""
+    usernameSecretName: ""
+    usernameSecretKey: "username"
+    passwordSecretName: ""
+    passwordSecretKey: "password"
+    producerId: "ontology-query"
+    workloadIdentity: "ontology-query"
+    producerStreamId: "ontology-query"
+    capturePolicyRevision: ""
+    queueMaxRecords: 4096
+    queueMaxBytes: 67108864
+    maxRecordBytes: 1048576
+    maxAttempts: 3
+    retryBackoffMs: 100
 
 # Retention of action execution logs (#790). When enabled, a CronJob deletes finished
 # executions (completed, failed, cancelled) that ended more than retentionDays ago, together
