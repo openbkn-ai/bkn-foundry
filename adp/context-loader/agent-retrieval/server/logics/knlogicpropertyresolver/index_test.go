@@ -769,3 +769,41 @@ func TestResolveSinglePropertyParamsMarksCallerMistakes(t *testing.T) {
 		convey.So(stderrors.As(err, &callerErr), convey.ShouldBeTrue)
 	})
 }
+
+// if_system_generate is optional and a definition may leave it off. Without a
+// fallback, an instant query on such a definition is impossible to supply:
+// step is demanded as a business input, and validation refuses it as soon as
+// it is given.
+func TestMissingCallerInputParamsRecognisesTheTimeWindowWithoutTheFlag(t *testing.T) {
+	convey.Convey("TestMissingCallerInputParamsRecognisesTheTimeWindowWithoutTheFlag", t, func() {
+		property := &interfaces.LogicPropertyDef{
+			Name: "product_total_count",
+			Type: interfaces.LogicPropertyTypeMetric,
+			Parameters: []interfaces.PropertyParameter{
+				{Name: "instant", Type: "boolean", ValueFrom: "input"},
+				{Name: "start", Type: "integer", ValueFrom: "input"},
+				{Name: "end", Type: "integer", ValueFrom: "input"},
+				{Name: "step", Type: "string", ValueFrom: "input"},
+			},
+		}
+		supplied := map[string]any{"instant": true, "start": int64(1704067200000), "end": int64(1706745600000)}
+		convey.So(missingCallerInputParams(property, supplied), convey.ShouldBeEmpty)
+
+		// A business filter on the same property is still the caller's to give.
+		property.Parameters = append(property.Parameters,
+			interfaces.PropertyParameter{Name: "closestatus_title", Type: "string", ValueFrom: "input"})
+		convey.So(missingCallerInputParams(property, supplied),
+			convey.ShouldResemble, []string{"closestatus_title"})
+
+		// A tool property has no time window, so nothing is excused there.
+		tool := &interfaces.LogicPropertyDef{
+			Name: "exchange_rate",
+			Type: interfaces.LogicPropertyTypeTool,
+			Parameters: []interfaces.PropertyParameter{
+				{Name: "start", Type: "integer", ValueFrom: "input"},
+			},
+		}
+		convey.So(missingCallerInputParams(tool, map[string]any{}),
+			convey.ShouldResemble, []string{"start"})
+	})
+}

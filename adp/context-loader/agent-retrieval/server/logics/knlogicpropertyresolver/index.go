@@ -465,14 +465,32 @@ type callerParamError struct {
 func (e callerParamError) Error() string { return e.err.Error() }
 func (e callerParamError) Unwrap() error { return e.err }
 
+// metricTimeWindowParams are the parameters that describe when a metric is
+// read. validateMetricParams already recognises them by name, including the
+// rule that an instant query carries no step, and this list has to agree with
+// it: whatever is named here is left to that validation instead of being
+// demanded of the caller.
+var metricTimeWindowParams = map[string]struct{}{
+	"instant": {}, "start": {}, "end": {}, "step": {},
+}
+
 // missingCallerInputParams lists the business parameters the caller alone can
-// provide: value_from=input, and not one of the ones the server generates.
-// Those - the metric time window - are conditional on each other and are left
-// to validation.
+// provide: value_from=input, and not one of the ones the server works out for
+// itself.
+//
+// if_system_generate marks those, but it is optional and a definition may omit
+// it, so a metric's time window is recognised by name as well. Without that
+// fallback a definition that leaves the flag off makes an instant query
+// impossible to supply: step is demanded as a business input, and validation
+// refuses it as soon as it is given.
 func missingCallerInputParams(property *interfaces.LogicPropertyDef, supplied map[string]any) []string {
+	metricTime := property.Type == interfaces.LogicPropertyTypeMetric
 	missing := make([]string, 0, len(property.Parameters))
 	for _, parameter := range property.Parameters {
 		if parameter.ValueFrom != parameterValueFromInput || parameter.IfSystemGenerate {
+			continue
+		}
+		if _, isTimeWindow := metricTimeWindowParams[parameter.Name]; metricTime && isTimeWindow {
 			continue
 		}
 		if _, given := supplied[parameter.Name]; !given {
