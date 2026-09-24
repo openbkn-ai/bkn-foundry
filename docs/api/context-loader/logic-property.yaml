@@ -371,7 +371,6 @@ components:
     ResolveLogicPropertiesRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
         - ot_id
         - query

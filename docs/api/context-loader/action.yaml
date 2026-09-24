@@ -325,7 +325,6 @@ components:
     GetActionInfoRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
         - at_id
       properties:
@@ -401,7 +400,6 @@ components:
     ExecuteActionRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
         - at_id
       properties:
@@ -446,7 +444,6 @@ components:
     GetActionExecutionRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
         - execution_id
       properties:
@@ -462,7 +459,6 @@ components:
     ListActionExecutionsRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
       properties:
         bkn_context:

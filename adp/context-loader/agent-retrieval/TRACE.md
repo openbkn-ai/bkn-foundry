@@ -14,7 +14,7 @@
 
 ## 2. Managed lifecycle
 
-All REST and MCP business tool calls must belong to an active Conversation and an active Interaction:
+Every MCP business tool call must belong to an active Conversation and an active Interaction. A REST call under `/kn/` may, and then is managed the same way; with no `bkn_context` it runs ad hoc instead, which §2.1 sets out. The exception is `/mcp/proxy/.../call`, an agent calling a tool under another name, where the managed context is mandatory whatever the transport.
 
 ```json
 {
@@ -28,9 +28,43 @@ All REST and MCP business tool calls must belong to an active Conversation and a
 ```
 
 - Conversation and Interaction must be created through `bkn_start_interaction`, `Mcp-Session-Id` cannot replace business Conversation.
-- When the context is missing, invalid, unauthorized, expired or final, the Context Loader returns a stable error code, `required_action` and a security prompt, and the number of downstream business calls must be 0.
+- When the context is invalid, unauthorized, expired or final, the Context Loader returns a stable error code, `required_action` and a security prompt, and the number of downstream business calls must be 0. A context that is missing altogether is refused the same way on MCP and on `/mcp/proxy/.../call`; on the other REST routes it selects the ad-hoc mode of §2.1 instead.
 - The Context Loader uses a trusted authentication context to determine the application principal and effective subject; the caller cannot override the Owner in JSON.
 - The Context Loader derives the Operation idempotent identity from the trusted request association, tool name, and normalized input. Network retry reuses `bkn-request-id`, or carries a stable `X-OpenBKN-Client-Invocation-Id`; an existing pending Receipt returns `receipt_pending`, and downstream side effects must not be repeated.
+
+### 2.1 Managed and ad-hoc calls
+
+A REST business call states a managed interaction or it does not, and that choice
+decides what is recorded.
+
+| | Managed | Ad hoc |
+|---|---|---|
+| How it is chosen | `bkn_context` carries `conversation_id` and `interaction_id` | `bkn_context` is absent or empty |
+| What is recorded | an Operation under that Interaction, a Receipt on the response, evidence for what was read | nothing |
+| What it depends on | BKN Trace Core, besides the downstream the call queries | only that downstream |
+
+Only those two shapes are ad hoc. A `bkn_context` holding one id and not the
+other, only `parent_operation_id`, or a misspelt field is a caller wiring the
+context up and getting it wrong, and is refused rather than quietly downgraded.
+
+Use a managed call when the answer has to enter the evidence chain: an agent turn
+someone may audit, anything that executes an action, any reading a later decision
+will be justified by. Use an ad-hoc call for everything else — and the callers of
+the REST surface usually are everything else: Studio answering a click, an
+operator at the CLI, one service asking another for a schema. An Interaction
+records one agent turn, so minting a Conversation and an Interaction to satisfy
+the guard produces single-operation records that dilute the concept rather than
+document anything.
+
+The MCP surface keeps the requirement because that is where agents call, and an
+agent turn is exactly what an Interaction records. A Skill has no choice to make
+here: its sandbox calls Context Loader over MCP with the session's own context
+injected, so everything a Skill reads is on the evidence chain.
+
+It follows that a managed call retried through a Trace Core outage, for an answer
+that never needed provenance, is paying for provenance twice over. Route that
+call to its REST equivalent without a `bkn_context`. See #1691 for what the
+managed path costs per call.
 
 ## 3. Downstream sub-call contract
 

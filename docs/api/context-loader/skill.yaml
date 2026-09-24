@@ -452,7 +452,6 @@ components:
     GetSkillContentRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
         - skill_id
       properties:
@@ -516,7 +515,6 @@ components:
     ReadSkillFileRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
         - skill_id
         - rel_path
@@ -564,7 +562,6 @@ components:
     ExecuteSkillRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
         - skill_id
         - entry_shell

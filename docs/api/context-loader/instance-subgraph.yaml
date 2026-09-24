@@ -323,7 +323,6 @@ components:
     SubGraphQueryBaseOnTypePath:
       type: object
       required:
-        - bkn_context
         - relation_type_paths
       properties:
         bkn_context:
