@@ -8,7 +8,10 @@ package evidenceconsumer
 import (
 	"errors"
 	"fmt"
+	"time"
 )
+
+const Topic = "openbkn.evidence.v1"
 
 type Header struct {
 	Key   string
@@ -16,12 +19,16 @@ type Header struct {
 }
 
 type Record struct {
+	Topic            string
 	Key              string
+	Value            []byte
 	Headers          []Header
+	Partition        int
+	Offset           int64
+	BrokerTime       time.Time
 	ProducerStreamID string
 	ProducerSequence uint64
 	BrokerTimestamp  string
-	TimestampType    string
 }
 
 type ClosureWatermark struct {
@@ -36,6 +43,7 @@ type PolicySnapshot struct {
 	Enabled            bool
 	InstanceID         string
 	RegisteredRevision uint64
+	ProcessBootID      string
 	Closure            ClosureWatermark
 }
 
@@ -58,9 +66,6 @@ func ParseHeaders(headers []Header) (map[string]string, error) {
 }
 
 func ValidateLiveRecordContract(record Record) error {
-	if record.TimestampType != "LogAppendTime" {
-		return fmt.Errorf("timestamp_type must be LogAppendTime")
-	}
 	headers, err := ParseHeaders(record.Headers)
 	if err != nil {
 		return err

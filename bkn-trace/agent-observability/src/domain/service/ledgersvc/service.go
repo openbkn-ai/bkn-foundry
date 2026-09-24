@@ -79,6 +79,26 @@ func (s *Service) Ingest(ctx context.Context, event ledgervo.Event) (ledgervo.Du
 	}
 }
 
+// IngestKafka is the C1 terminal-decision path. Conflict evidence and its
+// Kafka coordinate are committed with the ledger decision in one store tx.
+func (s *Service) IngestKafka(ctx context.Context, event ledgervo.Event, coordinate ievidenceledger.KafkaCoordinate) (ievidenceledger.KafkaResult, error) {
+	if err := validateEvent(event); err != nil {
+		return ievidenceledger.KafkaResult{}, err
+	}
+	store, ok := s.store.(ievidenceledger.KafkaStore)
+	if !ok {
+		return ievidenceledger.KafkaResult{}, errors.New("evidence store does not support atomic Kafka terminal decisions")
+	}
+	result, err := store.CommitKafka(ctx, event, coordinate)
+	if err != nil {
+		return result, err
+	}
+	if result.Decision == ievidenceledger.KafkaAccepted {
+		s.metrics.Increment(icoremetrics.EvidenceIngestTotal)
+	}
+	return result, nil
+}
+
 func validateEvent(event ledgervo.Event) error {
 	if event.SchemaVersion != "3.0.0" {
 		return &DomainError{Code: CodeInvalidEvent, Message: "bkn.trace.schema.version must be 3.0.0"}

@@ -1,0 +1,8 @@
+{
+  "topic": "openbkn.audit.v1",
+  "value_fixture": "2026-09-22-audit-record-v1-golden.json",
+  "value_canonical_sha256": "sha256:6c1e715bff7d73ef22bf751db3bb5e89cada868eca1741badcef00c5b9ff178f",
+  "key_base64": "YmtuLWJhY2tlbmQfa25vd2xlZGdlX25ldHdvcmsfa24tMTIz",
+  "headers": [{"name": "bkn-audit-schema-version", "value_base64": "MS4w"}],
+  "timestamp_type": "LogAppendTime"
+}

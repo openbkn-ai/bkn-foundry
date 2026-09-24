@@ -20,12 +20,41 @@ import (
 
 func (s *Store) Commit(ctx context.Context, event ledgervo.Event) (ledgervo.DurableAck, error) {
 	for attempt := 0; attempt < transactionRetries; attempt++ {
-		ack, retry, err := s.commitEvidenceOnce(ctx, event)
+		ack, retry, err := s.commitEvidenceOnce(ctx, event, nil)
 		if !retry {
 			return ack, err
 		}
 	}
 	return ledgervo.DurableAck{}, errors.New("evidence transaction retry budget exhausted")
+}
+
+type kafkaConflictTerminal struct{ reason string }
+
+func (e *kafkaConflictTerminal) Error() string { return "durable Kafka Evidence conflict: " + e.reason }
+
+func (s *Store) CommitKafka(ctx context.Context, event ledgervo.Event, coordinate ievidenceledger.KafkaCoordinate) (ievidenceledger.KafkaResult, error) {
+	if coordinate.Topic != "openbkn.evidence.v1" || coordinate.Partition < 0 || coordinate.Offset < 0 {
+		return ievidenceledger.KafkaResult{}, errors.New("invalid Evidence Kafka coordinate")
+	}
+	for attempt := 0; attempt < transactionRetries; attempt++ {
+		ack, retry, err := s.commitEvidenceOnce(ctx, event, &coordinate)
+		if retry {
+			continue
+		}
+		var terminal *kafkaConflictTerminal
+		if errors.As(err, &terminal) {
+			return ievidenceledger.KafkaResult{Decision: ievidenceledger.KafkaConflict, ReasonCode: terminal.reason}, nil
+		}
+		if err != nil {
+			return ievidenceledger.KafkaResult{}, err
+		}
+		decision := ievidenceledger.KafkaAccepted
+		if ack.Replayed {
+			decision = ievidenceledger.KafkaDeduplicated
+		}
+		return ievidenceledger.KafkaResult{Decision: decision, Ack: ack}, nil
+	}
+	return ievidenceledger.KafkaResult{}, errors.New("evidence transaction retry budget exhausted")
 }
 
 func (s *Store) ListInteractionEvents(ctx context.Context, owner sessionvo.Owner, interactionID string) ([]ledgervo.Event, error) {
@@ -59,12 +88,25 @@ func (s *Store) ListInteractionEvents(ctx context.Context, owner sessionvo.Owner
 	return result, rows.Err()
 }
 
-func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (ledgervo.DurableAck, bool, error) {
+func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event, coordinate *ievidenceledger.KafkaCoordinate) (ledgervo.DurableAck, bool, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return ledgervo.DurableAck{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if coordinate != nil {
+		var reason, incomingHash string
+		err := tx.QueryRowContext(ctx, `SELECT reason_code, incoming_immutable_hash FROM bkn_trace_event_conflicts WHERE topic=? AND partition_id=? AND offset_id=? FOR UPDATE`, coordinate.Topic, coordinate.Partition, coordinate.Offset).Scan(&reason, &incomingHash)
+		if err == nil {
+			if incomingHash != ledgervo.ImmutableRecordHash(event) {
+				return ledgervo.DurableAck{}, false, errors.New("kafka coordinate already has a different durable Evidence conflict")
+			}
+			return ledgervo.DurableAck{}, false, &kafkaConflictTerminal{reason: reason}
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		}
+	}
 
 	if err := verifyEvidenceOwnership(ctx, tx, event); err != nil {
 		return ledgervo.DurableAck{}, false, err
@@ -89,11 +131,14 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (l
 			IngestSequence: existingSequence, IngestedAt: ingestedAt.UTC(),
 		}, false, nil
 	case err == nil:
-		if err := insertEvidenceConflict(ctx, tx, event, existingHash); err != nil {
+		if err := insertEvidenceConflictKafka(ctx, tx, event, existingHash, coordinate, "event_payload_conflict"); err != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(err), err
 		}
 		if err := tx.Commit(); err != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		}
+		if coordinate != nil {
+			return ledgervo.DurableAck{}, false, &kafkaConflictTerminal{reason: "event_payload_conflict"}
 		}
 		return ledgervo.DurableAck{}, false, ievidenceledger.ErrPayloadConflict
 	case !errors.Is(err, sql.ErrNoRows):
@@ -102,20 +147,32 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (l
 
 	missingCauses, err := verifyCausationScope(ctx, tx, event)
 	if err != nil {
-		if conflictErr := insertEvidenceConflict(ctx, tx, event, event.PayloadHash); conflictErr != nil {
+		if coordinate != nil && !errors.Is(err, ievidenceledger.ErrCausalityConflict) {
+			return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		}
+		if conflictErr := insertEvidenceConflictKafka(ctx, tx, event, event.PayloadHash, coordinate, "causality_conflict"); conflictErr != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(conflictErr), conflictErr
 		}
 		if commitErr := tx.Commit(); commitErr != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(commitErr), commitErr
+		}
+		if coordinate != nil {
+			return ledgervo.DurableAck{}, false, &kafkaConflictTerminal{reason: "causality_conflict"}
 		}
 		return ledgervo.DurableAck{}, false, err
 	}
 	if err := verifyCausationAcyclic(ctx, tx, event); err != nil {
-		if conflictErr := insertEvidenceConflict(ctx, tx, event, event.PayloadHash); conflictErr != nil {
+		if coordinate != nil && !errors.Is(err, ievidenceledger.ErrCausalityConflict) {
+			return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		}
+		if conflictErr := insertEvidenceConflictKafka(ctx, tx, event, event.PayloadHash, coordinate, "causality_conflict"); conflictErr != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(conflictErr), conflictErr
 		}
 		if commitErr := tx.Commit(); commitErr != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(commitErr), commitErr
+		}
+		if coordinate != nil {
+			return ledgervo.DurableAck{}, false, &kafkaConflictTerminal{reason: "causality_conflict"}
 		}
 		return ledgervo.DurableAck{}, false, err
 	}
@@ -133,11 +190,14 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (l
 		event.ProducerStreamID, event.ProducerEpoch, event.ProducerSequence,
 	).Scan(&streamEventID, &streamHash)
 	if err == nil && streamEventID != event.EventID {
-		if err := insertEvidenceConflict(ctx, tx, event, streamHash); err != nil {
+		if err := insertEvidenceConflictKafka(ctx, tx, event, streamHash, coordinate, "producer_sequence_conflict"); err != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(err), err
 		}
 		if err := tx.Commit(); err != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		}
+		if coordinate != nil {
+			return ledgervo.DurableAck{}, false, &kafkaConflictTerminal{reason: "producer_sequence_conflict"}
 		}
 		return ledgervo.DurableAck{}, false, ievidenceledger.ErrSequenceConflict
 	}
@@ -153,11 +213,14 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (l
 		return ledgervo.DurableAck{}, retryableTransactionError(err), err
 	}
 	if maxEpoch.Valid && event.ProducerEpoch < uint64(maxEpoch.Int64) {
-		if err := insertEvidenceConflict(ctx, tx, event, event.PayloadHash); err != nil {
+		if err := insertEvidenceConflictKafka(ctx, tx, event, event.PayloadHash, coordinate, "producer_sequence_conflict"); err != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(err), err
 		}
 		if err := tx.Commit(); err != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		}
+		if coordinate != nil {
+			return ledgervo.DurableAck{}, false, &kafkaConflictTerminal{reason: "producer_sequence_conflict"}
 		}
 		return ledgervo.DurableAck{}, false, ievidenceledger.ErrSequenceConflict
 	}
@@ -170,11 +233,14 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (l
 		return ledgervo.DurableAck{}, retryableTransactionError(err), err
 	}
 	if maxSequence.Valid && event.ProducerSequence <= uint64(maxSequence.Int64) {
-		if err := insertEvidenceConflict(ctx, tx, event, event.PayloadHash); err != nil {
+		if err := insertEvidenceConflictKafka(ctx, tx, event, event.PayloadHash, coordinate, "producer_sequence_conflict"); err != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(err), err
 		}
 		if err := tx.Commit(); err != nil {
 			return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		}
+		if coordinate != nil {
+			return ledgervo.DurableAck{}, false, &kafkaConflictTerminal{reason: "producer_sequence_conflict"}
 		}
 		return ledgervo.DurableAck{}, false, ievidenceledger.ErrSequenceConflict
 	}
@@ -282,7 +348,7 @@ func verifyCausationScope(ctx context.Context, tx *sql.Tx, event ledgervo.Event)
 			return nil, err
 		}
 		if interactionID != event.InteractionID {
-			return nil, fmt.Errorf("causation event %s crosses trusted interaction scope", causeID)
+			return nil, fmt.Errorf("%w: causation event %s crosses trusted interaction scope", ievidenceledger.ErrCausalityConflict, causeID)
 		}
 	}
 	return missing, nil
@@ -332,5 +398,23 @@ func insertEvidenceConflict(ctx context.Context, tx *sql.Tx, event ledgervo.Even
 		) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6))`,
 		event.EventID, existingHash, event.PayloadHash, envelope,
 	)
+	return err
+}
+
+func insertEvidenceConflictKafka(ctx context.Context, tx *sql.Tx, event ledgervo.Event, existingHash string, coordinate *ievidenceledger.KafkaCoordinate, reason string) error {
+	if coordinate == nil {
+		return insertEvidenceConflict(ctx, tx, event, existingHash)
+	}
+	envelope, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO bkn_trace_event_conflicts (
+		event_id, existing_payload_hash, conflicting_payload_hash, envelope, detected_at,
+		topic, partition_id, offset_id, reason_code, incoming_immutable_hash
+	) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), ?, ?, ?, ?, ?)
+	ON DUPLICATE KEY UPDATE conflict_id=LAST_INSERT_ID(conflict_id)`,
+		event.EventID, existingHash, event.PayloadHash, envelope, coordinate.Topic, coordinate.Partition,
+		coordinate.Offset, reason, ledgervo.ImmutableRecordHash(event))
 	return err
 }

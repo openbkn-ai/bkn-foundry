@@ -3,7 +3,7 @@
 -- Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
 -- Conditions. See LICENSE-OPENBKN.txt in the repository root.
 --
--- Audit monthly-table template, version v032.
+-- Audit monthly-table template, version v031.
 -- Operators replace the literal YYYYMM token with a validated UTC month before
 -- applying this file; application input is never interpolated into SQL.
 CREATE TABLE IF NOT EXISTS bkn_audit.audit_event_YYYYMM (
@@ -14,11 +14,7 @@ CREATE TABLE IF NOT EXISTS bkn_audit.audit_event_YYYYMM (
   occurred_at DATETIME(6) NOT NULL,
   broker_received_at DATETIME(6) NOT NULL,
   recorded_at DATETIME(6) NOT NULL,
-  topic VARCHAR(249) NOT NULL,
-  partition_id INT NOT NULL,
-  offset_id BIGINT NOT NULL,
   PRIMARY KEY (event_id),
-  UNIQUE KEY uq_audit_kafka_coordinate (topic, partition_id, offset_id),
   KEY idx_audit_event_occurred (occurred_at, event_id),
   KEY idx_audit_event_source (source_id, occurred_at, event_id)
 ) ENGINE=InnoDB;

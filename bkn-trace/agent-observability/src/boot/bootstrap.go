@@ -34,6 +34,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/archivestore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknbackendaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
@@ -52,6 +53,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/ossgatewayarchive"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/otelcolmetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/vegaaudit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/kafkaruntime"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
 	memorysessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
@@ -70,6 +74,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isourcecoveragestore"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
+	kafka "github.com/segmentio/kafka-go"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
@@ -80,6 +85,8 @@ type App struct {
 	stopWorkers    context.CancelFunc
 	workers        sync.WaitGroup
 	projection     *projectorsvc.Worker
+	kafkaRuntimes  []*kafkaruntime.Runtime
+	kafkaHealth    *kafkaHealth
 }
 
 const APIBasePath = "/api/agent-observability/v1"
@@ -127,10 +134,78 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	kafkaConfig, err := conf.NewKafkaConsumerConfig()
+	if err != nil {
+		return nil, err
+	}
 	metrics := coremetrics.New()
 	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)
 	if err != nil {
 		return nil, err
+	}
+	var kafkaRuntimes []*kafkaruntime.Runtime
+	if kafkaConfig.Evidence.Enabled {
+		if closeDatabase != nil {
+			_ = closeDatabase()
+		}
+		return nil, errors.New("evidence Kafka consumer is blocked until the C1 control-plane writer for policy, producer registration, and closure history is integrated")
+	}
+	if kafkaConfig.Audit.Enabled {
+		if !strings.EqualFold(coreConfig.Store, "mariadb") || !coreConfig.AutoMigrate {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("enabled Audit Kafka consumer requires Core MariaDB with AutoMigrate enabled")
+		}
+		databaseStore, ok := sessionStore.(interface{ Database() *sql.DB })
+		if !ok || databaseStore.Database() == nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("enabled Audit Kafka consumer requires the shared MariaDB ledger connection")
+		}
+		auditLedger, err := auditstore.New(databaseStore.Database())
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, err
+		}
+		if err := auditLedger.EnsureMonthlyWindow(context.Background(), time.Now().UTC()); err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, fmt.Errorf("ensure Audit monthly schema window: %w", err)
+		}
+		validator, err := auditvalidator.New()
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, err
+		}
+		protocol, err := auditconsumer.New(validator, auditLedger, kafkaNoopCommitter{})
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, err
+		}
+		runtime, err := kafkaruntime.New(kafkaConfig, kafkaConfig.Audit, func(ctx context.Context, message kafka.Message) error {
+			headers := make([]auditconsumer.Header, 0, len(message.Headers))
+			for _, header := range message.Headers {
+				headers = append(headers, auditconsumer.Header{Key: header.Key, Value: append([]byte(nil), header.Value...)})
+			}
+			record := auditconsumer.Record{Topic: message.Topic, Key: message.Key, Value: message.Value, Headers: headers, Partition: message.Partition, Offset: message.Offset, BrokerTime: message.Time.UTC()}
+			return protocol.Process(ctx, record)
+		})
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, err
+		}
+		kafkaRuntimes = append(kafkaRuntimes, runtime)
 	}
 	coverageStore, coverageStoreSupported := sessionStore.(isourcecoveragestore.Store)
 	coverageMonitorEnabled := observabilityConfig.SourceCoverageMetricsEndpoint != ""
@@ -273,6 +348,10 @@ func NewApp() (*App, error) {
 		sessionHandler, ledgerHandler, metrics, enterpriseReader,
 	)
 	app.closeDatabase = closeDatabase
+	app.kafkaRuntimes = kafkaRuntimes
+	for _, runtime := range kafkaRuntimes {
+		app.kafkaHealth.set("audit", runtime)
+	}
 	workerContext, stopWorkers := context.WithCancel(context.Background())
 	app.stopWorkers = stopWorkers
 	app.workers.Add(1)
@@ -507,7 +586,14 @@ func newAppWithArchive(
 	metrics http.Handler,
 	enterpriseReaders ...enterpriseroute.Reader,
 ) *App {
+	health := newKafkaHealth()
+	disabledEvidence, _ := kafkaruntime.NewWithFactory(conf.KafkaConsumerConfig{}, conf.KafkaTopicConsumerConfig{}, nil, nil)
+	disabledAudit, _ := kafkaruntime.NewWithFactory(conf.KafkaConsumerConfig{}, conf.KafkaTopicConsumerConfig{}, nil, nil)
+	health.set("evidence", disabledEvidence)
+	health.set("audit", disabledAudit)
 	mux := http.NewServeMux()
+	mux.HandleFunc("/health/ready", health.serveHTTP)
+	mux.HandleFunc("/health/live", health.serveLiveHTTP)
 	if metrics != nil {
 		mux.Handle("/metrics", metrics)
 	}
@@ -573,6 +659,7 @@ func newAppWithArchive(
 	))
 
 	internalMux := http.NewServeMux()
+	internalMux.HandleFunc("/health/ready", health.serveHTTP)
 	internal := evidenceHandler.InternalLifecycle
 	lifecycle := func(next http.HandlerFunc) http.HandlerFunc {
 		return internal(evidenceHandler.RequireTrustedLifecycleIdentity(next))
@@ -592,20 +679,37 @@ func newAppWithArchive(
 	return &App{
 		server:         httpserver.New(httpServerConfig.Address, publicHandler),
 		internalServer: httpserver.New(httpServerConfig.InternalAddress, internalHandler),
+		kafkaHealth:    health,
 	}
 }
 
 func (a *App) Start() error {
+	startedKafka := make([]*kafkaruntime.Runtime, 0, len(a.kafkaRuntimes))
+	for _, runtime := range a.kafkaRuntimes {
+		if err := runtime.Start(context.Background()); err != nil {
+			for _, started := range startedKafka {
+				_ = started.Shutdown(context.Background())
+			}
+			return fmt.Errorf("start Kafka consumer runtime: %w", err)
+		}
+		startedKafka = append(startedKafka, runtime)
+	}
 	if a.internalServer == nil {
-		return a.server.Start()
+		err := a.server.Start()
+		if err != nil {
+			stopStartedKafka(startedKafka)
+		}
+		return err
 	}
 	internalResult, err := a.internalServer.StartAsync()
 	if err != nil {
+		stopStartedKafka(startedKafka)
 		return fmt.Errorf("start BKN Trace internal listener: %w", err)
 	}
 	publicResult, err := a.server.StartAsync()
 	if err != nil {
 		_ = a.internalServer.Shutdown(context.Background())
+		stopStartedKafka(startedKafka)
 		return fmt.Errorf("start BKN Trace public listener: %w", err)
 	}
 	select {
@@ -621,8 +725,11 @@ func (a *App) Start() error {
 
 func (a *App) Shutdown(ctx context.Context) error {
 	var shutdownErr error
+	for _, runtime := range a.kafkaRuntimes {
+		shutdownErr = errors.Join(shutdownErr, runtime.Shutdown(ctx))
+	}
 	if a.server != nil {
-		shutdownErr = a.server.Shutdown(ctx)
+		shutdownErr = errors.Join(shutdownErr, a.server.Shutdown(ctx))
 	}
 	if a.internalServer != nil {
 		shutdownErr = errors.Join(shutdownErr, a.internalServer.Shutdown(ctx))
@@ -636,6 +743,16 @@ func (a *App) Shutdown(ctx context.Context) error {
 	}
 	return shutdownErr
 }
+
+func stopStartedKafka(runtimes []*kafkaruntime.Runtime) {
+	for i := len(runtimes) - 1; i >= 0; i-- {
+		_ = runtimes[i].Shutdown(context.Background())
+	}
+}
+
+type kafkaNoopCommitter struct{}
+
+func (kafkaNoopCommitter) Commit(context.Context, int, int64) error { return nil }
 
 func stopAndDrainProjectionWorker(
 	ctx context.Context,

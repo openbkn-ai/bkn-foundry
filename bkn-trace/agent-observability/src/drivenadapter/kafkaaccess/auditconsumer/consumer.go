@@ -19,12 +19,18 @@ import (
 const Topic = "openbkn.audit.v1"
 
 type Record struct {
-	Topic         string
-	Value         []byte
-	Partition     int
-	Offset        int64
-	BrokerTime    time.Time
-	TimestampType string
+	Topic      string
+	Key        []byte
+	Value      []byte
+	Headers    []Header
+	Partition  int
+	Offset     int64
+	BrokerTime time.Time
+}
+
+type Header struct {
+	Key   string
+	Value []byte
 }
 
 type Validator interface {
@@ -45,7 +51,6 @@ func (e *PermanentError) Error() string { return e.Err.Error() }
 func (e *PermanentError) Unwrap() error { return e.Err }
 
 var ErrWrongTopic = errors.New("audit record topic is not openbkn.audit.v1")
-var ErrWrongTimestampType = errors.New("audit record timestamp type is not LogAppendTime")
 
 type Consumer struct {
 	validator Validator
@@ -66,9 +71,6 @@ func New(validator Validator, ledger Ledger, committer OffsetCommitter) (*Consum
 func (c *Consumer) Process(ctx context.Context, record Record) error {
 	if record.Topic != Topic {
 		return c.commitPermanent(ctx, record, ErrWrongTopic)
-	}
-	if record.TimestampType != "LogAppendTime" {
-		return c.commitPermanent(ctx, record, ErrWrongTimestampType)
 	}
 	event, err := c.validator.Validate(ctx, record)
 	if err != nil {
