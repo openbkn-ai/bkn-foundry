@@ -132,10 +132,12 @@ type ObjectTypeStatus struct {
 	IncrementalKey   string `json:"incremental_key" mapstructure:"incremental_key"`
 	IncrementalValue string `json:"incremental_value" mapstructure:"incremental_value"`
 	Index            string `json:"index" mapstructure:"index"`
-	IndexAvailable   bool   `json:"index_available" mapstructure:"index_available"`
-	DocCount         int64  `json:"doc_count" mapstructure:"doc_count"`
-	StorageSize      int64  `json:"storage_size" mapstructure:"storage_size"`
-	UpdateTime       int64  `json:"update_time" mapstructure:"update_time"`
+	// IndexAvailable is retained only to read the legacy database column. It is not part of the
+	// API contract and must not be used to decide the current resource index state.
+	IndexAvailable bool  `json:"-" mapstructure:"-"`
+	DocCount       int64 `json:"doc_count" mapstructure:"doc_count"`
+	StorageSize    int64 `json:"storage_size" mapstructure:"storage_size"`
+	UpdateTime     int64 `json:"update_time" mapstructure:"update_time"`
 }
 
 const (

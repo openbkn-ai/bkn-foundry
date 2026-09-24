@@ -2252,11 +2252,6 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 
 func setObjectTypeIndexStatus(objectType *interfaces.ObjectType, state, sourceStatus string) {
 	objectType.IndexStatus = &interfaces.ObjectTypeIndexStatus{State: state, SourceStatus: sourceStatus}
-	// Keep the old field coherent while it remains in the response contract. Its persisted value is
-	// deliberately ignored; consumers should migrate to index_status, which can represent unknown.
-	if objectType.Status != nil {
-		objectType.Status.IndexAvailable = state == interfaces.ObjectTypeIndexStateAvailable
-	}
 }
 
 func indexStateForVegaResource(resource *interfaces.VegaResource) string {

@@ -6,8 +6,10 @@ package object_type
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"go.uber.org/mock/gomock"
@@ -215,7 +217,6 @@ func TestProcessObjectTypeDetailsProjectsVegaIndexStatusAndConfiguredFeatures(t 
 				{Name: "embedding", MappedField: &interfaces.Field{Name: "embedding"}},
 			},
 		},
-		Status: &interfaces.ObjectTypeStatus{IndexAvailable: false},
 	}
 	resource := &interfaces.VegaResource{
 		ID:               "r1",
@@ -235,8 +236,12 @@ func TestProcessObjectTypeDetailsProjectsVegaIndexStatusAndConfiguredFeatures(t 
 	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateAvailable {
 		t.Fatalf("index status = %#v, want available", objectType.IndexStatus)
 	}
-	if !objectType.Status.IndexAvailable {
-		t.Fatal("compatibility index_available was not derived from the current Vega status")
+	encoded, err := json.Marshal(objectType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "index_available") {
+		t.Fatalf("legacy index_available must not be returned: %s", encoded)
 	}
 	summaryFeatures := objectType.DataProperties[0].IndexFeatures
 	if len(summaryFeatures) != 2 || summaryFeatures[0].Type != interfaces.FieldFeatureType_Keyword ||
