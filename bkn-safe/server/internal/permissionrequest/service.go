@@ -40,13 +40,14 @@ const (
 )
 
 var (
-	ErrInvalidRequest          = errors.New("invalid permission request")
-	ErrNotFound                = errors.New("permission request not found")
-	ErrForbidden               = errors.New("permission request is forbidden")
-	ErrClosed                  = errors.New("permission request is closed")
-	ErrResourceDeleted         = errors.New("permission request resource is deleted")
-	ErrResourceUnavailable     = errors.New("permission request resource is unavailable")
-	ErrUnsupportedResourceType = errors.New("permission request resource type is unsupported")
+	ErrInvalidRequest           = errors.New("invalid permission request")
+	ErrNotFound                 = errors.New("permission request not found")
+	ErrForbidden                = errors.New("permission request is forbidden")
+	ErrClosed                   = errors.New("permission request is closed")
+	ErrResourceDeleted          = errors.New("permission request resource is deleted")
+	ErrResourceUnavailable      = errors.New("permission request resource is unavailable")
+	ErrUnsupportedResourceType  = errors.New("permission request resource type is unsupported")
+	ErrPermissionAlreadyGranted = errors.New("permission request permission is already granted")
 )
 
 type CreateInput struct {
@@ -223,7 +224,7 @@ func validCreate(in *CreateInput) bool {
 		}
 		// Resource creation is a platform lifecycle operation, not a
 		// permission that can be delegated through this workflow.
-		if operation == "create" {
+		if operation == "create" || operation == "authorize" {
 			return false
 		}
 		set[operation] = struct{}{}
@@ -426,6 +427,13 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 	if err := s.validateRequestOperations(ctx, in.ResourceType, in.Operations); err != nil {
 		return nil, false, err
 	}
+	alreadyGranted, err := s.hasRequestedPermission(ctx, in.RequesterID, in.ResourceType, in.ResourceID, in.Operations)
+	if err != nil {
+		return nil, false, err
+	}
+	if alreadyGranted {
+		return nil, false, ErrPermissionAlreadyGranted
+	}
 	requestKey := requestFingerprint(in)
 	id, err := newUUIDv7()
 	if err != nil {
@@ -482,7 +490,13 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 // operation mapping; accepting arbitrary knowledge-network operations would
 // create applications that no legitimate reviewer can approve.
 func (s *Service) validateRequestOperations(ctx context.Context, resourceType string, operations []string) error {
-	if !finegrained.Assembled() && len(operations) == 1 && operations[0] == authz.ActFullBusinessAccess {
+	if !finegrained.Assembled() {
+		if len(operations) != 1 || operations[0] != authz.ActFullBusinessAccess {
+			return ErrInvalidRequest
+		}
+		if _, ok := authz.CommunityBundleOperations(resourceType); !ok {
+			return ErrInvalidRequest
+		}
 		return nil
 	}
 	var count int64
@@ -495,6 +509,37 @@ func (s *Service) validateRequestOperations(ctx context.Context, resourceType st
 		return ErrInvalidRequest
 	}
 	return nil
+}
+
+// hasRequestedPermission checks whether an approval would duplicate an
+// existing effective permission. Community stores one full-business bundle, so
+// it is already granted only when every bundled operation is effective. In a
+// fine-grained request, one existing requested operation is sufficient: callers
+// must submit only the operations that are actually missing.
+func (s *Service) hasRequestedPermission(ctx context.Context, accessorID, resourceType, resourceID string, operations []string) (bool, error) {
+	checkOperations := operations
+	communityBundle := false
+	if !finegrained.Assembled() {
+		var ok bool
+		checkOperations, ok = authz.CommunityBundleOperations(resourceType)
+		if !ok {
+			return false, ErrInvalidRequest
+		}
+		communityBundle = true
+	}
+	for _, operation := range checkOperations {
+		allowed, err := s.enforcer.CheckContext(ctx, accessorID, resourceType, resourceID, operation)
+		if err != nil {
+			return false, err
+		}
+		if allowed && !communityBundle {
+			return true, nil
+		}
+		if !allowed && communityBundle {
+			return false, nil
+		}
+	}
+	return communityBundle, nil
 }
 
 // authorizationRoot follows the registered instance parent chain. This covers
@@ -860,6 +905,13 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 			if err != nil {
 				return err
 			}
+			alreadyGranted, err := s.hasRequestedPermission(ctx, req.RequesterID, req.ResourceType, req.ResourceID, operations)
+			if err != nil {
+				return err
+			}
+			if alreadyGranted {
+				return ErrPermissionAlreadyGranted
+			}
 			if finegrained.Assembled() {
 				for _, operation := range operations {
 					grantID := req.GrantID
@@ -876,7 +928,8 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 					}
 				}
 			} else {
-				err = tx.GrantCommunityBundle(req.RequesterID, req.ResourceType, req.ResourceID, authz.AuthoritySourcePermissionRequest)
+				_, err = tx.GrantCommunityBundleBy(req.GrantID, req.RequesterID, req.ResourceType, req.ResourceID,
+					authz.AuthoritySourcePermissionRequest, in.ReviewerID)
 			}
 			if err != nil {
 				return err

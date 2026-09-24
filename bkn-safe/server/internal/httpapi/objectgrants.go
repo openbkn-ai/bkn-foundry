@@ -1382,11 +1382,12 @@ func authorizeObjectGrantRevoke(c *gin.Context, e *authz.Enforcer, db *gorm.DB, 
 	// A delegated owner may revoke only an ordinary allow produced by that same
 	// delegated writer. Stable source identity prevents cross-grantor removal.
 	if authority != authorityAdminAuthz {
-		ordinaryOwnerGrant := record.PolicySource == authz.PolicySourceProfessionalRule &&
-			record.AuthoritySource == authz.AuthoritySourceOwnerDelegate &&
-			record.CreatedBy == c.GetString(ctxAccessorID) &&
-			record.Effect == authz.EffectAllow && record.Operation != opAuthorize
-		if !ordinaryOwnerGrant {
+		ownerManagedGrant := record.CreatedBy == c.GetString(ctxAccessorID) &&
+			record.Effect == authz.EffectAllow && record.Operation != opAuthorize &&
+			((record.PolicySource == authz.PolicySourceProfessionalRule && record.AuthoritySource == authz.AuthoritySourceOwnerDelegate) ||
+				(record.AuthoritySource == authz.AuthoritySourcePermissionRequest &&
+					(record.PolicySource == authz.PolicySourceProfessionalRule || record.PolicySource == authz.PolicySourceCommunityBundle)))
+		if !ownerManagedGrant {
 			replyPublicError(c, http.StatusForbidden)
 			return "", false
 		}

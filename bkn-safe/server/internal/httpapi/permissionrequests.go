@@ -192,6 +192,8 @@ func writePermissionRequestError(c *gin.Context, err error) bool {
 		replyPublicError(c, http.StatusForbidden)
 	case errors.Is(err, permissionrequest.ErrClosed):
 		replyPublicError(c, http.StatusConflict)
+	case errors.Is(err, permissionrequest.ErrPermissionAlreadyGranted):
+		replyPublicError(c, http.StatusConflict)
 	case errors.Is(err, permissionrequest.ErrResourceDeleted):
 		replyPublicError(c, http.StatusConflict)
 	case errors.Is(err, permissionrequest.ErrResourceUnavailable):
