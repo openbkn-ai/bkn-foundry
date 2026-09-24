@@ -62,6 +62,23 @@ func (tx *PolicyTransaction) GrantPolicy(grant PolicyGrant) (bool, error) {
 	return tx.enforcer.addPolicyGrant(grant)
 }
 
+// GrantCommunityBundleBy writes one independently recoverable Community
+// bundle inside the caller's existing transaction. It is used by workflows
+// that own a stable grant ID and need to retain the approving actor.
+func (tx *PolicyTransaction) GrantCommunityBundleBy(grantID, accessorID, resourceType, resourceID string, authority AuthoritySource, createdBy string) (bool, error) {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourcePermissionRequest && authority != AuthoritySourceSystem {
+		return false, fmt.Errorf("community bundle authority %q is not permitted", authority)
+	}
+	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
+		return false, err
+	}
+	return tx.GrantPolicy(PolicyGrant{
+		GrantID: grantID, AccessorID: accessorID, Object: obj(resourceType, resourceID),
+		Operation: ActFullBusinessAccess, Effect: EffectAllow,
+		PolicySource: PolicySourceCommunityBundle, AuthoritySource: authority, CreatedBy: createdBy,
+	})
+}
+
 func (tx *PolicyTransaction) RevokePolicy(grantID string) (bool, error) {
 	removed, _, err := tx.enforcer.revokePolicyGrant(grantID)
 	return removed, err

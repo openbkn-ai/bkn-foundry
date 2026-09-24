@@ -63,7 +63,7 @@ metadata:
 - **只声明本知识网络已挂载的能力。** 未挂载的能力搜不到，Agent 应如实告知「未挂载」，不得换用其他网络里的同名能力。
 - **需要人工确认的行动标 `confirm: true`。** 平台不做两阶段拦截，靠 Skill 正文约束 Agent「未得到肯定答复不得执行」。
 - **找 Skill 时带 `types: ["skill"]`。** `search_capabilities` 带 query 时函数会占满前几条，不收窄类型 Skill 会被挤出。
-- **文本字段的定位用 `match`。** 建了全文索引的字段（`condition_operations` 含 `match`）用 `==` 可能被资源层拒绝，Skill 正文里写明。
+- **文本字段的定位用 `match`。** 建了全文索引的字段用 `==` 可能被资源层拒绝，Skill 正文里写明。判断字段建没建全文索引：`search_schema` / `search_instance` 上看属性的 `indexed: true` 加对象类的 `index_operations` 是否含 `match`，能力与对象类不同的属性自带 `condition_operations`；`get_object_types` 则始终逐属性给出 `condition_operations`。
 
 ## 三、函数怎么写（bkn-osdk）
 

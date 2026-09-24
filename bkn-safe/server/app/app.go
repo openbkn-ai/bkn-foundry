@@ -45,6 +45,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httpapi"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/oauthorigin"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
@@ -145,6 +146,10 @@ func Boot(opts Options) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("authorization resource catalog: %w", err)
 	}
+	permissionRequestResources, err := permissionrequest.NewHTTPResourceLivenessResolver(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
+	if err != nil {
+		return nil, fmt.Errorf("permission request resource resolver: %w", err)
+	}
 	rowFilterPublishedObjectTypes, err := httpapi.NewRowFilterPublishedObjectTypeResolver(cfg.Upstreams.OntologyQuery)
 	if err != nil {
 		return nil, fmt.Errorf("row-filter published object type resolver: %w", err)
@@ -200,6 +205,7 @@ func Boot(opts Options) (*App, error) {
 			OAuthAccessOrigins:            oauthAccessOrigins,
 			License:                       licSvc,
 			AuthorizationResources:        authorizationResources,
+			PermissionRequestResources:    permissionRequestResources,
 			RowFilterPublishedObjectTypes: rowFilterPublishedObjectTypes,
 		},
 	}, nil

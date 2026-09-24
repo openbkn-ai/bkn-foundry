@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -75,6 +76,15 @@ const grantableUserPageSize = 20
 // this up" and "the owner shared their own object" are different acts that would
 // otherwise be indistinguishable — both arrive as the same endpoint call.
 type grantAuthority string
+
+// reviewerInboxSyncer keeps the denormalized permission-request reviewer
+// index current after a successful object grant. The index is not an
+// authority source, so a synchronization failure must not turn a committed
+// authorization write into a misleading failed request; ListTodo retains its
+// realtime refresh as the recovery path.
+type reviewerInboxSyncer interface {
+	SyncReviewerInbox(context.Context, string) error
+}
 
 const (
 	// Platform-wide admin-authz:grant / :revoke. Unrestricted: may write any op
@@ -284,7 +294,7 @@ func restrictDelegatedOps(c *gin.Context, e *authz.Enforcer, ref resourceRef, op
 	return true
 }
 
-func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
+func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, reviewerSync reviewerInboxSyncer) {
 	// GET /policies?resource_type=&resource_id= — the p-lines written directly
 	// against this exact object key, grouped by subject. -> { entries:[
 	// { accessor_id, resource{type,id}, operations:[...] } ] }
@@ -523,7 +533,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// source-scoped allow/deny operation set. The handler derives both provenance
 	// fields, normalizes direct requirements, and applies the same checks on the
 	// administrator and /me delegation routes.
-	g.POST("/object-grants", setObjectGrantHandler(e, db))
+	g.POST("/object-grants", setObjectGrantHandler(e, db, reviewerSync))
 	g.POST("/object-grants/preview", RequirePermission(e, "admin-authz", "view"), previewObjectGrantHandler(e))
 	g.POST("/object-grants/revoke", revokeObjectGrantBatchHandler(e, db))
 
@@ -741,7 +751,7 @@ func catalogOpSet(db *gorm.DB, resourceType string) (map[string]bool, error) {
 // The platform-wide listing is deliberately NOT mirrored here. An owner may read
 // and write the grants on an object they own, one object at a time; "show me
 // every grant on the platform" stays with the administrator.
-func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service) {
+func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service, reviewerSync reviewerInboxSyncer) {
 	// GET /object-grants?resource_type=&resource_id= — who currently holds what
 	// on ONE object. The share UI opens with this: an owner about to hand their
 	// network to a colleague has to see who already has it. POST replaces only
@@ -866,7 +876,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		}
 		c.JSON(http.StatusOK, gin.H{"users": out})
 	})
-	g.POST("/object-grants", setObjectGrantHandler(e, db))
+	g.POST("/object-grants", setObjectGrantHandler(e, db, reviewerSync))
 	g.POST("/object-grants/revoke", revokeObjectGrantBatchHandler(e, db))
 	g.DELETE("/object-grants", revokeObjectGrantHandler(e, db))
 }
@@ -917,7 +927,7 @@ func grantAccessorIdentities(c *gin.Context, db *gorm.DB, ids []string) (map[str
 	return out, nil
 }
 
-func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
+func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, reviewerSync reviewerInboxSyncer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req objectGrantWriteRequest
 		if !bind(c, &req) {
@@ -1067,6 +1077,11 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			ops, effect, authoritySource, c.GetString(ctxAccessorID)); err != nil {
 			serverError(c, err)
 			return
+		}
+		if reviewerSync != nil {
+			if err := reviewerSync.SyncReviewerInbox(c.Request.Context(), req.AccessorID); err != nil {
+				slog.Error("refresh permission-request reviewer inbox after object grant", "accessor_id", req.AccessorID, "error", err)
+			}
 		}
 		c.Status(http.StatusNoContent)
 	}
@@ -1367,11 +1382,12 @@ func authorizeObjectGrantRevoke(c *gin.Context, e *authz.Enforcer, db *gorm.DB, 
 	// A delegated owner may revoke only an ordinary allow produced by that same
 	// delegated writer. Stable source identity prevents cross-grantor removal.
 	if authority != authorityAdminAuthz {
-		ordinaryOwnerGrant := record.PolicySource == authz.PolicySourceProfessionalRule &&
-			record.AuthoritySource == authz.AuthoritySourceOwnerDelegate &&
-			record.CreatedBy == c.GetString(ctxAccessorID) &&
-			record.Effect == authz.EffectAllow && record.Operation != opAuthorize
-		if !ordinaryOwnerGrant {
+		ownerManagedGrant := record.CreatedBy == c.GetString(ctxAccessorID) &&
+			record.Effect == authz.EffectAllow && record.Operation != opAuthorize &&
+			((record.PolicySource == authz.PolicySourceProfessionalRule && record.AuthoritySource == authz.AuthoritySourceOwnerDelegate) ||
+				(record.AuthoritySource == authz.AuthoritySourcePermissionRequest &&
+					(record.PolicySource == authz.PolicySourceProfessionalRule || record.PolicySource == authz.PolicySourceCommunityBundle)))
+		if !ownerManagedGrant {
 			replyPublicError(c, http.StatusForbidden)
 			return "", false
 		}

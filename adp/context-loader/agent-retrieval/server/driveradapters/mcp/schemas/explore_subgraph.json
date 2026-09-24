@@ -47,7 +47,7 @@
           },
           "operation": {
             "type": "string",
-            "description": "条件操作符，取值规则与 query_object_instance 相同：比较算子按属性 type 判断，索引算子 match / knn 以该属性的 condition_operations 为准。"
+            "description": "条件操作符，取值规则与 query_object_instance 相同：比较算子按属性 type 判断，索引算子 match / knn 以该属性的 condition_operations 为准（search_schema / search_instance 把共用的那份列表提到对象类的 index_operations，属性上只写 indexed=true）。"
           },
           "sub_conditions": {
             "type": "array",

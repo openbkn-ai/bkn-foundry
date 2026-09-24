@@ -162,18 +162,96 @@ func trimToIndexBackedOperations(objectTypes []*interfaces.KnSearchObjectType, i
 			}
 			p.ConditionOperations = indexBackedOperations(p.ConditionOperations)
 		}
+		hoistSharedIndexOperations(objType)
 	}
+}
+
+// hoistSharedIndexOperations lifts the operator list that an object type's indexed properties
+// share up to the object type, instead of repeating it on each of them.
+//
+// After the trim above almost every indexed property of an object type carries the same short
+// list, because the list now says only "this field has a full text / vector index" and a
+// resource usually indexes its text columns the same way. Measured on 14.103.77.23,
+// kn=supply_942_verify, query "supply order": ["match","multi_match","knn"] repeated on 52
+// properties, ~2.7KB, about 15% of the whole search_schema response.
+//
+// A property that shares the list carries indexed=true in its place; one whose capability
+// differs keeps its own condition_operations, so field level differences survive; one with no
+// index carries neither key, as before. A list carried by a single property is left inline,
+// since lifting it would only move the bytes.
+func hoistSharedIndexOperations(objType *interfaces.KnSearchObjectType) {
+	if objType == nil {
+		return
+	}
+
+	counts := map[string]int{}
+	sets := map[string][]interfaces.KnOperationType{}
+	for _, p := range objType.DataProperties {
+		if p == nil || len(p.ConditionOperations) == 0 {
+			continue
+		}
+		key := operationsKey(p.ConditionOperations)
+		counts[key]++
+		sets[key] = p.ConditionOperations
+	}
+
+	shared := ""
+	most := 1
+	for key, n := range counts {
+		// The tie break keeps one input producing one response, whatever order the map yields.
+		if n > most || (n == most && shared != "" && key < shared) {
+			shared, most = key, n
+		}
+	}
+	if shared == "" {
+		return
+	}
+
+	objType.IndexOperations = sets[shared]
+	for _, p := range objType.DataProperties {
+		if p == nil || len(p.ConditionOperations) == 0 {
+			continue
+		}
+		if operationsKey(p.ConditionOperations) != shared {
+			continue
+		}
+		p.ConditionOperations = nil
+		p.Indexed = true
+	}
+}
+
+// operationsKey identifies an operator list. indexBackedOperations emits a fixed order, so
+// two properties with the same capability always produce the same key.
+func operationsKey(ops []interfaces.KnOperationType) string {
+	parts := make([]string, 0, len(ops))
+	for _, op := range ops {
+		parts = append(parts, string(op))
+	}
+	return strings.Join(parts, ",")
 }
 
 // indexBackedOperations selects those operators that only the server knows - they depend on whether the underlying index is built or not.
 // It cannot be inferred from the attribute type. The caller of the remaining comparison operators can make their own judgment based on type.
+//
+// The result keeps a fixed order rather than the order bkn-backend happened to send, so that two
+// properties with the same capability are recognisably the same list.
 func indexBackedOperations(ops []interfaces.KnOperationType) []interfaces.KnOperationType {
-	var out []interfaces.KnOperationType
+	present := make(map[interfaces.KnOperationType]bool, len(ops))
 	for _, op := range ops {
-		switch op {
-		case interfaces.KnOperationTypeMatch, interfaces.KnOperationTypeMultiMatch, interfaces.KnOperationTypeKnn:
+		present[op] = true
+	}
+	var out []interfaces.KnOperationType
+	for _, op := range indexBackedOperationOrder {
+		if present[op] {
 			out = append(out, op)
 		}
 	}
 	return out
+}
+
+// indexBackedOperationOrder is the published order of the index-derived operators.
+var indexBackedOperationOrder = []interfaces.KnOperationType{
+	interfaces.KnOperationTypeMatch,
+	interfaces.KnOperationTypeMultiMatch,
+	interfaces.KnOperationTypeKnn,
 }
