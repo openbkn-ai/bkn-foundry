@@ -181,6 +181,10 @@
               "type": "string",
               "description": "关系名"
             },
+            "comment": {
+              "type": "string",
+              "description": "关系语义说明。两个对象类 id 说不出这条关系是什么意思，判断该不该走它就看这里。schema_brief 不影响本字段；建模时没写说明的关系不带这个键。"
+            },
             "source_object_type_id": {
               "type": "string",
               "description": "起点对象类 ID"

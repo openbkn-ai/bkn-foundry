@@ -1188,22 +1188,30 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 	return result
 }
 
-// convertRelationTypesToLocal converts relation types to local response format, aligned with Python schema_brief:
-// - brief=true: only return concept_id, concept_name, source_object_type_id, target_object_type_id (excluding concept_type, comment)
-// - brief=false: Return the complete field (including concept_type, comment)
+// convertRelationTypesToLocal converts relation types to local response format. brief drops
+// concept_type, which the array the relation sits in already says.
+//
+// The comment stays at either level, as it does for object types and action types just above
+// and below. What a relation means is not derivable from the two object type ids it joins, and
+// this response is where a caller decides which relations to walk. It is also the only place a
+// caller meets it without paying another call: get_kn_detail's summary stopped carrying concept
+// prose in #150, on the argument that search_schema hands it back for the few concepts it
+// selects, and relation types were the one kind for which that was not true.
+//
+// The cost is bounded by how few relations one search returns — measured on the test deployment,
+// 10 relations and about 300 bytes — where get_kn_detail returns every relation of the network.
 func (s *localSearchImpl) convertRelationTypesToLocal(relations []*interfaces.RelationType, brief bool) []*interfaces.KnSearchRelationType {
 	result := make([]*interfaces.KnSearchRelationType, len(relations))
 	for i, rel := range relations {
-		var conceptType, comment string
+		var conceptType string
 		if !brief {
 			conceptType = "relation_type"
-			comment = rel.Comment
 		}
 		result[i] = &interfaces.KnSearchRelationType{
 			ConceptType:        conceptType,
 			ConceptID:          rel.ID,
 			ConceptName:        rel.Name,
-			Comment:            comment,
+			Comment:            rel.Comment,
 			SourceObjectTypeID: rel.SourceObjectTypeID,
 			TargetObjectTypeID: rel.TargetObjectTypeID,
 		}
