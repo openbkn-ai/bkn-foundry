@@ -67,6 +67,13 @@ func TestApprovalCreatesOneIndependentGrant(t *testing.T) {
 	if _, err := service.Decide(t.Context(), created.ID, DecisionInput{ReviewerID: "reviewer", Decision: "approve"}); err != ErrClosed {
 		t.Fatalf("second approval = %v, want ErrClosed", err)
 	}
+	reapplied, createdAgain, err := service.Create(t.Context(), CreateInput{RequesterID: "requester", ResourceType: "resource", ResourceID: "r-1", Operation: "query_data", Reason: "access needed again"})
+	if err != nil || !createdAgain {
+		t.Fatalf("Create after granted = %v, %v", createdAgain, err)
+	}
+	if reapplied.ID == created.ID || reapplied.Status != StatusPending {
+		t.Fatalf("reapplication = %#v, want a new pending request", reapplied)
+	}
 }
 
 func TestRequesterCannotApproveOwnRequest(t *testing.T) {

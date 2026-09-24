@@ -32,17 +32,17 @@ type httpResourceLivenessResolver struct {
 	accessorID                   string
 }
 
+// resourceResolverAccessorID is the platform service identity used only for
+// read-only resource existence checks against internal upstream APIs.
+const resourceResolverAccessorID = "266c6a42-6131-4d62-8f39-853e7093701c"
+
 // NewHTTPResourceLivenessResolver builds resolvers for resource types whose
 // owning services already expose stable internal GET-by-ID endpoints.
-func NewHTTPResourceLivenessResolver(bknBackend, executionFactory, vegaBackend config.UpstreamConfig, accessorID string) (ResourceLivenessResolver, error) {
-	accessorID = strings.TrimSpace(accessorID)
-	if accessorID == "" {
-		return nil, fmt.Errorf("resource resolver accessor ID is required")
-	}
+func NewHTTPResourceLivenessResolver(bknBackend, executionFactory, vegaBackend config.UpstreamConfig) (ResourceLivenessResolver, error) {
 	resolver := &httpResourceLivenessResolver{
 		endpoints:  make(map[string]string),
 		clients:    make(map[string]*http.Client),
-		accessorID: accessorID,
+		accessorID: resourceResolverAccessorID,
 	}
 	if err := resolver.add(bknBackend, "bkn backend", "knowledge_network", "/api/bkn-backend/in/v1/knowledge-networks/"); err != nil {
 		return nil, err

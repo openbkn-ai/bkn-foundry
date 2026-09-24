@@ -20,6 +20,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/google/uuid"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/finegrained"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -139,15 +141,40 @@ func (s *Service) refreshResourceLiveness(ctx context.Context, db *gorm.DB, req 
 	if !errors.Is(err, ErrResourceDeleted) {
 		return err
 	}
-	if err := db.WithContext(ctx).Model(req).Update("status", StatusResourceDeleted).Error; err != nil {
+	req.Status = StatusResourceDeleted
+	retireRequestKey(req)
+	if err := db.WithContext(ctx).Model(req).Updates(map[string]any{
+		"status": req.Status, "request_key": req.RequestKey,
+	}).Error; err != nil {
 		return err
 	}
-	req.Status = StatusResourceDeleted
 	return nil
 }
 
-func requestID(key string) string {
-	sum := sha256.Sum256([]byte("permission-request\x00" + key))
+func newUUIDv7() (string, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("generate UUID v7: %w", err)
+	}
+	return id.String(), nil
+}
+
+func retiredRequestKey(requestID, status string) string {
+	sum := sha256.Sum256([]byte("retired-permission-request\x00" + requestID + "\x00" + status))
+	return hex.EncodeToString(sum[:])
+}
+
+func retireRequestKey(req *model.PermissionRequest) {
+	req.RequestKey = retiredRequestKey(req.ID, req.Status)
+}
+
+func grantID(id string) string {
+	sum := sha256.Sum256([]byte("permission-request-grant\x00" + id))
+	return hex.EncodeToString(sum[:])
+}
+
+func grantIDForOperation(requestID, operation string) string {
+	sum := sha256.Sum256([]byte("permission-request-grant\x00" + requestID + "\x00" + operation))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -162,31 +189,6 @@ func requestFingerprint(in CreateInput) string {
 		in.ResourceType, in.ResourceID, strings.Join(in.Operations, "\x00"),
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	return hex.EncodeToString(sum[:])
-}
-
-func grantID(id string) string {
-	sum := sha256.Sum256([]byte("permission-request-grant\x00" + id))
-	return hex.EncodeToString(sum[:])
-}
-
-func grantIDForOperation(requestID, operation string) string {
-	sum := sha256.Sum256([]byte("permission-request-grant\x00" + requestID + "\x00" + operation))
-	return hex.EncodeToString(sum[:])
-}
-
-func decisionID(requestID, reviewerID string) string {
-	sum := sha256.Sum256([]byte("permission-request-decision\x00" + requestID + "\x00" + reviewerID))
-	return hex.EncodeToString(sum[:])
-}
-
-func reviewerRecordID(requestID, reviewerID string) string {
-	sum := sha256.Sum256([]byte("permission-request-reviewer\x00" + requestID + "\x00" + reviewerID))
-	return hex.EncodeToString(sum[:])
-}
-
-func requestOperationID(requestID, operation string) string {
-	sum := sha256.Sum256([]byte("permission-request-operation\x00" + requestID + "\x00" + operation))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -411,9 +413,9 @@ func (s *Service) hydrateReviewerSummary(ctx context.Context, db *gorm.DB, reque
 	return nil
 }
 
-// Create is idempotent by a database-backed, server-derived permission tuple.
-// RequestKey remains the stored unique column for migration compatibility, but
-// callers neither provide nor control its value.
+// Create is idempotent only while an equivalent request remains active. A
+// terminal request releases its active key so the user may start a new review
+// workflow for the same resource and operations.
 func (s *Service) Create(ctx context.Context, in CreateInput) (*model.PermissionRequest, bool, error) {
 	if !validCreate(&in) {
 		return nil, false, ErrInvalidRequest
@@ -425,7 +427,10 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 		return nil, false, err
 	}
 	requestKey := requestFingerprint(in)
-	id := requestID(requestKey)
+	id, err := newUUIDv7()
+	if err != nil {
+		return nil, false, err
+	}
 	req := model.PermissionRequest{
 		ID: id, RequestKey: requestKey, RequesterID: in.RequesterID,
 		ResourceType: in.ResourceType, ResourceID: in.ResourceID, ResourceName: in.ResourceName,
@@ -438,7 +443,11 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 	if result.RowsAffected == 1 {
 		rows := make([]model.PermissionRequestOperation, 0, len(in.Operations))
 		for _, operation := range in.Operations {
-			rows = append(rows, model.PermissionRequestOperation{ID: requestOperationID(req.ID, operation), RequestID: req.ID, Operation: operation})
+			operationID, err := newUUIDv7()
+			if err != nil {
+				return nil, false, err
+			}
+			rows = append(rows, model.PermissionRequestOperation{ID: operationID, RequestID: req.ID, Operation: operation})
 		}
 		if err := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error; err != nil {
 			return nil, false, err
@@ -448,7 +457,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 	if err := s.db.WithContext(ctx).First(&stored, "request_key = ?", requestKey).Error; err != nil {
 		return nil, false, err
 	}
-	if stored.ID != req.ID || stored.RequesterID != in.RequesterID || stored.ResourceType != in.ResourceType || stored.ResourceID != in.ResourceID {
+	if stored.RequesterID != in.RequesterID || stored.ResourceType != in.ResourceType || stored.ResourceID != in.ResourceID {
 		return nil, false, ErrInvalidRequest
 	}
 	storedOperations, err := s.requestOperations(ctx, s.db, &stored)
@@ -457,6 +466,13 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 	}
 	if err := s.syncAllReviewers(ctx, s.db, &stored); err != nil {
 		return nil, false, err
+	}
+	if stored.Status != StatusPending && stored.Status != StatusNoReviewer {
+		retireRequestKey(&stored)
+		if err := s.db.WithContext(ctx).Model(&stored).Update("request_key", stored.RequestKey).Error; err != nil {
+			return nil, false, err
+		}
+		return s.Create(ctx, in)
 	}
 	return &stored, result.RowsAffected == 1, nil
 }
@@ -542,8 +558,12 @@ func (s *Service) syncReviewer(ctx context.Context, db *gorm.DB, req *model.Perm
 	if eligible {
 		status = ReviewerActive
 	}
+	reviewerRecordID, err := newUUIDv7()
+	if err != nil {
+		return false, err
+	}
 	record := model.PermissionRequestReviewer{
-		ID: reviewerRecordID(req.ID, reviewerID), RequestID: req.ID, ReviewerID: reviewerID,
+		ID: reviewerRecordID, RequestID: req.ID, ReviewerID: reviewerID,
 		EligibilityStatus: status, AuthorizationRootType: rootType, AuthorizationRootID: rootID,
 	}
 	if err := db.WithContext(ctx).Clauses(clause.OnConflict{
@@ -813,7 +833,11 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 		if !ok {
 			return ErrForbidden
 		}
-		decision := model.PermissionRequestDecision{ID: decisionID(requestID, in.ReviewerID), RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
+		decisionID, err := newUUIDv7()
+		if err != nil {
+			return err
+		}
+		decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
 		if err := tx.DB().Create(&decision).Error; err != nil {
 			return err
 		}
@@ -825,6 +849,7 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 			if !hasNext {
 				now := time.Now().UTC()
 				req.Status, req.RejectedAt = StatusRejected, &now
+				retireRequestKey(&req)
 				if err := tx.DB().Save(&req).Error; err != nil {
 					return err
 				}
@@ -858,6 +883,7 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 			}
 			now := time.Now().UTC()
 			req.Status, req.ApprovedBy, req.ApprovedAt = StatusGranted, in.ReviewerID, &now
+			retireRequestKey(&req)
 			if err := tx.DB().Save(&req).Error; err != nil {
 				return err
 			}
@@ -978,6 +1004,7 @@ func (s *Service) Cancel(ctx context.Context, id, requester string) (*model.Perm
 			return ErrClosed
 		}
 		request.Status = StatusCancelled
+		retireRequestKey(&request)
 		if err := tx.Save(&request).Error; err != nil {
 			return err
 		}
