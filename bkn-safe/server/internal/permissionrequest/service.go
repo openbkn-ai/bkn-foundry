@@ -51,6 +51,7 @@ var (
 	ErrResourceUnavailable      = errors.New("permission request resource is unavailable")
 	ErrUnsupportedResourceType  = errors.New("permission request resource type is unsupported")
 	ErrPermissionAlreadyGranted = errors.New("permission request permission is already granted")
+	ErrPrerequisiteMissing      = errors.New("permission request prerequisite is missing")
 )
 
 type CreateInput struct {
@@ -517,6 +518,24 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 	}
 	if alreadyGranted {
 		return nil, false, ErrPermissionAlreadyGranted
+	}
+	// Reject a request that can never produce a usable grant. The decision path
+	// repeats this check because an already-held prerequisite may be revoked
+	// after creation but before a reviewer approves the request.
+	if finegrained.Assembled() {
+		err := s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
+			missing, err := missingUnrequestedPrerequisites(ctx, tx, in.RequesterID, in.ResourceType, in.ResourceID, in.Operations)
+			if err != nil {
+				return err
+			}
+			if len(missing) > 0 {
+				return ErrPrerequisiteMissing
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, false, err
+		}
 	}
 	requestKey := requestFingerprint(in)
 	id, err := newUUIDv7()

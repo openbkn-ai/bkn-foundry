@@ -1,6 +1,7 @@
 package permissionrequest
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -136,10 +137,15 @@ func TestApprovalInvalidatesRequestWhenPrerequisiteWasRevoked(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	service := New(db, enforcer)
+	if _, _, err := service.Create(t.Context(), CreateInput{
+		RequesterID: "requester", ResourceType: "knowledge_network", ResourceID: "r-1", Operations: []string{"delete"}, Reason: "delete access",
+	}); !errors.Is(err, ErrPrerequisiteMissing) {
+		t.Fatalf("Create without view_detail = %v, want ErrPrerequisiteMissing", err)
+	}
 	if err := enforcer.GrantObjectPermission("requester", "knowledge_network", "r-1", "view_detail"); err != nil {
 		t.Fatal(err)
 	}
-	service := New(db, enforcer)
 	request, _, err := service.Create(t.Context(), CreateInput{
 		RequesterID: "requester", ResourceType: "knowledge_network", ResourceID: "r-1", Operations: []string{"delete"}, Reason: "delete access",
 	})

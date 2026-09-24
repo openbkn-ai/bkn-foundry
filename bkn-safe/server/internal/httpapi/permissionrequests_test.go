@@ -23,6 +23,7 @@ func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 		reason string
 	}{
 		{name: "permission already granted", err: permissionrequest.ErrPermissionAlreadyGranted, reason: "permission_already_granted"},
+		{name: "missing prerequisite", err: permissionrequest.ErrPrerequisiteMissing, reason: "missing_prerequisite"},
 		{name: "resource deleted", err: permissionrequest.ErrResourceDeleted, reason: "resource_deleted"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
