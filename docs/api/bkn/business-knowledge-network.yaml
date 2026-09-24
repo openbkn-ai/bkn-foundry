@@ -170,11 +170,11 @@ paths:
             full returns every concept in full and is the default, kept so an existing caller sees no
             change.
 
-            summary trims the object types and the relation types, and nothing else. An object type
-            keeps its own fields and each data property keeps name, display_name, type, comment and
-            index_features, while mapped_field and condition_operations go; each logic property keeps
-            its name and type, while data_source, parameters and analysis dimensions go. A relation
-            type keeps everything except mapping_rules.
+            summary trims the object types and the relation types, and nothing else. It is defined by
+            what it removes, so anything not named here is returned as full returns it: an object type
+            keeps its own fields, each data property loses mapped_field and condition_operations, each
+            logic property loses data_source, parameters and analysis_dimensions, and a relation type
+            loses mapping_rules.
 
             Action types, metrics and risk types come back in full at either level, as do the concept
             groups, which on this path carry object_type_ids and statistics rather than nested concept

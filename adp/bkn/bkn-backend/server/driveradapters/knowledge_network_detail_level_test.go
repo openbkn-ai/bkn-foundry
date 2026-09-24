@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	. "github.com/smartystreets/goconvey/convey"
@@ -38,6 +39,14 @@ func exportedKN() *interfaces.KN {
 					MappedField:         &interfaces.Field{},
 					ConditionOperations: []string{"gt", "lt"},
 					IndexFeatures:       []interfaces.ObjectTypeIndexFeature{{Type: "keyword", Configured: true}},
+				}},
+				LogicProperties: []*interfaces.LogicProperty{{
+					Name:        "gmv",
+					DisplayName: "gross merchandise value",
+					Type:        "metric",
+					Comment:     "what the orders came to together",
+					DataSource:  &interfaces.ResourceInfo{},
+					Parameters:  []interfaces.Parameter{{}},
 				}},
 			},
 		}},
@@ -126,9 +135,53 @@ func Test_GetKN_ExportedSummaryKeepsTheSkeletonAndDropsTheDetail(t *testing.T) {
 		So(strings.Contains(summary, "index_features"), ShouldBeTrue)
 		// Action types are returned whole at either level.
 		So(strings.Contains(summary, "at_cancel"), ShouldBeTrue)
+		// summary is defined by what it removes, so a logic property loses its data source and
+		// parameters and keeps everything else, display_name and comment included. Read the
+		// property itself rather than the whole body: an action type publishes a parameters key
+		// of its own, and a substring search would answer for that one.
+		gmv := findObjectByName(summary, "gmv")
+		So(gmv, ShouldNotBeNil)
+		So(gmv["display_name"], ShouldEqual, "gross merchandise value")
+		So(gmv["comment"], ShouldEqual, "what the orders came to together")
+		_, hasSource := gmv["data_source"]
+		So(hasSource, ShouldBeFalse)
+		_, hasParams := gmv["parameters"]
+		So(hasParams, ShouldBeFalse)
 
 		full := body("&detail_level=full")
 		So(strings.Contains(full, "mapped_field"), ShouldBeTrue)
 		So(strings.Contains(full, "condition_operations"), ShouldBeTrue)
 	})
+}
+
+// findObjectByName walks a decoded response for the first object whose name field is the one
+// asked for, so an assertion can be made about that concept rather than about the whole body.
+func findObjectByName(body, name string) map[string]any {
+	var decoded any
+	if err := sonic.Unmarshal([]byte(body), &decoded); err != nil {
+		return nil
+	}
+	var found map[string]any
+	var walk func(any)
+	walk = func(node any) {
+		if found != nil {
+			return
+		}
+		switch value := node.(type) {
+		case map[string]any:
+			if value["name"] == name {
+				found = value
+				return
+			}
+			for _, child := range value {
+				walk(child)
+			}
+		case []any:
+			for _, child := range value {
+				walk(child)
+			}
+		}
+	}
+	walk(decoded)
+	return found
 }
