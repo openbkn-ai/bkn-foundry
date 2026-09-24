@@ -33,8 +33,15 @@ components:
       additionalProperties: false
       description: |
         BKN Trace business-provenance context identifying the business
-        conversation and interaction to which this call belongs. Required on
-        REST APIs.
+        conversation and interaction to which this call belongs.
+
+        Naming it makes the call managed: the service records an Operation under
+        that interaction, returns a receipt and captures evidence, and the call
+        then depends on BKN Trace Core. Omitting it entirely, or sending an empty
+        object, makes a Context Loader REST call ad hoc: nothing is recorded and
+        nothing but the queried downstream is depended on. Only those two shapes
+        are ad hoc — one id without the other, or a misspelt field, is refused
+        rather than quietly downgraded. Every MCP business tool requires it.
 
         Both required child fields are server-issued handles and must not be
         invented by the caller:

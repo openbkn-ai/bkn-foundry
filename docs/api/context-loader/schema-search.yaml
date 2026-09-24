@@ -208,7 +208,6 @@ components:
     SearchSchemaRequest:
       type: object
       required:
-        - bkn_context
         - query
       properties:
         bkn_context:
@@ -297,7 +296,6 @@ components:
     KnSearchCompatRequest:
       type: object
       required:
-        - bkn_context
         - query
         - kn_id
       properties:

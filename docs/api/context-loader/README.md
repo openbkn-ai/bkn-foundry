@@ -75,9 +75,10 @@ what an Interaction records.
 
 **The REST surface admits both.** A `/kn/` request with no `bkn_context` runs ad
 hoc and never touches Trace Core. A request that names one is managed and is
-recorded like any other. The exception is `/mcp/proxy/.../call`, which is an
-agent calling a tool under another name, so the managed context stays mandatory
-there whatever the transport.
+recorded like any other. This is why `bkn_context` is optional in the request
+schemas of every file indexed above. (One internal route, outside the scope of
+this documentation, keeps the managed context mandatory; see
+[TRACE.md](../../../adp/context-loader/agent-retrieval/TRACE.md) §2.1.)
 
 Note that only two shapes count as ad hoc: no `bkn_context` at all, and an empty
 one. A `bkn_context` holding one id and not the other, or only

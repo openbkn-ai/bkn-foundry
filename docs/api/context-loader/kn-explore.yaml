@@ -301,8 +301,6 @@ components:
   schemas:
     ListKnRequest:
       type: object
-      required:
-        - bkn_context
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
@@ -358,8 +356,6 @@ components:
 
     GetKnDetailRequest:
       type: object
-      required:
-        - bkn_context
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
@@ -377,7 +373,6 @@ components:
     DrillRequest:
       type: object
       required:
-        - bkn_context
         - ids
       properties:
         bkn_context:

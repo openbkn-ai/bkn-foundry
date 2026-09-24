@@ -276,8 +276,6 @@ components:
   schemas:
     ListResourcesRequest:
       type: object
-      required:
-        - bkn_context
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
@@ -330,7 +328,6 @@ components:
     DescribeResourceRequest:
       type: object
       required:
-        - bkn_context
         - resource_id
       properties:
         bkn_context:
@@ -369,7 +366,6 @@ components:
     RunSQLRequest:
       type: object
       required:
-        - bkn_context
         - sql
       properties:
         bkn_context:
