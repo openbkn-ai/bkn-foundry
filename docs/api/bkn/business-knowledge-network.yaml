@@ -142,7 +142,7 @@ paths:
     get:
       parameters:
         - name: mode
-          description: Query mode. Currently supports export. By default, returns only knowledge network details and not included child types.
+          description: Query mode. Currently supports export. By default, returns only knowledge network details and not the child types, in which case detail_level has nothing to act on.
           schema:
             enum:
               - ""
@@ -163,8 +163,21 @@ paths:
           in: query
         - name: detail_level
           description: |
-            Response detail level. full returns complete definitions; summary returns only concept IDs and names
-            for progressive loading of large knowledge networks. Defaults to full.
+            Response detail level for the concept definitions, so it only has an effect together with
+            mode=export. Without that mode the response carries no child types at all and the two
+            values return the same bytes.
+
+            full returns every concept in full and is the default, kept so an existing caller sees no
+            change. summary returns the object, relation and action skeletons plus each data property's
+            name, display_name, type and comment, and drops the heavy per-item detail: data-property
+            field mappings, index configs and query operators, logic-property data sources, parameters
+            and analysis dimensions, and relation mapping rules. It also drops the object, relation and
+            action copies nested inside each concept group, which duplicate the top-level arrays, and
+            keeps object_type_ids as the group boundary.
+
+            summary is for progressively loading a large knowledge network: enough to see its shape and
+            plan a query, without the field-level detail. Fetch that per concept from
+            object-types/{ot_ids} and relation-types/{rt_ids}.
           schema:
             type: string
             enum: [full, summary]
