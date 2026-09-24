@@ -550,7 +550,7 @@ func loadLifecycle() Lifecycle {
 
 func reportResolverUnavailable() {
 	if resolverUnavailableReported.CompareAndSwap(false, true) {
-		slog.Error("row-filter Enterprise resolver unavailable; denying row-filter decisions and failing readiness", "capability", Capability)
+		slog.Error("row-filter Enterprise resolver unavailable; denying row-filter decisions", "capability", Capability)
 	}
 }
 
