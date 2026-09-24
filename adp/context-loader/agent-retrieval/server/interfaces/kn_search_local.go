@@ -170,13 +170,18 @@ type KnSearchLocalResponse struct {
 
 // KnSearchObjectType object type (local response shape)
 type KnSearchObjectType struct {
-	ConceptType          string                         `json:"concept_type,omitempty"`
-	ConceptID            string                         `json:"concept_id"`
-	ConceptName          string                         `json:"concept_name"`
-	Comment              string                         `json:"comment,omitempty"`
-	Tags                 []string                       `json:"tags,omitempty"`
-	DataSource           *ResourceInfo                  `json:"data_source,omitempty"`
-	DataProperties       []*KnSearchDataProperty        `json:"data_properties,omitempty"`
+	ConceptType    string                  `json:"concept_type,omitempty"`
+	ConceptID      string                  `json:"concept_id"`
+	ConceptName    string                  `json:"concept_name"`
+	Comment        string                  `json:"comment,omitempty"`
+	Tags           []string                `json:"tags,omitempty"`
+	DataSource     *ResourceInfo           `json:"data_source,omitempty"`
+	DataProperties []*KnSearchDataProperty `json:"data_properties,omitempty"`
+	// IndexOperations is the index-derived operator list shared by this object type's indexed
+	// properties, lifted here so it is not repeated on every one of them. A property that has
+	// it carries indexed=true instead of its own condition_operations; a property whose
+	// capability differs keeps condition_operations inline. Set on the MCP surface only.
+	IndexOperations      []KnOperationType              `json:"index_operations,omitempty"`
 	LogicProperties      []*KnSearchLogicProperty       `json:"logic_properties,omitempty"`
 	PrimaryKeys          []string                       `json:"primary_keys,omitempty"`
 	SampleData           map[string]any                 `json:"sample_data,omitempty"`
@@ -205,6 +210,9 @@ type KnSearchDataProperty struct {
 	Comment             string            `json:"comment,omitempty"`
 	Type                string            `json:"type,omitempty"`
 	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"`
+	// Indexed says this property supports the operators its object type publishes as
+	// index_operations. It stands in for repeating that list on every indexed property.
+	Indexed bool `json:"indexed,omitempty"`
 }
 
 // KnSearchLogicProperty logic property (local response shape)
