@@ -294,3 +294,20 @@ func TestProcessObjectTypeDetailsDoesNotTurnVegaFailureIntoUnavailable(t *testin
 		t.Fatalf("index status = %#v, want unknown", objectType.IndexStatus)
 	}
 }
+
+func TestProcessObjectTypeDetailsMarksMissingResourceWithoutMetadataFailure(t *testing.T) {
+	service := &objectTypeService{appSetting: &common.AppSetting{}}
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "deleted-r1"},
+	}}
+
+	if err := service.processObjectTypeDetails(context.Background(), objectType, map[string]vegaResourceLookup{}); err != nil {
+		t.Fatal(err)
+	}
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateResourceMissing {
+		t.Fatalf("index status = %#v, want resource_missing", objectType.IndexStatus)
+	}
+	if objectType.DataSourceMetadataUnavailable {
+		t.Fatal("a missing resource is a known answer, not unavailable metadata")
+	}
+}
