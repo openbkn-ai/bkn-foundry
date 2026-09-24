@@ -59,7 +59,7 @@
                       },
                       "operation": {
                         "type": "string",
-                        "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= like not_like regex，数值/日期时间类可用 == != in not_in > >= < <= range out_range 但不支持 like/regex，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。text 字段走本地索引时，== / != / in / not_in 依赖 keyword；若 400 提示缺失，需重新保存资源配置并新建构建任务，或改用 match。默认 keyword 的 ignore_above 为 256，超长值不可精确比较。属性上没有 condition_operations 这个键只说明没建索引，不代表不能过滤。like/not_like 的值是字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒），regex 的锚定与大小写敏感性随资源存储而变（「包含」写 .*词.*）",
+                        "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= like not_like regex，数值/日期时间类可用 == != in not_in > >= < <= range out_range 但不支持 like/regex，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。text 字段走本地索引时，== / != / in / not_in 依赖 keyword；若 400 提示缺失，需重新保存资源配置并新建构建任务，或改用 match。默认 keyword 的 ignore_above 为 256，超长值不可精确比较。search_schema / search_instance 把共用的那份列表提到对象类的 index_operations，属性上写 indexed=true；两个键都没有才说明没建索引，而没建索引不代表不能过滤。like/not_like 的值是字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒），regex 的锚定与大小写敏感性随资源存储而变（「包含」写 .*词.*）",
                         "enum": [
                           "and",
                           "or",

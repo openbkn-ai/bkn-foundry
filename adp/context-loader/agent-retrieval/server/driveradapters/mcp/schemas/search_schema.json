@@ -61,7 +61,7 @@
       "schema_brief": {
         "type": "boolean",
         "default": true,
-        "description": "是否返回精简 Schema（MCP 默认 true）。精简版保留写查询所需的 data_source.id 与属性 name/type，省去属性 comment、主键、标签，体积约省 70%；需要属性备注、主键或标签时显式传 false。注意：condition_operations 不受本开关影响——MCP 面两种模式下都只列**索引带来的**算子（match / multi_match / knn，取决于该字段建没建全文/向量索引，从属性类型推不出来），没有这类能力的字段不带这个键。比较算子（==、!=、in、like、range 等）按属性 type 自行判断，服务端不下发，详见 query_object_instance 的 condition 说明。"
+        "description": "是否返回精简 Schema（MCP 默认 true）。精简版保留写查询所需的 data_source.id 与属性 name/type，省去属性 comment、主键、标签，体积约省 70%；需要属性备注、主键或标签时显式传 false。注意：condition_operations 不受本开关影响——MCP 面两种模式下都只列**索引带来的**算子（match / multi_match / knn，取决于该字段建没建全文/向量索引，从属性类型推不出来），同一份列表不在每个属性上重复：共用它的属性带 indexed=true，对象类上只给一次 index_operations；能力不同的属性才自带 condition_operations；两者都没有的字段没建索引。比较算子（==、!=、in、like、range 等）按属性 type 自行判断，服务端不下发，详见 query_object_instance 的 condition 说明。"
       },
       "enable_rerank": {
         "type": "boolean",
@@ -111,7 +111,14 @@
                 "type": "object",
                 "additionalProperties": true
               },
-              "description": "数据属性 [{name, type, condition_operations}]；condition_operations 决定该属性能否用 match / knn 过滤。"
+              "description": "数据属性 [{name, type, indexed}]；indexed=true 表示该属性支持所在对象类 index_operations 里的算子（match / knn 等）；能力与对象类不同的属性自带 condition_operations；两者都没有的属性没建索引，不能用 match / knn 过滤。"
+            },
+            "index_operations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "该对象类下带 indexed=true 的属性共同支持的索引算子（match / multi_match / knn）。列在对象类上是为了不在每个属性上重复同一份列表。"
             },
             "logic_properties": {
               "type": "array",
@@ -153,7 +160,8 @@
                   "masked",
                   "full"
                 ]
-              }
+              },
+              "description": "当前账户对各属性的有效权限：full 可读原值，masked 读到脱敏值，schema 只见字段不见值。所有属性都是 full 时省略此字段；只要有一个受限属性就完整列出。"
             }
           },
           "additionalProperties": true
