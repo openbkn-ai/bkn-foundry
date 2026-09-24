@@ -257,5 +257,10 @@ func capabilitySpecs() []capabilitySpec {
 		{toolKeyExecuteTool, "business_function", "execution_only", "managed_children_only", "none"},
 		{toolKeyRunCode, "orchestrator", "execution_only", "managed_children_only", "none"},
 		{toolKeyRunShell, "orchestrator", "execution_only", "managed_children_only", "none"},
+		// The compact gateway. search and describe read this service's own
+		// catalogue. The executor has no entry: it is never governed under its
+		// own name, its target is (see nativeExecutor).
+		{toolKeySearchNativeTools, "discovery", "execution_only", "none", "none"},
+		{toolKeyDescribeNativeTool, "discovery", "execution_only", "none", "none"},
 	}
 }

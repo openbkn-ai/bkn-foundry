@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -234,7 +235,11 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 
 	// Sort.
 	if query.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
+		orderBy, err := common.SafeOrderBy(query.Sort, query.Direction)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.OrderBy(orderBy, "f_id ASC")
 	}
 	if query.Limit > 0 {
 		builder = builder.Limit(uint64(query.Limit))
@@ -296,6 +301,58 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 
 	span.SetStatus(codes.Ok, "")
 	return conceptGroups, nil
+}
+
+// ListConceptGroupTags returns the distinct tags in the requested authorization scope.
+func (cga *conceptGroupAccess) ListConceptGroupTags(ctx context.Context,
+	query interfaces.ConceptGroupsQueryParams) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListConceptGroupTags")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+	)
+
+	builder := processQueryCondition(query,
+		sq.Select("f_tags").From(CONCEPT_GROUP_TABLE_NAME))
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to build the sql of select concept group tags, error", err)
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+
+	rows, err := cga.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "List concept group tags error", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	uniqueTags := make(map[string]struct{})
+	for rows.Next() {
+		var tagsStr string
+		if err := rows.Scan(&tagsStr); err != nil {
+			common.LogSafeError(ctx, "Row scan error", err)
+			return nil, err
+		}
+		for _, tag := range libCommon.TagString2TagSlice(tagsStr) {
+			uniqueTags[tag] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		common.LogSafeError(ctx, "Iterate concept group tags error", err)
+		return nil, err
+	}
+
+	tags := make([]string, 0, len(uniqueTags))
+	for tag := range uniqueTags {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	span.SetStatus(codes.Ok, "")
+	return tags, nil
 }
 
 // Get concept groups in bulk.
@@ -797,6 +854,10 @@ func processQueryCondition(query interfaces.ConceptGroupsQueryParams, subBuilder
 	if len(query.CGIDs) > 0 {
 		subBuilder = subBuilder.Where(sq.Eq{"f_id": query.CGIDs})
 	}
+	if query.ValidAuthorizationIDsOnly {
+		subBuilder = subBuilder.Where(sq.Expr(
+			"f_id <> '' AND f_id = TRIM(f_id) AND instr(f_id, '/') = 0 AND instr(f_id, '*') = 0"))
+	}
 
 	return subBuilder
 }
@@ -1126,6 +1187,45 @@ func (cga *conceptGroupAccess) GetConceptIDsByConceptGroupIDs(ctx context.Contex
 
 	span.SetStatus(codes.Ok, "")
 	return conceptIDs, nil
+}
+
+// GetConceptIDsGroupedByConceptGroupIDs reads memberships for a page of groups in one query.
+func (cga *conceptGroupAccess) GetConceptIDsGroupedByConceptGroupIDs(ctx context.Context, knID string,
+	branch string, cgIDs []string, conceptType string) (map[string][]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetConceptIDsGroupedByConceptGroupIDs")
+	defer span.End()
+
+	result := make(map[string][]string, len(cgIDs))
+	if len(cgIDs) == 0 {
+		return result, nil
+	}
+	builder := sq.Select("f_group_id", "f_concept_id").From(CONCEPT_GROUP_RELATION_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.Eq{"f_concept_type": conceptType}).
+		Where(sq.Eq{"f_group_id": cgIDs})
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	rows, err := cga.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var groupID, conceptID string
+		if err := rows.Scan(&groupID, &conceptID); err != nil {
+			return nil, err
+		}
+		result[groupID] = append(result[groupID], conceptID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 // Get relation type IDs in a concept group.

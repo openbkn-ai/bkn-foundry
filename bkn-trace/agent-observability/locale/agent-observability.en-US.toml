@@ -36,6 +36,8 @@
 "business_module is not registered" = "business_module is not registered"
 "business_refs contains an invalid typed business reference" = "business_refs contains an invalid typed business reference"
 "bare object storage URLs are forbidden; use an opaque snapshot_ref" = "bare object storage URLs are forbidden; use an opaque snapshot_ref"
+"capture policy is not available" = "capture policy is not available"
+"capture policy is not configured" = "capture policy is not configured"
 "causation_event_id must reference a previously committed event" = "causation_event_id must reference a previously committed event"
 "categories contains an unsupported value" = "categories contains an unsupported value"
 "claim supports contains an imprecise or unexplained support" = "claim supports contains an imprecise or unexplained support"

@@ -15,9 +15,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -62,18 +62,26 @@ func TestRecordInteractionArtifactPersistsGovernedContentAndLedgerLink(t *testin
 		body, _ := io.ReadAll(r.Body)
 		switch r.URL.Path {
 		case "/api/agent-observability/v1/evidence/artifacts":
+			if got := r.Header.Get("X-BKN-Trace-Ingest-Token"); got != "test-artifact-token" {
+				t.Errorf("artifact auth token=%q, want explicit artifact token", got)
+			}
 			_ = json.Unmarshal(body, &artifactBody)
 			w.WriteHeader(http.StatusCreated)
-		case "/api/agent-observability/v1/evidence/events":
-			_ = json.Unmarshal(body, &eventBody)
-			w.WriteHeader(http.StatusAccepted)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 	}))
 	t.Cleanup(server.Close)
-	t.Setenv(envEvidenceIngestURL, server.URL+"/api/agent-observability/v1/evidence/events")
-	t.Setenv(envEvidenceIngestToken, "test-ingest-token")
+	t.Setenv(envArtifactEndpoint, server.URL+"/api/agent-observability/v1/evidence/artifacts")
+	t.Setenv(envArtifactToken, "test-artifact-token")
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "must-not-be-read")
+	sender := &captureEvidenceSender{}
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval", ProcessBootID: "test", CapturePolicyRevision: "1"}, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
 	ref, err := RecordInteractionArtifact(
 		testTraceContext(), "conversation-1", "interaction-1", InteractionArtifactQuestion,
@@ -88,14 +96,15 @@ func TestRecordInteractionArtifactPersistsGovernedContentAndLedgerLink(t *testin
 	if artifactBody["content"] != "6月份有哪些需求预测单？" || artifactBody["interaction_id"] != "interaction-1" {
 		t.Fatalf("artifact content or interaction was lost: %#v", artifactBody)
 	}
-	if eventBody["event_type"] != "agent.interaction.started" || eventBody["interaction_id"] != "interaction-1" {
-		t.Fatalf("ledger link was not emitted: %#v", eventBody)
+	if len(publisher.SnapshotQueue()) != 1 {
+		t.Fatalf("Kafka event count = %d", len(publisher.SnapshotQueue()))
 	}
-	if _, exists := eventBody["operation_id"]; exists {
-		t.Fatalf("interaction-level artifact must not claim a tool operation: %#v", eventBody)
+	_ = eventBody
+	var envelope map[string]any
+	if err := json.Unmarshal(publisher.SnapshotQueue()[0].Value, &envelope); err != nil {
+		t.Fatal(err)
 	}
-	envelope := eventBody["envelope"].(map[string]any)
-	payload := envelope["payload"].(map[string]any)
+	payload := envelope["envelope"].(map[string]any)["payload"].(map[string]any)
 	if payload["question_artifact_ref"] != ref {
 		t.Fatalf("ledger event does not link the artifact: %#v", payload)
 	}
@@ -193,8 +202,8 @@ func TestRecordInteractionArtifactSeparatesApplicationDisplayFromPrincipal(t *te
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	t.Cleanup(testServer.Close)
-	t.Setenv(envEvidenceIngestURL, testServer.URL+"/api/agent-observability/v1/evidence/events")
-	t.Setenv(envEvidenceIngestToken, "test-ingest-token")
+	t.Setenv(envArtifactEndpoint, testServer.URL+"/api/agent-observability/v1/evidence/artifacts")
+	t.Setenv(envArtifactToken, "test-artifact-token")
 	ctx := common.SetApplicationDisplayNameToCtx(testTraceContext(), "Cursor")
 
 	if _, err := RecordInteractionArtifact(ctx, "conversation-1", "interaction-1", InteractionArtifactQuestion, "查询库存"); err != nil {
@@ -215,7 +224,7 @@ func TestAgentOrAppFallsBackToApplicationPrincipal(t *testing.T) {
 }
 
 func TestRecordInteractionArtifactIsOptionalWhenEvidenceIsDisabled(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "")
+	t.Setenv(envArtifactEndpoint, "")
 
 	ref, err := RecordInteractionArtifact(
 		context.Background(), "conversation-1", "interaction-1", InteractionArtifactQuestion,
@@ -311,7 +320,7 @@ func TestBuildSchemaDefinitionEventsUsesKnowledgeNetworkAndSchemaRefs(t *testing
 }
 
 func TestBuildRunSQLEventsUsesDataQueryFactWithoutLeakingSQLOrRows(t *testing.T) {
-	ctx := withDeclaredBusinessRefs(testTraceContext(), []BusinessRef{{
+	ctx := withRequestDerivedBusinessRefs(testTraceContext(), []BusinessRef{{
 		RefType: "object_type", RefID: "object:supplychain_hd0202:bkn_supply_forecast",
 		Version: "schema-v3",
 	}})
@@ -798,7 +807,6 @@ func TestBuildQueryInstanceSubgraphEventsDoesNotDeriveRefsFromRowContent(t *test
 }
 
 func TestEmitSearchSchemaEventsNoopsWhenIngestDisabled(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "")
 	maxConcepts := 5
 
 	EmitSearchSchemaEvents(testTraceContext(), nil, &interfaces.SearchSchemaReq{
@@ -811,82 +819,64 @@ func TestEmitSearchSchemaEventsNoopsWhenIngestDisabled(t *testing.T) {
 }
 
 func TestEmitRunSQLEventsKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
-	artifactWrites := 0
-	var submittedEvents []Event
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
-		switch r.URL.Path {
-		case "/api/agent-observability/v1/evidence/artifacts":
-			artifactWrites++
-			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(""))}, nil
-		case "/api/agent-observability/v1/evidence/events":
-			var body trace30Event
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode run_sql events: %v", err)
-			}
-			submittedEvents = append(submittedEvents, body.Envelope)
-			return &http.Response{StatusCode: http.StatusAccepted, Body: io.NopCloser(strings.NewReader(""))}, nil
-		default:
-			t.Fatalf("unexpected evidence path: %s", r.URL.Path)
-		}
-		return nil, nil
-	})}
-	t.Setenv(envEvidenceIngestURL, "http://trace.local/api/agent-observability/v1/evidence/events")
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval", ProcessBootID: "test", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
 	sql := "SELECT material_id, SUM(quantity) FROM {{.inventory}} WHERE warehouse = '昆山' GROUP BY material_id LIMIT 10"
 	EmitRunSQLEvents(testTraceContext(), nil, sql, []string{"inventory"}, &interfaces.VegaRawQueryResp{
 		Entries: []map[string]any{{"material_id": "M-001", "SUM(quantity)": 42}},
 	})
 
-	if artifactWrites != 0 {
-		t.Fatalf("run_sql wrote %d duplicate artifacts; OperationCallFact is the payload authority", artifactWrites)
+	queued := publisher.SnapshotQueue()
+	if len(queued) != 1 {
+		t.Fatalf("queued records=%d, want one aggregate event", len(queued))
 	}
-	if len(submittedEvents) != 1 || submittedEvents[0]["event_type"] != "data.query.observed" {
-		t.Fatalf("submitted events=%#v, want one aggregate data.query.observed", submittedEvents)
+	var record struct {
+		Envelope Event `json:"envelope"`
 	}
-	payload, _ := submittedEvents[0]["payload"].(map[string]any)
+	if err := json.Unmarshal(queued[0].Value, &record); err != nil {
+		t.Fatal(err)
+	}
+	if record.Envelope["event_type"] != "data.query.observed" {
+		t.Fatalf("event=%#v", record.Envelope)
+	}
+	payload, _ := record.Envelope["payload"].(map[string]any)
 	if payload["row_count"] != float64(1) || payload["query_hash"] == "" {
 		t.Fatalf("aggregate query facts missing: %#v", payload)
 	}
 }
 
 func TestEmitRunSQLFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
-	artifactWrites := 0
-	var submittedEvents []Event
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
-		switch r.URL.Path {
-		case "/api/agent-observability/v1/evidence/artifacts":
-			artifactWrites++
-			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(""))}, nil
-		case "/api/agent-observability/v1/evidence/events":
-			var body trace30Event
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode run_sql failure events: %v", err)
-			}
-			submittedEvents = append(submittedEvents, body.Envelope)
-			return &http.Response{StatusCode: http.StatusAccepted, Body: io.NopCloser(strings.NewReader(""))}, nil
-		default:
-			t.Fatalf("unexpected evidence path: %s", r.URL.Path)
-		}
-		return nil, nil
-	})}
-	t.Setenv(envEvidenceIngestURL, "http://trace.local/api/agent-observability/v1/evidence/events")
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval", ProcessBootID: "test", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
 	sql := "SELECT * FROM {{.inventory}} WHERE material_id = 'M-001'"
 	EmitRunSQLFailure(testTraceContext(), nil, sql, []string{"inventory"}, RunSQLFailure{
 		Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: "unknown column available_qty",
 	})
 
-	if artifactWrites != 0 {
-		t.Fatalf("failed run_sql wrote %d duplicate artifacts; OperationCallFact is the payload authority", artifactWrites)
+	queued := publisher.SnapshotQueue()
+	if len(queued) != 1 {
+		t.Fatalf("queued records=%d, want one aggregate event", len(queued))
 	}
-	if len(submittedEvents) != 1 || submittedEvents[0]["event_type"] != "data.query.observed" {
-		t.Fatalf("submitted events=%#v, want one data.query.observed", submittedEvents)
+	var record struct {
+		Envelope Event `json:"envelope"`
 	}
-	payload, _ := submittedEvents[0]["payload"].(map[string]any)
+	if err := json.Unmarshal(queued[0].Value, &record); err != nil {
+		t.Fatal(err)
+	}
+	if record.Envelope["event_type"] != "data.query.observed" {
+		t.Fatalf("event=%#v", record.Envelope)
+	}
+	payload, _ := record.Envelope["payload"].(map[string]any)
 	if payload["status"] != "error" || payload["error_stage"] != "vega_query" ||
 		payload["error_code"] != "RUN_SQL_VEGA_QUERY_FAILED" || payload["safe_error_summary"] != "unknown column available_qty" {
 		t.Fatalf("failure event is not structured: %#v", payload)
@@ -894,7 +884,6 @@ func TestEmitRunSQLFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *te
 }
 
 func TestSubmitEventsNoopsWhenAccountContextMissing(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "http://127.0.0.1:1/ingest")
 	ctx := common.SetTraceContextToCtx(trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID: trace.TraceID{0x71, 0x21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2},
 		SpanID:  trace.SpanID{0x71, 0x21, 0, 0, 0, 0, 0, 2},
@@ -906,18 +895,12 @@ func TestSubmitEventsNoopsWhenAccountContextMissing(t *testing.T) {
 }
 
 func TestSubmitEventsPreservesCallerOwnedConversationID(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "http://trace.local/ingest")
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	payloads := make(chan map[string]any, 1)
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		var payload map[string]any
-		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode 3.0 evidence event: %v", err)
-		}
-		payloads <- payload
-		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval", ProcessBootID: "test", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
 	headers := map[string]string{
 		common.HeaderBKNRequestID:       "req_context_loader_phase2_0002",
@@ -939,205 +922,29 @@ func TestSubmitEventsPreservesCallerOwnedConversationID(t *testing.T) {
 		AccountID: "acct_demo", AccountType: interfaces.AccessorType("user"),
 	})
 
-	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_type": "retrieval.completed"}}); err != nil {
+	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_id": "evt-correlation", "event_type": "retrieval.completed"}}); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case payload := <-payloads:
-		if got := payload["conversation_id"]; got != "agent:thread_supply_chain" {
-			t.Fatalf("conversation_id=%v", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for evidence batch")
+	queued := publisher.SnapshotQueue()
+	if len(queued) != 1 {
+		t.Fatalf("queued records=%d, want 1", len(queued))
 	}
-}
-
-func TestPostBatchWithRetryTreatsNon2xxAsFailure(t *testing.T) {
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	var calls atomic.Int32
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(*http.Request) (*http.Response, error) {
-		status := http.StatusServiceUnavailable
-		if calls.Add(1) == 3 {
-			status = http.StatusNoContent
-		}
-		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-	if err := postBatchWithRetry("http://trace.local", time.Second, batch{Events: []Event{{}}}); err != nil {
+	var payload map[string]any
+	if err := json.Unmarshal(queued[0].Value, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 3 {
-		t.Fatalf("calls=%d, want 3", calls.Load())
+	if got := payload["conversation_id"]; got != "agent:thread_supply_chain" {
+		t.Fatalf("conversation_id=%v", got)
 	}
 }
 
-func TestPostBatchWithRetryResumesAfterLastAcceptedEvent(t *testing.T) {
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	var sent []string
-	failedOnce := false
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		var body struct {
-			EventID string `json:"event_id"`
-		}
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			t.Fatalf("decode event: %v", err)
-		}
-		sent = append(sent, body.EventID)
-		status := http.StatusAccepted
-		if body.EventID == "evt-2" && !failedOnce {
-			failedOnce = true
-			status = http.StatusServiceUnavailable
-		}
-		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-
-	payload := batch{Events: []Event{{"event_id": "evt-1"}, {"event_id": "evt-2"}, {"event_id": "evt-3"}}}
-	if err := postBatchWithRetry("http://trace.local", time.Second, payload); err != nil {
+func TestSubmitEventsRecordsQueuedOutcomeForOperationFinish(t *testing.T) {
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval", ProcessBootID: "test", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"evt-1", "evt-2", "evt-2", "evt-3"}
-	if strings.Join(sent, ",") != strings.Join(want, ",") {
-		t.Fatalf("sent %v, want %v: a retry must not re-send events Core already accepted", sent, want)
-	}
-}
-
-func TestPostBatchWithRetryStopsOnNonRetryableRejection(t *testing.T) {
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	var calls atomic.Int32
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(*http.Request) (*http.Response, error) {
-		calls.Add(1)
-		return &http.Response{
-			StatusCode: http.StatusBadRequest,
-			Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_event","message":"rejected"}}`)),
-		}, nil
-	})}
-
-	err := postBatchWithRetry("http://trace.local", time.Second, batch{Events: []Event{{}}})
-	if err == nil || !strings.Contains(err.Error(), "invalid_event") {
-		t.Fatalf("err = %v, want the non-retryable Core rejection", err)
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("calls=%d, want 1: a non-retryable rejection must not be retried", calls.Load())
-	}
-}
-
-func TestPostBatchPreservesSafeCoreErrorDetails(t *testing.T) {
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(*http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusUnauthorized,
-			Body: io.NopCloser(strings.NewReader(
-				`{"error":{"code":"permission_denied","message":"trusted gateway identity is required"}}`,
-			)),
-		}, nil
-	})}
-
-	err := postBatch("http://trace.local", time.Second, batch{Events: []Event{{}}})
-	if err == nil || !strings.Contains(err.Error(), "permission_denied") ||
-		!strings.Contains(err.Error(), "trusted gateway identity is required") {
-		t.Fatalf("safe Trace Core error was discarded: %v", err)
-	}
-}
-
-func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
-	t.Setenv(envEvidenceIngestToken, "test-ingest-token")
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "test-ingest-token" {
-			t.Fatalf("public evidence request ingest token = %q, want test-ingest-token", got)
-		}
-		if got := req.Header.Get("X-BKN-Trace-Query-Token"); got != "" {
-			t.Fatalf("internal evidence request must not carry gateway token, got %q", got)
-		}
-		for header, want := range map[string]string{
-			"x-account-id":                   "acct_demo",
-			"x-account-type":                 "user",
-			"X-BKN-Application-Principal-ID": "context-loader",
-			"X-BKN-Effective-Subject-Type":   "user",
-			"X-BKN-Effective-Subject-ID":     "acct_demo",
-		} {
-			if got := req.Header.Get(header); got != want {
-				t.Fatalf("%s=%q, want %q", header, got, want)
-			}
-		}
-		var event map[string]any
-		if err := json.NewDecoder(req.Body).Decode(&event); err != nil {
-			t.Fatalf("decode 3.0 evidence event: %v", err)
-		}
-		for key, want := range map[string]any{
-			"bkn.trace.schema.version": "3.0.0",
-			"conversation_id":          "conv_demo",
-			"interaction_id":           "int_context_loader_0001",
-			"operation_id":             "op_context_retrieval_0001",
-			"producer_id":              "context-loader",
-		} {
-			if event[key] != want {
-				t.Fatalf("%s=%v, want %v", key, event[key], want)
-			}
-		}
-		if event["payload_hash"] == "" || event["envelope"] == nil {
-			t.Fatalf("3.0 event is missing immutable envelope identity: %#v", event)
-		}
-		refs, ok := event["business_refs"].([]any)
-		if !ok || len(refs) != 1 {
-			t.Fatalf("business_refs=%#v, want one typed ref", event["business_refs"])
-		}
-		ref, ok := refs[0].(map[string]any)
-		if !ok || ref["version"] != "schema-v3" {
-			t.Fatalf("business ref version=%#v, want actual source version", refs[0])
-		}
-		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-	payload := batch{
-		Trace: map[string]any{
-			"trace_id":            "71210000000000000000000000000001",
-			"bkn.request.id":      "req_context_loader_phase2_0001",
-			"bkn.account.id":      "acct_demo",
-			"bkn.account.type":    "user",
-			"bkn.conversation.id": "conv_demo",
-		},
-		Events: []Event{{
-			"event_id":       "evt_demo",
-			"event_type":     "retrieval.completed",
-			"observed_at":    "2026-07-25T08:00:00Z",
-			"emitted_at":     "2026-07-25T08:00:00Z",
-			"span_id":        "7121000000000001",
-			"interaction_id": "int_context_loader_0001",
-			"operation_id":   "op_context_retrieval_0001",
-			"attempt":        1,
-			"payload": map[string]any{
-				"source_refs": []map[string]any{{
-					"ref_id":         "resource:forecast_resource",
-					"ref_type":       "data_resource",
-					"version_status": "unversioned",
-				}},
-			},
-		}},
-		DeclaredBusinessRefs: []BusinessRef{{
-			RefType: "data_resource", RefID: "resource:forecast_resource", Version: "schema-v3",
-		}},
-	}
-	if err := postBatch("http://trace.local", time.Second, payload); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestSubmitEventsRecordsDurableOutcomeForOperationFinish(t *testing.T) {
-	t.Setenv(envEvidenceIngestURL, "http://trace.local/ingest")
-	previous := evidenceHTTPClient
-	t.Cleanup(func() { evidenceHTTPClient = previous })
-	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(*http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusAccepted,
-			Body: io.NopCloser(strings.NewReader(
-				`{"event_id":"evt_durable","durable_ack":true,"replayed":false,"ingest_sequence":1,"ingested_at":"2026-07-25T08:00:01Z"}`,
-			)),
-		}, nil
-	})}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 	ctx := withEvidenceOutcome(testTraceContext())
 	events := BuildRunSQLEvents(ctx, "SELECT 1", []string{"forecast_resource"}, &interfaces.VegaRawQueryResp{})
 	if err := SubmitEvents(ctx, nil, nil, events); err != nil {
@@ -1145,66 +952,47 @@ func TestSubmitEventsRecordsDurableOutcomeForOperationFinish(t *testing.T) {
 	}
 
 	outcome := evidenceOutcomeFromContext(ctx)
-	if outcome == nil || !outcome.durable {
-		t.Fatalf("durable evidence outcome was not recorded: %#v", outcome)
-	}
-	if len(outcome.eventIDs) != 1 || outcome.eventIDs[0] != events[0]["event_id"] {
-		t.Fatalf("event IDs=%#v, want emitted event", outcome.eventIDs)
-	}
-	if len(outcome.businessRefs) != 1 || outcome.businessRefs[0].RefID != "resource:forecast_resource" {
-		t.Fatalf("business refs=%#v, want queried resource", outcome.businessRefs)
+	if outcome == nil || !outcome.accepted {
+		t.Fatalf("queued evidence was incorrectly reported as durable: %#v", outcome)
 	}
 }
 
 func captureIngestedTrace(t *testing.T, ctx context.Context) map[string]any {
 	t.Helper()
-	bodies := make(chan []byte, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body := make([]byte, r.ContentLength)
-		if _, err := io.ReadFull(r.Body, body); err != nil {
-			t.Errorf("read ingest body: %v", err)
-		}
-		var event map[string]any
-		if err := json.Unmarshal(body, &event); err != nil {
-			t.Errorf("decode 3.0 evidence event: %v", err)
-		}
-		traceBlock := map[string]any{
-			"trace_id":            event["trace_id"],
-			"bkn.request.id":      event["request_id"],
-			"bkn.conversation.id": event["conversation_id"],
-			"bkn.account.id":      r.Header.Get("x-account-id"),
-			"bkn.account.type":    r.Header.Get("x-account-type"),
-		}
-		encoded, _ := json.Marshal(traceBlock)
-		select {
-		case bodies <- encoded:
-		default:
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	t.Setenv(envEvidenceIngestURL, server.URL)
-	t.Setenv(envEvidenceIngestTimeoutMS, "500")
-
-	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_type": "claim.created"}}); err != nil {
+	sender := &captureEvidenceSender{}
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{
+		ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval",
+		ProcessBootID: "test", CapturePolicyRevision: "1",
+	}, sender)
+	if err != nil {
 		t.Fatal(err)
 	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
-	select {
-	case body := <-bodies:
-		var traceBlock map[string]any
-		if err := json.Unmarshal(body, &traceBlock); err != nil {
-			t.Fatalf("decode ingest body: %v", err)
-		}
-		if traceBlock["bkn.conversation.id"] == "" {
-			delete(traceBlock, "bkn.conversation.id")
-		}
-		return traceBlock
-	case <-time.After(2 * time.Second):
-		t.Fatalf("expected evidence ingestion request")
-		return nil
+	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_id": "evt-test", "event_type": "claim.created"}}); err != nil {
+		t.Fatal(err)
 	}
+	queued := publisher.SnapshotQueue()
+	if len(queued) != 1 {
+		t.Fatalf("queued records=%d, want 1", len(queued))
+	}
+	var record map[string]any
+	if err := json.Unmarshal(queued[0].Value, &record); err != nil {
+		t.Fatal(err)
+	}
+	traceBlock := map[string]any{
+		"trace_id": record["trace_id"], "bkn.request.id": record["request_id"],
+		"bkn.conversation.id": record["conversation_id"],
+	}
+	if traceBlock["bkn.conversation.id"] == "" {
+		delete(traceBlock, "bkn.conversation.id")
+	}
+	if auth, ok := common.GetAccountAuthContextFromCtx(ctx); ok && auth != nil {
+		traceBlock["bkn.account.id"] = auth.AccountID
+		traceBlock["bkn.account.type"] = string(auth.AccountType)
+	}
+	return traceBlock
 }
 
 func TestSubmitEventsCarriesCorrelationIDs(t *testing.T) {

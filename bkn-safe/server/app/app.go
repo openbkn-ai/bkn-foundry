@@ -45,6 +45,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httpapi"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/oauthorigin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
@@ -120,6 +121,10 @@ func Boot(opts Options) (*App, error) {
 
 	userStore := auth.NewUserStore(db)
 	hydraAdmin := auth.NewHydraAdmin(cfg.Hydra.AdminURL)
+	oauthAccessOrigins, err := oauthorigin.New(db, hydraAdmin, cfg.OAuth.StudioBaselineRedirectURIs)
+	if err != nil {
+		return nil, fmt.Errorf("init OAuth access origins: %w", err)
+	}
 
 	// Authenticator: local bcrypt store, plus LDAP federation when configured
 	// (local first, then LDAP).
@@ -191,11 +196,13 @@ func Boot(opts Options) (*App, error) {
 			DB:                            db,
 			Provider:                      provider,
 			Hydra:                         hydraAdmin,
+			HydraBrowserPublicURL:         cfg.Hydra.BrowserPublicURL,
 			Directory:                     dir,
 			Users:                         userStore,
 			Audit:                         auditStore,
 			AccessLog:                     accessLogStore,
 			Decisions:                     decisionStore,
+			OAuthAccessOrigins:            oauthAccessOrigins,
 			License:                       licSvc,
 			AuthorizationResources:        authorizationResources,
 			PermissionRequestResources:    permissionRequestResources,
@@ -236,6 +243,7 @@ func (a *App) Run() error {
 	go a.deps.Audit.LogHead(ctx, a.cfg.Audit.ChainHeadLogInterval)
 	go a.decisions.RunRetention(ctx, a.cfg.Audit.DecisionLog.RetentionDays, 24*time.Hour)
 	go a.enforcer.RunPolicyRefresh(ctx, a.cfg.Authz.PolicyRefreshInterval)
+	go a.deps.OAuthAccessOrigins.Run(ctx, a.cfg.OAuth.ReconcileInterval)
 
 	r := httpapi.New(a.deps)
 	slog.Info("bkn-safe listening", "addr", a.cfg.HTTPAddr)

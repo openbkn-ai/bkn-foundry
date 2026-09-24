@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -34,12 +35,13 @@ const (
 )
 
 var (
-	ErrInvalidRequest = errors.New("invalid proxy grant request")
-	ErrForbidden      = errors.New("proxy grant is forbidden")
-	ErrNotFound       = errors.New("proxy grant source not found")
-	ErrProxyInactive  = errors.New("managed proxy is not active")
-	ErrSourceRequired = errors.New("proxy grant source is required by another active source")
-	ErrStaleSync      = errors.New("proxy grant synchronization generation is stale")
+	ErrInvalidRequest   = errors.New("invalid proxy grant request")
+	ErrForbidden        = errors.New("proxy grant is forbidden")
+	ErrNotFound         = errors.New("proxy grant source not found")
+	ErrProxyInactive    = errors.New("managed proxy is not active")
+	ErrSourceRequired   = errors.New("proxy grant source is required by another active source")
+	ErrStaleSync        = errors.New("proxy grant synchronization generation is stale")
+	ErrSnapshotConflict = errors.New("proxy grant snapshot version conflicts with the current state")
 )
 
 // SourceSpec is one published-model binding's need for one concrete operation.
@@ -76,6 +78,27 @@ type BatchCheckRequest struct {
 	ProxyAccountID string       `json:"proxy_account_id"`
 	GrantorID      string       `json:"grantor_id"`
 	Sources        []SourceSpec `json:"sources"`
+}
+
+// DeltaCheckRequest validates only bindings affected by one BKN mutation.
+// Removals are carried so a delegator owned only by a source being removed is
+// never reused to authorize an upsert in the same transition.
+type DeltaCheckRequest struct {
+	ProxyAccountID string       `json:"proxy_account_id"`
+	GrantorID      string       `json:"grantor_id"`
+	Upserts        []SourceSpec `json:"upserts"`
+	Removals       []SourceSpec `json:"removals"`
+}
+
+// DeltaSyncRequest applies one fenced transition to the managed proxy ledger.
+type DeltaSyncRequest struct {
+	ProxyAccountID        string       `json:"proxy_account_id"`
+	GrantorID             string       `json:"grantor_id"`
+	SyncGeneration        uint64       `json:"sync_generation"`
+	BaseSnapshotVersion   string       `json:"base_snapshot_version"`
+	TargetSnapshotVersion string       `json:"target_snapshot_version"`
+	Upserts               []SourceSpec `json:"upserts"`
+	Removals              []SourceSpec `json:"removals"`
 }
 
 type ReconcileRequest struct {
@@ -504,6 +527,349 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 	return result, nil
 }
 
+// CheckDelta validates only bindings affected by one BKN mutation. Unlike the
+// legacy full-set preflight, it neither copies the Casbin model nor writes
+// success audit rows. Denials remain durable security events.
+func (s *Service) CheckDelta(ctx context.Context, req DeltaCheckRequest) (BatchCheckResult, error) {
+	req.ProxyAccountID = strings.TrimSpace(req.ProxyAccountID)
+	req.GrantorID = strings.TrimSpace(req.GrantorID)
+	if req.ProxyAccountID == "" || req.GrantorID == "" ||
+		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 {
+		return BatchCheckResult{}, ErrInvalidRequest
+	}
+	explicit, normalized, requiredBySource, desired, err := s.normalizeDeltaUpserts(ctx, req.Upserts)
+	if err != nil {
+		return BatchCheckResult{}, err
+	}
+	removals, err := normalizeDeltaRemovals(req.Removals)
+	if err != nil {
+		return BatchCheckResult{}, err
+	}
+
+	result := BatchCheckResult{DeniedSources: []SourceSpec{}, ResolvedSources: []ResolvedSource{}}
+	mapping, mappingErr := loadProxyReadOnly(s.db.WithContext(ctx), req.ProxyAccountID)
+	if mappingErr != nil && !errors.Is(mappingErr, ErrProxyInactive) &&
+		!errors.Is(mappingErr, ErrNotFound) && !errors.Is(mappingErr, ErrForbidden) {
+		return BatchCheckResult{}, mappingErr
+	}
+	if mappingErr == nil && mapping.LifecycleStatus != managedproxy.StatusActive {
+		mappingErr = ErrProxyInactive
+	}
+	rows := []model.ProxyGrantSource{}
+	if mappingErr == nil {
+		for _, spec := range removals {
+			if spec.KNID != mapping.ManagedResourceID {
+				return BatchCheckResult{}, ErrForbidden
+			}
+		}
+		rows, err = loadDeltaRows(s.db.WithContext(ctx), req.ProxyAccountID, normalized, removals)
+		if err != nil {
+			return BatchCheckResult{}, err
+		}
+	}
+	validCurrent := map[string]bool{}
+	if mappingErr == nil {
+		validCurrent, err = s.enforcer.ValidProxySourceIDs(ctx, rows)
+		if err != nil {
+			return BatchCheckResult{}, err
+		}
+	}
+	removed := removalSet(removals)
+	current := make(map[sourceKey]model.ProxyGrantSource, len(rows))
+	removalSpecs := make(map[sourceKey]SourceSpec, len(removals))
+	for _, spec := range removals {
+		removalSpecs[keyForSpec(spec)] = spec
+	}
+	for _, row := range rows {
+		if spec, ok := removalSpecs[keyForModel(row)]; ok && !sameBinding(specFromModel(row), spec) {
+			return BatchCheckResult{}, ErrInvalidRequest
+		}
+		current[keyForModel(row)] = row
+	}
+	reusable := reusableDelegatorsForDelta(rows, mapping.ManagedResourceID, validCurrent, removed, desired)
+	allowedBy := make(map[sourceKey]string, len(normalized))
+	needsActor := make([]SourceSpec, 0, len(normalized))
+	for _, spec := range normalized {
+		key := keyForSpec(spec)
+		if mappingErr != nil || spec.KNID != mapping.ManagedResourceID {
+			continue
+		}
+		if row, ok := current[key]; ok {
+			if !sameBinding(specFromModel(row), spec) {
+				return BatchCheckResult{}, ErrInvalidRequest
+			}
+			if row.LifecycleStatus == StatusActive && validCurrent[row.ID] {
+				allowedBy[key] = row.GrantedBy
+				continue
+			}
+		}
+		if grantorID, ok := reusable[permissionForSpec(req.ProxyAccountID, spec)]; ok {
+			allowedBy[key] = grantorID
+			continue
+		}
+		needsActor = append(needsActor, spec)
+	}
+	if mappingErr == nil && len(needsActor) > 0 {
+		actorPermissions, eligible, err := s.readOnlyActorPermissions(ctx, req.ProxyAccountID, req.GrantorID, needsActor)
+		if err != nil {
+			return BatchCheckResult{}, err
+		}
+		if eligible {
+			for _, spec := range needsActor {
+				if actorPermissions[permissionForSpec(req.ProxyAccountID, spec)] {
+					allowedBy[keyForSpec(spec)] = req.GrantorID
+				}
+			}
+		}
+	}
+	for _, spec := range explicit {
+		key := keyForSpec(spec)
+		_, allowed := allowedBy[key]
+		for _, required := range requiredBySource[key] {
+			_, requirementAllowed := allowedBy[required]
+			allowed = allowed && requirementAllowed
+		}
+		if !allowed {
+			result.DeniedSources = append(result.DeniedSources, spec)
+		}
+	}
+	for _, spec := range normalized {
+		if grantorID, ok := allowedBy[keyForSpec(spec)]; ok {
+			result.ResolvedSources = append(result.ResolvedSources, ResolvedSource{
+				SourceSpec: spec, GrantedBy: grantorID,
+			})
+		}
+	}
+	if len(result.DeniedSources) > 0 {
+		audits := make([]model.ProxyGrantAuditLog, 0, len(result.DeniedSources))
+		for _, spec := range result.DeniedSources {
+			audit, err := newAudit("check_delta", "deny", ErrForbidden.Error(),
+				req.GrantorID, req.ProxyAccountID, spec)
+			if err != nil {
+				return BatchCheckResult{}, err
+			}
+			audits = append(audits, audit)
+		}
+		if err := s.db.WithContext(ctx).Create(&audits).Error; err != nil {
+			return BatchCheckResult{}, err
+		}
+	}
+	return result, nil
+}
+
+// SyncDelta atomically applies one bounded source transition. The transition
+// is fenced by both the BKN generation and Safe's current snapshot version.
+func (s *Service) SyncDelta(ctx context.Context, req DeltaSyncRequest) (SyncResult, error) {
+	req.ProxyAccountID = strings.TrimSpace(req.ProxyAccountID)
+	req.GrantorID = strings.TrimSpace(req.GrantorID)
+	req.BaseSnapshotVersion = strings.TrimSpace(req.BaseSnapshotVersion)
+	req.TargetSnapshotVersion = strings.TrimSpace(req.TargetSnapshotVersion)
+	if req.ProxyAccountID == "" || req.GrantorID == "" || req.SyncGeneration == 0 ||
+		len(req.ProxyAccountID) > 64 || len(req.GrantorID) > 64 ||
+		len(req.BaseSnapshotVersion) > 80 || req.TargetSnapshotVersion == "" ||
+		len(req.TargetSnapshotVersion) > 80 {
+		return SyncResult{}, ErrInvalidRequest
+	}
+	explicit, normalized, _, desired, err := s.normalizeDeltaUpserts(ctx, req.Upserts)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	removals, err := normalizeDeltaRemovals(req.Removals)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	explicitKeys := make(map[sourceKey]bool, len(explicit))
+	for _, spec := range explicit {
+		explicitKeys[keyForSpec(spec)] = true
+	}
+
+	var result SyncResult
+	err = s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
+		mapping, err := loadProxy(tx.DB(), req.ProxyAccountID)
+		if err != nil {
+			return err
+		}
+		if req.SyncGeneration < mapping.GrantSyncGeneration ||
+			(req.SyncGeneration == mapping.GrantSyncGeneration &&
+				req.TargetSnapshotVersion != mapping.GrantSnapshotVersion) {
+			return ErrStaleSync
+		}
+		if req.SyncGeneration == mapping.GrantSyncGeneration {
+			return nil
+		}
+		// A higher-generation request whose target is already current is replayed
+		// idempotently instead of being skipped. This is required for touched-only
+		// transitions where base and target are intentionally equal: the upserts
+		// must still revalidate and, if needed, transfer their delegator.
+		if mapping.GrantSnapshotVersion != req.BaseSnapshotVersion &&
+			mapping.GrantSnapshotVersion != req.TargetSnapshotVersion {
+			return ErrSnapshotConflict
+		}
+		if len(normalized) > 0 && mapping.LifecycleStatus != managedproxy.StatusActive {
+			return ErrProxyInactive
+		}
+		if err := validateGrantorIdentity(tx.DB(), req.GrantorID); err != nil {
+			return err
+		}
+		for _, spec := range normalized {
+			if spec.KNID != mapping.ManagedResourceID {
+				return ErrForbidden
+			}
+		}
+		for _, spec := range removals {
+			if spec.KNID != mapping.ManagedResourceID {
+				return ErrForbidden
+			}
+		}
+		rows, err := loadDeltaRows(tx.DB(), req.ProxyAccountID, normalized, removals)
+		if err != nil {
+			return err
+		}
+		validCurrent, err := tx.ValidProxySourceIDs(ctx, rows)
+		if err != nil {
+			return err
+		}
+		removed := removalSet(removals)
+		current := make(map[sourceKey]model.ProxyGrantSource, len(rows))
+		removalSpecs := make(map[sourceKey]SourceSpec, len(removals))
+		for _, spec := range removals {
+			removalSpecs[keyForSpec(spec)] = spec
+		}
+		for _, row := range rows {
+			if spec, ok := removalSpecs[keyForModel(row)]; ok && !sameBinding(specFromModel(row), spec) {
+				return ErrInvalidRequest
+			}
+			current[keyForModel(row)] = row
+		}
+		reusable := reusableDelegatorsForDelta(rows, mapping.ManagedResourceID, validCurrent, removed, desired)
+		resolved := make(map[sourceKey]string, len(normalized))
+		needsActor := make([]SourceSpec, 0, len(normalized))
+		for _, spec := range normalized {
+			key := keyForSpec(spec)
+			if row, ok := current[key]; ok {
+				if !sameBinding(specFromModel(row), spec) {
+					return ErrInvalidRequest
+				}
+				if row.LifecycleStatus == StatusActive && validCurrent[row.ID] {
+					resolved[key] = row.GrantedBy
+					continue
+				}
+			}
+			if grantorID, ok := reusable[permissionForSpec(req.ProxyAccountID, spec)]; ok {
+				resolved[key] = grantorID
+				continue
+			}
+			needsActor = append(needsActor, spec)
+		}
+		if len(needsActor) > 0 {
+			if err := validateRegisteredOperations(tx.DB(), needsActor); err != nil {
+				return err
+			}
+			permissions, err := transactionActorPermissions(ctx, tx, req.ProxyAccountID, req.GrantorID, needsActor)
+			if err != nil {
+				return err
+			}
+			for _, spec := range needsActor {
+				if !permissions[permissionForSpec(req.ProxyAccountID, spec)] {
+					return ErrForbidden
+				}
+				resolved[keyForSpec(spec)] = req.GrantorID
+			}
+		}
+
+		for _, spec := range normalized {
+			key := keyForSpec(spec)
+			requirementDerived := !explicitKeys[key]
+			if row, ok := current[key]; ok && row.LifecycleStatus == StatusActive {
+				changed := false
+				updates := map[string]any{}
+				if !validCurrent[row.ID] || row.GrantedBy != resolved[key] {
+					updates["granted_by"] = resolved[key]
+					row.GrantedBy = resolved[key]
+					result.Transferred++
+					changed = true
+				}
+				if row.RequirementDerived != requirementDerived {
+					updates["requirement_derived"] = requirementDerived
+					row.RequirementDerived = requirementDerived
+					changed = true
+				}
+				if len(updates) > 0 {
+					if err := tx.DB().Model(&row).Updates(updates).Error; err != nil {
+						return err
+					}
+				}
+				if err := ensureMaterialized(tx, req.ProxyAccountID, spec); err != nil {
+					return err
+				}
+				if changed {
+					if err := recordAudit(tx.DB(), "sync_delta_upsert", "allow", "updated",
+						req.GrantorID, req.ProxyAccountID, spec); err != nil {
+						return err
+					}
+				} else {
+					result.Unchanged++
+				}
+				continue
+			}
+			row, changed, err := grantInTransaction(tx, req.ProxyAccountID, resolved[key], spec, requirementDerived)
+			if err != nil {
+				return err
+			}
+			if changed {
+				result.Added++
+				if err := recordAudit(tx.DB(), "sync_delta_grant", "allow", "synchronized",
+					req.GrantorID, req.ProxyAccountID, specFromModel(row)); err != nil {
+					return err
+				}
+			}
+		}
+
+		for _, row := range rows {
+			if row.LifecycleStatus != StatusActive {
+				continue
+			}
+			if _, keep := desired[keyForModel(row)]; keep {
+				continue
+			}
+			if !shouldRemoveDeltaRow(row, removed) {
+				continue
+			}
+			revoked, changed, err := revokeByID(tx, row.ID)
+			if err != nil {
+				return err
+			}
+			if changed {
+				result.Revoked++
+				if err := recordAudit(tx.DB(), "sync_delta_revoke", "allow", "removed from affected source set",
+					req.GrantorID, req.ProxyAccountID, specFromModel(revoked)); err != nil {
+					return err
+				}
+			}
+		}
+		return tx.DB().Model(&mapping).Updates(map[string]any{
+			"grant_sync_generation":  req.SyncGeneration,
+			"grant_snapshot_version": req.TargetSnapshotVersion,
+		}).Error
+	})
+	if err != nil {
+		if !errors.Is(err, authz.ErrPolicyReloadAfterCommit) {
+			auditSpecs := explicit
+			if len(auditSpecs) == 0 {
+				auditSpecs = removals
+			}
+			if len(auditSpecs) == 0 {
+				auditSpecs = []SourceSpec{{}}
+			}
+			for _, spec := range auditSpecs {
+				s.recordDenied(ctx, "sync_delta", req.GrantorID, req.ProxyAccountID, spec, err)
+			}
+		}
+		return SyncResult{}, err
+	}
+	return result, nil
+}
+
 // Sync replaces the active KN binding source set for one proxy with the latest
 // published-model set. All additions and required delegator transfers are
 // authorized before any row changes, so one unauthorized target rejects the
@@ -756,6 +1122,215 @@ type permissionKey struct {
 	Operation      string
 }
 
+type removalIdentity struct {
+	SourceType  string
+	SourceID    string
+	KNID        string
+	BindingType string
+	BindingID   string
+}
+
+type deltaRemovalSet struct {
+	keys       map[sourceKey]bool
+	identities map[removalIdentity]bool
+}
+
+func (s *Service) normalizeDeltaUpserts(ctx context.Context, raw []SourceSpec) (
+	[]SourceSpec, []SourceSpec, map[sourceKey][]sourceKey, map[sourceKey]SourceSpec, error,
+) {
+	explicit := make([]SourceSpec, 0, len(raw))
+	seen := make(map[sourceKey]SourceSpec, len(raw))
+	for _, candidate := range raw {
+		spec, err := normalizeSpec(candidate)
+		if err != nil || spec.SourceType != SourceTypeKNProxyBinding {
+			return nil, nil, nil, nil, ErrInvalidRequest
+		}
+		key := keyForSpec(spec)
+		if previous, exists := seen[key]; exists {
+			if !sameBinding(previous, spec) {
+				return nil, nil, nil, nil, ErrInvalidRequest
+			}
+			continue
+		}
+		seen[key] = spec
+		explicit = append(explicit, spec)
+	}
+	normalized, requiredBySource, err := s.normalizeRequiredSources(ctx, explicit)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	desired := make(map[sourceKey]SourceSpec, len(normalized))
+	for _, spec := range normalized {
+		desired[keyForSpec(spec)] = spec
+	}
+	return explicit, normalized, requiredBySource, desired, nil
+}
+
+func normalizeDeltaRemovals(raw []SourceSpec) ([]SourceSpec, error) {
+	removals := make([]SourceSpec, 0, len(raw))
+	seen := make(map[sourceKey]SourceSpec, len(raw))
+	for _, candidate := range raw {
+		spec, err := normalizeSpec(candidate)
+		if err != nil || spec.SourceType != SourceTypeKNProxyBinding {
+			return nil, ErrInvalidRequest
+		}
+		key := keyForSpec(spec)
+		if previous, exists := seen[key]; exists {
+			if !sameBinding(previous, spec) {
+				return nil, ErrInvalidRequest
+			}
+			continue
+		}
+		seen[key] = spec
+		removals = append(removals, spec)
+	}
+	return removals, nil
+}
+
+func removalSet(removals []SourceSpec) deltaRemovalSet {
+	set := deltaRemovalSet{
+		keys:       make(map[sourceKey]bool, len(removals)),
+		identities: make(map[removalIdentity]bool, len(removals)),
+	}
+	for _, spec := range removals {
+		set.keys[keyForSpec(spec)] = true
+		set.identities[removalIdentityForSpec(spec)] = true
+	}
+	return set
+}
+
+func removalIdentityForSpec(spec SourceSpec) removalIdentity {
+	return removalIdentity{
+		SourceType: spec.SourceType, SourceID: spec.SourceID, KNID: spec.KNID,
+		BindingType: spec.BindingType, BindingID: spec.BindingID,
+	}
+}
+
+func removalIdentityForModel(row model.ProxyGrantSource) removalIdentity {
+	return removalIdentityForSpec(specFromModel(row))
+}
+
+func shouldRemoveDeltaRow(row model.ProxyGrantSource, removed deltaRemovalSet) bool {
+	return removed.keys[keyForModel(row)] ||
+		(row.RequirementDerived && removed.identities[removalIdentityForModel(row)])
+}
+
+func loadDeltaRows(db *gorm.DB, proxyID string, upserts, removals []SourceSpec) ([]model.ProxyGrantSource, error) {
+	sourceIDs := map[string]bool{}
+	resourceTypes := map[string]bool{}
+	resourceIDs := map[string]bool{}
+	operations := map[string]bool{}
+	for _, spec := range append(append([]SourceSpec{}, upserts...), removals...) {
+		sourceIDs[spec.SourceID] = true
+		resourceTypes[spec.ResourceType] = true
+		resourceIDs[spec.ResourceID] = true
+		operations[spec.Operation] = true
+	}
+	if len(sourceIDs) == 0 {
+		return []model.ProxyGrantSource{}, nil
+	}
+	predicate := db.Where("source_id IN ?", sortedKeys(sourceIDs))
+	if len(resourceTypes) > 0 && len(resourceIDs) > 0 && len(operations) > 0 {
+		predicate = predicate.Or("resource_type IN ? AND resource_id IN ? AND operation IN ?",
+			sortedKeys(resourceTypes), sortedKeys(resourceIDs), sortedKeys(operations))
+	}
+	var rows []model.ProxyGrantSource
+	err := db.Where("proxy_account_id = ? AND source_type = ?", proxyID, SourceTypeKNProxyBinding).
+		Where(predicate).Order("source_id, resource_type, resource_id, operation").Find(&rows).Error
+	return rows, err
+}
+
+func reusableDelegatorsForDelta(rows []model.ProxyGrantSource, knID string,
+	validCurrent map[string]bool, removed deltaRemovalSet,
+	desired map[sourceKey]SourceSpec) map[permissionKey]string {
+	reusable := make(map[permissionKey]string)
+	for _, row := range rows {
+		if row.KNID != knID || row.LifecycleStatus != StatusActive || !validCurrent[row.ID] ||
+			strings.TrimSpace(row.GrantedBy) == "" {
+			continue
+		}
+		if shouldRemoveDeltaRow(row, removed) {
+			if _, kept := desired[keyForModel(row)]; !kept {
+				continue
+			}
+		}
+		permission := permissionForModel(row)
+		if _, exists := reusable[permission]; !exists {
+			reusable[permission] = row.GrantedBy
+		}
+	}
+	return reusable
+}
+
+func (s *Service) readOnlyActorPermissions(ctx context.Context, proxyID, grantorID string,
+	specs []SourceSpec) (map[permissionKey]bool, bool, error) {
+	if err := validateGrantorIdentity(s.db.WithContext(ctx), grantorID); err != nil {
+		if errors.Is(err, ErrForbidden) {
+			return map[permissionKey]bool{}, false, nil
+		}
+		return nil, false, err
+	}
+	if err := validateRegisteredOperations(s.db.WithContext(ctx), specs); err != nil {
+		return nil, false, err
+	}
+	resources, operations := deltaPermissionInputs(specs)
+	filtered, err := s.enforcer.FilterResourceOpsRaw(ctx, grantorID, resources, operations)
+	if err != nil {
+		return nil, false, err
+	}
+	return filteredPermissionSet(proxyID, filtered), true, nil
+}
+
+func sortedKeys(values map[string]bool) []string {
+	keys := make([]string, 0, len(values))
+	for value := range values {
+		keys = append(keys, value)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func transactionActorPermissions(ctx context.Context, tx *authz.PolicyTransaction,
+	proxyID, grantorID string, specs []SourceSpec) (map[permissionKey]bool, error) {
+	resources, operations := deltaPermissionInputs(specs)
+	filtered, err := tx.FilterResourceOpsRaw(ctx, grantorID, resources, operations)
+	if err != nil {
+		return nil, err
+	}
+	return filteredPermissionSet(proxyID, filtered), nil
+}
+
+func deltaPermissionInputs(specs []SourceSpec) ([]authz.ResourceRef, []string) {
+	resourceSet := map[authz.ResourceRef]bool{}
+	operationSet := map[string]bool{}
+	for _, spec := range specs {
+		resourceSet[authz.ResourceRef{Type: spec.ResourceType, ID: spec.ResourceID}] = true
+		operationSet[spec.Operation] = true
+	}
+	resources := make([]authz.ResourceRef, 0, len(resourceSet))
+	for resource := range resourceSet {
+		resources = append(resources, resource)
+	}
+	operations := make([]string, 0, len(operationSet))
+	for operation := range operationSet {
+		operations = append(operations, operation)
+	}
+	return resources, operations
+}
+
+func filteredPermissionSet(proxyID string, filtered []authz.FilteredResource) map[permissionKey]bool {
+	permissions := map[permissionKey]bool{}
+	for _, resource := range filtered {
+		for _, operation := range resource.Operations {
+			permissions[permissionKey{
+				ProxyAccountID: proxyID, ResourceType: resource.Type,
+				ResourceID: resource.ID, Operation: operation,
+			}] = true
+		}
+	}
+	return permissions
+}
+
 // normalizeRequiredSources expands each explicitly requested source with one
 // source for every direct operation prerequisite. Keeping the same source
 // identity and binding makes provenance validation, Sync replacement and
@@ -877,6 +1452,32 @@ func loadProxy(db *gorm.DB, proxyID string) (model.ManagedProxyAccount, error) {
 		return mapping, err
 	}
 	if mapping.ManagedBy != managedproxy.ManagerBKN || mapping.ManagedResourceType != managedproxy.ResourceKnowledgeNetwork ||
+		user.AccountType != model.AccountTypeApp || user.PasswordHash != "" {
+		return mapping, managedproxy.ErrInconsistentAccount
+	}
+	active := mapping.LifecycleStatus == managedproxy.StatusActive
+	validStatus := active || mapping.LifecycleStatus == managedproxy.StatusDisabling ||
+		mapping.LifecycleStatus == managedproxy.StatusArchived
+	if !validStatus || user.Enabled != active {
+		return mapping, managedproxy.ErrInconsistentAccount
+	}
+	return mapping, nil
+}
+
+func loadProxyReadOnly(db *gorm.DB, proxyID string) (model.ManagedProxyAccount, error) {
+	var mapping model.ManagedProxyAccount
+	if err := db.First(&mapping, "proxy_account_id = ?", proxyID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return mapping, ErrNotFound
+		}
+		return mapping, err
+	}
+	var user model.User
+	if err := db.First(&user, "id = ?", proxyID).Error; err != nil {
+		return mapping, err
+	}
+	if mapping.ManagedBy != managedproxy.ManagerBKN ||
+		mapping.ManagedResourceType != managedproxy.ResourceKnowledgeNetwork ||
 		user.AccountType != model.AccountTypeApp || user.PasswordHash != "" {
 		return mapping, managedproxy.ErrInconsistentAccount
 	}

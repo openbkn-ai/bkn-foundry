@@ -90,27 +90,17 @@ spec:
           args: ["serve", "all", "--dev"]
           env:
             - { name: DSN, value: "postgres://hydra:secret@{{ .Release.Name }}-postgres:5432/hydra?sslmode=disable" }
-            {{- /* Public browser-facing base for issuer + login/consent/device URLs. */}}
-            {{- /* Precedence: explicit bundledDeps.publicBaseURL > derived from the */}}
-            {{- /* global accessAddress (gateway, shared with onboard) > in-cluster names. */}}
-            {{- $pub := .Values.bundledDeps.publicBaseURL }}
-            {{- if and (not $pub) .Values.accessAddress .Values.accessAddress.host }}
-              {{- $aa := .Values.accessAddress }}
-              {{- $scheme := $aa.scheme | default "https" }}
-              {{- $port := $aa.port | toString }}
-              {{- if or (and (eq $scheme "https") (eq $port "443")) (and (eq $scheme "http") (eq $port "80")) }}
-                {{- $pub = printf "%s://%s" $scheme $aa.host }}
-              {{- else }}
-                {{- $pub = printf "%s://%s:%s" $scheme $aa.host $port }}
-              {{- end }}
-            {{- end }}
-            {{- $svc := printf "http://%s:%v" .Values.image.name .Values.service.ports.port }}
-            - { name: URLS_SELF_ISSUER, value: "{{ if $pub }}{{ $pub }}{{ else }}http://{{ .Release.Name }}-hydra-public:4444{{ end }}" }
-            - { name: URLS_LOGIN, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/login" }
-            - { name: URLS_CONSENT, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/consent" }
-            - { name: URLS_DEVICE_VERIFICATION, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/device" }
+            {{- /* Public browser-facing base for the single issuer and device URLs. */}}
+            {{- $pub := include "bkn-safe.hydraBrowserPublicURL" . }}
+            - { name: URLS_SELF_ISSUER, value: {{ $pub | quote }} }
+            {{- /* Relative login/consent URLs preserve the browser's actual
+                   ingress host. bkn-safe also converts Hydra continuation URLs
+                   on the canonical issuer origin back to relative locations. */}}
+            - { name: URLS_LOGIN, value: "/login" }
+            - { name: URLS_CONSENT, value: "/consent" }
+            - { name: URLS_DEVICE_VERIFICATION, value: {{ printf "%s/device" $pub | quote }} }
             {{- /* Post-approval page (replaces hydra's bare fallback). bkn-safe serves it. */}}
-            - { name: URLS_DEVICE_SUCCESS, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/device/success" }
+            - { name: URLS_DEVICE_SUCCESS, value: {{ printf "%s/device/success" $pub | quote }} }
             {{- /* Signing/encryption key, resolved by bkn-safe.hydraSecret and
                    stored in the release Secret: random on fresh installs,
                    preserved (never rotated) on upgrades. Read from the Secret so

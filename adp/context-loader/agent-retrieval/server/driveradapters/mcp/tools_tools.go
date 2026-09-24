@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kntools"
 )
 
@@ -40,11 +41,66 @@ func handleSearchCapabilities(svc kntools.KnToolsService) func(ctx context.Conte
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		result, err := BuildMCPToolResult(resp, format)
+		result, err := BuildMCPToolResult(withCapabilityCalls(resp, searchReq.KnID), format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return result, nil
+	}
+}
+
+// capabilityCall is the next call that uses a capability, with the IDs already
+// filled in. Agents given only owner_id and capability_id kept calling a
+// function by its name instead, a round trip lost each time; a call to copy
+// removes the mapping step (owner_id is toolbox_id, capability_id is tool_id).
+type capabilityCall struct {
+	Tool      string         `json:"tool"`
+	Arguments map[string]any `json:"arguments"`
+}
+
+type capabilityEntryWithCall struct {
+	kntools.CapabilityEntry
+	Call *capabilityCall `json:"call,omitempty"`
+}
+
+type searchCapabilitiesView struct {
+	Capabilities []capabilityEntryWithCall `json:"capabilities"`
+	TotalMatched int                       `json:"total_matched"`
+	Truncated    bool                      `json:"truncated,omitempty"`
+	Message      string                    `json:"message,omitempty"`
+}
+
+// withCapabilityCalls adds the call to each entry. Only the MCP answer
+// changes: the service result and the REST route stay as they are.
+func withCapabilityCalls(resp *kntools.SearchCapabilitiesResp, knID string) *searchCapabilitiesView {
+	if resp == nil {
+		return nil
+	}
+	view := &searchCapabilitiesView{
+		Capabilities: make([]capabilityEntryWithCall, 0, len(resp.Capabilities)),
+		TotalMatched: resp.TotalMatched, Truncated: resp.Truncated, Message: resp.Message,
+	}
+	for _, entry := range resp.Capabilities {
+		view.Capabilities = append(view.Capabilities, capabilityEntryWithCall{
+			CapabilityEntry: entry, Call: capabilityCallFor(entry, knID),
+		})
+	}
+	return view
+}
+
+func capabilityCallFor(entry kntools.CapabilityEntry, knID string) *capabilityCall {
+	switch entry.CapabilityType {
+	case interfaces.CapabilityTypeFunction, interfaces.CapabilityTypeMCPTool:
+		return &capabilityCall{Tool: toolKeyExecuteTool, Arguments: map[string]any{
+			"kn_id": knID, "toolbox_id": entry.OwnerID, "tool_id": entry.CapabilityID,
+			"arguments": map[string]any{},
+		}}
+	case interfaces.CapabilityTypeSkill:
+		return &capabilityCall{Tool: toolKeyGetSkillContent, Arguments: map[string]any{
+			"kn_id": knID, "skill_id": entry.CapabilityID,
+		}}
+	default:
+		return nil
 	}
 }
 

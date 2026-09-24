@@ -17,6 +17,7 @@ type RelationTypeAccess interface {
 
 	CreateRelationType(ctx context.Context, tx *sql.Tx, relationType *RelationType) error
 	ListRelationTypes(ctx context.Context, query RelationTypesQueryParams) ([]*RelationType, error)
+	ListRelationTypeSummaries(ctx context.Context, query RelationTypesQueryParams) ([]*RelationType, error)
 	GetRelationTypesTotal(ctx context.Context, query RelationTypesQueryParams) (int, error)
 	GetRelationTypeByID(ctx context.Context, knID string, branch string, rtID string) (*RelationType, error)
 	GetRelationTypesByIDs(ctx context.Context, knID string, branch string, rtIDs []string) ([]*RelationType, error)

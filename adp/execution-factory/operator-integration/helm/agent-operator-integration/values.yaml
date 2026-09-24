@@ -217,9 +217,26 @@ observability:
     enabled: false
     sampling_rate: 1.0
   evidence:
-    ingest_url: ""
-    ingest_token_secret_name: ""
-    ingest_token_secret_key: "ingest-token"
+    publisher:
+      brokers: ""
+      credentials_secret_name: ""
+      username_secret_key: "username"
+      password_secret_key: "password"
+      producer_id: agent-operator-integration
+      producer_stream_id: agent-operator-integration
+      workload_identity: agent-operator-integration
+      capture_policy_revision: "1"
+      queue_max_records: 4096
+      queue_max_bytes: 67108864
+      max_record_bytes: 1048576
+      max_attempts: 3
+      retry_backoff_ms: 100
+  audit:
+    publisher:
+      brokers: ""
+      credentials_secret_name: ""
+      username_secret_key: "username"
+      password_secret_key: "password"
   log:
     enabled: false
     level: info

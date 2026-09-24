@@ -642,8 +642,14 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 			// whoever reads the answer, and only one of them is worth investigating.
 			log.Printf("WARN: get_kn_detail capability bindings unreadable for kn %s: %v", knID, err)
 		}
-		resp.Slim(getStringArg(req, "detail_level", interfaces.DetailLevelSummary))
+		detailLevel := getStringArg(req, "detail_level", interfaces.DetailLevelSummary)
+		resp.Slim(detailLevel)
 		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "network", knID, nil, resp, true)
+		// After the snapshot, which records permissions as they are: the evidence
+		// keeps every entry, only the answer drops the ones that say nothing.
+		if detailLevel != interfaces.DetailLevelFull {
+			omitUnrestrictedPermissions(resp.ObjectTypes)
+		}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -866,4 +872,30 @@ func missingObjectTypeIDs(requested []string, matched []*interfaces.ObjectType) 
 		}
 	}
 	return missing
+}
+
+// omitUnrestrictedPermissions drops an object type's effective_permissions
+// when every property in it is full.
+//
+// The map lists every property of every object type, so on a network the
+// caller may read in full it repeated "full" for each one: a fifth of a
+// summary on the supply sample, carried again in every later model turn. A
+// map with any schema, masked or none entry is the one that tells the caller
+// something, and it is kept whole.
+func omitUnrestrictedPermissions(objectTypes []*interfaces.ObjectType) {
+	for _, objectType := range objectTypes {
+		if objectType == nil || len(objectType.EffectivePermissions) == 0 {
+			continue
+		}
+		restricted := false
+		for _, level := range objectType.EffectivePermissions {
+			if level != interfaces.PropertyAccessFull {
+				restricted = true
+				break
+			}
+		}
+		if !restricted {
+			objectType.EffectivePermissions = nil
+		}
+	}
 }

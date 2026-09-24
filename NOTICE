@@ -43,7 +43,7 @@ with Additional Conditions):
 Several upstream-derived components also contain OpenBKN net-new files
 and are licensed per file accordingly (Apache 2.0 for upstream files,
 OpenBKN License for OpenBKN net-new files): adp/execution-factory,
-adp/vega, adp/context-loader, adp/bkn, infra/mf-model-manager, deploy.
+vega, adp/context-loader, adp/bkn, infra/mf-model-manager, deploy.
 
 Full license text: LICENSE-OPENBKN.txt
 

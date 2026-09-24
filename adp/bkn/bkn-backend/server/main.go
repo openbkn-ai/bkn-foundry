@@ -8,9 +8,9 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"os"
+	"strings"
 
 	// _ "net/http/pprof"
 	"os/signal"
@@ -21,6 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
@@ -29,7 +30,6 @@ import (
 
 	"bkn-backend/common"
 	"bkn-backend/common/bkntrace"
-	"bkn-backend/common/bkntrace/outbox"
 	"bkn-backend/common/operationaudit"
 	"bkn-backend/drivenadapters/action_execution"
 	"bkn-backend/drivenadapters/action_schedule"
@@ -56,13 +56,13 @@ import (
 )
 
 type mgrService struct {
-	appSetting     *common.AppSetting
-	otelProviders  *otel.Providers
-	restHandler    driveradapters.RestHandler
-	conceptSyncer  *worker.ConceptSyncer
-	scheduleWorker *worker.ScheduleWorker
-	traceOutbox    *outbox.Worker
-	outboxDB       *sql.DB
+	appSetting        *common.AppSetting
+	otelProviders     *otel.Providers
+	restHandler       driveradapters.RestHandler
+	conceptSyncer     *worker.ConceptSyncer
+	scheduleWorker    *worker.ScheduleWorker
+	evidencePublisher *evidencepublisher.Publisher
+	evidenceProducer  interface{ Close() error }
 }
 
 func (server *mgrService) start() {
@@ -82,14 +82,12 @@ func (server *mgrService) start() {
 
 	go server.conceptSyncer.Start()
 	go server.scheduleWorker.Start()
-	if server.traceOutbox != nil {
-		server.traceOutbox.Start()
-	}
 
 	// Listen for interrupt signals (SIGINT and SIGTERM).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Receiving a signal triggers ctx.Done. stop stops receiving registered signals and releases those resources.
 	defer stop()
+	flushDone := startEvidenceFlushLoop(ctx, server.evidencePublisher, time.Second)
 
 	// Initialize the HTTP service.
 	s := &http.Server{
@@ -115,24 +113,48 @@ func (server *mgrService) start() {
 	// Set the system's last processed time.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	<-flushDone
 
 	// Stop the HTTP service.
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(ctx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
 	}
-	if server.traceOutbox != nil {
-		if err := server.traceOutbox.Stop(ctx); err != nil {
-			logger.Warnf("BKN Trace outbox shutdown: %v", err)
-		}
+	if server.evidencePublisher != nil {
+		server.evidencePublisher.Flush(ctx)
+		server.evidencePublisher.Close(ctx)
 	}
-	if server.outboxDB != nil {
-		_ = server.outboxDB.Close()
+	if server.evidenceProducer != nil {
+		if err := bkntrace.CloseEvidenceProducer(server.evidenceProducer); err != nil {
+			logger.Warnf("Evidence Kafka producer close failed: %v", err)
+		}
 	}
 
 	server.otelProviders.Shutdown(ctx)
 
 	logger.Info("Server Exited")
+}
+
+func startEvidenceFlushLoop(ctx context.Context, publisher *evidencepublisher.Publisher, interval time.Duration) <-chan struct{} {
+	done := make(chan struct{})
+	if publisher == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		defer close(done)
+		for {
+			select {
+			case <-ticker.C:
+				publisher.Flush(context.Background())
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return done
 }
 
 func main() {
@@ -165,25 +187,15 @@ func main() {
 	// Initialize the database connection.
 	db := libdb.NewDB(&appSetting.DBSetting)
 	logics.SetDB(db)
-	outboxDB, err := bkntrace.OpenProducerOutboxDB(appSetting.DBSetting)
-	if err != nil {
-		logger.Fatalf("Failed to open BKN Trace producer outbox database: %v", err)
-	}
-	traceOutbox, err := bkntrace.ConfigureProducerOutbox(outboxDB)
-	if err != nil {
-		logger.Fatalf("Failed to configure BKN Trace producer outbox: %v", err)
-	}
-	if bkntrace.ProducerOutboxCleanupOnly() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		result, err := bkntrace.CleanupProducerOutbox(ctx)
+	var publisherRuntime *bkntrace.EvidencePublisherRuntime
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
+		publisherRuntime, err = bkntrace.NewEvidencePublisherRuntime()
 		if err != nil {
-			logger.Fatalf("Failed to clean BKN Trace producer outbox: %v", err)
+			logger.Fatalf("Failed to configure Evidence Kafka publisher: %v", err)
 		}
-		logger.Infof("BKN Trace producer outbox cleanup complete: delivered=%d abandoned=%d audits=%d", result.Delivered, result.Abandoned, result.Audits)
-		_ = outboxDB.Close()
-		otelProviders.Shutdown(ctx)
-		return
+		bkntrace.SetEvidencePublisher(publisherRuntime.Publisher)
+	} else {
+		logger.Warn("BKN Trace Evidence Kafka publisher is disabled; workload is not 0.2-ready and evidence events will be dropped")
 	}
 
 	audit.Init(&appSetting.MQSetting)
@@ -217,11 +229,13 @@ func main() {
 	server := &mgrService{
 		appSetting:     appSetting,
 		otelProviders:  otelProviders,
-		restHandler:    driveradapters.NewRestHandler(appSetting, operationaudit.NewStore(outboxDB, "")),
+		restHandler:    driveradapters.NewRestHandler(appSetting, operationaudit.NewStore(db, "")),
 		conceptSyncer:  worker.NewConceptSyncer(appSetting),
 		scheduleWorker: worker.NewScheduleWorker(appSetting),
-		traceOutbox:    traceOutbox,
-		outboxDB:       outboxDB,
+	}
+	if publisherRuntime != nil {
+		server.evidencePublisher = publisherRuntime.Publisher
+		server.evidenceProducer = publisherRuntime.Producer
 	}
 	server.start()
 }

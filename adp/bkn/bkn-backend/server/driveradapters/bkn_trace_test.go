@@ -68,3 +68,34 @@ func TestBKNTraceRequestContextCreatesReplayEnvelopeForDirectStudioRequest(t *te
 		}
 	}
 }
+
+func TestBKNTraceRequestContextBoundsAttempt(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+		want   uint32
+	}{
+		{name: "valid", header: "1000", want: 1000},
+		{name: "above application limit", header: "1001", want: 1},
+		{name: "above uint32", header: "4294967296", want: 1},
+		{name: "negative", header: "-1", want: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("GET", "/", nil)
+			c.Request.Header.Set("x-account-id", "acct_demo")
+			c.Request.Header.Set("x-account-type", "user")
+			c.Request.Header.Set(headerBKNAttempt, tt.header)
+
+			got, err := bknTraceRequestContext(c, hydra.Visitor{})
+			if err != nil {
+				t.Fatalf("bknTraceRequestContext() error = %v", err)
+			}
+			if got.Attempt != tt.want {
+				t.Fatalf("attempt = %d, want %d", got.Attempt, tt.want)
+			}
+		})
+	}
+}

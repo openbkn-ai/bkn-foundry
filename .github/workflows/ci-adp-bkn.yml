@@ -8,6 +8,9 @@ on:
       - 'adp/bkn/**'
       - '.github/workflows/ci-adp-bkn.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-adp-bkn-${{ github.ref }}
   cancel-in-progress: true

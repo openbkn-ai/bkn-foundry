@@ -11,7 +11,9 @@ on:
     paths:
       - 'bkn-safe/**'
       - '.github/workflows/ci-bkn-safe.yml'
-      - '.github/actions/golangci-lint/**'
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-bkn-safe-${{ github.ref }}

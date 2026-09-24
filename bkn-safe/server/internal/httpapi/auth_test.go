@@ -18,6 +18,47 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
+func TestRelativeHydraRedirect(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+		base   string
+		want   string
+	}{
+		{
+			name:   "canonical origin becomes relative",
+			target: "https://public.example/oauth2/auth?login_verifier=a%2Fb",
+			base:   "https://PUBLIC.example:443",
+			want:   "/oauth2/auth?login_verifier=a%2Fb",
+		},
+		{
+			name:   "alternate origin remains absolute",
+			target: "https://identity.example/oauth2/auth?x=1",
+			base:   "https://public.example",
+			want:   "https://identity.example/oauth2/auth?x=1",
+		},
+		{
+			name:   "different port remains absolute",
+			target: "https://public.example:8443/oauth2/auth",
+			base:   "https://public.example",
+			want:   "https://public.example:8443/oauth2/auth",
+		},
+		{
+			name:   "relative input unchanged",
+			target: "/oauth2/auth?x=1",
+			base:   "https://public.example",
+			want:   "/oauth2/auth?x=1",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := relativeHydraRedirect(test.target, test.base); got != test.want {
+				t.Fatalf("relativeHydraRedirect() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func hydraAcceptLoginError(t *testing.T, body string) error {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

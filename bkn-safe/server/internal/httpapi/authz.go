@@ -37,11 +37,11 @@ type resourceRef struct {
 // registerAuthz mounts bkn-safe's clean authorization API under /api/safe/v1/authz.
 // This is a redesign — it deliberately drops ISF's quirks (GET-in-body,
 // array-vs-map responses, policy-delete double form, public/private split).
-func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *audit.Store, dir *directory.Service, rowFilterMaxDepartmentIDs int) {
+func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *audit.Store, dir *directory.Service) {
 	g := r.Group("/api/safe/v1/authz")
 	registerAuthorizationRegistry(g, db)
 	registerPropertyLevels(g, e, db)
-	registerRowFilter(g, e, dir, rowFilterMaxDepartmentIDs)
+	registerRowFilter(g, e, dir)
 	// Policy and hierarchy writes are the authorization changes this tokenless
 	// face accepts. They are audited like the token-gated ones (#334); the
 	// actor is the service peer, see auditMiddleware.
@@ -453,7 +453,8 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 		accessorID := c.Query("accessor_id")
 		rtype := c.Query("resource_type")
 		op := c.Query("operation")
-		if accessorID == "" || rtype == "" || op == "" {
+		anyOperation := c.Query("any_operation") == "true"
+		if accessorID == "" || rtype == "" || (!anyOperation && op == "") {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
@@ -463,15 +464,25 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *au
 			return
 		}
 		if !active {
-			c.JSON(http.StatusOK, gin.H{"ids": []string{}})
+			c.JSON(http.StatusOK, gin.H{"ids": []string{}, "requires_candidate_filter": false})
 			return
 		}
-		ids, err := e.AccessibleResources(accessorID, rtype, op)
+		var ids []string
+		var unrestricted bool
+		var requiresCandidateFilter bool
+		if anyOperation {
+			ids, unrestricted, requiresCandidateFilter, err = e.AccessibleResourceScopeAnyOperation(accessorID, rtype)
+		} else {
+			ids, unrestricted, requiresCandidateFilter, err = e.AccessibleResourceScope(accessorID, rtype, op)
+		}
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"ids": ids})
+		c.JSON(http.StatusOK, gin.H{
+			"ids": ids, "unrestricted": unrestricted,
+			"requires_candidate_filter": requiresCandidateFilter,
+		})
 	})
 
 	// GET /policies — list the per-accessor grants on a resource instance.

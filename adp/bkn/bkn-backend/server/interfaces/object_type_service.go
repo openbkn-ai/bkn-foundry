@@ -17,6 +17,7 @@ type ObjectTypeService interface {
 	CheckObjectTypeExistByName(ctx context.Context, knID string, branch string, otName string) (string, bool, error)
 	CreateObjectTypes(ctx context.Context, tx *sql.Tx, objectTypes []*ObjectType, mode string, needCreateConceptGroupRelation bool, strictMode bool) ([]string, error)
 	ListObjectTypes(ctx context.Context, tx *sql.Tx, query ObjectTypesQueryParams) ([]*ObjectType, int, error)
+	ListObjectTypeSummaries(ctx context.Context, tx *sql.Tx, query ObjectTypesQueryParams) ([]*ObjectType, int, error)
 	GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) ([]*ObjectType, error)
 	// FilterObjectTypesForRead applies the caller's property-level visibility to public object metadata.
 	FilterObjectTypesForRead(ctx context.Context, knID string, objectTypes []*ObjectType) ([]*ObjectType, error)

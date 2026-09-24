@@ -25,40 +25,44 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: bkn-safe
       stack: chart-only
 
   build:
-    needs: test
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: bkn-safe
       dockerfile: Dockerfile
       context: '.'
       image-name: bkn-safe
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart-bkn-safe:
-    needs: [test, build]
+    needs: [version, verify, build]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: bkn-safe
       chart-path: charts/bkn-safe
       chart-name: bkn-safe
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart-hydra:
-    needs: [test]
+    needs: [version, verify]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: bkn-safe
       chart-path: charts/hydra
       chart-name: hydra
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

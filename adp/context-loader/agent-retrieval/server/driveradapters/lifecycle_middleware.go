@@ -242,7 +242,11 @@ func parseHTTPBusinessContext(input map[string]any, currentKNID string) (bkntrac
 	if apiErr != nil {
 		return value, apiErr
 	}
-	value.BusinessRefs = refs
+	// Declared, not derived: this path has no request-stage derivation yet, so
+	// a receipt here carries only what evidence observed. Letting the caller's
+	// declaration stand in for that is what let an invented version reach a
+	// receipt; deriving refs on this path is tracked separately.
+	value.DeclaredBusinessRefs = refs
 	return value, nil
 }
 

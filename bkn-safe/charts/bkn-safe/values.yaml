@@ -83,7 +83,7 @@ ingress:
 #   openbkn-sdk     — device_code (CLI / headless human login)
 #   openbkn-studio  — authorization_code + PKCE (browser / SPA)
 #   openbkn-cli     — authorization_code + PKCE (CLI headless password login)
-# Idempotent (delete+create). The openbkn-studio SPA callback derives from
+# Idempotent (create or patch; never delete/recreate). The openbkn-studio SPA callback derives from
 # accessAddress (https://host/studio/callback) at install time; webRedirectUri is the
 # dev fallback when no accessAddress is set.
 clientSeed:
@@ -148,6 +148,9 @@ config:
   hydra:
     adminURL: "http://bkn-safe-hydra-admin:4445"
     publicURL: "http://bkn-safe-hydra-public:4444"
+    # Canonical browser-facing issuer origin. Normally derived from
+    # accessAddress; set this only for an external Hydra deployment without it.
+    browserPublicURL: ""
   ldap:
     url: ""                 # empty = LDAP federation disabled
     bindDN: ""

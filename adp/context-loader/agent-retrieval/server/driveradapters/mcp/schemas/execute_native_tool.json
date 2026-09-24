@@ -1,0 +1,20 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "目标工具名，取自 search_native_tools 的结果。"
+      },
+      "arguments": {
+        "type": "object",
+        "description": "目标工具的参数，按 describe_native_tool 返回的可执行参数 schema 填写。不要放 bkn_context，网关会从本次调用带入。"
+      }
+    },
+    "required": [
+      "name",
+      "arguments"
+    ]
+  }
+}

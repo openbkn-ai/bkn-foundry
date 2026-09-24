@@ -37,8 +37,8 @@ github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o
 github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.5 h1:1ijP+M7vr2bWx+tqSo4zjAMzIVMQuxQoBsoWvj0Bf7U=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.5/go.mod h1:ajnsvSsBnIo6Sz82kArtLWxn/gRwvNROElbgqhsLuwo=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.6 h1:o0XmK0rTqI1ABiJGAF8PvwfDyqQVOzZR4mgYYEB1aFo=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.6/go.mod h1:rHiSWOyTwLpi7aeQByInle0HKRPMWzKuBzHmPLxC4w8=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
 github.com/shopspring/decimal v1.4.0 h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=

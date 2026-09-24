@@ -554,6 +554,33 @@ type License struct {
 	CreatedAt time.Time
 }
 
+// OAuthAccessOrigin is an administrator-managed browser origin from which BKN
+// Studio may start an OAuth authorization-code flow. Deployment-owned origins
+// are injected through config and are deliberately not duplicated here.
+type OAuthAccessOrigin struct {
+	ID            string `gorm:"primaryKey;size:64"`
+	Origin        string `gorm:"uniqueIndex;size:512"`
+	DesiredState  string `gorm:"size:16;index"`
+	SyncState     string `gorm:"size:16;index"`
+	LastSyncError string `gorm:"size:1024"`
+	CreatedBy     string `gorm:"size:64;index"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// OAuthClientSyncState records one-time legacy import and the last Hydra
+// reconciliation result for a managed OAuth client.
+type OAuthClientSyncState struct {
+	ClientID         string `gorm:"primaryKey;size:128"`
+	LegacyImported   bool
+	DesiredHash      string `gorm:"size:64"`
+	SyncState        string `gorm:"size:16;index"`
+	LastSyncError    string `gorm:"size:1024"`
+	LastReconciledAt *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 // AllModels is the migration set (Casbin's table is managed by its adapter).
 func AllModels() []any {
 	return []any{
@@ -563,5 +590,6 @@ func AllModels() []any {
 		&ManagedProxyAccount{}, &ProxyGrantSource{}, &ProxyGrantPolicy{},
 		&ProxyGrantAuditLog{}, &AuthorizationGrant{},
 		&PermissionRequest{}, &PermissionRequestOperation{}, &PermissionRequestDecision{}, &PermissionRequestReviewer{},
+		&OAuthAccessOrigin{}, &OAuthClientSyncState{},
 	}
 }

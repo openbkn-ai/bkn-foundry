@@ -64,6 +64,26 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 			}},
 		})
 	})
+	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/check-delta", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ProxyID  string                            `json:"proxy_account_id"`
+			Grantor  string                            `json:"grantor_id"`
+			Upserts  []interfaces.ProxyGrantSourceSpec `json:"upserts"`
+			Removals []interfaces.ProxyGrantSourceSpec `json:"removals"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.ProxyID != "proxy-1" || body.Grantor != "grantor-1" ||
+			len(body.Upserts) != 1 || len(body.Removals) != 1 {
+			t.Fatalf("delta check body = %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantBatchCheckResult{
+			ResolvedSources: []interfaces.ProxyGrantResolvedSource{{
+				ProxyGrantSourceSpec: body.Upserts[0], GrantedBy: "grantor-1",
+			}},
+		})
+	})
 	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/sync", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			ProxyID         string `json:"proxy_account_id"`
@@ -79,6 +99,26 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 			t.Fatalf("sync body = %#v", body)
 		}
 		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantSyncResult{Transferred: 1})
+	})
+	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/sync-delta", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ProxyID               string                            `json:"proxy_account_id"`
+			Grantor               string                            `json:"grantor_id"`
+			SyncGeneration        int64                             `json:"sync_generation"`
+			BaseSnapshotVersion   string                            `json:"base_snapshot_version"`
+			TargetSnapshotVersion string                            `json:"target_snapshot_version"`
+			Upserts               []interfaces.ProxyGrantSourceSpec `json:"upserts"`
+			Removals              []interfaces.ProxyGrantSourceSpec `json:"removals"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.ProxyID != "proxy-1" || body.Grantor != "grantor-1" || body.SyncGeneration != 8 ||
+			body.BaseSnapshotVersion != "sha256:snapshot-7" || body.TargetSnapshotVersion != "sha256:snapshot-8" ||
+			len(body.Upserts) != 1 || len(body.Removals) != 1 {
+			t.Fatalf("delta sync body = %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(interfaces.ProxyGrantSyncResult{Added: 1, Revoked: 1})
 	})
 	mux.HandleFunc("/api/safe/in/v1/proxy-grant-sources/reconcile", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -127,9 +167,25 @@ func TestSafeClientUsesManagedInternalContracts(t *testing.T) {
 		len(batchResult.ResolvedSources) != 1 || batchResult.ResolvedSources[0].GrantedBy != "historical-grantor" {
 		t.Fatalf("CheckGrants() = %#v, %v", batchResult, err)
 	}
+	source := interfaces.ProxyGrantSourceSpec{
+		ResourceType: "resource", ResourceID: "resource-1", Operation: "query_data",
+		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-1", KNID: "kn-1",
+		BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
+	}
+	deltaCheck, err := client.CheckGrantDelta(t.Context(), "proxy-1", "grantor-1",
+		[]interfaces.ProxyGrantSourceSpec{source}, []interfaces.ProxyGrantSourceSpec{source})
+	if err != nil || len(deltaCheck.ResolvedSources) != 1 {
+		t.Fatalf("CheckGrantDelta() = %#v, %v", deltaCheck, err)
+	}
 	syncResult, err := client.SyncGrants(t.Context(), "proxy-1", "grantor-1", 7, "sha256:snapshot-7", nil)
 	if err != nil || syncResult.Transferred != 1 {
 		t.Fatalf("SyncGrants() = %#v, %v", syncResult, err)
+	}
+	deltaSync, err := client.SyncGrantDelta(t.Context(), "proxy-1", "grantor-1", 8,
+		"sha256:snapshot-7", "sha256:snapshot-8", []interfaces.ProxyGrantSourceSpec{source},
+		[]interfaces.ProxyGrantSourceSpec{source})
+	if err != nil || deltaSync.Added != 1 || deltaSync.Revoked != 1 {
+		t.Fatalf("SyncGrantDelta() = %#v, %v", deltaSync, err)
 	}
 	reconcileResult, err := client.ReconcileGrants(t.Context(), "proxy-1", "operator-1")
 	if err != nil || reconcileResult.InvalidSources != 2 {

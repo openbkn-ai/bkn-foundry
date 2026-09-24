@@ -339,7 +339,11 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 
 	// Sort.
 	if query.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("ot.%s %s", query.Sort, query.Direction))
+		orderBy, err := common.SafeOrderBy(query.Sort, query.Direction)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.OrderBy("ot."+orderBy, "ot.f_id ASC")
 	}
 	if query.Limit > 0 {
 		builder = builder.Limit(uint64(query.Limit))
@@ -454,6 +458,116 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 
 	span.SetStatus(codes.Ok, "")
 	return objectTypes, nil
+}
+
+// ListObjectTypeSummaries reads only fields required by list and overview
+// surfaces. Detail-only model JSON stays on the detail endpoint.
+func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sql.Tx,
+	query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListObjectTypeSummaries")
+	defer span.End()
+
+	builder := processQueryCondition(query, sq.Select(
+		"ot.f_id",
+		"ot.f_name",
+		"ot.f_tags",
+		"ot.f_comment",
+		"ot.f_icon",
+		"ot.f_color",
+		"ot.f_kn_id",
+		"ot.f_branch",
+		"ot.f_data_source",
+		"ot.f_creator",
+		"ot.f_creator_type",
+		"ot.f_create_time",
+		"ot.f_updater",
+		"ot.f_updater_type",
+		"ot.f_update_time",
+		"ots.f_incremental_key",
+		"ots.f_incremental_value",
+		"ots.f_index",
+		"ots.f_index_available",
+		"ots.f_doc_count",
+		"ots.f_storage_size",
+		"ots.f_update_time",
+	).From(OT_TABLE_NAME+" AS ot").
+		Join(OT_STATUS_TABLE_NAME+" AS ots ON ot.f_id = ots.f_id AND ot.f_kn_id = ots.f_kn_id AND ot.f_branch = ots.f_branch"))
+
+	if query.Sort != "" {
+		orderBy, err := common.SafeOrderBy(query.Sort, query.Direction)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.OrderBy("ot."+orderBy, "ot.f_id ASC")
+	}
+	if query.Limit > 0 {
+		builder = builder.Limit(uint64(query.Limit))
+		if query.Offset > 0 {
+			builder = builder.Offset(uint64(query.Offset))
+		}
+	}
+
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	var rows *sql.Rows
+	if tx != nil {
+		rows, err = tx.QueryContext(ctx, sqlStr, vals...)
+	} else {
+		rows, err = ota.db.QueryContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make([]*interfaces.ObjectType, 0)
+	for rows.Next() {
+		item := &interfaces.ObjectType{
+			ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE,
+			Status:     &interfaces.ObjectTypeStatus{},
+		}
+		var tags string
+		var dataSource []byte
+		if err := rows.Scan(
+			&item.OTID,
+			&item.OTName,
+			&tags,
+			&item.Comment,
+			&item.Icon,
+			&item.Color,
+			&item.KNID,
+			&item.Branch,
+			&dataSource,
+			&item.Creator.ID,
+			&item.Creator.Type,
+			&item.CreateTime,
+			&item.Updater.ID,
+			&item.Updater.Type,
+			&item.UpdateTime,
+			&item.Status.IncrementalKey,
+			&item.Status.IncrementalValue,
+			&item.Status.Index,
+			&item.Status.IndexAvailable,
+			&item.Status.DocCount,
+			&item.Status.StorageSize,
+			&item.Status.UpdateTime,
+		); err != nil {
+			return nil, err
+		}
+		item.Tags = libCommon.TagString2TagSlice(tags)
+		if err := common.UnmarshalStoredJSON(dataSource, &item.DataSource); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 func (ota *objectTypeAccess) GetObjectTypesTotal(ctx context.Context, query interfaces.ObjectTypesQueryParams) (int, error) {

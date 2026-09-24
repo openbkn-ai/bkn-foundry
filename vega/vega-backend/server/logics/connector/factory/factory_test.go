@@ -1,0 +1,465 @@
+// Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
+//
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
+
+package factory
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/licverify"
+)
+
+func TestConnectorFactoryRegisterCoreLocalConnectors(t *testing.T) {
+	t.Run("registers built-in local connectors directly with the factory", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		t.Cleanup(entitlement.ResetForTest)
+
+		cf := &connectorFactory{
+			connectors:                map[string]interfaces.Connector{},
+			connectorRequiredEditions: map[string]licverify.Edition{},
+		}
+
+		cf.RegisterCoreLocalConnectors()
+
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMySQL)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMariaDB)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypePostgreSQL)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeOpenSearch)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeAnyShare)
+		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeSQLServer)
+		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeOracle)
+		assert.Equal(t, licverify.EditionCommunity, cf.connectorRequiredEditions[interfaces.ConnectorTypeMySQL])
+		assert.NotSame(t, cf.connectors[interfaces.ConnectorTypeMySQL], cf.connectors[interfaces.ConnectorTypeMariaDB])
+		assert.Empty(t, entitlement.Assembled())
+
+		cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, true)
+		cf.SetConnectorEnabled(interfaces.ConnectorTypeMySQL, false)
+
+		assert.True(t, cf.connectors[interfaces.ConnectorTypeMariaDB].GetEnabled())
+		assert.False(t, cf.connectors[interfaces.ConnectorTypeMySQL].GetEnabled())
+	})
+}
+
+func TestConnectorFactoryApplyPersistedConnectorTypes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	connectorTypeAccess := vmock.NewMockConnectorTypeAccess(ctrl)
+	connectorTypeAccess.EXPECT().List(gomock.Any(), interfaces.ConnectorTypesQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
+	}).Return([]*interfaces.ConnectorType{
+		{
+			Type: "future-local",
+			Name: "Future Local",
+			Mode: interfaces.ConnectorModeLocal,
+		},
+		{
+			Type:     "remote-api",
+			Name:     "Remote API",
+			Mode:     interfaces.ConnectorModeRemote,
+			Category: interfaces.ConnectorCategoryAPI,
+			Enabled:  true,
+		},
+	}, int64(2), nil)
+	cf := &connectorFactory{
+		cta:                       connectorTypeAccess,
+		connectors:                map[string]interfaces.Connector{},
+		connectorRequiredEditions: map[string]licverify.Edition{},
+	}
+
+	assert.NotPanics(t, func() {
+		cf.applyPersistedConnectorTypes()
+	})
+	assert.NotContains(t, cf.connectors, "future-local")
+	require.Contains(t, cf.connectors, "remote-api")
+	assert.True(t, cf.connectors["remote-api"].GetEnabled())
+
+	connector, err := cf.CreateConnectorInstance(context.Background(), "future-local", nil)
+	require.Error(t, err)
+	assert.Nil(t, connector)
+	assert.ErrorIs(t, err, ErrConnectorUnavailable)
+}
+
+func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
+	cf := &connectorFactory{
+		connectors: map[string]interfaces.Connector{
+			"registered": nil,
+		},
+		connectorRequiredEditions: map[string]licverify.Edition{
+			"sqlserver": licverify.EditionProfessional,
+		},
+	}
+
+	registered := cf.GetConnectorAvailability("registered")
+	assert.True(t, registered.Available)
+	assert.Empty(t, registered.RequiredEdition)
+
+	missing := cf.GetConnectorAvailability("missing")
+	assert.False(t, missing.Available)
+	assert.Empty(t, missing.RequiredEdition)
+}
+
+func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+	t.Cleanup(entitlement.ResetForTest)
+
+	cf := &connectorFactory{
+		connectors: map[string]interfaces.Connector{
+			"sqlserver": nil,
+		},
+		connectorRequiredEditions: map[string]licverify.Edition{
+			"sqlserver": licverify.EditionProfessional,
+		},
+	}
+
+	availability := cf.GetConnectorAvailability("sqlserver")
+	assert.False(t, availability.Available)
+	assert.Equal(t, licverify.EditionProfessional, availability.RequiredEdition)
+	connector, err := cf.CreateConnectorInstance(context.Background(), "sqlserver", nil)
+	require.Error(t, err)
+	assert.Nil(t, connector)
+	assert.ErrorIs(t, err, ErrConnectorEntitlementDenied)
+
+	_, err = cf.GetConnectorFieldConfig(context.Background(), &interfaces.ConnectorType{
+		Type: "sqlserver",
+		Mode: interfaces.ConnectorModeLocal,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrConnectorEntitlementDenied)
+
+	entitlement.SetGate(entitlement.FixedGate(licverify.EditionProfessional))
+	assert.True(t, cf.GetConnectorAvailability("sqlserver").Available)
+}
+
+func TestConnectorFactoryRegisterConnector(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("updates existing local connector enabled state", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		local := vmock.NewMockConnector(ctrl)
+		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
+		local.EXPECT().SetEnabled(true)
+		cf := &connectorFactory{
+			connectors: map[string]interfaces.Connector{
+				"localdb": local,
+			},
+		}
+
+		err := cf.RegisterConnector(ctx, "localdb", &interfaces.ConnectorType{
+			Type:     "localdb",
+			Name:     "localdb",
+			Mode:     interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+			Enabled:  true,
+		})
+
+		require.NoError(t, err)
+	})
+
+	t.Run("ignores stale local field config", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		local := vmock.NewMockConnector(ctrl)
+		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
+		local.EXPECT().SetEnabled(false)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"localdb": local}}
+
+		err := cf.RegisterConnector(ctx, "localdb", &interfaces.ConnectorType{
+			Type:        "localdb",
+			Name:        "localdb",
+			Mode:        interfaces.ConnectorModeLocal,
+			Category:    interfaces.ConnectorCategoryTable,
+			FieldConfig: map[string]interfaces.ConnectorFieldConfig{"stale": {Type: "string"}},
+		})
+
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects mode change for existing connector", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		local := vmock.NewMockConnector(ctrl)
+		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"localdb": local}}
+
+		err := cf.RegisterConnector(ctx, "localdb", &interfaces.ConnectorType{
+			Type: "localdb", Name: "localdb", Mode: interfaces.ConnectorModeRemote,
+			Category: interfaces.ConnectorCategoryTable,
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mode mismatch")
+		assert.Same(t, local, cf.connectors["localdb"])
+	})
+
+	t.Run("registers remote connector", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
+
+		err := cf.RegisterConnector(ctx, "remote-api", &interfaces.ConnectorType{
+			Type:     "remote-api",
+			Name:     "Remote API",
+			Mode:     interfaces.ConnectorModeRemote,
+			Category: interfaces.ConnectorCategoryAPI,
+			Enabled:  true,
+		})
+
+		require.NoError(t, err)
+		require.Contains(t, cf.connectors, "remote-api")
+		assert.Equal(t, interfaces.ConnectorModeRemote, cf.connectors["remote-api"].GetMode())
+		assert.True(t, cf.connectors["remote-api"].GetEnabled())
+	})
+
+	t.Run("rejects unimplemented local connector", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
+
+		err := cf.RegisterConnector(ctx, "missing-local", &interfaces.ConnectorType{
+			Type: "missing-local",
+			Name: "Missing Local",
+			Mode: interfaces.ConnectorModeLocal,
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not implemented")
+		assert.ErrorIs(t, err, ErrConnectorUnavailable)
+	})
+}
+
+func TestConnectorFactoryValidateConnectorRegistration(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*interfaces.ConnectorType)
+		field  string
+	}{
+		{name: "mode mismatch", mutate: func(ct *interfaces.ConnectorType) { ct.Mode = interfaces.ConnectorModeRemote }, field: "mode"},
+		{name: "category mismatch", mutate: func(ct *interfaces.ConnectorType) { ct.Category = interfaces.ConnectorCategoryAPI }, field: "category"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			connector := vmock.NewMockConnector(ctrl)
+			connector.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
+			request := &interfaces.ConnectorType{
+				Type: "localdb", Name: "Local DB", Mode: interfaces.ConnectorModeLocal,
+				Category: interfaces.ConnectorCategoryTable,
+			}
+			test.mutate(request)
+
+			cf := &connectorFactory{}
+			err := cf.validateConnectorRegistration("localdb", request, connector)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.field+" mismatch")
+		})
+	}
+
+	t.Run("allows mutable name", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
+
+		cf := &connectorFactory{}
+		err := cf.validateConnectorRegistration("localdb", &interfaces.ConnectorType{
+			Type: "localdb", Name: "Renamed Local DB", Mode: interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+		}, connector)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects registration key mismatch", func(t *testing.T) {
+		cf := &connectorFactory{}
+		err := cf.validateConnectorRegistration("localdb", &interfaces.ConnectorType{Type: "other"}, nil)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "key mismatch")
+	})
+}
+
+func TestConnectorFactoryValidateConnectorTypeRegistration(t *testing.T) {
+
+	t.Run("validates local registration", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		local := vmock.NewMockConnector(ctrl)
+		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"localdb": local}}
+		request := &interfaces.ConnectorType{
+			Type:     "localdb",
+			Name:     "Local DB",
+			Mode:     interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+			Enabled:  true,
+		}
+
+		err := cf.ValidateConnectorTypeRegistration(request)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("supports mysql registration through mariadb implementation", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		t.Cleanup(entitlement.ResetForTest)
+
+		cf := &connectorFactory{
+			connectors:                map[string]interfaces.Connector{},
+			connectorRequiredEditions: map[string]licverify.Edition{},
+		}
+		cf.RegisterCoreLocalConnectors()
+		request := &interfaces.ConnectorType{
+			Type: interfaces.ConnectorTypeMySQL, Name: "MySQL", Mode: interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable, Enabled: true,
+		}
+
+		err := cf.ValidateConnectorTypeRegistration(request)
+
+		require.NoError(t, err)
+		require.NoError(t, cf.RegisterConnector(context.Background(), request.Type, request))
+	})
+
+	t.Run("rejects local connector missing from binary", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
+
+		err := cf.ValidateConnectorTypeRegistration(&interfaces.ConnectorType{
+			Type: "future-local",
+			Name: "Future Local",
+			Mode: interfaces.ConnectorModeLocal,
+		})
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrConnectorUnavailable)
+	})
+
+	t.Run("rejects non-local registration over local implementation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		local := vmock.NewMockConnector(ctrl)
+		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"localdb": local}}
+		request := &interfaces.ConnectorType{
+			Type:        "localdb",
+			Name:        "Remote API",
+			Mode:        interfaces.ConnectorModeRemote,
+			Category:    interfaces.ConnectorCategoryAPI,
+			Endpoint:    "https://connector.example",
+			FieldConfig: testConnectorFieldConfig(),
+			Enabled:     true,
+		}
+
+		err := cf.ValidateConnectorTypeRegistration(request)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mode mismatch")
+	})
+
+	t.Run("reports unimplemented remote field definition", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
+		request := &interfaces.ConnectorType{
+			Type:     "remote-api",
+			Name:     "Remote API",
+			Mode:     interfaces.ConnectorModeRemote,
+			Category: interfaces.ConnectorCategoryAPI,
+			Endpoint: "https://connector.example",
+			Enabled:  true,
+		}
+
+		got, err := cf.GetConnectorFieldConfig(context.Background(), request)
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "not implemented")
+	})
+}
+
+func TestConnectorFactoryDeleteConnector(t *testing.T) {
+	t.Run("deletes remote connector and keeps local implementation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		local := vmock.NewMockConnector(ctrl)
+		remote := vmock.NewMockConnector(ctrl)
+		remote.EXPECT().GetMode().Return(interfaces.ConnectorModeRemote)
+		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		cf := &connectorFactory{
+			connectors: map[string]interfaces.Connector{
+				"localdb": local,
+				"remote":  remote,
+			},
+		}
+
+		cf.DeleteConnector("remote")
+		assert.NotContains(t, cf.connectors, "remote")
+
+		cf.DeleteConnector("localdb")
+		assert.Contains(t, cf.connectors, "localdb")
+
+		cf.DeleteConnector("missing")
+	})
+}
+
+func TestConnectorFactorySetEnabledCreateAndSensitiveFields(t *testing.T) {
+	t.Run("connector factory set enabled create and sensitive fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		ctx := context.Background()
+		local := vmock.NewMockConnector(ctrl)
+		instance := vmock.NewMockConnector(ctrl)
+		cfg := interfaces.ConnectorConfig{"host": "db"}
+		gomock.InOrder(
+			local.EXPECT().GetEnabled().Return(false),
+			local.EXPECT().SetEnabled(true),
+			local.EXPECT().GetEnabled().Return(true),
+			local.EXPECT().New(cfg).Return(instance, nil),
+			local.EXPECT().GetSensitiveFields().Return([]string{"password"}),
+		)
+		cf := &connectorFactory{
+			connectors: map[string]interfaces.Connector{
+				"localdb": local,
+			},
+		}
+
+		got, err := cf.CreateConnectorInstance(ctx, "localdb", cfg)
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "is disabled")
+		assert.ErrorIs(t, err, ErrConnectorDisabled)
+
+		cf.SetConnectorEnabled("localdb", true)
+		got, err = cf.CreateConnectorInstance(ctx, "localdb", cfg)
+		require.NoError(t, err)
+		assert.Same(t, instance, got)
+
+		assert.Equal(t, []string{"password"}, cf.GetSensitiveFields("localdb"))
+		assert.Nil(t, cf.GetSensitiveFields("missing"))
+
+		cf.SetConnectorEnabled("missing", true)
+
+		got, err = cf.CreateConnectorInstance(ctx, "missing", nil)
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "not found")
+		assert.ErrorIs(t, err, ErrConnectorUnavailable)
+	})
+}
+
+func testConnectorFieldConfig() map[string]interfaces.ConnectorFieldConfig {
+	return map[string]interfaces.ConnectorFieldConfig{
+		"host":     {Name: "Host", Type: "string", Required: true},
+		"password": {Name: "Password", Type: "string", Required: true, Encrypted: true},
+	}
+}

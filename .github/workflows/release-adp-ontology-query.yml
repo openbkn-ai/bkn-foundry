@@ -22,32 +22,36 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: adp/bkn/ontology-query
       stack: chart-only
 
   build:
-    needs: test
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: adp/bkn/ontology-query
       dockerfile: docker/Dockerfile
       context: '.'
       image-name: ontology-query
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       build-args: |
-        SERVER_VERSION=${{ needs.test.outputs.version }}
+        SERVER_VERSION=${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
-    needs: [test, build]
+    needs: [version, verify, build]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: adp/bkn/ontology-query
       chart-path: helm/ontology-query
       chart-name: ontology-query
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

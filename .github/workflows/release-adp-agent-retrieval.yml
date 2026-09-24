@@ -22,8 +22,12 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
+  version:
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
     with:
       service-path: adp/context-loader/agent-retrieval
       stack: chart-only
@@ -93,23 +97,23 @@ jobs:
     # no-dev-gate 必须是前置而不是并发：Actions 不会因为一个 job 红就取消并发中
     # 的其它 job，所以并发意味着推 tag 时镜像已经进了 GHCR 与 SWR，断言才变红。
     # 那是事后告警，不是闸门。代价是发布路径多串行一次带缓存的编译。
-    needs: [test, no-dev-gate]
-    uses: ./.github/workflows/reusable-build.yml
+    needs: [version, verify, no-dev-gate]
+    uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
       service-path: adp/context-loader/agent-retrieval
       dockerfile: docker/Dockerfile
       context: '.'
       image-name: agent-retrieval
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
-    needs: [test, build]
+    needs: [version, verify, build]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: adp/context-loader/agent-retrieval
       chart-path: helm/agent-retrieval
       chart-name: agent-retrieval
-      version: ${{ needs.test.outputs.version }}
+      version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

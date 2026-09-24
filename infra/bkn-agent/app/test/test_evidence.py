@@ -14,6 +14,7 @@ def _ctx():
         traceparent="00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
         entry_boundary="external",
         upstream_span_id="1234567890abcdef",
+        conversation_id="conv-1",
     )
 
 
@@ -112,86 +113,6 @@ def test_chat_thread_becomes_conversation_identity_and_propagates_downstream():
     assert headers["bkn-conversation-id"] == "thread_supply_chain"
 
 
-def test_submit_interaction_started_writes_artifact_before_referencing_event(
-    monkeypatch,
-):
-    submitted = []
-
-    async def fake_artifact_send(artifact):
-        submitted.append(("artifact", artifact))
-
-    async def fake_event_send(batch):
-        submitted.append(("event", batch))
-
-    monkeypatch.setattr(
-        evidence.config,
-        "BKN_TRACE_ARTIFACT_INGEST_URL",
-        "http://bkn-trace.local/evidence/artifacts",
-        raising=False,
-    )
-    monkeypatch.setattr(
-        evidence.config,
-        "BKN_TRACE_EVIDENCE_INGEST_URL",
-        "http://bkn-trace.local/evidence/events",
-    )
-    monkeypatch.setattr(evidence, "_send_artifact_once", fake_artifact_send)
-    monkeypatch.setattr(evidence, "_send_once", fake_event_send)
-    token = observability.set_context(_ctx())
-    interaction_token = evidence.begin_interaction(
-        "需要保留的业务问题", "task", "agent-1", "bkn.agent.task"
-    )
-    try:
-        assert asyncio.run(evidence.submit_interaction_started("acct-1", "user"))
-    finally:
-        evidence.end_interaction(interaction_token)
-        observability.reset_context(token)
-
-    assert [kind for kind, _ in submitted] == ["artifact", "event"]
-    artifact = submitted[0][1]
-    event = submitted[1][1]["events"][0]
-    assert event["payload"]["question_artifact_ref"] == (
-        f"artifact:{artifact['artifact_id']}"
-    )
-
-
-def test_submit_interaction_started_skips_invalid_2_2_event_when_artifact_fails(
-    monkeypatch,
-):
-    submitted_events = []
-
-    async def reject_artifact(_artifact):
-        raise evidence.EvidenceSubmissionError("HTTP 503")
-
-    async def accept_event(batch):
-        submitted_events.append(batch)
-
-    monkeypatch.setattr(
-        evidence.config,
-        "BKN_TRACE_ARTIFACT_INGEST_URL",
-        "http://bkn-trace.local/evidence/artifacts",
-        raising=False,
-    )
-    monkeypatch.setattr(
-        evidence.config,
-        "BKN_TRACE_EVIDENCE_INGEST_URL",
-        "http://bkn-trace.local/evidence/events",
-    )
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_MAX_ATTEMPTS", 1)
-    monkeypatch.setattr(evidence, "_send_artifact_once", reject_artifact)
-    monkeypatch.setattr(evidence, "_send_once", accept_event)
-    token = observability.set_context(_ctx())
-    interaction_token = evidence.begin_interaction(
-        "问题仍可通过哈希诊断", "task", "agent-1", "bkn.agent.task"
-    )
-    try:
-        assert not asyncio.run(evidence.submit_interaction_started("acct-1", "user"))
-    finally:
-        evidence.end_interaction(interaction_token)
-        observability.reset_context(token)
-
-    assert submitted_events == []
-
-
 def test_private_structured_output_event_is_not_emitted_in_2_1():
     token = observability.set_context(_ctx())
     interaction_token = evidence.begin_interaction(
@@ -240,119 +161,6 @@ def test_claim_builder_rejects_short_hash_and_empty_sources():
 
     assert short_hash is None
     assert empty_sources is None
-
-
-def test_submit_events_is_noop_when_endpoint_unset(monkeypatch):
-    token = observability.set_context(_ctx())
-    try:
-        event = evidence.tool_budget_exhausted(
-            max_tool_calls=1,
-            operation_name="bkn.agent.tool.call",
-            tool_name="search_schema",
-        )
-        monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_INGEST_URL", "")
-        asyncio.run(evidence.submit_events([event], "acct-1", "user"))
-    finally:
-        observability.reset_context(token)
-
-
-def test_submit_events_schedules_background_send(monkeypatch):
-    sent = []
-    release = asyncio.Event()
-
-    async def fake_send(batch):
-        sent.append(batch)
-        await release.wait()
-        return True
-
-    token = observability.set_context(_ctx())
-    interaction_token = evidence.begin_interaction(
-        "question", "chat", "agent-1", "bkn.agent.chat"
-    )
-    try:
-        event = evidence.claim_created(
-            claim_id_value="claim_1",
-            claim_type="answer",
-            claim_hash="sha256:" + "a" * 64,
-            operation_name="bkn.agent.chat",
-            source_event_ids=["evt-result-1"],
-            operation_ids=["op-1"],
-            causation_event_id="evt-result-1",
-        )
-        monkeypatch.setattr(
-            evidence.config,
-            "BKN_TRACE_EVIDENCE_INGEST_URL",
-            "http://bkn-trace.local/events",
-        )
-        monkeypatch.setattr(evidence, "_send_batch", fake_send)
-
-        async def drive():
-            task = asyncio.create_task(
-                evidence.submit_events([event], "acct-1", "user")
-            )
-            while not sent:
-                await asyncio.sleep(0)
-            assert len(evidence._background) == 1
-            assert sent[0]["trace"]["bkn.request.id"] == "req_evidence_001"
-            release.set()
-            assert await task is True
-
-        asyncio.run(drive())
-    finally:
-        evidence.end_interaction(interaction_token)
-        observability.reset_context(token)
-
-
-def test_submit_events_preserves_causal_order_within_interaction(monkeypatch):
-    started = []
-    release_first = asyncio.Event()
-
-    async def fake_send(batch):
-        started.append(batch["events"][0]["event_type"])
-        if len(started) == 1:
-            await release_first.wait()
-        return True
-
-    trace_token = observability.set_context(_ctx())
-    interaction_token = evidence.begin_interaction(
-        "question", "task", "agent-1", "bkn.agent.task"
-    )
-    monkeypatch.setattr(
-        evidence.config,
-        "BKN_TRACE_EVIDENCE_INGEST_URL",
-        "http://bkn-trace.local/events",
-    )
-    monkeypatch.setattr(evidence, "_send_batch", fake_send)
-
-    async def drive():
-        first = asyncio.create_task(
-            evidence.submit_events(
-                [evidence.interaction_started_event()], "acct", "user"
-            )
-        )
-        await asyncio.sleep(0)
-        claim = evidence.claim_created(
-            claim_id_value="claim-1",
-            claim_type="answer",
-            claim_hash="sha256:" + "1" * 64,
-            operation_name="bkn.agent.task",
-            source_event_ids=["evt-result-1"],
-            operation_ids=["op-1"],
-            causation_event_id="evt-result-1",
-        )
-        second = asyncio.create_task(evidence.submit_events([claim], "acct", "user"))
-        await asyncio.sleep(0)
-        assert started == ["agent.interaction.started"]
-        release_first.set()
-        assert await asyncio.gather(first, second) == [True, True]
-
-    try:
-        asyncio.run(drive())
-    finally:
-        evidence.end_interaction(interaction_token)
-        observability.reset_context(trace_token)
-
-    assert started == ["agent.interaction.started", "claim.created"]
 
 
 def test_task_evidence_attaches_business_refs_to_claim(monkeypatch):
@@ -650,14 +458,7 @@ def test_task_without_adopted_source_does_not_emit_orphan_claim(monkeypatch):
     assert submitted == []
 
 
-def test_action_helper_requires_confirmed_parents_and_distinct_stage_times(monkeypatch):
-    async def accept(_batch):
-        return None
-
-    monkeypatch.setattr(evidence, "_send_once", accept)
-    monkeypatch.setattr(
-        evidence.config, "BKN_TRACE_EVIDENCE_INGEST_URL", "http://trace/events"
-    )
+def test_action_helper_requires_locally_admitted_parents_and_distinct_stage_times():
     token = observability.set_context(_ctx())
     interaction_token = evidence.begin_interaction(
         "question", "task", "agent-1", "bkn.agent.task"

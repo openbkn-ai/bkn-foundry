@@ -17,7 +17,7 @@ import (
 )
 
 // rowFilterRequest deliberately carries only the authenticated caller's id
-// and the object type. Roles, departments and predicate fragments are always
+// and the object type. Roles and predicate fragments are always
 // loaded by bkn-safe from trusted local services.
 type rowFilterRequest struct {
 	AccessorID     string   `json:"accessor_id" binding:"required"`
@@ -55,10 +55,7 @@ type rowFilterResponse struct {
 // graph exactly once before invoking the EE policy socket. Low-edition
 // binaries receive the documented TRUE fallback; active EE with no resolver
 // and all resolver failures are unavailable decisions, never permissive ones.
-func registerRowFilter(group *gin.RouterGroup, enforcer *authz.Enforcer, directoryService *directory.Service, maxDepartmentScopeValues int) {
-	if maxDepartmentScopeValues <= 0 {
-		maxDepartmentScopeValues = directory.DefaultRowFilterDepartmentScopeLimit
-	}
+func registerRowFilter(group *gin.RouterGroup, enforcer *authz.Enforcer, directoryService *directory.Service) {
 	group.POST("/row-filters", func(c *gin.Context) {
 		var body rowFilterRequest
 		if !bind(c, &body) {
@@ -68,7 +65,7 @@ func registerRowFilter(group *gin.RouterGroup, enforcer *authz.Enforcer, directo
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		caller, err := internalrowfilter.NewTrustedCallerResolverWithDepartmentLimit(directoryService, enforcer, maxDepartmentScopeValues).Resolve(c.Request.Context(), body.AccessorID)
+		caller, err := internalrowfilter.NewTrustedCallerResolver(directoryService, enforcer).Resolve(c.Request.Context(), body.AccessorID)
 		if err != nil {
 			if errors.Is(err, internalrowfilter.ErrCallerInvalid) {
 				replyPublicError(c, http.StatusForbidden)

@@ -45,7 +45,61 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 220,
-    "description": "沿关系路径拉取实例子图，支持多跳关系查询。"
+    "description": "沿关系路径拉取实例子图，支持多跳关系查询。",
+    "gateway": {
+      "summary": "沿已知的关系路径取实例子图，支持多跳。",
+      "use_when": "已经知道要走哪几个对象类和关系类（例如 订单→明细→商品），要取这条路径上的实例。",
+      "not_for": "不知道路径时用 explore_subgraph；单个对象类按条件取数用 query_object_instance。",
+      "next_step": "对象类与关系类 ID 取自 search_schema 或 get_relation_types，不要凭名称猜。",
+      "keywords": [
+        "子图",
+        "关系路径",
+        "多跳",
+        "关联实例",
+        "沿关系",
+        "上下游",
+        "关联",
+        "subgraph",
+        "relation path",
+        "multi-hop",
+        "related instances",
+        "follow relations",
+        "upstream",
+        "downstream"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "relation_type_paths": [
+          {
+            "object_types": [
+              {
+                "id": "ot_order",
+                "condition": {
+                  "operation": "==",
+                  "field": "order_no",
+                  "value_from": "const",
+                  "value": "SO-0001"
+                },
+                "limit": 10
+              },
+              {
+                "id": "ot_order_item",
+                "condition": {
+                  "operation": "and",
+                  "sub_conditions": []
+                },
+                "limit": 50
+              }
+            ],
+            "relation_types": [
+              {
+                "relation_type_id": "rt_order_has_item"
+              }
+            ]
+          }
+        ]
+      }
+    }
   },
   "explore_subgraph": {
     "name": "explore_subgraph",
@@ -53,7 +107,36 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 225,
-    "description": "从一个起点对象类出发，按方向与跳数探索关联子图，不需要预先知道路径。"
+    "description": "从一个起点对象类出发，按方向与跳数探索关联子图，不需要预先知道路径。",
+    "gateway": {
+      "summary": "从一个起点对象类出发，按方向和跳数探索关联的实例，不需要预先知道路径。",
+      "use_when": "只知道起点（例如某个客户），想看它周围关联了哪些对象和实例。",
+      "not_for": "已知完整路径时用 query_instance_subgraph，结果更精确。",
+      "next_step": "看到感兴趣的路径后，改用 query_instance_subgraph 精确取数。",
+      "keywords": [
+        "探索",
+        "关联",
+        "周边",
+        "起点",
+        "邻居",
+        "关系网",
+        "有哪些关联",
+        "出发",
+        "explore",
+        "neighbors",
+        "related",
+        "around",
+        "connected to",
+        "starting point"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "source_object_type_id": "ot_customer",
+        "direction": "forward",
+        "path_length": 2,
+        "limit": 20
+      }
+    }
   },
   "get_logic_properties_values": {
     "name": "get_logic_properties_values",
@@ -61,7 +144,38 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 230,
-    "description": "逻辑属性解析（指标/算子）。针对实例批量计算已绑逻辑属性的值——指标路径里对应「实例级 + 已绑 logic property」这一支；类级指标、或未绑逻辑属性的指标改调 query_metric。"
+    "description": "逻辑属性解析（指标/算子）。针对实例批量计算已绑逻辑属性的值——指标路径里对应「实例级 + 已绑 logic property」这一支；类级指标、或未绑逻辑属性的指标改调 query_metric。",
+    "gateway": {
+      "summary": "为给定实例计算已绑定的逻辑属性（实例级指标或算子）的值。",
+      "use_when": "要算某几个具体实例的逻辑属性，例如某个订单的毛利率。",
+      "not_for": "对象类级别或未绑定逻辑属性的指标用 query_metric；普通字段直接用 query_object_instance。",
+      "next_step": "逻辑属性名与参数定义取自 get_object_types；实例标识取自查询结果。",
+      "keywords": [
+        "逻辑属性",
+        "计算",
+        "实例指标",
+        "算子",
+        "毛利",
+        "logic property",
+        "compute",
+        "instance metric",
+        "operator",
+        "margin"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "ot_id": "ot_order",
+        "query": "计算订单 SO-0001 的毛利率",
+        "_instance_identities": [
+          {
+            "order_no": "SO-0001"
+          }
+        ],
+        "properties": [
+          "gross_margin"
+        ]
+      }
+    }
   },
   "query_metric": {
     "name": "query_metric",
@@ -77,7 +191,29 @@
     "group": "action",
     "group_title": "行动",
     "order": 310,
-    "description": "行动信息召回。针对对象实例返回可执行行动的工具定义，含入参 schema 与（工具已声明时的）执行结果 schema output_schema。"
+    "description": "行动信息召回。针对对象实例返回可执行行动的工具定义，含入参 schema 与（工具已声明时的）执行结果 schema output_schema。",
+    "gateway": {
+      "summary": "查看对象上可执行的行动及其入参定义，只读，不会执行。",
+      "use_when": "想知道某类对象能做哪些操作、每个操作需要什么参数。",
+      "not_for": "本入口不能执行行动；执行须使用完整入口的 execute_action。",
+      "next_step": "行动类 ID 取自 get_kn_detail 或 search_schema。",
+      "keywords": [
+        "行动",
+        "操作",
+        "能做什么",
+        "可执行",
+        "动作定义",
+        "action",
+        "operation",
+        "what can I do",
+        "available actions",
+        "action definition"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "at_id": "at_close_order"
+      }
+    }
   },
   "execute_action": {
     "name": "execute_action",
@@ -85,7 +221,34 @@
     "group": "action",
     "group_title": "行动",
     "order": 320,
-    "description": "执行行动。先用 get_action_info 获取行动的 dynamic_params schema，再填入真实动态参数值触发执行（异步，返回 execution_id）。同一 kn + 行动类型 + 实例集合与 dynamic_params 在窗口期内重复提交会返回 409，不要重试，改用 get_action_execution 查询已有 execution。"
+    "description": "执行行动。先用 get_action_info 获取行动的 dynamic_params schema，再填入真实动态参数值触发执行（异步，返回 execution_id）。同一 kn + 行动类型 + 实例集合与 dynamic_params 在窗口期内重复提交会返回 409，不要重试，改用 get_action_execution 查询已有 execution。",
+    "gateway": {
+      "summary": "执行知识网络上的一个行动（异步，会改变业务数据或触发外部操作），返回执行 ID。",
+      "use_when": "用户明确要求执行某个行动，例如发起采购订单、关闭监控任务、发送通知。",
+      "not_for": "只想知道行动有哪些、要什么参数时用 get_action_info；查执行结果用 get_action_execution。",
+      "next_step": "先用 get_action_info 取 dynamic_params 的定义；执行后用 get_action_execution 查结果。重复提交会返回 409，不要重试。",
+      "keywords": [
+        "执行行动",
+        "触发行动",
+        "发起",
+        "修改数据",
+        "写入",
+        "通知",
+        "execute action",
+        "trigger action",
+        "run action"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "at_id": "at_close_order",
+        "_instance_identities": [
+          {
+            "order_no": "SO-0001"
+          }
+        ],
+        "dynamic_params": {}
+      }
+    }
   },
   "get_action_execution": {
     "name": "get_action_execution",
@@ -93,7 +256,29 @@
     "group": "action",
     "group_title": "行动",
     "order": 330,
-    "description": "查询单次行动执行的状态与结果。用 execute_action 返回的 execution_id 查询整体 status 与逐对象 results。"
+    "description": "查询单次行动执行的状态与结果。用 execute_action 返回的 execution_id 查询整体 status 与逐对象 results。",
+    "gateway": {
+      "summary": "按执行 ID 查看一次行动执行的状态和逐对象结果。",
+      "use_when": "已经有执行 ID，想知道它成功了没有、每个对象的结果是什么。",
+      "not_for": "不知道执行 ID 时先用 list_action_executions 查历史。",
+      "next_step": "执行 ID 取自 list_action_executions 的结果。",
+      "keywords": [
+        "执行结果",
+        "执行状态",
+        "执行详情",
+        "execution",
+        "result",
+        "status",
+        "execution result",
+        "execution status",
+        "execution detail",
+        "run result"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "execution_id": "exec_0001"
+      }
+    }
   },
   "list_action_executions": {
     "name": "list_action_executions",
@@ -101,7 +286,30 @@
     "group": "action",
     "group_title": "行动",
     "order": 340,
-    "description": "列出行动执行历史，可按行动类型、状态、触发方式过滤并分页。"
+    "description": "列出行动执行历史，可按行动类型、状态、触发方式过滤并分页。",
+    "gateway": {
+      "summary": "列出行动的执行历史，可按行动类型、状态、触发方式过滤并分页。",
+      "use_when": "想看最近执行过哪些行动、有哪些失败了。",
+      "not_for": "看单次执行的逐对象结果用 get_action_execution。",
+      "next_step": "要看某次执行的细节，把它的执行 ID 交给 get_action_execution。",
+      "keywords": [
+        "执行历史",
+        "执行记录",
+        "最近执行",
+        "失败的执行",
+        "execution history",
+        "runs",
+        "executions",
+        "past runs",
+        "recent executions",
+        "failed executions"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "status": "failed",
+        "limit": 20
+      }
+    }
   },
   "list_knowledge_networks": {
     "name": "list_knowledge_networks",
@@ -125,7 +333,32 @@
     "group": "discovery",
     "group_title": "网络与 Schema",
     "order": 140,
-    "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters），并返回该对象类下可用的指标 related_metrics（scope_type=object_type 且 scope_ref=对象类 id，含未绑逻辑属性的指标）。渐进式下钻用：先 get_kn_detail（summary）拿对象 id，再用本工具展开需要的对象。选定指标后：实例级且已绑逻辑属性走 get_logic_properties_values，类级或未绑的走 query_metric。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。"
+    "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters），并返回该对象类下可用的指标 related_metrics（scope_type=object_type 且 scope_ref=对象类 id，含未绑逻辑属性的指标）。渐进式下钻用：先 get_kn_detail（summary）拿对象 id，再用本工具展开需要的对象。选定指标后：实例级且已绑逻辑属性走 get_logic_properties_values，类级或未绑的走 query_metric。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。",
+    "gateway": {
+      "summary": "按 ID 取对象类的完整定义：字段、可用的查询算子、逻辑属性和相关指标。",
+      "use_when": "要知道某个对象类有哪些字段、字段能怎么过滤，或它有哪些指标和逻辑属性。",
+      "not_for": "不知道对象类 ID 时先用 search_schema 或 get_kn_detail。",
+      "next_step": "查实例用 query_object_instance；相关指标用 query_metric。",
+      "keywords": [
+        "对象类",
+        "字段",
+        "属性",
+        "定义",
+        "schema",
+        "指标列表",
+        "object type",
+        "fields",
+        "properties",
+        "definition",
+        "metrics of"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "ids": [
+          "ot_order"
+        ]
+      }
+    }
   },
   "get_relation_types": {
     "name": "get_relation_types",
@@ -133,7 +366,34 @@
     "group": "discovery",
     "group_title": "网络与 Schema",
     "order": 150,
-    "description": "按 id 批量取关系类的完整定义（含 mapping_rules、source/target 对象名）。渐进式下钻用：先 get_kn_detail（summary）拿关系 id，再用本工具展开。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。"
+    "description": "按 id 批量取关系类的完整定义（含 mapping_rules、source/target 对象名）。渐进式下钻用：先 get_kn_detail（summary）拿关系 id，再用本工具展开。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。",
+    "gateway": {
+      "summary": "按 ID 取关系类的完整定义：两端对象类和映射规则。",
+      "use_when": "要确认某个关系连接的是哪两个对象类、按哪些字段关联。",
+      "not_for": "不知道关系类 ID 时先用 search_schema 或 get_kn_detail。",
+      "next_step": "确认路径后用 query_instance_subgraph 取实例。",
+      "keywords": [
+        "关系类",
+        "关系定义",
+        "关联规则",
+        "映射",
+        "两端",
+        "字段关联",
+        "关联字段",
+        "关联条件",
+        "relation type",
+        "mapping",
+        "join rule",
+        "relation definition",
+        "both ends"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "ids": [
+          "rt_order_has_item"
+        ]
+      }
+    }
   },
   "run_sql": {
     "name": "run_sql",
@@ -141,7 +401,31 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 240,
-    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限，对知识网络挂载的数据资源执行只读 SQL（MySQL 方言），可能返回未经对象属性规则掩码的原始物理列；它不受对象属性 none/schema/masked/full 权限约束，也不得被对象查询工具内部调用。调用者须对语句引用的每个 Vega 数据资源都持有 view_detail 权限：与其他遵循知识网络授权的查询工具不同，通过对象类获得的授权不覆盖 run_sql，仅通过对象类获得授权时请改用 query_object_instance 或 run_cypher。标识符需要引用时用反引号；双引号是字符串字面量，不是标识符。注意：对象实例、子图、逻辑属性和已建模指标必须走对应对象查询工具，不要用 SQL 绕过其语义与属性保护；run_sql 仅用于明确授权的物理资源即席分析。表名用占位符 {{.resource_id}} 引用；Vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。resource_id 与物理列来自 list_resources → describe_resource。"
+    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限，对知识网络挂载的数据资源执行只读 SQL（MySQL 方言），可能返回未经对象属性规则掩码的原始物理列；它不受对象属性 none/schema/masked/full 权限约束，也不得被对象查询工具内部调用。调用者须对语句引用的每个 Vega 数据资源都持有 view_detail 权限：与其他遵循知识网络授权的查询工具不同，通过对象类获得的授权不覆盖 run_sql，仅通过对象类获得授权时请改用 query_object_instance 或 run_cypher。标识符需要引用时用反引号；双引号是字符串字面量，不是标识符。注意：对象实例、子图、逻辑属性和已建模指标必须走对应对象查询工具，不要用 SQL 绕过其语义与属性保护；run_sql 仅用于明确授权的物理资源即席分析。表名用占位符 {{.resource_id}} 引用；Vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。resource_id 与物理列来自 list_resources → describe_resource。",
+    "gateway": {
+      "summary": "对知识网络绑定的数据资源执行一条只读 SQL（MySQL 语法），用于 Cypher 表达不了的统计口径。",
+      "use_when": "需要 Cypher 子集写不出的统计（复杂表达式、窗口式口径），或资源没有建成对象类。",
+      "not_for": "能用对象类和关系类说清楚的统计先用 run_cypher；已建模的指标用 query_metric；业务计算优先用已发布函数（search_capabilities）。",
+      "next_step": "表名写成 {{.<data_source.id>}} 占位符，id 与列名取自 search_schema 返回的 data_source.id 和 data_property.column。",
+      "keywords": [
+        "SQL",
+        "select",
+        "join",
+        "group by",
+        "统计",
+        "汇总",
+        "分组",
+        "求和",
+        "计数",
+        "aggregate",
+        "statistics",
+        "sum",
+        "count"
+      ],
+      "example_arguments": {
+        "sql": "SELECT status, COUNT(*) AS n FROM {{.res_orders}} GROUP BY status"
+      }
+    }
   },
   "run_cypher": {
     "name": "run_cypher",
@@ -149,7 +433,33 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 245,
-    "description": "按知识网络的**模型**提问：用对象类名与关系类名写 Cypher，服务端编译成一条只读 SQL 执行。与 run_sql 的分工——本工具走模型（标签=对象类、关系=已建模的关联、属性=逻辑属性名），不需要知道物理表名与物理列名；run_sql 留给模型表达不了的口径。\n支持的写法：MATCH 一个或多个路径（可用逗号分隔，也可写多个 MATCH；同名变量指同一个节点，不共享变量则是笛卡尔积）；关系写 -[:R]->、<-[:R]- 或无向 -[:R]-，必须指名一个关系类；节点必须指名一个对象类，首次出现要带标签，可带内联属性 {prop: value}；WHERE 支持 =、<>、<、>、<=、>=、IN [...]（或 IN $list：整个列表作为一个参数传入，须为非空、同类标量数组，最多 500 个元素）、IS NULL / IS NOT NULL、STARTS WITH / ENDS WITH / CONTAINS（右侧为字符串字面量或字符串参数，按字面子串匹配，% 和 _ 不是通配符；只能用于字符串属性，大小写是否敏感取决于数据源的排序规则），用 AND / OR / NOT 组合，括号分组；值可写字面量或参数 $name（参数在 parameters 里传，只能是值，不能当表名列名）；RETURN 支持属性、别名 AS、DISTINCT，以及聚合 count/sum/avg/min/max（含 count(*) 与 DISTINCT 形式）——Cypher 没有 GROUP BY，聚合时按 RETURN 里其余列自动分组；ORDER BY 可用属性、返回列名或聚合；SKIP / LIMIT 分页。\n不支持（会以 400 明确报出用了哪个构造）：OPTIONAL MATCH、WITH、UNION、变长路径 [:R*1..3]、XOR、返回整个节点 RETURN n、函数调用与算术表达式、关系变量 -[r:R]->。一条查询最多 8 条关系、9 个节点；不写 LIMIT 默认 1000 行，LIMIT 上限 10000。被聚合或 DISTINCT 折叠过的结果只能按返回的值排序。"
+    "description": "按知识网络的**模型**提问：用对象类名与关系类名写 Cypher，服务端编译成一条只读 SQL 执行。与 run_sql 的分工——本工具走模型（标签=对象类、关系=已建模的关联、属性=逻辑属性名），不需要知道物理表名与物理列名；run_sql 留给模型表达不了的口径。\n支持的写法：MATCH 一个或多个路径（可用逗号分隔，也可写多个 MATCH；同名变量指同一个节点，不共享变量则是笛卡尔积）；关系写 -[:R]->、<-[:R]- 或无向 -[:R]-，必须指名一个关系类；节点必须指名一个对象类，首次出现要带标签，可带内联属性 {prop: value}；WHERE 支持 =、<>、<、>、<=、>=、IN [...]（或 IN $list：整个列表作为一个参数传入，须为非空、同类标量数组，最多 500 个元素）、IS NULL / IS NOT NULL、STARTS WITH / ENDS WITH / CONTAINS（右侧为字符串字面量或字符串参数，按字面子串匹配，% 和 _ 不是通配符；只能用于字符串属性，大小写是否敏感取决于数据源的排序规则），用 AND / OR / NOT 组合，括号分组；值可写字面量或参数 $name（参数在 parameters 里传，只能是值，不能当表名列名）；RETURN 支持属性、别名 AS、DISTINCT，以及聚合 count/sum/avg/min/max（含 count(*) 与 DISTINCT 形式）——Cypher 没有 GROUP BY，聚合时按 RETURN 里其余列自动分组；ORDER BY 可用属性、返回列名或聚合；SKIP / LIMIT 分页。\nOPTIONAL MATCH 写一条关系，把一个新节点挂到前面子句已经找到的节点上：匹配不到时该行保留、新节点的列为 NULL，所以 count(可选侧的属性) 得 0 而不是整行消失（count(*) 仍然算 1 行）。它自带的 WHERE 与内联属性决定这条关系匹配到什么，不决定哪些行留下。首个子句必须是 MATCH；一条 OPTIONAL MATCH 只能写一条关系、只能引入一个新节点；它引入的节点不能被后面的 MATCH 或查询的 WHERE 再要求（那会把留下来的行又删掉）。\n不支持（会以 400 明确报出用了哪个构造）：WITH、UNION、变长路径 [:R*1..3]、XOR、返回整个节点 RETURN n、函数调用与算术表达式、关系变量 -[r:R]->。一条查询最多 8 条关系、9 个节点；不写 LIMIT 默认 1000 行，LIMIT 上限 10000。被聚合或 DISTINCT 折叠过的结果只能按返回的值排序。",
+    "gateway": {
+      "summary": "用对象类和关系类的名字写只读 Cypher，服务端编译成一条 SQL；适合跨对象的多跳查询与聚合统计。",
+      "use_when": "统计、排名、跨关系汇总（count/sum/avg/min/max），或路径上带过滤的多跳查询。",
+      "not_for": "单个对象类按条件取数用 query_object_instance；业务计算优先用已发布函数（search_capabilities）。",
+      "next_step": "标签、关系和属性写 search_schema、get_object_types 返回的名字，不需要物理表名。",
+      "keywords": [
+        "Cypher",
+        "图查询",
+        "聚合",
+        "统计",
+        "汇总",
+        "计数",
+        "求和",
+        "排名",
+        "多跳",
+        "graph query",
+        "aggregate",
+        "count",
+        "sum",
+        "ranking"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "query": "MATCH (o:orders) RETURN o.status, count(*) AS n"
+      }
+    }
   },
   "list_resources": {
     "name": "list_resources",
@@ -157,7 +467,26 @@
     "group": "resource",
     "group_title": "数据资源",
     "order": 410,
-    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限列出可见资源（resource_id、name、type、catalog_id）。该权限边界独立于对象属性 none/schema/masked/full，后续 describe_resource/run_sql 可能暴露对象模型未列出或未掩码的物理列；不得由对象查询工具内部调用。仅在调用者明确要做物理资源分析时使用。传 kn_id 可列出该知识网络绑定的资源；不传时分页列出账户级资源池。"
+    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限列出可见资源（resource_id、name、type、catalog_id）。该权限边界独立于对象属性 none/schema/masked/full，后续 describe_resource/run_sql 可能暴露对象模型未列出或未掩码的物理列；不得由对象查询工具内部调用。仅在调用者明确要做物理资源分析时使用。传 kn_id 可列出该知识网络绑定的资源；不传时分页列出账户级资源池。",
+    "gateway": {
+      "summary": "列出知识网络可用的数据资源（物理表、视图等），按调用者自己的资源权限过滤。",
+      "use_when": "需要直接分析物理数据资源，或为 run_sql 找表。",
+      "not_for": "查询业务对象用对象类相关工具，不要用资源工具代替。",
+      "next_step": "要看某个资源的列，用 describe_resource。",
+      "keywords": [
+        "数据资源",
+        "资源列表",
+        "数据源",
+        "物理表",
+        "data resource",
+        "resource list",
+        "data source"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "limit": 20
+      }
+    }
   },
   "describe_resource": {
     "name": "describe_resource",
@@ -165,7 +494,26 @@
     "group": "resource",
     "group_title": "数据资源",
     "order": 420,
-    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限返回单个资源的 connector_type 与物理列（columns:[{name,type}]）。它不受对象属性 none/schema/masked/full 权限约束，可能列出对象模型隐藏的物理列，也不得由对象查询工具内部调用。仅在明确的物理资源分析中用于准备 run_sql；resource_id 取自 list_resources。"
+    "description": "物理资源查询面：按调用者自己的 Vega 数据资源权限返回单个资源的 connector_type 与物理列（columns:[{name,type}]）。它不受对象属性 none/schema/masked/full 权限约束，可能列出对象模型隐藏的物理列，也不得由对象查询工具内部调用。仅在明确的物理资源分析中用于准备 run_sql；resource_id 取自 list_resources。",
+    "gateway": {
+      "summary": "查看一个数据资源的连接类型和物理列。",
+      "use_when": "写 run_sql 之前需要确认物理列名。",
+      "not_for": "对象类的字段用 get_object_types。",
+      "next_step": "resource_id 取自 list_resources 或 search_schema 返回的 data_source.id。",
+      "keywords": [
+        "原始表",
+        "表结构",
+        "物理列",
+        "资源详情",
+        "raw table",
+        "table schema",
+        "columns",
+        "describe resource"
+      ],
+      "example_arguments": {
+        "resource_id": "res_demo"
+      }
+    }
   },
   "list_skills": {
     "name": "list_skills",
@@ -173,7 +521,27 @@
     "group": "skill",
     "group_title": "技能",
     "order": 520,
-    "description": "浏览平台上已发布的 Skill（技能市场），**不受知识网络挂载约束**，列出的 Skill 不一定能在当前知识网络里读取或执行。要拿当前网络可用的 Skill 用 search_capabilities；本工具的结果是目录，不是权限。"
+    "description": "浏览平台上已发布的 Skill（技能市场），**不受知识网络挂载约束**，列出的 Skill 不一定能在当前知识网络里读取或执行。要拿当前网络可用的 Skill 用 search_capabilities；本工具的结果是目录，不是权限。",
+    "gateway": {
+      "summary": "浏览平台上已发布的技能目录（技能市场），不限于当前知识网络挂载的技能。",
+      "use_when": "想知道平台上有哪些技能。",
+      "not_for": "当前网络能用的技能用 search_capabilities 查。",
+      "next_step": "要读某个技能的说明，用 get_skill_content。",
+      "keywords": [
+        "技能列表",
+        "技能市场",
+        "技能目录",
+        "有哪些技能",
+        "平台技能",
+        "skill list",
+        "skill catalog",
+        "skill market"
+      ],
+      "example_arguments": {
+        "page": 1,
+        "page_size": 20
+      }
+    }
   },
   "get_skill_content": {
     "name": "get_skill_content",
@@ -181,7 +549,26 @@
     "group": "skill",
     "group_title": "技能",
     "order": 530,
-    "description": "读技能主文档 SKILL.md 正文，并返回技能包内的文件清单（files[].rel_path）。技能的用法与入口命令都写在这里；需要哪个附属文件再用 read_skill_file 单取，不必整包读。\n需要该知识网络本身的查看权限：挂载的 Skill 经知识网络的受管代理读取，不必另有 Skill 授权；只有对象类等子资源权限或单独的 Skill 授权会被拒绝。"
+    "description": "读技能主文档 SKILL.md 正文，并返回技能包内的文件清单（files[].rel_path）。技能的用法与入口命令都写在这里；需要哪个附属文件再用 read_skill_file 单取，不必整包读。\n需要该知识网络本身的查看权限：挂载的 Skill 经知识网络的受管代理读取，不必另有 Skill 授权；只有对象类等子资源权限或单独的 Skill 授权会被拒绝。",
+    "gateway": {
+      "summary": "读取技能的主文档 SKILL.md，以及技能包里的文件清单。",
+      "use_when": "要了解某个技能的用途和使用方法。",
+      "not_for": "运行技能脚本用 execute_skill。",
+      "next_step": "需要某个附属文件时，用 read_skill_file 单独读取。",
+      "keywords": [
+        "技能",
+        "技能说明",
+        "技能文档",
+        "SKILL.md",
+        "skill",
+        "skill document",
+        "skill content"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "skill_id": "skill_demo"
+      }
+    }
   },
   "read_skill_file": {
     "name": "read_skill_file",
@@ -189,7 +576,26 @@
     "group": "skill",
     "group_title": "技能",
     "order": 540,
-    "description": "读技能包内单个文件的正文，rel_path 取自 get_skill_content 返回的 files 清单。渐进式加载用：大文件不必常驻上下文。二进制文件只回元数据不回正文。\n权限要求与 get_skill_content 相同：需要该知识网络本身的查看权限，不必另有 Skill 授权。"
+    "description": "读技能包内单个文件的正文，rel_path 取自 get_skill_content 返回的 files 清单。渐进式加载用：大文件不必常驻上下文。二进制文件只回元数据不回正文。\n权限要求与 get_skill_content 相同：需要该知识网络本身的查看权限，不必另有 Skill 授权。",
+    "gateway": {
+      "summary": "读取技能包里的单个文件。",
+      "use_when": "技能说明里提到某个附属文件，需要看它的内容。",
+      "not_for": "不知道文件路径时，先用 get_skill_content 拿文件清单。",
+      "next_step": "文件路径取自 get_skill_content 返回的 files。",
+      "keywords": [
+        "技能文件",
+        "附属文件",
+        "读文件",
+        "skill file",
+        "supporting file",
+        "read file"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "skill_id": "skill_demo",
+        "rel_path": "references/usage.md"
+      }
+    }
   },
   "execute_skill": {
     "name": "execute_skill",
@@ -197,21 +603,81 @@
     "group": "skill",
     "group_title": "技能",
     "order": 550,
-    "description": "在沙箱内执行技能的入口命令，返回 exit_code / stdout / stderr。entry_shell 必须取自 SKILL.md 声明的入口，先用 get_skill_content 读清楚再调。"
+    "description": "在沙箱内执行技能的入口命令，返回 exit_code / stdout / stderr。entry_shell 必须取自 SKILL.md 声明的入口，先用 get_skill_content 读清楚再调。",
+    "gateway": {
+      "summary": "在沙箱中运行知识网络挂载技能的入口脚本。",
+      "use_when": "技能说明要求运行它的脚本时。",
+      "not_for": "只需要阅读技能说明时用 get_skill_content。",
+      "next_step": "entry_shell 按技能说明填写。",
+      "keywords": [
+        "执行技能",
+        "运行技能",
+        "技能脚本",
+        "execute skill",
+        "run skill"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "skill_id": "skill_demo",
+        "entry_shell": "python main.py"
+      }
+    }
   },
   "run_code": {
     "name": "run_code",
     "title": "运行代码",
     "group": "execution",
     "group_title": "代码执行",
-    "order": 610
+    "order": 610,
+    "gateway": {
+      "summary": "在沙箱里跑一段 Python，代码里可以直接调用本服务的工具；适合把多次查询的结果在本地汇总、转换或批量处理。",
+      "use_when": "一次问题要串起多次查询再算，或需要循环、分页遍历、临时脚本这类本地计算。",
+      "not_for": "单次取数用对应的查询工具；可售、齐套、产能这类业务口径用已发布函数（search_capabilities）。",
+      "next_step": "代码里按工具名调用本服务的工具；run_code 与 run_shell 共用一个按会话隔离的工作目录。",
+      "keywords": [
+        "跑代码",
+        "运行代码",
+        "Python",
+        "脚本",
+        "批量",
+        "本地计算",
+        "循环",
+        "run code",
+        "python",
+        "script",
+        "sandbox"
+      ],
+      "example_arguments": {
+        "code": "print(1 + 1)"
+      }
+    }
   },
   "run_shell": {
     "name": "run_shell",
     "title": "运行命令",
     "group": "execution",
     "group_title": "代码执行",
-    "order": 620
+    "order": 620,
+    "gateway": {
+      "summary": "在沙箱里执行一条 shell 命令，返回 stdout 与 stderr；用来看环境和 run_code 落盘的文件。",
+      "use_when": "查看沙箱里的文件、目录或环境，通常是核对 run_code 写出来的结果。",
+      "not_for": "取知识网络的数据不要用它，对象类、实例、SQL 都有各自的工具。",
+      "next_step": "命令交给 sh -c 执行，工作目录与 run_code 相同。",
+      "keywords": [
+        "shell",
+        "命令",
+        "执行命令",
+        "查看文件",
+        "目录",
+        "沙箱",
+        "run shell",
+        "command",
+        "ls"
+      ],
+      "example_arguments": {
+        "command": "ls -la"
+      }
+    }
   },
   "search_capabilities": {
     "name": "search_capabilities",
@@ -219,7 +685,38 @@
     "group": "tool",
     "group_title": "工具",
     "order": 555,
-    "description": "检索某个知识网络已挂载的全部能力：Skill、函数工具（含 API 工具）与 MCP 工具，在同一个排序空间里竞争，按相关度混排返回。想找「能做某件事的东西」时用它，不必先猜是 Skill 还是工具。\n每条带 capability_type，据此决定下一步：function / mcp_tool 用 execute_tool 调用（返回带 input_schema），skill 用 get_skill_content 读取、execute_skill 执行。\n可选 types 收窄到 skill / function / mcp_tool；函数工具还可用 metadata_types 再分 openapi（API 工具）与 function。需要该知识网络本身的查看权限；只有对象类等子资源权限或单独的 Skill / 工具授权会被拒绝。范围是该网络挂载的能力，当前账户看不到的函数工具不返回，未挂载则返回空。"
+    "description": "检索某个知识网络已挂载的全部能力：Skill、函数工具（含 API 工具）与 MCP 工具，在同一个排序空间里竞争，按相关度混排返回。想找「能做某件事的东西」时用它，不必先猜是 Skill 还是工具。\n每条带 capability_type，据此决定下一步：function / mcp_tool 用 execute_tool 调用（返回带 input_schema），skill 用 get_skill_content 读取、execute_skill 执行。\n可选 types 收窄到 skill / function / mcp_tool；函数工具还可用 metadata_types 再分 openapi（API 工具）与 function。需要该知识网络本身的查看权限；只有对象类等子资源权限或单独的 Skill / 工具授权会被拒绝。范围是该网络挂载的能力，当前账户看不到的函数工具不返回，未挂载则返回空。",
+    "gateway": {
+      "summary": "查找知识网络挂载的已发布函数、技能和外部工具，返回它们的 ID、用途和入参定义。",
+      "use_when": "业务计算（例如可售数量、齐套与缺料、产能、交期、替代料）或需要使用网络挂载的技能、外部工具时；这类口径以已发布函数为准。",
+      "not_for": "本服务自带的查询能力用 search_native_tools 找。",
+      "next_step": "找到函数后用 execute_tool 执行：toolbox_id 取 owner_id，tool_id 取 capability_id，arguments 按返回的 input_schema 填写。",
+      "keywords": [
+        "函数",
+        "已发布函数",
+        "挂载",
+        "挂载能力",
+        "技能",
+        "外部工具",
+        "业务计算",
+        "口径",
+        "可售",
+        "齐套",
+        "缺料",
+        "产能",
+        "交期",
+        "替代料",
+        "function",
+        "published function",
+        "capability",
+        "skill",
+        "business calculation"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "query": "齐套 缺料"
+      }
+    }
   },
   "execute_tool": {
     "name": "execute_tool",
@@ -227,6 +724,53 @@
     "group": "tool",
     "group_title": "工具",
     "order": 570,
-    "description": "调用一个已挂载到该知识网络的函数工具或 MCP 工具，返回工具原始响应。需要该知识网络本身的执行权限：工具经知识网络的受管代理执行，不必另有工具授权。kn_id / toolbox_id / tool_id 必须取自 search_capabilities；arguments 按其返回的 input_schema 填。工具可能对外部系统写入且不可回滚，调用前先读清 description 与 use_rule。"
+    "description": "调用一个已挂载到该知识网络的函数工具或 MCP 工具，返回工具原始响应。需要该知识网络本身的执行权限：工具经知识网络的受管代理执行，不必另有工具授权。kn_id / toolbox_id / tool_id 必须取自 search_capabilities；arguments 按其返回的 input_schema 填。工具可能对外部系统写入且不可回滚，调用前先读清 description 与 use_rule。",
+    "gateway": {
+      "summary": "执行一个知识网络挂载的函数或外部工具，返回它的原始结果。",
+      "use_when": "已经通过 search_capabilities 找到要用的函数或工具。",
+      "not_for": "不知道 toolbox_id 和 tool_id 时先用 search_capabilities。",
+      "next_step": "arguments 按 search_capabilities 返回的 input_schema 填写；外部工具可能写外部系统，调用前先看它的说明。",
+      "keywords": [
+        "执行函数",
+        "调用函数",
+        "调用工具",
+        "外部工具",
+        "调用挂载",
+        "挂载函数",
+        "execute tool",
+        "call function",
+        "run function"
+      ],
+      "example_arguments": {
+        "kn_id": "kn_demo",
+        "toolbox_id": "tb_demo",
+        "tool_id": "tool_demo",
+        "arguments": {}
+      }
+    }
+  },
+  "search_native_tools": {
+    "name": "search_native_tools",
+    "title": "查找可用查询能力",
+    "group": "gateway",
+    "group_title": "按需查询",
+    "order": 710,
+    "description": "在本入口按需提供的工具中，按要做的事查找合适的工具，返回最多 5 个候选：名称、用途、适用与不适用的场景、下一步和参数签名。范围覆盖本入口没有直接公布的全部能力，包括统计查询、行动、技能和查找挂载函数的工具。候选不能按名称直接调用：先用 describe_native_tool 取参数 schema，再经执行器执行；已知名称和参数时可以直接执行。本入口直接公布的工具不在搜索范围内。"
+  },
+  "describe_native_tool": {
+    "name": "describe_native_tool",
+    "title": "读取查询能力说明",
+    "group": "gateway",
+    "group_title": "按需查询",
+    "order": 720,
+    "description": "返回一个按需工具的说明：用途、可执行参数 schema、一份通过该 schema 校验的调用模板和输出字段提示；include_output_schema=true 时再附完整输出 schema。name 取自 search_native_tools 的结果。可执行参数 schema 不含 bkn_context，执行时由执行器从外层带入。"
+  },
+  "execute_native_tool": {
+    "name": "execute_native_tool",
+    "title": "执行按需工具",
+    "group": "gateway",
+    "group_title": "按需查询",
+    "order": 730,
+    "description": "执行一个按需工具：name 是目标工具名，arguments 按 describe_native_tool 返回的可执行参数 schema 填写，不要放 bkn_context。目标可以是本入口没有直接公布的任何工具，包括会修改数据或调用外部系统的工具（执行行动、挂载函数等），执行前先确认用户的意图。参数不合法时，错误中附目标的可执行参数 schema 和出错字段，可据此修正后重试。本入口直接公布的工具请直接调用。"
   }
 }

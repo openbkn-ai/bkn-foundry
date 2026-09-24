@@ -29,17 +29,21 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/oauthorigin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/proxygrant"
 )
 
 // Deps are the collaborators the HTTP layer needs.
 type Deps struct {
-	Enforcer  *authz.Enforcer
-	DB        *gorm.DB
-	Provider  *auth.Provider
-	Hydra     *auth.HydraAdmin
-	Directory *directory.Service
-	Users     *auth.UserStore
+	Enforcer *authz.Enforcer
+	DB       *gorm.DB
+	Provider *auth.Provider
+	Hydra    *auth.HydraAdmin
+	// HydraBrowserPublicURL is the canonical external Hydra origin. Redirects
+	// back to it are emitted as relative URLs so alternate ingress hosts work.
+	HydraBrowserPublicURL string
+	Directory             *directory.Service
+	Users                 *auth.UserStore
 	// Audit records admin-API mutations. When nil, the audit middleware and the
 	// audit-log read endpoint are not mounted (auditing off).
 	Audit *audit.Store
@@ -54,6 +58,8 @@ type Deps struct {
 	// ClientAdmin manages login clients' redirect_uris (admin API). Defaults to
 	// Hydra when nil (production); tests inject a stub.
 	ClientAdmin ClientManager
+	// OAuthAccessOrigins persists and reconciles BKN Studio browser origins.
+	OAuthAccessOrigins *oauthorigin.Service
 	// License is the cluster license hub. When nil, the license admin and
 	// internal distribution endpoints are not mounted.
 	License *license.Service
@@ -110,7 +116,7 @@ func New(deps Deps) *gin.Engine {
 	// local intermediate mode relies on the platform network boundary (#333),
 	// never on a caller-supplied service-name header. Callers resolve the end-user
 	// identity at their own boundary and pass accessor_id.
-	registerAuthz(r, deps.Enforcer, deps.DB, deps.Audit, deps.Directory, deps.RowFilterMaxDepartmentIDs)
+	registerAuthz(r, deps.Enforcer, deps.DB, deps.Audit, deps.Directory)
 
 	// AppKey (user-issued API key) store. Verification is internal, tokenless and
 	// ClusterIP-only (same trust face as /authz) — the Context Loader MCP/REST
@@ -131,7 +137,7 @@ func New(deps Deps) *gin.Engine {
 
 	// hydra login/consent/device provider pages.
 	if deps.Provider != nil && deps.Hydra != nil {
-		registerAuth(r, deps.Provider, deps.Hydra, deps.AccessLog)
+		registerAuth(r, deps.Provider, deps.Hydra, deps.AccessLog, deps.HydraBrowserPublicURL)
 	}
 
 	// Internal user-directory reads (name resolution, batch lookups) — ClusterIP.
@@ -259,7 +265,7 @@ func New(deps Deps) *gin.Engine {
 				rowFilterAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 			}
 			if rowfiltersocket.MountManagement(rowFilterAdmin, newRowFilterManagementServices(
-				deps.Enforcer, deps.Directory, deps.RowFilterMaxDepartmentIDs, deps.RowFilterPublishedObjectTypes,
+				deps.Enforcer, deps.Directory, deps.RowFilterPublishedObjectTypes,
 			), func(c *gin.Context) (string, bool) {
 				operatorID := c.GetString(ctxAccessorID)
 				return operatorID, operatorID != ""
@@ -278,7 +284,14 @@ func New(deps Deps) *gin.Engine {
 			clientMgr = deps.Hydra
 		}
 		if clientMgr != nil {
-			registerClientAdmin(admin, clientMgr, deps.Enforcer)
+			var studioOrigins StudioOriginManager
+			if deps.OAuthAccessOrigins != nil {
+				studioOrigins = deps.OAuthAccessOrigins
+			}
+			registerClientAdmin(admin, clientMgr, studioOrigins, deps.Enforcer)
+		}
+		if deps.OAuthAccessOrigins != nil {
+			registerOAuthAccessOriginAdmin(admin, deps.OAuthAccessOrigins, deps.Enforcer)
 		}
 		// Cluster license hub management (import/activate/remove + detail).
 		if deps.License != nil {

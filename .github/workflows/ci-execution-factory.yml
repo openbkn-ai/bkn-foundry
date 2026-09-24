@@ -17,6 +17,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
   openbkn-smoke-collect:
     name: L2 smoke harness (collect-only)

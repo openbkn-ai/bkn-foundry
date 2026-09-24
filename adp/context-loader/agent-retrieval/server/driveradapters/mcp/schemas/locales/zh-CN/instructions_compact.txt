@@ -1,0 +1,22 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
+ContextLoader 精简入口：按需加载的知识网络工具集。常用查询工具直接公布，其余能力经按需工具使用。
+
+受管交互流程（每个新的用户问题）：
+1. 调用 bkn_start_interaction，传入完整问题、当前 Agent 名称和 conversation_mode。首个问题用 new，不传 conversation_id；后续问题用 continue，并传入上次返回的 conversation_id。
+2. 其余工具调用都传入 bkn_context: { conversation_id, interaction_id }，取值照抄上一步的返回。
+3. 回复用户前调用 bkn_finish_interaction：完成传 outcome=completed 和最终答案；未完成传 failed、cancelled 或 handed_off，可附原因。
+
+探索与查询：
+- 不知道 kn_id 时先用 list_knowledge_networks。get_kn_detail 看概览；search_schema 找对象类、关系类和指标，用它返回的真实 ID 查询，不要凭名称猜。
+- 自然语言召回实例用 search_instance（相关性 Top-K，不是全部）；按条件取数、排序、翻页用 query_object_instance；已建模指标用 query_metric。
+
+其他能力（统计与 Cypher、子图、逻辑属性、行动、技能、挂载函数、沙箱里跑代码或命令等）经按需工具：search_native_tools 说明要做的事，找到工具；describe_native_tool 取参数 schema 和调用模板，已知参数可跳过；execute_native_tool 执行，name 填目标工具名，arguments 填目标参数，bkn_context 放外层。候选工具不能按名称直接调用。
+
+业务计算（可售、齐套缺料、产能、交期、替代料、BOM 展开等）：get_kn_detail 显示挂载了函数时，先经 execute_native_tool 调 search_capabilities 找已发布函数，再调 execute_tool 执行，以函数结果为准；不要自己用原始数据推算这些口径，也不要基于分页或预览结果计算统计值。get_kn_detail 顶层的 comment 是网络作者写的说明；写了问答路由、指标或时间基线时，优先按它选择函数、技能和指标，并照它的口径作答。
+
+执行行动等会修改数据或调用外部系统的操作，先确认用户的意图。

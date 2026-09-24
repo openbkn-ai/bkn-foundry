@@ -16,6 +16,7 @@ type Config struct {
 	HTTPAddr string `yaml:"http_addr"` // listen address (login/consent/device + APIs)
 	DB       DBConfig
 	Hydra    HydraConfig
+	OAuth    OAuthConfig
 	LDAP     LDAPConfig
 	License  LicenseConfig `yaml:"license"`
 	// SeedOnStart controls whether roles/resource-types/operations/grants are
@@ -48,11 +49,6 @@ type AuthzConfig struct {
 	// PolicyRefreshInterval reloads the in-memory policy from the store on a
 	// timer, picking up rows changed outside bkn-safe. 0 disables it.
 	PolicyRefreshInterval time.Duration `yaml:"policy_refresh_interval"`
-	// RowFilterMaxDepartmentIDs is the measured minimum number of exact IN
-	// values accepted safely by every configured object-query backend. A caller
-	// whose direct or descendant department scope exceeds it is denied before a
-	// data backend is reached. It must stay positive when row filtering is used.
-	RowFilterMaxDepartmentIDs int `yaml:"row_filter_max_department_ids"`
 }
 
 // AuditConfig tunes what the audit subsystem does beyond recording rows.
@@ -134,8 +130,17 @@ func (d DBConfig) DSN() string {
 // HydraConfig is how bkn-safe reaches hydra's admin API (login/consent/device
 // accept + client mgmt). Admin is internal-only.
 type HydraConfig struct {
-	AdminURL  string `yaml:"admin_url"`  // e.g. http://hydra-admin:4445
-	PublicURL string `yaml:"public_url"` // e.g. http://hydra-public:4444
+	AdminURL         string `yaml:"admin_url"`          // e.g. http://hydra-admin:4445
+	PublicURL        string `yaml:"public_url"`         // internal SDK endpoint, e.g. http://hydra-public:4444
+	BrowserPublicURL string `yaml:"browser_public_url"` // canonical browser-facing issuer origin
+}
+
+// OAuthConfig contains the deployment-owned OAuth client baseline. Runtime
+// access origins are stored in the database; these redirect URIs are supplied
+// by Helm and cannot be removed through the admin API.
+type OAuthConfig struct {
+	StudioBaselineRedirectURIs []string      `yaml:"studio_baseline_redirect_uris"`
+	ReconcileInterval          time.Duration `yaml:"reconcile_interval"`
 }
 
 // LDAPConfig enables the light external-directory federation (Phase 5). When

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -119,6 +120,36 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 	return out, nil
 }
 
+func (c *safeClient) listAccessibleResources(ctx context.Context, accessorID, resourceType,
+	operation string) (interfaces.PermissionResourceScope, error) {
+	return c.listAccessibleResourceScope(ctx, accessorID, resourceType, operation, false)
+}
+
+func (c *safeClient) listAccessibleResourcesWithAnyOperation(ctx context.Context, accessorID,
+	resourceType string) (interfaces.PermissionResourceScope, error) {
+	return c.listAccessibleResourceScope(ctx, accessorID, resourceType, "", true)
+}
+
+func (c *safeClient) listAccessibleResourceScope(ctx context.Context, accessorID, resourceType,
+	operation string, anyOperation bool) (interfaces.PermissionResourceScope, error) {
+	var response interfaces.PermissionResourceScope
+	query := url.Values{}
+	query.Set("accessor_id", accessorID)
+	query.Set("resource_type", resourceType)
+	if anyOperation {
+		query.Set("any_operation", "true")
+	} else {
+		query.Set("operation", operation)
+	}
+	if err := c.do(ctx, http.MethodGet, "/api/safe/v1/authz/resources?"+query.Encode(), nil, &response); err != nil {
+		return response, err
+	}
+	if response.ResourceIDs == nil {
+		return response, fmt.Errorf("invalid bkn-safe resources response")
+	}
+	return response, nil
+}
+
 func (c *safeClient) upsertResourceParents(ctx context.Context, resourceType, parentType string,
 	items []interfaces.PermissionResourceParent) error {
 	if len(items) == 0 {
@@ -142,12 +173,21 @@ func (c *safeClient) deleteResourceParents(ctx context.Context, resourceType str
 }
 
 func (c *safeClient) do(ctx context.Context, method, path string, body, out any) error {
-	b, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(b))
+	var requestBody io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		requestBody = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, requestBody)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
@@ -230,6 +270,16 @@ func (s *safePermissionAccess) filterBatch(ctx context.Context,
 
 func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 	return s.filterBatch(ctx, filter, filter.Operations, filter.IncludeOperations)
+}
+
+func (s *safePermissionAccess) ListAccessibleResources(ctx context.Context, accessor interfaces.PermissionAccessor,
+	resourceType, operation string) (interfaces.PermissionResourceScope, error) {
+	return s.safe.listAccessibleResources(ctx, accessor.ID, resourceType, operation)
+}
+
+func (s *safePermissionAccess) ListAccessibleResourcesWithAnyOperation(ctx context.Context,
+	accessor interfaces.PermissionAccessor, resourceType string) (interfaces.PermissionResourceScope, error) {
+	return s.safe.listAccessibleResourcesWithAnyOperation(ctx, accessor.ID, resourceType)
 }
 
 func (s *safePermissionAccess) CreateResources(ctx context.Context, policies []interfaces.PermissionPolicy) error {

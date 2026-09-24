@@ -14,6 +14,7 @@ def _headers():
     return {
         "traceparent": "00-1234567890abcdef1234567890abcdef-abcdef1234567890-01",
         "bkn-request-id": "req_reliable_001",
+        "bkn-conversation-id": "conv-1",
         "x-account-id": "account-9",
         "x-account-type": "user",
         "x-bkn-application-principal-id": "openbkn-studio",
@@ -107,13 +108,7 @@ def test_authenticated_identity_is_propagated_to_model_evidence_producer():
     assert headers["x-account-type"] == "user"
 
 
-def test_trusted_owner_identity_is_preserved_for_trace_ledger_ingest(monkeypatch):
-    monkeypatch.setattr(
-        evidence.config,
-        "BKN_TRACE_EVIDENCE_INGEST_TOKEN",
-        "producer-token",
-        raising=False,
-    )
+def test_trusted_owner_identity_is_preserved_in_ledger_event_envelope():
     ctx = observability.build_context(_headers())
 
     assert ctx.application_principal_id == "openbkn-studio"
@@ -121,23 +116,20 @@ def test_trusted_owner_identity_is_preserved_for_trace_ledger_ingest(monkeypatch
     assert ctx.effective_subject_id == "account-9"
     assert ctx.delegation_id == "delegation-1"
 
-    headers = evidence._ingest_headers(ctx)
-    assert headers == {
-        "X-BKN-Trace-Ingest-Token": "producer-token",
-        "X-BKN-Application-Principal-ID": "openbkn-studio",
-        "X-BKN-Effective-Subject-Type": "user",
-        "X-BKN-Effective-Subject-ID": "account-9",
-        "X-BKN-Delegation-ID": "delegation-1",
-    }
+    token = observability.set_context(ctx)
+    interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
+    try:
+        ledger = evidence.build_ledger_events(
+            evidence.build_batch([evidence.interaction_started_event()], "account-9", "user")
+        )[0]
+    finally:
+        evidence.end_interaction(interaction)
+        observability.reset_context(token)
+    assert ledger["envelope"]["owner"]["application_principal_id"] == "openbkn-studio"
+    assert ledger["envelope"]["owner"]["effective_subject_id"] == "account-9"
 
 
-def test_agent_evidence_is_converted_to_trace_3_single_events(monkeypatch):
-    monkeypatch.setattr(
-        evidence.config,
-        "BKN_TRACE_EVIDENCE_INGEST_TOKEN",
-        "producer-token",
-        raising=False,
-    )
+def test_agent_evidence_is_converted_to_trace_3_single_events():
     ctx = observability.build_context(_headers())
     token = observability.set_context(ctx)
     interaction = evidence.begin_interaction(
@@ -166,7 +158,7 @@ def test_agent_evidence_is_converted_to_trace_3_single_events(monkeypatch):
     assert all(item["bkn.trace.schema.version"] == "3.0.0" for item in ledger_events)
     assert all(item["conversation_id"] == "conv-1" for item in ledger_events)
     assert all(item["interaction_id"] == "int-1" for item in ledger_events)
-    assert ledger_events[0]["envelope"]["payload"]["agent_id"] == "business_provenance_optimizer"
+    assert ledger_events[0]["envelope"]["event"]["payload"]["agent_id"] == "business_provenance_optimizer"
     assert ledger_events[0]["producer_id"] == "bkn-agent"
     assert ledger_events[1]["producer_stream_id"] != ledger_events[2]["producer_stream_id"]
     assert ledger_events[1]["payload_hash"] == evidence.canonical_payload_hash(
@@ -406,9 +398,6 @@ def test_trusted_mcp_receipt_caps_evidence_and_normalizes_business_refs():
 def test_mf_model_call_propagates_operation_and_consumes_stable_fact(monkeypatch):
     captured = {}
 
-    async def accept(_batch):
-        return None
-
     async def fake_generate(self, messages, stop=None, run_manager=None, **kwargs):
         captured.update(kwargs.get("extra_headers") or {})
         return ChatResult(generations=[ChatGeneration(message=AIMessage(
@@ -420,8 +409,6 @@ def test_mf_model_call_propagates_operation_and_consumes_stable_fact(monkeypatch
         ))])
 
     monkeypatch.setattr(ChatOpenAI, "_agenerate", fake_generate)
-    monkeypatch.setattr(evidence, "_send_once", accept)
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_INGEST_URL", "http://trace/events")
     token = observability.set_context(observability.build_context(_headers()))
     interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
     try:
@@ -446,9 +433,6 @@ def test_mf_model_call_propagates_operation_and_consumes_stable_fact(monkeypatch
 def test_final_model_request_sends_bounded_candidates_and_binds_echoed_adoption(monkeypatch):
     captured = {}
 
-    async def accept(_batch):
-        return None
-
     async def fake_generate(self, messages, stop=None, run_manager=None, **kwargs):
         captured.update(kwargs.get("extra_headers") or {})
         return ChatResult(generations=[ChatGeneration(message=AIMessage(
@@ -460,8 +444,6 @@ def test_final_model_request_sends_bounded_candidates_and_binds_echoed_adoption(
         ))])
 
     monkeypatch.setattr(ChatOpenAI, "_agenerate", fake_generate)
-    monkeypatch.setattr(evidence, "_send_once", accept)
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_INGEST_URL", "http://trace/events")
     monkeypatch.setattr(evidence.config, "BKN_TRACE_MODEL_SOURCE_LIMIT", 2)
     token = observability.set_context(observability.build_context(_headers()))
     interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
@@ -547,40 +529,14 @@ def test_model_fact_receipt_accepts_reserved_body_compatibility_object():
     assert operation_ids == ["op_model_body_1"]
 
 
-def test_submission_retries_non_2xx_and_confirms_before_return(monkeypatch):
-    attempts = []
-
-    async def fake_send_once(batch):
-        attempts.append(batch)
-        if len(attempts) < 3:
-            raise evidence.EvidenceSubmissionError("HTTP 503")
-
-    monkeypatch.setattr(evidence, "_send_once", fake_send_once)
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_INGEST_URL", "http://trace/events")
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_MAX_ATTEMPTS", 3)
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_RETRY_BACKOFF_S", 0)
-    token = observability.set_context(observability.build_context(_headers()))
-    interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
-    try:
-        confirmed = asyncio.run(evidence.submit_events(
-            [evidence.interaction_started_event()], "account-9", "user"
-        ))
-    finally:
-        evidence.end_interaction(interaction)
-        observability.reset_context(token)
-
-    assert confirmed is True
-    assert len(attempts) == 3
+def test_artifact_http_headers_use_artifact_secret(monkeypatch):
+    monkeypatch.setattr(evidence.config, "BKN_TRACE_ARTIFACT_INGEST_TOKEN", "artifact-token", raising=False)
+    assert evidence._artifact_headers() == {"X-BKN-Trace-Ingest-Token": "artifact-token"}
 
 
-def test_evidence_ingest_headers_use_dedicated_token(monkeypatch):
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_INGEST_TOKEN", "producer-token", raising=False)
-    assert evidence._ingest_headers() == {"X-BKN-Trace-Ingest-Token": "producer-token"}
-
-
-def test_evidence_ingest_headers_omit_empty_token(monkeypatch):
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_INGEST_TOKEN", "", raising=False)
-    assert evidence._ingest_headers() == {}
+def test_artifact_http_headers_omit_empty_token(monkeypatch):
+    monkeypatch.setattr(evidence.config, "BKN_TRACE_ARTIFACT_INGEST_TOKEN", "", raising=False)
+    assert evidence._artifact_headers() == {}
 
 
 def test_ingest_failure_summary_keeps_only_status_code_and_validation_paths():
@@ -646,29 +602,3 @@ def test_result_count_uses_nested_collections_totals_and_empty_results():
     assert evidence.result_count([]) == 0
     assert evidence.result_count({}) == 0
     assert evidence.result_count({"resource_id": "one"}) == 1
-
-
-def test_failed_parent_submission_is_observable_and_blocks_child_causation(monkeypatch, caplog):
-    async def reject(_batch):
-        raise evidence.EvidenceSubmissionError("HTTP 503 sensitive detail")
-
-    monkeypatch.setattr(evidence, "_send_once", reject)
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_INGEST_URL", "http://trace/events")
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_MAX_ATTEMPTS", 2)
-    monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_RETRY_BACKOFF_S", 0)
-    token = observability.set_context(observability.build_context(_headers()))
-    interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
-    try:
-        with caplog.at_level(logging.ERROR, logger="bkn-agent.evidence"):
-            confirmed = asyncio.run(evidence.submit_events(
-                [evidence.interaction_started_event()], "account-9", "user"
-            ))
-        _, parent_event_id = evidence.new_operation()
-    finally:
-        evidence.end_interaction(interaction)
-        observability.reset_context(token)
-
-    assert confirmed is False
-    assert parent_event_id is None
-    assert "failed after 2 attempts: EvidenceSubmissionError" in caplog.text
-    assert "sensitive detail" not in caplog.text

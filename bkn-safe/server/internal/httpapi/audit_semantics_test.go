@@ -36,6 +36,8 @@ func TestAuditActionUsesStableBusinessSemantics(t *testing.T) {
 		{http.MethodPost, "/api/safe/v1/admin/license/import", "import"},
 		{http.MethodPost, "/api/safe/v1/admin/license/activate", "activate"},
 		{http.MethodDelete, "/api/safe/v1/admin/license", "remove"},
+		{http.MethodPost, "/api/safe/v1/admin/oauth/access-origins", "add_access_origin"},
+		{http.MethodDelete, "/api/safe/v1/admin/oauth/access-origins/:id", "remove_access_origin"},
 		{http.MethodPut, "/api/safe/v1/me", "update_profile"},
 	}
 	for _, test := range tests {

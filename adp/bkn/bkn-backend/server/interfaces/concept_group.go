@@ -70,6 +70,9 @@ type ConceptGroupsQueryParams struct {
 	KNID        string
 	Branch      string
 	CGIDs       []string
+	// ValidAuthorizationIDsOnly excludes stored IDs that cannot be represented
+	// as canonical Safe child resources.
+	ValidAuthorizationIDsOnly bool
 }
 
 // Pagination query for concept-to-group relationships.

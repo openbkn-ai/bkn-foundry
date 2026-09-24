@@ -29,6 +29,105 @@ import (
 
 const projectionGrantHeader = "X-BKN-Projection-Grant"
 
+const (
+	defaultOverviewGraphNodeLimit = 60
+	maxOverviewGraphNodeLimit     = 200
+	defaultOverviewGraphEdgeLimit = 120
+	maxOverviewGraphEdgeLimit     = 500
+)
+
+func parseOverviewGraphLimit(ctx context.Context, value string, defaultValue, maxValue int) (int, error) {
+	if value == "" {
+		return defaultValue, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 || parsed > maxValue {
+		return 0, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("limit must be between 1 and %d", maxValue))
+	}
+	return parsed, nil
+}
+
+// ListOverviewGraphByEx returns the bounded ontology graph for an OAuth caller.
+func (r *restHandler) ListOverviewGraphByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.ListOverviewGraph(c, visitor)
+}
+
+// ListOverviewGraphByIn returns the bounded ontology graph for an internal caller.
+func (r *restHandler) ListOverviewGraphByIn(c *gin.Context) {
+	r.ListOverviewGraph(c, visitor.GenerateVisitor(c))
+}
+
+// ListOverviewGraph parses the bounded graph request and delegates all
+// authorization-sensitive counting and projection to the service.
+func (r *restHandler) ListOverviewGraph(c *gin.Context, caller hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID: caller.ID, Type: string(caller.Type),
+	})
+	nodeLimit, err := parseOverviewGraphLimit(ctx, c.Query("node_limit"),
+		defaultOverviewGraphNodeLimit, maxOverviewGraphNodeLimit)
+	if err != nil {
+		rest.ReplyError(c, err.(*rest.HTTPError))
+		return
+	}
+	edgeLimit, err := parseOverviewGraphLimit(ctx, c.Query("edge_limit"),
+		defaultOverviewGraphEdgeLimit, maxOverviewGraphEdgeLimit)
+	if err != nil {
+		rest.ReplyError(c, err.(*rest.HTTPError))
+		return
+	}
+	depth := 1
+	if rawDepth := c.Query("expand_depth"); rawDepth != "" {
+		depth, err = strconv.Atoi(rawDepth)
+		if err != nil || depth < 1 || depth > 2 {
+			rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+				WithErrorDetails("expand_depth must be 1 or 2"))
+			return
+		}
+	}
+	focusID := c.Query("focus_object_type_id")
+	conceptGroupID := c.Query("concept_group_id")
+	if focusID != "" && conceptGroupID != "" {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("focus_object_type_id and concept_group_id are mutually exclusive"))
+		return
+	}
+	if c.Query("cursor") != "" && (focusID != "" || conceptGroupID != "") {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("cursor cannot be combined with focus_object_type_id or concept_group_id"))
+		return
+	}
+	result, err := r.kns.ListOverviewGraph(ctx, c.Param("kn_id"), interfaces.OverviewGraphQuery{
+		Branch:            c.DefaultQuery("branch", interfaces.MAIN_BRANCH),
+		NodeLimit:         nodeLimit,
+		EdgeLimit:         edgeLimit,
+		Cursor:            c.Query("cursor"),
+		FocusObjectTypeID: focusID,
+		ExpandDepth:       depth,
+		ConceptGroupID:    conceptGroupID,
+	})
+	if err != nil {
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+		}
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
 // GetKNByProjectionGrant exports one current network for a sealed historical
 // projection build. It has no caller, tenant, or business-domain fallback.
 func (r *restHandler) GetKNByProjectionGrant(c *gin.Context) {
@@ -649,7 +748,7 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 		}
 		total, err = count, listErr
 	case "action_type":
-		items, count, listErr := r.ats.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
+		items, count, listErr := r.ats.ListActionTypeSummaries(ctx, interfaces.ActionTypesQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
 		for _, item := range items {
 			entries = append(entries, &interfaces.AuthorizationResource{ID: parentID + "/" + item.ATID, Name: item.ATName})
 		}

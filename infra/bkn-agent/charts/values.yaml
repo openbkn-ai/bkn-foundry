@@ -64,14 +64,23 @@ provenanceBootstrap:
 observability:
   otelEnabled: "true"
   otlpEndpoint: "http://otelcol-contrib:4318"
-  bknTraceEvidenceIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
   bknTraceArtifactIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
-  bknTraceEvidenceTimeoutS: "3"
-  # When using protected agent-observability evidence/artifact ingest
-  # endpoints, set this to the existing Secret used by that service. Leave it
-  # empty only in environments without Trace.
-  bknTraceEvidenceIngestTokenSecretName: ""
-  bknTraceEvidenceIngestTokenSecretKey: "ingest-token"
+  # Artifacts retain their existing HTTP contract; only Evidence events move to Kafka.
+  bknTraceArtifactIngestTokenSecretName: "bkn-trace-evidence-ingest"
+  bknTraceArtifactIngestTokenSecretKey: "token"
+  evidencePublisher:
+    brokers: "kafka.resource.svc.cluster.local:9092"
+    credentialsSecretName: "bkn-trace-evidence-kafka"
+    usernameSecretKey: "username"
+    passwordSecretKey: "password"
+    capturePolicyRevision: "1"
+    queueMaxRecords: 4096
+    queueMaxBytes: 67108864
+    maxRecordBytes: 1048576
+    maxAgeS: 30
+    maxAttempts: 3
+    retryBackoffMs: 100
+    drainTimeoutS: "5"
 
 nodeSelector: {}
 

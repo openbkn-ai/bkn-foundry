@@ -60,7 +60,6 @@
 | 行动调度 | `/knowledge-networks/{kn_id}/action-schedules` |
 | BKN 导入导出 | `/bkns`、`/bkns/{kn_id}` |
 | 资源 | `/resources` |
-| Trace outbox | `/api/bkn-backend/v1/trace/outbox` |
 
 权威 OpenAPI 源文件位于仓库根目录：
 

@@ -7,7 +7,8 @@
 {
   "run_cypher": [
     "标签写对象类 id/名称，关系写关系类 id/名称，属性写逻辑属性名，都不是物理列名。",
-    "无 OPTIONAL MATCH / WITH / UNION / 变长路径；不写 LIMIT 默认 1000 行。",
+    "无 WITH / UNION / 变长路径；OPTIONAL MATCH 只能一条关系、挂一个新节点，用 count(可选侧属性) 数 0 度。",
+    "不写 LIMIT 默认 1000 行。",
     "run_cypher(kn_id=\"<kn_id>\", query=\"MATCH (p:player)-[:rel_goal_player]->(g:goal) RETURN p.name AS name, count(*) AS goals ORDER BY goals DESC LIMIT 10\")"
   ],
   "run_sql": [

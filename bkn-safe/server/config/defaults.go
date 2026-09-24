@@ -27,6 +27,9 @@ func defaultConfig() *Config {
 			AdminURL:  "http://127.0.0.1:4445",
 			PublicURL: "http://127.0.0.1:4444",
 		},
+		OAuth: OAuthConfig{
+			ReconcileInterval: 5 * time.Minute,
+		},
 		LDAP: LDAPConfig{
 			UserFilter: "(uid=%s)",
 		},
@@ -43,8 +46,7 @@ func defaultConfig() *Config {
 			},
 		},
 		Authz: AuthzConfig{
-			PolicyRefreshInterval:     10 * time.Minute,
-			RowFilterMaxDepartmentIDs: 1000,
+			PolicyRefreshInterval: 10 * time.Minute,
 		},
 		Upstreams: UpstreamsConfig{
 			BKNBackend: UpstreamConfig{

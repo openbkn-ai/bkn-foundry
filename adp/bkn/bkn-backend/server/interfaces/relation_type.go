@@ -84,6 +84,10 @@ type RelationTypesQueryParams struct {
 	SourceObjectTypeIDs []string
 	TargetObjectTypeIDs []string
 	BoundObjectTypeIDs  []string
+	RTIDS               []string
+	// ValidAuthorizationIDsOnly excludes stored IDs that cannot be represented
+	// as canonical Safe child resources.
+	ValidAuthorizationIDsOnly bool
 }
 
 // Relation type search list.

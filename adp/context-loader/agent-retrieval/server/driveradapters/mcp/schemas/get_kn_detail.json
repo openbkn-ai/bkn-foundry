@@ -13,7 +13,7 @@
       },
       "kn_id": {
         "type": "string",
-        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+        "description": "知识网络 ID，来自 list_knowledge_networks 或 get_kn_detail，不可凭名称猜测。"
       },
       "detail_level": {
         "type": "string",
@@ -122,6 +122,7 @@
             },
             "effective_permissions": {
               "type": "object",
+              "description": "当前账户对各属性的有效权限：full 可读原值，masked 读到脱敏值，schema 只见字段不见值。默认 summary 下，所有属性都是 full 时省略此字段；只要有一个受限属性就完整列出",
               "additionalProperties": {
                 "type": "string",
                 "enum": [
@@ -134,7 +135,7 @@
           },
           "additionalProperties": true
         },
-        "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细"
+        "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细。logic_properties 只给名称与类型，要看取数来源与参数定义（谁来填）用 get_object_types 或 search_schema"
       },
       "relation_types": {
         "type": "array",

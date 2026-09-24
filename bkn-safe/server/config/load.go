@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -38,7 +39,12 @@ func LoadWithOptions(opts LoadOptions) (*Config, error) {
 		cfg = defaultConfig()
 	}
 
-	applyEnv(cfg)
+	if err := applyEnv(cfg); err != nil {
+		return nil, err
+	}
+	if cfg.Hydra.BrowserPublicURL == "" {
+		cfg.Hydra.BrowserPublicURL = cfg.Hydra.PublicURL
+	}
 	return cfg, nil
 }
 
@@ -52,7 +58,7 @@ func Load() *Config {
 	return cfg
 }
 
-func applyEnv(cfg *Config) {
+func applyEnv(cfg *Config) error {
 	if v := os.Getenv("SAFE_HTTP_ADDR"); v != "" {
 		cfg.HTTPAddr = v
 	}
@@ -98,6 +104,23 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("SAFE_HYDRA_PUBLIC_URL"); v != "" {
 		cfg.Hydra.PublicURL = v
+	}
+	if v := os.Getenv("SAFE_HYDRA_BROWSER_PUBLIC_URL"); v != "" {
+		cfg.Hydra.BrowserPublicURL = v
+	}
+	if v, ok := os.LookupEnv("SAFE_OAUTH_STUDIO_BASELINE_REDIRECT_URIS"); ok {
+		var uris []string
+		if err := json.Unmarshal([]byte(v), &uris); err != nil {
+			return fmt.Errorf("SAFE_OAUTH_STUDIO_BASELINE_REDIRECT_URIS: decode JSON array: %w", err)
+		}
+		cfg.OAuth.StudioBaselineRedirectURIs = uris
+	}
+	if v := os.Getenv("SAFE_OAUTH_RECONCILE_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("SAFE_OAUTH_RECONCILE_INTERVAL: %w", err)
+		}
+		cfg.OAuth.ReconcileInterval = d
 	}
 	if v := os.Getenv("SAFE_LDAP_URL"); v != "" {
 		cfg.LDAP.URL = v
@@ -147,9 +170,6 @@ func applyEnv(cfg *Config) {
 			cfg.Authz.PolicyRefreshInterval = d
 		}
 	}
-	if v, ok := envInt("SAFE_AUTHZ_ROW_FILTER_MAX_DEPARTMENT_IDS"); ok && v > 0 {
-		cfg.Authz.RowFilterMaxDepartmentIDs = v
-	}
 	if v := os.Getenv("SAFE_BKN_BACKEND_BASE_URL"); v != "" {
 		cfg.Upstreams.BKNBackend.BaseURL = v
 	}
@@ -182,6 +202,7 @@ func applyEnv(cfg *Config) {
 			cfg.Upstreams.OntologyQuery.Timeout = d
 		}
 	}
+	return nil
 }
 
 func envInt(k string) (int, bool) {

@@ -248,31 +248,30 @@ func validateRowFilterPredicate(predicate interfaces.RowFilterPredicate, depth i
 		if predicate.Property != "" || len(predicate.Values) != 0 || len(predicate.Predicates) != 0 {
 			return fmt.Errorf("row-filter constant predicate has fields")
 		}
-	case "in":
+	case "in", "not_in":
 		if strings.TrimSpace(predicate.Property) == "" || len(predicate.Values) == 0 || len(predicate.Predicates) != 0 {
-			return fmt.Errorf("row-filter in predicate is malformed")
+			return fmt.Errorf("row-filter membership predicate is malformed")
 		}
-		for _, value := range predicate.Values {
-			switch value.Type {
-			case "string":
-				if value.String == nil || value.Integer != nil || value.Boolean != nil {
-					return fmt.Errorf("row-filter string value is malformed")
-				}
-			case "integer":
-				if value.String != nil || value.Integer == nil || value.Boolean != nil {
-					return fmt.Errorf("row-filter integer value is malformed")
-				}
-			case "boolean":
-				if value.String != nil || value.Integer != nil || value.Boolean == nil {
-					return fmt.Errorf("row-filter boolean value is malformed")
-				}
-			default:
-				return fmt.Errorf("row-filter value type is unsupported")
-			}
+		if err := validateRowFilterValues(predicate.Values, 0, false); err != nil {
+			return err
 		}
-	case "or":
+	case "gt", "gte", "lt", "lte":
+		if strings.TrimSpace(predicate.Property) == "" || len(predicate.Predicates) != 0 {
+			return fmt.Errorf("row-filter comparison predicate is malformed")
+		}
+		if err := validateRowFilterValues(predicate.Values, 1, true); err != nil {
+			return err
+		}
+	case "between":
+		if strings.TrimSpace(predicate.Property) == "" || len(predicate.Predicates) != 0 {
+			return fmt.Errorf("row-filter between predicate is malformed")
+		}
+		if err := validateRowFilterValues(predicate.Values, 2, true); err != nil {
+			return err
+		}
+	case "and", "or":
 		if predicate.Property != "" || len(predicate.Values) != 0 || len(predicate.Predicates) < 2 {
-			return fmt.Errorf("row-filter or predicate is malformed")
+			return fmt.Errorf("row-filter logical predicate is malformed")
 		}
 		for _, child := range predicate.Predicates {
 			if err := validateRowFilterPredicate(child, depth+1); err != nil {
@@ -281,6 +280,31 @@ func validateRowFilterPredicate(predicate interfaces.RowFilterPredicate, depth i
 		}
 	default:
 		return fmt.Errorf("row-filter predicate kind is unsupported")
+	}
+	return nil
+}
+
+func validateRowFilterValues(values []interfaces.RowFilterValue, exactCount int, integersOnly bool) error {
+	if len(values) == 0 || exactCount > 0 && len(values) != exactCount {
+		return fmt.Errorf("row-filter value count is invalid")
+	}
+	for _, value := range values {
+		switch value.Type {
+		case "string":
+			if integersOnly || value.String == nil || value.Integer != nil || value.Boolean != nil {
+				return fmt.Errorf("row-filter string value is malformed")
+			}
+		case "integer":
+			if value.String != nil || value.Integer == nil || value.Boolean != nil {
+				return fmt.Errorf("row-filter integer value is malformed")
+			}
+		case "boolean":
+			if integersOnly || value.String != nil || value.Integer != nil || value.Boolean == nil {
+				return fmt.Errorf("row-filter boolean value is malformed")
+			}
+		default:
+			return fmt.Errorf("row-filter value type is unsupported")
+		}
 	}
 	return nil
 }
@@ -521,6 +545,42 @@ func (ps *PermissionServiceImpl) FilterVisibleResources(ctx context.Context, res
 func (ps *PermissionServiceImpl) FilterVisibleResourcesWithOperations(ctx context.Context, resourceType string,
 	ids []string, visibilityOperations []string) (map[string]interfaces.PermissionResourceOps, error) {
 	return ps.filterResources(ctx, resourceType, ids, visibilityOperations, true)
+}
+
+// ListAccessibleResources resolves a deny-aware concrete scope once so list
+// services can push authorization into COUNT and page queries.
+func (ps *PermissionServiceImpl) ListAccessibleResources(ctx context.Context, resourceType,
+	operation string) (interfaces.PermissionResourceScope, error) {
+	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if !ok || accountInfo.ID == "" || accountInfo.Type == "" {
+		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusForbidden,
+			rest.PublicError_Forbidden).WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+	}
+	scope, err := ps.pa.ListAccessibleResources(ctx, interfaces.PermissionAccessor{
+		ID: accountInfo.ID, Type: accountInfo.Type,
+	}, resourceType, operation)
+	if err != nil {
+		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
+	}
+	return scope, nil
+}
+
+func (ps *PermissionServiceImpl) ListAccessibleResourcesWithAnyOperation(ctx context.Context,
+	resourceType string) (interfaces.PermissionResourceScope, error) {
+	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if !ok || accountInfo.ID == "" || accountInfo.Type == "" {
+		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusForbidden,
+			rest.PublicError_Forbidden).WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+	}
+	scope, err := ps.pa.ListAccessibleResourcesWithAnyOperation(ctx, interfaces.PermissionAccessor{
+		ID: accountInfo.ID, Type: accountInfo.Type,
+	}, resourceType)
+	if err != nil {
+		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
+	}
+	return scope, nil
 }
 
 func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceType string, ids []string,

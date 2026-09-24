@@ -1,0 +1,73 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+name: ci-vega-backend
+
+# Vega Backend gate: dependency integrity, static analysis, unit tests,
+# coverage, race detection, and compilation.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "vega/vega-backend/**"
+      - ".github/workflows/ci-vega-backend.yml"
+  pull_request:
+    paths:
+      - "vega/vega-backend/**"
+      - ".github/workflows/ci-vega-backend.yml"
+
+concurrency:
+  group: ci-vega-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vega/vega-backend
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: vega/vega-backend/server/go.mod
+          cache: true
+          cache-dependency-path: vega/vega-backend/server/go.sum
+
+      - name: Verify module files
+        working-directory: vega/vega-backend/server
+        run: |
+          go mod tidy -diff
+          go mod verify
+
+      - name: Static analysis
+        uses: ./.github/actions/golangci-lint
+        with:
+          working-directory: vega/vega-backend/server
+
+      - name: Unit tests and coverage
+        run: make test-cover COVERAGE_THRESHOLD=10
+
+      - name: Race detection
+        run: make test-race
+
+      - name: Build
+        run: cd server && go build ./...
+
+      - name: Upload coverage artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vega-backend-coverage
+          if-no-files-found: warn
+          path: |
+            vega/vega-backend/test-result/coverage.out
+            vega/vega-backend/test-result/coverage.html
+            vega/vega-backend/test-result/coverage.xml

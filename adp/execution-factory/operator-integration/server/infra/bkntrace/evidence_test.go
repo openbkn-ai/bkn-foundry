@@ -2,20 +2,12 @@ package bkntrace
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
 
 type memoryExecutionStore struct {
 	mu     sync.Mutex
@@ -64,6 +56,10 @@ func testHeaders() map[string]any {
 	}
 }
 
+func parseTestAction() (Action, bool) {
+	return ParseAction(testHeaders(), "box", "tool", "user", "conv_action_001")
+}
+
 func TestParseActionRejectsInvalidW3CTraceparent(t *testing.T) {
 	for _, traceparent := range []string{
 		"00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-abcdef1234567890-01",
@@ -79,92 +75,8 @@ func TestParseActionRejectsInvalidW3CTraceparent(t *testing.T) {
 	}
 }
 
-func TestHTTPEmitterRetriesNon2xxAndIncludesOriginalTraceparent(t *testing.T) {
-	attempts := 0
-	var envelope map[string]any
-	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		attempts++
-		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
-			t.Fatal(err)
-		}
-		status := http.StatusAccepted
-		if attempts < 3 {
-			status = http.StatusServiceUnavailable
-		}
-		return &http.Response{
-			StatusCode: status, Status: http.StatusText(status), Body: io.NopCloser(strings.NewReader("")),
-		}, nil
-	})}
-
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
-	if !ok {
-		t.Fatal("expected action")
-	}
-	events, _ := action.AfterPermission(nil)
-	emitter := &HTTPEmitter{
-		URL: "http://trace.invalid/events", Client: client, MaxAttempts: 3, RetryBackoff: time.Millisecond,
-	}
-	if err := emitter.Emit(context.Background(), action, events); err != nil {
-		t.Fatal(err)
-	}
-	if attempts != 3 {
-		t.Fatalf("attempts=%d", attempts)
-	}
-	trace := envelope["trace"].(map[string]any)
-	if trace["traceparent"] != testHeaders()["traceparent"] {
-		t.Fatalf("traceparent lost: %#v", trace)
-	}
-}
-
-func TestHTTPEmitterSendsDedicatedIngestToken(t *testing.T) {
-	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "producer-token" {
-			t.Fatalf("ingest token header=%q", got)
-		}
-		return &http.Response{StatusCode: http.StatusAccepted, Status: "202 Accepted", Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
-	if !ok {
-		t.Fatal("expected action")
-	}
-	events, _ := action.AfterPermission(nil)
-	emitter := &HTTPEmitter{URL: "http://trace.invalid/events", Token: "producer-token", Client: client, MaxAttempts: 1}
-	if err := emitter.Emit(context.Background(), action, events); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestHTTPEmitterRetriesTimeout(t *testing.T) {
-	attempts := 0
-	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
-		attempts++
-		if attempts < 3 {
-			return nil, context.DeadlineExceeded
-		}
-		return &http.Response{
-			StatusCode: http.StatusAccepted,
-			Status:     http.StatusText(http.StatusAccepted),
-			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
-	})}
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
-	if !ok {
-		t.Fatal("expected action")
-	}
-	events, _ := action.AfterPermission(nil)
-	emitter := &HTTPEmitter{
-		URL: "http://trace.invalid/events", Client: client, MaxAttempts: 3,
-	}
-	if err := emitter.Emit(context.Background(), action, events); err != nil {
-		t.Fatal(err)
-	}
-	if attempts != 3 {
-		t.Fatalf("timeout attempts=%d", attempts)
-	}
-}
-
 func TestActionStagesHaveDistinctReplayStableObservedAt(t *testing.T) {
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	action, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected action")
 	}
@@ -183,7 +95,7 @@ func TestActionStagesHaveDistinctReplayStableObservedAt(t *testing.T) {
 }
 
 func TestExecutionGateAllowsOneConcurrentSideEffectAndReplaysResult(t *testing.T) {
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	action, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected action")
 	}
@@ -221,7 +133,7 @@ func TestExecutionGateAllowsOneConcurrentSideEffectAndReplaysResult(t *testing.T
 func TestExecutionGateDeduplicatesSameActionAcrossAttempts(t *testing.T) {
 	store := &memoryExecutionStore{values: map[string]string{}}
 	gate := NewExecutionGate(store)
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	action, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected action")
 	}
@@ -243,7 +155,7 @@ func TestExecutionGateDeduplicatesSameActionAcrossAttempts(t *testing.T) {
 
 func TestExecutionGateIsolatesSameActionIDAcrossAccounts(t *testing.T) {
 	gate := NewExecutionGate(&memoryExecutionStore{values: map[string]string{}})
-	first, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	first, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected first action")
 	}
@@ -258,7 +170,7 @@ func TestExecutionGateIsolatesSameActionIDAcrossAccounts(t *testing.T) {
 }
 
 func TestLifecycleBuildsStableAllowlistedMonitorEvents(t *testing.T) {
-	action, ok := ParseAction(testHeaders(), "box-secret", "tool-secret", "user-secret")
+	action, ok := ParseAction(testHeaders(), "box-secret", "tool-secret", "user-secret", "conv_action_001")
 	if !ok {
 		t.Fatal("expected complete action context")
 	}
@@ -313,7 +225,7 @@ func TestLifecycleBuildsStableAllowlistedMonitorEvents(t *testing.T) {
 }
 
 func TestLifecycleRejectsBeforeExecutionAndHashesFailure(t *testing.T) {
-	action, ok := ParseAction(testHeaders(), "box", "tool", "user")
+	action, ok := parseTestAction()
 	if !ok {
 		t.Fatal("expected complete action context")
 	}

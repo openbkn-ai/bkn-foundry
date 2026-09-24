@@ -25,7 +25,7 @@ func TestOpenBKNLogoAssetIsCacheable(t *testing.T) {
 
 	router := gin.New()
 	hydra := auth.NewHydraAdmin("http://hydra.invalid")
-	registerAuth(router, auth.NewProvider(nil, hydra, nil), hydra, nil)
+	registerAuth(router, auth.NewProvider(nil, hydra, nil), hydra, nil, "")
 
 	request := httptest.NewRequest(http.MethodGet, openBKNLogoPath, nil)
 	response := httptest.NewRecorder()
@@ -77,7 +77,7 @@ func TestLoginBackgroundAssetIsCacheable(t *testing.T) {
 
 	router := gin.New()
 	hydra := auth.NewHydraAdmin("http://hydra.invalid")
-	registerAuth(router, auth.NewProvider(nil, hydra, nil), hydra, nil)
+	registerAuth(router, auth.NewProvider(nil, hydra, nil), hydra, nil, "")
 
 	request := httptest.NewRequest(http.MethodGet, loginBackgroundPath, nil)
 	response := httptest.NewRecorder()

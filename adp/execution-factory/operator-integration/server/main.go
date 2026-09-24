@@ -11,12 +11,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bknaudit"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/capabilityindex"
-	logicscommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcpinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/skill"
@@ -29,7 +30,6 @@ type Server struct {
 	restPublicHandler     interfaces.HTTPRouterInterface
 	restPrivateHandler    interfaces.HTTPRouterInterface
 	MQHandler             interfaces.MQHandler
-	outboxMessageEvent    interfaces.App
 	config                *config.Config
 	skillIndexSyncService interfaces.SkillIndexSyncService
 	skillIndexBuildWorker interfaces.App
@@ -44,11 +44,7 @@ type Server struct {
 // Start Start the service.
 func (s *Server) Start() {
 	gin.SetMode(gin.ReleaseMode)
-	err := s.outboxMessageEvent.Start()
-	if err != nil {
-		s.config.Logger.Errorf("start outbox message event failed, error: %v", err)
-		panic(err)
-	}
+	var err error
 	// Initialize skill index synchronization.
 	err = s.skillIndexSyncService.EnsureInitialized(context.Background())
 	if err != nil {
@@ -128,7 +124,8 @@ func (s *Server) startCapabilityReconciler() {
 func (s *Server) Stop(ctx context.Context) {
 	s.config.Logger.Info("stop agent-operator-integration server")
 	// sandbox.Close() // Close and destroy the sandbox session pool.
-	s.outboxMessageEvent.Stop(ctx)
+	bkntrace.CloseEvidencePublisher(ctx)
+	bknaudit.ClosePublisher(ctx)
 	if s.capabilityCancel != nil {
 		s.capabilityCancel()
 	}
@@ -148,7 +145,6 @@ func main() {
 		httpHealthHandler:     driveradapters.NewHTTPHealthHandler(),
 		restPublicHandler:     driveradapters.NewRestPublicHandler(),
 		restPrivateHandler:    driveradapters.NewRestPrivateHandler(),
-		outboxMessageEvent:    logicscommon.NewOutboxMessageEvent(),
 		MQHandler:             driveradapters.NewMQHandler(),
 		skillIndexSyncService: skill.NewSkillIndexSyncService(),
 		skillIndexBuildWorker: skill.NewSkillIndexBuildWorker(),

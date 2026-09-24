@@ -36,6 +36,8 @@ ContextLoader 知识网络查询工具集使用指南。
 4. 要某对象完整字段映射再 get_object_types(ids)，要关系 mapping_rules 再 get_relation_types(ids)。别一上来就 detail_level=full。
 5. 按查询类型选工具（见下）。
 
+网络说明与业务计算：get_kn_detail 顶层的 comment 是网络作者写的说明；写了问答路由、指标或时间基线时，优先按它选择函数、技能和指标，并照它的口径作答。可售、齐套缺料、产能、交期、替代料、BOM 展开这类业务计算，网络挂载了函数时用 search_capabilities 找已发布函数、execute_tool 执行，以函数结果为准；不要用原始数据、Cypher 或 SQL 自行推算这些口径。
+
 查询分流：
 - 单对象类过滤 + 排序 + 分页（field op value，可 and/or 组合）→ query_object_instance；比较算子（==/!=/in/>/range/like/regex 等）按属性 type 自行判断，索引算子 match / knn 才看属性的 condition_operations——该键缺失只说明字段没建索引，不代表不能过滤；text 字段走本地索引时，==/!=/in/not_in 使用 keyword。新保存或重新保存的配置会自动补齐；若旧配置/旧索引返回 400 缺 keyword，重新保存资源配置后新建构建任务，或改用 match。默认 keyword 只索引长度不超过 256 的值，超长值不能精确比较。like/not_like 是字面子串包含（不要自己拼 %），要通配用 regex（锚定与大小写敏感性随资源存储而变，「包含」写 .*词.*）。
 - 聚合 / 统计 / 排名（SUM、COUNT、AVG、GROUP BY、按聚合值排序、跨表 join）→ 能用对象类、关系类和逻辑属性说清楚的，先用 run_cypher（见下：count/sum/avg/min/max，按 RETURN 中其余列自动分组，配 ORDER BY / LIMIT），它只需要知识网络授权；Cypher 子集表达不了的口径、或资源没建成对象类时，才用 run_sql（MySQL 只读 SQL）。run_sql 按调用者自己对底层资源的授权（view_detail）执行，只有知识网络授权的调用者会被拒。run_sql 表名用占位符 {{.<data_source.id>}}，<data_source.id> 必须替换成 search_schema 返回的真实 id 值（禁止照抄字面 resource_id；JOIN 多表时每个表用各自不同的 id）；列名用 search_schema 的 data_property.column（物理列，需 include_columns=true 获取），不是 name（逻辑名）。query_object_instance 不支持聚合。

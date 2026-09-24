@@ -13,7 +13,7 @@
       },
       "kn_id": {
         "type": "string",
-        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+        "description": "知识网络 ID，来自 list_knowledge_networks 或 get_kn_detail，不可凭名称猜测。"
       },
       "ot_id": {
         "type": "string",
@@ -21,7 +21,7 @@
       },
       "query": {
         "type": "string",
-        "description": "用户查询，需含时间、统计维度、业务上下文"
+        "description": "用户查询，需含时间、统计维度、业务上下文。服务端据此为缺失的参数调一次大模型生成；dynamic_params 已覆盖全部属性的 input 参数时可以不传"
       },
       "_instance_identities": {
         "type": "array",
@@ -38,6 +38,14 @@
           "type": "string"
         }
       },
+      "dynamic_params": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "description": "可选。按逻辑属性名给出参数值，形如 {\"属性名\":{\"参数名\":值}}。要填哪些参数看 get_object_types 或 search_schema 返回的 logic_properties[].parameters 中 value_from=input 的项。给了的值原样使用，只有缺的才由服务端生成；某属性的 input 参数全给齐时该属性不再调用大模型，同一问题因此可复现"
+      },
       "additional_context": {
         "type": "string",
         "description": "可选。补充 timezone、instant、step 等上下文"
@@ -50,7 +58,6 @@
     "required": [
       "kn_id",
       "ot_id",
-      "query",
       "_instance_identities",
       "properties"
     ]
@@ -65,7 +72,12 @@
           "type": "object",
           "properties": {
             "_display": {
-              "type": ["string", "number", "boolean", "null"],
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ],
               "description": "给人看的展示名，由服务端按对象类的展示字段挑出；类型随展示字段而变（数值、布尔或日期等字符串），该行展示字段为空时为 null。"
             },
             "_instance_id": {
@@ -86,8 +98,24 @@
         "type": "object",
         "additionalProperties": {
           "type": "string",
-          "enum": ["schema", "masked", "full"]
+          "enum": [
+            "schema",
+            "masked",
+            "full"
+          ]
         }
+      },
+      "dynamic_params": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "本次实际使用的参数，按逻辑属性名分组"
+      },
+      "dynamic_params_source": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "每个逻辑属性的参数来源：caller（全部由调用方给出）、generated（全部由服务端生成）、merged（调用方给一部分，其余生成）"
       }
     }
   }

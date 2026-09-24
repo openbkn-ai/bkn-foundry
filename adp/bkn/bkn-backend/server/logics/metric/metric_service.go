@@ -365,41 +365,7 @@ func (ms *metricService) handleMetricImportMode(ctx context.Context, mode string
 }
 
 func (ms *metricService) ListMetrics(ctx context.Context, query interfaces.MetricsListQueryParams) (*interfaces.MetricsList, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListMetrics")
-	defer span.End()
-	candidateQuery := query
-	candidateQuery.Offset = 0
-	candidateQuery.Limit = -1
-	list, err := ms.ma.ListMetrics(ctx, candidateQuery)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
-	}
-	if interfaces.IsAuthorizationResourceCatalog(ctx) {
-		total := len(list)
-		return &interfaces.MetricsList{Entries: permission.PaginateKNChildCandidates(list, query.Offset, query.Limit), TotalCount: int64(total)}, nil
-	}
-	var operationMap map[string]interfaces.PermissionResourceOps
-	var total int
-	list, total, operationMap, err = permission.FilterAndPaginateKNChildrenWithOperations(ctx, ms.ps,
-		interfaces.RESOURCE_TYPE_METRIC, query.KNID, list,
-		func(metric *interfaces.MetricDefinition) string { return metric.ID }, query.Offset, query.Limit)
-	if err != nil {
-		return nil, err
-	}
-	for _, metric := range list {
-		metric.Operations = operationMap[interfaces.KNChildResourceID(query.KNID, metric.ID)].Operations
-	}
-
-	if len(list) > 0 && ms.uma != nil {
-		infos := make([]*interfaces.AccountInfo, 0, len(list)*2)
-		for _, m := range list {
-			infos = append(infos, &m.Creator, &m.Updater)
-		}
-		_ = ms.uma.GetAccountNames(ctx, infos)
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return &interfaces.MetricsList{Entries: list, TotalCount: int64(total)}, nil
+	return ms.listMetricSummaries(ctx, query)
 }
 
 func (ms *metricService) GetMetricByID(ctx context.Context, knID, branch, metricID string) (*interfaces.MetricDefinition, error) {

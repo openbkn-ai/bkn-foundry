@@ -31,6 +31,12 @@ type PermissionService interface {
 	// complete registry-backed effective operation set.
 	FilterVisibleResourcesWithOperations(ctx context.Context, resourceType string, ids []string,
 		visibilityOperations []string) (map[string]PermissionResourceOps, error)
+	// ListAccessibleResources returns the exact concrete resource scope that may
+	// be pushed into storage queries before counting and pagination.
+	ListAccessibleResources(ctx context.Context, resourceType, operation string) (PermissionResourceScope, error)
+	// ListAccessibleResourcesWithAnyOperation returns resources on which the
+	// caller has at least one effective registered operation.
+	ListAccessibleResourcesWithAnyOperation(ctx context.Context, resourceType string) (PermissionResourceScope, error)
 
 	CreateResources(ctx context.Context, resources []PermissionResource, ops []string) error
 	DeleteResources(ctx context.Context, resourceType string, ids []string) error

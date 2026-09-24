@@ -1,86 +1,82 @@
-# migrations —— 数据库初始化脚本
+# migrations — Database Initialization and Upgrade Scripts
 
-本目录集中管理各服务的数据库初始化 SQL，替代原先散落在
-`adp/*/*/migrations`、`infra/*/migrations`、`bkn-trace/*/migrations` 下的分布式布局。
-集中后便于统一管理与镜像构建。
+English | [中文](README.zh.md)
 
-> 本目录由 [data-migrator](../data-migrator/) 在构建镜像时直接消费：目录布局
-> `migrations/<模块名>/<数据库类型>/<版本号>/` 即镜像内 `/app/repos` 的最终结构，
-> 由 Dockerfile 原样 `COPY`，无需 `copy_repos.py` 之类的收集脚本转换。
+This directory is the single execution source for database scripts of OpenBKN
+services. When the [data-migrator](../data-migrator/) image is built,
+`migrations/` is copied unchanged to `/app/repos` in the image. At runtime,
+scripts are discovered and executed by service name, database type, and version.
 
-## 目录结构
+## Directory layout
 
 ```
 migrations/
 ├── README.md
-└── <模块名>/
-    └── <数据库类型>/
-        └── <版本号>/
-            ├── init.sql        # 全量 schema 快照，必需
-            └── NN-*.sql        # 增量升级脚本，可选（当前 0.1.0 没有，以后其他版本才会有）
+├── README.zh.md
+└── <service-key>/
+    └── <database-type>/
+        └── <version>/
+            ├── init.sql        # Complete schema snapshot for this version; required
+            └── NN-*.sql        # Numbered incremental scripts; optional
 ```
 
-- **模块名**：与 service 名一致（如 `bkn-backend`、`vega-backend`）。
-- **数据库类型**：当前仅支持 `mariadb`。
-- **版本号**：形如 `0.1.0`（点分数字，各段均为整数）。
-- **init.sql**：每个版本目录必需的全量初始化脚本。
-- **NN-*.sql**：可选的增量升级脚本（`NN` 为两位序号）。当前基线版本 `0.1.0`
-  不含增量脚本，仅在未来新增版本（如 `0.2.0`）时才会出现。
+- **service key**: Must match a `services` key in `data-migrator/config.monorepo.yaml`.
+- **database type**: Directory names are lowercase; currently managed scripts use `mariadb`.
+- **version**: A dotted numeric version, such as `0.1.0`, `0.1.5`, or `1.0.0`.
+- **`init.sql`**: A complete initialization snapshot for the version.
+- **`NN-*.sql`**: Incremental scripts executed in ascending two-digit `NN` order within a version.
 
-当前基线只保留 `mariadb`，各模块只保留单一版本 `0.1.0`。
+## Execution rules
 
-## 规范
+### Initial installation
 
-### 1. 单一基线版本
+data-migrator executes `init.sql` from the highest version directory and records
+that version as installed. Every version directory must therefore provide a
+complete `init.sql` that can initialize the target database independently.
 
-- 每个模块在每种数据库类型下**只保留一个版本目录 `0.1.0`**。
-- `0.1.0/init.sql` 为**全量 schema 快照**（累积的完整建表/初始化语句），
-  面向全新安装。data-migrator 全新安装时只执行最大版本的 `init.sql`。
-- 本基线**不保留历史增量脚本**，不支持从旧版本平滑升级。
+### Version upgrades
 
-### 2. init.sql 是必需项
+For an existing installation, data-migrator skips every `init.sql` and executes
+incremental scripts for every version above the installed version, ordered first
+by version and then by filename number. It records progress after each successful
+script so a failed run can resume from the most recently successful script.
 
-- 每个版本目录**必须包含非空的 `init.sql`**；lint 阶段缺失或空目录会报错。
-- 文件使用 `CREATE TABLE IF NOT EXISTS ...`、`INSERT ... ON DUPLICATE ...`
-  等幂等写法，保证重复执行安全。
-- 通过 `USE openbkn;` 显式指定目标库；所有模块统一写入 `openbkn` 库。
+When adding a version, all of the following are required:
 
-### 3. 增量脚本（本基线暂不使用）
+1. Add `<version>/init.sql` with the complete schema snapshot for that version.
+2. Add the `NN-*.sql` scripts required to upgrade from the preceding version.
+3. Retain all existing versions and scripts so deployed environments keep a valid
+   upgrade path.
 
-- data-migrator 支持在版本目录内放置 `NN-*.sql` / `NN-*.py`（`NN` 为两位序号）
-  作为升级脚本，按序号执行，`init.sql` 不参与升级路径。
-- 由于本次重铸为单一 `0.1.0` 基线，**新版本目录内不放置增量脚本**，仅保留 `init.sql`。
-- 未来若需迭代，新增 `0.2.0/` 等版本目录，并在其中放置增量脚本。
+## Script requirements
 
-### 4. 版本号命名
+- Every version directory must contain a non-empty `init.sql`; data-migrator lint
+  fails when it is missing.
+- SQL should be repeatable where possible, for example with `CREATE TABLE IF NOT EXISTS`
+  and `INSERT ... ON DUPLICATE ...`.
+- Every script explicitly uses `USE openbkn;`; all currently managed services use
+  the `openbkn` database.
+- `NN` is a two-digit decimal sequence from `01` through `99` and must be unique
+  within a version.
+- SQL files must retain their applicable license headers: newly created OpenBKN
+  files use the OpenBKN License, while retained upstream files keep their Apache
+  2.0 license headers. See the repository-root `LICENSE` and
+  `LICENSE-OPENBKN.txt`.
 
-- 采用点分数字（如 `0.1.0`、`0.2.0`、`1.0.0`），各段均为整数。
-- 目录名即版本号，按语义版本排序，取最大版本。
+## Managed services
 
-### 5. 文件头许可声明
+| service key | Target database | Module path |
+| --- | --- | --- |
+| `bkn-backend` | `openbkn` | `adp/bkn/bkn-backend` |
+| `bkn-backend-trace-outbox` | `openbkn` | `adp/bkn/bkn-backend` |
+| `ontology-query-trace-outbox` | `openbkn` | `adp/bkn/ontology-query` |
+| `vega-backend` | `openbkn` | `vega/vega-backend` |
+| `agent-operator-integration` | `openbkn` | `adp/execution-factory/operator-integration` |
+| `mf-model-manager` | `openbkn` | `infra/mf-model-manager` |
+| `bkn-agent` | `openbkn` | `infra/bkn-agent` |
+| `oss-gateway-backend` | `openbkn` | `infra/oss-gateway-backend` |
+| `sandbox` | `openbkn` | `infra/sandbox` |
 
-`migrations/` 下的所有 SQL 文件（包括 `init.sql` 与 `NN-*.sql`）必须以以下
-Apache 2.0 许可证头开头：
-
-```sql
--- Copyright 2026 openbkn.ai
---
--- Licensed under the Apache License, Version 2.0.
--- See the LICENSE file in the project root for details.
-```
-
-## 模块清单
-
-| 模块 (service key)          | 目标库   | 原路径 |
-| --------------------------- | -------- | ------ |
-| bkn-backend                 | openbkn  | adp/bkn/bkn-backend/migrations |
-| vega-backend                | openbkn  | adp/vega/vega-backend/migrations |
-| agent-operator-integration  | openbkn  | adp/execution-factory/operator-integration/migrations |
-| mf-model-manager            | openbkn  | infra/mf-model-manager/migrations |
-| oss-gateway-backend         | openbkn  | infra/oss-gateway-backend/migrations |
-| sandbox                     | openbkn  | infra/sandbox/migrations |
-
-> 各模块 `init.sql` 均通过 `USE openbkn;` 写入统一的 `openbkn` 库。
-
-> `sandbox_control_plane` 使用独立的 Python 迁移器（单个 `.py`，非
-> `<数据库类型>/<版本号>/init.sql` 布局），不纳入本目录。
+`sandbox_control_plane` uses an independent Python migrator (a single `.py` file
+rather than the `<database-type>/<version>/init.sql` layout) and is not managed
+by data-migrator.

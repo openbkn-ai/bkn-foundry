@@ -84,6 +84,63 @@ func TestReplacePublishedSnapshotAndMarkReadyIsAtomic(t *testing.T) {
 	}
 }
 
+func TestListPublishedSourcesFiltersAffectedBindings(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	access := &access{db: db}
+	mock.ExpectQuery("SELECT f_resource_type, f_resource_id, f_operation, f_source_type, f_source_id, f_kn_id, f_binding_type, f_binding_id FROM t_kn_proxy_published_grant_source").
+		WithArgs("kn-1", "ot-1", "object_type", "rt-1", "relation_type").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"f_resource_type", "f_resource_id", "f_operation", "f_source_type", "f_source_id",
+			"f_kn_id", "f_binding_type", "f_binding_id",
+		}).AddRow("resource", "resource-1", "query_data", "kn_proxy_binding", "source-1",
+			"kn-1", "object_type", "ot-1"))
+
+	sources, err := access.ListPublishedSources(t.Context(), "kn-1", []interfaces.KNProxyBindingRef{
+		{BindingType: "object_type", BindingID: "ot-1"},
+		{BindingType: "relation_type", BindingID: "rt-1"},
+	})
+	if err != nil || len(sources) != 1 || sources[0].BindingID != "ot-1" || sources[0].SourceID != "source-1" {
+		t.Fatalf("ListPublishedSources() = (%#v, %v)", sources, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReplacePublishedBindingsAndMarkReadyIsAtomic(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	access := &access{db: db}
+	source := interfaces.ProxyGrantSourceSpec{
+		KNID: "kn-1", BindingType: "relation_type", BindingID: "rt-1",
+		ResourceType: "resource", ResourceID: "resource-new", Operation: "query_data",
+		SourceType: "kn_proxy_binding", SourceID: "source-1",
+	}
+	mock.ExpectBegin()
+	mock.ExpectExec("DELETE FROM t_kn_proxy_published_grant_source").
+		WithArgs("kn-1", "rt-1", "relation_type").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO t_kn_proxy_published_grant_source").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE t_kn_proxy_account SET").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = access.ReplacePublishedBindingsAndMarkReady(t.Context(), "kn-1", 8, "worker-1",
+		"sha256:next", []interfaces.KNProxyBindingRef{{BindingType: "relation_type", BindingID: "rt-1"}},
+		[]interfaces.ProxyGrantSourceSpec{source}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDeletePublishedSnapshot(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

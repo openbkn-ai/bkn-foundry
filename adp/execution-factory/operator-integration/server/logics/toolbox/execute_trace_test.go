@@ -13,11 +13,14 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-type captureActionEmitter struct{ events []bkntrace.Event }
+type captureActionEmitter struct {
+	events []bkntrace.Event
+	err    error
+}
 
 func (e *captureActionEmitter) Emit(_ context.Context, _ bkntrace.Action, events []bkntrace.Event) error {
 	e.events = append(e.events, events...)
-	return nil
+	return e.err
 }
 
 type completedActionGate struct{ acquireCalls int }
@@ -65,7 +68,7 @@ func TestExecuteToolReturnsCompletedActionAfterValidatingToolMembership(t *testi
 	toolboxDB := mocks.NewMockIToolboxDB(ctrl)
 	toolDB := mocks.NewMockIToolDB(ctrl)
 	gate := &completedActionGate{}
-	emitter := &captureActionEmitter{}
+	emitter := &captureActionEmitter{err: errors.New("broker unavailable")}
 	service := &ToolServiceImpl{
 		AuthService: auth, ToolBoxDB: toolboxDB, ToolDB: toolDB, Logger: logger.DefaultLogger(),
 		ActionEvidence: emitter, ActionExecutions: gate,
@@ -80,6 +83,7 @@ func TestExecuteToolReturnsCompletedActionAfterValidatingToolMembership(t *testi
 
 	resp, err := service.ExecuteTool(context.Background(), &interfaces.ExecuteToolReq{
 		UserID: "user-secret", BoxID: "box-secret", ToolID: "tool-secret",
+		BKNConversationID: "conv_action_001",
 		HTTPRequestParams: interfaces.HTTPRequestParams{Headers: actionHeaders()},
 	})
 	if err != nil || resp == nil || resp.StatusCode != 200 {
@@ -97,7 +101,7 @@ func TestExecuteToolRejectsActionAtRealPermissionBoundary(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	auth := mocks.NewMockIAuthorizationService(ctrl)
 	toolboxDB := mocks.NewMockIToolboxDB(ctrl)
-	emitter := &captureActionEmitter{}
+	emitter := &captureActionEmitter{err: errors.New("broker unavailable")}
 	service := &ToolServiceImpl{AuthService: auth, ToolBoxDB: toolboxDB, Logger: logger.DefaultLogger(), ActionEvidence: emitter}
 	accessor := &interfaces.AuthAccessor{ID: "user-secret"}
 	auth.EXPECT().GetAccessor(gomock.Any(), "user-secret").Return(accessor, nil)
@@ -108,6 +112,7 @@ func TestExecuteToolRejectsActionAtRealPermissionBoundary(t *testing.T) {
 
 	resp, err := service.ExecuteTool(context.Background(), &interfaces.ExecuteToolReq{
 		UserID: "user-secret", BoxID: "box-secret", ToolID: "tool-secret",
+		BKNConversationID: "conv_action_001",
 		HTTPRequestParams: interfaces.HTTPRequestParams{Headers: actionHeaders()},
 	})
 	if err == nil || resp != nil {
@@ -118,13 +123,34 @@ func TestExecuteToolRejectsActionAtRealPermissionBoundary(t *testing.T) {
 	}
 }
 
+func TestExecuteToolEvidenceAdmissionFailureDoesNotGateAuthorizedCall(t *testing.T) {
+	fixture := newDebugToolFixture(t, string(interfaces.ToolStatusTypeEnabled))
+	emitter := &captureActionEmitter{err: errors.New("local Evidence queue full")}
+	fixture.service.ActionEvidence = emitter
+	fixture.service.ActionExecutions = &acquiredActionGate{}
+	req := &interfaces.ExecuteToolReq{UserID: "u1", BoxID: "b1", ToolID: "t1"}
+	req.BKNConversationID = "conv_action_001"
+	req.Headers = actionHeaders()
+
+	resp, err := fixture.service.ExecuteTool(context.Background(), req)
+	if err != nil || resp == nil || resp.StatusCode != 200 {
+		t.Fatalf("Evidence admission failure gated authorized execution: response=%#v err=%v", resp, err)
+	}
+	if *fixture.captured == nil {
+		t.Fatal("authorized tool was not invoked after Evidence admission failure")
+	}
+	if len(emitter.events) != 3 || emitter.events[0].EventType != "action.approved" || emitter.events[1].EventType != "action.executed" {
+		t.Fatalf("unexpected Evidence lifecycle: %#v", emitter.events)
+	}
+}
+
 func TestExecuteToolRecordsApprovedFailureAsHashOnlyTerminalLifecycle(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	auth := mocks.NewMockIAuthorizationService(ctrl)
 	toolboxDB := mocks.NewMockIToolboxDB(ctrl)
 	toolDB := mocks.NewMockIToolDB(ctrl)
 	metadata := mocks.NewMockIMetadataService(ctrl)
-	emitter := &captureActionEmitter{}
+	emitter := &captureActionEmitter{err: errors.New("broker unavailable")}
 	service := &ToolServiceImpl{
 		AuthService: auth, ToolBoxDB: toolboxDB, ToolDB: toolDB, MetadataService: metadata,
 		Logger: logger.DefaultLogger(), ActionEvidence: emitter, ActionExecutions: &acquiredActionGate{},
@@ -140,10 +166,14 @@ func TestExecuteToolRecordsApprovedFailureAsHashOnlyTerminalLifecycle(t *testing
 
 	resp, err := service.ExecuteTool(context.Background(), &interfaces.ExecuteToolReq{
 		UserID: "user-secret", BoxID: "box-secret", ToolID: "tool-secret",
+		BKNConversationID: "conv_action_001",
 		HTTPRequestParams: interfaces.HTTPRequestParams{Headers: actionHeaders()},
 	})
 	if err == nil || resp != nil {
 		t.Fatalf("expected execution boundary failure: resp=%v err=%v", resp, err)
+	}
+	if errors.Is(err, emitter.err) || err.Error() == emitter.err.Error() {
+		t.Fatalf("evidence failure replaced the tool failure: %v", err)
 	}
 	if len(emitter.events) != 3 || emitter.events[1].EventType != "action.executed" || emitter.events[2].EventType != "action.result_recorded" {
 		t.Fatalf("unexpected terminal lifecycle: %#v", emitter.events)

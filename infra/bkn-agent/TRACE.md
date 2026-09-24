@@ -133,7 +133,8 @@ OpenInference 默认隐藏输入、输出、消息文本、模型参数、工具
 - Given 同一上下文重放，When 重建事件，Then事件完整内容一致。
 - Given 已有 claim 和明确 Action，When 请求审批，Then Agent 生成 recommended/requested，execution 不重复生成。
 - Given 普通工具调用，When 向 operator 传播，Then不携带 claim/Action headers，不冒充 Action。
-- Given Trace ingest 未配置或失败，When Agent 执行，Then业务结果不受影响。
+- Given Evidence Kafka 配置非法，When Agent 启动，Then 服务启动失败且不静默切回 HTTP。
+- Given Kafka 队列满或发送失败，When Agent 执行，Then 事件记录 coverage gap，业务结果仍继续。
 
 ## 10. Fixture 与测试
 
@@ -141,17 +142,22 @@ OpenInference 默认隐藏输入、输出、消息文本、模型参数、工具
 - 核心测试：`app/test/test_evidence.py`。
 - Artifact 契约与 task/chat 集成测试：`app/test/test_evidence_artifacts.py`、`app/test/test_evidence_artifact_integration.py`。
 - 可靠性与模型采用测试：`app/test/test_evidence_reliability.py`。
+- Kafka record、身份、队列、重试与 fail-open 测试：`app/test/test_evidence_kafka.py`，fixture 为 `app/testdata/bkn_agent_evidence_record_v1.json`。
 - 工具传播测试：`app/test/test_toolbox_tools.py`、`app/test/test_limits_and_gates.py`。
 - 语法门禁：`python3 -m py_compile app/evidence.py app/observability.py app/core/*.py`。
 
 ## 11. 可靠性与当前边界
 
-- 提交按交互串行，等待父事实成功确认后才继续子事实；非 2xx/超时有界重试，进程正常关闭时有界 drain，最终失败记录安全错误类型。
+- Evidence event 以 `openbkn.evidence.v1` Kafka record 进入有界 FIFO 队列；只有本地队列受理才允许后续事件引用该 parent。该状态不表示 Kafka ACK 或 Core Ledger durable。
+- Kafka send/retry 最多有限重试，队列满、序列化失败和最终 send failure 都 fail-open 并留下低基数 reason；shutdown 有界 drain，可能丢失的已受理事件计入本进程 coverage gap。
+- Kafka ACK 只表示 broker 已接收，不更新 lifecycle receipt/durability 状态。Kafka 后续失败由 Consumer/assembler 观察为 partial/coverage gap，不在 producer 侧协调重建。
+- Artifact 上传仍走独立 HTTP endpoint/token；Evidence event 不保留 HTTP fallback。
 - 当前没有审计级 durable outbox。进程在内存重试或 drain 完成前崩溃仍可能丢失 evidence，这是未消除的生产风险。
 - 模型事实依赖 mf-model-api 实现上述稳定回执合同；依赖未部署时，Agent 有意不生成伪 claim。
 - Action helper 已提供可靠顺序门禁，但 chat/run 生产图缺显式 Action 节点，生产闭环仍阻塞。
 - 跨进程完整重放依赖上游恢复原始 `bkn-event-observed-at`；本模块未提供请求 envelope 持久化仓库。
-- `BKN_TRACE_EVIDENCE_INGEST_URL` 控制核心事件写入；`BKN_TRACE_ARTIFACT_INGEST_URL` 控制业务内容制品写入。Artifact 未确认时，依赖该必需引用的 2.2 启动事件或 claim 不提交。
+- `BKN_TRACE_KAFKA_BROKERS`、Kafka Secret username/password 与 `BKN_TRACE_CAPTURE_POLICY_REVISION` 是 Evidence producer 启动必需配置；静态配置缺失或非法时不 Ready。
+- `BKN_TRACE_ARTIFACT_INGEST_URL` 与 Artifact-only Secret 控制业务内容制品 HTTP 上传。Artifact 未确认时，依赖该必需引用的 2.2 启动事件或 claim 不提交。
 - task status、强制采样、丢弃计数和完整健康指标后续接入治理层；本批只提供失败日志与提交返回状态。
 
 ## 12. 责任确认

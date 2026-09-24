@@ -703,8 +703,8 @@ func (r *restHandler) ListActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// var result map[string]any
 	// if simpleInfo {
-	// Get action type summaries.
-	otList, total, err := r.ats.ListActionTypes(ctx, parameter)
+	// Get authorization-filtered action type summaries from a storage page.
+	otList, total, err := r.ats.ListActionTypeSummaries(ctx, parameter)
 	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)

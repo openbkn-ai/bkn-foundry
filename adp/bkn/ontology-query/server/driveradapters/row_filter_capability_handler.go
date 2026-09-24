@@ -22,6 +22,7 @@ type rowFilterCapabilityRequest struct {
 }
 
 type rowFilterCapabilityProperty struct {
+	DisplayName     string `json:"display_name"`
 	Type            string `json:"type"`
 	ExactFilterable bool   `json:"exact_filterable"`
 }
@@ -84,7 +85,11 @@ func rowFilterCapabilityForObjectType(objectTypeRef string, objectType interface
 		if !supported {
 			continue
 		}
-		response.Properties[property.Name] = rowFilterCapabilityProperty{Type: valueType, ExactFilterable: true}
+		response.Properties[property.Name] = rowFilterCapabilityProperty{
+			DisplayName:     property.DisplayName,
+			Type:            valueType,
+			ExactFilterable: true,
+		}
 	}
 	return response
 }

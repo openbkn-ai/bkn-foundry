@@ -115,7 +115,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		}))
 		oteltrace.EndSpan(ctx, err)
 	}()
-	action, actionEnabled := bkntrace.ParseAction(req.Headers, req.BoxID, req.ToolID, req.UserID)
+	action, actionEnabled := bkntrace.ParseAction(req.Headers, req.BoxID, req.ToolID, req.UserID, req.BKNConversationID)
 	actionEvents := []bkntrace.Event{}
 	actionApproved := false
 	actionClaimed := false
@@ -136,11 +136,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 			}
 			actionEvents = append(actionEvents, action.AfterExecution(result, err)...)
 			if emitErr := emitAction(); emitErr != nil {
-				if err == nil {
-					err = emitErr
-				} else {
-					s.Logger.WithContext(ctx).Errorf("bkn trace terminal evidence emit failed: %T", emitErr)
-				}
+				s.Logger.WithContext(ctx).Errorf("bkn trace terminal evidence emit failed: %v", emitErr)
 			}
 		}
 	}()
@@ -185,9 +181,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		actionEvents = append(actionEvents, decision...)
 		actionApproved = true
 		if emitErr := emitAction(); emitErr != nil {
-			err = emitErr
-			actionFinished = true
-			return
+			s.Logger.WithContext(ctx).Errorf("bkn trace approval evidence emit failed: %v", emitErr)
 		}
 		actionEvents = nil
 		if s.ActionExecutions == nil {
@@ -209,8 +203,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 			}
 			actionEvents = append(actionEvents, action.AfterExecution(state.Result, replayErr)...)
 			if emitErr := emitAction(); emitErr != nil {
-				err = emitErr
-				return
+				s.Logger.WithContext(ctx).Errorf("bkn trace replay evidence emit failed: %v", emitErr)
 			}
 			if len(state.Result) > 0 {
 				_ = json.Unmarshal(state.Result, &resp)
@@ -268,8 +261,8 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		}
 		actionEvents = append(actionEvents, action.AfterExecution(result, err)...)
 		actionFinished = true
-		if emitErr := emitAction(); emitErr != nil && err == nil {
-			err = emitErr
+		if emitErr := emitAction(); emitErr != nil {
+			s.Logger.WithContext(ctx).Errorf("bkn trace terminal evidence emit failed: %v", emitErr)
 		}
 	}
 	if err != nil {

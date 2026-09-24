@@ -6,7 +6,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/openbkn-ai/bkn-foundry/bkn-safe/server v0.0.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.5
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.6
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.2
