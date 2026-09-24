@@ -6,8 +6,10 @@ package object_type
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"go.uber.org/mock/gomock"
@@ -201,5 +203,111 @@ func TestFetchObjectTypeResourcesSkipsUnboundObjectTypes(t *testing.T) {
 	})
 	if len(resources) != 0 {
 		t.Fatalf("resources = %v, want none", resources)
+	}
+}
+
+func TestProcessObjectTypeDetailsProjectsVegaIndexStatusAndConfiguredFeatures(t *testing.T) {
+	service := &objectTypeService{appSetting: &common.AppSetting{}}
+	objectType := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID:       "ot1",
+			DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "r1"},
+			DataProperties: []*interfaces.DataProperty{
+				{Name: "summary", MappedField: &interfaces.Field{Name: "summary"}},
+				{Name: "embedding", MappedField: &interfaces.Field{Name: "embedding"}},
+			},
+		},
+	}
+	resource := &interfaces.VegaResource{
+		ID:               "r1",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "summary", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Keyword}}},
+			{Name: "fulltext_summary", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Fulltext, RefProperty: "summary"}}},
+			{Name: "embedding", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Vector}}},
+		},
+	}
+
+	if err := service.processObjectTypeDetails(context.Background(), objectType, map[string]vegaResourceLookup{
+		"r1": {resource: resource},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateAvailable {
+		t.Fatalf("index status = %#v, want available", objectType.IndexStatus)
+	}
+	encoded, err := json.Marshal(objectType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "index_available") {
+		t.Fatalf("legacy index_available must not be returned: %s", encoded)
+	}
+	summaryFeatures := objectType.DataProperties[0].IndexFeatures
+	if len(summaryFeatures) != 2 || summaryFeatures[0].Type != interfaces.FieldFeatureType_Keyword ||
+		summaryFeatures[1].Type != interfaces.FieldFeatureType_Fulltext || !*summaryFeatures[0].Available || !*summaryFeatures[1].Available {
+		t.Fatalf("summary features = %#v", summaryFeatures)
+	}
+	embeddingFeatures := objectType.DataProperties[1].IndexFeatures
+	if len(embeddingFeatures) != 1 || embeddingFeatures[0].Type != interfaces.FieldFeatureType_Vector || !*embeddingFeatures[0].Available {
+		t.Fatalf("embedding features = %#v", embeddingFeatures)
+	}
+}
+
+func TestProcessObjectTypeDetailsKeepsConfiguredFeaturesWhenIndexIsUnavailable(t *testing.T) {
+	service := &objectTypeService{appSetting: &common.AppSetting{}}
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "r1"},
+		DataProperties: []*interfaces.DataProperty{{Name: "summary", MappedField: &interfaces.Field{Name: "summary"}}},
+	}}
+	resource := &interfaces.VegaResource{
+		ID: "r1", LocalIndexStatus: "stale",
+		SchemaDefinition: []*interfaces.Property{{Name: "summary", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Fulltext}}}},
+	}
+
+	if err := service.processObjectTypeDetails(context.Background(), objectType, map[string]vegaResourceLookup{
+		"r1": {resource: resource},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateUnavailable {
+		t.Fatalf("index status = %#v, want unavailable", objectType.IndexStatus)
+	}
+	features := objectType.DataProperties[0].IndexFeatures
+	if len(features) != 1 || features[0].Available == nil || *features[0].Available {
+		t.Fatalf("unavailable feature should remain configured and false, got %#v", features)
+	}
+}
+
+func TestProcessObjectTypeDetailsDoesNotTurnVegaFailureIntoUnavailable(t *testing.T) {
+	service := &objectTypeService{appSetting: &common.AppSetting{}}
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "r1"},
+	}}
+
+	if err := service.processObjectTypeDetails(context.Background(), objectType, map[string]vegaResourceLookup{
+		"r1": {err: errors.New("vega timed out")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateUnknown {
+		t.Fatalf("index status = %#v, want unknown", objectType.IndexStatus)
+	}
+}
+
+func TestProcessObjectTypeDetailsMarksMissingResourceWithoutMetadataFailure(t *testing.T) {
+	service := &objectTypeService{appSetting: &common.AppSetting{}}
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "deleted-r1"},
+	}}
+
+	if err := service.processObjectTypeDetails(context.Background(), objectType, map[string]vegaResourceLookup{}); err != nil {
+		t.Fatal(err)
+	}
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateResourceMissing {
+		t.Fatalf("index status = %#v, want resource_missing", objectType.IndexStatus)
+	}
+	if objectType.DataSourceMetadataUnavailable {
+		t.Fatal("a missing resource is a known answer, not unavailable metadata")
 	}
 }

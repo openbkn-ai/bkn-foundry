@@ -525,6 +525,14 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
+	// The object-type workspace needs the current resource index projection. Keep the lightweight
+	// authorization-resource picker free of this extra resource read.
+	if !interfaces.IsAuthorizationResourceCatalog(ctx) {
+		if err = ots.enrichObjectTypes(ctx, objectTypes); err != nil {
+			return []*interfaces.ObjectType{}, 0, err
+		}
+	}
+
 	// Object type groups are intentionally omitted from this response.
 	// otGroups, err := ots.cga.GetConceptGroupsByOTIDs(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 	// 	KNID:   query.KNID,
@@ -2172,31 +2180,49 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 
 	// The marker describes this response only; a value decoded from a stored document means nothing.
 	objectType.DataSourceMetadataUnavailable = false
+	objectType.IndexStatus = &interfaces.ObjectTypeIndexStatus{State: interfaces.ObjectTypeIndexStateNotApplicable}
+	for _, prop := range objectType.DataProperties {
+		if prop != nil {
+			// The persisted definition has no response-time index feature projection.
+			prop.IndexFeatures = nil
+		}
+	}
 
 	// Retrieve views or Vega resources to assemble operations. Assembly is unnecessary because they are persisted on save.
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-			res, err := resources[objectType.DataSource.ID].resourceFor(objectType)
-			if err != nil || res == nil {
+			lookup, lookedUp := resources[objectType.DataSource.ID]
+			res, err := lookup.resourceFor(objectType)
+			if err != nil {
 				otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s vega Resource %s not found, error: %v",
 					objectType.OTID, objectType.DataSource.ID, err))
 				// A read that failed leaves the capabilities unknown: say so, so that a consumer
 				// deciding what to search does not read the missing condition_operations as
 				// "nothing here can be searched". A resource that no longer exists is a known
 				// answer, not an unknown one -- there is nothing to search -- so it is not marked.
-				objectType.DataSourceMetadataUnavailable = err != nil
+				objectType.DataSourceMetadataUnavailable = true
+				setObjectTypeIndexStatus(objectType, interfaces.ObjectTypeIndexStateUnknown, "")
+			} else if !lookedUp || res == nil {
+				// A successful Vega batch response which omits the id means the resource was deleted.
+				setObjectTypeIndexStatus(objectType, interfaces.ObjectTypeIndexStateResourceMissing, "")
 			} else {
+				setObjectTypeIndexStatus(objectType, indexStateForVegaResource(res), res.LocalIndexStatus)
 				objectType.DataSource.Name = res.Name
 				propertiesMap := logics.VegaResourceSchemaToPropertiesMap(res)
 				indexCaps := logics.VegaResourceIndexCaps(res)
+				featuresByField := configuredIndexFeatures(res, objectType.IndexStatus.State)
 				dslView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
 				for j, prop := range objectType.DataProperties {
+					if prop == nil {
+						continue
+					}
 					if prop.MappedField != nil {
 						if property, exists := propertiesMap[prop.MappedField.Name]; exists {
 							objectType.DataProperties[j].MappedField.DisplayName = property.DisplayName
 							objectType.DataProperties[j].MappedField.Type = property.Type
 						}
+						objectType.DataProperties[j].IndexFeatures = featuresByField[prop.MappedField.Name]
 					}
 					ops := ots.processConditionOperations(objectType, prop, dslView)
 					if prop.MappedField != nil {
@@ -2222,6 +2248,73 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 	}
 
 	return nil
+}
+
+func setObjectTypeIndexStatus(objectType *interfaces.ObjectType, state, sourceStatus string) {
+	objectType.IndexStatus = &interfaces.ObjectTypeIndexStatus{State: state, SourceStatus: sourceStatus}
+}
+
+func indexStateForVegaResource(resource *interfaces.VegaResource) string {
+	switch resource.LocalIndexStatus {
+	case interfaces.ResourceLocalIndexStatusAvailable:
+		return interfaces.ObjectTypeIndexStateAvailable
+	case interfaces.ResourceLocalIndexStatusUnavailable, "stale":
+		return interfaces.ObjectTypeIndexStateUnavailable
+	default:
+		return interfaces.ObjectTypeIndexStateUnknown
+	}
+}
+
+// configuredIndexFeatures reads configuration rather than capabilities: VegaResourceIndexCaps
+// intentionally hides declared features until an index is available, while this projection needs
+// to show users what they configured even while a build is pending or stale.
+func configuredIndexFeatures(resource *interfaces.VegaResource, indexState string) map[string][]interfaces.ObjectTypeIndexFeature {
+	featuresByField := make(map[string][]interfaces.ObjectTypeIndexFeature)
+	if resource == nil {
+		return featuresByField
+	}
+
+	var available *bool
+	switch indexState {
+	case interfaces.ObjectTypeIndexStateAvailable:
+		value := true
+		available = &value
+	case interfaces.ObjectTypeIndexStateUnavailable:
+		value := false
+		available = &value
+	}
+
+	seen := make(map[string]map[string]struct{})
+	for _, property := range resource.SchemaDefinition {
+		if property == nil {
+			continue
+		}
+		for _, feature := range property.Features {
+			switch feature.FeatureType {
+			case interfaces.FieldFeatureType_Keyword, interfaces.FieldFeatureType_Fulltext, interfaces.FieldFeatureType_Vector:
+			default:
+				continue
+			}
+			field := property.Name
+			if feature.RefProperty != "" {
+				field = feature.RefProperty
+			}
+			if field == "" {
+				continue
+			}
+			if seen[field] == nil {
+				seen[field] = map[string]struct{}{}
+			}
+			if _, duplicate := seen[field][feature.FeatureType]; duplicate {
+				continue
+			}
+			seen[field][feature.FeatureType] = struct{}{}
+			featuresByField[field] = append(featuresByField[field], interfaces.ObjectTypeIndexFeature{
+				Type: feature.FeatureType, Configured: true, Available: available,
+			})
+		}
+	}
+	return featuresByField
 }
 
 func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[string]any) (total int64, err error) {

@@ -100,6 +100,10 @@ type ObjectType struct {
 	ConceptGroups []*ConceptGroup `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 
 	Status *ObjectTypeStatus `json:"status,omitempty" mapstructure:"status"`
+	// IndexStatus is assembled from the resource's current Vega local_status while responding. It
+	// deliberately is not persisted: a stored boolean becomes stale as soon as Vega starts or
+	// finishes rebuilding an index.
+	IndexStatus *ObjectTypeIndexStatus `json:"index_status,omitempty" mapstructure:"-"`
 
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
@@ -128,10 +132,36 @@ type ObjectTypeStatus struct {
 	IncrementalKey   string `json:"incremental_key" mapstructure:"incremental_key"`
 	IncrementalValue string `json:"incremental_value" mapstructure:"incremental_value"`
 	Index            string `json:"index" mapstructure:"index"`
-	IndexAvailable   bool   `json:"index_available" mapstructure:"index_available"`
-	DocCount         int64  `json:"doc_count" mapstructure:"doc_count"`
-	StorageSize      int64  `json:"storage_size" mapstructure:"storage_size"`
-	UpdateTime       int64  `json:"update_time" mapstructure:"update_time"`
+	// IndexAvailable is retained only to read the legacy database column. It is not part of the
+	// API contract and must not be used to decide the current resource index state.
+	IndexAvailable bool  `json:"-" mapstructure:"-"`
+	DocCount       int64 `json:"doc_count" mapstructure:"doc_count"`
+	StorageSize    int64 `json:"storage_size" mapstructure:"storage_size"`
+	UpdateTime     int64 `json:"update_time" mapstructure:"update_time"`
+}
+
+const (
+	ObjectTypeIndexStateAvailable       = "available"
+	ObjectTypeIndexStateUnavailable     = "unavailable"
+	ObjectTypeIndexStateUnknown         = "unknown"
+	ObjectTypeIndexStateResourceMissing = "resource_missing"
+	ObjectTypeIndexStateNotApplicable   = "not_applicable"
+)
+
+// ObjectTypeIndexStatus describes the current ability to use the object type's bound resource
+// index. State is a response-time projection of Vega's local_status, not a build-task status.
+type ObjectTypeIndexStatus struct {
+	State        string `json:"state"`
+	SourceStatus string `json:"source_status,omitempty"`
+}
+
+// ObjectTypeIndexFeature describes an index feature configured for one object data property.
+// Available is nil when Vega could not be read, so callers do not mistake an unknown answer for
+// an unavailable feature.
+type ObjectTypeIndexFeature struct {
+	Type       string `json:"type"`
+	Configured bool   `json:"configured"`
+	Available  *bool  `json:"available"`
 }
 
 type SimpleObjectType struct {
@@ -152,6 +182,9 @@ type DataProperty struct {
 	MaskRule    *maskrule.Rule `json:"mask_rule,omitempty" mapstructure:"mask_rule,omitempty"`
 
 	ConditionOperations []string `json:"condition_operations,omitempty"` // Operations supported by string fields
+	// IndexFeatures is populated from the bound Vega resource schema while responding. It is not
+	// accepted from or written to the object type definition.
+	IndexFeatures []ObjectTypeIndexFeature `json:"index_features,omitempty" mapstructure:"-"`
 
 	retiredIndexConfigProvided bool
 }
