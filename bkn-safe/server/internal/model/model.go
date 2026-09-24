@@ -182,6 +182,90 @@ type AuthorizationGrant struct {
 
 func (AuthorizationGrant) TableName() string { return "authorization_grant" }
 
+// PermissionRequest is a durable request for one least-privilege grant. The
+// recipient is always the requesting user. Knowledge-network proxy grants are
+// derived by bkn-backend after a binding succeeds, not approved here.
+type PermissionRequest struct {
+	ID          string `json:"id" gorm:"primaryKey;size:64"`
+	RequestKey  string `json:"request_key" gorm:"size:128;uniqueIndex"`
+	RequesterID string `json:"requester_id" gorm:"size:64;index"`
+	// RequesterName is hydrated from the user directory for API presentation.
+	// It is deliberately not persisted in permission_request so a rename is
+	// reflected in inboxes without rewriting historical requests.
+	RequesterName string `json:"requester_name" gorm:"-"`
+	// ReviewerID and ReviewerName project the latest recorded decision for
+	// applicant-facing request lists. They are not request table columns.
+	ReviewerID   string `json:"reviewer_id" gorm:"-"`
+	ReviewerName string `json:"reviewer_name" gorm:"-"`
+	// ReviewedAt is projected from permission_request_decision for a reviewer's
+	// history list. It is read-only and never becomes a request table column.
+	ReviewedAt   *time.Time `json:"reviewed_at,omitempty" gorm:"-"`
+	ResourceType string     `json:"resource_type" gorm:"size:64;index"`
+	ResourceID   string     `json:"resource_id" gorm:"size:128;index"`
+	// ResourceName is an immutable display snapshot supplied when the request
+	// is created. Authorization and resource liveness always use ResourceType
+	// and ResourceID; retaining this name keeps historical requests readable
+	// after a resource is renamed or deleted.
+	ResourceName string `json:"resource_name" gorm:"size:256"`
+	// Operation is retained as the first requested operation for legacy clients.
+	// New callers must use Operations, which is persisted in
+	// permission_request_operation.
+	Operation  string   `json:"operation" gorm:"size:64"`
+	Operations []string `json:"operations" gorm:"-"`
+	Reason     string   `json:"reason" gorm:"size:512"`
+	Status     string   `json:"status" gorm:"size:32;index"`
+	GrantID    string   `gorm:"size:64;uniqueIndex"`
+	ApprovedBy string   `gorm:"size:64;index"`
+	ApprovedAt *time.Time
+	RejectedAt *time.Time
+	CreatedAt  time.Time `json:"created_at" gorm:"index"`
+	UpdatedAt  time.Time
+}
+
+func (PermissionRequest) TableName() string { return "permission_request" }
+
+// PermissionRequestOperation is one requested operation in a multi-operation
+// permission request. The pair is unique, so retries cannot duplicate an
+// operation inside one request.
+type PermissionRequestOperation struct {
+	ID        string    `json:"id" gorm:"primaryKey;size:64"`
+	RequestID string    `json:"request_id" gorm:"size:64;uniqueIndex:uidx_permission_request_operation,priority:1;index"`
+	Operation string    `json:"operation" gorm:"size:64;uniqueIndex:uidx_permission_request_operation,priority:2"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (PermissionRequestOperation) TableName() string { return "permission_request_operation" }
+
+// PermissionRequestDecision retains every review action. A reviewer may make
+// at most one decision for one request.
+type PermissionRequestDecision struct {
+	ID           string    `json:"id" gorm:"primaryKey;size:64"`
+	RequestID    string    `json:"request_id" gorm:"size:64;uniqueIndex:uidx_permission_request_reviewer,priority:1;index"`
+	ReviewerID   string    `json:"reviewer_id" gorm:"size:64;uniqueIndex:uidx_permission_request_reviewer,priority:2;index"`
+	ReviewerName string    `json:"reviewer_name" gorm:"-"`
+	Decision     string    `json:"decision" gorm:"size:16"`
+	Comment      string    `json:"comment" gorm:"size:512"`
+	CreatedAt    time.Time `json:"created_at" gorm:"index"`
+}
+
+func (PermissionRequestDecision) TableName() string { return "permission_request_decision" }
+
+// PermissionRequestReviewer materializes a user's current eligibility to
+// review one permission request. Rows are retained and revoked rather than
+// deleted so that a change in authorization remains auditable.
+type PermissionRequestReviewer struct {
+	ID                    string    `json:"id" gorm:"primaryKey;size:64"`
+	RequestID             string    `json:"request_id" gorm:"size:64;uniqueIndex:uidx_permission_request_candidate,priority:1;index"`
+	ReviewerID            string    `json:"reviewer_id" gorm:"size:64;uniqueIndex:uidx_permission_request_candidate,priority:2;index"`
+	EligibilityStatus     string    `json:"eligibility_status" gorm:"size:16;index"`
+	AuthorizationRootType string    `json:"authorization_root_type" gorm:"size:64"`
+	AuthorizationRootID   string    `json:"authorization_root_id" gorm:"size:128"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+func (PermissionRequestReviewer) TableName() string { return "permission_request_reviewer" }
+
 // AuthorizationMigrationMarker aliases the public runtime receipt contract.
 // The offline writer lives under deploy; bkn-safe owns only storage and startup
 // validation of that receipt.
@@ -506,5 +590,6 @@ func AllModels() []any {
 		&ManagedProxyAccount{}, &ProxyGrantSource{}, &ProxyGrantPolicy{},
 		&ProxyGrantAuditLog{}, &AuthorizationGrant{},
 		&OAuthAccessOrigin{}, &OAuthClientSyncState{},
+		&PermissionRequest{}, &PermissionRequestOperation{}, &PermissionRequestDecision{}, &PermissionRequestReviewer{},
 	}
 }

@@ -131,6 +131,9 @@ config:
   authz:
     policyRefreshInterval: "10m"
   upstreams:
+    # Service identity for read-only resource-existence checks used by
+    # permission requests. It must retain view access to all managed resources.
+    resourceResolverAccessorID: "266c6a42-6131-4d62-8f39-853e7093701c"
     bknBackend:
       baseURL: "http://bkn-backend-svc:13014"
       timeout: "3s"

@@ -62,6 +62,19 @@ func (tx *PolicyTransaction) GrantPolicy(grant PolicyGrant) (bool, error) {
 	return tx.enforcer.addPolicyGrant(grant)
 }
 
+// GrantCommunityBundle writes the one logical Community grant inside the
+// caller's existing transaction.
+func (tx *PolicyTransaction) GrantCommunityBundle(accessorID, resourceType, resourceID string, authority AuthoritySource) error {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate && authority != AuthoritySourceSystem {
+		return fmt.Errorf("community bundle authority %q is not permitted", authority)
+	}
+	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
+		return err
+	}
+	return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), ActFullBusinessAccess,
+		EffectAllow, PolicySourceCommunityBundle, authority)
+}
+
 func (tx *PolicyTransaction) RevokePolicy(grantID string) (bool, error) {
 	removed, _, err := tx.enforcer.revokePolicyGrant(grantID)
 	return removed, err

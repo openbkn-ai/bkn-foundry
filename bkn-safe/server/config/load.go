@@ -170,6 +170,9 @@ func applyEnv(cfg *Config) error {
 			cfg.Authz.PolicyRefreshInterval = d
 		}
 	}
+	if v := os.Getenv("SAFE_RESOURCE_RESOLVER_ACCESSOR_ID"); v != "" {
+		cfg.Upstreams.ResourceResolverAccessorID = v
+	}
 	if v := os.Getenv("SAFE_BKN_BACKEND_BASE_URL"); v != "" {
 		cfg.Upstreams.BKNBackend.BaseURL = v
 	}
