@@ -197,13 +197,16 @@ type OverviewGraph struct {
 
 // SlimForSummary trims the exported KN detail for detail_level=summary.
 //
-// It keeps object / relation / action skeletons plus each property's
-// name / display_name / type / comment, and drops the heavy per-item detail:
-// data-property field mappings, index configs and query operators; logic-property
-// data sources, parameters and analysis dimensions; and relation mapping rules.
-// It also dedups concept_groups, whose nested object/relation/action instances
-// merely duplicate the top-level arrays every consumer reads — only
-// object_type_ids is kept as the group boundary.
+// It trims object types and relation types, and nothing else. A data property keeps
+// name / display_name / type / comment and its index_features, and loses its field
+// mapping and query operators; a logic property keeps name and type, and loses its
+// data source, parameters and analysis dimensions; a relation type loses its mapping
+// rules. Action types, metrics and risk types are returned whole.
+//
+// It also clears the object / relation / action instances nested in each concept
+// group, which would merely duplicate the top-level arrays every consumer reads. On
+// the export path that is defensive: the concept group list arrives carrying
+// object_type_ids and statistics only.
 //
 // Callers fetch the dropped per-item detail on demand via the
 // object-types/:ot_ids and relation-types/:rt_ids endpoints.

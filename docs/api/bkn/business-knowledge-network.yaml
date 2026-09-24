@@ -168,12 +168,17 @@ paths:
             values return the same bytes.
 
             full returns every concept in full and is the default, kept so an existing caller sees no
-            change. summary returns the object, relation and action skeletons plus each data property's
-            name, display_name, type and comment, and drops the heavy per-item detail: data-property
-            field mappings, index configs and query operators, logic-property data sources, parameters
-            and analysis dimensions, and relation mapping rules. It also drops the object, relation and
-            action copies nested inside each concept group, which duplicate the top-level arrays, and
-            keeps object_type_ids as the group boundary.
+            change.
+
+            summary trims the object types and the relation types, and nothing else. An object type
+            keeps its own fields and each data property keeps name, display_name, type, comment and
+            index_features, while mapped_field and condition_operations go; each logic property keeps
+            its name and type, while data_source, parameters and analysis dimensions go. A relation
+            type keeps everything except mapping_rules.
+
+            Action types, metrics and risk types come back in full at either level, as do the concept
+            groups, which on this path carry object_type_ids and statistics rather than nested concept
+            copies.
 
             summary is for progressively loading a large knowledge network: enough to see its shape and
             plan a query, without the field-level detail. Fetch that per concept from

@@ -37,8 +37,12 @@ func exportedKN() *interfaces.KN {
 					Comment:             "what the order came to",
 					MappedField:         &interfaces.Field{},
 					ConditionOperations: []string{"gt", "lt"},
+					IndexFeatures:       []interfaces.ObjectTypeIndexFeature{{Type: "keyword", Configured: true}},
 				}},
 			},
+		}},
+		ActionTypes: []*interfaces.ActionType{{
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at_cancel", ATName: "cancel"},
 		}},
 	}
 }
@@ -117,6 +121,11 @@ func Test_GetKN_ExportedSummaryKeepsTheSkeletonAndDropsTheDetail(t *testing.T) {
 		}
 		So(strings.Contains(summary, "mapped_field"), ShouldBeFalse)
 		So(strings.Contains(summary, "condition_operations"), ShouldBeFalse)
+		// index_features survives: it says what the bound resource can search by, which is not
+		// something summary drops, and the description has to say so rather than assume.
+		So(strings.Contains(summary, "index_features"), ShouldBeTrue)
+		// Action types are returned whole at either level.
+		So(strings.Contains(summary, "at_cancel"), ShouldBeTrue)
 
 		full := body("&detail_level=full")
 		So(strings.Contains(full, "mapped_field"), ShouldBeTrue)
