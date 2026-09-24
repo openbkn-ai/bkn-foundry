@@ -113,6 +113,26 @@ spec:
                     key: {{ .password_secret_key | quote }}
               {{- end }}
             {{- end }}
+            {{- with .Values.observability.audit.publisher }}
+              - name: BKN_AUDIT_KAFKA_BROKERS
+                value: {{ .brokers | quote }}
+              - name: BKN_AUDIT_KAFKA_SASL_MECHANISM
+                value: PLAIN
+              - name: BKN_AUDIT_ENVIRONMENT
+                value: {{ $.Values.observability.environment | quote }}
+              {{- if .credentials_secret_name }}
+              - name: BKN_AUDIT_KAFKA_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .credentials_secret_name | quote }}
+                    key: {{ .username_secret_key | quote }}
+              - name: BKN_AUDIT_KAFKA_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .credentials_secret_name | quote }}
+                    key: {{ .password_secret_key | quote }}
+              {{- end }}
+            {{- end }}
 
           ports:
             - name: public-port

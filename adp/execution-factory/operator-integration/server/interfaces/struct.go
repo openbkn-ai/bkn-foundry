@@ -184,7 +184,3 @@ type OutboxMessageEventType string
 func (eventType OutboxMessageEventType) String() string {
 	return string(eventType)
 }
-
-const (
-	OutboxMessageEventTypeAuditLog OutboxMessageEventType = "audit_log" // Audit log.
-)

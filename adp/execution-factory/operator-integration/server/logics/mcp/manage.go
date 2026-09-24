@@ -1032,6 +1032,10 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 	if err != nil {
 		return
 	}
+	outcome, failureCode := "success", ""
+	if callToolResp.IsError {
+		outcome, failureCode = "failure", "TOOL_EXECUTION_FAILED"
+	}
 
 	// Record audit log.
 	go func() {
@@ -1042,9 +1046,11 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 		}
 
 		s.AuditLog.Logger(ctx, &metric.AuditLogBuilderParams{
-			TokenInfo: accountAuthContext.TokenInfo,
-			Accessor:  accessor,
-			Operation: metric.AuditLogOperationExecute,
+			TokenInfo:   accountAuthContext.TokenInfo,
+			Accessor:    accessor,
+			Operation:   metric.AuditLogOperationExecute,
+			Outcome:     outcome,
+			FailureCode: failureCode,
 			Object: &metric.AuditLogObject{
 				Type: metric.AuditLogObjectMCP,
 				ID:   req.MCPID,
