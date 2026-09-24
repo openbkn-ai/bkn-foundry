@@ -162,13 +162,48 @@ func overviewNodes(items []*interfaces.ObjectType, edges []interfaces.OverviewGr
 	}
 	nodes := make([]interfaces.OverviewGraphNode, 0, len(items))
 	for _, item := range items {
-		indexed := item.Status != nil && item.Status.IndexAvailable
 		nodes = append(nodes, interfaces.OverviewGraphNode{
 			ID: item.OTID, Name: item.OTName, Icon: item.Icon, Color: item.Color,
-			Indexed: indexed, Degree: degree[item.OTID],
+			IndexStatus: item.IndexStatus, Degree: degree[item.OTID],
 		})
 	}
 	return nodes
+}
+
+// enrichOverviewIndexStatuses reuses the normal object-type detail path so overview nodes see the
+// same Vega local_status, batching, and knowledge-network proxy authorization as list and detail.
+func (kns *knowledgeNetworkService) enrichOverviewIndexStatuses(ctx context.Context, knID, branch string,
+	items []*interfaces.ObjectType) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		if item != nil && item.OTID != "" {
+			ids = append(ids, item.OTID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	details, err := kns.ots.GetObjectTypesByIDs(ctx, nil, knID, branch, ids)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]*interfaces.ObjectType, len(details))
+	for _, detail := range details {
+		if detail != nil {
+			byID[detail.OTID] = detail
+		}
+	}
+	for _, item := range items {
+		if item != nil {
+			if detail, ok := byID[item.OTID]; ok {
+				item.IndexStatus = detail.IndexStatus
+			}
+		}
+	}
+	return nil
 }
 
 func overviewEdges(items []*interfaces.RelationType, nodeIDs map[string]struct{}) []interfaces.OverviewGraphEdge {
@@ -380,6 +415,9 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 		}
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := kns.enrichOverviewIndexStatuses(ctx, knID, query.Branch, objectTypes); err != nil {
 		return nil, err
 	}
 	nodeIDSet := make(map[string]struct{}, len(objectTypes))

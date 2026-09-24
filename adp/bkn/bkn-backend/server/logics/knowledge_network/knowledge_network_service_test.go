@@ -32,9 +32,10 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
-	service := &knowledgeNetworkService{kna: kna, ota: ota, rta: rta, ps: ps}
+	service := &knowledgeNetworkService{kna: kna, ota: ota, ots: ots, rta: rta, ps: ps}
 	ctx := context.Background()
 
 	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(
@@ -85,6 +86,13 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 				},
 			}}, nil
 		})
+	ots.EXPECT().GetObjectTypesByIDs(gomock.Any(), (*sql.Tx)(nil), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"orders", "customers"}).Return([]*interfaces.ObjectType{
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders"},
+			IndexStatus: &interfaces.ObjectTypeIndexStatus{State: interfaces.ObjectTypeIndexStateAvailable}},
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "customers"},
+			IndexStatus: &interfaces.ObjectTypeIndexStatus{State: interfaces.ObjectTypeIndexStateUnknown}},
+	}, nil)
 
 	result, err := service.ListOverviewGraph(ctx, "kn-1", interfaces.OverviewGraphQuery{
 		Branch: interfaces.MAIN_BRANCH, NodeLimit: 2, EdgeLimit: 3, ExpandDepth: 1,
@@ -98,6 +106,10 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 	if result.Edges[0].SourceID != "customers" || result.Edges[0].TargetID != "orders" ||
 		result.Edges[0].MappingMode != interfaces.RELATION_TYPE_INDIRECT {
 		t.Fatalf("unexpected overview edge: %#v", result.Edges[0])
+	}
+	if result.Nodes[0].IndexStatus == nil || result.Nodes[0].IndexStatus.State != interfaces.ObjectTypeIndexStateAvailable ||
+		result.Nodes[1].IndexStatus == nil || result.Nodes[1].IndexStatus.State != interfaces.ObjectTypeIndexStateUnknown {
+		t.Fatalf("overview index statuses = %#v", result.Nodes)
 	}
 }
 

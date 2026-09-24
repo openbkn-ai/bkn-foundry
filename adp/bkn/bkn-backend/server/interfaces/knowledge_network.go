@@ -167,12 +167,12 @@ type OverviewGraphQuery struct {
 }
 
 type OverviewGraphNode struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Icon    string `json:"icon,omitempty"`
-	Color   string `json:"color,omitempty"`
-	Indexed bool   `json:"indexed,omitempty"`
-	Degree  int    `json:"degree,omitempty"`
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Icon        string                 `json:"icon,omitempty"`
+	Color       string                 `json:"color,omitempty"`
+	IndexStatus *ObjectTypeIndexStatus `json:"index_status,omitempty"`
+	Degree      int                    `json:"degree,omitempty"`
 }
 
 type OverviewGraphEdge struct {
