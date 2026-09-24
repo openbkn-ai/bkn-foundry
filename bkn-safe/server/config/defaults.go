@@ -49,7 +49,6 @@ func defaultConfig() *Config {
 			PolicyRefreshInterval: 10 * time.Minute,
 		},
 		Upstreams: UpstreamsConfig{
-			ResourceResolverAccessorID: "266c6a42-6131-4d62-8f39-853e7093701c",
 			BKNBackend: UpstreamConfig{
 				BaseURL: "http://bkn-backend-svc:13014",
 				Timeout: 3 * time.Second,

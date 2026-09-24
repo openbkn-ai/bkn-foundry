@@ -146,7 +146,7 @@ func Boot(opts Options) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("authorization resource catalog: %w", err)
 	}
-	permissionRequestResources, err := permissionrequest.NewHTTPResourceLivenessResolver(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend, cfg.Upstreams.ResourceResolverAccessorID)
+	permissionRequestResources, err := permissionrequest.NewHTTPResourceLivenessResolver(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
 	if err != nil {
 		return nil, fmt.Errorf("permission request resource resolver: %w", err)
 	}

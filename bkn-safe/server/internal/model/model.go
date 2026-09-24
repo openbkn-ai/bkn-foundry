@@ -186,7 +186,7 @@ func (AuthorizationGrant) TableName() string { return "authorization_grant" }
 // recipient is always the requesting user. Knowledge-network proxy grants are
 // derived by bkn-backend after a binding succeeds, not approved here.
 type PermissionRequest struct {
-	ID          string `json:"id" gorm:"primaryKey;size:64"`
+	ID          string `json:"id" gorm:"primaryKey;size:36"`
 	RequestKey  string `json:"request_key" gorm:"size:128;uniqueIndex"`
 	RequesterID string `json:"requester_id" gorm:"size:64;index"`
 	// RequesterName is hydrated from the user directory for API presentation.
@@ -228,7 +228,7 @@ func (PermissionRequest) TableName() string { return "permission_request" }
 // permission request. The pair is unique, so retries cannot duplicate an
 // operation inside one request.
 type PermissionRequestOperation struct {
-	ID        string    `json:"id" gorm:"primaryKey;size:64"`
+	ID        string    `json:"id" gorm:"primaryKey;size:36"`
 	RequestID string    `json:"request_id" gorm:"size:64;uniqueIndex:uidx_permission_request_operation,priority:1;index"`
 	Operation string    `json:"operation" gorm:"size:64;uniqueIndex:uidx_permission_request_operation,priority:2"`
 	CreatedAt time.Time `json:"created_at"`
@@ -239,7 +239,7 @@ func (PermissionRequestOperation) TableName() string { return "permission_reques
 // PermissionRequestDecision retains every review action. A reviewer may make
 // at most one decision for one request.
 type PermissionRequestDecision struct {
-	ID           string    `json:"id" gorm:"primaryKey;size:64"`
+	ID           string    `json:"id" gorm:"primaryKey;size:36"`
 	RequestID    string    `json:"request_id" gorm:"size:64;uniqueIndex:uidx_permission_request_reviewer,priority:1;index"`
 	ReviewerID   string    `json:"reviewer_id" gorm:"size:64;uniqueIndex:uidx_permission_request_reviewer,priority:2;index"`
 	ReviewerName string    `json:"reviewer_name" gorm:"-"`
@@ -254,7 +254,7 @@ func (PermissionRequestDecision) TableName() string { return "permission_request
 // review one permission request. Rows are retained and revoked rather than
 // deleted so that a change in authorization remains auditable.
 type PermissionRequestReviewer struct {
-	ID                    string    `json:"id" gorm:"primaryKey;size:64"`
+	ID                    string    `json:"id" gorm:"primaryKey;size:36"`
 	RequestID             string    `json:"request_id" gorm:"size:64;uniqueIndex:uidx_permission_request_candidate,priority:1;index"`
 	ReviewerID            string    `json:"reviewer_id" gorm:"size:64;uniqueIndex:uidx_permission_request_candidate,priority:2;index"`
 	EligibilityStatus     string    `json:"eligibility_status" gorm:"size:16;index"`
