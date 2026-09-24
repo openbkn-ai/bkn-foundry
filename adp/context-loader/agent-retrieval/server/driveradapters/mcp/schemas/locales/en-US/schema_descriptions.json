@@ -246,6 +246,7 @@
     "output_schema.properties.object_types.items.properties.data_properties.description": "Data properties [{name, type, condition_operations}]; condition_operations decides whether the property can be filtered with match or knn.",
     "output_schema.properties.relation_types.items.properties.concept_id.description": "Relation type id",
     "output_schema.properties.relation_types.items.properties.concept_name.description": "Relation name",
+    "output_schema.properties.relation_types.items.properties.comment.description": "What the relation means. The two object type ids it joins do not say that, and this is where a caller decides which relations to walk. schema_brief does not affect it; a relation modelled without a description carries no such key.",
     "output_schema.properties.relation_types.items.properties.source_object_type_id.description": "Source object type id",
     "output_schema.properties.relation_types.items.properties.target_object_type_id.description": "Target object type id",
     "output_schema.properties.action_types.items.properties.id.description": "Action type id. Note that this differs from concept_id used by object_types in the same response.",
