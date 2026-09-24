@@ -130,6 +130,7 @@ config:
   # through bkn-safe are live immediately regardless. "0" disables it.
   authz:
     policyRefreshInterval: "10m"
+    rowFilterMaxDepartmentIDs: 1000
   upstreams:
     bknBackend:
       baseURL: "http://bkn-backend-svc:13014"

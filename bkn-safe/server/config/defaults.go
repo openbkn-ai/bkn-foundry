@@ -46,7 +46,8 @@ func defaultConfig() *Config {
 			},
 		},
 		Authz: AuthzConfig{
-			PolicyRefreshInterval: 10 * time.Minute,
+			PolicyRefreshInterval:     10 * time.Minute,
+			RowFilterMaxDepartmentIDs: 1000,
 		},
 		Upstreams: UpstreamsConfig{
 			BKNBackend: UpstreamConfig{

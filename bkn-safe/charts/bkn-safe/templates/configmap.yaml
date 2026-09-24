@@ -32,6 +32,7 @@ data:
   SAFE_DB_CONN_MAX_LIFETIME: {{ if kindIs "invalid" .Values.config.db.connMaxLifetime }}"30m"{{ else }}{{ .Values.config.db.connMaxLifetime | toString | quote }}{{ end }}
   {{- $authz := .Values.config.authz | default dict }}
   SAFE_AUTHZ_POLICY_REFRESH_INTERVAL: {{ if kindIs "invalid" $authz.policyRefreshInterval }}"10m"{{ else }}{{ $authz.policyRefreshInterval | toString | quote }}{{ end }}
+  SAFE_AUTHZ_ROW_FILTER_MAX_DEPARTMENT_IDS: {{ if kindIs "invalid" $authz.rowFilterMaxDepartmentIDs }}"1000"{{ else }}{{ $authz.rowFilterMaxDepartmentIDs | toString | quote }}{{ end }}
   {{- $upstreams := .Values.config.upstreams | default dict }}
   {{- $bknBackend := $upstreams.bknBackend | default dict }}
   SAFE_BKN_BACKEND_BASE_URL: {{ $bknBackend.baseURL | default "http://bkn-backend-svc:13014" | quote }}
