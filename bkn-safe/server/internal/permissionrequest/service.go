@@ -408,7 +408,7 @@ func (s *Service) hydrateReviewerSummary(ctx context.Context, db *gorm.DB, reque
 			}
 		}
 		requests[i].ReviewerID = strings.Join(reviewerIDs, ",")
-		requests[i].ReviewerName = strings.Join(reviewerNamesForRequest, "、")
+		requests[i].ReviewerName = strings.Join(reviewerNamesForRequest, ",")
 	}
 	return nil
 }
