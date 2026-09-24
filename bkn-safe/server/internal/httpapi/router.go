@@ -99,13 +99,7 @@ func New(deps Deps) *gin.Engine {
 		gateAudit = auditAuthFailures(deps.Audit, deps.Directory, newFailureLimiter(failureLimiterWindow))
 	}
 
-	r.GET("/health/ready", func(c *gin.Context) {
-		if err := rowfiltersocket.ReadinessError(); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
 	// Internal authz API (service-to-service, ClusterIP, unauthenticated). The

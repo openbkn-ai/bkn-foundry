@@ -80,7 +80,7 @@ func TestRowFilterBatchReturnsEveryRequestedObjectTypeInRequestOrder(t *testing.
 	}
 }
 
-func TestRowFilterActiveEnterpriseWithoutResolverIsUnavailable(t *testing.T) {
+func TestRowFilterActiveEnterpriseWithoutResolverKeepsServiceReady(t *testing.T) {
 	coresocket.ResetForTest()
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionEnterprise))
 	t.Cleanup(func() {
@@ -97,8 +97,8 @@ func TestRowFilterActiveEnterpriseWithoutResolverIsUnavailable(t *testing.T) {
 		t.Fatalf("row-filters without resolver = %d, want 503: %s", response.Code, response.Body.String())
 	}
 	ready := do(t, router, http.MethodGet, "/health/ready", nil)
-	if ready.Code != http.StatusServiceUnavailable {
-		t.Fatalf("ready without resolver = %d, want 503: %s", ready.Code, ready.Body.String())
+	if ready.Code != http.StatusOK {
+		t.Fatalf("ready without resolver = %d, want 200: %s", ready.Code, ready.Body.String())
 	}
 }
 
