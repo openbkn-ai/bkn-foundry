@@ -69,6 +69,7 @@ type LogQuery struct {
 	TimeFrom         *time.Time
 	TimeTo           *time.Time
 	BusinessModule   string
+	SourceID         string
 	Action           string
 	TargetType       string
 	TargetID         string

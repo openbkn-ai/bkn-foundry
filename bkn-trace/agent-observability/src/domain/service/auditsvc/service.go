@@ -45,16 +45,17 @@ type Position struct {
 }
 
 type Record struct {
-	EventID    string
-	OccurredAt time.Time
-	SourceID   string
-	Category   string
-	EventName  string
-	ActorID    string
-	TargetType string
-	TargetID   string
-	Action     string
-	Outcome    string
+	EventID        string    `json:"event_id"`
+	OccurredAt     time.Time `json:"occurred_at"`
+	SourceID       string    `json:"source_id"`
+	Category       string    `json:"category"`
+	EventName      string    `json:"event_name"`
+	BusinessModule string    `json:"business_module"`
+	ActorID        string    `json:"actor_id"`
+	TargetType     string    `json:"target_type"`
+	TargetID       string    `json:"target_id"`
+	Action         string    `json:"action"`
+	Outcome        string    `json:"outcome"`
 }
 
 type Page struct {

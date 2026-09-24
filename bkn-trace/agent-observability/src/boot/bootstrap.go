@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/auditsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
@@ -266,7 +267,25 @@ func NewApp() (*App, error) {
 		logSources = append(logSources, opensearchconversationaudit.New(openSearchClient, coreConfig.ProjectionIndex))
 		logSources = append(logSources, opensearchruntimeaudit.New(openSearchClient, coreConfig.ProjectionIndex))
 	}
-	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
+	var auditDelegate *httphandler.AuditLogDelegate
+	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok && databaseStore.Database() != nil {
+		reader, err := auditstore.NewReader(databaseStore.Database())
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, err
+		}
+		service, err := auditsvc.New(reader)
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, err
+		}
+		auditDelegate = httphandler.NewAuditLogDelegate(service)
+	}
+	logHandler := httphandler.NewLogHandlerWithAuditDelegate(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler, auditDelegate)
 	provenanceHandler := enterpriseroute.HistoricalProvenanceHandler()
 	if coreConfig.HistoricalProvenanceEnabled && provenanceHandler == nil {
 		return nil, errors.New("historical provenance projection requires a registered enterprise handler")
