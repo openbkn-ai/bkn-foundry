@@ -45,6 +45,15 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 		"bkn_trace_evidence_ingest_rejections",
 		"uq_bkn_trace_event_conflict_kafka_coordinate",
 		"incoming_immutable_hash CHAR(64)",
+		"bkn_trace_capture_control_state",
+		"bkn_trace_capture_operations",
+		"bkn_trace_capture_endpoint_leases",
+		"bkn_trace_capture_operation_acknowledgements",
+		"bkn_trace_capture_operation_events",
+		"coverage_gap_reason VARCHAR(64)",
+		"endpoint_kind VARCHAR(32)",
+		"last_accepted_sequence BIGINT UNSIGNED NULL",
+		"queue_empty BOOLEAN NULL",
 		"PRIMARY KEY (source_id, deployment_id)",
 		"dropped_records BIGINT UNSIGNED NOT NULL DEFAULT 0",
 		"bkn_trace_ee_provenance_analyses",
@@ -79,6 +88,7 @@ func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 		"025": "8016090e353f20486f13dc92888ed7ec9b300126dc526dfa5db159148521ccbf",
 		"031": "3fd14448f426aa6405c58cb816bfaf053e0fe05b40dfc4c97bf7cb9b61570a85",
 		"032": "217207e904a420922327aa24be43b2aa6ea34979347be8d2af154ccea047cb13",
+		"033": "e91323698e8fd088bb42be1da62d70c37fa445f00f87c41e2bd65ba46b7232a1",
 	}
 	migrations := sessionstore.Migrations()
 	if len(migrations) != len(expectedChecksums) {

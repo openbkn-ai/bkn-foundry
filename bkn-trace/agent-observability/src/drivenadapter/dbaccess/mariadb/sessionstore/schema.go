@@ -25,6 +25,7 @@ import (
 	v025 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v025"
 	v031 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v031"
 	v032 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v032"
+	v033 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v033"
 )
 
 // Migration is immutable once released. Every statement in SQL must be safe to
@@ -56,6 +57,7 @@ func Migrations() []Migration {
 		{version: "025", sql: v025.SchemaSQL()},
 		{version: "031", sql: v031.SchemaSQL()},
 		{version: "032", sql: v032.SchemaSQL()},
+		{version: "033", sql: v033.SchemaSQL()},
 	})
 }
 
