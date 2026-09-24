@@ -23,15 +23,44 @@ func testEvent() Event {
 }
 
 func expectMonthlySchemaV032(mock sqlmock.Sqlmock, table string) {
+	expectMonthlySchemaV032Variant(mock, table, "varchar(128)", true)
+}
+
+func expectMonthlySchemaV032Variant(mock sqlmock.Sqlmock, table, eventIDType string, includeAllIndexes bool) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT column_name) FROM information_schema.columns")).
 		WithArgs("bkn_audit", table, "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at", "topic", "partition_id", "offset_id").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(10))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')")).
 		WithArgs("bkn_audit", table).
 		WillReturnRows(sqlmock.NewRows([]string{"columns"}).AddRow("topic,partition_id,offset_id"))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=? AND table_name=? AND")).
-		WithArgs("bkn_audit", table).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+	expectMonthlyColumnAndIndexDetails(mock, table, eventIDType, includeAllIndexes)
+}
+
+func expectMonthlyColumnAndIndexDetails(mock sqlmock.Sqlmock, table, eventIDType string, includeAllIndexes bool) {
+	expectMonthlyColumns(mock, table, eventIDType)
+	expectMonthlyIndexes(mock, table, includeAllIndexes)
+}
+
+func expectMonthlyColumns(mock sqlmock.Sqlmock, table, eventIDType string) {
+	columns := sqlmock.NewRows([]string{"column_name", "data_type", "column_type", "is_nullable"}).
+		AddRow("event_id", "varchar", eventIDType, "NO").AddRow("source_id", "varchar", "varchar(128)", "NO").
+		AddRow("content_hash", "char", "char(71)", "NO").AddRow("payload", "json", "json", "NO").
+		AddRow("occurred_at", "datetime", "datetime(6)", "NO").AddRow("broker_received_at", "datetime", "datetime(6)", "NO").
+		AddRow("recorded_at", "datetime", "datetime(6)", "NO").AddRow("topic", "varchar", "varchar(249)", "NO").
+		AddRow("partition_id", "int", "int(11)", "NO").AddRow("offset_id", "bigint", "bigint(20)", "NO")
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT column_name, LOWER(data_type), LOWER(column_type), is_nullable")).
+		WithArgs("bkn_audit", table).WillReturnRows(columns)
+}
+
+func expectMonthlyIndexes(mock sqlmock.Sqlmock, table string, includeAllIndexes bool) {
+	indexes := sqlmock.NewRows([]string{"index_name", "columns", "non_unique"}).
+		AddRow("PRIMARY", "event_id", 0).AddRow("uq_audit_kafka_coordinate", "topic,partition_id,offset_id", 0).
+		AddRow("idx_audit_event_occurred", "occurred_at,event_id", 1)
+	if includeAllIndexes {
+		indexes.AddRow("idx_audit_event_source", "source_id,occurred_at,event_id", 1)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ','), non_unique")).
+		WithArgs("bkn_audit", table).WillReturnRows(indexes)
 }
 
 func expectMonthlyTableCount(mock sqlmock.Sqlmock, table string, count int) {
@@ -183,6 +212,40 @@ func TestValidateMonthlyWindowFailsClosedWhenAnyRequiredTableIsMissingSchema(t *
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(7))
 	if err := store.ValidateMonthlyWindow(context.Background(), time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)); !errors.Is(err, ErrMonthlySchemaUnavailable) {
 		t.Fatalf("missing coordinate columns must fail closed, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppendFailsClosedOnMismatchedBaseColumnType(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT column_name) FROM information_schema.columns")).
+		WithArgs("bkn_audit", "audit_event_202609", "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at", "topic", "partition_id", "offset_id").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(10))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')")).
+		WithArgs("bkn_audit", "audit_event_202609").WillReturnRows(sqlmock.NewRows([]string{"columns"}).AddRow("topic,partition_id,offset_id"))
+	expectMonthlyColumns(mock, "audit_event_202609", "varchar(255)")
+	if _, err := store.Append(context.Background(), testEvent()); !errors.Is(err, ErrMonthlySchemaUnavailable) {
+		t.Fatalf("Append with mismatched base column type error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppendFailsClosedWhenV032SecondaryIndexIsMissing(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT column_name) FROM information_schema.columns")).
+		WithArgs("bkn_audit", "audit_event_202609", "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at", "topic", "partition_id", "offset_id").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(10))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')")).
+		WithArgs("bkn_audit", "audit_event_202609").WillReturnRows(sqlmock.NewRows([]string{"columns"}).AddRow("topic,partition_id,offset_id"))
+	expectMonthlyColumnAndIndexDetails(mock, "audit_event_202609", "varchar(128)", false)
+	if _, err := store.Append(context.Background(), testEvent()); !errors.Is(err, ErrMonthlySchemaUnavailable) {
+		t.Fatalf("Append without v032 secondary index error = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

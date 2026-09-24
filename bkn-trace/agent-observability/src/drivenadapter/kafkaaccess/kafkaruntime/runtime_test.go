@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,7 +35,10 @@ func (f *fakeReader) FetchMessage(ctx context.Context) (kafka.Message, error) {
 		return kafka.Message{}, ctx.Err()
 	}
 }
-func (f *fakeReader) CommitMessages(_ context.Context, _ ...kafka.Message) error {
+func (f *fakeReader) CommitMessages(ctx context.Context, _ ...kafka.Message) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.order = append(f.order, "commit")
@@ -151,9 +155,12 @@ func TestShutdownDrainsAcceptedRecordAndCommitBeforeReturning(t *testing.T) {
 	reader := newFakeReader()
 	processing := make(chan struct{})
 	release := make(chan struct{})
+	processCalls := atomic.Int32{}
 	runtime, err := NewWithFactory(conf.KafkaConsumerConfig{}, conf.KafkaTopicConsumerConfig{Enabled: true, Topic: "openbkn.audit.v1", Group: "audit-group"}, func(context.Context, kafka.Message) error {
-		close(processing)
-		<-release
+		if processCalls.Add(1) == 1 {
+			close(processing)
+			<-release
+		}
 		reader.mu.Lock()
 		reader.order = append(reader.order, "ledger")
 		reader.mu.Unlock()
@@ -182,6 +189,8 @@ func TestShutdownDrainsAcceptedRecordAndCommitBeforeReturning(t *testing.T) {
 		t.Fatalf("shutdown returned before accepted record drained: %v", err)
 	case <-time.After(10 * time.Millisecond):
 	}
+	// A queued message must remain unprocessed after shutdown stops polling.
+	reader.messages <- kafka.Message{Topic: "openbkn.audit.v1", Partition: 0, Offset: 8}
 	close(release)
 	select {
 	case err := <-shutdown:
@@ -193,5 +202,50 @@ func TestShutdownDrainsAcceptedRecordAndCommitBeforeReturning(t *testing.T) {
 	}
 	if order := reader.ordered(); len(order) != 2 || order[0] != "ledger" || order[1] != "commit" {
 		t.Fatalf("accepted record was not durably processed before commit: %v", order)
+	}
+	if got := processCalls.Load(); got != 1 {
+		t.Fatalf("processed %d records after shutdown stopped polling, want only the in-flight record", got)
+	}
+}
+
+func TestShutdownDeadlineReturnsWithoutCommittingInFlightRecord(t *testing.T) {
+	reader := newFakeReader()
+	processing := make(chan struct{})
+	release := make(chan struct{})
+	runtime, err := NewWithFactory(conf.KafkaConsumerConfig{}, conf.KafkaTopicConsumerConfig{Enabled: true, Topic: "openbkn.audit.v1", Group: "audit-group"}, func(context.Context, kafka.Message) error {
+		close(processing)
+		<-release // Simulate a processor that cannot be interrupted by cancellation.
+		return nil
+	}, func(conf.KafkaConsumerConfig, conf.KafkaTopicConsumerConfig) (Reader, error) { return reader, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	reader.messages <- kafka.Message{Topic: "openbkn.audit.v1", Partition: 0, Offset: 8}
+	select {
+	case <-processing:
+	case <-time.After(time.Second):
+		t.Fatal("record was not accepted for processing")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	err = runtime.Shutdown(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("shutdown error = %v, want deadline exceeded", err)
+	}
+	if time.Since(started) > 250*time.Millisecond {
+		t.Fatal("shutdown exceeded its deadline while waiting for blocked processor")
+	}
+	close(release)
+	select {
+	case <-runtime.done:
+	case <-time.After(time.Second):
+		t.Fatal("runtime did not exit after processor was released")
+	}
+	if commits := reader.ordered(); len(commits) != 0 {
+		t.Fatalf("offset committed after shutdown deadline: %v", commits)
 	}
 }

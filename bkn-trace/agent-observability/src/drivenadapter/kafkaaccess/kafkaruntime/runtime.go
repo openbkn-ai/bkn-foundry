@@ -184,6 +184,9 @@ func (r *Runtime) run(pollCtx, processCtx context.Context) {
 	r.setState(true, "polling")
 	failureReason := ""
 	for {
+		if pollCtx.Err() != nil {
+			break
+		}
 		message, err := r.reader.FetchMessage(pollCtx)
 		if err != nil {
 			if pollCtx.Err() != nil {
@@ -191,6 +194,11 @@ func (r *Runtime) run(pollCtx, processCtx context.Context) {
 			}
 			failureReason = "fetch_failed"
 			r.setState(false, failureReason)
+			break
+		}
+		if pollCtx.Err() != nil {
+			// FetchMessage may return a buffered record concurrently with stop.
+			// Leave it uncommitted for the next process rather than accepting it.
 			break
 		}
 		if err := r.process(processCtx, message); err != nil {
@@ -201,6 +209,9 @@ func (r *Runtime) run(pollCtx, processCtx context.Context) {
 		if err := r.reader.CommitMessages(processCtx, message); err != nil {
 			failureReason = "offset_commit_failed"
 			r.setState(false, failureReason)
+			break
+		}
+		if pollCtx.Err() != nil {
 			break
 		}
 	}
@@ -232,7 +243,6 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		stopWork()
 		_ = r.reader.Close()
-		<-r.done
 		return ctx.Err()
 	}
 }

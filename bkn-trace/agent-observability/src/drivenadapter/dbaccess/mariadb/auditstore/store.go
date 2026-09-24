@@ -242,15 +242,90 @@ func verifyMonthlyTableSchema(ctx context.Context, db *sql.DB, table string) err
 	if !indexColumns.Valid || indexColumns.String != "topic,partition_id,offset_id" {
 		return ErrMonthlySchemaUnavailable
 	}
-	var typedColumns int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.columns
-		WHERE table_schema=? AND table_name=? AND
-		((column_name='topic' AND LOWER(data_type)='varchar' AND character_maximum_length=249) OR
-		 (column_name='partition_id' AND LOWER(data_type)='int') OR
-		 (column_name='offset_id' AND LOWER(data_type)='bigint'))`, "bkn_audit", table).Scan(&typedColumns); err != nil {
-		return fmt.Errorf("verify Audit monthly Kafka coordinate types: %w", err)
+	columnRows, err := db.QueryContext(ctx, `SELECT column_name, LOWER(data_type), LOWER(column_type), is_nullable
+		FROM information_schema.columns WHERE table_schema=? AND table_name=?`, "bkn_audit", table)
+	if err != nil {
+		return fmt.Errorf("read Audit monthly column definitions: %w", err)
 	}
-	if typedColumns != 3 {
+	actualColumns := make(map[string]struct{ dataType, columnType, nullable string })
+	for columnRows.Next() {
+		var name, dataType, columnType, nullable string
+		if err := columnRows.Scan(&name, &dataType, &columnType, &nullable); err != nil {
+			_ = columnRows.Close()
+			return fmt.Errorf("scan Audit monthly column definition: %w", err)
+		}
+		actualColumns[name] = struct{ dataType, columnType, nullable string }{dataType, columnType, nullable}
+	}
+	if err := columnRows.Err(); err != nil {
+		_ = columnRows.Close()
+		return fmt.Errorf("read Audit monthly column definitions: %w", err)
+	}
+	if err := columnRows.Close(); err != nil {
+		return fmt.Errorf("close Audit monthly column definitions: %w", err)
+	}
+	expectedColumns := map[string]struct{ dataType, columnType, nullable string }{
+		"event_id": {"varchar", "varchar(128)", "NO"}, "source_id": {"varchar", "varchar(128)", "NO"},
+		"content_hash": {"char", "char(71)", "NO"}, "payload": {"json", "json", "NO"},
+		"occurred_at": {"datetime", "datetime(6)", "NO"}, "broker_received_at": {"datetime", "datetime(6)", "NO"},
+		"recorded_at": {"datetime", "datetime(6)", "NO"}, "topic": {"varchar", "varchar(249)", ""},
+		"partition_id": {"int", "", ""}, "offset_id": {"bigint", "", ""},
+	}
+	for name, expected := range expectedColumns {
+		actual, ok := actualColumns[name]
+		validType := actual.dataType == expected.dataType && (expected.columnType == "" || actual.columnType == expected.columnType)
+		if name == "payload" && actual.dataType == "longtext" && actual.columnType == "longtext" {
+			validType = true // MariaDB represents its JSON alias as LONGTEXT.
+		}
+		if name == "partition_id" || name == "offset_id" {
+			validType = actual.dataType == expected.dataType && !strings.Contains(actual.columnType, "unsigned")
+		}
+		if !ok || !validType || (expected.nullable != "" && actual.nullable != expected.nullable) {
+			return ErrMonthlySchemaUnavailable
+		}
+		if expected.nullable == "" && actual.nullable != "YES" && actual.nullable != "NO" {
+			return ErrMonthlySchemaUnavailable
+		}
+	}
+	indexRows, err := db.QueryContext(ctx, `SELECT index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ','), non_unique
+		FROM information_schema.statistics WHERE table_schema=? AND table_name=? GROUP BY index_name, non_unique`, "bkn_audit", table)
+	if err != nil {
+		return fmt.Errorf("read Audit monthly indexes: %w", err)
+	}
+	actualIndexes := make(map[string]struct {
+		columns   string
+		nonUnique int
+	})
+	for indexRows.Next() {
+		var name, columns string
+		var nonUnique int
+		if err := indexRows.Scan(&name, &columns, &nonUnique); err != nil {
+			_ = indexRows.Close()
+			return fmt.Errorf("scan Audit monthly index: %w", err)
+		}
+		actualIndexes[name] = struct {
+			columns   string
+			nonUnique int
+		}{columns, nonUnique}
+	}
+	if err := indexRows.Err(); err != nil {
+		_ = indexRows.Close()
+		return fmt.Errorf("read Audit monthly indexes: %w", err)
+	}
+	if err := indexRows.Close(); err != nil {
+		return fmt.Errorf("close Audit monthly indexes: %w", err)
+	}
+	for name, expected := range map[string]struct {
+		columns   string
+		nonUnique int
+	}{
+		"PRIMARY": {"event_id", 0}, "uq_audit_kafka_coordinate": {"topic,partition_id,offset_id", 0},
+		"idx_audit_event_occurred": {"occurred_at,event_id", 1}, "idx_audit_event_source": {"source_id,occurred_at,event_id", 1},
+	} {
+		if actualIndexes[name] != expected {
+			return ErrMonthlySchemaUnavailable
+		}
+	}
+	if len(actualColumns) != len(expectedColumns) {
 		return ErrMonthlySchemaUnavailable
 	}
 	return nil
