@@ -22,7 +22,7 @@
           "full"
         ],
         "default": "summary",
-        "description": "详情级别。summary（默认）：对象类/关系类/行动类骨架 + 每个属性仅 name+type（扁平同构，TOON 渲染成紧凑表格），不含 display_name/comment/字段映射/查询算子/映射规则，足够理解 schema 与规划查询；需要某对象完整字段映射（含 comment）改调 get_object_types，要关系 mapping_rules 改调 get_relation_types。full：一次返回全量（体积大，慎用）。"
+        "description": "详情级别。summary（默认）：对象类/关系类/行动类骨架 + 每个属性仅 name+type（扁平同构，TOON 渲染成紧凑表格），不含对象类/关系类/行动类的 comment，也不含属性的 display_name/comment、字段映射、查询算子、映射规则与 module_type（概念组的 name/tags/comment 全部保留，选簇就靠它们），足够理解 schema 与规划查询；需要某对象完整字段映射（含 comment）改调 get_object_types，要关系 mapping_rules 改调 get_relation_types，要行动类说明改调 get_action_info。full：一次返回全量（体积大，慎用）。"
       }
     },
     "required": [
@@ -182,7 +182,7 @@
             },
             "comment": {
               "type": "string",
-              "description": "说明；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
+              "description": "说明；仅 detail_level=full 时出现——默认的 summary 只给骨架，照这一条去取会拿到 None，要知道这个行动做什么改调 get_action_info"
             },
             "object_type_id": {
               "type": "string",
