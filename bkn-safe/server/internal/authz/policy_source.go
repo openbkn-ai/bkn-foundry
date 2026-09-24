@@ -575,7 +575,7 @@ func (en *Enforcer) GrantSystemObjectPermission(accessorID, resourceType, resour
 // GrantCommunityBundle records one logical Community grant on a reviewed
 // top-level resource. It never materializes the whitelist into operation rows.
 func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID string, authority AuthoritySource) error {
-	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceSystem {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate && authority != AuthoritySourceSystem {
 		return fmt.Errorf("community bundle authority %q is not permitted", authority)
 	}
 	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {

@@ -65,5 +65,26 @@ func Migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(model.AllModels()...); err != nil {
 		return fmt.Errorf("auto-migrate: %w", err)
 	}
+	if err := removeRetiredPermissionRequestColumns(db); err != nil {
+		return fmt.Errorf("remove retired permission-request columns: %w", err)
+	}
+	return nil
+}
+
+// removeRetiredPermissionRequestColumns removes fields that belonged to the
+// removed service-to-service / Kafka request-creation model. Permission
+// requests are now always direct, self-service user applications.
+func removeRetiredPermissionRequestColumns(db *gorm.DB) error {
+	columns := []string{
+		"grantee_type", "grantee_id", "tenant_id", "resource_version",
+		"authorization_root_type", "authorization_root_id", "source_id", "request_ref",
+	}
+	for _, column := range columns {
+		if db.Migrator().HasColumn(&model.PermissionRequest{}, column) {
+			if err := db.Migrator().DropColumn(&model.PermissionRequest{}, column); err != nil {
+				return fmt.Errorf("%s: %w", column, err)
+			}
+		}
+	}
 	return nil
 }

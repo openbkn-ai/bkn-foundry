@@ -34,6 +34,7 @@ data:
   SAFE_AUTHZ_POLICY_REFRESH_INTERVAL: {{ if kindIs "invalid" $authz.policyRefreshInterval }}"10m"{{ else }}{{ $authz.policyRefreshInterval | toString | quote }}{{ end }}
   {{- $upstreams := .Values.config.upstreams | default dict }}
   {{- $bknBackend := $upstreams.bknBackend | default dict }}
+  SAFE_RESOURCE_RESOLVER_ACCESSOR_ID: {{ $upstreams.resourceResolverAccessorID | default "266c6a42-6131-4d62-8f39-853e7093701c" | quote }}
   SAFE_BKN_BACKEND_BASE_URL: {{ $bknBackend.baseURL | default "http://bkn-backend-svc:13014" | quote }}
   SAFE_BKN_BACKEND_TIMEOUT: {{ $bknBackend.timeout | default "3s" | quote }}
   {{- $executionFactory := $upstreams.executionFactory | default dict }}

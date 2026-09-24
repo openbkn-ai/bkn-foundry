@@ -28,6 +28,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/proxygrant"
 )
 
@@ -59,6 +60,9 @@ type Deps struct {
 	// AuthorizationResources is the provider registry for the admin resource
 	// picker. Its downstream paths are fixed in code; only base URLs are config.
 	AuthorizationResources AuthorizationResourceCatalog
+	// PermissionRequestResources resolves whether an approval target still
+	// exists at its owning service. It is used before creation and decisions.
+	PermissionRequestResources permissionrequest.ResourceLivenessResolver
 	// RowFilterMaxDepartmentIDs is the deployment's measured safe department
 	// predicate bound. Zero keeps the conservative core default for lightweight
 	// tests and embedders that do not configure the production server.
@@ -114,12 +118,14 @@ func New(deps Deps) *gin.Engine {
 	// owner. Self-service issue/list/revoke is mounted on /me, admin oversight on
 	// /admin (both token-gated, below).
 	var apiKeys *auth.APIKeyStore
+	var permissionRequests *permissionrequest.Service
 	if deps.DB != nil {
 		apiKeys = auth.NewAPIKeyStore(deps.DB)
 		registerAPIKeyVerify(r, apiKeys)
 		registerManagedProxyAccounts(r, managedproxy.New(deps.DB))
 		if deps.Enforcer != nil {
 			registerProxyGrantSources(r, proxygrant.New(deps.DB, deps.Enforcer))
+			permissionRequests = permissionrequest.New(deps.DB, deps.Enforcer, deps.PermissionRequestResources)
 		}
 	}
 
@@ -196,7 +202,10 @@ func New(deps Deps) *gin.Engine {
 		registerDeptAdmin(admin, deps.Directory, deps.Enforcer)
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
-		registerObjectGrants(admin, deps.Enforcer, deps.DB)
+		registerObjectGrants(admin, deps.Enforcer, deps.DB, permissionRequests)
+		if permissionRequests != nil {
+			registerAdminPermissionRequests(admin, permissionRequests, deps.Enforcer)
+		}
 		if deps.AuthorizationResources != nil {
 			registerAuthorizationResources(admin, deps.AuthorizationResources)
 		}
@@ -327,6 +336,8 @@ func New(deps Deps) *gin.Engine {
 		// considers an already-issued token active.
 		meWrites := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
 			RequireUser(verifier), RequireActiveAccount(deps.DB))
+		permissionRequestWrites := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
+			RequireUser(verifier), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			meWrites.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
@@ -334,10 +345,14 @@ func New(deps Deps) *gin.Engine {
 		// Object-grant delegation: sharing an object you own is a write, so it
 		// belongs on the raw-verifier group with the rest of the mutating /me
 		// surface — and it must be audited like any other authorization change.
-		registerMeObjectGrants(meWrites, deps.Enforcer, deps.DB, deps.Directory)
+		registerMeObjectGrants(meWrites, deps.Enforcer, deps.DB, deps.Directory, permissionRequests)
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
 			registerMeAPIKeys(meWrites, apiKeys)
+		}
+		if permissionRequests != nil {
+			registerPermissionRequests(meWrites, permissionRequests)
+			registerPublicPermissionRequests(permissionRequestWrites, permissionRequests)
 		}
 	}
 

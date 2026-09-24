@@ -36,6 +36,9 @@ type UpstreamsConfig struct {
 	ExecutionFactory UpstreamConfig `yaml:"execution_factory"`
 	VegaBackend      UpstreamConfig `yaml:"vega_backend"`
 	OntologyQuery    UpstreamConfig `yaml:"ontology_query"`
+	// ResourceResolverAccessorID is the service identity used only for
+	// resource-existence reads against internal upstream APIs.
+	ResourceResolverAccessorID string `yaml:"resource_resolver_accessor_id"`
 }
 
 type UpstreamConfig struct {
