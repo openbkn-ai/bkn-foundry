@@ -104,12 +104,12 @@ type PropertyParameter struct {
 
 // ObjectType Object type structure definition
 type ObjectType struct {
-	ModuleType           string                         `json:"module_type"` // Module type
-	ID                   string                         `json:"id"`          // Object ID
-	Name                 string                         `json:"name"`        // Object name
-	Tags                 []string                       `json:"tags"`        // Tags
-	Comment              string                         `json:"comment"`     // Comment
-	Score                float64                        `json:"_score"`      // Score
+	ModuleType           string                         `json:"module_type,omitempty"` // Module type
+	ID                   string                         `json:"id"`                    // Object ID
+	Name                 string                         `json:"name"`                  // Object name
+	Tags                 []string                       `json:"tags,omitempty"`        // Tags
+	Comment              string                         `json:"comment,omitempty"`     // Comment
+	Score                float64                        `json:"_score,omitempty"`      // Score
 	DataSource           *ResourceInfo                  `json:"data_source"`
 	DataProperties       []*DataProperty                `json:"data_properties,omitempty"`  // Data properties
 	LogicProperties      []*LogicPropertyDef            `json:"logic_properties,omitempty"` // Logic properties
@@ -154,12 +154,12 @@ type RelatedMetric struct {
 
 // RelationType Relation type structure definition
 type RelationType struct {
-	ModuleType string   `json:"module_type"` // Module type
-	ID         string   `json:"id"`          // Relation type ID
-	Name       string   `json:"name"`        // Relation type name
-	Tags       []string `json:"tags"`        // Tags
-	Comment    string   `json:"comment"`     // Comment
-	Score      float64  `json:"_score"`      // Score
+	ModuleType string   `json:"module_type,omitempty"` // Module type
+	ID         string   `json:"id"`                    // Relation type ID
+	Name       string   `json:"name"`                  // Relation type name
+	Tags       []string `json:"tags,omitempty"`        // Tags
+	Comment    string   `json:"comment,omitempty"`     // Comment
+	Score      float64  `json:"_score,omitempty"`      // Score
 
 	SourceObjectTypeID string `json:"source_object_type_id"`        // Source object type ID
 	TargetObjectTypeID string `json:"target_object_type_id"`        // Target object type ID
@@ -171,12 +171,12 @@ type RelationType struct {
 
 // ActionType Action type structure definition
 type ActionType struct {
-	ModuleType string   `json:"module_type"` // Module type
-	ID         string   `json:"id"`          // Action type ID
-	Name       string   `json:"name"`        // Action type name
-	Tags       []string `json:"tags"`        // Tags
-	Comment    string   `json:"comment"`     // Comment
-	Score      float64  `json:"_score"`      // Score
+	ModuleType string   `json:"module_type,omitempty"` // Module type
+	ID         string   `json:"id"`                    // Action type ID
+	Name       string   `json:"name"`                  // Action type name
+	Tags       []string `json:"tags,omitempty"`        // Tags
+	Comment    string   `json:"comment,omitempty"`     // Comment
+	Score      float64  `json:"_score,omitempty"`      // Score
 
 	ObjectTypeID string `json:"object_type_id"` // Object type ID bound to action type
 }
@@ -371,11 +371,28 @@ const (
 // consumer reads) and nested inside each ConceptGroup. The nested copies are unused,
 // so we drop them and keep only object_type_ids as the group boundary.
 //
+// It always drops _score, which this response has no notion of: get_kn_detail is not a
+// search, and every concept comes back scored 0.
+//
 // Unless level is DetailLevelFull, it also strips the heavy per-property detail —
 // data-property field mappings and query operators, logic-property data sources and
-// parameters, relation mapping rules — while keeping property name/type/comment so an
-// agent still sees the schema shape. Callers fetch the stripped detail on demand via
+// parameters, relation mapping rules — while keeping property name/type so an agent
+// still sees the schema shape. Callers fetch the stripped detail on demand via
 // get_object_types / get_relation_types.
+//
+// Summary drops two more things from the object and relation entries themselves:
+//
+//   - module_type, which repeats for every entry of an array that already says which
+//     kind it holds;
+//   - comment, the long prose describing what a concept means. It is the single largest
+//     part of a summary — measured on the test deployment, 18.7KB of one 53.8KB network,
+//     35% — and get_object_types / get_relation_types / get_action_info return it for the
+//     few concepts a caller actually drills into. The tool schema has described comment as
+//     full-only since the progressive disclosure work; this is the behaviour catching up.
+//
+// Concept group comments stay: choosing 1-3 relevant groups is what the summary is for,
+// and their names alone do not carry enough to choose by. Tags stay everywhere, because a
+// tag such as requires_confirmation changes how a caller may use the concept.
 func (d *KnowledgeNetworkDetail) Slim(level string) {
 	if d == nil {
 		return
@@ -389,13 +406,37 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 		g.RelationTypes = nil
 		g.ActionTypes = nil
 	}
+	for _, o := range d.ObjectTypes {
+		if o != nil {
+			o.Score = 0
+		}
+	}
+	for _, r := range d.RelationTypes {
+		if r != nil {
+			r.Score = 0
+		}
+	}
+	for _, a := range d.ActionTypes {
+		if a != nil {
+			a.Score = 0
+		}
+	}
 	if level == DetailLevelFull {
 		return
+	}
+	for _, a := range d.ActionTypes {
+		if a == nil {
+			continue
+		}
+		a.ModuleType = ""
+		a.Comment = ""
 	}
 	for _, o := range d.ObjectTypes {
 		if o == nil {
 			continue
 		}
+		o.ModuleType = ""
+		o.Comment = ""
 		// summary keeps only name+type per property so the array is flat and uniform
 		// (TOON then renders it as a compact table); drop display_name/comment and the
 		// heavy mapped_field/operators/logic sources. Full detail via get_object_types.
@@ -422,6 +463,8 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 		if r == nil {
 			continue
 		}
+		r.ModuleType = ""
+		r.Comment = ""
 		r.MappingRules = nil
 		r.SourceObjectType = nil
 		r.TargetObjectType = nil
