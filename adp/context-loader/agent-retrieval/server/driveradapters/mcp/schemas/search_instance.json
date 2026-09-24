@@ -154,6 +154,14 @@
                 "type": "string"
               },
               "description": "该对象类下带 indexed=true 的属性共同支持的索引算子（match / multi_match / knn）。列在对象类上是为了不在每个属性上重复同一份列表。"
+            },
+            "effective_permissions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "enum": ["schema", "masked", "full"]
+              },
+              "description": "当前账户对各属性的有效权限：full 可读原值，masked 读到脱敏值，schema 只见字段不见值。所有属性都是 full 时省略此字段；只要有一个受限属性就完整列出。"
             }
           },
           "additionalProperties": true
