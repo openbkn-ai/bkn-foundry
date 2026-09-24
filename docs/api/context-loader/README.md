@@ -55,6 +55,58 @@ To bypass the ontology and access data directly, use
 
 Multi-hop retrieval across object types: `search_schema` → `run_cypher`. Labels are object types, relationship types are relation types, and properties are logical property names, so neither `resource_id` nor physical column names are needed. Fall back to `run_sql` only for what the Cypher subset cannot express.
 
+## Managed calls and ad-hoc calls
+
+Every business operation runs in one of two modes, chosen by whether the request
+names a managed interaction in `bkn_context`.
+
+| | Managed | Ad hoc |
+|---|---|---|
+| How it is chosen | `bkn_context` carries a `conversation_id` and an `interaction_id` | `bkn_context` is absent or empty |
+| What is recorded | an Operation under that interaction, a receipt on the response, and evidence for what was read | nothing |
+| What it depends on | Trace Core, in addition to the downstream the operation queries | only that downstream |
+| Where it is available | every surface | the REST routes under `/kn/` |
+
+**The MCP surface requires it.** An MCP business tool refuses a call with no
+managed interaction, so an agent starts with `bkn_start_interaction`, passes the
+two ids on every later call, and closes with `bkn_finish_interaction`. That is
+the right default there: MCP is where agents call, and an agent turn is exactly
+what an Interaction records.
+
+**The REST surface admits both.** A `/kn/` request with no `bkn_context` runs ad
+hoc and never touches Trace Core. A request that names one is managed and is
+recorded like any other. The exception is `/mcp/proxy/.../call`, which is an
+agent calling a tool under another name, so the managed context stays mandatory
+there whatever the transport.
+
+Note that only two shapes count as ad hoc: no `bkn_context` at all, and an empty
+one. A `bkn_context` holding one id and not the other, or only
+`parent_operation_id`, or a misspelt field, is a caller wiring the context up and
+getting it wrong, and is rejected rather than quietly downgraded.
+
+### Which one to use
+
+Use a managed call when the answer has to enter the evidence chain: an agent turn
+someone may audit afterwards, anything that executes an action, and any reading a
+later decision will be justified by. The cost is a dependency on Trace Core and
+the round trips that go with it.
+
+An ad-hoc call is the right choice for everything else, and the callers of the
+REST surface usually are everything else: Studio answering a click, an operator
+at the CLI, one service asking another for a schema. The cost is explicit — no
+Operation, no receipt, no evidence — so a question whose answer nobody will have
+to justify pays nothing for provenance it will not use.
+
+Two things follow that are worth stating, because both have been got wrong:
+
+- **Do not mint a conversation and an interaction just to satisfy the guard.**
+  Single-operation records dilute the concept rather than document anything. If
+  the call does not belong to an agent turn, make it ad hoc.
+- **Do not retry a managed call through a Trace Core outage when the answer never
+  needed provenance.** Route it to the REST equivalent instead. A statistic a
+  skill computes on the way to an answer is usually of this kind. See #1691 for
+  what the managed path costs per call.
+
 ## Conventions
 
 - **OpenAPI version:** 3.0.3.
