@@ -210,17 +210,6 @@ func Available() bool {
 	return load() != nil && entitlement.AtLeast(licverify.EditionEnterprise)
 }
 
-// ReadinessError makes an active Enterprise/Industry assembly failure visible
-// to orchestration before a query reaches the decision endpoint. Community and
-// low-edition deployments deliberately remain ready without an EE resolver.
-func ReadinessError() error {
-	if entitlement.AtLeast(licverify.EditionEnterprise) && load() == nil {
-		reportResolverUnavailable()
-		return ErrResolverUnavailable
-	}
-	return nil
-}
-
 // Resolve returns the documented TRUE fallback only when the trusted license
 // is below Enterprise. An Enterprise/Industry process with no resolver is an
 // assembly fault and fails closed.
@@ -561,7 +550,7 @@ func loadLifecycle() Lifecycle {
 
 func reportResolverUnavailable() {
 	if resolverUnavailableReported.CompareAndSwap(false, true) {
-		slog.Error("row-filter Enterprise resolver unavailable; denying row-filter decisions and failing readiness", "capability", Capability)
+		slog.Error("row-filter Enterprise resolver unavailable; denying row-filter decisions", "capability", Capability)
 	}
 }
 
