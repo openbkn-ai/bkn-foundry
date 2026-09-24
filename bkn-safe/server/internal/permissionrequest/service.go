@@ -34,6 +34,9 @@ const (
 	StatusGranted         = "granted"
 	StatusCancelled       = "cancelled"
 	StatusRejected        = "rejected"
+	StatusInvalidated     = "invalidated"
+
+	DecisionInvalidated = "invalidated"
 
 	ReviewerActive  = "active"
 	ReviewerRevoked = "revoked"
@@ -64,11 +67,23 @@ type DecisionInput struct{ ReviewerID, Decision, Comment string }
 type PageOptions struct {
 	Limit, Offset   int
 	Sort, Direction string
+	ResourceType    string
+	ResourceID      string
+	Status          string
+	ResourceName    string
+	Requester       string
 }
 
 type RequestPage struct {
 	Entries    []model.PermissionRequest
 	TotalCount int64
+}
+
+// TodoSummary is deliberately limited to data held by the reviewer inbox
+// index. It can be used by global navigation without loading or refreshing a
+// full page of requests; the decision endpoint remains the realtime authority.
+type TodoSummary struct {
+	PendingCount int64 `json:"pending_count"`
 }
 
 func normalizePage(page PageOptions) PageOptions {
@@ -89,7 +104,47 @@ func normalizePage(page PageOptions) PageOptions {
 	} else {
 		page.Direction = "desc"
 	}
+	page.ResourceType = strings.TrimSpace(page.ResourceType)
+	if len(page.ResourceType) > 64 {
+		page.ResourceType = ""
+	}
+	page.ResourceID = strings.TrimSpace(page.ResourceID)
+	if len(page.ResourceID) > 128 {
+		page.ResourceID = ""
+	}
+	page.Status = strings.TrimSpace(page.Status)
+	if !map[string]bool{StatusPending: true, StatusNoReviewer: true, StatusResourceDeleted: true, StatusGranted: true, StatusRejected: true, StatusCancelled: true, StatusInvalidated: true}[page.Status] {
+		page.Status = ""
+	}
+	page.ResourceName = strings.TrimSpace(page.ResourceName)
+	page.Requester = strings.TrimSpace(page.Requester)
+	if len(page.ResourceName) > 256 {
+		page.ResourceName = ""
+	}
+	if len(page.Requester) > 256 {
+		page.Requester = ""
+	}
 	return page
+}
+
+func applyRequestFilters(q *gorm.DB, page PageOptions) *gorm.DB {
+	if page.ResourceType != "" {
+		q = q.Where("permission_request.resource_type = ?", page.ResourceType)
+	}
+	if page.ResourceID != "" {
+		q = q.Where("permission_request.resource_id = ?", page.ResourceID)
+	}
+	if page.Status != "" {
+		q = q.Where("permission_request.status = ?", page.Status)
+	}
+	like := func(value string) string { return "%" + value + "%" }
+	if page.ResourceName != "" {
+		q = q.Where("permission_request.resource_name LIKE ?", like(page.ResourceName))
+	}
+	if page.Requester != "" {
+		q = q.Where("permission_request.requester_id IN (SELECT id FROM users WHERE account LIKE ? OR name LIKE ?)", like(page.Requester), like(page.Requester))
+	}
+	return q
 }
 
 type Service struct {
@@ -274,15 +329,16 @@ func (s *Service) requestOperations(ctx context.Context, db *gorm.DB, req *model
 	return req.Operations, nil
 }
 
-func (s *Service) hydrateRequests(ctx context.Context, db *gorm.DB, requests []model.PermissionRequest) error {
+// hydrateRequestOperations fills only the durable operation rows.  Reviewer
+// refreshes do not present requester names, so using hydrateRequests there
+// would add an unnecessary directory query.
+func (s *Service) hydrateRequestOperations(ctx context.Context, db *gorm.DB, requests []model.PermissionRequest) error {
 	if len(requests) == 0 {
 		return nil
 	}
 	ids := make([]string, 0, len(requests))
-	requesterIDs := make([]string, 0, len(requests))
 	for _, request := range requests {
 		ids = append(ids, request.ID)
-		requesterIDs = append(requesterIDs, request.RequesterID)
 	}
 	var rows []model.PermissionRequestOperation
 	if err := db.WithContext(ctx).Where("request_id IN ?", ids).Order("operation ASC").Find(&rows).Error; err != nil {
@@ -291,6 +347,27 @@ func (s *Service) hydrateRequests(ctx context.Context, db *gorm.DB, requests []m
 	byRequest := make(map[string][]string, len(requests))
 	for _, row := range rows {
 		byRequest[row.RequestID] = append(byRequest[row.RequestID], row.Operation)
+	}
+	for i := range requests {
+		if operations := byRequest[requests[i].ID]; len(operations) > 0 {
+			requests[i].Operations = operations
+		} else {
+			requests[i].Operations = []string{requests[i].Operation}
+		}
+	}
+	return nil
+}
+
+func (s *Service) hydrateRequests(ctx context.Context, db *gorm.DB, requests []model.PermissionRequest) error {
+	if len(requests) == 0 {
+		return nil
+	}
+	requesterIDs := make([]string, 0, len(requests))
+	for _, request := range requests {
+		requesterIDs = append(requesterIDs, request.RequesterID)
+	}
+	if err := s.hydrateRequestOperations(ctx, db, requests); err != nil {
+		return err
 	}
 	var users []model.User
 	if err := db.WithContext(ctx).Where("id IN ?", requesterIDs).Find(&users).Error; err != nil {
@@ -305,11 +382,6 @@ func (s *Service) hydrateRequests(ctx context.Context, db *gorm.DB, requests []m
 		requesterNames[user.ID] = name
 	}
 	for i := range requests {
-		if operations := byRequest[requests[i].ID]; len(operations) > 0 {
-			requests[i].Operations = operations
-		} else {
-			requests[i].Operations = []string{requests[i].Operation}
-		}
 		requests[i].RequesterName = requesterNames[requests[i].RequesterID]
 	}
 	return nil
@@ -357,10 +429,15 @@ func (s *Service) hydrateReviewerSummary(ctx context.Context, db *gorm.DB, reque
 		return err
 	}
 	latestReviewer := make(map[string]string, len(decisions))
+	decidedReviewers := make(map[string]map[string]struct{}, len(requests))
 	for _, decision := range decisions {
 		if _, exists := latestReviewer[decision.RequestID]; !exists {
 			latestReviewer[decision.RequestID] = decision.ReviewerID
 		}
+		if decidedReviewers[decision.RequestID] == nil {
+			decidedReviewers[decision.RequestID] = make(map[string]struct{})
+		}
+		decidedReviewers[decision.RequestID][decision.ReviewerID] = struct{}{}
 	}
 	var candidates []model.PermissionRequestReviewer
 	if err := db.WithContext(ctx).Where("request_id IN ? AND eligibility_status = ?", requestIDs, ReviewerActive).Order("reviewer_id ASC").Find(&candidates).Error; err != nil {
@@ -368,6 +445,9 @@ func (s *Service) hydrateReviewerSummary(ctx context.Context, db *gorm.DB, reque
 	}
 	candidatesByRequest := make(map[string][]string, len(requests))
 	for _, candidate := range candidates {
+		if _, decided := decidedReviewers[candidate.RequestID][candidate.ReviewerID]; decided {
+			continue
+		}
 		candidatesByRequest[candidate.RequestID] = append(candidatesByRequest[candidate.RequestID], candidate.ReviewerID)
 	}
 	reviewerIDSet := make(map[string]struct{}, len(latestReviewer)+len(candidates))
@@ -399,8 +479,12 @@ func (s *Service) hydrateReviewerSummary(ctx context.Context, db *gorm.DB, reque
 	}
 	for i := range requests {
 		reviewerIDs := candidatesByRequest[requests[i].ID]
-		if latestReviewerID := latestReviewer[requests[i].ID]; latestReviewerID != "" {
-			reviewerIDs = []string{latestReviewerID}
+		if requests[i].Status != StatusPending && requests[i].Status != StatusNoReviewer {
+			if latestReviewerID := latestReviewer[requests[i].ID]; latestReviewerID != "" {
+				reviewerIDs = []string{latestReviewerID}
+			} else {
+				reviewerIDs = nil
+			}
 		}
 		reviewerNamesForRequest := make([]string, 0, len(reviewerIDs))
 		for _, reviewerID := range reviewerIDs {
@@ -542,6 +626,38 @@ func (s *Service) hasRequestedPermission(ctx context.Context, accessorID, resour
 	return communityBundle, nil
 }
 
+// missingUnrequestedPrerequisites verifies that the requested operations will
+// still be usable when they are granted. A prerequisite included in the same
+// request is valid because the approval writes both grants atomically.
+func missingUnrequestedPrerequisites(ctx context.Context, tx *authz.PolicyTransaction, accessorID, resourceType, resourceID string, operations []string) ([]string, error) {
+	requirements, err := tx.DirectRequirements(ctx, resourceType, operations)
+	if err != nil {
+		return nil, err
+	}
+	requested := make(map[string]bool, len(operations))
+	for _, operation := range operations {
+		requested[operation] = true
+	}
+	missing := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, operation := range operations {
+		for _, required := range requirements[operation] {
+			if requested[required] || seen[required] {
+				continue
+			}
+			allowed, err := tx.Check(accessorID, resourceType, resourceID, required)
+			if err != nil {
+				return nil, err
+			}
+			if !allowed {
+				missing = append(missing, required)
+				seen[required] = true
+			}
+		}
+	}
+	return missing, nil
+}
+
 // authorizationRoot follows the registered instance parent chain. This covers
 // both BKN children and Resource -> Catalog without hard-coding resource types.
 func (s *Service) authorizationRoot(ctx context.Context, resourceType, resourceID string) (string, string, error) {
@@ -583,19 +699,35 @@ func knowledgeNetworkParentFromChildID(resourceType, resourceID string) (string,
 	return "", false
 }
 
-// syncReviewer updates one user's materialized eligibility. The final
-// authorization decision is still checked at review time, so this row is an
-// inbox index rather than an authority source.
-func (s *Service) syncReviewer(ctx context.Context, db *gorm.DB, req *model.PermissionRequest, reviewerID string) (bool, error) {
+type reviewerContext struct {
+	rootType, rootID string
+	operations       []string
+}
+
+// resolveReviewerContext loads request-scoped data once. The same root and
+// operations are used for every candidate reviewer, so resolving them inside
+// each eligibility check turns one application into repeated database work.
+func (s *Service) resolveReviewerContext(ctx context.Context, db *gorm.DB, req *model.PermissionRequest) (reviewerContext, error) {
+	operations, err := s.requestOperations(ctx, db, req)
+	if err != nil {
+		return reviewerContext{}, err
+	}
+	rootType, rootID, err := s.authorizationRoot(ctx, req.ResourceType, req.ResourceID)
+	if err != nil {
+		return reviewerContext{}, err
+	}
+	return reviewerContext{rootType: rootType, rootID: rootID, operations: operations}, nil
+}
+
+// syncReviewerWithContext updates one user's materialized eligibility. The
+// final authorization decision is still checked at review time, so this row is
+// an inbox index rather than an authority source.
+func (s *Service) syncReviewerWithContext(ctx context.Context, db *gorm.DB, req *model.PermissionRequest, reviewerID string, reviewerContext reviewerContext) (bool, error) {
 	reviewerID = strings.TrimSpace(reviewerID)
 	if reviewerID == "" || reviewerID == req.RequesterID {
 		return false, nil
 	}
-	rootType, rootID, err := s.authorizationRoot(ctx, req.ResourceType, req.ResourceID)
-	if err != nil {
-		return false, err
-	}
-	eligible, err := s.canReview(ctx, reviewerID, req)
+	eligible, err := s.canReviewWithContext(ctx, reviewerID, req, reviewerContext)
 	if err != nil {
 		return false, err
 	}
@@ -609,14 +741,14 @@ func (s *Service) syncReviewer(ctx context.Context, db *gorm.DB, req *model.Perm
 	}
 	record := model.PermissionRequestReviewer{
 		ID: reviewerRecordID, RequestID: req.ID, ReviewerID: reviewerID,
-		EligibilityStatus: status, AuthorizationRootType: rootType, AuthorizationRootID: rootID,
+		EligibilityStatus: status, AuthorizationRootType: reviewerContext.rootType, AuthorizationRootID: reviewerContext.rootID,
 	}
 	if err := db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "request_id"}, {Name: "reviewer_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"eligibility_status":      status,
-			"authorization_root_type": rootType,
-			"authorization_root_id":   rootID,
+			"authorization_root_type": reviewerContext.rootType,
+			"authorization_root_id":   reviewerContext.rootID,
 			"updated_at":              time.Now().UTC(),
 		}),
 	}).Create(&record).Error; err != nil {
@@ -660,10 +792,14 @@ func (s *Service) syncAllReviewers(ctx context.Context, db *gorm.DB, req *model.
 	if err := db.WithContext(ctx).Where("enabled = ? AND account_type NOT IN ?", true, []model.AccountType{model.AccountTypeApp, model.AccountTypeContactor}).Find(&users).Error; err != nil {
 		return err
 	}
+	reviewerContext, err := s.resolveReviewerContext(ctx, db, req)
+	if err != nil {
+		return err
+	}
 	userIDs := make([]string, 0, len(users))
 	for _, user := range users {
 		userIDs = append(userIDs, user.ID)
-		if _, err := s.syncReviewer(ctx, db, req, user.ID); err != nil {
+		if _, err := s.syncReviewerWithContext(ctx, db, req, user.ID, reviewerContext); err != nil {
 			return err
 		}
 	}
@@ -689,8 +825,15 @@ func (s *Service) syncReviewerInbox(ctx context.Context, reviewerID string) erro
 	if err := s.db.WithContext(ctx).Where("status IN ? AND requester_id <> ?", []string{StatusPending, StatusNoReviewer}, reviewerID).Find(&requests).Error; err != nil {
 		return err
 	}
+	if err := s.hydrateRequestOperations(ctx, s.db, requests); err != nil {
+		return err
+	}
 	for i := range requests {
-		if _, err := s.syncReviewer(ctx, s.db, &requests[i], reviewerID); err != nil {
+		reviewerContext, err := s.resolveReviewerContext(ctx, s.db, &requests[i])
+		if err != nil {
+			return err
+		}
+		if _, err := s.syncReviewerWithContext(ctx, s.db, &requests[i], reviewerID, reviewerContext); err != nil {
 			return err
 		}
 		if err := s.refreshRequestReviewerStatus(ctx, s.db, &requests[i]); err != nil {
@@ -720,9 +863,22 @@ func (s *Service) canReview(ctx context.Context, reviewer string, req *model.Per
 	if err != nil || admin {
 		return admin, err
 	}
-	rootType, rootID, err := s.authorizationRoot(ctx, req.ResourceType, req.ResourceID)
+	reviewerContext, err := s.resolveReviewerContext(ctx, s.db, req)
 	if err != nil {
 		return false, err
+	}
+	return s.canReviewWithContext(ctx, reviewer, req, reviewerContext)
+}
+
+// canReviewWithContext keeps the final eligibility decision realtime while
+// sharing request-scoped lookup results among a batch of candidate reviewers.
+func (s *Service) canReviewWithContext(ctx context.Context, reviewer string, req *model.PermissionRequest, reviewerContext reviewerContext) (bool, error) {
+	if reviewer == "" || reviewer == req.RequesterID {
+		return false, nil
+	}
+	admin, err := s.enforcer.CheckContext(ctx, reviewer, "admin-authz", "*", "grant")
+	if err != nil || admin {
+		return admin, err
 	}
 	// A user may be explicitly delegated authorize on the child itself. The
 	// parent root check keeps inherited knowledge-network authorization valid.
@@ -730,21 +886,17 @@ func (s *Service) canReview(ctx context.Context, reviewer string, req *model.Per
 	if err != nil {
 		return false, err
 	}
-	if !authorize && (rootType != req.ResourceType || rootID != req.ResourceID) {
-		authorize, err = s.enforcer.CheckContext(ctx, reviewer, rootType, rootID, "authorize")
+	if !authorize && (reviewerContext.rootType != req.ResourceType || reviewerContext.rootID != req.ResourceID) {
+		authorize, err = s.enforcer.CheckContext(ctx, reviewer, reviewerContext.rootType, reviewerContext.rootID, "authorize")
 		if err != nil {
 			return false, err
 		}
-	}
-	operations, err := s.requestOperations(ctx, s.db, req)
-	if err != nil {
-		return false, err
 	}
 	// full_business_access is the one logical Community request operation. It
 	// never matches CheckContext by design, so only this exact operation may use
 	// the durable bundle as reviewer evidence; authorize and every other
 	// operation still follow the normal checks below.
-	if !finegrained.Assembled() && len(operations) == 1 && operations[0] == authz.ActFullBusinessAccess {
+	if !finegrained.Assembled() && len(reviewerContext.operations) == 1 && reviewerContext.operations[0] == authz.ActFullBusinessAccess {
 		records, err := s.enforcer.PolicyRecords(authz.PolicyFilter{
 			AccessorID: reviewer, Object: req.ResourceType + ":" + req.ResourceID,
 			Operation: authz.ActFullBusinessAccess, Effect: authz.EffectAllow,
@@ -752,7 +904,7 @@ func (s *Service) canReview(ctx context.Context, reviewer string, req *model.Per
 		})
 		return len(records) > 0, err
 	}
-	for _, operation := range operations {
+	for _, operation := range reviewerContext.operations {
 		allowedOperation, err := s.enforcer.CheckContext(ctx, reviewer, req.ResourceType, req.ResourceID, operation)
 		if err != nil || !allowedOperation {
 			return false, err
@@ -816,6 +968,10 @@ func (s *Service) hasUnreviewedEligibleReviewer(ctx context.Context, db *gorm.DB
 	if err := db.WithContext(ctx).Model(&model.PermissionRequestDecision{}).Where("request_id = ?", req.ID).Pluck("reviewer_id", &reviewed).Error; err != nil {
 		return false, err
 	}
+	reviewerContext, err := s.resolveReviewerContext(ctx, db, req)
+	if err != nil {
+		return false, err
+	}
 	done := make(map[string]bool, len(reviewed))
 	for _, id := range reviewed {
 		done[id] = true
@@ -824,7 +980,7 @@ func (s *Service) hasUnreviewedEligibleReviewer(ctx context.Context, db *gorm.DB
 		if done[user.ID] {
 			continue
 		}
-		ok, err := s.canReview(ctx, user.ID, req)
+		ok, err := s.canReviewWithContext(ctx, user.ID, req, reviewerContext)
 		if err != nil {
 			return false, err
 		}
@@ -878,15 +1034,15 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 		if !ok {
 			return ErrForbidden
 		}
-		decisionID, err := newUUIDv7()
-		if err != nil {
-			return err
-		}
-		decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
-		if err := tx.DB().Create(&decision).Error; err != nil {
-			return err
-		}
 		if in.Decision == "reject" {
+			decisionID, err := newUUIDv7()
+			if err != nil {
+				return err
+			}
+			decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
+			if err := tx.DB().Create(&decision).Error; err != nil {
+				return err
+			}
 			hasNext, err := s.hasUnreviewedEligibleReviewer(ctx, tx.DB(), &req)
 			if err != nil {
 				return err
@@ -905,12 +1061,43 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 			if err != nil {
 				return err
 			}
+			if finegrained.Assembled() {
+				missing, err := missingUnrequestedPrerequisites(ctx, tx, req.RequesterID, req.ResourceType, req.ResourceID, operations)
+				if err != nil {
+					return err
+				}
+				if len(missing) > 0 {
+					decisionID, err := newUUIDv7()
+					if err != nil {
+						return err
+					}
+					decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: DecisionInvalidated, Comment: in.Comment}
+					if err := tx.DB().Create(&decision).Error; err != nil {
+						return err
+					}
+					req.Status = StatusInvalidated
+					retireRequestKey(&req)
+					if err := tx.DB().Save(&req).Error; err != nil {
+						return err
+					}
+					result = req
+					return nil
+				}
+			}
 			alreadyGranted, err := s.hasRequestedPermission(ctx, req.RequesterID, req.ResourceType, req.ResourceID, operations)
 			if err != nil {
 				return err
 			}
 			if alreadyGranted {
 				return ErrPermissionAlreadyGranted
+			}
+			decisionID, err := newUUIDv7()
+			if err != nil {
+				return err
+			}
+			decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
+			if err := tx.DB().Create(&decision).Error; err != nil {
+				return err
 			}
 			if finegrained.Assembled() {
 				for _, operation := range operations {
@@ -969,7 +1156,7 @@ func (s *Service) ListRequested(ctx context.Context, requester string) ([]model.
 
 func (s *Service) ListRequestedPage(ctx context.Context, requester string, page PageOptions) (RequestPage, error) {
 	page = normalizePage(page)
-	q := s.db.WithContext(ctx).Model(&model.PermissionRequest{}).Where("requester_id = ?", requester)
+	q := applyRequestFilters(s.db.WithContext(ctx).Model(&model.PermissionRequest{}).Where("requester_id = ?", requester), page)
 	var result RequestPage
 	if err := q.Count(&result.TotalCount).Error; err != nil {
 		return result, err
@@ -1084,7 +1271,7 @@ func (s *Service) ListReviewed(ctx context.Context, reviewer string) ([]model.Pe
 
 func (s *Service) ListReviewedPage(ctx context.Context, reviewer string, page PageOptions) (RequestPage, error) {
 	page = normalizePage(page)
-	q := s.db.WithContext(ctx).Model(&model.PermissionRequest{}).Joins("JOIN permission_request_decision d ON d.request_id = permission_request.id").Where("d.reviewer_id = ?", reviewer)
+	q := applyRequestFilters(s.db.WithContext(ctx).Model(&model.PermissionRequest{}).Joins("JOIN permission_request_decision d ON d.request_id = permission_request.id").Where("d.reviewer_id = ?", reviewer), page)
 	var result RequestPage
 	if err := q.Count(&result.TotalCount).Error; err != nil {
 		return result, err
@@ -1129,6 +1316,26 @@ func (s *Service) ListTodo(ctx context.Context, reviewer string) ([]model.Permis
 	return page.Entries, err
 }
 
+// GetTodoSummary returns the lightweight navigation badge projection. Unlike
+// ListTodoPage it does not perform an authorization refresh for every active
+// request, so regular foreground polling cannot turn into a full inbox scan.
+// The reviewer snapshot is refreshed by application creation and authorization
+// write hooks; approval still checks eligibility against live authorization.
+func (s *Service) GetTodoSummary(ctx context.Context, reviewer string) (TodoSummary, error) {
+	reviewer = strings.TrimSpace(reviewer)
+	if reviewer == "" || len(reviewer) > 64 {
+		return TodoSummary{}, ErrInvalidRequest
+	}
+	var result TodoSummary
+	err := s.db.WithContext(ctx).Model(&model.PermissionRequest{}).
+		Select("COUNT(*) AS pending_count").
+		Joins("JOIN permission_request_reviewer r ON r.request_id = permission_request.id").
+		Where("r.reviewer_id = ? AND r.eligibility_status = ? AND permission_request.status = ?", reviewer, ReviewerActive, StatusPending).
+		Where("NOT EXISTS (SELECT 1 FROM permission_request_decision d WHERE d.request_id = permission_request.id AND d.reviewer_id = ?)", reviewer).
+		Scan(&result).Error
+	return result, err
+}
+
 // ListTodoPage uses the materialized reviewer set for database pagination.
 // Before querying, it refreshes this reviewer's eligibility against current
 // authorization so a revoked grant cannot leave a stale actionable todo.
@@ -1141,6 +1348,7 @@ func (s *Service) ListTodoPage(ctx context.Context, reviewer string, page PageOp
 		Joins("JOIN permission_request_reviewer r ON r.request_id = permission_request.id").
 		Where("r.reviewer_id = ? AND r.eligibility_status = ? AND permission_request.status = ?", reviewer, ReviewerActive, StatusPending).
 		Where("NOT EXISTS (SELECT 1 FROM permission_request_decision d WHERE d.request_id = permission_request.id AND d.reviewer_id = ?)", reviewer)
+	q = applyRequestFilters(q, page)
 	var result RequestPage
 	if err := q.Count(&result.TotalCount).Error; err != nil {
 		return result, err
