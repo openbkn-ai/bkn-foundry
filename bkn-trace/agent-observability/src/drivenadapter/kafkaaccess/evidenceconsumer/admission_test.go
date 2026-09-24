@@ -13,7 +13,6 @@ import (
 func closureTestRecord(sequence uint64, brokerTimestamp string, instance string) Record {
 	return Record{
 		Key:             "bkn-backend:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-		TimestampType:   "LogAppendTime",
 		BrokerTimestamp: brokerTimestamp,
 		Headers: []Header{
 			{Key: "content-type", Value: "application/json"},

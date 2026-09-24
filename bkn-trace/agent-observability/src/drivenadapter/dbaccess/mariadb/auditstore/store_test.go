@@ -10,14 +10,34 @@ import (
 	"database/sql"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	monthlyaudit "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/audit"
 )
 
 func testEvent() Event {
-	return Event{EventID: "evt-1", ContentHash: "sha256:abc", SourceID: "bkn-backend", Payload: []byte(`{"event_id":"evt-1"}`), OccurredAt: time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC), BrokerReceivedAt: time.Date(2026, 9, 22, 8, 0, 1, 0, time.UTC)}
+	return Event{EventID: "evt-1", ContentHash: "sha256:abc", SourceID: "bkn-backend", Payload: []byte(`{"event_id":"evt-1"}`), OccurredAt: time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC), BrokerReceivedAt: time.Date(2026, 9, 22, 8, 0, 1, 0, time.UTC), Kafka: KafkaCoordinate{Topic: "openbkn.audit.v1", Partition: 4, Offset: 12}}
+}
+
+func expectMonthlySchemaV032(mock sqlmock.Sqlmock, table string) {
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT column_name) FROM information_schema.columns")).
+		WithArgs("bkn_audit", table, "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at", "topic", "partition_id", "offset_id").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(10))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')")).
+		WithArgs("bkn_audit", table).
+		WillReturnRows(sqlmock.NewRows([]string{"columns"}).AddRow("topic,partition_id,offset_id"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=? AND table_name=? AND")).
+		WithArgs("bkn_audit", table).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+}
+
+func expectMonthlyTableCount(mock sqlmock.Sqlmock, table string, count int) {
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM information_schema.tables")).
+		WithArgs("bkn_audit", table).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(count))
 }
 
 func testDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *Store) {
@@ -38,10 +58,11 @@ func TestAppendInsertsDedupAndMonthlyLedgerInOneTransaction(t *testing.T) {
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()
 	event := testEvent()
+	expectMonthlySchemaV032(mock, "audit_event_202609")
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT content_hash, target_table")).WithArgs(event.EventID).WillReturnError(sql.ErrNoRows)
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO bkn_audit.audit_event_dedup")).WithArgs(event.EventID, event.ContentHash, sqlmock.AnyArg(), "audit_event_202609").WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO bkn_audit.audit_event_202609")).WithArgs(event.EventID, event.SourceID, event.ContentHash, event.Payload, event.OccurredAt, event.BrokerReceivedAt, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO bkn_audit.audit_event_202609")).WithArgs(event.EventID, event.SourceID, event.ContentHash, event.Payload, event.OccurredAt, event.BrokerReceivedAt, sqlmock.AnyArg(), event.Kafka.Topic, event.Kafka.Partition, event.Kafka.Offset).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	decision, err := store.Append(context.Background(), event)
 	if err != nil || decision != DecisionInserted {
@@ -56,6 +77,7 @@ func TestAppendSameHashIsIdempotentWithoutMonthlyInsert(t *testing.T) {
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()
 	event := testEvent()
+	expectMonthlySchemaV032(mock, "audit_event_202609")
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT content_hash, target_table")).WithArgs(event.EventID).WillReturnRows(sqlmock.NewRows([]string{"content_hash", "target_table"}).AddRow(event.ContentHash, "audit_event_202609"))
 	mock.ExpectCommit()
@@ -73,6 +95,7 @@ func TestAppendDifferentHashPreservesFirstFact(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	event := testEvent()
 	event.ContentHash = "sha256:different"
+	expectMonthlySchemaV032(mock, "audit_event_202609")
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT content_hash, target_table")).WithArgs(event.EventID).WillReturnRows(sqlmock.NewRows([]string{"content_hash", "target_table"}).AddRow("sha256:first", "audit_event_202609"))
 	mock.ExpectCommit()
@@ -89,15 +112,92 @@ func TestAppendFailsClosedWhenRoutedMonthlyTableIsMissing(t *testing.T) {
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()
 	event := testEvent()
-	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT content_hash, target_table")).WithArgs(event.EventID).WillReturnError(sql.ErrNoRows)
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO bkn_audit.audit_event_dedup")).WithArgs(event.EventID, event.ContentHash, sqlmock.AnyArg(), "audit_event_202609").WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO bkn_audit.audit_event_202609")).WillReturnError(errors.New("table does not exist"))
-	mock.ExpectRollback()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT column_name) FROM information_schema.columns")).
+		WithArgs("bkn_audit", "audit_event_202609", "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at", "topic", "partition_id", "offset_id").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	if _, err := store.Append(context.Background(), event); err == nil {
 		t.Fatal("missing monthly table was accepted")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMigrateMonthlyWindowUpgradesV031AndCreatesV032TablesIdempotently(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer func() { _ = db.Close() }()
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
+	oldTable, newTable, existingV032 := "audit_event_202609", "audit_event_202610", "audit_event_202611"
+
+	for _, table := range []string{oldTable, newTable, existingV032} {
+		count := 1
+		if table == newTable {
+			count = 0
+		}
+		expectMonthlyTableCount(mock, table, count)
+		if count == 1 {
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT column_name) FROM information_schema.columns WHERE table_schema=? AND table_name=? AND column_name IN")).
+				WithArgs("bkn_audit", table, "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at").
+				WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(7))
+			alter := `ALTER TABLE bkn_audit.` + table + `
+			ADD COLUMN IF NOT EXISTS topic VARCHAR(249) NULL,
+			ADD COLUMN IF NOT EXISTS partition_id INT NULL,
+			ADD COLUMN IF NOT EXISTS offset_id BIGINT NULL`
+			mock.ExpectExec(regexp.QuoteMeta(alter)).WillReturnResult(sqlmock.NewResult(0, 0))
+			mock.ExpectExec(regexp.QuoteMeta("CREATE UNIQUE INDEX IF NOT EXISTS uq_audit_kafka_coordinate ON bkn_audit." + table + " (topic, partition_id, offset_id)")).
+				WillReturnResult(sqlmock.NewResult(0, 0))
+		} else {
+			create := strings.ReplaceAll(monthlyaudit.TemplateSQL(), "YYYYMM", "202610")
+			mock.ExpectExec(regexp.QuoteMeta(create)).WillReturnResult(sqlmock.NewResult(0, 0))
+		}
+		expectMonthlySchemaV032(mock, table)
+	}
+	if err := store.MigrateMonthlyWindow(context.Background(), now); err != nil {
+		t.Fatalf("migrate monthly window: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateMonthlyWindowUsesCurrentUTCMonthAndNextTwo(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer func() { _ = db.Close() }()
+	now := time.Date(2027, 1, 1, 0, 30, 0, 0, time.FixedZone("UTC+8", 8*60*60))
+	for _, table := range []string{"audit_event_202612", "audit_event_202701", "audit_event_202702"} {
+		expectMonthlySchemaV032(mock, table)
+	}
+	if err := store.ValidateMonthlyWindow(context.Background(), now); err != nil {
+		t.Fatalf("validate monthly window: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateMonthlyWindowFailsClosedWhenAnyRequiredTableIsMissingSchema(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT column_name) FROM information_schema.columns")).
+		WithArgs("bkn_audit", "audit_event_202609", "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at", "topic", "partition_id", "offset_id").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(7))
+	if err := store.ValidateMonthlyWindow(context.Background(), time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)); !errors.Is(err, ErrMonthlySchemaUnavailable) {
+		t.Fatalf("missing coordinate columns must fail closed, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppendRejectsMissingKafkaCoordinateBeforeDatabaseAccess(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer func() { _ = db.Close() }()
+	event := testEvent()
+	event.Kafka = KafkaCoordinate{}
+	if _, err := store.Append(context.Background(), event); !errors.Is(err, ErrInvalidEvent) {
+		t.Fatalf("Append without Kafka coordinate error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("invalid event unexpectedly touched database: %v", err)
 	}
 }

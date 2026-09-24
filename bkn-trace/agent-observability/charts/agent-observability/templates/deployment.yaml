@@ -107,6 +107,63 @@ spec:
                   name: {{ required "core.mariadb.existingSecret is required for the MariaDB Core store" .Values.core.mariadb.existingSecret | quote }}
                   key: {{ .Values.core.mariadb.dsnKey | quote }}
             {{- end }}
+            {{- $evidenceKafka := .Values.kafkaConsumers.evidence }}
+            {{- if $evidenceKafka.enabled }}
+            {{- if ne $evidenceKafka.topic "openbkn.evidence.v1" }}{{ fail "kafkaConsumers.evidence.topic is frozen to openbkn.evidence.v1" }}{{ end }}
+            {{- if ne $evidenceKafka.consumerGroup "bkn-trace-evidence-ledger-v1" }}{{ fail "kafkaConsumers.evidence.consumerGroup is frozen to bkn-trace-evidence-ledger-v1" }}{{ end }}
+            {{- if not (has $evidenceKafka.saslMechanism (list "PLAIN" "SCRAM-SHA-256" "SCRAM-SHA-512")) }}{{ fail "kafkaConsumers.evidence.saslMechanism must be PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512" }}{{ end }}
+            - name: BKN_TRACE_EVIDENCE_KAFKA_ENABLED
+              value: "true"
+            - name: BKN_TRACE_EVIDENCE_KAFKA_BROKERS
+              value: {{ required "kafkaConsumers.evidence.brokers is required when enabled" (join "," $evidenceKafka.brokers) | quote }}
+            - name: BKN_TRACE_EVIDENCE_KAFKA_GROUP
+              value: {{ $evidenceKafka.consumerGroup | quote }}
+            - name: BKN_TRACE_EVIDENCE_KAFKA_SASL_MECHANISM
+              value: {{ $evidenceKafka.saslMechanism | quote }}
+            - name: BKN_TRACE_EVIDENCE_KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "kafkaConsumers.evidence.existingSecret.name is required when enabled" $evidenceKafka.existingSecret.name | quote }}
+                  key: {{ required "kafkaConsumers.evidence.existingSecret.usernameKey is required when enabled" $evidenceKafka.existingSecret.usernameKey | quote }}
+            - name: BKN_TRACE_EVIDENCE_KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "kafkaConsumers.evidence.existingSecret.name is required when enabled" $evidenceKafka.existingSecret.name | quote }}
+                  key: {{ required "kafkaConsumers.evidence.existingSecret.passwordKey is required when enabled" $evidenceKafka.existingSecret.passwordKey | quote }}
+            {{- else }}
+            - name: BKN_TRACE_EVIDENCE_KAFKA_ENABLED
+              value: "false"
+            {{- end }}
+            {{- $auditKafka := .Values.kafkaConsumers.audit }}
+            {{- if $auditKafka.enabled }}
+            {{- if ne .Values.core.store "mariadb" }}{{ fail "kafkaConsumers.audit requires core.store=mariadb" }}{{ end }}
+            {{- if not .Values.core.autoMigrate }}{{ fail "kafkaConsumers.audit requires core.autoMigrate=true so v031/v032 are in the service deployment path" }}{{ end }}
+            {{- if ne $auditKafka.topic "openbkn.audit.v1" }}{{ fail "kafkaConsumers.audit.topic is frozen to openbkn.audit.v1" }}{{ end }}
+            {{- if eq $auditKafka.consumerGroup "" }}{{ fail "kafkaConsumers.audit.consumerGroup is required when enabled" }}{{ end }}
+            {{- if eq $auditKafka.consumerGroup $evidenceKafka.consumerGroup }}{{ fail "Audit and Evidence consumer groups must be independent" }}{{ end }}
+            {{- if not (has $auditKafka.saslMechanism (list "PLAIN" "SCRAM-SHA-256" "SCRAM-SHA-512")) }}{{ fail "kafkaConsumers.audit.saslMechanism must be PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512" }}{{ end }}
+            - name: BKN_TRACE_AUDIT_KAFKA_ENABLED
+              value: "true"
+            - name: BKN_TRACE_AUDIT_KAFKA_BROKERS
+              value: {{ required "kafkaConsumers.audit.brokers is required when enabled" (join "," $auditKafka.brokers) | quote }}
+            - name: BKN_TRACE_AUDIT_KAFKA_GROUP
+              value: {{ $auditKafka.consumerGroup | quote }}
+            - name: BKN_TRACE_AUDIT_KAFKA_SASL_MECHANISM
+              value: {{ $auditKafka.saslMechanism | quote }}
+            - name: BKN_TRACE_AUDIT_KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "kafkaConsumers.audit.existingSecret.name is required when enabled" $auditKafka.existingSecret.name | quote }}
+                  key: {{ required "kafkaConsumers.audit.existingSecret.usernameKey is required when enabled" $auditKafka.existingSecret.usernameKey | quote }}
+            - name: BKN_TRACE_AUDIT_KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "kafkaConsumers.audit.existingSecret.name is required when enabled" $auditKafka.existingSecret.name | quote }}
+                  key: {{ required "kafkaConsumers.audit.existingSecret.passwordKey is required when enabled" $auditKafka.existingSecret.passwordKey | quote }}
+            {{- else }}
+            - name: BKN_TRACE_AUDIT_KAFKA_ENABLED
+              value: "false"
+            {{- end }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST
               value: {{ ternary "true" "false" .Values.evidence.ingestAuth.allowUnauthenticated | quote }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
@@ -207,12 +264,14 @@ spec:
               value: {{ .Values.observability.sourceCoverage.interval | quote }}
             {{- end }}
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/live
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/ready
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10

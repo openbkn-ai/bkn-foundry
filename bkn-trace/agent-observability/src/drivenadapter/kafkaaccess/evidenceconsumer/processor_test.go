@@ -1,0 +1,83 @@
+// Copyright (c) 2026 OpenBKN
+// SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt.
+
+package evidenceconsumer
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceadmission"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
+)
+
+type processorAdmission struct {
+	snapshot ievidenceadmission.Snapshot
+	err      error
+}
+
+func (a processorAdmission) Lookup(context.Context, uint64, string) (ievidenceadmission.Snapshot, error) {
+	return a.snapshot, a.err
+}
+
+type processorLedger struct{ called bool }
+
+func (l *processorLedger) IngestKafka(context.Context, ledgervo.Event, ievidenceledger.KafkaCoordinate) (ievidenceledger.KafkaResult, error) {
+	l.called = true
+	return ievidenceledger.KafkaResult{}, errors.New("unexpected ledger call")
+}
+
+type processorRejections struct {
+	called  bool
+	record  ievidenceadmission.Record
+	details ievidenceadmission.RejectionDetails
+	err     error
+}
+
+func (r *processorRejections) RecordKafkaRejection(_ context.Context, record ievidenceadmission.Record, details ievidenceadmission.RejectionDetails) error {
+	r.called, r.record, r.details = true, record, details
+	return r.err
+}
+
+func TestProcessorPersistsAdmissionRejectionBeforeReturningTerminal(t *testing.T) {
+	instance := "spiffe://cluster.local/ns/openbkn/sa/bkn-backend#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	record := Record{Topic: Topic, Key: "bkn-backend:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Value: []byte(`{}`), Partition: 2, Offset: 19,
+		BrokerTime: time.Date(2026, 9, 24, 8, 30, 0, 0, time.UTC), ProducerStreamID: "bkn-backend:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", ProducerSequence: 1,
+		BrokerTimestamp: "2026-09-24T08:30:00Z",
+		Headers:         []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "41"}, {Key: "producer_instance_id", Value: instance}, {Key: "bkn-evidence-record-class", Value: "live"}}}
+	ledger, rejections := &processorLedger{}, &processorRejections{}
+	processor, err := NewProcessor(processorAdmission{snapshot: ievidenceadmission.Snapshot{Revision: 41, Enabled: false}}, ledger, rejections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.Process(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if !rejections.called || rejections.details.ReasonCode != "capture_policy_revision_disabled" || rejections.record.Offset != record.Offset {
+		t.Fatalf("rejection not durably requested for the Kafka coordinate: %+v", rejections)
+	}
+	if ledger.called {
+		t.Fatal("unauthorized Evidence event reached the ledger")
+	}
+}
+
+func TestProcessorDoesNotMakeAdmissionRejectionOnTemporaryHistoryFailure(t *testing.T) {
+	stream := "bkn-backend:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	now := time.Now().UTC()
+	record := Record{Topic: Topic, Key: stream, ProducerStreamID: stream, BrokerTime: now, BrokerTimestamp: now.Format(time.RFC3339Nano), Headers: []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "41"}, {Key: "producer_instance_id", Value: "spiffe://cluster.local/ns/openbkn/sa/bkn-backend#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, {Key: "bkn-evidence-record-class", Value: "live"}}}
+	rejections := &processorRejections{}
+	processor, err := NewProcessor(processorAdmission{err: errors.New("db unavailable")}, &processorLedger{}, rejections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.Process(context.Background(), record); err == nil {
+		t.Fatal("temporary admission read failure was treated as terminal")
+	}
+	if rejections.called {
+		t.Fatal("temporary failure was persisted as a permanent rejection")
+	}
+}

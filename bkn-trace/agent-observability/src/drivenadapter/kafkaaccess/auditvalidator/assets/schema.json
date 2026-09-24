@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openbkn.io/schemas/audit-event/1.0",
+  "title": "OpenBKN Audit Event v1",
+  "description": "Kafka topic openbkn.audit.v1 的生产端 payload。单条 UTF-8 序列化后不得超过 32 KiB。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_id", "source_id", "category", "event_name", "occurred_at",
+    "actor", "target", "outcome", "scope", "request_context", "summary", "facts"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "source_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,63}$" },
+    "category": { "enum": ["audit.admin", "audit.security"] },
+    "event_name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$" },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$"
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "auth_method", "effective_subject"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "display_name_snapshot": { "type": "string", "maxLength": 256 },
+        "type": { "enum": ["user", "service_account", "anonymous"] },
+        "auth_method": { "type": "string", "maxLength": 64 },
+        "effective_subject": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "name": { "type": "string", "maxLength": 512 }
+      }
+    },
+    "outcome": { "enum": ["success", "failure", "denied", "canceled", "unknown"] },
+    "http_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+    "failure_code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,127}$" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["business_module", "environment", "platform_scope", "knowledge_network_ids"],
+      "properties": {
+        "business_module": {
+          "enum": [
+            "domain_knowledge_network",
+            "observability",
+            "execution_factory",
+            "data_resource_knowledge_network",
+            "model_management",
+            "system_management"
+          ]
+        },
+        "environment": { "enum": ["development", "test", "staging", "production"] },
+        "platform_scope": { "type": "boolean" },
+        "application_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "knowledge_network_ids": {
+          "type": "array", "uniqueItems": true, "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "platform_scope": { "const": true } }, "required": ["platform_scope"] },
+          "then": {
+            "properties": { "knowledge_network_ids": { "maxItems": 0 } },
+            "not": { "required": ["application_id"] }
+          }
+        },
+        {
+          "if": { "properties": { "platform_scope": { "const": false } }, "required": ["platform_scope"] },
+          "then": {
+            "anyOf": [
+              { "required": ["application_id"] },
+              { "properties": { "knowledge_network_ids": { "minItems": 1 } } }
+            ]
+          }
+        }
+      ]
+    },
+    "request_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_channel", "transport", "method"],
+      "properties": {
+        "source_channel": { "enum": ["api", "cli", "mcp", "sdk", "studio", "unknown"] },
+        "transport": { "enum": ["http", "non_http", "unknown"] },
+        "method": { "type": "string", "maxLength": 16 },
+        "client_ip": {
+          "type": "string",
+          "oneOf": [
+            { "format": "ipv4" },
+            { "format": "ipv6" }
+          ]
+        },
+        "device_id": { "type": "string", "maxLength": 256 },
+        "delegation_chain": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_id": { "type": "string", "maxLength": 128 },
+        "trace_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "causation_id": { "type": "string", "maxLength": 128 }
+      }
+    },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "facts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "action": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        "decision": { "type": "string", "maxLength": 64 },
+        "changed_fields": { "type": "array", "uniqueItems": true, "maxItems": 100, "items": { "type": "string", "maxLength": 128 } },
+        "before_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "after_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "previous_retention_days": { "type": "integer", "minimum": 30, "maximum": 3650 },
+        "retention_days": { "type": "integer", "minimum": 30, "maximum": 3650 },
+        "change_reason": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "safe_error_code": { "type": "string", "maxLength": 128 },
+        "operation_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "policy_revision": { "type": "string", "maxLength": 128 },
+        "desired_state": { "enum": ["enabled", "disabled"] },
+        "effective_state": { "enum": ["enabled", "disabled"] },
+        "operation_phase": { "enum": ["pending", "enabling", "disabling", "rolling_back", "succeeded", "failed", "rollback_failed", "rollback_completed"] },
+        "resource_scope": { "type": "string", "maxLength": 512 },
+        "detection_reason": { "type": "string", "maxLength": 512 },
+        "detection_rule_id": { "enum": ["trusted_context_invalid", "policy_evaluation_error", "high_risk_access"] },
+        "detected_field_name": { "type": "string", "maxLength": 128 },
+        "content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event_name": { "not": { "const": "execution_factory.operation.observed" } }
+        },
+        "required": ["event_name"]
+      },
+      "then": { "properties": { "facts": { "required": ["decision"] } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_name": { "not": { "const": "execution_factory.operation.observed" } }
+        },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "request_context": {
+            "properties": {
+              "source_channel": { "enum": ["api", "cli", "mcp", "sdk", "studio"] },
+              "transport": { "enum": ["http", "non_http"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "category": { "const": "audit.security" } }, "required": ["category"] },
+      "then": {
+        "properties": {
+          "facts": { "required": ["decision", "policy_revision", "resource_scope"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_name": { "const": "access.anomaly_detected" } }, "required": ["event_name"] },
+      "then": { "properties": { "facts": { "required": ["decision", "policy_revision", "resource_scope", "detection_rule_id"] } } }
+    },
+    {
+      "if": { "properties": { "event_name": { "const": "audit_retention_policy.changed" } }, "required": ["event_name"] },
+      "then": {
+        "properties": {
+          "source_id": { "const": "agent-observability" },
+          "category": { "const": "audit.admin" },
+          "target": {
+            "properties": {
+              "type": { "const": "audit_retention_policy" },
+              "id": { "const": "global" }
+            }
+          },
+          "scope": {
+            "properties": {
+              "business_module": { "const": "observability" },
+              "platform_scope": { "const": true },
+              "knowledge_network_ids": { "maxItems": 0 }
+            }
+          },
+          "facts": {
+            "required": ["action", "decision", "previous_retention_days", "retention_days", "change_reason"],
+            "properties": {
+              "action": { "const": "update" },
+              "decision": { "const": "allowed" }
+            }
+          },
+          "outcome": { "const": "success" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_name": {
+            "enum": [
+              "role.updated",
+              "model_config.changed",
+              "resource_config.changed",
+              "agent.config.changed",
+              "tool.config.changed",
+              "skill.config.changed",
+              "toolbox.config.changed",
+              "mcp.config.changed",
+              "trace_evidence.configuration_change_requested"
+            ]
+          }
+        },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "facts": {
+            "required": ["action", "decision", "changed_fields"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_name": {
+            "enum": [
+              "role.updated",
+              "model_config.changed",
+              "resource_config.changed",
+              "agent.config.changed",
+              "tool.config.changed",
+              "skill.config.changed",
+              "toolbox.config.changed",
+              "mcp.config.changed",
+              "trace_evidence.configuration_change_requested"
+            ]
+          },
+          "facts": {
+            "properties": { "action": { "const": "create" } },
+            "required": ["action"]
+          }
+        },
+        "required": ["event_name", "facts"]
+      },
+      "then": {
+        "properties": {
+          "facts": {
+            "required": ["after_hash"],
+            "not": { "required": ["before_hash"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_name": {
+            "enum": [
+              "role.updated",
+              "model_config.changed",
+              "resource_config.changed",
+              "agent.config.changed",
+              "tool.config.changed",
+              "skill.config.changed",
+              "toolbox.config.changed",
+              "mcp.config.changed",
+              "trace_evidence.configuration_change_requested"
+            ]
+          },
+          "facts": {
+            "properties": { "action": { "const": "update" } },
+            "required": ["action"]
+          }
+        },
+        "required": ["event_name", "facts"]
+      },
+      "then": {
+        "properties": {
+          "facts": { "required": ["before_hash", "after_hash"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_name": {
+            "enum": [
+              "role.updated",
+              "model_config.changed",
+              "resource_config.changed",
+              "agent.config.changed",
+              "tool.config.changed",
+              "skill.config.changed",
+              "toolbox.config.changed",
+              "mcp.config.changed",
+              "trace_evidence.configuration_change_requested"
+            ]
+          },
+          "facts": {
+            "properties": { "action": { "const": "delete" } },
+            "required": ["action"]
+          }
+        },
+        "required": ["event_name", "facts"]
+      },
+      "then": {
+        "properties": {
+          "facts": {
+            "required": ["before_hash"],
+            "not": { "required": ["after_hash"] }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_name": { "const": "trace_evidence.configuration_change_requested" } }, "required": ["event_name"] },
+      "then": {
+        "properties": {
+          "source_id": { "const": "agent-observability" },
+          "category": { "const": "audit.admin" },
+          "target": { "properties": { "type": { "const": "trace_evidence_configuration" }, "id": { "const": "global" } } },
+          "outcome": { "const": "success" },
+          "scope": { "properties": { "business_module": { "const": "observability" }, "platform_scope": { "const": true }, "knowledge_network_ids": { "maxItems": 0 } } },
+          "facts": {
+            "required": ["action", "decision", "changed_fields", "before_hash", "after_hash", "operation_id", "policy_revision", "desired_state", "effective_state", "operation_phase"],
+            "properties": { "action": { "const": "update" }, "decision": { "const": "allowed" }, "operation_phase": { "enum": ["enabling", "disabling"] } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_name": { "const": "trace_evidence.operation_succeeded" } }, "required": ["event_name"] },
+      "then": {
+        "properties": {
+          "source_id": { "const": "agent-observability" },
+          "category": { "const": "audit.admin" },
+          "target": { "properties": { "type": { "const": "trace_evidence_operation" } } },
+          "outcome": { "const": "success" },
+          "scope": { "properties": { "business_module": { "const": "observability" }, "platform_scope": { "const": true }, "knowledge_network_ids": { "maxItems": 0 } } },
+          "facts": {
+            "required": ["action", "decision", "operation_id", "policy_revision", "desired_state", "effective_state", "operation_phase"],
+            "properties": { "action": { "const": "apply" }, "decision": { "const": "allowed" }, "operation_phase": { "const": "succeeded" } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_name": { "const": "trace_evidence.operation_failed" } }, "required": ["event_name"] },
+      "then": {
+        "required": ["failure_code"],
+        "properties": {
+          "source_id": { "const": "agent-observability" },
+          "category": { "const": "audit.admin" },
+          "target": { "properties": { "type": { "const": "trace_evidence_operation" } } },
+          "outcome": { "const": "failure" },
+          "scope": { "properties": { "business_module": { "const": "observability" }, "platform_scope": { "const": true }, "knowledge_network_ids": { "maxItems": 0 } } },
+          "facts": {
+            "required": ["action", "decision", "operation_id", "policy_revision", "desired_state", "effective_state", "operation_phase"],
+            "not": { "required": ["safe_error_code"] },
+            "properties": { "action": { "const": "apply" }, "decision": { "const": "failed" }, "operation_phase": { "const": "failed" } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_name": { "const": "trace_evidence.rollback_completed" } }, "required": ["event_name"] },
+      "then": {
+        "properties": {
+          "source_id": { "const": "agent-observability" },
+          "category": { "const": "audit.admin" },
+          "target": { "properties": { "type": { "const": "trace_evidence_operation" } } },
+          "outcome": { "const": "success" },
+          "scope": { "properties": { "business_module": { "const": "observability" }, "platform_scope": { "const": true }, "knowledge_network_ids": { "maxItems": 0 } } },
+          "facts": {
+            "required": ["action", "decision", "operation_id", "policy_revision", "desired_state", "effective_state", "operation_phase"],
+            "properties": { "action": { "const": "rollback" }, "decision": { "const": "allowed" }, "operation_phase": { "const": "rollback_completed" } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "enum": ["failure", "denied"] } }, "required": ["outcome"] },
+      "then": {
+        "required": ["failure_code"],
+        "properties": { "failure_code": { "minLength": 1 } }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "request_context": {
+            "properties": { "transport": { "const": "http" } },
+            "required": ["transport"]
+          },
+          "event_name": { "not": { "const": "execution_factory.operation.observed" } }
+        },
+        "required": ["request_context", "event_name"]
+      },
+      "then": { "required": ["http_status"] }
+    }
+  ]
+}

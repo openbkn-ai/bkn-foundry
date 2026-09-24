@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f6a61-9f2f-7ea1-9fb5-9f2474e6b320",
+  "source_id": "execution-factory",
+  "category": "audit.admin",
+  "event_name": "execution_factory.operation.observed",
+  "occurred_at": "2026-09-24T08:30:00Z",
+  "actor": {
+    "id": "user-a",
+    "display_name_snapshot": "user-a",
+    "type": "user",
+    "auth_method": "unknown",
+    "effective_subject": "user-a"
+  },
+  "target": {
+    "type": "operator",
+    "id": "operator-123"
+  },
+  "outcome": "unknown",
+  "scope": {
+    "business_module": "execution_factory",
+    "environment": "test",
+    "platform_scope": true,
+    "knowledge_network_ids": []
+  },
+  "request_context": {
+    "source_channel": "unknown",
+    "transport": "unknown",
+    "method": "unknown"
+  },
+  "summary": "execution_factory.operation.observed execute operator",
+  "facts": {
+    "action": "execute"
+  }
+}

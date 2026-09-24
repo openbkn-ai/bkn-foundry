@@ -12,9 +12,6 @@ import (
 )
 
 func AdmitLive(record Record, policy PolicySnapshot) Decision {
-	if record.TimestampType != "LogAppendTime" {
-		return Decision{Decision: "reject", Reason: "timestamp_type_invalid"}
-	}
 	if err := ValidateLiveRecordContract(record); err != nil {
 		return Decision{Decision: "reject", Reason: "header_contract_invalid"}
 	}
@@ -42,7 +39,7 @@ func AdmitLive(record Record, policy PolicySnapshot) Decision {
 	}
 	streamBoot := streamBootID(record.ProducerStreamID)
 	instanceBoot := instanceBootID(instanceID)
-	if streamBoot == "" || streamBoot != instanceBoot {
+	if streamBoot == "" || streamBoot != instanceBoot || (policy.ProcessBootID != "" && policy.ProcessBootID != instanceBoot) {
 		return Decision{Decision: "reject", Reason: "producer_instance_stream_mismatch"}
 	}
 	closure := policy.Closure

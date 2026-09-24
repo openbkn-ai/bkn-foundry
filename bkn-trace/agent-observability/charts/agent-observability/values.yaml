@@ -68,6 +68,30 @@ evidence:
     # taking the query surface down with it.
     publicLifecycleEnabled: true
 
+# Kafka consumers are independently opt-in. Credentials are referenced only
+# from externally managed Secrets; no development broker or password defaults.
+kafkaConsumers:
+  evidence:
+    enabled: false
+    brokers: []
+    topic: openbkn.evidence.v1
+    consumerGroup: bkn-trace-evidence-ledger-v1
+    saslMechanism: ""
+    existingSecret:
+      name: ""
+      usernameKey: username
+      passwordKey: password
+  audit:
+    enabled: false
+    brokers: []
+    topic: openbkn.audit.v1
+    consumerGroup: ""
+    saslMechanism: ""
+    existingSecret:
+      name: ""
+      usernameKey: username
+      passwordKey: password
+
 bknSafe:
   baseURL: http://bkn-safe:3000
   accessTimeout: 3s

@@ -23,3 +23,28 @@ type Store interface {
 	Commit(ctx context.Context, event ledgervo.Event) (ledgervo.DurableAck, error)
 	ListInteractionEvents(ctx context.Context, owner sessionvo.Owner, interactionID string) ([]ledgervo.Event, error)
 }
+
+type KafkaCoordinate struct {
+	Topic     string
+	Partition int
+	Offset    int64
+}
+
+type KafkaDecision string
+
+const (
+	KafkaAccepted     KafkaDecision = "accepted"
+	KafkaDeduplicated KafkaDecision = "deduplicated"
+	KafkaConflict     KafkaDecision = "conflict"
+)
+
+type KafkaResult struct {
+	Decision   KafkaDecision
+	Ack        ledgervo.DurableAck
+	ReasonCode string
+}
+
+// KafkaStore resolves a ledger write and Kafka terminal coordinate atomically.
+type KafkaStore interface {
+	CommitKafka(context.Context, ledgervo.Event, KafkaCoordinate) (KafkaResult, error)
+}
