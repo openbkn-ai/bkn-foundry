@@ -408,7 +408,7 @@ func (s *Service) hydrateReviewerSummary(ctx context.Context, db *gorm.DB, reque
 			}
 		}
 		requests[i].ReviewerID = strings.Join(reviewerIDs, ",")
-		requests[i].ReviewerName = strings.Join(reviewerNamesForRequest, "、")
+		requests[i].ReviewerName = strings.Join(reviewerNamesForRequest, ",")
 	}
 	return nil
 }
@@ -870,13 +870,13 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 						GrantID: grantID, AccessorID: req.RequesterID,
 						Object: req.ResourceType + ":" + req.ResourceID, Operation: operation,
 						Effect: authz.EffectAllow, PolicySource: authz.PolicySourceProfessionalRule,
-						AuthoritySource: authz.AuthoritySourceOwnerDelegate, CreatedBy: in.ReviewerID,
+						AuthoritySource: authz.AuthoritySourcePermissionRequest, CreatedBy: in.ReviewerID,
 					}); err != nil {
 						return err
 					}
 				}
 			} else {
-				err = tx.GrantCommunityBundle(req.RequesterID, req.ResourceType, req.ResourceID, authz.AuthoritySourceOwnerDelegate)
+				err = tx.GrantCommunityBundle(req.RequesterID, req.ResourceType, req.ResourceID, authz.AuthoritySourcePermissionRequest)
 			}
 			if err != nil {
 				return err

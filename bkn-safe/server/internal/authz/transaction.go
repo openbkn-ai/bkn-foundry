@@ -65,7 +65,7 @@ func (tx *PolicyTransaction) GrantPolicy(grant PolicyGrant) (bool, error) {
 // GrantCommunityBundle writes the one logical Community grant inside the
 // caller's existing transaction.
 func (tx *PolicyTransaction) GrantCommunityBundle(accessorID, resourceType, resourceID string, authority AuthoritySource) error {
-	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceOwnerDelegate && authority != AuthoritySourceSystem {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourcePermissionRequest && authority != AuthoritySourceSystem {
 		return fmt.Errorf("community bundle authority %q is not permitted", authority)
 	}
 	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
