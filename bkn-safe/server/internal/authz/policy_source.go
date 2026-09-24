@@ -47,8 +47,12 @@ type AuthoritySource string
 const (
 	AuthoritySourceAdminAuthz    AuthoritySource = "admin_authz"
 	AuthoritySourceOwnerDelegate AuthoritySource = "owner_delegate"
-	AuthoritySourceSystem        AuthoritySource = "system"
-	AuthoritySourceMigration     AuthoritySource = "migration"
+	// AuthoritySourcePermissionRequest is reserved for the durable approval
+	// workflow. It cannot be selected by an object-grant HTTP request; the
+	// workflow records the actual approving user separately in CreatedBy.
+	AuthoritySourcePermissionRequest AuthoritySource = "permission_request"
+	AuthoritySourceSystem            AuthoritySource = "system"
+	AuthoritySourceMigration         AuthoritySource = "migration"
 )
 
 var (
@@ -141,7 +145,7 @@ func validatePolicySource(source PolicySource) error {
 
 func validateAuthoritySource(source AuthoritySource) error {
 	switch source {
-	case AuthoritySourceAdminAuthz, AuthoritySourceOwnerDelegate, AuthoritySourceSystem, AuthoritySourceMigration:
+	case AuthoritySourceAdminAuthz, AuthoritySourceOwnerDelegate, AuthoritySourcePermissionRequest, AuthoritySourceSystem, AuthoritySourceMigration:
 		return nil
 	default:
 		return fmt.Errorf("unknown authority source %q", source)
@@ -575,7 +579,7 @@ func (en *Enforcer) GrantSystemObjectPermission(accessorID, resourceType, resour
 // GrantCommunityBundle records one logical Community grant on a reviewed
 // top-level resource. It never materializes the whitelist into operation rows.
 func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID string, authority AuthoritySource) error {
-	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourceSystem {
+	if authority != AuthoritySourceAdminAuthz && authority != AuthoritySourcePermissionRequest && authority != AuthoritySourceSystem {
 		return fmt.Errorf("community bundle authority %q is not permitted", authority)
 	}
 	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
