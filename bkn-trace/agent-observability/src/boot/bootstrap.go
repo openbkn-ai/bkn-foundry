@@ -148,7 +148,7 @@ func NewApp() (*App, error) {
 		if closeDatabase != nil {
 			_ = closeDatabase()
 		}
-		return nil, errors.New("Evidence Kafka consumer is blocked until the C1 control-plane writer for policy, producer registration, and closure history is integrated")
+		return nil, errors.New("evidence Kafka consumer is blocked until the C1 control-plane writer for policy, producer registration, and closure history is integrated")
 	}
 	if kafkaConfig.Audit.Enabled {
 		if !strings.EqualFold(coreConfig.Store, "mariadb") || !coreConfig.AutoMigrate {
@@ -171,11 +171,11 @@ func NewApp() (*App, error) {
 			}
 			return nil, err
 		}
-		if err := auditLedger.ValidateMonthlyWindow(context.Background(), time.Now().UTC()); err != nil {
+		if err := auditLedger.EnsureMonthlyWindow(context.Background(), time.Now().UTC()); err != nil {
 			if closeDatabase != nil {
 				_ = closeDatabase()
 			}
-			return nil, fmt.Errorf("validate Audit monthly schema window: %w", err)
+			return nil, fmt.Errorf("ensure Audit monthly schema window: %w", err)
 		}
 		validator, err := auditvalidator.New()
 		if err != nil {

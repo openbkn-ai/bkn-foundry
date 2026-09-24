@@ -135,7 +135,7 @@ func (v *Validator) Validate(_ context.Context, record auditconsumer.Record) (au
 		return auditstore.Event{}, permanent("wrong_topic")
 	}
 	if record.BrokerTime.IsZero() {
-		return auditstore.Event{}, errors.New("Kafka Broker append timestamp is unavailable")
+		return auditstore.Event{}, errors.New("kafka broker append timestamp is unavailable")
 	}
 	if len(record.Value) == 0 || len(record.Value) > maxAuditValueBytes {
 		return auditstore.Event{}, permanent("record_too_large")

@@ -127,11 +127,14 @@ func VerifyTopicLogAppendTime(topic conf.KafkaTopicConsumerConfig) error {
 		return errors.New("connect Kafka Admin API to verify topic timestamp policy")
 	}
 	defer func() { _ = admin.Close() }()
-	entries, err := admin.DescribeConfig(sarama.ConfigResource{Type: sarama.TopicResource, Name: topic.Topic})
+	resources, err := admin.DescribeConfigs([]*sarama.ConfigResource{{Type: sarama.TopicResource, Name: topic.Topic}}, sarama.DescribeConfigsOptions{})
 	if err != nil {
-		return errors.New("Kafka topic configuration is not readable; LogAppendTime cannot be proven")
+		return errors.New("kafka topic configuration is not readable; LogAppendTime cannot be proven")
 	}
-	return verifyLogAppendTimeSetting(entries)
+	if len(resources) != 1 || resources[0].Name != topic.Topic || resources[0].ErrorCode != sarama.ErrNoError {
+		return errors.New("kafka topic configuration is not readable; LogAppendTime cannot be proven")
+	}
+	return verifyLogAppendTimeSetting(resources[0].Configs)
 }
 
 func verifyLogAppendTimeSetting(entries []sarama.ConfigEntry) error {
@@ -140,10 +143,10 @@ func verifyLogAppendTimeSetting(entries []sarama.ConfigEntry) error {
 			if entry.Value == "LogAppendTime" {
 				return nil
 			}
-			return errors.New("Kafka topic message.timestamp.type is not LogAppendTime")
+			return errors.New("kafka topic message.timestamp.type is not LogAppendTime")
 		}
 	}
-	return errors.New("Kafka topic configuration omitted message.timestamp.type")
+	return errors.New("kafka topic configuration omitted message.timestamp.type")
 }
 
 type scramClient struct {
@@ -169,7 +172,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		return nil
 	}
 	if r.started {
-		return errors.New("Kafka consumer runtime already started")
+		return errors.New("kafka consumer runtime already started")
 	}
 	r.started = true
 	pollCtx, stopPoll := context.WithCancel(ctx)
@@ -183,10 +186,7 @@ func (r *Runtime) run(pollCtx, processCtx context.Context) {
 	defer close(r.done)
 	r.setState(true, "polling")
 	failureReason := ""
-	for {
-		if pollCtx.Err() != nil {
-			break
-		}
+	for pollCtx.Err() == nil {
 		message, err := r.reader.FetchMessage(pollCtx)
 		if err != nil {
 			if pollCtx.Err() != nil {

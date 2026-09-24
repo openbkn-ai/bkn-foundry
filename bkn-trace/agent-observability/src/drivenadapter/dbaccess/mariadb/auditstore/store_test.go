@@ -189,6 +189,24 @@ func TestMigrateMonthlyWindowUpgradesV031AndCreatesV032TablesIdempotently(t *tes
 	}
 }
 
+func TestEnsureMonthlyWindowCreatesAndValidatesCurrentAndNextTwoTables(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer func() { _ = db.Close() }()
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	for _, table := range []string{"audit_event_202609", "audit_event_202610", "audit_event_202611"} {
+		expectMonthlyTableCount(mock, table, 0)
+		create := strings.ReplaceAll(monthlyaudit.TemplateSQL(), "YYYYMM", strings.TrimPrefix(table, "audit_event_"))
+		mock.ExpectExec(regexp.QuoteMeta(create)).WillReturnResult(sqlmock.NewResult(0, 0))
+		expectMonthlySchemaV032(mock, table)
+	}
+	if err := store.EnsureMonthlyWindow(context.Background(), now); err != nil {
+		t.Fatalf("ensure monthly window: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidateMonthlyWindowUsesCurrentUTCMonthAndNextTwo(t *testing.T) {
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()

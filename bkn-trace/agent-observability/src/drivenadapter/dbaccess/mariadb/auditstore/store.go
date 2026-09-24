@@ -144,9 +144,16 @@ func (s *Store) ValidateMonthlyWindow(ctx context.Context, now time.Time) error 
 	return nil
 }
 
+// EnsureMonthlyWindow provisions the current UTC month and next two months,
+// then validates the complete window. It is safe to run on every Audit-enabled
+// service startup; the migration is repeatable and only touches those tables.
+func (s *Store) EnsureMonthlyWindow(ctx context.Context, now time.Time) error {
+	return s.MigrateMonthlyWindow(ctx, now)
+}
+
 // MigrateMonthlyWindow is the explicit, repeatable operator migration. It is
-// intentionally not called by application startup; operators may alter only
-// the current UTC month and the next two months through this entry point.
+// shared by startup reconciliation and the operator command; it may alter only
+// the current UTC month and the next two months.
 func (s *Store) MigrateMonthlyWindow(ctx context.Context, now time.Time) error {
 	if err := verifyMonthlyTemplate(); err != nil {
 		return err

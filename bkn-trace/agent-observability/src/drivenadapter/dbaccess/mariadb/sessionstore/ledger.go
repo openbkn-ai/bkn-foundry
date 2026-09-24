@@ -99,7 +99,7 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event, co
 		err := tx.QueryRowContext(ctx, `SELECT reason_code, incoming_immutable_hash FROM bkn_trace_event_conflicts WHERE topic=? AND partition_id=? AND offset_id=? FOR UPDATE`, coordinate.Topic, coordinate.Partition, coordinate.Offset).Scan(&reason, &incomingHash)
 		if err == nil {
 			if incomingHash != ledgervo.ImmutableRecordHash(event) {
-				return ledgervo.DurableAck{}, false, errors.New("Kafka coordinate already has a different durable Evidence conflict")
+				return ledgervo.DurableAck{}, false, errors.New("kafka coordinate already has a different durable Evidence conflict")
 			}
 			return ledgervo.DurableAck{}, false, &kafkaConflictTerminal{reason: reason}
 		}

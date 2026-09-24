@@ -35,7 +35,7 @@ type Processor struct {
 
 func NewProcessor(admission ievidenceadmission.ReadOnlySource, ledger Ledger, rejections RejectionWriter) (*Processor, error) {
 	if admission == nil || ledger == nil || rejections == nil {
-		return nil, errors.New("Evidence Kafka processor dependencies are required")
+		return nil, errors.New("evidence Kafka processor dependencies are required")
 	}
 	return &Processor{admission: admission, ledger: ledger, rejections: rejections}, nil
 }
@@ -44,13 +44,13 @@ func NewProcessor(admission ievidenceadmission.ReadOnlySource, ledger Ledger, re
 // durable rejection exists. Transport offset commit is owned by kafkaruntime.
 func (p *Processor) Process(ctx context.Context, record Record) error {
 	if record.Topic != Topic {
-		return errors.New("Evidence record topic mismatch")
+		return errors.New("evidence record topic mismatch")
 	}
 	if record.BrokerTime.IsZero() || record.BrokerTimestamp == "" {
-		return errors.New("Kafka Broker LogAppendTime is unavailable; Evidence offset remains uncommitted")
+		return errors.New("kafka Broker LogAppendTime is unavailable; Evidence offset remains uncommitted")
 	}
 	if record.BrokerTimestamp != record.BrokerTime.UTC().Format(time.RFC3339Nano) {
-		return errors.New("Kafka broker timestamp representations disagree; Evidence offset remains uncommitted")
+		return errors.New("kafka broker timestamp representations disagree; Evidence offset remains uncommitted")
 	}
 	if err := ValidateLiveRecordContract(record); err != nil {
 		return p.reject(ctx, record, "header_contract_invalid", ledgervo.Event{})
@@ -90,7 +90,7 @@ func (p *Processor) Process(ctx context.Context, record Record) error {
 		switch result.Decision {
 		case ievidenceledger.KafkaAccepted, ievidenceledger.KafkaDeduplicated:
 			if !result.Ack.Durable {
-				return errors.New("Evidence Ledger returned a non-durable acknowledgement")
+				return errors.New("evidence Ledger returned a non-durable acknowledgement")
 			}
 			return nil
 		case ievidenceledger.KafkaConflict:
@@ -103,7 +103,7 @@ func (p *Processor) Process(ctx context.Context, record Record) error {
 	case ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent):
 		return p.reject(ctx, record, "invalid_evidence_event", event)
 	default:
-		return fmt.Errorf("Evidence Ledger decision is temporary or uncertain: %w", err)
+		return fmt.Errorf("evidence Ledger decision is temporary or uncertain: %w", err)
 	}
 }
 
