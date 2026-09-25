@@ -73,6 +73,15 @@
             }
           },
           {
+            "name": "source_id",
+            "in": "query",
+            "description": "Filters records by their registered source identifier across all selected sources.",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
             "name": "categories",
             "in": "query",
             "schema": {
@@ -1486,6 +1495,7 @@
               "direct_otlp",
               "container_stdout",
               "source_adapter",
+              "kafka_audit",
               "not_integrated"
             ]
           },
@@ -1501,6 +1511,14 @@
               "null"
             ],
             "minimum": 0
+          },
+          "dropped_records_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Start of the observed dropped-record counter window."
           },
           "sampling_rate": {
             "type": [
@@ -1527,6 +1545,58 @@
             ]
           }
         },
+        "dependentRequired": {
+          "dropped_records": [
+            "dropped_records_since"
+          ],
+          "dropped_records_since": [
+            "dropped_records"
+          ]
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "collection_method": {
+                  "const": "kafka_audit"
+                }
+              },
+              "required": [
+                "collection_method"
+              ]
+            },
+            "then": {
+              "required": [
+                "dropped_records",
+                "dropped_records_since"
+              ],
+              "oneOf": [
+                {
+                  "properties": {
+                    "dropped_records": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "dropped_records_since": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "dropped_records": {
+                      "type": "null"
+                    },
+                    "dropped_records_since": {
+                      "type": "null"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
         "additionalProperties": false
       },
       "Count": {

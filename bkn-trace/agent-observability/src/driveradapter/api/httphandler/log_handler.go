@@ -96,9 +96,14 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	requestID := optionalString(query.RequestID)
 	currentTraceID := optionalString(query.TraceID)
-	relatedTraceIDs := uniqueTraceIDs(result.Records)
+	publicRecords := make([]observabilityvo.LogRecord, 0, len(result.Records))
+	for _, record := range result.Records {
+		projected, _ := projectClientIP(record, false, false)
+		publicRecords = append(publicRecords, projected)
+	}
+	relatedTraceIDs := uniqueTraceIDs(publicRecords)
 	writeJSON(w, r, http.StatusOK, rdto.LogListResponse{
-		Data: rdto.NewOperationAuditRecords(result.Records), NextCursor: nextCursor, Partial: result.Partial,
+		Data: rdto.NewOperationAuditRecords(publicRecords), NextCursor: nextCursor, Partial: result.Partial,
 		Count: rdto.LogCount{Value: &count, Accuracy: accuracy}, SourceStatus: result.SourceStatus,
 		Pagination: rdto.PageMetadata{Page: result.Page, PageSize: result.PageSize},
 		RequestTraceContext: rdto.RequestTraceContext{
@@ -127,14 +132,34 @@ func (handler *LogHandler) GetLog(w http.ResponseWriter, r *http.Request) {
 		writeLogServiceError(w, r, err)
 		return
 	}
+	record, clientIPRedacted := projectClientIP(record, true, observabilityvo.CapabilitiesFor(profile).LogSensitiveFields)
+	redactedFields := []string{}
+	if clientIPRedacted {
+		redactedFields = append(redactedFields, "client_ip")
+	}
 	writeJSON(w, r, http.StatusOK, rdto.LogDetailResponse{
 		Data:            rdto.NewOperationAuditRecord(record),
-		FieldProjection: rdto.LogFieldProjection{PolicyRevision: "operation-audit-1.0", RedactedFields: []string{}},
+		FieldProjection: rdto.LogFieldProjection{PolicyRevision: "operation-audit-1.0", RedactedFields: redactedFields},
 		RequestTraceContext: rdto.RequestTraceContext{
 			RequestID: optionalString(record.RequestID), CurrentTraceID: optionalString(record.TraceID),
 			RelatedTraceIDs: uniqueTraceIDs([]observabilityvo.LogRecord{record}),
 		},
 	})
+}
+
+func projectClientIP(record observabilityvo.LogRecord, detail, sensitiveFields bool) (observabilityvo.LogRecord, bool) {
+	if _, present := record.Attributes["client_ip"]; !present ||
+		(detail && sensitiveFields && record.Category == observabilityvo.CategoryAuditSecurity) {
+		return record, false
+	}
+	attributes := make(map[string]any, len(record.Attributes)-1)
+	for key, value := range record.Attributes {
+		if key != "client_ip" {
+			attributes[key] = value
+		}
+	}
+	record.Attributes = attributes
+	return record, true
 }
 
 func (handler *LogHandler) ListLogSources(w http.ResponseWriter, r *http.Request) {
@@ -268,7 +293,7 @@ func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 	}
 	return observabilityvo.LogQuery{
 		Query: values.Get("q"), TimeFrom: timeFrom, TimeTo: timeTo,
-		BusinessModule: businessModule, Action: strings.TrimSpace(values.Get("action")),
+		BusinessModule: businessModule, SourceID: strings.TrimSpace(values.Get("source_id")), Action: strings.TrimSpace(values.Get("action")),
 		TargetType: strings.TrimSpace(values.Get("target_type")), TargetID: strings.TrimSpace(values.Get("target_id")),
 		Outcomes: outcomes, Categories: categories,
 		ActorID: strings.TrimSpace(values.Get("actor_id")), ActorQuery: strings.TrimSpace(values.Get("actor")), ApplicationID: values.Get("application_id"),

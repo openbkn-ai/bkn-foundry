@@ -35,6 +35,8 @@ type Query struct {
 	TargetID       string
 	Action         string
 	Outcome        string
+	Outcomes       []string
+	ObservedBefore time.Time
 	Cursor         *Position
 	Limit          int
 }
@@ -45,16 +47,37 @@ type Position struct {
 }
 
 type Record struct {
-	EventID    string
-	OccurredAt time.Time
-	SourceID   string
-	Category   string
-	EventName  string
-	ActorID    string
-	TargetType string
-	TargetID   string
-	Action     string
-	Outcome    string
+	EventID             string    `json:"event_id"`
+	OccurredAt          time.Time `json:"occurred_at"`
+	BrokerReceivedAt    time.Time `json:"broker_received_at"`
+	RecordedAt          time.Time `json:"recorded_at"`
+	SourceID            string    `json:"source_id"`
+	Category            string    `json:"category"`
+	EventName           string    `json:"event_name"`
+	BusinessModule      string    `json:"business_module"`
+	ActorID             string    `json:"actor_id"`
+	TargetType          string    `json:"target_type"`
+	TargetID            string    `json:"target_id"`
+	TargetNameSnapshot  string    `json:"target_name_snapshot"`
+	Action              string    `json:"action"`
+	Outcome             string    `json:"outcome"`
+	Environment         string    `json:"environment"`
+	ApplicationID       string    `json:"application_id"`
+	KnowledgeNetworkIDs []string  `json:"knowledge_network_ids"`
+	EffectiveSubjectID  string    `json:"effective_subject_id"`
+	ActorNameSnapshot   string    `json:"actor_name_snapshot"`
+	ActorType           string    `json:"actor_type"`
+	AuthMethod          string    `json:"auth_method"`
+	SourceChannel       string    `json:"source_channel"`
+	Summary             string    `json:"summary"`
+	FailureCode         string    `json:"failure_code"`
+	HTTPStatus          int       `json:"http_status"`
+	Transport           string    `json:"transport"`
+	Method              string    `json:"method"`
+	ClientIP            string    `json:"client_ip"`
+	RequestID           string    `json:"request_id"`
+	TraceID             string    `json:"trace_id"`
+	OperationID         string    `json:"operation_id"`
 }
 
 type Page struct {
