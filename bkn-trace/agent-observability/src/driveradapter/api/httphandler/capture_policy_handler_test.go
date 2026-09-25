@@ -77,11 +77,35 @@ func TestInternalTraceEvidenceHeartbeatRejectsUnboundEndpointKind(t *testing.T) 
 	}), nil, nil, nil, writer)
 	profile := capturePolicyWorkloadProfile()
 	profile.Permissions = nil
-	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"endpoint_kind":"evidence_publisher","instance_id":"publisher#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`, profile)
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`, profile)
+	response := httptest.NewRecorder()
+	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 when verified principal has no endpoint grant", response.Code)
+	}
+}
+
+func TestInternalTraceEvidenceHeartbeatRejectsCallerSuppliedEndpointKind(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
+	}), nil, nil, nil, writer)
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"endpoint_kind":"evidence_publisher","instance_id":"publisher#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`, capturePolicyWorkloadProfile())
 	response := httptest.NewRecorder()
 	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
 	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 for caller-supplied endpoint_kind", response.Code)
+		t.Fatalf("status = %d, want 400 when endpoint_kind is caller-supplied", response.Code)
+	}
+}
+
+func TestInternalTraceGatewayAckRejectsOmittedRequiredQueueCount(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return capturepolicysvc.Snapshot{}, nil }), nil, nil, nil, writer)
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-gap:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/otelcol","process_boot_id":"boot-1","capture_policy_revision":42,"admission_state":"disabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"gap","exported":16,"dropped":2,"gap_reason":"collector_restarted"}}`, capturePolicyWorkloadProfile())
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 when required unaccounted field is omitted", response.Code)
 	}
 }
 

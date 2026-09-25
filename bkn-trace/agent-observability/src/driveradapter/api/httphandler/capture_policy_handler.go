@@ -260,22 +260,50 @@ func (h *CapturePolicyHandler) HeartbeatInternalTraceEvidenceEndpoint(w http.Res
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type gatewayAcknowledgementRequest struct {
-	ContractVersion   string    `json:"contract_version"`
-	GatewayInstanceID string    `json:"gateway_instance_id"`
-	WorkloadIdentity  string    `json:"workload_identity"`
-	ProcessBootID     string    `json:"process_boot_id"`
-	PolicyRevision    uint64    `json:"capture_policy_revision"`
-	Mode              string    `json:"admission_state"`
-	Ready             bool      `json:"ready"`
-	AcknowledgedAt    time.Time `json:"acknowledged_at"`
-	Queue             struct {
-		Status      string  `json:"state"`
-		Exported    uint64  `json:"exported"`
-		Dropped     uint64  `json:"dropped"`
-		Unaccounted *uint64 `json:"unaccounted"`
-		GapReason   string  `json:"gap_reason"`
-	} `json:"queue_disposition"`
+// TraceGatewayAcknowledgementV1 mirrors the frozen wire fixture at
+// bkn-docs/docs/foundry/bkn-trace/testing/trace-evidence-switch/v1/trace-gateway-ack.schema.json.
+// Keep these JSON names and required-field checks aligned with that schema.
+type TraceGatewayAcknowledgementV1 struct {
+	ContractVersion       string                         `json:"contract_version"`
+	GatewayInstanceID     string                         `json:"gateway_instance_id"`
+	WorkloadIdentity      string                         `json:"workload_identity"`
+	ProcessBootID         string                         `json:"process_boot_id"`
+	CapturePolicyRevision *uint64                        `json:"capture_policy_revision"`
+	AdmissionState        string                         `json:"admission_state"`
+	Ready                 bool                           `json:"ready"`
+	AcknowledgedAt        time.Time                      `json:"acknowledged_at"`
+	QueueDisposition      TraceGatewayQueueDispositionV1 `json:"queue_disposition"`
+}
+
+// TraceGatewayQueueDispositionV1 is the required queue_disposition object in
+// TraceGatewayAcknowledgementV1.
+type TraceGatewayQueueDispositionV1 struct {
+	State       string                 `json:"state"`
+	Exported    *uint64                `json:"exported"`
+	Dropped     *uint64                `json:"dropped"`
+	Unaccounted requiredNullableUint64 `json:"unaccounted"`
+	GapReason   string                 `json:"gap_reason,omitempty"`
+}
+
+// requiredNullableUint64 distinguishes a required JSON null from an omitted
+// property. The frozen schema permits null for gap dispositions, not omission.
+type requiredNullableUint64 struct {
+	Value   *uint64
+	Present bool
+}
+
+func (n *requiredNullableUint64) UnmarshalJSON(data []byte) error {
+	n.Present = true
+	if string(data) == "null" {
+		n.Value = nil
+		return nil
+	}
+	var value uint64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	n.Value = &value
+	return nil
 }
 
 func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.ResponseWriter, r *http.Request) {
@@ -304,10 +332,10 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
 		return
 	}
-	var request gatewayAcknowledgementRequest
+	var request TraceGatewayAcknowledgementV1
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil || request.ContractVersion != "TraceGatewayAcknowledgementV1" || request.GatewayInstanceID == "" || request.WorkloadIdentity == "" || request.ProcessBootID == "" || request.PolicyRevision == 0 || request.AcknowledgedAt.IsZero() || !request.Ready {
+	if err := decoder.Decode(&request); err != nil || request.ContractVersion != "TraceGatewayAcknowledgementV1" || request.GatewayInstanceID == "" || request.WorkloadIdentity == "" || request.ProcessBootID == "" || request.CapturePolicyRevision == nil || *request.CapturePolicyRevision == 0 || request.AcknowledgedAt.IsZero() || !request.Ready || request.QueueDisposition.Exported == nil || request.QueueDisposition.Dropped == nil || !request.QueueDisposition.Unaccounted.Present {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "the frozen TraceGatewayAcknowledgementV1 contract is required"})
 		return
 	}
@@ -323,9 +351,9 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "gateway instance and process boot identity do not match"})
 		return
 	}
-	mode := traceadmissionsvc.Mode(request.Mode)
-	queueStatus := traceadmissionsvc.QueueDispositionStatus(request.Queue.Status)
-	ack := traceadmissionsvc.Acknowledgement{Mode: mode, Queue: traceadmissionsvc.QueueDisposition{Status: queueStatus, Exported: int(request.Queue.Exported), Dropped: int(request.Queue.Dropped), Unaccounted: intPointer(request.Queue.Unaccounted)}}
+	mode := traceadmissionsvc.Mode(request.AdmissionState)
+	queueStatus := traceadmissionsvc.QueueDispositionStatus(request.QueueDisposition.State)
+	ack := traceadmissionsvc.Acknowledgement{Mode: mode, Queue: traceadmissionsvc.QueueDisposition{Status: queueStatus, Exported: int(*request.QueueDisposition.Exported), Dropped: int(*request.QueueDisposition.Dropped), Unaccounted: intPointer(request.QueueDisposition.Unaccounted.Value)}}
 	if err := traceadmissionsvc.ValidateAcknowledgement(ack); err != nil || mode != traceadmissionsvc.ModeEnabled && mode != traceadmissionsvc.ModeDisabled {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement does not satisfy the frozen contract"})
 		return
@@ -335,12 +363,12 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 	if mode == traceadmissionsvc.ModeDisabled {
 		ackState, traceDisposition = icapturepolicy.AckDisabled, string(queueStatus)
 	}
-	exported, dropped := request.Queue.Exported, request.Queue.Dropped
-	if !validGatewayQueueDisposition(mode, request.Queue.Status, exported, dropped, request.Queue.Unaccounted, request.Queue.GapReason) {
+	exported, dropped := *request.QueueDisposition.Exported, *request.QueueDisposition.Dropped
+	if !validGatewayQueueDisposition(mode, request.QueueDisposition.State, exported, dropped, request.QueueDisposition.Unaccounted.Value, request.QueueDisposition.GapReason) {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "queue disposition does not satisfy TraceGatewayAcknowledgementV1"})
 		return
 	}
-	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: request.GatewayInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: request.ProcessBootID, PolicyRevision: request.PolicyRevision, Ready: request.Ready, AckState: string(ackState), AcknowledgedAt: &request.AcknowledgedAt, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: request.Queue.Unaccounted, TraceDisposition: traceDisposition, GapReason: request.Queue.GapReason}); err != nil {
+	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: request.GatewayInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: request.ProcessBootID, PolicyRevision: *request.CapturePolicyRevision, Ready: request.Ready, AckState: string(ackState), AcknowledgedAt: &request.AcknowledgedAt, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: request.QueueDisposition.Unaccounted.Value, TraceDisposition: traceDisposition, GapReason: request.QueueDisposition.GapReason}); err != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement was rejected"})
 		return
 	}
