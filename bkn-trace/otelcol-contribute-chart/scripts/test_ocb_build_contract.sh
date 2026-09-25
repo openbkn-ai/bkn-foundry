@@ -28,6 +28,12 @@ require_line "${DOCKERFILE}" 'COPY --from=builder /src/_build/otelcol-openbkn /o
 # temporary module as a side effect.
 require_line "${CONFIG}" 'gomod: github.com/openbkn-ai/bkn-foundry/bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor v0.148.0-openbkn.1'
 require_line "${CONFIG}" 'path: ./processor/traceadmissionprocessor'
+require_line "${CONFIG}" 'gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opensearchexporter v0.148.0'
+
+if grep -Fq 'gomod: go.opentelemetry.io/collector-contrib/exporter/opensearchexporter' "${CONFIG}"; then
+  echo "OpenSearch exporter uses the wrong Go module path" >&2
+  exit 1
+fi
 
 test -f "${ROOT}/processor/traceadmissionprocessor/go.mod"
 test -f "${ROOT}/processor/traceadmissionprocessor/processor.go"
