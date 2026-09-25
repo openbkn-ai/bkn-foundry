@@ -62,7 +62,7 @@ func (s *Store) CloseManifest(ctx context.Context, manifestID, actor string) (st
 		return "", err
 	}
 	if conflictCount != 0 {
-		return "", errors.New("Evidence migration result conflicts block close")
+		return "", errors.New("evidence migration result conflicts block close")
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT r.adjudication,r.entry_id,r.first_observation,
 		DATE_FORMAT(r.first_observed_at,'%Y-%m-%dT%H:%i:%s.%fZ'),CAST(r.offset_id AS CHAR),CAST(r.partition_id AS CHAR),r.topic,
@@ -108,14 +108,14 @@ func (s *Store) CloseManifest(ctx context.Context, manifestID, actor string) (st
 		case "coverage_gap":
 			counts.CoverageGap = incrementDecimal(counts.CoverageGap)
 		default:
-			return "", errors.New("Evidence migration has a nonterminal result")
+			return "", errors.New("evidence migration has a nonterminal result")
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return "", fmt.Errorf("iterate Evidence migration terminal results: %w", err)
 	}
 	if uint64(len(results)) != entryCount {
-		return "", errors.New("Evidence migration close requires one terminal result per entry")
+		return "", errors.New("evidence migration close requires one terminal result per entry")
 	}
 	activatedAt, err := normalizeClosureDBTimestamp(activatedAtText.String)
 	if err != nil || !activatedAtText.Valid {
@@ -143,7 +143,7 @@ func (s *Store) CloseManifest(ctx context.Context, manifestID, actor string) (st
 		return "", fmt.Errorf("close Evidence migration manifest: %w", err)
 	}
 	if changed, err := update.RowsAffected(); err != nil || changed != 1 {
-		return "", errors.New("Evidence migration close CAS failed")
+		return "", errors.New("evidence migration close CAS failed")
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO bkn_trace_evidence_migration_manifest_audit (manifest_id,action,actor,before_digest,after_digest,occurred_at)
 		VALUES (?,'close',?,?,?,UTC_TIMESTAMP(3))`, manifestID, actor, entriesDigestValue, digest); err != nil {
@@ -166,7 +166,7 @@ func nullableSQLString(value sql.NullString) *string {
 func normalizeClosureDBTimestamp(value string) (string, error) {
 	parsed, err := time.Parse(time.RFC3339Nano, value)
 	if err != nil || parsed.Nanosecond()%int(time.Millisecond) != 0 {
-		return "", errors.New("Evidence migration database timestamp is not millisecond UTC")
+		return "", errors.New("evidence migration database timestamp is not millisecond UTC")
 	}
 	return parsed.UTC().Format("2006-01-02T15:04:05.000Z"), nil
 }

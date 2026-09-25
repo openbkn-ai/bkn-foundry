@@ -19,12 +19,12 @@ import (
 // (event_id + payload_hash) matches exactly.
 func (s *Store) ReconcileManifest(ctx context.Context, manifestID string) error {
 	if manifestID == "" {
-		return errors.New("Evidence migration manifest ID is required")
+		return errors.New("evidence migration manifest ID is required")
 	}
 	var state string
 	err := s.db.QueryRowContext(ctx, "SELECT state FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=?", manifestID).Scan(&state)
 	if errors.Is(err, sql.ErrNoRows) {
-		return errors.New("Evidence migration manifest not found")
+		return errors.New("evidence migration manifest not found")
 	}
 	if err != nil {
 		return fmt.Errorf("read Evidence migration reconciliation state: %w", err)
@@ -33,7 +33,7 @@ func (s *Store) ReconcileManifest(ctx context.Context, manifestID string) error 
 		return nil
 	}
 	if state != string(ievidencemigration.ManifestActive) {
-		return errors.New("Evidence migration reconciliation requires an active manifest")
+		return errors.New("evidence migration reconciliation requires an active manifest")
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT e.entry_id,e.classification,e.classification_reason,e.event_id,e.payload_hash
 		FROM bkn_trace_evidence_migration_entries e WHERE e.manifest_id=?
