@@ -66,7 +66,10 @@ func quote(b []byte, s string) ([]byte, error) {
 	return append(b, '"'), nil
 }
 func appendEntry(b []byte, e frozenEntry) ([]byte, error) {
-	m, _ := canonicalEntry(e)
+	m, err := canonicalEntry(e)
+	if err != nil {
+		return nil, err
+	}
 	b = append(b, '{')
 	for i, k := range entryKeys {
 		if i > 0 {

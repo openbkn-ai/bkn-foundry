@@ -25,6 +25,12 @@ func TestManifestEntryRejectsOutsideC1ASCII(t *testing.T) {
 	}
 }
 
+func TestEntriesDigestRejectsOutsideC1ASCIIWithoutPanic(t *testing.T) {
+	if _, err := entriesDigest([]frozenEntry{{Classification: "中文"}}); err == nil {
+		t.Fatal("expected ASCII subset error")
+	}
+}
+
 func TestManifestEntryQuoteUsesJSONControlEscapes(t *testing.T) {
 	got, err := quote(nil, "\x01\b\t\n\f\r")
 	if err != nil {
