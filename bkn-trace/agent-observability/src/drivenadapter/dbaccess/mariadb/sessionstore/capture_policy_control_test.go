@@ -282,10 +282,55 @@ func TestCapturePolicyControlRejectsRollingBackRetryWithDifferentExpectedSet(t *
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT policy_revision, phase, lease_token, lease_expires_at, compensation_revision, restored_state").WithArgs("op-11").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "phase", "lease_token", "lease_expires_at", "compensation_revision", "restored_state"}).AddRow(uint64(9), icapturepolicy.PhaseRollingBack, uint64(4), now.Add(time.Minute), uint64(10), icapturepolicy.StateEnabled))
 	mock.ExpectQuery(`SELECT current_revision, desired_state, effective_state, COALESCE\(active_operation_id`).WillReturnRows(sqlmock.NewRows([]string{"current_revision", "desired_state", "effective_state", "active_operation_id"}).AddRow(uint64(10), icapturepolicy.StateEnabled, icapturepolicy.StateEnabled, "op-11"))
-	mock.ExpectQuery("SELECT endpoint_kind, instance_id, workload_identity, process_boot_id").WithArgs("op-11", uint64(10)).WillReturnRows(sqlmock.NewRows([]string{"endpoint_kind", "instance_id", "workload_identity", "process_boot_id", "ready", "ack_state", "acknowledged_at", "exported_count", "dropped_count", "unaccounted_count", "trace_disposition", "last_accepted_sequence", "published_count", "queue_empty", "evidence_disposition", "gap_reason"}).AddRow(icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1", false, icapturepolicy.AckPending, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil))
+	mock.ExpectQuery("SELECT endpoint_kind, instance_id, workload_identity, process_boot_id").WithArgs("op-11", uint64(10)).WillReturnRows(sqlmock.NewRows([]string{"endpoint_kind", "instance_id", "workload_identity", "process_boot_id"}).AddRow(icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1"))
 	mock.ExpectRollback()
 	err = store.BeginRollback(context.Background(), "op-11", 4, 10, icapturepolicy.StateEnabled, []icapturepolicy.ExpectedAcknowledgement{{OperationID: "op-11", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#2", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-2", PolicyRevision: 10, AckState: icapturepolicy.AckPending}}, now)
 	if err != icapturepolicy.ErrExpectedSetConflict {
+		t.Fatalf("BeginRollback() error = %v, want expected-set conflict", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlAllowsRollingBackRetryAfterAcknowledgementProgress(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT policy_revision, phase, lease_token, lease_expires_at, compensation_revision, restored_state").WithArgs("op-13").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "phase", "lease_token", "lease_expires_at", "compensation_revision", "restored_state"}).AddRow(uint64(9), icapturepolicy.PhaseRollingBack, uint64(4), now.Add(time.Minute), uint64(10), icapturepolicy.StateEnabled))
+	mock.ExpectQuery(`SELECT current_revision, desired_state, effective_state, COALESCE\(active_operation_id`).WillReturnRows(sqlmock.NewRows([]string{"current_revision", "desired_state", "effective_state", "active_operation_id"}).AddRow(uint64(10), icapturepolicy.StateEnabled, icapturepolicy.StateEnabled, "op-13"))
+	// The ACK row has already advanced beyond pending in storage. The retry
+	// must compare membership only and therefore still be idempotent.
+	mock.ExpectQuery("SELECT endpoint_kind, instance_id, workload_identity, process_boot_id").WithArgs("op-13", uint64(10)).WillReturnRows(sqlmock.NewRows([]string{"endpoint_kind", "instance_id", "workload_identity", "process_boot_id"}).AddRow(icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1"))
+	mock.ExpectCommit()
+	if err := store.BeginRollback(context.Background(), "op-13", 4, 10, icapturepolicy.StateEnabled, []icapturepolicy.ExpectedAcknowledgement{{OperationID: "op-13", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 10, AckState: icapturepolicy.AckPending}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlRejectsDuplicateRollingBackRetryIdentity(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT policy_revision, phase, lease_token, lease_expires_at, compensation_revision, restored_state").WithArgs("op-14").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "phase", "lease_token", "lease_expires_at", "compensation_revision", "restored_state"}).AddRow(uint64(9), icapturepolicy.PhaseRollingBack, uint64(4), now.Add(time.Minute), uint64(10), icapturepolicy.StateEnabled))
+	mock.ExpectQuery(`SELECT current_revision, desired_state, effective_state, COALESCE\(active_operation_id`).WillReturnRows(sqlmock.NewRows([]string{"current_revision", "desired_state", "effective_state", "active_operation_id"}).AddRow(uint64(10), icapturepolicy.StateEnabled, icapturepolicy.StateEnabled, "op-14"))
+	mock.ExpectQuery("SELECT endpoint_kind, instance_id, workload_identity, process_boot_id").WithArgs("op-14", uint64(10)).WillReturnRows(sqlmock.NewRows([]string{"endpoint_kind", "instance_id", "workload_identity", "process_boot_id"}).AddRow(icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1").AddRow(icapturepolicy.EndpointEvidencePublisher, "publisher#1", "sa/publisher", "boot-1"))
+	mock.ExpectRollback()
+	duplicate := icapturepolicy.ExpectedAcknowledgement{OperationID: "op-14", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 10, AckState: icapturepolicy.AckPending}
+	if err := store.BeginRollback(context.Background(), "op-14", 4, 10, icapturepolicy.StateEnabled, []icapturepolicy.ExpectedAcknowledgement{duplicate, duplicate}, now); err != icapturepolicy.ErrExpectedSetConflict {
 		t.Fatalf("BeginRollback() error = %v, want expected-set conflict", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
