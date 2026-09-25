@@ -199,8 +199,13 @@ bash scripts/test_4c8g_baseline.sh charts/otelcol-contrib
 安装示例：
 
 ```bash
-helm upgrade --install otelcol-contrib charts/otelcol-contrib -n observability --create-namespace
+helm upgrade --install otelcol-contrib charts/otelcol-contrib \
+  -n observability \
+  --create-namespace \
+  --set 'image.tag=<built-version>'
 ```
+
+源码 Chart 的 `image.tag` 是供 release workflow 替换的 `__VERSION__` 占位符，不能直接用于本地部署。上例中的 `<built-version>` 必须是已经构建并可被集群拉取的 OCB 镜像 tag；发布后的 OCI Chart 会由 `reusable-chart.yml` 自动替换为对应 release version。
 
 如果你在本地开发阶段使用 Docker 启动的 OpenSearch，可覆盖为宿主机地址，例如：
 
@@ -208,6 +213,7 @@ helm upgrade --install otelcol-contrib charts/otelcol-contrib -n observability -
 helm upgrade --install otelcol-contrib charts/otelcol-contrib \
   -n observability \
   --create-namespace \
+  --set 'image.tag=<built-version>' \
   --set opensearchExporter.http.endpoint=http://192.168.139.3:9200
 ```
 
@@ -217,6 +223,7 @@ helm upgrade --install otelcol-contrib charts/otelcol-contrib \
 helm upgrade --install otelcol-contrib charts/otelcol-contrib \
   -n observability \
   --create-namespace \
+  --set 'image.tag=<built-version>' \
   --set opensearchExporter.http.endpoint=http://opensearch-cluster-master.observability.svc.cluster.local:9200
 ```
 

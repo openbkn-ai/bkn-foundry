@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="${ROOT}/builder-config.yaml"
 DOCKERFILE="${ROOT}/Dockerfile.openbkn"
 VALUES="${ROOT}/charts/otelcol-contrib/values.yaml"
+README="${ROOT}/README.md"
 
 require_line() {
   local file="$1"
@@ -31,6 +32,19 @@ require_line "${CONFIG}" 'path: ./processor/traceadmissionprocessor'
 test -f "${ROOT}/processor/traceadmissionprocessor/go.mod"
 test -f "${ROOT}/processor/traceadmissionprocessor/processor.go"
 require_line "${VALUES}" 'tag: "__VERSION__"'
+require_line "${README}" "--set 'image.tag=<built-version>'"
+
+# A source checkout must be deployable only when the operator supplies a real
+# built image tag; the release workflow is the only path that substitutes the
+# __VERSION__ sentinel in a packaged chart.
+rendered="$(helm template ocb-contract "${ROOT}/charts/otelcol-contrib" \
+  --set 'image.tag=0.2.0-local' \
+  --set traceAdmission.clientID=trace-gateway \
+  --set traceAdmission.clientSecretSecret=trace-gateway-oauth \
+  --set traceAdmission.currentKeyID=trace-policy-2026q3 \
+  --set traceAdmission.currentPublicKeySecret=trace-policy-public \
+  --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol)"
+grep -Fq 'image: "ghcr.io/openbkn-ai/otelcol-openbkn:0.2.0-local"' <<<"${rendered}"
 
 if grep -Fq '/src/bkn-trace/otelcol-contribute-chart/' "${DOCKERFILE}"; then
   echo "Dockerfile contains a repository-root path that is invalid for the service build context" >&2
