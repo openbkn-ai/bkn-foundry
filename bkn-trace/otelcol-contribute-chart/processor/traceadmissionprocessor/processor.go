@@ -247,17 +247,32 @@ func (p *traceAdmissionProcessor) pullPolicy(ctx context.Context) (traceadmissio
 }
 
 type configurationReadModel struct {
-	Kind              string  `json:"kind"`
-	PolicyRevision    uint64  `json:"policy_revision"`
-	ActiveOperationID *string `json:"active_operation_id"`
-	// Revision/Operation are retained only to consume the currently deployed
-	// control-plane response while it converges on the frozen configuration_get
-	// contract. The signed policy and ACK contracts remain strict.
-	Revision  uint64 `json:"revision"`
-	Operation struct {
-		ID    string `json:"id"`
-		Phase string `json:"phase"`
-	} `json:"operation"`
+	Kind                    string              `json:"kind"`
+	DesiredState            string              `json:"desired_state"`
+	EffectiveState          string              `json:"effective_state"`
+	PolicyRevision          uint64              `json:"policy_revision"`
+	LastStableRevision      uint64              `json:"last_stable_revision"`
+	ActiveOperationID       *string             `json:"active_operation_id"`
+	HeartbeatIntervalSecond int                 `json:"heartbeat_interval_seconds"`
+	LeaseTTLSeconds         int                 `json:"lease_ttl_seconds"`
+	AdmissionBudget         configurationBudget `json:"admission_budget"`
+}
+
+type configurationBudget struct {
+	ContractVersion string                 `json:"contract_version"`
+	Profile         string                 `json:"profile"`
+	SampledAt       time.Time              `json:"sampled_at"`
+	FreshUntil      time.Time              `json:"fresh_until"`
+	Measurements    []configurationMeasure `json:"measurements"`
+}
+
+type configurationMeasure struct {
+	Metric     string    `json:"metric"`
+	Source     string    `json:"source"`
+	SampleTime time.Time `json:"sample_time"`
+	Value      float64   `json:"value"`
+	Threshold  float64   `json:"threshold"`
+	Fresh      bool      `json:"fresh"`
 }
 
 func (p *traceAdmissionProcessor) pullActiveOperation(ctx context.Context, revision uint64) (string, error) {
@@ -274,31 +289,18 @@ func (p *traceAdmissionProcessor) pullActiveOperation(ctx context.Context, revis
 		return "", fmt.Errorf("configuration endpoint returned %s", response.Status)
 	}
 	var model configurationReadModel
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&model); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&model); err != nil {
 		return "", err
 	}
-	if model.Kind != "" && model.Kind != "configuration_get" {
-		return "", fmt.Errorf("configuration endpoint returned unsupported kind %q", model.Kind)
+	if model.Kind != "configuration_get" || (model.DesiredState != "enabled" && model.DesiredState != "disabled") || (model.EffectiveState != "enabled" && model.EffectiveState != "disabled") || model.PolicyRevision == 0 || model.LastStableRevision == 0 || model.HeartbeatIntervalSecond != 10 || model.LeaseTTLSeconds != 30 || model.AdmissionBudget.ContractVersion != "AdmissionBudgetV1" || model.AdmissionBudget.Profile == "" || model.AdmissionBudget.SampledAt.IsZero() || model.AdmissionBudget.FreshUntil.IsZero() || !model.AdmissionBudget.FreshUntil.After(model.AdmissionBudget.SampledAt) || len(model.AdmissionBudget.Measurements) == 0 {
+		return "", errors.New("configuration endpoint returned an invalid frozen configuration_get contract")
 	}
-	if model.PolicyRevision != 0 {
-		if model.PolicyRevision != revision || model.ActiveOperationID == nil || strings.TrimSpace(*model.ActiveOperationID) == "" {
-			return "", nil
-		}
-		return strings.TrimSpace(*model.ActiveOperationID), nil
-	}
-	if model.Revision != revision || !activeOperationPhase(model.Operation.Phase) || model.Operation.ID == "" {
+	if model.PolicyRevision != revision || model.ActiveOperationID == nil || strings.TrimSpace(*model.ActiveOperationID) == "" {
 		return "", nil
 	}
-	return model.Operation.ID, nil
-}
-
-func activeOperationPhase(phase string) bool {
-	switch phase {
-	case "pending", "enabling", "disabling", "rolling_back":
-		return true
-	default:
-		return false
-	}
+	return strings.TrimSpace(*model.ActiveOperationID), nil
 }
 
 type heartbeatRequest struct {

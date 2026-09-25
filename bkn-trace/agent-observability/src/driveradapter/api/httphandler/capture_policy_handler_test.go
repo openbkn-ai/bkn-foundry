@@ -31,6 +31,16 @@ type capturePolicyInternalWriter struct {
 	ack   icapturepolicy.ExpectedAcknowledgement
 }
 
+type capturePolicyBudgetReader struct{}
+
+func (capturePolicyBudgetReader) ReadAdmissionBudget(context.Context) (capturepolicysvc.AdmissionBudget, error) {
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	return capturepolicysvc.AdmissionBudget{
+		ContractVersion: "AdmissionBudgetV1", Profile: "default", SampledAt: now, FreshUntil: now.Add(time.Minute),
+		Measurements: []capturepolicysvc.AdmissionMeasurement{{Metric: "trace_opensearch_capacity", Source: "opensearch", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true}},
+	}, nil
+}
+
 func marshalJSON(t *testing.T, value any) string {
 	t.Helper()
 	data, err := json.Marshal(value)
@@ -472,6 +482,7 @@ func TestCapturePolicyHandlerReturnsTruthfulStateModel(t *testing.T) {
 			},
 		}, nil
 	}))
+	handler.SetAdmissionBudgetReader(capturePolicyBudgetReader{})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/trace-evidence-configuration", nil)
 	response := httptest.NewRecorder()
@@ -484,12 +495,57 @@ func TestCapturePolicyHandlerReturnsTruthfulStateModel(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if payload["desired_state"] != string(capturepolicysvc.StateEnabled) || payload["effective_state"] != string(capturepolicysvc.StateEnabling) {
+	if payload["kind"] != "configuration_get" || payload["desired_state"] != string(capturepolicysvc.StateEnabled) || payload["effective_state"] != string(capturepolicysvc.StateDisabled) || payload["policy_revision"] != float64(9) || payload["active_operation_id"] != "op-9" {
 		t.Fatalf("truthful state fields missing: %v", payload)
 	}
-	operation, ok := payload["operation"].(map[string]any)
-	if !ok || operation["phase"] != string(capturepolicysvc.PhaseEnabling) {
-		t.Fatalf("operation phase missing: %v", payload["operation"])
+	if _, legacy := payload["revision"]; legacy {
+		t.Fatal("legacy revision field leaked into configuration_get")
+	}
+	if _, legacy := payload["operation"]; legacy {
+		t.Fatal("legacy operation object leaked into configuration_get")
+	}
+}
+
+func TestCapturePolicyHandlerFailsClosedWithoutAdmissionBudget(t *testing.T) {
+	handler := NewCapturePolicyHandler(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{
+			Revision: 1, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 1,
+			Operation: capturepolicysvc.Operation{ID: "op-1", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled},
+		}, nil
+	}))
+	response := httptest.NewRecorder()
+	handler.GetTraceEvidenceConfiguration(response, httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/trace-evidence-configuration", nil))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["code"] != "POLICY_RECONCILER_UNAVAILABLE" {
+		t.Fatalf("error code = %v, want POLICY_RECONCILER_UNAVAILABLE", payload["code"])
+	}
+}
+
+func TestCapturePolicyHandlerOmitsTerminalActiveOperationID(t *testing.T) {
+	handler := NewCapturePolicyHandler(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{
+			Revision: 10, DesiredState: capturepolicysvc.StateDisabled, EffectiveState: capturepolicysvc.StateDisabled, LastStableRevision: 10,
+			Operation: capturepolicysvc.Operation{ID: "op-10", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateDisabled},
+		}, nil
+	}))
+	handler.SetAdmissionBudgetReader(capturePolicyBudgetReader{})
+	response := httptest.NewRecorder()
+	handler.GetTraceEvidenceConfiguration(response, httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/trace-evidence-configuration", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payload["active_operation_id"]; ok {
+		t.Fatalf("terminal operation must not be advertised as active: %v", payload)
 	}
 }
 

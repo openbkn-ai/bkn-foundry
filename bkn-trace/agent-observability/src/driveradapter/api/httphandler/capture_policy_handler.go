@@ -28,6 +28,10 @@ type CapturePolicyControlWriter interface {
 	RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
 }
 
+type AdmissionBudgetReader interface {
+	ReadAdmissionBudget(context.Context) (capturepolicysvc.AdmissionBudget, error)
+}
+
 // CapturePolicyHandler exposes the frozen Trace/Evidence control-plane
 // read/write model. Bootstrap owns the route and Access Profile middleware.
 type CapturePolicyHandler struct {
@@ -38,6 +42,13 @@ type CapturePolicyHandler struct {
 	}
 	signer CapturePolicySigner
 	writer CapturePolicyControlWriter
+	budget AdmissionBudgetReader
+}
+
+func (h *CapturePolicyHandler) SetAdmissionBudgetReader(reader AdmissionBudgetReader) {
+	if h != nil {
+		h.budget = reader
+	}
 }
 
 func NewCapturePolicyHandler(reader capturepolicysvc.Reader, commanders ...capturepolicysvc.Commander) *CapturePolicyHandler {
@@ -115,7 +126,51 @@ func (h *CapturePolicyHandler) GetTraceEvidenceConfiguration(w http.ResponseWrit
 		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_UNAVAILABLE", Message: "capture policy is not available"})
 		return
 	}
-	writeJSON(w, r, http.StatusOK, rdto.TraceEvidenceConfigurationResponse(snapshot))
+	if h.budget == nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "admission budget is not available"})
+		return
+	}
+	budget, err := h.budget.ReadAdmissionBudget(contextWithRequest(r))
+	if err != nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "admission budget is not available"})
+		return
+	}
+	response, err := frozenConfigurationGetResponse(snapshot, budget)
+	if err != nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "capture policy cannot satisfy the frozen configuration contract"})
+		return
+	}
+	writeJSON(w, r, http.StatusOK, response)
+}
+
+func frozenConfigurationGetResponse(snapshot capturepolicysvc.Snapshot, budget capturepolicysvc.AdmissionBudget) (capturepolicysvc.ConfigurationGetResponse, error) {
+	if budget.ContractVersion != "AdmissionBudgetV1" || budget.Profile == "" || budget.SampledAt.IsZero() || !budget.FreshUntil.After(budget.SampledAt) || len(budget.Measurements) == 0 {
+		return capturepolicysvc.ConfigurationGetResponse{}, errors.New("invalid admission budget")
+	}
+	response := capturepolicysvc.ConfigurationGetResponse{
+		Kind: "configuration_get", DesiredState: snapshot.DesiredState, PolicyRevision: snapshot.Revision,
+		LastStableRevision: snapshot.LastStableRevision, HeartbeatIntervalSecs: 10, LeaseTTLSeconds: 30,
+		AdmissionBudget: budget,
+	}
+	if response.DesiredState != capturepolicysvc.StateEnabled && response.DesiredState != capturepolicysvc.StateDisabled {
+		return capturepolicysvc.ConfigurationGetResponse{}, errors.New("invalid desired state")
+	}
+	response.EffectiveState = snapshot.EffectiveState
+	if response.EffectiveState != capturepolicysvc.StateEnabled && response.EffectiveState != capturepolicysvc.StateDisabled {
+		switch snapshot.Operation.RequestedState {
+		case capturepolicysvc.StateEnabled:
+			response.EffectiveState = capturepolicysvc.StateDisabled
+		case capturepolicysvc.StateDisabled:
+			response.EffectiveState = capturepolicysvc.StateEnabled
+		default:
+			return capturepolicysvc.ConfigurationGetResponse{}, errors.New("invalid effective state")
+		}
+	}
+	if traceGatewayOperationActive(snapshot.Operation.Phase) {
+		operationID := snapshot.Operation.ID
+		response.ActiveOperationID = &operationID
+	}
+	return response, nil
 }
 
 func (h *CapturePolicyHandler) GetTraceEvidenceOperation(w http.ResponseWriter, r *http.Request) {

@@ -43,7 +43,7 @@ func TestProcessorUsesFrozenPolicySnapshotAndFailsClosedForLegacyField(t *testin
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy": {status: http.StatusOK, body: mustJSON(snapshot)},
-		"https://safe.internal/config": {status: http.StatusOK, body: []byte(`{"revision":42,"operation":{"id":"op-42","phase":"enabling"}}`)},
+		"https://safe.internal/config": {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
 		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 	}}
 	p, calls := newTestProcessor(t, Config{
@@ -82,7 +82,7 @@ func TestProcessorUsesClientCredentialsAndSendsBearerOnHeartbeatAndAck(t *testin
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy":               {status: http.StatusOK, body: mustJSON(snapshot)},
-		"https://safe.internal/config":               {status: http.StatusOK, body: []byte(`{"revision":42,"operation":{"id":"op-42","phase":"disabling"}}`)},
+		"https://safe.internal/config":               {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
 		"https://safe.internal/token":                {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 		"https://safe.internal/heartbeat":            {status: http.StatusNoContent},
 		"https://safe.internal/operations/op-42:ack": {status: http.StatusNoContent},
@@ -196,6 +196,20 @@ func TestProcessorUsesFrozenConfigurationActiveOperationCandidate(t *testing.T) 
 	}
 }
 
+func TestProcessorRejectsLegacyConfigurationReadModel(t *testing.T) {
+	transport := &scriptedTransport{responses: map[string]scriptedResponse{
+		"https://safe.internal/config": {status: http.StatusOK, body: []byte(`{"revision":42,"operation":{"id":"op-42","phase":"enabling"}}`)},
+	}}
+	p, _ := newTestProcessor(t, Config{
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
+		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
+		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(make([]byte, ed25519.PublicKeySize)), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+	}, transport)
+	if _, err := p.pullActiveOperation(context.Background(), 42); err == nil {
+		t.Fatal("legacy configuration read model was accepted")
+	}
+}
+
 func TestFactorySupportsTracesOnly(t *testing.T) {
 	factory := NewFactory()
 	if factory.Type() != component.MustNewType("traceadmission") {
@@ -221,7 +235,7 @@ func TestProcessorDropsWhenSignedSnapshotExpires(t *testing.T) {
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy": {status: http.StatusOK, body: mustJSON(snapshot)},
-		"https://safe.internal/config": {status: http.StatusOK, body: []byte(`{"revision":42,"operation":{"id":"op-42","phase":"enabling"}}`)},
+		"https://safe.internal/config": {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
 		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 	}}
 	p, calls := newTestProcessor(t, Config{
@@ -258,7 +272,7 @@ func TestProcessorDoesNotAckWhenConfigurationRevisionDoesNotMatchSnapshot(t *tes
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy": {status: http.StatusOK, body: mustJSON(snapshot)},
-		"https://safe.internal/config": {status: http.StatusOK, body: []byte(`{"revision":41,"operation":{"id":"op-41","phase":"enabling"}}`)},
+		"https://safe.internal/config": {status: http.StatusOK, body: frozenConfigurationBody(41, "op-41")},
 		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 	}}
 	p, _ := newTestProcessor(t, Config{
@@ -276,6 +290,19 @@ func TestProcessorDoesNotAckWhenConfigurationRevisionDoesNotMatchSnapshot(t *tes
 			t.Fatalf("ACK sent for mismatched configuration revision: %s", request.URL.Path)
 		}
 	}
+}
+
+func frozenConfigurationBody(revision uint64, operationID string) []byte {
+	return mustJSON(map[string]any{
+		"kind": "configuration_get", "desired_state": "disabled", "effective_state": "disabled",
+		"policy_revision": revision, "last_stable_revision": revision - 1, "active_operation_id": operationID,
+		"heartbeat_interval_seconds": 10, "lease_ttl_seconds": 30,
+		"admission_budget": map[string]any{
+			"contract_version": "AdmissionBudgetV1", "profile": "default",
+			"sampled_at": "2026-09-25T08:00:00Z", "fresh_until": "2026-09-25T08:01:00Z",
+			"measurements": []any{map[string]any{"metric": "trace_opensearch_capacity", "source": "opensearch", "sample_time": "2026-09-25T08:00:00Z", "value": 0.5, "threshold": 0.8, "fresh": true}},
+		},
+	})
 }
 
 func newTestProcessor(t *testing.T, config Config, transport *scriptedTransport) (*traceAdmissionProcessor, *int32) {

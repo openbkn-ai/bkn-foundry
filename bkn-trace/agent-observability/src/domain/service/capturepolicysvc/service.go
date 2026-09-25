@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 var (
@@ -87,6 +88,38 @@ type Snapshot struct {
 	CoverageGap        bool                      `json:"coverage_gap"`
 	Operation          Operation                 `json:"operation"`
 	Acknowledgements   []EndpointAcknowledgement `json:"acknowledgements"`
+}
+
+// AdmissionMeasurement and AdmissionBudget are the frozen configuration_get
+// read-model contract. The control plane must not fabricate a healthy budget;
+// callers without a current provider must fail closed at the HTTP boundary.
+type AdmissionMeasurement struct {
+	Metric     string    `json:"metric"`
+	Source     string    `json:"source"`
+	SampleTime time.Time `json:"sample_time"`
+	Value      float64   `json:"value"`
+	Threshold  float64   `json:"threshold"`
+	Fresh      bool      `json:"fresh"`
+}
+
+type AdmissionBudget struct {
+	ContractVersion string                 `json:"contract_version"`
+	Profile         string                 `json:"profile"`
+	SampledAt       time.Time              `json:"sampled_at"`
+	FreshUntil      time.Time              `json:"fresh_until"`
+	Measurements    []AdmissionMeasurement `json:"measurements"`
+}
+
+type ConfigurationGetResponse struct {
+	Kind                  string          `json:"kind"`
+	DesiredState          State           `json:"desired_state"`
+	EffectiveState        State           `json:"effective_state"`
+	PolicyRevision        uint64          `json:"policy_revision"`
+	LastStableRevision    uint64          `json:"last_stable_revision"`
+	ActiveOperationID     *string         `json:"active_operation_id,omitempty"`
+	HeartbeatIntervalSecs int             `json:"heartbeat_interval_seconds"`
+	LeaseTTLSeconds       int             `json:"lease_ttl_seconds"`
+	AdmissionBudget       AdmissionBudget `json:"admission_budget"`
 }
 
 type ChangeRequest struct {
