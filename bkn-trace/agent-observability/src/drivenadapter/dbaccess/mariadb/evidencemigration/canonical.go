@@ -1,0 +1,84 @@
+// Copyright (c) 2026 OpenBKN
+// SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt.
+
+package evidencemigration
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"sort"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+)
+
+// frozenEntry is the C1 fixed 13-field manifest-entry domain, not a general JSON value.
+type frozenEntry struct{ Classification, ClassificationReason, EventID, ManifestID, PayloadHash, ProducerEpoch, ProducerID, ProducerSequence, ProducerStreamID, SourcePrimaryKey, SourceService, SourceStatus, SourceTable string }
+
+func nullable(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+func canonicalEntry(e frozenEntry) (map[string]any, error) {
+	return map[string]any{"classification": e.Classification, "classification_reason": e.ClassificationReason, "event_id": nullable(e.EventID), "manifest_id": e.ManifestID, "payload_hash": nullable(e.PayloadHash), "producer_epoch": nullable(e.ProducerEpoch), "producer_id": nullable(e.ProducerID), "producer_sequence": nullable(e.ProducerSequence), "producer_stream_id": nullable(e.ProducerStreamID), "source_primary_key": e.SourcePrimaryKey, "source_service": e.SourceService, "source_status": e.SourceStatus, "source_table": e.SourceTable}, nil
+}
+
+var entryKeys = []string{"classification", "classification_reason", "event_id", "manifest_id", "payload_hash", "producer_epoch", "producer_id", "producer_sequence", "producer_stream_id", "source_primary_key", "source_service", "source_status", "source_table"}
+
+func quote(b []byte, s string) ([]byte, error) {
+	if !utf8.ValidString(s) {
+		return nil, errors.New("manifest entry string is not valid UTF-8")
+	}
+	return strconv.AppendQuote(b, s), nil
+}
+func appendEntry(b []byte, e frozenEntry) ([]byte, error) {
+	m, _ := canonicalEntry(e)
+	b = append(b, '{')
+	for i, k := range entryKeys {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b, _ = quote(b, k)
+		b = append(b, ':')
+		if m[k] == nil {
+			b = append(b, "null"...)
+		} else {
+			var err error
+			b, err = quote(b, m[k].(string))
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return append(b, '}'), nil
+}
+func entriesDigest(entries []frozenEntry) (string, error) {
+	ordered := append([]frozenEntry(nil), entries...)
+	sort.Slice(ordered, func(i, j int) bool {
+		a, b := ordered[i], ordered[j]
+		for _, p := range [][2]string{{a.SourceService, b.SourceService}, {a.SourceTable, b.SourceTable}, {a.SourcePrimaryKey, b.SourcePrimaryKey}} {
+			if p[0] != p[1] {
+				return strings.Compare(p[0], p[1]) < 0
+			}
+		}
+		return false
+	})
+	raw := []byte{'['}
+	for i, e := range ordered {
+		if i > 0 {
+			raw = append(raw, ',')
+		}
+		var err error
+		raw, err = appendEntry(raw, e)
+		if err != nil {
+			return "", err
+		}
+	}
+	raw = append(raw, ']')
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}
