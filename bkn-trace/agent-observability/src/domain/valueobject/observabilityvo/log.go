@@ -5,7 +5,10 @@
 
 package observabilityvo
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type ResourceRef struct {
 	ResourceType string `json:"resource_type"`
@@ -142,12 +145,28 @@ type SourceStatus struct {
 	LatencyMS           *int64     `json:"latency_ms"`
 	CollectionMethod    string     `json:"collection_method,omitempty"`
 	CoveredModules      []string   `json:"covered_modules,omitempty"`
-	DroppedRecords      *int64     `json:"dropped_records"`
-	DroppedRecordsSince *time.Time `json:"dropped_records_since"`
+	DroppedRecords      *int64     `json:"dropped_records,omitempty"`
+	DroppedRecordsSince *time.Time `json:"dropped_records_since,omitempty"`
 	SamplingRate        *float64   `json:"sampling_rate,omitempty"`
 	SampledRecords      *int64     `json:"sampled_records,omitempty"`
 	CountAccuracy       string     `json:"count_accuracy,omitempty"`
 	Categories          []string   `json:"-"`
+}
+
+func (status SourceStatus) MarshalJSON() ([]byte, error) {
+	type sourceStatusJSON SourceStatus
+	if status.CollectionMethod != "kafka_audit" && status.DroppedRecords == nil && status.DroppedRecordsSince == nil {
+		return json.Marshal(sourceStatusJSON(status))
+	}
+	return json.Marshal(struct {
+		sourceStatusJSON
+		DroppedRecords      *int64     `json:"dropped_records"`
+		DroppedRecordsSince *time.Time `json:"dropped_records_since"`
+	}{
+		sourceStatusJSON:    sourceStatusJSON(status),
+		DroppedRecords:      status.DroppedRecords,
+		DroppedRecordsSince: status.DroppedRecordsSince,
+	})
 }
 
 type ListResult struct {

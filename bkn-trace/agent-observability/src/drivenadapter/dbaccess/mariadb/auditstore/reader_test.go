@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -81,6 +82,35 @@ func TestReaderAppliesKeysetCursorWithoutInterpolatingValues(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestReaderDefaultsNonPositiveLimits(t *testing.T) {
+	for _, limit := range []int{0, -1} {
+		t.Run(fmt.Sprintf("limit_%d", limit), func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			reader, err := NewReader(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			from := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT event_id, source_id, payload, occurred_at, broker_received_at, recorded_at FROM bkn_audit.audit_event_202609")).
+				WithArgs(from, from.Add(time.Hour), "audit.admin", 51).
+				WillReturnRows(sqlmock.NewRows([]string{"event_id", "source_id", "payload", "occurred_at", "broker_received_at", "recorded_at"}))
+
+			if _, err := reader.Query(context.Background(), auditsvc.Query{
+				Categories: []string{"audit.admin"}, From: from, To: from.Add(time.Hour), Limit: limit,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

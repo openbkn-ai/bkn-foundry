@@ -30,6 +30,12 @@ func NewReader(db *sql.DB) (*Reader, error) {
 }
 
 func (reader *Reader) Query(ctx context.Context, query auditsvc.Query) (auditsvc.Page, error) {
+	// logsvc normalizes absent limits to 50; retain that boundary default for
+	// direct Reader callers so the keyset slice is never indexed by a negative
+	// or zero limit.
+	if query.Limit <= 0 {
+		query.Limit = 50
+	}
 	tables, err := auditQueryTables(query.From, query.To)
 	if err != nil {
 		return auditsvc.Page{}, err

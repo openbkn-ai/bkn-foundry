@@ -36,6 +36,10 @@ func (coverage SourceCoverage) Merge(status SourceStatus) SourceStatus {
 	status.Status = SourceCoverageDegraded
 	status.Reason = coverage.Reason
 	status.DroppedRecords = &dropped
+	if !coverage.FirstObservedAt.IsZero() {
+		since := coverage.FirstObservedAt.UTC()
+		status.DroppedRecordsSince = &since
+	}
 	status.CountAccuracy = "partial"
 	return status
 }

@@ -6,6 +6,7 @@
 package observabilityvo
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -28,6 +29,43 @@ func TestSourceCoverageStatusDisclosesDroppedTelemetry(t *testing.T) {
 	}
 	if status.DroppedRecords == nil || *status.DroppedRecords != 3 {
 		t.Fatalf("expected dropped record count, got %+v", status.DroppedRecords)
+	}
+	if status.DroppedRecordsSince == nil || !status.DroppedRecordsSince.Equal(coverage.FirstObservedAt) {
+		t.Fatalf("expected dropped record window start, got %+v", status.DroppedRecordsSince)
+	}
+}
+
+func TestSourceStatusDropWindowJSONShape(t *testing.T) {
+	t.Run("unaffected source omits drop pair", func(t *testing.T) {
+		assertDropWindowJSON(t, SourceStatus{SourceID: "runtime", CollectionMethod: "direct_otlp"}, false, nil, nil)
+	})
+	t.Run("Kafka Audit unknown pair is explicit null", func(t *testing.T) {
+		assertDropWindowJSON(t, SourceStatus{SourceID: "audit-ledger", CollectionMethod: "kafka_audit"}, true, nil, nil)
+	})
+	t.Run("observed drop pair contains count and start", func(t *testing.T) {
+		count := int64(3)
+		since := time.Date(2026, time.August, 7, 11, 59, 0, 0, time.UTC)
+		assertDropWindowJSON(t, SourceStatus{SourceID: "runtime", CollectionMethod: "direct_otlp", DroppedRecords: &count, DroppedRecordsSince: &since}, true, float64(3), since.Format(time.RFC3339))
+	})
+}
+
+func assertDropWindowJSON(t *testing.T, status SourceStatus, wantPresent bool, wantCount, wantSince any) {
+	t.Helper()
+	payload, err := json.Marshal(status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	count, countPresent := decoded["dropped_records"]
+	since, sincePresent := decoded["dropped_records_since"]
+	if countPresent != wantPresent || sincePresent != wantPresent {
+		t.Fatalf("drop pair presence = (%t, %t), want %t: %s", countPresent, sincePresent, wantPresent, payload)
+	}
+	if wantPresent && (count != wantCount || since != wantSince) {
+		t.Fatalf("drop pair = (%#v, %#v), want (%#v, %#v): %s", count, since, wantCount, wantSince, payload)
 	}
 }
 
