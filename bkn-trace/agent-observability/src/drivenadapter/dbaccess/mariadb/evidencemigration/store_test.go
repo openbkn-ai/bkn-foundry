@@ -383,10 +383,57 @@ func TestRecordConsumerResultPersistsIncompatibleTerminalAsConflict(t *testing.T
 		t.Fatal(err)
 	}
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT adjudication").WithArgs("m-1", "entry-1").WillReturnRows(sqlmock.NewRows([]string{"adjudication", "reason_code"}).AddRow("ledger_committed", ""))
+	mock.ExpectQuery("SELECT adjudication").WithArgs("m-1", "entry-1").WillReturnRows(sqlmock.NewRows([]string{"adjudication", "reason_code", "ledger_ingest_sequence"}).AddRow("ledger_committed", "", ""))
 	mock.ExpectExec("INSERT INTO bkn_trace_evidence_migration_result_conflicts").WithArgs("m-1", "entry-1", "ledger_committed", ievidencemigration.AdjudicationConflict, "", "event_payload_conflict").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	err = store.RecordConsumerResult(context.Background(), ievidencemigration.ConsumerResult{ManifestID: "m-1", EntryID: "entry-1", Adjudication: ievidencemigration.AdjudicationConflict, Observation: "conflict", ReasonCode: "event_payload_conflict", Topic: "openbkn.evidence.v1", Partition: 2, Offset: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRecordConsumerResultPersistsLedgerIngestIdentityMismatchAsConflict(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { mock.ExpectClose(); _ = db.Close() })
+	store, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT adjudication").WithArgs("m-1", "entry-1").WillReturnRows(sqlmock.NewRows([]string{"adjudication", "reason_code", "ledger_ingest_sequence"}).AddRow("ledger_committed", "", "9001"))
+	mock.ExpectExec("INSERT INTO bkn_trace_evidence_migration_result_conflicts").WithArgs("m-1", "entry-1", "ledger_committed", ievidencemigration.AdjudicationConflict, "", "ledger_ingest_identity_mismatch").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	err = store.RecordConsumerResult(context.Background(), ievidencemigration.ConsumerResult{ManifestID: "m-1", EntryID: "entry-1", Adjudication: ievidencemigration.AdjudicationLedgerCommitted, Observation: "deduplicated", Topic: "openbkn.evidence.v1", Partition: 2, Offset: 10, IngestSequence: 9002})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRecordReconcilerResultPersistsOnlyMatchingActiveClassification(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { mock.ExpectClose(); _ = db.Close() })
+	store, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT m.state,e.classification").WithArgs("m-1", "entry-1").WillReturnRows(sqlmock.NewRows([]string{"state", "classification"}).AddRow("active", "coverage_gap"))
+	mock.ExpectQuery("SELECT adjudication").WithArgs("m-1", "entry-1").WillReturnRows(sqlmock.NewRows([]string{"adjudication", "reason_code", "ledger_ingest_sequence"}))
+	mock.ExpectExec("INSERT INTO bkn_trace_evidence_migration_results").WithArgs("m-1", "entry-1", ievidencemigration.AdjudicationCoverageGap, "coverage_gap", "coverage_gap", "bad_payload").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	err = store.RecordReconcilerResult(context.Background(), ievidencemigration.ReconcilerResult{ManifestID: "m-1", EntryID: "entry-1", Adjudication: ievidencemigration.AdjudicationCoverageGap, ReasonCode: "bad_payload"})
 	if err != nil {
 		t.Fatal(err)
 	}

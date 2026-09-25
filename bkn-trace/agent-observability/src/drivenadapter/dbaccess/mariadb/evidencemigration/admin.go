@@ -75,7 +75,7 @@ func (s *Store) CreateDraftAndActivate(ctx context.Context, in manifestAdminInpu
 	if err = verifyPersistedEntries(ctx, tx, in.ManifestID, len(in.Entries), in.EntriesDigest); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE bkn_trace_evidence_migration_manifests SET state='active',activated_at=UTC_TIMESTAMP(6),activated_by=? WHERE manifest_id=? AND state='draft'", in.Actor, in.ManifestID)
+	result, err := tx.ExecContext(ctx, "UPDATE bkn_trace_evidence_migration_manifests SET state='active',activated_at=UTC_TIMESTAMP(3),activated_by=? WHERE manifest_id=? AND state='draft'", in.Actor, in.ManifestID)
 	if err != nil {
 		return err
 	}

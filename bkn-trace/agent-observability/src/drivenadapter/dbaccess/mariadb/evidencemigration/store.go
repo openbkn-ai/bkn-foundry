@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencemigration"
 )
@@ -58,21 +59,27 @@ func (s *Store) RecordConsumerResult(ctx context.Context, result ievidencemigrat
 		return fmt.Errorf("begin Evidence migration result transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var existingAdjudication, existingReason string
-	err = tx.QueryRowContext(ctx, `SELECT adjudication, COALESCE(reason_code, '')
+	var existingAdjudication, existingReason, existingIngestSequence string
+	err = tx.QueryRowContext(ctx, `SELECT adjudication, COALESCE(reason_code, ''), COALESCE(CAST(ledger_ingest_sequence AS CHAR), '')
 		FROM bkn_trace_evidence_migration_results
 		WHERE manifest_id=? AND entry_id=? FOR UPDATE`, result.ManifestID, result.EntryID).
-		Scan(&existingAdjudication, &existingReason)
+		Scan(&existingAdjudication, &existingReason, &existingIngestSequence)
 	switch {
 	case err == nil:
-		if existingAdjudication != string(result.Adjudication) || !compatibleReason(existingReason, result.ReasonCode) {
+		ingestIdentityMismatch := existingIngestSequence != "" && result.IngestSequence != 0 && existingIngestSequence != strconv.FormatUint(result.IngestSequence, 10)
+		if existingAdjudication != string(result.Adjudication) || !compatibleReason(existingReason, result.ReasonCode) || ingestIdentityMismatch {
+			incomingAdjudication, incomingReason := result.Adjudication, result.ReasonCode
+			if ingestIdentityMismatch && existingAdjudication == string(result.Adjudication) && compatibleReason(existingReason, result.ReasonCode) {
+				incomingAdjudication = ievidencemigration.AdjudicationConflict
+				incomingReason = "ledger_ingest_identity_mismatch"
+			}
 			_, err = tx.ExecContext(ctx, `
 				INSERT INTO bkn_trace_evidence_migration_result_conflicts (
 					manifest_id, entry_id, existing_adjudication, incoming_adjudication,
 					existing_reason_code, incoming_reason_code, detected_at
-				) VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))
+				) VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
 				ON DUPLICATE KEY UPDATE detected_at=VALUES(detected_at)`,
-				result.ManifestID, result.EntryID, existingAdjudication, result.Adjudication, existingReason, result.ReasonCode)
+				result.ManifestID, result.EntryID, existingAdjudication, incomingAdjudication, existingReason, incomingReason)
 			if err != nil {
 				return fmt.Errorf("record Evidence migration result conflict: %w", err)
 			}
@@ -83,7 +90,7 @@ func (s *Store) RecordConsumerResult(ctx context.Context, result ievidencemigrat
 		}
 		_, err = tx.ExecContext(ctx, `
 			UPDATE bkn_trace_evidence_migration_results
-			SET attempts=attempts+1, last_observation=?, last_observed_at=UTC_TIMESTAMP(6),
+			SET attempts=attempts+1, last_observation=?, last_observed_at=UTC_TIMESTAMP(3),
 				ledger_ingest_sequence=COALESCE(ledger_ingest_sequence, NULLIF(?, 0)),
 				reason_code=COALESCE(reason_code, NULLIF(?, ''))
 			WHERE manifest_id=? AND entry_id=?`, result.Observation, result.IngestSequence, result.ReasonCode, result.ManifestID, result.EntryID)
@@ -96,7 +103,7 @@ func (s *Store) RecordConsumerResult(ctx context.Context, result ievidencemigrat
 			manifest_id, entry_id, adjudication, first_observation, last_observation,
 			reason_code, topic, partition_id, offset_id, ledger_ingest_sequence,
 			first_observed_at, last_observed_at, attempts
-		) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, NULLIF(?, 0), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), 1)`,
+		) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, NULLIF(?, 0), UTC_TIMESTAMP(3), UTC_TIMESTAMP(3), 1)`,
 			result.ManifestID, result.EntryID, result.Adjudication, result.Observation, result.Observation,
 			result.ReasonCode, result.Topic, result.Partition, result.Offset, result.IngestSequence,
 		)
@@ -132,4 +139,80 @@ func validObservation(value string) bool {
 	default:
 		return false
 	}
+}
+
+func (s *Store) RecordReconcilerResult(ctx context.Context, result ievidencemigration.ReconcilerResult) error {
+	if result.ManifestID == "" || result.EntryID == "" || (result.Adjudication != ievidencemigration.AdjudicationVerifiedDelivered && result.Adjudication != ievidencemigration.AdjudicationCoverageGap) {
+		return errors.New("invalid Evidence migration reconciler result")
+	}
+	if err := validatePrintableASCII(result.ManifestID); err != nil {
+		return err
+	}
+	if err := validatePrintableASCII(result.EntryID); err != nil {
+		return err
+	}
+	if err := validatePrintableASCII(result.ReasonCode); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("begin Evidence migration reconciler result transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var state, classification string
+	err = tx.QueryRowContext(ctx, `SELECT m.state,e.classification FROM bkn_trace_evidence_migration_manifests m
+		JOIN bkn_trace_evidence_migration_entries e ON e.manifest_id=m.manifest_id
+		WHERE m.manifest_id=? AND e.entry_id=? FOR UPDATE`, result.ManifestID, result.EntryID).Scan(&state, &classification)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errors.New("Evidence migration entry not found")
+	}
+	if err != nil {
+		return fmt.Errorf("read Evidence migration reconciler admission: %w", err)
+	}
+	if state != string(ievidencemigration.ManifestActive) {
+		return errors.New("Evidence migration reconciler requires an active manifest")
+	}
+	wantClassification := map[ievidencemigration.Adjudication]string{
+		ievidencemigration.AdjudicationVerifiedDelivered: "verify_delivered",
+		ievidencemigration.AdjudicationCoverageGap:       "coverage_gap",
+	}
+	if classification != wantClassification[result.Adjudication] {
+		return errors.New("reconciler result does not match immutable manifest classification")
+	}
+	observation := string(result.Adjudication)
+	var existingAdjudication, existingReason, existingSequence string
+	err = tx.QueryRowContext(ctx, `SELECT adjudication,COALESCE(reason_code,''),COALESCE(CAST(ledger_ingest_sequence AS CHAR),'')
+		FROM bkn_trace_evidence_migration_results WHERE manifest_id=? AND entry_id=? FOR UPDATE`, result.ManifestID, result.EntryID).
+		Scan(&existingAdjudication, &existingReason, &existingSequence)
+	switch {
+	case err == nil:
+		if existingAdjudication != string(result.Adjudication) || !compatibleReason(existingReason, result.ReasonCode) || existingSequence != "" {
+			_, err = tx.ExecContext(ctx, `INSERT INTO bkn_trace_evidence_migration_result_conflicts
+				(manifest_id,entry_id,existing_adjudication,incoming_adjudication,existing_reason_code,incoming_reason_code,detected_at)
+				VALUES (?,?,?,?,?,?,UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE detected_at=VALUES(detected_at)`,
+				result.ManifestID, result.EntryID, existingAdjudication, ievidencemigration.AdjudicationConflict, existingReason, "reconciler_terminal_mismatch")
+			if err != nil {
+				return fmt.Errorf("record Evidence migration reconciler conflict: %w", err)
+			}
+		} else {
+			_, err = tx.ExecContext(ctx, `UPDATE bkn_trace_evidence_migration_results
+				SET attempts=attempts+1,last_observation=?,last_observed_at=UTC_TIMESTAMP(3),
+					reason_code=COALESCE(reason_code,NULLIF(?,'')) WHERE manifest_id=? AND entry_id=?`,
+				observation, result.ReasonCode, result.ManifestID, result.EntryID)
+		}
+	case errors.Is(err, sql.ErrNoRows):
+		_, err = tx.ExecContext(ctx, `INSERT INTO bkn_trace_evidence_migration_results
+			(manifest_id,entry_id,adjudication,first_observation,last_observation,reason_code,topic,partition_id,offset_id,ledger_ingest_sequence,first_observed_at,last_observed_at,attempts)
+			VALUES (?,?,?,?,?,NULLIF(?,''),NULL,NULL,NULL,NULL,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3),1)`,
+			result.ManifestID, result.EntryID, result.Adjudication, observation, observation, result.ReasonCode)
+	default:
+		return fmt.Errorf("read existing Evidence migration reconciler result: %w", err)
+	}
+	if err != nil {
+		return fmt.Errorf("persist Evidence migration reconciler result: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit Evidence migration reconciler result: %w", err)
+	}
+	return nil
 }

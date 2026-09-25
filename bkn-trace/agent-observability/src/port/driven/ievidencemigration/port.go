@@ -62,3 +62,15 @@ type ConsumerResult struct {
 type ConsumerResultWriter interface {
 	RecordConsumerResult(context.Context, ConsumerResult) error
 }
+
+type ReconcilerResult struct {
+	ManifestID, EntryID string
+	Adjudication        Adjudication
+	ReasonCode          string
+}
+
+// ReconcilerResultWriter only records terminal conclusions for immutable
+// verify_delivered and coverage_gap manifest classifications.
+type ReconcilerResultWriter interface {
+	RecordReconcilerResult(context.Context, ReconcilerResult) error
+}
