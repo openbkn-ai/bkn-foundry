@@ -23,6 +23,13 @@ func nullable(value string) any {
 	return value
 }
 func canonicalEntry(e frozenEntry) (map[string]any, error) {
+	for _, value := range []string{e.Classification, e.ClassificationReason, e.EventID, e.ManifestID, e.PayloadHash, e.ProducerEpoch, e.ProducerID, e.ProducerSequence, e.ProducerStreamID, e.SourcePrimaryKey, e.SourceService, e.SourceStatus, e.SourceTable} {
+		for _, r := range value {
+			if r < 0x20 || r > 0x7e {
+				return nil, errors.New("manifest entry is outside C1 ASCII subset")
+			}
+		}
+	}
 	return map[string]any{"classification": e.Classification, "classification_reason": e.ClassificationReason, "event_id": nullable(e.EventID), "manifest_id": e.ManifestID, "payload_hash": nullable(e.PayloadHash), "producer_epoch": nullable(e.ProducerEpoch), "producer_id": nullable(e.ProducerID), "producer_sequence": nullable(e.ProducerSequence), "producer_stream_id": nullable(e.ProducerStreamID), "source_primary_key": e.SourcePrimaryKey, "source_service": e.SourceService, "source_status": e.SourceStatus, "source_table": e.SourceTable}, nil
 }
 

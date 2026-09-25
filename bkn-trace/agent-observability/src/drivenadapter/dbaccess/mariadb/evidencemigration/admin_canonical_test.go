@@ -6,14 +6,22 @@ package evidencemigration
 
 import "testing"
 
-func TestManifestEntryQuoteEscapesJSONWithoutEscapingUTF8(t *testing.T) {
-	got, err := quote(nil, "quote:\" slash:\\ control:\n 中文")
+func TestManifestEntryQuoteEscapesPrintableASCII(t *testing.T) {
+	got, err := quote(nil, "quote:\" slash:\\ control:\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = "\"quote:\\\" slash:\\\\ control:\\n 中文\""
+	const want = "\"quote:\\\" slash:\\\\ control:\\n\""
 	if string(got) != want {
 		t.Fatalf("quote = %q, want %q", got, want)
+	}
+}
+
+func TestManifestEntryRejectsOutsideC1ASCII(t *testing.T) {
+	for _, value := range []string{"\x01", "\x7f", "中"} {
+		if _, err := canonicalEntry(frozenEntry{Classification: value}); err == nil {
+			t.Fatalf("must reject %q", value)
+		}
 	}
 }
 
