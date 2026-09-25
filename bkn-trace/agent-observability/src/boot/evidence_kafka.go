@@ -10,7 +10,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/evidenceconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/kafkaruntime"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceadmission"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencemigration"
 )
 
@@ -18,7 +20,12 @@ var (
 	_ evidenceconsumer.Ledger           = (*ledgersvc.Service)(nil)
 	_ ievidenceadmission.ReadOnlySource = (*sessionstore.Store)(nil)
 	_ evidenceconsumer.RejectionWriter  = (*sessionstore.Store)(nil)
+	_ ievidenceledger.KafkaStore        = (*sessionstore.Store)(nil)
 )
+
+func newEvidenceLedgerService(store ievidenceledger.Store, metrics icoremetrics.Recorder) *ledgersvc.Service {
+	return ledgersvc.NewWithMetrics(store, metrics)
+}
 
 func newEvidenceKafkaProcessor(
 	admission ievidenceadmission.ReadOnlySource,

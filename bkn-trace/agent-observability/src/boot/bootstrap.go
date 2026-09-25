@@ -28,7 +28,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysnapshot"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectionrebuildsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectorsvc"
@@ -151,6 +150,7 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	ledgerService := newEvidenceLedgerService(ledgerStore, metrics)
 	var capturePolicyReader capturepolicysvc.Reader
 	var capturePolicyCommander capturepolicysvc.Commander
 	var captureController *capturecontrollersvc.Controller
@@ -290,9 +290,9 @@ func NewApp() (*App, error) {
 			return nil, err
 		}
 		admission, admissionOK := sessionStore.(ievidenceadmission.ReadOnlySource)
-		ledger, ledgerOK := ledgerStore.(evidenceconsumer.Ledger)
+		ledger := evidenceconsumer.Ledger(ledgerService)
 		rejections, rejectionsOK := sessionStore.(evidenceconsumer.RejectionWriter)
-		if !admissionOK || !ledgerOK || !rejectionsOK {
+		if !admissionOK || !rejectionsOK {
 			if closeDatabase != nil {
 				_ = closeDatabase()
 			}
@@ -520,7 +520,7 @@ func NewApp() (*App, error) {
 		sessionService,
 		assemblysvc.NewQueryServiceWithBusinessResolver(sessionStore, ledgerStore, resolver),
 	)
-	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgersvc.NewWithMetrics(ledgerStore, metrics))
+	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgerService)
 
 	var captureInput func(context.Context, string, evidencevo.QueryScope) (json.RawMessage, string, bool, error)
 	if snapshots, ok := sessionStore.(isessionstore.EvidenceSnapshotReader); ok {

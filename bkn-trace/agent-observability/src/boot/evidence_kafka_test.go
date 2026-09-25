@@ -15,11 +15,25 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/evidenceconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/kafkaruntime"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/coremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencemigration"
 	kafka "github.com/segmentio/kafka-go"
 )
+
+func TestNewEvidenceLedgerServiceWrapsCoreStoreForKafka(t *testing.T) {
+	store := ledgerstore.New()
+	service := newEvidenceLedgerService(store, coremetrics.New())
+	if service == nil {
+		t.Fatal("Evidence ledger service is nil")
+	}
+	var consumerLedger evidenceconsumer.Ledger = service
+	if consumerLedger == nil {
+		t.Fatal("Evidence ledger service cannot serve the Kafka consumer")
+	}
+}
 
 type bootstrapEvidenceAdmission struct{}
 
