@@ -57,6 +57,23 @@ class SourceTest(unittest.TestCase):
         entry, event = classify_row(dict(self.row, event_id="different"), "mig-1", self.snapshot)
         self.assertEqual((entry["classification"], entry["classification_reason"], event), ("coverage_gap", "source_identity_mismatch", None))
 
+    def test_oversized_record_is_frozen_as_coverage_gap_before_kafka_send(self):
+        event = dict(self.event, oversized="x" * (1024 * 1024))
+        row = dict(self.row, envelope=json.dumps({"event": event}))
+        entry, returned = classify_row(row, "mig-1", self.snapshot)
+        self.assertEqual((entry["classification"], entry["classification_reason"], returned), ("coverage_gap", "bad_payload", None))
+
+    def test_event_value_at_c1_limit_remains_publishable(self):
+        target = 1_048_576
+        event = dict(self.event, padding="")
+        empty_size = len(json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        event["padding"] = "x" * (target - empty_size)
+        self.assertEqual(len(json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode("utf-8")), target)
+        row = dict(self.row, envelope=json.dumps({"event": event}))
+        entry, returned = classify_row(row, "mig-1", self.snapshot)
+        self.assertEqual(entry["classification"], "publish")
+        self.assertIsNotNone(returned)
+
     def test_event_identity_requires_exact_schema_types_and_uint64_range(self):
         for field, value in (("producer_epoch", True), ("producer_sequence", "7"), ("producer_epoch", (1 << 64))):
             with self.subTest(field=field, value=value):

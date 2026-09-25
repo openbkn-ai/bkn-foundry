@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from bridge import load_checkpoint, publish_encoded_entries, publish_entries, publish_frozen_snapshot
+from bridge import load_active_artifact, load_checkpoint, publish_encoded_entries, publish_entries, publish_frozen_snapshot
 from manifest import ManifestError, entries_digest
 
 FIXTURE = Path(__file__).resolve().parents[6] / "bkn-docs" / "docs" / "foundry" / "bkn-trace" / "testing" / "fixtures" / "0.2.0" / "evidence-kafka-record-golden.json"
@@ -24,6 +24,22 @@ class BridgeTest(unittest.TestCase):
         self.tail = dict(self.gap, entry_id="tail-gap", source_primary_key="1003")
         self.entries = [self.publish, self.publish_second, self.gap, self.tail]
         self.manifest = {"manifest_id": self.publish["manifest_id"], "contract_sha": fixture["contract_sha"], "state": "active", "source_snapshot_at": "2026-09-22T08:00:00.000Z", "entry_count": "4", "entries_digest": entries_digest(self.entries)}
+
+    def test_active_artifact_requires_matching_go_activation_receipt(self):
+        artifact = {key: self.manifest[key] for key in ("manifest_id", "contract_sha", "source_snapshot_at", "entry_count", "entries_digest")}
+        artifact["entries"] = [{key: value for key, value in entry.items() if key != "entry_id"} for entry in self.entries]
+        receipt = {key: artifact[key] for key in ("manifest_id", "contract_sha", "source_snapshot_at", "entry_count", "entries_digest")}
+        receipt["state"] = "active"
+        with tempfile.TemporaryDirectory() as root:
+            artifact_path, receipt_path = Path(root) / "manifest.json", Path(root) / "active.json"
+            artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+            receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+            manifest, entries = load_active_artifact(artifact_path, receipt_path)
+            self.assertEqual(manifest["state"], "active")
+            self.assertEqual(len(entries), 4)
+            receipt_path.write_text(json.dumps(dict(receipt, entries_digest="0" * 64)), encoding="utf-8")
+            with self.assertRaisesRegex(ManifestError, "receipt"):
+                load_active_artifact(artifact_path, receipt_path)
 
     @staticmethod
     def ack(entry):

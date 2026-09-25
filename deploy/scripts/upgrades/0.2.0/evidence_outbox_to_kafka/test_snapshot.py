@@ -2,7 +2,7 @@ import json
 import unittest
 
 from manifest import entries_digest
-from snapshot import read_event_snapshot, verify_frozen_entries
+from snapshot import issue_manifest, read_event_snapshot, verify_frozen_entries
 from source import classify_row
 
 
@@ -35,6 +35,27 @@ class Connection:
 
 
 class SnapshotTest(unittest.TestCase):
+    def test_issue_manifest_keeps_event_payload_out_of_frozen_artifact(self):
+        event = {
+            "event_id": "evt-1", "payload_hash": "a" * 64,
+            "producer_id": "bkn-backend", "producer_stream_id": "bkn-backend",
+            "producer_epoch": 1, "producer_sequence": 1,
+            "envelope": {"sensitive": "must stay source-only"},
+        }
+        row = {
+            "source_table": "bkn_backend_trace_outbox", "outbox_id": 1,
+            "status": "pending", "locked_until": None,
+            "envelope": json.dumps({"event": event}), **{key: event[key] for key in (
+                "event_id", "payload_hash", "producer_id", "producer_stream_id", "producer_epoch", "producer_sequence",
+            )},
+        }
+        artifact, events = issue_manifest("mig-1", "2026-09-25T10:00:00.000Z", [row])
+        self.assertEqual(artifact["entry_count"], "1")
+        self.assertEqual(artifact["entries"][0]["classification"], "publish")
+        self.assertNotIn("envelope", json.dumps(artifact))
+        self.assertNotIn("sensitive", json.dumps(artifact))
+        self.assertEqual(events[("bkn_backend_trace_outbox", "1")], event)
+
     def test_reads_only_frozen_event_rows_in_stable_source_order(self):
         connection = Connection()
         rows = read_event_snapshot(connection, "2026-09-25T10:00:00Z")

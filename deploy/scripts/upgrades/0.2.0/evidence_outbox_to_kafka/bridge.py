@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 
-from manifest import ManifestError, verify_active_runtime
+from manifest import ManifestError, verify_active_runtime, verify_activation
 
 
 def _fault(fault, stage):
@@ -61,6 +61,29 @@ def _checkpoint(manifest, entry, ack, counts, completed=False):
         "event_identity": {key: entry[key] for key in ("event_id", "payload_hash", "producer_id", "producer_stream_id", "producer_epoch", "producer_sequence")},
         "last_kafka_ack": ack, "classification_counts": dict(counts), "completed": completed,
     }
+
+
+def load_active_artifact(artifact_path, receipt_path):
+    """Load a payload-free snapshot artifact only with its matching Go receipt."""
+    try:
+        artifact = json.loads(Path(artifact_path).read_text(encoding="utf-8"))
+        receipt = json.loads(Path(receipt_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ManifestError("Evidence migration artifact or activation receipt is unreadable") from error
+    artifact_fields = {"manifest_id", "contract_sha", "source_snapshot_at", "entry_count", "entries_digest", "entries"}
+    receipt_fields = {"manifest_id", "contract_sha", "state", "source_snapshot_at", "entry_count", "entries_digest"}
+    if not isinstance(artifact, dict) or set(artifact) != artifact_fields or not isinstance(artifact["entries"], list):
+        raise ManifestError("Evidence migration artifact fields do not match C1")
+    if not isinstance(receipt, dict) or set(receipt) != receipt_fields or receipt.get("state") != "active":
+        raise ManifestError("Evidence migration activation receipt is invalid")
+    for key in receipt_fields - {"state"}:
+        if receipt.get(key) != artifact.get(key):
+            raise ManifestError("Evidence migration activation receipt does not match artifact")
+    manifest = {key: artifact[key] for key in artifact_fields - {"entries"}}
+    manifest["state"] = "active"
+    verify_activation(manifest, artifact["entries"])
+    verify_active_runtime(manifest, artifact["entries"])
+    return manifest, artifact["entries"]
 
 
 def publish_entries(manifest, entries, checkpoint_path, publish, fault=None):
