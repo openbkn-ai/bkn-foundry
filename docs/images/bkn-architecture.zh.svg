@@ -43,12 +43,12 @@
 <line x1="450" y1="210" x2="450" y2="236" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <line x1="716" y1="210" x2="716" y2="236" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <rect x="112" y="236" width="676" height="280" rx="12" fill="rgba(30, 58, 138, 0.4)" stroke="#60a5fa" stroke-width="1.5"/>
-<text x="132" y="260" fill="white" font-size="13" font-weight="700" text-anchor="start">本体开发平台</text>
-<text x="132" y="276" fill="#bfdbfe" font-size="9" text-anchor="start">Project 产出 BKN；Eval 与 Workshop 基于同一个 BKN</text>
+<text x="132" y="260" fill="white" font-size="13" font-weight="700" text-anchor="start">BKN Dev</text>
+<text x="132" y="276" fill="#bfdbfe" font-size="9" text-anchor="start">知识网络的开发、评估与应用</text>
 <rect x="132" y="290" width="636" height="62" rx="8" fill="#0f172a"/>
 <rect x="132" y="290" width="636" height="62" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
 <text x="450" y="316" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Project</text>
-<text x="450" y="336" fill="#67e8f9" font-size="9.5" text-anchor="middle">本体构建主线</text>
+<text x="450" y="336" fill="#67e8f9" font-size="9.5" text-anchor="middle">本体构建</text>
 <line x1="560" y1="352" x2="560" y2="392" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <text x="660" y="376" fill="#94a3b8" font-size="9" text-anchor="middle">创建并发布 BKN</text>
 <path d="M 300 392 L 300 352" fill="none" stroke="#67e8f9" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrowhead)"/>
