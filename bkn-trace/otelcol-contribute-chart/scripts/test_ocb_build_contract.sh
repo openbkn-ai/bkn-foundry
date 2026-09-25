@@ -6,6 +6,7 @@ CONFIG="${ROOT}/builder-config.yaml"
 DOCKERFILE="${ROOT}/Dockerfile.openbkn"
 VALUES="${ROOT}/charts/otelcol-contrib/values.yaml"
 README="${ROOT}/README.md"
+RELEASE_WORKFLOW="$(cd "${ROOT}/../.." && pwd)/.github/workflows/release-bkn-trace-otelcol.yml"
 
 require_line() {
   local file="$1"
@@ -45,6 +46,21 @@ test -f "${ROOT}/processor/traceadmissionprocessor/go.mod"
 test -f "${ROOT}/processor/traceadmissionprocessor/processor.go"
 require_line "${VALUES}" 'tag: "__VERSION__"'
 require_line "${README}" "--set 'image.tag=<built-version>'"
+require_line "${RELEASE_WORKFLOW}" "publish: \${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) || (github.event_name == 'workflow_dispatch' && inputs.publish) }}"
+
+# Keep branch pushes verify-only. The release workflow may publish only for a
+# version tag or an explicit workflow_dispatch publish=true request.
+python3 - <<'PY'
+def may_publish(event, ref_type, ref_name, dispatch_publish):
+    return (ref_type == "tag" and ref_name.startswith("v")) or (
+        event == "workflow_dispatch" and dispatch_publish
+    )
+
+assert not may_publish("push", "branch", "feat/trace", False)
+assert may_publish("push", "tag", "v0.2.0", False)
+assert not may_publish("workflow_dispatch", "branch", "main", False)
+assert may_publish("workflow_dispatch", "branch", "main", True)
+PY
 
 # A source checkout must be deployable only when the operator supplies a real
 # built image tag; the release workflow is the only path that substitutes the

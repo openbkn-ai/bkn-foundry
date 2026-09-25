@@ -83,7 +83,7 @@ jobs:
       dockerfile: bkn-trace/otelcol-contribute-chart/Dockerfile.openbkn
       image-name: otelcol-openbkn
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
     needs: [version, verify, chart-regression, ocb-contract, image]
@@ -93,4 +93,4 @@ jobs:
       chart-path: charts/otelcol-contrib
       chart-name: otelcol-contrib
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
