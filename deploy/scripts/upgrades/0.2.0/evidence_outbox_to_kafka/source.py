@@ -1,0 +1,116 @@
+"""Frozen historical-outbox classification and migration Record encoding."""
+
+import json
+from datetime import datetime, timezone
+
+from manifest import ManifestError
+
+_TABLES = {
+    "bkn_backend_trace_outbox": "bkn-backend",
+    "ontology_query_trace_outbox": "ontology-query",
+}
+_PUBLISH = {"pending", "retry"}
+_COVERAGE_GAP = {"abandoned", "conflict", "dlq"}
+
+
+class ActiveLeaseError(ManifestError):
+    """The source service must be stopped or its outstanding lease must expire."""
+
+
+def _utc(value):
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError as error:
+        raise ManifestError("source lease timestamp is invalid") from error
+
+
+def _coverage_entry(row, manifest_id, service, table, reason):
+    return {
+        "classification": "coverage_gap", "classification_reason": reason,
+        "event_id": None, "manifest_id": manifest_id, "payload_hash": None,
+        "producer_epoch": None, "producer_id": None, "producer_sequence": None,
+        "producer_stream_id": None, "source_primary_key": str(row["outbox_id"]),
+        "source_service": service, "source_status": row["status"], "source_table": table,
+    }
+
+
+def classify_row(row, manifest_id, snapshot_at):
+    """Return the immutable manifest entry and original Event value for one row.
+
+    The caller supplies rows from a transactionally frozen source snapshot. This
+    function neither mutates the source nor obtains any central-DB capability.
+    """
+    # All rows must share one valid UTC cutover instant; checking it here keeps
+    # even non-lease rows from silently accepting an unfrozen caller boundary.
+    if _utc(snapshot_at) is None:
+        raise ManifestError("source snapshot timestamp is invalid")
+    table = row.get("source_table")
+    service = _TABLES.get(table)
+    if service is None or not isinstance(manifest_id, str) or not manifest_id:
+        raise ManifestError("source table or manifest ID is invalid")
+    if not isinstance(row.get("outbox_id"), int) or row["outbox_id"] <= 0:
+        raise ManifestError("source primary key is invalid")
+    status = row.get("status")
+    if not isinstance(status, str):
+        raise ManifestError("source status is invalid")
+    if status == "delivered":
+        classification, reason = "verify_delivered", "delivered"
+    elif status in _PUBLISH:
+        classification, reason = "publish", status
+    elif status == "processing":
+        lease = _utc(row.get("locked_until"))
+        now = _utc(snapshot_at)
+        if now is None:
+            raise ManifestError("source snapshot timestamp is invalid")
+        if lease is not None and lease > now:
+            raise ActiveLeaseError("active source lease prevents migration snapshot")
+        classification, reason = "publish", "expired_lease"
+    elif status in _COVERAGE_GAP:
+        return _coverage_entry(row, manifest_id, service, table, status), None
+    else:
+        return _coverage_entry(row, manifest_id, service, table, "unknown_status"), None
+
+    try:
+        stored = json.loads(row["envelope"])
+        event = stored["event"]
+    except (KeyError, TypeError, json.JSONDecodeError):
+        return _coverage_entry(row, manifest_id, service, table, "bad_payload"), None
+    identity = ("event_id", "payload_hash", "producer_id", "producer_stream_id", "producer_epoch", "producer_sequence")
+    if not isinstance(event, dict) or any(
+        not isinstance(event.get(key), (str, int)) or event.get(key) in ("", 0)
+        for key in identity
+    ):
+        return _coverage_entry(row, manifest_id, service, table, "bad_payload"), None
+    if any(str(row.get(key, "")) != str(event[key]) for key in ("event_id", "payload_hash", "producer_id", "producer_stream_id", "producer_epoch", "producer_sequence")):
+        return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
+    return {
+        "classification": classification, "classification_reason": reason,
+        "event_id": event["event_id"], "manifest_id": manifest_id, "payload_hash": event["payload_hash"],
+        "producer_epoch": str(event["producer_epoch"]), "producer_id": event["producer_id"],
+        "producer_sequence": str(event["producer_sequence"]), "producer_stream_id": event["producer_stream_id"],
+        "source_primary_key": str(row["outbox_id"]), "source_service": service,
+        "source_status": status, "source_table": table,
+    }, event
+
+
+def encode_migration_record(entry, event, producer_instance_id):
+    """Encode the frozen Event value with the exact migration-only Header set."""
+    if entry.get("classification") != "publish" or not isinstance(event, dict):
+        raise ManifestError("only a publish entry with an Event can be encoded")
+    stream = event.get("producer_stream_id")
+    if not isinstance(stream, str) or not stream or not isinstance(producer_instance_id, str) or not producer_instance_id:
+        raise ManifestError("migration Record identity is invalid")
+    return {
+        "key": stream,
+        "value": json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
+        "headers": {
+            "content-type": "application/json",
+            "bkn-trace-schema-version": "3.0.0",
+            "capture_policy_revision": "0",
+            "producer_instance_id": producer_instance_id,
+            "bkn-evidence-record-class": "migration",
+            "bkn-evidence-migration-id": entry["manifest_id"],
+        },
+    }

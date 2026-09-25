@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from bridge import load_checkpoint, publish_entries
+from bridge import load_checkpoint, publish_encoded_entries, publish_entries
 from manifest import ManifestError, entries_digest
 
 FIXTURE = Path(__file__).resolve().parents[6] / "bkn-docs" / "docs" / "foundry" / "bkn-trace" / "testing" / "fixtures" / "0.2.0" / "evidence-kafka-record-golden.json"
@@ -45,6 +45,36 @@ class BridgeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ManifestError):
                 publish_entries(dict(self.manifest, state="draft"), self.entries, Path(root) / "checkpoint", self.ack)
+
+    def test_encoded_bridge_uses_only_snapshot_event_and_kafka_ack(self):
+        class Metadata:
+            topic, partition, offset = "openbkn.evidence.v1", 0, 12
+
+        class Producer:
+            def send(self, topic, **kwargs):
+                self.topic, self.kwargs = topic, kwargs
+                return type("Future", (), {"get": lambda _self, timeout: Metadata()})()
+
+        event = {
+            "event_id": self.publish["event_id"], "payload_hash": self.publish["payload_hash"],
+            "producer_id": self.publish["producer_id"], "producer_stream_id": self.publish["producer_stream_id"],
+            "producer_epoch": self.publish["producer_epoch"], "producer_sequence": self.publish["producer_sequence"],
+        }
+        # This test uses just the publish entries; non-publish entries are
+        # deliberately absent from the source Event map and never sent.
+        entries = [self.publish]
+        manifest = dict(self.manifest, entry_count="1", entries_digest=entries_digest(entries))
+        producer = Producer()
+        with tempfile.TemporaryDirectory() as root:
+            emitted = publish_encoded_entries(
+                manifest, entries, {(self.publish["source_table"], self.publish["source_primary_key"]): event},
+                Path(root) / "checkpoint", producer, "openbkn.evidence.v1", 5, "bridge#boot-1",
+            )
+        self.assertEqual(emitted, ["z-last"])
+        self.assertEqual(producer.topic, "openbkn.evidence.v1")
+        self.assertEqual(producer.kwargs["key"], self.publish["producer_stream_id"].encode("utf-8"))
+        self.assertEqual(dict(producer.kwargs["headers"])["bkn-evidence-record-class"], b"migration")
+        self.assertEqual(dict(producer.kwargs["headers"])["bkn-evidence-migration-id"], self.manifest["manifest_id"].encode("utf-8"))
 
     def test_crash_boundaries_never_skip_uncheckpointed_ack(self):
         for stage in ("after_temp_write", "after_file_fsync", "after_rename"):
