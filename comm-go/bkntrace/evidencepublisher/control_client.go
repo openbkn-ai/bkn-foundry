@@ -77,18 +77,22 @@ func (c *ControlClient) Acknowledge(ctx context.Context, operation Configuration
 		return errInvalidControlClient
 	}
 	body, err := json.Marshal(struct {
-		ProducerInstanceID    string    `json:"producer_instance_id"`
-		CapturePolicyRevision uint64    `json:"capture_policy_revision"`
-		LastAcceptedSequence  uint64    `json:"last_accepted_sequence"`
-		Published             uint64    `json:"published"`
-		Dropped               uint64    `json:"dropped"`
-		QueueEmpty            bool      `json:"queue_empty"`
-		AcknowledgedAt        time.Time `json:"acknowledged_at"`
-	}{ack.ProducerInstanceID, revision, ack.LastAcceptedSequence, ack.Published, ack.Dropped, ack.QueueEmpty, acknowledgedAt.UTC()})
+		ProducerInstanceID    string `json:"producer_instance_id"`
+		CapturePolicyRevision uint64 `json:"capture_policy_revision"`
+		LastAcceptedSequence  uint64 `json:"last_accepted_sequence"`
+		Published             uint64 `json:"published"`
+		Dropped               uint64 `json:"dropped"`
+		QueueEmpty            bool   `json:"queue_empty"`
+		AcknowledgedAt        string `json:"acknowledged_at"`
+	}{ack.ProducerInstanceID, revision, ack.LastAcceptedSequence, ack.Published, ack.Dropped, ack.QueueEmpty, formatAcknowledgedAt(acknowledgedAt)})
 	if err != nil {
 		return fmt.Errorf("encode trace evidence publisher acknowledgement: %w", err)
 	}
 	return c.post(ctx, c.baseURL+"/operations/"+url.PathEscape(operation.ID)+":publisher-ack", body, "publisher acknowledgement")
+}
+
+func formatAcknowledgedAt(value time.Time) string {
+	return value.UTC().Truncate(time.Millisecond).Format("2006-01-02T15:04:05.000Z07:00")
 }
 
 func (c *ControlClient) valid() bool { return c != nil && c.client != nil && c.tokenSource != nil }

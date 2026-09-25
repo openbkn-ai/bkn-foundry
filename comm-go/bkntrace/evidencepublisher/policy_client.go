@@ -141,7 +141,7 @@ func (c *PolicyClient) verify(wire policySnapshotWireFormat) (PolicySnapshot, er
 		return PolicySnapshot{}, errors.New("invalid trace evidence policy snapshot")
 	}
 	now := c.verifier.Now()
-	if wire.IssuedAt.IsZero() || wire.ExpiresAt.IsZero() || now.Before(wire.IssuedAt) || !now.Before(wire.ExpiresAt) {
+	if wire.IssuedAt.IsZero() || wire.ExpiresAt.IsZero() || !wire.ExpiresAt.After(wire.IssuedAt) || now.Before(wire.IssuedAt) || !now.Before(wire.ExpiresAt) {
 		return PolicySnapshot{}, errors.New("trace evidence policy snapshot is outside its validity window")
 	}
 	publicKey, ok := c.publicKeyFor(wire.KeyID)

@@ -80,6 +80,12 @@ func TestPolicyClientRejectsExpiredUnknownAndTamperedSnapshots(t *testing.T) {
 		body string
 	}{
 		{name: "expired", body: signedPolicySnapshot(t, privateKey, func() policySnapshotWire { snapshot := valid; snapshot.ExpiresAt = now; return snapshot }())},
+		{name: "inverted validity window", body: signedPolicySnapshot(t, privateKey, func() policySnapshotWire {
+			snapshot := valid
+			snapshot.IssuedAt = now.Add(30 * time.Second)
+			snapshot.ExpiresAt = now.Add(10 * time.Second)
+			return snapshot
+		}())},
 		{name: "unknown field", body: strings.TrimSuffix(signedPolicySnapshot(t, privateKey, valid), "}") + `,"admission_mode":"enabled"}`},
 		{name: "tampered signature", body: strings.Replace(signedPolicySnapshot(t, privateKey, valid), `"revision":42`, `"revision":43`, 1)},
 	}
