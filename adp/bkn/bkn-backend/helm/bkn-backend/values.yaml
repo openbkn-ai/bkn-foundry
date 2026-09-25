@@ -161,7 +161,23 @@ bknTrace:
     producerId: "bkn-backend"
     workloadIdentity: "bkn-backend"
     producerStreamId: "bkn-backend"
-    capturePolicyRevision: ""
+    traceAdmission:
+      policyURL: "http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/policy"
+      configurationURL: "http://agent-observability:8080/api/agent-observability/v1/trace-evidence-configuration"
+      heartbeatURL: "http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat"
+      ackURLBase: "http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/operations"
+      tokenURL: "http://bkn-safe:4444/oauth2/token"
+      clientID: ""
+      clientSecretSecretName: ""
+      clientSecretSecretKey: "client-secret"
+      scope: ""
+      audienceClusterID: "cluster-a"
+      currentKeyID: ""
+      currentPublicKeySecretName: ""
+      currentPublicKeySecretKey: "public-key"
+      previousKeyID: ""
+      previousPublicKeySecretName: ""
+      previousPublicKeySecretKey: "public-key"
     queueMaxRecords: 4096
     queueMaxBytes: 67108864
     maxRecordBytes: 1048576

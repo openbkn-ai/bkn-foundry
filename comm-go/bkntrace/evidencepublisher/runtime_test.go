@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -71,6 +72,9 @@ func TestPublisherRuntimeUsesVerifiedSnapshotAndAcknowledgesDisabledBoundary(t *
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: sender, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatalf("NewPublisherRuntime() error = %v", err)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("initial Refresh() error = %v", err)
 	}
 	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
 		t.Fatalf("TryPublish() = %+v", result)
@@ -137,11 +141,85 @@ func TestPublisherRuntimeDoesNotRequireStaticPolicyRevision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPublisherRuntime() error = %v", err)
 	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("initial Refresh() error = %v", err)
+	}
 	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
 		t.Fatalf("TryPublish() = %+v", result)
 	}
 	if got := runtime.publisher.SnapshotQueue()[0].Header("capture_policy_revision"); got != "42" {
 		t.Fatalf("capture_policy_revision = %q; want 42", got)
+	}
+}
+
+func TestPublisherRuntimeStartsClosedAndRecoversAfterInitialPolicyFailure(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policyReads atomic.Int32
+	policyRead := make(chan struct{}, 2)
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case traceEvidencePolicyPath:
+			policyRead <- struct{}{}
+			if policyReads.Add(1) == 1 {
+				return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader("temporarily unavailable"))}, nil
+			}
+			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
+			return noContentResponse(), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL)
+			return nil, nil
+		}
+	})}
+	policy, err := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("initial policy failure must not prevent runtime construction: %v", err)
+	}
+	if got := policyReads.Load(); got != 0 {
+		t.Fatalf("constructor made %d policy reads; want none", got)
+	}
+	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Dropped || result.Reason != ReasonPublisherUnavailable {
+		t.Fatalf("pre-policy TryPublish() = %+v; want fail-closed", result)
+	}
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	runDone := make(chan error, 1)
+	go func() { runDone <- runtime.Run(runCtx) }()
+	select {
+	case <-policyRead:
+	case <-time.After(time.Second):
+		t.Fatal("Run() did not attempt the initial policy read")
+	}
+	if got := runtime.TryPublish(publisherTestEvent()); got.Disposition != Dropped || got.Reason != ReasonPublisherUnavailable {
+		t.Fatalf("TryPublish() after failed policy read = %+v; want fail-closed", got)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("retry Refresh() error = %v", err)
+	}
+	if got := runtime.TryPublish(publisherTestEvent()); got.Disposition != Accepted {
+		t.Fatalf("TryPublish() after recovered policy = %+v; want accepted", got)
+	}
+	cancel()
+	select {
+	case <-runDone:
+	case <-time.After(time.Second):
+		t.Fatal("Run() did not stop after cancellation")
 	}
 }
 
@@ -169,6 +247,9 @@ func TestPublisherRuntimeFlushUsesVerifiedRevisionWithoutControlIO(t *testing.T)
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: sender, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("initial Refresh() error = %v", err)
 	}
 	if runtime.TryPublish(publisherTestEvent()).Disposition != Accepted {
 		t.Fatal("TryPublish() rejected event")
@@ -211,6 +292,9 @@ func TestPublisherRuntimeStartsStableDisabledWithoutOperationOrAck(t *testing.T)
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatalf("NewPublisherRuntime() error = %v", err)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("initial Refresh() error = %v", err)
 	}
 	if err := runtime.Refresh(context.Background()); err != nil {
 		t.Fatalf("stable disabled Refresh() error = %v", err)
@@ -262,6 +346,9 @@ func TestPublisherRuntimeFailsClosedWhenCachedSnapshotExpires(t *testing.T) {
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("initial Refresh() error = %v", err)
 	}
 	now = now.Add(2 * time.Second)
 	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Dropped || result.Reason != ReasonPublisherUnavailable {

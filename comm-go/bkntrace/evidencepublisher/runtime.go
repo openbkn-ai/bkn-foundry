@@ -40,7 +40,7 @@ type PublisherRuntimeConfig struct {
 	Now           func() time.Time
 }
 
-func NewPublisherRuntime(ctx context.Context, config PublisherRuntimeConfig) (*PublisherRuntime, error) {
+func NewPublisherRuntime(_ context.Context, config PublisherRuntimeConfig) (*PublisherRuntime, error) {
 	if config.Policy == nil || config.Configuration == nil || config.Control == nil {
 		return nil, errors.New("evidence publisher runtime control clients are required")
 	}
@@ -59,9 +59,6 @@ func NewPublisherRuntime(ctx context.Context, config PublisherRuntimeConfig) (*P
 		now = time.Now
 	}
 	runtime := &PublisherRuntime{publisher: publisher, policy: config.Policy, configuration: config.Configuration, control: config.Control, now: now}
-	if err := runtime.Refresh(ctx); err != nil {
-		return nil, err
-	}
 	return runtime, nil
 }
 
@@ -123,6 +120,10 @@ func (r *PublisherRuntime) Refresh(ctx context.Context) error {
 func (r *PublisherRuntime) Run(ctx context.Context) error {
 	ticker := time.NewTicker(publisherHeartbeatInterval)
 	defer ticker.Stop()
+	// Do not make service construction depend on the control plane. The first
+	// attempt happens as soon as the lifecycle goroutine starts; transient
+	// failures leave admission closed and are retried on the normal heartbeat.
+	_ = r.Refresh(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -166,6 +167,10 @@ func (r *PublisherRuntime) Flush(ctx context.Context) DrainResult {
 	}
 	return r.publisher.FlushForPolicyRevision(ctx, strconv.FormatUint(revision, 10))
 }
+
+// UnderlyingPublisher exposes only the bounded transport owner for service
+// lifecycle integration; business callers must use PublisherRuntime.TryPublish.
+func (r *PublisherRuntime) UnderlyingPublisher() *Publisher { return r.publisher }
 
 func (r *PublisherRuntime) disableWithError(err error) {
 	r.mu.Lock()

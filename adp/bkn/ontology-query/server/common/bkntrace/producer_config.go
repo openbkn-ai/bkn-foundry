@@ -1,6 +1,7 @@
 package bkntrace
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ type evidencePublisherConfig struct {
 
 type EvidencePublisherRuntime struct {
 	Publisher *evidencepublisher.Publisher
+	Runtime   *evidencepublisher.PublisherRuntime
 	Producer  interface{ Close() error }
 }
 
@@ -44,12 +46,12 @@ func NewEvidencePublisherRuntime() (*EvidencePublisherRuntime, error) {
 	if err != nil {
 		return nil, err
 	}
-	publisher, err := evidencepublisher.New(cfg.Publisher, kafkasender.NewEvidence(producer))
+	runtime, err := evidencepublisher.NewPublisherRuntimeFromEnvironment(context.Background(), cfg.Publisher, kafkasender.NewEvidence(producer))
 	if err != nil {
 		_ = producer.Close()
 		return nil, err
 	}
-	return &EvidencePublisherRuntime{Publisher: publisher, Producer: producer}, nil
+	return &EvidencePublisherRuntime{Publisher: runtime.UnderlyingPublisher(), Runtime: runtime, Producer: producer}, nil
 }
 
 func loadEvidencePublisherConfig() (evidencePublisherConfig, error) {
@@ -58,12 +60,8 @@ func loadEvidencePublisherConfig() (evidencePublisherConfig, error) {
 	mechanism := get("BKN_TRACE_KAFKA_SASL_MECHANISM")
 	username, password := get("BKN_TRACE_KAFKA_USERNAME"), os.Getenv("BKN_TRACE_KAFKA_PASSWORD")
 	producerID, identity, streamID := get("BKN_TRACE_PRODUCER_ID"), get("BKN_TRACE_WORKLOAD_IDENTITY"), get("BKN_TRACE_PRODUCER_STREAM_ID")
-	revision := get("BKN_TRACE_CAPTURE_POLICY_REVISION")
-	if len(brokers) == 0 || mechanism != "PLAIN" || username == "" || password == "" || producerID == "" || identity == "" || streamID == "" || revision == "" {
+	if len(brokers) == 0 || mechanism != "PLAIN" || username == "" || password == "" || producerID == "" || identity == "" || streamID == "" {
 		return evidencePublisherConfig{}, errors.New("invalid BKN Trace Evidence Kafka configuration")
-	}
-	if parsed, err := strconv.ParseUint(revision, 10, 64); err != nil || parsed == 0 {
-		return evidencePublisherConfig{}, fmt.Errorf("invalid BKN_TRACE_CAPTURE_POLICY_REVISION")
 	}
 	queueMaxRecords, err := boundedPositive(getInt(get("BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS"), 4096), 1, 1000000)
 	if err != nil {
@@ -87,7 +85,7 @@ func loadEvidencePublisherConfig() (evidencePublisherConfig, error) {
 	}
 	return evidencePublisherConfig{
 		Publisher: evidencepublisher.Config{ProducerID: producerID, BaseStreamID: streamID, WorkloadIdentity: identity,
-			ProcessBootID: uuid.NewString(), CapturePolicyRevision: revision, QueueMaxRecords: queueMaxRecords,
+			ProcessBootID: uuid.NewString(), QueueMaxRecords: queueMaxRecords,
 			QueueMaxBytes: queueMaxBytes, MaxRecordBytes: maxRecordBytes, MaxAttempts: maxAttempts,
 			RetryBackoff: time.Duration(retryBackoffMs) * time.Millisecond},
 		Brokers: brokers, Mechanism: mechanism, Username: username, Password: password,

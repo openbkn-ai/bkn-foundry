@@ -11,16 +11,20 @@ import (
 
 var (
 	evidencePublisherMu sync.RWMutex
-	evidencePublisher   *evidencepublisher.Publisher
+	evidencePublisher   EvidencePublisher
 )
 
-func SetEvidencePublisher(publisher *evidencepublisher.Publisher) {
+type EvidencePublisher interface {
+	TryPublish(evidencepublisher.Event) evidencepublisher.PublishResult
+}
+
+func SetEvidencePublisher(publisher EvidencePublisher) {
 	evidencePublisherMu.Lock()
 	defer evidencePublisherMu.Unlock()
 	evidencePublisher = publisher
 }
 
-func currentEvidencePublisher() *evidencepublisher.Publisher {
+func currentEvidencePublisher() EvidencePublisher {
 	evidencePublisherMu.RLock()
 	defer evidencePublisherMu.RUnlock()
 	return evidencePublisher
