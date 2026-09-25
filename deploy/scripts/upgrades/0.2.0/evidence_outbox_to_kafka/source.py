@@ -11,6 +11,9 @@ _TABLES = {
 }
 _PUBLISH = {"pending", "retry"}
 _COVERAGE_GAP = {"abandoned", "conflict", "dlq"}
+_STRING_IDENTITY = ("event_id", "payload_hash", "producer_id", "producer_stream_id")
+_NUMERIC_IDENTITY = ("producer_epoch", "producer_sequence")
+_UINT64_MAX = (1 << 64) - 1
 
 
 class ActiveLeaseError(ManifestError):
@@ -96,13 +99,18 @@ def classify_row(row, manifest_id, snapshot_at):
         event = stored["event"]
     except (KeyError, TypeError, json.JSONDecodeError):
         return _coverage_entry(row, manifest_id, service, table, "bad_payload"), None
-    identity = ("event_id", "payload_hash", "producer_id", "producer_stream_id", "producer_epoch", "producer_sequence")
     if not isinstance(event, dict) or any(
-        not isinstance(event.get(key), (str, int)) or event.get(key) in ("", 0)
-        for key in identity
+        not isinstance(event.get(key), str) or not event[key]
+        for key in _STRING_IDENTITY
+    ) or any(
+        type(event.get(key)) is not int or not 0 < event[key] <= _UINT64_MAX
+        for key in _NUMERIC_IDENTITY
     ):
         return _coverage_entry(row, manifest_id, service, table, "bad_payload"), None
-    if any(str(row.get(key, "")) != str(event[key]) for key in ("event_id", "payload_hash", "producer_id", "producer_stream_id", "producer_epoch", "producer_sequence")):
+    if any(row.get(key) != event[key] for key in _STRING_IDENTITY) or any(
+        type(row.get(key)) is not int or row[key] != event[key]
+        for key in _NUMERIC_IDENTITY
+    ):
         return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
     return {
         "classification": classification, "classification_reason": reason,

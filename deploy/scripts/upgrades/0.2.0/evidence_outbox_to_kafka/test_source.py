@@ -57,6 +57,17 @@ class SourceTest(unittest.TestCase):
         entry, event = classify_row(dict(self.row, event_id="different"), "mig-1", self.snapshot)
         self.assertEqual((entry["classification"], entry["classification_reason"], event), ("coverage_gap", "source_identity_mismatch", None))
 
+    def test_event_identity_requires_exact_schema_types_and_uint64_range(self):
+        for field, value in (("producer_epoch", True), ("producer_sequence", "7"), ("producer_epoch", (1 << 64))):
+            with self.subTest(field=field, value=value):
+                event = dict(self.event, **{field: value})
+                entry, returned = classify_row(dict(self.row, envelope=json.dumps({"event": event})), "mig-1", self.snapshot)
+                self.assertEqual((entry["classification"], entry["classification_reason"], returned), ("coverage_gap", "bad_payload", None))
+
+    def test_source_identity_does_not_coerce_types(self):
+        entry, returned = classify_row(dict(self.row, producer_sequence="7"), "mig-1", self.snapshot)
+        self.assertEqual((entry["classification"], entry["classification_reason"], returned), ("coverage_gap", "source_identity_mismatch", None))
+
 
 if __name__ == "__main__":
     unittest.main()
