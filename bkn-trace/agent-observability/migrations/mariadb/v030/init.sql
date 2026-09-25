@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_evidence_migration_manifest_audit (
 ) ENGINE=InnoDB;
 
 DELIMITER $$
-CREATE TRIGGER bkn_trace_evidence_manifest_lifecycle_guard
+CREATE TRIGGER IF NOT EXISTS bkn_trace_evidence_manifest_lifecycle_guard
 BEFORE UPDATE ON bkn_trace_evidence_migration_manifests FOR EACH ROW
 BEGIN
   IF OLD.state = 'closed' THEN
@@ -124,49 +124,49 @@ BEGIN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='active Evidence migration manifest core fields are immutable';
   END IF;
 END$$
-CREATE TRIGGER bkn_trace_evidence_manifest_draft_only_delete
+CREATE TRIGGER IF NOT EXISTS bkn_trace_evidence_manifest_draft_only_delete
 BEFORE DELETE ON bkn_trace_evidence_migration_manifests FOR EACH ROW
 BEGIN
   IF OLD.state <> 'draft' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='active or closed Evidence migration manifest cannot be deleted';
   END IF;
 END$$
-CREATE TRIGGER bkn_trace_evidence_entries_draft_only_insert
+CREATE TRIGGER IF NOT EXISTS bkn_trace_evidence_entries_draft_only_insert
 BEFORE INSERT ON bkn_trace_evidence_migration_entries FOR EACH ROW
 BEGIN
   IF (SELECT state FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=NEW.manifest_id) <> 'draft' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='active Evidence migration entries are immutable';
   END IF;
 END$$
-CREATE TRIGGER bkn_trace_evidence_entries_draft_only_update
+CREATE TRIGGER IF NOT EXISTS bkn_trace_evidence_entries_draft_only_update
 BEFORE UPDATE ON bkn_trace_evidence_migration_entries FOR EACH ROW
 BEGIN
   IF (SELECT state FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=OLD.manifest_id) <> 'draft' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='active Evidence migration entries are immutable';
   END IF;
 END$$
-CREATE TRIGGER bkn_trace_evidence_entries_draft_only_delete
+CREATE TRIGGER IF NOT EXISTS bkn_trace_evidence_entries_draft_only_delete
 BEFORE DELETE ON bkn_trace_evidence_migration_entries FOR EACH ROW
 BEGIN
   IF (SELECT state FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=OLD.manifest_id) <> 'draft' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='active Evidence migration entries are immutable';
   END IF;
 END$$
-CREATE TRIGGER bkn_trace_evidence_results_open_only_insert
+CREATE TRIGGER IF NOT EXISTS bkn_trace_evidence_results_open_only_insert
 BEFORE INSERT ON bkn_trace_evidence_migration_results FOR EACH ROW
 BEGIN
   IF (SELECT state FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=NEW.manifest_id) = 'closed' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='closed Evidence migration results are immutable';
   END IF;
 END$$
-CREATE TRIGGER bkn_trace_evidence_results_open_only_update
+CREATE TRIGGER IF NOT EXISTS bkn_trace_evidence_results_open_only_update
 BEFORE UPDATE ON bkn_trace_evidence_migration_results FOR EACH ROW
 BEGIN
   IF (SELECT state FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=OLD.manifest_id) = 'closed' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='closed Evidence migration results are immutable';
   END IF;
 END$$
-CREATE TRIGGER bkn_trace_evidence_results_open_only_delete
+CREATE TRIGGER IF NOT EXISTS bkn_trace_evidence_results_open_only_delete
 BEFORE DELETE ON bkn_trace_evidence_migration_results FOR EACH ROW
 BEGIN
   IF (SELECT state FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=OLD.manifest_id) = 'closed' THEN

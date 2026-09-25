@@ -186,7 +186,7 @@ func TestSplitSQLStatementsKeepsDelimitedTriggerBodyAsOneStatement(t *testing.T)
 	}
 	triggerCount := 0
 	for _, statement := range statements {
-		if strings.HasPrefix(statement, "CREATE TRIGGER ") {
+		if strings.HasPrefix(statement, "CREATE TRIGGER IF NOT EXISTS ") {
 			triggerCount++
 			if !strings.Contains(statement, "BEGIN") || !strings.Contains(statement, "END") {
 				t.Fatalf("trigger was split: %q", statement)

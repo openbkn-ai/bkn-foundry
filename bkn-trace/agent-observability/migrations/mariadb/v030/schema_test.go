@@ -35,4 +35,7 @@ func TestSchemaHasFrozenManifestLifecycleAndResultGuards(t *testing.T) {
 	if strings.Count(schema, "bkn_trace_evidence_entries_draft_only_") != 3 {
 		t.Fatal("entries must have draft-only insert, update, and delete guards")
 	}
+	if strings.Count(schema, "CREATE TRIGGER IF NOT EXISTS ") != 8 {
+		t.Fatal("v030 triggers must be idempotent when the migration re-runs")
+	}
 }
