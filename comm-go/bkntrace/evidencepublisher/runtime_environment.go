@@ -50,7 +50,7 @@ func NewPublisherRuntimeFromEnvironment(ctx context.Context, publisher Config, s
 			return nil, err
 		}
 	}
-	tokens, err := NewOAuthTokenSource(OAuthTokenConfig{TokenURL: get("TRACE_ADMISSION_TOKEN_URL"), ClientID: get("TRACE_ADMISSION_CLIENT_ID"), ClientSecret: os.Getenv("TRACE_ADMISSION_CLIENT_SECRET")})
+	tokens, err := NewOAuthTokenSource(OAuthTokenConfig{TokenURL: get("TRACE_ADMISSION_TOKEN_URL"), ClientID: get("TRACE_ADMISSION_CLIENT_ID"), ClientSecret: os.Getenv("TRACE_ADMISSION_CLIENT_SECRET"), Scopes: strings.Fields(get("TRACE_ADMISSION_SCOPE"))})
 	if err != nil {
 		return nil, err
 	}

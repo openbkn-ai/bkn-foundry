@@ -19,6 +19,7 @@ type OAuthTokenConfig struct {
 	TokenURL     string
 	ClientID     string
 	ClientSecret string
+	Scopes       []string
 	HTTPClient   *http.Client
 }
 
@@ -43,6 +44,7 @@ func NewOAuthTokenSource(config OAuthTokenConfig) (*OAuthTokenSource, error) {
 		ClientID:     config.ClientID,
 		ClientSecret: config.ClientSecret,
 		TokenURL:     config.TokenURL,
+		Scopes:       config.Scopes,
 		AuthStyle:    oauth2.AuthStyleInParams,
 	}
 	tokenContext := context.Background()

@@ -22,6 +22,9 @@ func TestOAuthTokenSourceUsesClientCredentialsPostAndCachesToken(t *testing.T) {
 			request.Form.Get("client_id") != "publisher-a" || request.Form.Get("client_secret") != "secret-a" {
 			t.Fatalf("unexpected OAuth request: method=%s form=%v", request.Method, request.Form)
 		}
+		if got := request.Form.Get("scope"); got != "trace-evidence-control" {
+			t.Fatalf("scope = %q", got)
+		}
 		if authorization := request.Header.Get("Authorization"); authorization != "" {
 			t.Fatalf("client_secret_post request carried Authorization header %q", authorization)
 		}
@@ -33,7 +36,7 @@ func TestOAuthTokenSourceUsesClientCredentialsPostAndCachesToken(t *testing.T) {
 	})}
 
 	source, err := NewOAuthTokenSource(OAuthTokenConfig{
-		TokenURL: "https://bkn-safe.example/oauth2/token", ClientID: "publisher-a", ClientSecret: "secret-a", HTTPClient: client,
+		TokenURL: "https://bkn-safe.example/oauth2/token", ClientID: "publisher-a", ClientSecret: "secret-a", Scopes: []string{"trace-evidence-control"}, HTTPClient: client,
 	})
 	if err != nil {
 		t.Fatalf("NewOAuthTokenSource() error = %v", err)
