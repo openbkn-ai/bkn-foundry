@@ -84,7 +84,10 @@ def publish_entries(manifest, entries, checkpoint_path, publish, fault=None):
             raise ManifestError("bridge publish callback must return a Kafka ACK coordinate")
         last_ack = ack
         write_checkpoint(checkpoint_path, _checkpoint(manifest, entry, ack, counts), fault)
-        emitted.append(entry["entry_id"])
+        # The source-only frozen artifact deliberately has no central DB
+        # entry_id.  Its durable identity is the C1 source cursor; an admin
+        # may add entry_id for its own store without granting it to bridge.
+        emitted.append(entry.get("entry_id", _source_cursor(entry)))
     # A trailing verify/coverage classification has no ACK of its own. Persist
     # a completed source cursor with the last ACK so classification accounting
     # is durable even when no later publish record exists.

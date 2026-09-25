@@ -46,6 +46,13 @@ class BridgeTest(unittest.TestCase):
             with self.assertRaises(ManifestError):
                 publish_entries(dict(self.manifest, state="draft"), self.entries, Path(root) / "checkpoint", self.ack)
 
+    def test_frozen_source_entries_need_no_central_entry_id(self):
+        entry = {key: value for key, value in self.publish.items() if key != "entry_id"}
+        manifest = dict(self.manifest, entry_count="1", entries_digest=entries_digest([entry]))
+        with tempfile.TemporaryDirectory() as root:
+            emitted = publish_entries(manifest, [entry], Path(root) / "checkpoint", self.ack)
+        self.assertEqual(emitted, [(entry["source_table"], entry["source_primary_key"])])
+
     def test_encoded_bridge_uses_only_snapshot_event_and_kafka_ack(self):
         class Metadata:
             topic, partition, offset = "openbkn.evidence.v1", 0, 12
