@@ -30,3 +30,14 @@ func TestEntriesDigestSortsFrozenSourceCursor(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if forward != reversed { t.Fatalf("digest must be independent of input order: %s != %s", forward, reversed) }
 }
+
+func TestCoverageGapCanonicalEntryKeepsNullableIdentityAsNull(t *testing.T) {
+	entry := frozenEntry{Classification: "coverage_gap", ClassificationReason: "bad_payload", ManifestID: "mig-1", SourcePrimaryKey: "1", SourceService: "bkn-backend", SourceStatus: "dlq", SourceTable: "bkn_backend_trace_outbox"}
+	document, err := canonicalEntry(entry)
+	if err != nil { t.Fatal(err) }
+	for _, field := range []string{"event_id", "payload_hash", "producer_id", "producer_stream_id", "producer_epoch", "producer_sequence"} {
+		value, found := document[field]
+		if !found || value != nil { t.Fatalf("%s must be explicit null, got present=%v value=%#v", field, found, value) }
+	}
+	if len(document) != 13 { t.Fatalf("C1 immutable field count = %d, want 13", len(document)) }
+}
