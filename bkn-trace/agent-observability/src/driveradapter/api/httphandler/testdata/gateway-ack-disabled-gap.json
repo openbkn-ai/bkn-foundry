@@ -1,0 +1,17 @@
+{
+  "contract_version": "TraceGatewayAcknowledgementV1",
+  "gateway_instance_id": "spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-0f14",
+  "workload_identity": "spiffe://cluster-a/ns/openbkn/sa/otelcol",
+  "process_boot_id": "boot-0f14",
+  "capture_policy_revision": 43,
+  "admission_state": "disabled",
+  "ready": true,
+  "acknowledged_at": "2026-09-22T08:01:10Z",
+  "queue_disposition": {
+    "state": "gap",
+    "exported": 16,
+    "dropped": 2,
+    "unaccounted": null,
+    "gap_reason": "collector_restarted"
+  }
+}

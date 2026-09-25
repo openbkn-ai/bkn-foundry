@@ -30,6 +30,15 @@ type capturePolicyInternalWriter struct {
 	ack   icapturepolicy.ExpectedAcknowledgement
 }
 
+func marshalJSON(t *testing.T, value any) string {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func (w *capturePolicyInternalWriter) UpsertEndpointLease(_ context.Context, lease icapturepolicy.EndpointLease) error {
 	w.lease = lease
 	return nil
@@ -150,6 +159,81 @@ func TestInternalTraceGatewayAckConsumesFrozenContractAndBindsIdentity(t *testin
 	}
 	if writer.ack.OperationID != "op-42" || writer.ack.EndpointKind != icapturepolicy.EndpointTraceGateway || writer.ack.TraceDisposition != icapturepolicy.DispositionComplete || writer.ack.ExportedCount == nil || *writer.ack.ExportedCount != 16 {
 		t.Fatalf("unexpected persisted acknowledgement: %+v", writer.ack)
+	}
+}
+
+func TestInternalTraceGatewayAckConsumesAuthoritativeDisabledCompleteFixture(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{}, nil
+	}), nil, nil, nil, writer)
+	fixture, err := os.ReadFile("testdata/gateway-ack-disabled-complete.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := capturePolicyWorkloadProfile()
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:ack", string(fixture), profile)
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if writer.ack.OperationID != "op-43" || writer.ack.PolicyRevision != 43 || writer.ack.InstanceID != "spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-0f14" || writer.ack.TraceDisposition != icapturepolicy.DispositionComplete || writer.ack.UnaccountedCount == nil || *writer.ack.UnaccountedCount != 0 {
+		t.Fatalf("authoritative complete fixture was not persisted faithfully: %+v", writer.ack)
+	}
+}
+
+func TestInternalTraceGatewayAckConsumesAuthoritativeDisabledGapFixture(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{}, nil
+	}), nil, nil, nil, writer)
+	fixture, err := os.ReadFile("testdata/gateway-ack-disabled-gap.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:ack", string(fixture), capturePolicyWorkloadProfile())
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusNoContent || writer.ack.TraceDisposition != icapturepolicy.DispositionGap || writer.ack.GapReason != "collector_restarted" || writer.ack.UnaccountedCount != nil {
+		t.Fatalf("authoritative gap fixture was not persisted faithfully: status=%d body=%s ack=%+v", response.Code, response.Body.String(), writer.ack)
+	}
+}
+
+func TestInternalTraceGatewayAckRejectsAdditionalPropertiesFromFrozenFixture(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{}, nil
+	}), nil, nil, nil, writer)
+	fixture, err := os.ReadFile("testdata/gateway-ack-disabled-complete.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(fixture, &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["unexpected"] = true
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:ack", marshalJSON(t, payload), capturePolicyWorkloadProfile())
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for additional property", response.Code)
+	}
+}
+
+func TestInternalTraceGatewayAckRejectsPublisherOnlyPrincipalWithoutIdentityMismatch(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{}, nil
+	}), nil, nil, nil, writer)
+	profile := capturePolicyWorkloadProfile()
+	profile.Permissions = []evidencevo.Permission{{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}}}
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/otelcol","process_boot_id":"boot-1","capture_policy_revision":43,"admission_state":"enabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"not_applicable","exported":0,"dropped":0,"unaccounted":0}}`, profile)
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 for publisher-only principal without identity mismatch", response.Code)
 	}
 }
 
