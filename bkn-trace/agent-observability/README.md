@@ -175,6 +175,27 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器在 release 循环前创建或验证该 Secret，并将同一 token 注入 Agent Observability、Context Loader、Vega、BKN Backend、Ontology Query、BKN Agent 与行动执行服务；BKN Backend 和 Ontology Query 同时启用其持久 Evidence outbox worker 与既有清理任务（已投递记录保留 30 天，放弃记录保留 180 天）。单独安装任一 Chart 时，应预先创建并显式引用该 Secret。对无 outbox 的生产者，禁用 Evidence 写入须同时清空 ingest URL 与 token Secret；对启用了 producer outbox 的 BKN Backend 和 Ontology Query，须同时关闭 outbox 与 worker，不能只清空 URL。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
 
+Trace Admission Gateway 的签名策略也要求安装前准备外部 Secret；Chart 不会自动生成或轮换签名密钥。`core.capturePolicySigning.existingSecret` 必须存在，且 `privateKeyKey`（默认 `private-key`）的值必须是 base64 编码的 Ed25519 原始 64 字节私钥。`keyID` 与 `audience` 必须和 Gateway 的验证配置一致。缺少该 Secret 时 Helm render/install 会直接失败，避免默认 enabled 部署成无法取得有效快照的 fail-closed 状态：
+
+```bash
+capture_policy_key="$(python3 - <<'PY'
+import base64
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+key = Ed25519PrivateKey.generate()
+seed = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
+public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+print(base64.b64encode(seed + public).decode())
+PY
+)"
+kubectl create secret generic bkn-trace-capture-policy-signing \
+  --from-literal=private-key="${capture_policy_key}" -n observability
+
+helm upgrade --install agent-observability charts/agent-observability \
+  --set core.capturePolicySigning.existingSecret=bkn-trace-capture-policy-signing \
+  -n observability
+```
+
 ```bash
 printf '%s' '<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' | \
 kubectl create secret generic bkn-trace-core-mariadb \

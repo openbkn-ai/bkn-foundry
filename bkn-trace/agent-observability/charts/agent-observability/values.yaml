@@ -188,6 +188,8 @@ core:
     keyID: trace-capture-policy-2026
     audience: trace-admission-gateway
     snapshotTTL: 15m
+    # Required external Secret. The referenced key must contain a base64
+    # encoded raw 64-byte Ed25519 private key; Helm never generates or rotates it.
     existingSecret: ""
     privateKeyKey: private-key
   projection:
