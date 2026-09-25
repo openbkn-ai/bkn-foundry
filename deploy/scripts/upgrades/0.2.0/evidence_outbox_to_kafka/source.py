@@ -18,12 +18,29 @@ class ActiveLeaseError(ManifestError):
 
 
 def _utc(value):
+    """Normalize a UTC source timestamp without consulting runner local time.
+
+    MariaDB DATETIME values are written by this migration's UTC-only source
+    contract and DB-API drivers commonly decode them as naive ``datetime``.
+    Treat that decoded representation as UTC explicitly.  Text values, in
+    contrast, must carry an offset; accepting a naive string would make the
+    result depend on the maintenance runner's local timezone.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
     if not isinstance(value, str) or not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as error:
         raise ManifestError("source lease timestamp is invalid") from error
+    if parsed.tzinfo is None:
+        raise ManifestError("source timestamp text must include a UTC offset")
+    return parsed.astimezone(timezone.utc)
 
 
 def _coverage_entry(row, manifest_id, service, table, reason):
@@ -64,7 +81,9 @@ def classify_row(row, manifest_id, snapshot_at):
         now = _utc(snapshot_at)
         if now is None:
             raise ManifestError("source snapshot timestamp is invalid")
-        if lease is not None and lease > now:
+        if lease is None:
+            raise ActiveLeaseError("missing source lease cannot prove expiry")
+        if lease > now:
             raise ActiveLeaseError("active source lease prevents migration snapshot")
         classification, reason = "publish", "expired_lease"
     elif status in _COVERAGE_GAP:

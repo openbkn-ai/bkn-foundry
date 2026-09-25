@@ -1,6 +1,7 @@
 import json
 import sys
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -37,10 +38,16 @@ class SourceTest(unittest.TestCase):
     def test_expired_lease_publishes_but_active_lease_blocks_snapshot(self):
         entry, _ = classify_row(dict(self.row, status="processing", locked_until="2026-09-25T09:59:59Z"), "mig-1", self.snapshot)
         self.assertEqual((entry["classification"], entry["classification_reason"]), ("publish", "expired_lease"))
+        entry, _ = classify_row(dict(self.row, status="processing", locked_until=datetime(2026, 9, 25, 9, 59, 59)), "mig-1", self.snapshot)
+        self.assertEqual((entry["classification"], entry["classification_reason"]), ("publish", "expired_lease"))
         with self.assertRaises(ActiveLeaseError):
             classify_row(dict(self.row, status="processing", locked_until="2026-09-25T10:00:01Z"), "mig-1", self.snapshot)
+        with self.assertRaises(ActiveLeaseError):
+            classify_row(dict(self.row, status="processing", locked_until=None), "mig-1", self.snapshot)
         with self.assertRaises(ManifestError):
             classify_row(self.row, "mig-1", "not-a-timestamp")
+        with self.assertRaises(ManifestError):
+            classify_row(self.row, "mig-1", "2026-09-25T10:00:00")
 
     def test_bad_or_mismatched_payload_becomes_coverage_gap(self):
         entry, event = classify_row(dict(self.row, envelope="{"), "mig-1", self.snapshot)
