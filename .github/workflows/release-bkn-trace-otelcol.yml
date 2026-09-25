@@ -75,9 +75,10 @@ jobs:
         run: go test ./...
 
       - name: Build local amd64 OCB smoke image
-        run: docker build --platform linux/amd64 --load \
-          -f bkn-trace/otelcol-contribute-chart/Dockerfile.openbkn \
-          -t otelcol-openbkn:ci-smoke .
+        run: |
+          docker build --platform linux/amd64 --load \
+            -f bkn-trace/otelcol-contribute-chart/Dockerfile.openbkn \
+            -t otelcol-openbkn:ci-smoke .
 
       - name: Validate enabled Trace Admission chart with OCB image
         working-directory: bkn-trace/otelcol-contribute-chart
