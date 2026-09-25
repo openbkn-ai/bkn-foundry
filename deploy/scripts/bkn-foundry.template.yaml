@@ -65,3 +65,7 @@ releases:
   bkn-studio:
     chart: bkn-studio
     version: main
+  # Studio sample catalog. The chart is published by openbkn-ai/bkn-samples.
+  bkn-sample-studio:
+    chart: bkn-sample-studio
+    version: main
