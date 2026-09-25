@@ -368,11 +368,47 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "queue disposition does not satisfy TraceGatewayAcknowledgementV1"})
 		return
 	}
+	if err := h.validateTraceGatewayAckOperation(contextWithRequest(r), path, *request.CapturePolicyRevision); err != nil {
+		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement is stale or the operation is no longer active"})
+		return
+	}
 	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: request.GatewayInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: request.ProcessBootID, PolicyRevision: *request.CapturePolicyRevision, Ready: request.Ready, AckState: string(ackState), AcknowledgedAt: &request.AcknowledgedAt, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: request.QueueDisposition.Unaccounted.Value, TraceDisposition: traceDisposition, GapReason: request.QueueDisposition.GapReason}); err != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement was rejected"})
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validateTraceGatewayAckOperation closes the GET-to-ACK race. The
+// configuration read only identifies a candidate operation; the authoritative
+// operation and policy revision are re-read immediately before persistence.
+func (h *CapturePolicyHandler) validateTraceGatewayAckOperation(ctx context.Context, operationID string, revision uint64) error {
+	if h == nil || h.service == nil || operationID == "" || revision == 0 {
+		return errors.New("capture policy operation is unavailable")
+	}
+	snapshot, err := h.service.Read(ctx)
+	if err != nil || snapshot.Revision != revision {
+		return errors.New("capture policy revision changed")
+	}
+	operation := snapshot.Operation
+	if latest, latestErr := h.service.ReadOperation(ctx, operationID); latestErr == nil {
+		operation = latest
+	} else if operation.ID != operationID {
+		return errors.New("capture policy operation changed")
+	}
+	if operation.ID != operationID || !traceGatewayOperationActive(operation.Phase) {
+		return errors.New("capture policy operation is no longer active")
+	}
+	return nil
+}
+
+func traceGatewayOperationActive(phase capturepolicysvc.Phase) bool {
+	switch phase {
+	case capturepolicysvc.PhasePending, capturepolicysvc.PhaseEnabling, capturepolicysvc.PhaseDisabling, capturepolicysvc.PhaseRollingBack:
+		return true
+	default:
+		return false
+	}
 }
 
 // evidencePublisherAcknowledgement is the Session 1 wire contract consumed by

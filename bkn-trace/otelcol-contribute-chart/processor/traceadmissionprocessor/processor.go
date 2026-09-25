@@ -247,6 +247,12 @@ func (p *traceAdmissionProcessor) pullPolicy(ctx context.Context) (traceadmissio
 }
 
 type configurationReadModel struct {
+	Kind              string  `json:"kind"`
+	PolicyRevision    uint64  `json:"policy_revision"`
+	ActiveOperationID *string `json:"active_operation_id"`
+	// Revision/Operation are retained only to consume the currently deployed
+	// control-plane response while it converges on the frozen configuration_get
+	// contract. The signed policy and ACK contracts remain strict.
 	Revision  uint64 `json:"revision"`
 	Operation struct {
 		ID    string `json:"id"`
@@ -270,6 +276,15 @@ func (p *traceAdmissionProcessor) pullActiveOperation(ctx context.Context, revis
 	var model configurationReadModel
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&model); err != nil {
 		return "", err
+	}
+	if model.Kind != "" && model.Kind != "configuration_get" {
+		return "", fmt.Errorf("configuration endpoint returned unsupported kind %q", model.Kind)
+	}
+	if model.PolicyRevision != 0 {
+		if model.PolicyRevision != revision || model.ActiveOperationID == nil || strings.TrimSpace(*model.ActiveOperationID) == "" {
+			return "", nil
+		}
+		return strings.TrimSpace(*model.ActiveOperationID), nil
 	}
 	if model.Revision != revision || !activeOperationPhase(model.Operation.Phase) || model.Operation.ID == "" {
 		return "", nil

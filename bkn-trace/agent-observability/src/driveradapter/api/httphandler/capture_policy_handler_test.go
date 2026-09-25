@@ -64,6 +64,30 @@ func capturePolicyWorkloadProfile() evidencevo.AccessProfile {
 	}
 }
 
+func traceGatewayAckReader(operationID string, revision uint64, phase capturepolicysvc.Phase) capturepolicysvc.ReaderFunc {
+	return func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{
+			Revision: revision, DesiredState: capturepolicysvc.StateDisabled,
+			EffectiveState: capturepolicysvc.StateDisabled, LastStableRevision: revision,
+			Operation: capturepolicysvc.Operation{ID: operationID, Phase: phase, RequestedState: capturepolicysvc.StateDisabled},
+		}, nil
+	}
+}
+
+type traceGatewayAckRaceReader struct{}
+
+func (traceGatewayAckRaceReader) Read(context.Context) (capturepolicysvc.Snapshot, error) {
+	return capturepolicysvc.Snapshot{
+		Revision: 42, DesiredState: capturepolicysvc.StateDisabled,
+		EffectiveState: capturepolicysvc.StateDisabled, LastStableRevision: 42,
+		Operation: capturepolicysvc.Operation{ID: "op-race", Phase: capturepolicysvc.PhaseDisabling, RequestedState: capturepolicysvc.StateDisabled},
+	}, nil
+}
+
+func (traceGatewayAckRaceReader) ReadOperation(context.Context, string) (capturepolicysvc.Operation, error) {
+	return capturepolicysvc.Operation{ID: "op-race", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateDisabled}, nil
+}
+
 func TestInternalTraceEvidenceHeartbeatBindsEndpointKindToVerifiedGrant(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
 	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
@@ -149,9 +173,7 @@ func TestInternalTraceEvidenceHeartbeatRejectsBootIdentityMismatch(t *testing.T)
 
 func TestInternalTraceGatewayAckConsumesFrozenContractAndBindsIdentity(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
-		return capturepolicysvc.Snapshot{}, nil
-	}), nil, nil, nil, writer)
+	handler := NewCapturePolicyHandlerWithInternal(traceGatewayAckReader("op-42", 42, capturepolicysvc.PhaseDisabling), nil, nil, nil, writer)
 	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-42:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/otelcol","process_boot_id":"boot-1","capture_policy_revision":42,"admission_state":"disabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"complete","exported":16,"dropped":2,"unaccounted":0}}`, capturePolicyWorkloadProfile())
 	response := httptest.NewRecorder()
 	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
@@ -163,11 +185,23 @@ func TestInternalTraceGatewayAckConsumesFrozenContractAndBindsIdentity(t *testin
 	}
 }
 
+func TestInternalTraceGatewayAckRechecksOperationAfterConfigurationCandidate(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(traceGatewayAckRaceReader{}, nil, nil, nil, writer)
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-race:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/otelcol","process_boot_id":"boot-1","capture_policy_revision":42,"admission_state":"disabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"complete","exported":16,"dropped":2,"unaccounted":0}}`, capturePolicyWorkloadProfile())
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 after operation became terminal", response.Code)
+	}
+	if writer.ack.OperationID != "" {
+		t.Fatalf("terminal operation must not be persisted: %+v", writer.ack)
+	}
+}
+
 func TestInternalTraceGatewayAckConsumesAuthoritativeDisabledCompleteFixture(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
-		return capturepolicysvc.Snapshot{}, nil
-	}), nil, nil, nil, writer)
+	handler := NewCapturePolicyHandlerWithInternal(traceGatewayAckReader("op-43", 43, capturepolicysvc.PhaseDisabling), nil, nil, nil, writer)
 	fixture, err := os.ReadFile("testdata/gateway-ack-disabled-complete.json")
 	if err != nil {
 		t.Fatal(err)
@@ -186,9 +220,7 @@ func TestInternalTraceGatewayAckConsumesAuthoritativeDisabledCompleteFixture(t *
 
 func TestInternalTraceGatewayAckConsumesAuthoritativeDisabledGapFixture(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
-		return capturepolicysvc.Snapshot{}, nil
-	}), nil, nil, nil, writer)
+	handler := NewCapturePolicyHandlerWithInternal(traceGatewayAckReader("op-43", 43, capturepolicysvc.PhaseDisabling), nil, nil, nil, writer)
 	fixture, err := os.ReadFile("testdata/gateway-ack-disabled-gap.json")
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +283,7 @@ func TestInternalTraceGatewayAckRejectsWorkloadIdentityMismatch(t *testing.T) {
 
 func TestInternalTraceGatewayAckAcceptsFrozenGapDisposition(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return capturepolicysvc.Snapshot{}, nil }), nil, nil, nil, writer)
+	handler := NewCapturePolicyHandlerWithInternal(traceGatewayAckReader("op-gap", 42, capturepolicysvc.PhaseDisabling), nil, nil, nil, writer)
 	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-gap:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/otelcol","process_boot_id":"boot-1","capture_policy_revision":42,"admission_state":"disabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"gap","exported":16,"dropped":2,"unaccounted":null,"gap_reason":"collector_restarted"}}`, capturePolicyWorkloadProfile())
 	response := httptest.NewRecorder()
 	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)

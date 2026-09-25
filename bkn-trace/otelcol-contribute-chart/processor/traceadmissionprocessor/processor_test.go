@@ -161,6 +161,41 @@ func assertFrozenGatewayAckJSON(t *testing.T, body []byte) {
 	}
 }
 
+func TestProcessorUsesFrozenConfigurationActiveOperationCandidate(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+		Revision: 42, TraceAdmission: traceadmissionsvc.ModeDisabled, EvidenceAdmission: traceadmissionsvc.ModeDisabled,
+		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a",
+	}, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &scriptedTransport{responses: map[string]scriptedResponse{
+		"https://safe.internal/policy":               {status: http.StatusOK, body: mustJSON(snapshot)},
+		"https://safe.internal/config":               {status: http.StatusOK, body: []byte(`{"kind":"configuration_get","desired_state":"disabled","effective_state":"disabled","policy_revision":42,"last_stable_revision":41,"active_operation_id":"op-42","heartbeat_interval_seconds":10,"lease_ttl_seconds":30,"admission_budget":{"contract_version":"AdmissionBudgetV1","profile":"default","sampled_at":"2026-09-25T08:00:00Z","fresh_until":"2026-09-25T08:01:00Z","measurements":[{"metric":"trace_opensearch_capacity","source":"opensearch","sample_time":"2026-09-25T08:00:00Z","value":0.5,"threshold":0.8,"fresh":true}]}}`)},
+		"https://safe.internal/token":                {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
+		"https://safe.internal/operations/op-42:ack": {status: http.StatusNoContent},
+	}}
+	p, _ := newTestProcessor(t, Config{
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
+		AckURLBase: "https://safe.internal/operations/", ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
+		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+	}, transport)
+	if err := p.refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if p.operationID() != "op-42" {
+		t.Fatalf("operation candidate = %q, want op-42", p.operationID())
+	}
+	if len(transport.requests) != 4 {
+		t.Fatalf("request count = %d, want token + policy + config + ack", len(transport.requests))
+	}
+}
+
 func TestFactorySupportsTracesOnly(t *testing.T) {
 	factory := NewFactory()
 	if factory.Type() != component.MustNewType("traceadmission") {
