@@ -181,7 +181,7 @@ func (p *Processor) processMigration(ctx context.Context, record Record, headers
 		case ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent):
 			return p.rejectMigration(ctx, record, admission, "invalid_evidence_event", event)
 		default:
-			return fmt.Errorf("Evidence migration Ledger decision is temporary or uncertain: %w", err)
+			return fmt.Errorf("evidence migration Ledger decision is temporary or uncertain: %w", err)
 		}
 	}
 	consumerResult := ievidencemigration.ConsumerResult{ManifestID: admission.ManifestID, EntryID: admission.EntryID, Topic: record.Topic, Partition: record.Partition, Offset: record.Offset, IngestSequence: result.Ack.IngestSequence}
@@ -199,7 +199,7 @@ func (p *Processor) processMigration(ctx context.Context, record Record, headers
 		return err
 	}
 	if (result.Decision == ievidenceledger.KafkaAccepted || result.Decision == ievidenceledger.KafkaDeduplicated) && !result.Ack.Durable {
-		return errors.New("Evidence Ledger returned a non-durable acknowledgement")
+		return errors.New("evidence Ledger returned a non-durable acknowledgement")
 	}
 	return nil
 }
@@ -220,7 +220,7 @@ func (p *Processor) recordMigrationTerminal(ctx context.Context, record Record, 
 
 func (p *Processor) persistMigrationResult(ctx context.Context, result ievidencemigration.ConsumerResult) error {
 	if p.migrationResults == nil {
-		return errors.New("Evidence migration result writer is unavailable; offset remains uncommitted")
+		return errors.New("evidence migration result writer is unavailable; offset remains uncommitted")
 	}
 	if err := p.migrationResults.RecordConsumerResult(ctx, result); err != nil {
 		return fmt.Errorf("durable Evidence migration result failed: %w", err)
