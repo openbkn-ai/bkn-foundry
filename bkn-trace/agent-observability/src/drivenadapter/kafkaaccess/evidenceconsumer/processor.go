@@ -47,7 +47,7 @@ func NewProcessor(admission ievidenceadmission.ReadOnlySource, ledger Ledger, re
 // giving the live-capture reader write access to migration results.
 func NewProcessorWithMigration(admission ievidenceadmission.ReadOnlySource, migration ievidencemigration.AdmissionReader, results ievidencemigration.ConsumerResultWriter, ledger Ledger, rejections RejectionWriter) (*Processor, error) {
 	if migration == nil || results == nil {
-		return nil, errors.New("Evidence migration admission and result dependencies are required")
+		return nil, errors.New("evidence migration admission and result dependencies are required")
 	}
 	processor, err := NewProcessor(admission, ledger, rejections)
 	if err != nil {

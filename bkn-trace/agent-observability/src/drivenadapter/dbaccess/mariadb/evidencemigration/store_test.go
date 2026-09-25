@@ -18,7 +18,12 @@ func TestLookupAdmissionSeparatesMissingFromActiveAndClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		if closeErr := db.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 	store, err := New(db)
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +49,12 @@ func TestRecordConsumerResultUsesIdempotentTerminalUpsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		if closeErr := db.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 	store, err := New(db)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +77,12 @@ func TestRecordConsumerResultPersistsIncompatibleTerminalAsConflict(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		if closeErr := db.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 	store, err := New(db)
 	if err != nil {
 		t.Fatal(err)

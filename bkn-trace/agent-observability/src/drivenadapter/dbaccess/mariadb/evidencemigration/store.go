@@ -20,14 +20,14 @@ type Store struct{ db *sql.DB }
 
 func New(db *sql.DB) (*Store, error) {
 	if db == nil {
-		return nil, errors.New("Evidence migration database is required")
+		return nil, errors.New("evidence migration database is required")
 	}
 	return &Store{db: db}, nil
 }
 
 func (s *Store) LookupAdmission(ctx context.Context, manifestID, eventID string) (ievidencemigration.Admission, bool, error) {
 	if manifestID == "" || eventID == "" {
-		return ievidencemigration.Admission{}, false, errors.New("Evidence migration manifest and event IDs are required")
+		return ievidencemigration.Admission{}, false, errors.New("evidence migration manifest and event IDs are required")
 	}
 	var admission ievidencemigration.Admission
 	var state string
