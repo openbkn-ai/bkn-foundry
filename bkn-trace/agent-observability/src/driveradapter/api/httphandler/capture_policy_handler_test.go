@@ -260,6 +260,38 @@ func TestInternalTraceGatewayAckConsumesAuthoritativeDisabledGapFixture(t *testi
 	}
 }
 
+func TestTraceGatewayAcknowledgementFixturesRemainPinnedToFrozenContract(t *testing.T) {
+	// The local copies are byte-for-byte copies of the authoritative bkn-docs
+	// fixtures. Pinning their digests prevents a locally convenient DTO/fixture
+	// approximation from silently becoming a second wire contract.
+	fixtures := map[string]string{
+		"testdata/gateway-ack-disabled-complete.json": "45d4e0e8274cef04c269de5c39dac4f721471257a780946c46e5ddff84e592de",
+		"testdata/gateway-ack-disabled-gap.json":      "8f8db7a72fe4329794b19fae4daf557c30b880d6b283bc2c5e405ed241c0c67b",
+	}
+	for path, want := range fixtures {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(data)
+		if got := fmt.Sprintf("%x", digest[:]); got != want {
+			t.Fatalf("fixture %s digest = %s, want frozen digest %s", path, got, want)
+		}
+	}
+	// When the authoritative docs checkout is available, also verify the
+	// schema blob. CI for this repo need not vendor bkn-docs to run the test.
+	if schemaPath := os.Getenv("BKN_DOCS_TRACE_GATEWAY_ACK_SCHEMA"); schemaPath != "" {
+		data, err := os.ReadFile(schemaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(data)
+		if got := fmt.Sprintf("%x", digest[:]); got != "573818a53d10980cfd5d4bf53d2ae0d3417e22892c64fb821ffb8fcb823757d6" {
+			t.Fatalf("authoritative schema digest = %s, contract schema changed", got)
+		}
+	}
+}
+
 func TestInternalTraceGatewayAckRejectsAdditionalPropertiesFromFrozenFixture(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
 	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
