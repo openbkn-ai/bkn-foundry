@@ -121,6 +121,133 @@ func TestMariaDBConnectorNew(t *testing.T) {
 		assert.Nil(t, connector)
 		assert.ErrorContains(t, err, "duplicate element")
 	})
+
+	t.Run("accepts supported connection options", func(t *testing.T) {
+		cfg := validMariaDBConfig(3306)
+		cfg["options"] = map[string]any{
+			"charset": "utf8mb4", "collation": "utf8mb4_general_ci",
+			"timeout": "5s", "readTimeout": "10s", "writeTimeout": "10s", "tls": "true",
+		}
+
+		connector, err := builder.New(cfg)
+
+		require.NoError(t, err)
+		maria := connector.(*MariaDBConnector)
+		assert.Equal(t, cfg["options"], maria.config.Options)
+		assert.Contains(t, maria.connectionString(), "timeout=5s")
+		assert.Contains(t, maria.connectionString(), "readTimeout=10s")
+		assert.Contains(t, maria.connectionString(), "writeTimeout=10s")
+	})
+
+	t.Run("normalizes boolean tls for driver", func(t *testing.T) {
+		cfg := validMariaDBConfig(3306)
+		cfg["options"] = map[string]any{"tls": true}
+
+		connector, err := builder.New(cfg)
+
+		require.NoError(t, err)
+		maria := connector.(*MariaDBConnector)
+		assert.Equal(t, "true", maria.config.Options["tls"])
+		assert.Contains(t, maria.connectionString(), "tls=true")
+	})
+
+	t.Run("rejects unsupported connection option", func(t *testing.T) {
+		cfg := validMariaDBConfig(3306)
+		cfg["options"] = map[string]any{"unknown_option": "value"}
+
+		connector, err := builder.New(cfg)
+
+		require.Error(t, err)
+		assert.Nil(t, connector)
+		assert.ErrorContains(t, err, "unsupported mariadb option")
+		assert.ErrorContains(t, err, "unknown_option")
+	})
+
+	t.Run("rejects invalid connection option value", func(t *testing.T) {
+		cfg := validMariaDBConfig(3306)
+		cfg["options"] = map[string]any{"readTimeout": "-1s"}
+
+		connector, err := builder.New(cfg)
+
+		require.ErrorContains(t, err, "readTimeout")
+		assert.Nil(t, connector)
+	})
+
+	t.Run("rejects numeric timeout without duration unit", func(t *testing.T) {
+		cfg := validMariaDBConfig(3306)
+		cfg["options"] = map[string]any{"timeout": float64(5)}
+
+		connector, err := builder.New(cfg)
+
+		require.ErrorContains(t, err, "timeout")
+		assert.Nil(t, connector)
+	})
+}
+
+func TestNormalizeOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		options map[string]any
+		wantErr string
+	}{
+		{"empty", nil, ""},
+		{"charset fallback", map[string]any{"charset": "utf8mb4,utf8"}, ""},
+		{"collation", map[string]any{"collation": "utf8mb4_general_ci"}, ""},
+		{"timeout", map[string]any{"timeout": "500ms"}, ""},
+		{"read timeout", map[string]any{"readTimeout": "1.5s"}, ""},
+		{"write timeout", map[string]any{"writeTimeout": "0s"}, ""},
+		{"tls string", map[string]any{"tls": "true"}, ""},
+		{"tls mode", map[string]any{"tls": "preferred"}, ""},
+		{"empty charset", map[string]any{"charset": ""}, "charset"},
+		{"non-string charset", map[string]any{"charset": 123}, "charset"},
+		{"charset content passed through", map[string]any{"charset": "utf8mb4,"}, ""},
+		{"empty collation", map[string]any{"collation": ""}, "collation"},
+		{"collation content passed through", map[string]any{"collation": "custom-collation"}, ""},
+		{"non-string collation", map[string]any{"collation": 123}, "collation"},
+		{"invalid timeout", map[string]any{"timeout": "five seconds"}, "timeout"},
+		{"unitless timeout", map[string]any{"timeout": "5"}, "timeout"},
+		{"numeric timeout", map[string]any{"timeout": 5}, "timeout"},
+		{"fractional timeout", map[string]any{"timeout": 1.5}, "timeout"},
+		{"negative timeout", map[string]any{"timeout": "-1s"}, "timeout"},
+		{"negative read timeout", map[string]any{"readTimeout": "-1s"}, "readTimeout"},
+		{"unitless read timeout", map[string]any{"readTimeout": "5"}, "readTimeout"},
+		{"non-string write timeout", map[string]any{"writeTimeout": 5}, "writeTimeout"},
+		{"unitless write timeout", map[string]any{"writeTimeout": "5"}, "writeTimeout"},
+		{"invalid tls mode", map[string]any{"tls": "unknown"}, "tls"},
+		{"non-boolean tls", map[string]any{"tls": 1}, "tls"},
+		{"unknown option", map[string]any{"unknown_option": "value"}, "unknown_option"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeOptions(tt.options)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				assert.Nil(t, got)
+				return
+			}
+			require.NoError(t, err)
+			if tt.options == nil {
+				assert.Empty(t, got)
+			} else {
+				assert.Equal(t, tt.options, got)
+			}
+		})
+	}
+
+	for _, tt := range []struct {
+		name  string
+		input bool
+		want  string
+	}{
+		{"true", true, "true"},
+		{"false", false, "false"},
+	} {
+		t.Run("boolean "+tt.name, func(t *testing.T) {
+			got, err := normalizeOptions(map[string]any{"tls": tt.input})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got["tls"])
+		})
+	}
 }
 
 func TestMariaDBConnectorConnectionStringSupportsIPv6(t *testing.T) {
@@ -140,8 +267,9 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "audit"})
 		defer cleanup()
 
-		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA ORDER BY SCHEMA_NAME").
-			WillReturnRows(sqlmock.NewRows([]string{"Database"}).AddRow("app").AddRow("audit").AddRow("mysql"))
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
+			WithArgs("app", "audit").
+			WillReturnRows(sqlmock.NewRows([]string{"Database"}).AddRow("audit").AddRow("app"))
 
 		require.NoError(t, connector.validateDatabases(context.Background()))
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -151,7 +279,8 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 		defer cleanup()
 
-		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA ORDER BY SCHEMA_NAME").
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
+			WithArgs("app").
 			WillReturnError(errors.New("db down"))
 
 		err := connector.validateDatabases(context.Background())
@@ -165,13 +294,21 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"missing"})
 		defer cleanup()
 
-		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA ORDER BY SCHEMA_NAME").
-			WillReturnRows(sqlmock.NewRows([]string{"Database"}).AddRow("app"))
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
+			WithArgs("missing").
+			WillReturnRows(sqlmock.NewRows([]string{"Database"}))
 
 		err := connector.validateDatabases(context.Background())
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "databases not found")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("empty database scope skips query", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
+		defer cleanup()
+		require.NoError(t, connector.validateDatabases(context.Background()))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

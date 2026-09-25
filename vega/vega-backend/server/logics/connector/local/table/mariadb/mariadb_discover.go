@@ -32,7 +32,6 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
-
 	builder := sq.Select(
 		"TABLE_SCHEMA",
 		"TABLE_NAME",
@@ -50,7 +49,7 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	// A qualified source identifier selects one database. It must still remain
 	// within the connector's configured database scope.
 	if database != "" {
-		if len(c.config.Databases) > 0 && !containsDatabase(c.config.Databases, database) {
+		if !c.databaseAllowed(database) {
 			return nil, fmt.Errorf("database %q is outside the connector scope", database)
 		}
 		builder = builder.Where(sq.Eq{"TABLE_SCHEMA": database})
@@ -74,16 +73,16 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	}
 	defer func() { _ = rows.Close() }()
 
-	var tables []*interfaces.TableMeta
+	tables := make([]*interfaces.TableMeta, 0)
 	for rows.Next() {
-		var schema, name, tableType sql.NullString
+		var schemaName, tableName, tableType sql.NullString
 		var engine, collation, description sql.NullString
 		var tableRows, dataLength, indexLength sql.NullInt64
 		var createTime, updateTime sql.NullTime
 
 		if err := rows.Scan(
-			&schema,
-			&name,
+			&schemaName,
+			&tableName,
 			&tableType,
 			&engine,
 			&collation,
@@ -96,25 +95,20 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan table info: %w", err)
 		}
-		if !schema.Valid || !name.Valid || !tableType.Valid {
+		if !schemaName.Valid || !tableName.Valid || !tableType.Valid {
 			return nil, fmt.Errorf("required table metadata contains NULL")
 		}
 
-		tableTypeValue := strings.ToLower(tableType.String)
-		if tableTypeValue != "view" {
-			tableTypeValue = "table"
-		}
-
 		meta := &interfaces.TableMeta{
-			Name:        name.String,
-			TableType:   tableTypeValue,
+			Name:        tableName.String,
+			TableType:   c.mapTableType(tableType.String),
 			Description: description.String,
-			Database:    schema.String,
-			Schema:      schema.String,
+			Database:    schemaName.String,
+			Schema:      schemaName.String,
+			Properties:  map[string]any{},
 		}
 
 		// Populate Properties
-		meta.Properties = make(map[string]any)
 		meta.Properties["engine"] = engine.String
 		meta.Properties["collation"] = collation.String
 		meta.Properties["estimated_row_count"] = tableRows.Int64
@@ -147,9 +141,20 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	return tables, nil
 }
 
-// containsDatabase reports whether a database is included in the connector configuration.
-func containsDatabase(databases []string, database string) bool {
-	for _, configuredDatabase := range databases {
+// mapTableType maps a MariaDB or MySQL table type to a table metadata type.
+func (c *MariaDBConnector) mapTableType(tableType string) string {
+	if strings.ToUpper(tableType) == "VIEW" {
+		return "view"
+	}
+	return "table"
+}
+
+// databaseAllowed checks whether a database is inside the configured scope.
+func (c *MariaDBConnector) databaseAllowed(database string) bool {
+	if len(c.config.Databases) == 0 {
+		return true
+	}
+	for _, configuredDatabase := range c.config.Databases {
 		if configuredDatabase == database {
 			return true
 		}
@@ -274,10 +279,7 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 		return fmt.Errorf("required table metadata contains NULL")
 	}
 
-	table.TableType = strings.ToLower(tableType.String)
-	if table.TableType != "view" {
-		table.TableType = "table"
-	}
+	table.TableType = c.mapTableType(tableType.String)
 
 	// Initialize the Properties map
 	if table.Properties == nil {
