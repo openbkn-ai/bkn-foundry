@@ -53,8 +53,9 @@ CREATE TABLE IF NOT EXISTS bkn_trace_capture_endpoint_leases (
     heartbeat_at DATETIME(6) NOT NULL,
     lease_expires_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
-    PRIMARY KEY (endpoint_kind, instance_id),
-    KEY idx_bkn_trace_capture_endpoint_lease_expiry (lease_expires_at, ready)
+    PRIMARY KEY (endpoint_kind, instance_id, process_boot_id),
+    KEY idx_bkn_trace_capture_endpoint_lease_expiry (lease_expires_at, ready),
+    KEY idx_bkn_trace_capture_endpoint_instance (endpoint_kind, instance_id, lease_expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS bkn_trace_capture_operation_acknowledgements (
@@ -76,7 +77,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_capture_operation_acknowledgements (
     queue_empty BOOLEAN NULL,
     evidence_disposition VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL,
     gap_reason VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
-    PRIMARY KEY (operation_id, endpoint_kind, instance_id),
+    PRIMARY KEY (operation_id, policy_revision, endpoint_kind, instance_id),
     KEY idx_bkn_trace_capture_ack_operation (operation_id, policy_revision, ack_state)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 

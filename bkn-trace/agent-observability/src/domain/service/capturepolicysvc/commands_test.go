@@ -35,7 +35,7 @@ func (commandStore) StartOperation(context.Context, icapturepolicy.ControlState,
 func (commandStore) AdvanceOperation(context.Context, string, uint64, string, string, string, time.Time) error {
 	return nil
 }
-func (commandStore) BeginRollback(context.Context, string, uint64, uint64, string, time.Time) error {
+func (commandStore) BeginRollback(context.Context, string, uint64, uint64, string, []icapturepolicy.ExpectedAcknowledgement, time.Time) error {
 	return nil
 }
 func (commandStore) CompleteSucceeded(context.Context, string, uint64, time.Time) error {

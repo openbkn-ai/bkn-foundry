@@ -130,7 +130,7 @@ type Store interface {
 	ReadControlState(context.Context) (ControlState, error)
 	StartOperation(context.Context, ControlState, Operation, []ExpectedAcknowledgement) error
 	AdvanceOperation(context.Context, string, uint64, string, string, string, time.Time) error
-	BeginRollback(context.Context, string, uint64, uint64, string, time.Time) error
+	BeginRollback(context.Context, string, uint64, uint64, string, []ExpectedAcknowledgement, time.Time) error
 	CompleteSucceeded(context.Context, string, uint64, time.Time) error
 	CompleteFailed(context.Context, string, uint64, time.Time) error
 	CompleteRollback(context.Context, string, uint64, time.Time) error
@@ -166,10 +166,13 @@ func (a ExpectedAcknowledgement) Validate() error {
 		return ErrInvalidAcknowledgement
 	}
 	if a.AcknowledgedAt == nil {
-		if a.ExportedCount != nil || a.DroppedCount != nil || a.UnaccountedCount != nil || a.TraceDisposition != "" || a.LastAcceptedSequence != nil || a.PublishedCount != nil || a.QueueEmpty != nil || a.EvidenceDisposition != "" {
+		if a.AckState != AckPending || a.ExportedCount != nil || a.DroppedCount != nil || a.UnaccountedCount != nil || a.TraceDisposition != "" || a.LastAcceptedSequence != nil || a.PublishedCount != nil || a.QueueEmpty != nil || a.EvidenceDisposition != "" || a.GapReason != "" {
 			return ErrInvalidAcknowledgement
 		}
 		return nil
+	}
+	if a.AckState == AckPending {
+		return ErrInvalidAcknowledgement
 	}
 	if a.EndpointKind == EndpointTraceGateway {
 		if a.LastAcceptedSequence != nil || a.PublishedCount != nil || a.QueueEmpty != nil || a.EvidenceDisposition != "" {
@@ -179,12 +182,18 @@ func (a ExpectedAcknowledgement) Validate() error {
 			return ErrInvalidAcknowledgement
 		}
 		if a.TraceDisposition == DispositionNotApplicable {
-			if a.ExportedCount != nil || a.DroppedCount != nil || a.UnaccountedCount != nil {
+			if a.ExportedCount != nil || a.DroppedCount != nil || a.UnaccountedCount != nil || a.GapReason != "" {
 				return ErrInvalidAcknowledgement
 			}
 		} else if a.ExportedCount == nil || a.DroppedCount == nil {
 			return ErrInvalidAcknowledgement
 		} else if a.TraceDisposition == DispositionComplete && (a.UnaccountedCount == nil || *a.UnaccountedCount != 0) {
+			return ErrInvalidAcknowledgement
+		}
+		if (a.TraceDisposition == DispositionComplete || a.TraceDisposition == DispositionNotApplicable) && a.GapReason != "" {
+			return ErrInvalidAcknowledgement
+		}
+		if a.TraceDisposition == DispositionGap && a.GapReason == "" {
 			return ErrInvalidAcknowledgement
 		}
 		return nil
@@ -193,6 +202,13 @@ func (a ExpectedAcknowledgement) Validate() error {
 		return ErrInvalidAcknowledgement
 	}
 	if a.EvidenceDisposition == DispositionComplete && !*a.QueueEmpty {
+		return ErrInvalidAcknowledgement
+	}
+	if a.EvidenceDisposition == DispositionComplete || a.EvidenceDisposition == DispositionNotApplicable {
+		if a.GapReason != "" {
+			return ErrInvalidAcknowledgement
+		}
+	} else if a.GapReason == "" {
 		return ErrInvalidAcknowledgement
 	}
 	return nil

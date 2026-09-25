@@ -106,11 +106,16 @@ func (s *CommandService) AdvanceOperation(ctx context.Context, operationID strin
 	return s.store.AdvanceOperation(ctx, operationID, leaseToken, phase, errorCode, gapReason, now)
 }
 
-func (s *CommandService) BeginRollback(ctx context.Context, operationID string, leaseToken, compensationRevision uint64, restoredState string, now time.Time) error {
+func (s *CommandService) BeginRollback(ctx context.Context, operationID string, leaseToken, compensationRevision uint64, restoredState string, expected []icapturepolicy.ExpectedAcknowledgement, now time.Time) error {
 	if s == nil || s.store == nil || operationID == "" || leaseToken == 0 || compensationRevision == 0 || !validStableState(restoredState) || now.IsZero() {
 		return icapturepolicy.ErrInvalidOperation
 	}
-	return s.store.BeginRollback(ctx, operationID, leaseToken, compensationRevision, restoredState, now)
+	for _, acknowledgement := range expected {
+		if err := acknowledgement.Validate(); err != nil || acknowledgement.PolicyRevision != compensationRevision || acknowledgement.OperationID != operationID {
+			return icapturepolicy.ErrExpectedSetConflict
+		}
+	}
+	return s.store.BeginRollback(ctx, operationID, leaseToken, compensationRevision, restoredState, expected, now)
 }
 
 func (s *CommandService) CompleteSucceeded(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {

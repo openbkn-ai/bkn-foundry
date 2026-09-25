@@ -37,6 +37,52 @@ func TestCapturePolicyControlReadsSingletonState(t *testing.T) {
 	}
 }
 
+func TestCapturePolicyControlUsesHistoricalMaxAfterFailedOperation(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	state := icapturepolicy.ControlState{
+		CurrentRevision:      7,
+		DesiredState:         icapturepolicy.StateEnabled,
+		EffectiveState:       icapturepolicy.StateEnabled,
+		LastStableRevision:   7,
+		CoverageGapUpdatedAt: now,
+		UpdatedAt:            now,
+	}
+	start := func(operationID string, revision uint64) {
+		t.Helper()
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT current_revision, active_operation_id").WillReturnRows(sqlmock.NewRows([]string{"current_revision", "active_operation_id"}).AddRow(uint64(7), nil))
+		mock.ExpectQuery("SELECT revision FROM bkn_trace_capture_policy_revisions").WillReturnRows(sqlmock.NewRows([]string{"revision"}).AddRow(revision - 1))
+		mock.ExpectExec("INSERT INTO bkn_trace_capture_policy_revisions").WithArgs(revision, false, now).WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("INSERT INTO bkn_trace_capture_operations").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec("UPDATE bkn_trace_capture_control_state").WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("INSERT INTO bkn_trace_capture_operation_events").WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+		operation := icapturepolicy.Operation{
+			ID: operationID, PolicyRevision: revision, RequestedState: icapturepolicy.StateDisabled,
+			ExpectedRevision: 7, Phase: icapturepolicy.PhasePending, LeaseToken: 1,
+			ConvergenceDeadline: now.Add(time.Minute), CreatedAt: now, UpdatedAt: now,
+		}
+		if err := store.StartOperation(context.Background(), state, operation, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The first operation is later failed, so its policy revision remains in
+	// history while control.current_revision is restored to 7. The next
+	// operation must therefore use 9, not current_revision+1 (which is 8).
+	start("op-8", 8)
+	start("op-9", 9)
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCapturePolicyControlRejectsAcknowledgementOutsideFrozenExpectedSet(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -45,11 +91,11 @@ func TestCapturePolicyControlRejectsAcknowledgementOutsideFrozenExpectedSet(t *t
 	defer func() { _ = db.Close() }()
 	store := sessionstore.New(db)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-7", icapturepolicy.EndpointTraceGateway, "gateway#missing").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}))
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-7", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#missing").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}))
 	mock.ExpectRollback()
 	err = store.RecordAcknowledgement(context.Background(), icapturepolicy.ExpectedAcknowledgement{
 		OperationID: "op-7", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#missing",
-		WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 7, AckState: "gap",
+		WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 7, AckState: icapturepolicy.AckPending,
 	})
 	if err != icapturepolicy.ErrExpectedSetConflict {
 		t.Fatalf("RecordAcknowledgement() error = %v, want expected-set conflict", err)
@@ -68,7 +114,7 @@ func TestCapturePolicyControlUpsertsLiveEndpointLease(t *testing.T) {
 	store := sessionstore.New(db)
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT workload_identity, process_boot_id FROM bkn_trace_capture_endpoint_leases").WithArgs(icapturepolicy.EndpointEvidencePublisher, "publisher#boot-1").WillReturnRows(sqlmock.NewRows([]string{"workload_identity", "process_boot_id"}))
+	mock.ExpectQuery("SELECT workload_identity, process_boot_id FROM bkn_trace_capture_endpoint_leases").WithArgs(icapturepolicy.EndpointEvidencePublisher, "publisher#boot-1", "boot-1").WillReturnRows(sqlmock.NewRows([]string{"workload_identity", "process_boot_id"}))
 	mock.ExpectExec("INSERT INTO bkn_trace_capture_endpoint_leases").WithArgs(
 		icapturepolicy.EndpointEvidencePublisher, "publisher#boot-1", "sa/publisher", "boot-1", uint64(7), true, now, now.Add(30*time.Second), now,
 	).WillReturnResult(sqlmock.NewResult(1, 1))
@@ -92,7 +138,7 @@ func TestCapturePolicyControlRejectsLeaseIdentityTakeover(t *testing.T) {
 	store := sessionstore.New(db)
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT workload_identity, process_boot_id FROM bkn_trace_capture_endpoint_leases").WithArgs(icapturepolicy.EndpointTraceGateway, "gateway#1").WillReturnRows(sqlmock.NewRows([]string{"workload_identity", "process_boot_id"}).AddRow("sa/old", "boot-old"))
+	mock.ExpectQuery("SELECT workload_identity, process_boot_id FROM bkn_trace_capture_endpoint_leases").WithArgs(icapturepolicy.EndpointTraceGateway, "gateway#1", "boot-new").WillReturnRows(sqlmock.NewRows([]string{"workload_identity", "process_boot_id"}).AddRow("sa/old", "boot-new"))
 	mock.ExpectRollback()
 	err = store.UpsertEndpointLease(context.Background(), icapturepolicy.EndpointLease{EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/new", ProcessBootID: "boot-new", ObservedRevision: 8, Ready: true, HeartbeatAt: now, LeaseExpiresAt: now.Add(30 * time.Second), UpdatedAt: now})
 	if err != icapturepolicy.ErrExpectedSetConflict {
@@ -111,13 +157,44 @@ func TestCapturePolicyControlRejectsAckFromDifferentBoot(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	store := sessionstore.New(db)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-7", icapturepolicy.EndpointTraceGateway, "gateway#1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(7), "sa/gateway", "boot-old"))
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-7", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(7), "sa/gateway", "boot-old"))
 	mock.ExpectRollback()
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
 	exported, dropped, unaccounted := uint64(10), uint64(1), uint64(0)
 	err = store.RecordAcknowledgement(context.Background(), icapturepolicy.ExpectedAcknowledgement{OperationID: "op-7", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-new", PolicyRevision: 7, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: &unaccounted, TraceDisposition: icapturepolicy.DispositionComplete})
 	if err != icapturepolicy.ErrExpectedSetConflict {
 		t.Fatalf("RecordAcknowledgement() error = %v, want boot conflict", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlAcknowledgesCompensationRevisionAlongsideOriginal(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	exported, dropped, unaccounted := uint64(3), uint64(0), uint64(0)
+	mock.ExpectBegin()
+	// Revision 8 is the original operation and revision 9 is its
+	// compensation; both rows may coexist for the same endpoint instance.
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-8", uint64(9), icapturepolicy.EndpointTraceGateway, "gateway#1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(9), "sa/gateway", "boot-1"))
+	mock.ExpectExec("UPDATE bkn_trace_capture_operation_acknowledgements").WithArgs(
+		false, icapturepolicy.AckDisabled, now, exported, dropped, unaccounted, icapturepolicy.DispositionComplete,
+		nil, nil, nil, nil, nil, "op-8", icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1", uint64(9),
+	).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	if err := store.RecordAcknowledgement(context.Background(), icapturepolicy.ExpectedAcknowledgement{
+		OperationID: "op-8", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1",
+		WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 9, AckState: icapturepolicy.AckDisabled,
+		AcknowledgedAt: &now, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: &unaccounted,
+		TraceDisposition: icapturepolicy.DispositionComplete,
+	}); err != nil {
+		t.Fatal(err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -161,6 +238,32 @@ func TestCapturePolicyControlCompletesRollbackToExplicitCompensationState(t *tes
 	mock.ExpectExec("UPDATE bkn_trace_capture_control_state").WithArgs(uint64(10), icapturepolicy.StateEnabled, icapturepolicy.StateEnabled, uint64(10), "op-9", now, "op-9").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	if err := store.CompleteRollback(context.Background(), "op-9", 4, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlBeginsRollbackWithNewRevisionAndExpectedSet(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT policy_revision, phase, lease_token, lease_expires_at, compensation_revision, restored_state").WithArgs("op-10").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "phase", "lease_token", "lease_expires_at", "compensation_revision", "restored_state"}).AddRow(uint64(9), icapturepolicy.PhaseDisabling, uint64(4), now.Add(time.Minute), nil, nil))
+	mock.ExpectQuery(`SELECT current_revision, desired_state, effective_state, COALESCE\(active_operation_id`).WillReturnRows(sqlmock.NewRows([]string{"current_revision", "desired_state", "effective_state", "active_operation_id"}).AddRow(uint64(9), icapturepolicy.StateDisabled, icapturepolicy.StateEnabled, "op-10"))
+	mock.ExpectQuery("SELECT revision FROM bkn_trace_capture_policy_revisions").WillReturnRows(sqlmock.NewRows([]string{"revision"}).AddRow(uint64(9)))
+	mock.ExpectExec("INSERT INTO bkn_trace_capture_policy_revisions").WithArgs(uint64(10), true, now).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO bkn_trace_capture_operation_acknowledgements").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE bkn_trace_capture_operations").WithArgs(icapturepolicy.PhaseRollingBack, uint64(10), icapturepolicy.StateEnabled, now, "op-10", uint64(4)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE bkn_trace_capture_control_state").WithArgs(uint64(10), icapturepolicy.StateEnabled, now, uint64(9), "op-10").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO bkn_trace_capture_operation_events").WithArgs("op-10", icapturepolicy.PhaseRollingBack, icapturepolicy.EventRollbackStarted, uint64(4), nil, nil, now).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	if err := store.BeginRollback(context.Background(), "op-10", 4, 10, icapturepolicy.StateEnabled, []icapturepolicy.ExpectedAcknowledgement{{OperationID: "op-10", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 10, AckState: icapturepolicy.AckPending}}, now); err != nil {
 		t.Fatal(err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
