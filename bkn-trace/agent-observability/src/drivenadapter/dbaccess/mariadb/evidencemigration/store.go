@@ -32,11 +32,13 @@ func (s *Store) LookupAdmission(ctx context.Context, manifestID, eventID string)
 	var admission ievidencemigration.Admission
 	var state string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT m.manifest_id, m.state, e.entry_id, e.event_id, e.payload_hash
+		SELECT m.manifest_id, m.state, e.entry_id, e.event_id, e.payload_hash,
+			e.classification, e.classification_reason
 		FROM bkn_trace_evidence_migration_manifests m
 		JOIN bkn_trace_evidence_migration_entries e ON e.manifest_id=m.manifest_id
 		WHERE m.manifest_id=? AND e.event_id=?`, manifestID, eventID,
-	).Scan(&admission.ManifestID, &state, &admission.EntryID, &admission.EventID, &admission.PayloadHash)
+	).Scan(&admission.ManifestID, &state, &admission.EntryID, &admission.EventID, &admission.PayloadHash,
+		&admission.Classification, &admission.ClassificationReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ievidencemigration.Admission{}, false, nil
 	}

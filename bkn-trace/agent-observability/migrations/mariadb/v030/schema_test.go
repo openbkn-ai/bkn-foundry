@@ -19,7 +19,9 @@ func TestSchemaHasFrozenManifestLifecycleAndResultGuards(t *testing.T) {
 		"bkn_trace_evidence_migration_manifest_audit",
 		"active Evidence migration entries are immutable",
 		"closed Evidence migration results are immutable",
+		"active Evidence migration manifest core fields are immutable",
 		"uq_evidence_manifest_source",
+		"FOREIGN KEY (manifest_id, entry_id)",
 	} {
 		if !strings.Contains(schema, required) {
 			t.Fatalf("missing Evidence v030 invariant %q", required)

@@ -23,13 +23,13 @@ func TestLookupAdmissionSeparatesMissingFromActiveAndClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	query := regexp.QuoteMeta("SELECT m.manifest_id, m.state, e.entry_id, e.event_id, e.payload_hash\n\t\tFROM bkn_trace_evidence_migration_manifests m\n\t\tJOIN bkn_trace_evidence_migration_entries e ON e.manifest_id=m.manifest_id\n\t\tWHERE m.manifest_id=? AND e.event_id=?")
-	mock.ExpectQuery(query).WithArgs("m-1", "evt-1").WillReturnRows(sqlmock.NewRows([]string{"manifest_id", "state", "entry_id", "event_id", "payload_hash"}).AddRow("m-1", "active", "entry-1", "evt-1", "hash-1"))
+	query := regexp.QuoteMeta("SELECT m.manifest_id, m.state, e.entry_id, e.event_id, e.payload_hash,\n\t\t\te.classification, e.classification_reason\n\t\tFROM bkn_trace_evidence_migration_manifests m\n\t\tJOIN bkn_trace_evidence_migration_entries e ON e.manifest_id=m.manifest_id\n\t\tWHERE m.manifest_id=? AND e.event_id=?")
+	mock.ExpectQuery(query).WithArgs("m-1", "evt-1").WillReturnRows(sqlmock.NewRows([]string{"manifest_id", "state", "entry_id", "event_id", "payload_hash", "classification", "classification_reason"}).AddRow("m-1", "active", "entry-1", "evt-1", "hash-1", "publish", "pending"))
 	got, found, err := store.LookupAdmission(context.Background(), "m-1", "evt-1")
 	if err != nil || !found || got.State != ievidencemigration.ManifestActive || got.EntryID != "entry-1" {
 		t.Fatalf("unexpected admission: %+v found=%v err=%v", got, found, err)
 	}
-	mock.ExpectQuery(query).WithArgs("m-1", "missing").WillReturnRows(sqlmock.NewRows([]string{"manifest_id", "state", "entry_id", "event_id", "payload_hash"}))
+	mock.ExpectQuery(query).WithArgs("m-1", "missing").WillReturnRows(sqlmock.NewRows([]string{"manifest_id", "state", "entry_id", "event_id", "payload_hash", "classification", "classification_reason"}))
 	_, found, err = store.LookupAdmission(context.Background(), "m-1", "missing")
 	if err != nil || found {
 		t.Fatalf("missing entry must be terminal-not-found: found=%v err=%v", found, err)

@@ -18,11 +18,13 @@ const (
 )
 
 type Admission struct {
-	ManifestID  string
-	State       ManifestState
-	EntryID     string
-	EventID     string
-	PayloadHash string
+	ManifestID           string
+	State                ManifestState
+	EntryID              string
+	EventID              string
+	PayloadHash          string
+	Classification       string
+	ClassificationReason string
 }
 
 // AdmissionReader is granted only SELECT on the active manifest/entry facts.

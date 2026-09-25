@@ -144,9 +144,6 @@ func (p *Processor) processMigration(ctx context.Context, record Record, headers
 	if err != nil {
 		return p.reject(ctx, record, "json_invalid", ledgervo.Event{})
 	}
-	if event.ProducerStreamID != record.ProducerStreamID || event.ProducerSequence != record.ProducerSequence {
-		return p.reject(ctx, record, "record_value_transport_mismatch", event)
-	}
 	if p.migration == nil {
 		return p.reject(ctx, record, "migration_manifest_unknown", event)
 	}
@@ -161,19 +158,29 @@ func (p *Processor) processMigration(ctx context.Context, record Record, headers
 		return p.reject(ctx, record, "migration_manifest_not_active", event)
 	}
 	if admission.ManifestID != headers["bkn-evidence-migration-id"] || admission.EventID != event.EventID || admission.PayloadHash != event.PayloadHash || admission.EntryID == "" {
-		return p.reject(ctx, record, "migration_manifest_entry_mismatch", event)
+		return p.rejectMigration(ctx, record, admission, "migration_manifest_entry_mismatch", event)
+	}
+	if event.ProducerStreamID != record.ProducerStreamID || event.ProducerSequence != record.ProducerSequence {
+		return p.rejectMigration(ctx, record, admission, "record_value_transport_mismatch", event)
+	}
+	switch admission.Classification {
+	case "publish":
+		// The only manifest classification allowed to enter the Ledger.
+	case "verify_delivered":
+		return p.recordMigrationTerminal(ctx, record, admission, ievidencemigration.AdjudicationVerifiedDelivered, "verified_delivered", admission.ClassificationReason, 0)
+	case "coverage_gap":
+		return p.recordMigrationTerminal(ctx, record, admission, ievidencemigration.AdjudicationCoverageGap, "coverage_gap", admission.ClassificationReason, 0)
+	default:
+		return p.rejectMigration(ctx, record, admission, "migration_manifest_entry_mismatch", event)
 	}
 	result, err := p.ledger.IngestKafka(ctx, event, ievidenceledger.KafkaCoordinate{Topic: record.Topic, Partition: record.Partition, Offset: record.Offset})
 	if err != nil {
 		switch {
 		case ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent):
-			return p.reject(ctx, record, "invalid_evidence_event", event)
+			return p.rejectMigration(ctx, record, admission, "invalid_evidence_event", event)
 		default:
 			return fmt.Errorf("Evidence migration Ledger decision is temporary or uncertain: %w", err)
 		}
-	}
-	if p.migrationResults == nil {
-		return errors.New("Evidence migration result writer is unavailable; offset remains uncommitted")
 	}
 	consumerResult := ievidencemigration.ConsumerResult{ManifestID: admission.ManifestID, EntryID: admission.EntryID, Topic: record.Topic, Partition: record.Partition, Offset: record.Offset, IngestSequence: result.Ack.IngestSequence}
 	switch result.Decision {
@@ -186,11 +193,35 @@ func (p *Processor) processMigration(ctx context.Context, record Record, headers
 	default:
 		return fmt.Errorf("unknown Evidence migration Kafka terminal decision %q", result.Decision)
 	}
-	if err := p.migrationResults.RecordConsumerResult(ctx, consumerResult); err != nil {
-		return fmt.Errorf("durable Evidence migration result failed: %w", err)
+	if err := p.persistMigrationResult(ctx, consumerResult); err != nil {
+		return err
 	}
 	if (result.Decision == ievidenceledger.KafkaAccepted || result.Decision == ievidenceledger.KafkaDeduplicated) && !result.Ack.Durable {
 		return errors.New("Evidence Ledger returned a non-durable acknowledgement")
+	}
+	return nil
+}
+
+// rejectMigration establishes the migration terminal fact before recording
+// the bounded global rejection. If either durable write fails, Process returns
+// an error and the runtime must not mark the Kafka offset.
+func (p *Processor) rejectMigration(ctx context.Context, record Record, admission ievidencemigration.Admission, reason string, event ledgervo.Event) error {
+	if err := p.recordMigrationTerminal(ctx, record, admission, ievidencemigration.AdjudicationRejected, "rejected", reason, 0); err != nil {
+		return err
+	}
+	return p.reject(ctx, record, reason, event)
+}
+
+func (p *Processor) recordMigrationTerminal(ctx context.Context, record Record, admission ievidencemigration.Admission, adjudication ievidencemigration.Adjudication, observation, reason string, ingestSequence uint64) error {
+	return p.persistMigrationResult(ctx, ievidencemigration.ConsumerResult{ManifestID: admission.ManifestID, EntryID: admission.EntryID, Adjudication: adjudication, Observation: observation, ReasonCode: reason, Topic: record.Topic, Partition: record.Partition, Offset: record.Offset, IngestSequence: ingestSequence})
+}
+
+func (p *Processor) persistMigrationResult(ctx context.Context, result ievidencemigration.ConsumerResult) error {
+	if p.migrationResults == nil {
+		return errors.New("Evidence migration result writer is unavailable; offset remains uncommitted")
+	}
+	if err := p.migrationResults.RecordConsumerResult(ctx, result); err != nil {
+		return fmt.Errorf("durable Evidence migration result failed: %w", err)
 	}
 	return nil
 }

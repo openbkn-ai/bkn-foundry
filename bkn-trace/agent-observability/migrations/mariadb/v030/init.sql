@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_evidence_migration_entries (
   producer_epoch VARCHAR(20) NULL,
   producer_sequence VARCHAR(20) NULL,
   PRIMARY KEY (entry_id),
+  UNIQUE KEY uq_evidence_manifest_entry (manifest_id, entry_id),
   UNIQUE KEY uq_evidence_manifest_source (manifest_id, source_table, source_primary_key),
   UNIQUE KEY uq_evidence_manifest_event (manifest_id, event_id),
   CONSTRAINT fk_evidence_entry_manifest FOREIGN KEY (manifest_id) REFERENCES bkn_trace_evidence_migration_manifests(manifest_id),
@@ -65,7 +66,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_evidence_migration_results (
   last_observed_at DATETIME(6) NOT NULL,
   attempts BIGINT UNSIGNED NOT NULL,
   PRIMARY KEY (manifest_id, entry_id),
-  CONSTRAINT fk_evidence_result_entry FOREIGN KEY (entry_id) REFERENCES bkn_trace_evidence_migration_entries(entry_id),
+  CONSTRAINT fk_evidence_result_entry FOREIGN KEY (manifest_id, entry_id) REFERENCES bkn_trace_evidence_migration_entries(manifest_id, entry_id),
   CONSTRAINT chk_evidence_result_coordinate CHECK ((topic IS NULL AND partition_id IS NULL AND offset_id IS NULL) OR (topic='openbkn.evidence.v1' AND partition_id >= 0 AND offset_id >= 0))
 ) ENGINE=InnoDB;
 
@@ -80,7 +81,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_evidence_migration_result_conflicts (
   detected_at DATETIME(6) NOT NULL,
   PRIMARY KEY (conflict_id),
   UNIQUE KEY uq_evidence_result_conflict (manifest_id, entry_id, existing_adjudication, incoming_adjudication, existing_reason_code, incoming_reason_code),
-  CONSTRAINT fk_evidence_result_conflict_entry FOREIGN KEY (entry_id) REFERENCES bkn_trace_evidence_migration_entries(entry_id)
+  CONSTRAINT fk_evidence_result_conflict_entry FOREIGN KEY (manifest_id, entry_id) REFERENCES bkn_trace_evidence_migration_entries(manifest_id, entry_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS bkn_trace_evidence_migration_manifest_audit (
@@ -97,6 +98,22 @@ CREATE TABLE IF NOT EXISTS bkn_trace_evidence_migration_manifest_audit (
 ) ENGINE=InnoDB;
 
 DELIMITER $$
+CREATE TRIGGER bkn_trace_evidence_manifest_lifecycle_guard
+BEFORE UPDATE ON bkn_trace_evidence_migration_manifests FOR EACH ROW
+BEGIN
+  IF OLD.state = 'closed' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='closed Evidence migration manifest is immutable';
+  END IF;
+  IF OLD.state = 'active' AND (
+    NEW.state NOT IN ('active', 'closed') OR
+    NEW.contract_sha <> OLD.contract_sha OR
+    NEW.source_snapshot_at <> OLD.source_snapshot_at OR
+    NEW.entry_count <> OLD.entry_count OR
+    NEW.entries_digest <> OLD.entries_digest
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='active Evidence migration manifest core fields are immutable';
+  END IF;
+END$$
 CREATE TRIGGER bkn_trace_evidence_entries_draft_only_update
 BEFORE UPDATE ON bkn_trace_evidence_migration_entries FOR EACH ROW
 BEGIN
