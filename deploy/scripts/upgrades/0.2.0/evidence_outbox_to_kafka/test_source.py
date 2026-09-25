@@ -68,6 +68,23 @@ class SourceTest(unittest.TestCase):
         entry, returned = classify_row(dict(self.row, producer_sequence="7"), "mig-1", self.snapshot)
         self.assertEqual((entry["classification"], entry["classification_reason"], returned), ("coverage_gap", "source_identity_mismatch", None))
 
+    def test_source_service_registration_requires_producer_and_base_stream(self):
+        for table, producer_id, stream in (
+            ("bkn_backend_trace_outbox", "bkn-backend", "bkn-backend:boot"),
+            ("ontology_query_trace_outbox", "bkn-ontology", "ontology-query:boot"),
+        ):
+            with self.subTest(table=table):
+                event = dict(self.event, producer_id=producer_id, producer_stream_id=stream)
+                row = dict(self.row, source_table=table, producer_id=producer_id, producer_stream_id=stream, envelope=json.dumps({"event": event}))
+                entry, returned = classify_row(row, "mig-1", self.snapshot)
+                self.assertEqual((entry["classification"], returned), ("publish", event))
+        for field, value in (("producer_id", "bkn-ontology"), ("producer_stream_id", "ontology-query:boot")):
+            with self.subTest(field=field):
+                event = dict(self.event, **{field: value})
+                row = dict(self.row, **{field: value}, envelope=json.dumps({"event": event}))
+                entry, returned = classify_row(row, "mig-1", self.snapshot)
+                self.assertEqual((entry["classification"], entry["classification_reason"], returned), ("coverage_gap", "source_identity_mismatch", None))
+
 
 if __name__ == "__main__":
     unittest.main()

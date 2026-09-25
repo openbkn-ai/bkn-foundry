@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 from manifest import ManifestError
 
-_TABLES = {
-    "bkn_backend_trace_outbox": "bkn-backend",
-    "ontology_query_trace_outbox": "ontology-query",
+_SOURCES = {
+    "bkn_backend_trace_outbox": ("bkn-backend", "bkn-backend", "bkn-backend"),
+    "ontology_query_trace_outbox": ("ontology-query", "bkn-ontology", "ontology-query"),
 }
 _PUBLISH = {"pending", "retry"}
 _COVERAGE_GAP = {"abandoned", "conflict", "dlq"}
@@ -56,6 +56,13 @@ def _coverage_entry(row, manifest_id, service, table, reason):
     }
 
 
+def _uses_base_stream(stream, base_stream):
+    """Accept the legacy base stream or the frozen ``base:boot`` form only."""
+    return stream == base_stream or (
+        stream.startswith(base_stream + ":") and len(stream) > len(base_stream) + 1
+    )
+
+
 def classify_row(row, manifest_id, snapshot_at):
     """Return the immutable manifest entry and original Event value for one row.
 
@@ -67,9 +74,10 @@ def classify_row(row, manifest_id, snapshot_at):
     if _utc(snapshot_at) is None:
         raise ManifestError("source snapshot timestamp is invalid")
     table = row.get("source_table")
-    service = _TABLES.get(table)
-    if service is None or not isinstance(manifest_id, str) or not manifest_id:
+    source = _SOURCES.get(table)
+    if source is None or not isinstance(manifest_id, str) or not manifest_id:
         raise ManifestError("source table or manifest ID is invalid")
+    service, expected_producer_id, base_stream = source
     if not isinstance(row.get("outbox_id"), int) or row["outbox_id"] <= 0:
         raise ManifestError("source primary key is invalid")
     status = row.get("status")
@@ -111,6 +119,8 @@ def classify_row(row, manifest_id, snapshot_at):
         type(row.get(key)) is not int or row[key] != event[key]
         for key in _NUMERIC_IDENTITY
     ):
+        return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
+    if event["producer_id"] != expected_producer_id or not _uses_base_stream(event["producer_stream_id"], base_stream):
         return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
     return {
         "classification": classification, "classification_reason": reason,
