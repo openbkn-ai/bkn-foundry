@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_capture_operation_acknowledgements (
     queue_empty BOOLEAN NULL,
     evidence_disposition VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL,
     gap_reason VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
-    PRIMARY KEY (operation_id, policy_revision, endpoint_kind, instance_id),
+    PRIMARY KEY (operation_id, policy_revision, endpoint_kind, instance_id, process_boot_id),
     KEY idx_bkn_trace_capture_ack_operation (operation_id, policy_revision, ack_state)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 

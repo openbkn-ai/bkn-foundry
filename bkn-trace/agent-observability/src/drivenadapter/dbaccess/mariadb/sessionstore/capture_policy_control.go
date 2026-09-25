@@ -518,8 +518,10 @@ func (s *Store) recordAcknowledgementTx(ctx context.Context, tx *sql.Tx, acknowl
 	err := tx.QueryRowContext(ctx, `
 		SELECT policy_revision, workload_identity, process_boot_id
 		FROM bkn_trace_capture_operation_acknowledgements
-		WHERE operation_id = ? AND policy_revision = ? AND endpoint_kind = ? AND instance_id = ? FOR UPDATE`,
-		acknowledgement.OperationID, acknowledgement.PolicyRevision, acknowledgement.EndpointKind, acknowledgement.InstanceID).Scan(&expectedRevision, &workloadIdentity, &processBootID)
+		WHERE operation_id = ? AND policy_revision = ? AND endpoint_kind = ? AND instance_id = ?
+		  AND workload_identity = ? AND process_boot_id = ? FOR UPDATE`,
+		acknowledgement.OperationID, acknowledgement.PolicyRevision, acknowledgement.EndpointKind, acknowledgement.InstanceID,
+		acknowledgement.WorkloadIdentity, acknowledgement.ProcessBootID).Scan(&expectedRevision, &workloadIdentity, &processBootID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return icapturepolicy.ErrExpectedSetConflict
 	}
@@ -549,7 +551,7 @@ func (s *Store) recordAcknowledgementTx(ctx context.Context, tx *sql.Tx, acknowl
 	if err != nil {
 		return err
 	}
-	if rows != 1 {
+	if rows != 0 && rows != 1 {
 		return icapturepolicy.ErrExpectedSetConflict
 	}
 	return nil

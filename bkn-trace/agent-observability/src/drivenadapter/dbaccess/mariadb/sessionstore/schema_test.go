@@ -54,7 +54,7 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 		"endpoint_kind VARCHAR(32)",
 		"last_accepted_sequence BIGINT UNSIGNED NULL",
 		"queue_empty BOOLEAN NULL",
-		"PRIMARY KEY (operation_id, policy_revision, endpoint_kind, instance_id)",
+		"PRIMARY KEY (operation_id, policy_revision, endpoint_kind, instance_id, process_boot_id)",
 		"PRIMARY KEY (source_id, deployment_id)",
 		"dropped_records BIGINT UNSIGNED NOT NULL DEFAULT 0",
 		"bkn_trace_ee_provenance_analyses",
@@ -89,7 +89,7 @@ func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 		"025": "8016090e353f20486f13dc92888ed7ec9b300126dc526dfa5db159148521ccbf",
 		"031": "3fd14448f426aa6405c58cb816bfaf053e0fe05b40dfc4c97bf7cb9b61570a85",
 		"032": "217207e904a420922327aa24be43b2aa6ea34979347be8d2af154ccea047cb13",
-		"033": "5ac6b3afdd9a2f27a982d985d80d6ad7e6f4e9b4fc0a0a4fe1f6c476ed7bfa0b",
+		"033": "61724a6fc17222f903dd3c51974cd3ecd21ed6b5364d11a3885d23b4fc3cbf6f",
 	}
 	migrations := sessionstore.Migrations()
 	if len(migrations) != len(expectedChecksums) {

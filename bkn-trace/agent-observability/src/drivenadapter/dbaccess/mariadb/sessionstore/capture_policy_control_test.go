@@ -93,7 +93,7 @@ func TestCapturePolicyControlRejectsAcknowledgementOutsideFrozenExpectedSet(t *t
 	defer func() { _ = db.Close() }()
 	store := sessionstore.New(db)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-7", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#missing").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}))
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-7", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#missing", "sa/gateway", "boot-1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}))
 	mock.ExpectRollback()
 	err = store.RecordAcknowledgement(context.Background(), icapturepolicy.ExpectedAcknowledgement{
 		OperationID: "op-7", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#missing",
@@ -119,7 +119,7 @@ func TestCapturePolicyControlRetriesAfterTransientDeadlock(t *testing.T) {
 	acknowledgement := icapturepolicy.ExpectedAcknowledgement{OperationID: "op-retry", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 7, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: &unaccounted, TraceDisposition: icapturepolicy.DispositionComplete}
 	for attempt := 0; attempt < 2; attempt++ {
 		mock.ExpectBegin()
-		query := mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id").WithArgs("op-retry", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1")
+		query := mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id").WithArgs("op-retry", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1")
 		if attempt == 0 {
 			query.WillReturnError(&mysql.MySQLError{Number: 1213, Message: "deadlock"})
 			mock.ExpectRollback()
@@ -149,7 +149,7 @@ func TestCapturePolicyControlExhaustsTransientTransactionRetries(t *testing.T) {
 	acknowledgement := icapturepolicy.ExpectedAcknowledgement{OperationID: "op-exhausted", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 7, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: &unaccounted, TraceDisposition: icapturepolicy.DispositionComplete}
 	for attempt := 0; attempt < 4; attempt++ {
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id").WithArgs("op-exhausted", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1").WillReturnError(&mysql.MySQLError{Number: 1205, Message: "lock wait timeout"})
+		mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id").WithArgs("op-exhausted", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1").WillReturnError(&mysql.MySQLError{Number: 1205, Message: "lock wait timeout"})
 		mock.ExpectRollback()
 	}
 	err = store.RecordAcknowledgement(context.Background(), acknowledgement)
@@ -213,7 +213,7 @@ func TestCapturePolicyControlRejectsAckFromDifferentBoot(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	store := sessionstore.New(db)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-7", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(7), "sa/gateway", "boot-old"))
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-7", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-new").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(7), "sa/gateway", "boot-old"))
 	mock.ExpectRollback()
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
 	exported, dropped, unaccounted := uint64(10), uint64(1), uint64(0)
@@ -238,7 +238,7 @@ func TestCapturePolicyControlAcknowledgesCompensationRevisionAlongsideOriginal(t
 	mock.ExpectBegin()
 	// Revision 8 is the original operation and revision 9 is its
 	// compensation; both rows may coexist for the same endpoint instance.
-	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-8", uint64(9), icapturepolicy.EndpointTraceGateway, "gateway#1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(9), "sa/gateway", "boot-1"))
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-8", uint64(9), icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(9), "sa/gateway", "boot-1"))
 	mock.ExpectExec("UPDATE bkn_trace_capture_operation_acknowledgements").WithArgs(
 		false, icapturepolicy.AckDisabled, now, exported, dropped, unaccounted, icapturepolicy.DispositionComplete,
 		nil, nil, nil, nil, nil, "op-8", icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1", uint64(9),
@@ -251,6 +251,35 @@ func TestCapturePolicyControlAcknowledgesCompensationRevisionAlongsideOriginal(t
 		TraceDisposition: icapturepolicy.DispositionComplete,
 	}); err != nil {
 		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlAcceptsIdenticalAcknowledgementRowsZero(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	exported, dropped, unaccounted := uint64(10), uint64(1), uint64(0)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id").WithArgs("op-replay", uint64(9), icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(9), "sa/gateway", "boot-1"))
+	mock.ExpectExec("UPDATE bkn_trace_capture_operation_acknowledgements").WithArgs(
+		false, icapturepolicy.AckDisabled, now, exported, dropped, unaccounted, icapturepolicy.DispositionComplete,
+		nil, nil, nil, nil, nil, "op-replay", icapturepolicy.EndpointTraceGateway, "gateway#1", "sa/gateway", "boot-1", uint64(9),
+	).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectCommit()
+	if err := store.RecordAcknowledgement(context.Background(), icapturepolicy.ExpectedAcknowledgement{
+		OperationID: "op-replay", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1",
+		WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 9, AckState: icapturepolicy.AckDisabled,
+		AcknowledgedAt: &now, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: &unaccounted,
+		TraceDisposition: icapturepolicy.DispositionComplete,
+	}); err != nil {
+		t.Fatalf("RecordAcknowledgement() identical replay error = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
