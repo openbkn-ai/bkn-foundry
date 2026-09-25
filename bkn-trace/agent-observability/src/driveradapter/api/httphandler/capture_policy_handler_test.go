@@ -556,8 +556,32 @@ func TestCapturePolicyHandlerRejectsIncompleteAdmissionBudget(t *testing.T) {
 	handler.SetAdmissionBudgetReader(&countingCapturePolicyBudgetReader{budget: budget})
 	response := httptest.NewRecorder()
 	handler.GetTraceEvidenceConfiguration(response, httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/trace-evidence-configuration", nil))
-	if response.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCapturePolicyHandlerReturnsOverThresholdBudgetForRead(t *testing.T) {
+	budget, err := (capturePolicyBudgetReader{}).ReadAdmissionBudget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget.Measurements[0].Value = 0.95
+	handler := NewCapturePolicyHandler(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 1, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 1, Operation: capturepolicysvc.Operation{ID: "op-1", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled}}, nil
+	}))
+	handler.SetAdmissionBudgetReader(&countingCapturePolicyBudgetReader{budget: budget})
+	response := httptest.NewRecorder()
+	handler.GetTraceEvidenceConfiguration(response, httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/trace-evidence-configuration", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+	}
+	var payload capturepolicysvc.ConfigurationGetResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.AdmissionBudget.Measurements[0].Value != 0.95 {
+		t.Fatalf("GET did not preserve over-threshold measurement: %+v", payload.AdmissionBudget.Measurements[0])
 	}
 }
 

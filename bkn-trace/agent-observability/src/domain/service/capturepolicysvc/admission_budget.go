@@ -143,9 +143,9 @@ func validateAdmissionMeasurement(measurement AdmissionMeasurement, now time.Tim
 	return nil
 }
 
-func ValidateAdmissionBudgetForEnable(budget AdmissionBudget, now time.Time) error {
-	if budget.ContractVersion != "AdmissionBudgetV1" || budget.Profile == "" || budget.SampledAt.IsZero() || budget.FreshUntil.IsZero() || !budget.FreshUntil.After(now) || len(budget.Measurements) != 4 {
-		return ErrAdmissionBudgetExceeded
+func ValidateAdmissionBudgetStructure(budget AdmissionBudget) error {
+	if budget.ContractVersion != "AdmissionBudgetV1" || budget.Profile == "" || budget.SampledAt.IsZero() || budget.FreshUntil.IsZero() || !budget.FreshUntil.After(budget.SampledAt) || len(budget.Measurements) != 4 {
+		return ErrAdmissionBudgetUnavailable
 	}
 	allowed := map[string]struct{}{
 		"trace_opensearch_capacity":     {},
@@ -156,24 +156,36 @@ func ValidateAdmissionBudgetForEnable(budget AdmissionBudget, now time.Time) err
 	seen := make(map[string]struct{}, len(budget.Measurements))
 	for _, measurement := range budget.Measurements {
 		if _, ok := allowed[measurement.Metric]; !ok {
-			return fmt.Errorf("%w: unknown metric %q", ErrAdmissionBudgetExceeded, measurement.Metric)
+			return fmt.Errorf("%w: unknown metric %q", ErrAdmissionBudgetUnavailable, measurement.Metric)
 		}
 		if _, ok := seen[measurement.Metric]; ok {
-			return fmt.Errorf("%w: duplicate metric %q", ErrAdmissionBudgetExceeded, measurement.Metric)
+			return fmt.Errorf("%w: duplicate metric %q", ErrAdmissionBudgetUnavailable, measurement.Metric)
 		}
 		seen[measurement.Metric] = struct{}{}
-		if err := validateAdmissionMeasurement(measurement, now); err != nil {
-			return fmt.Errorf("%w: %v", ErrAdmissionBudgetExceeded, err)
+		if measurement.Source == "" || measurement.SampleTime.IsZero() || math.IsNaN(measurement.Value) || math.IsInf(measurement.Value, 0) || measurement.Value < 0 || measurement.Value > 1 || math.IsNaN(measurement.Threshold) || math.IsInf(measurement.Threshold, 0) || measurement.Threshold <= 0 || measurement.Threshold > 1 {
+			return fmt.Errorf("%w: invalid measurement %q", ErrAdmissionBudgetUnavailable, measurement.Metric)
 		}
-		if math.IsNaN(measurement.Threshold) || math.IsInf(measurement.Threshold, 0) || measurement.Threshold <= 0 || measurement.Threshold > 1 {
-			return fmt.Errorf("%w: invalid threshold for %s", ErrAdmissionBudgetExceeded, measurement.Metric)
+	}
+	if len(seen) != len(allowed) {
+		return ErrAdmissionBudgetUnavailable
+	}
+	return nil
+}
+
+func ValidateAdmissionBudgetForEnable(budget AdmissionBudget, now time.Time) error {
+	if err := ValidateAdmissionBudgetStructure(budget); err != nil {
+		return ErrAdmissionBudgetExceeded
+	}
+	if !budget.FreshUntil.After(now) {
+		return ErrAdmissionBudgetExceeded
+	}
+	for _, measurement := range budget.Measurements {
+		if !measurement.Fresh || measurement.SampleTime.After(now) {
+			return fmt.Errorf("%w: stale metric %s", ErrAdmissionBudgetExceeded, measurement.Metric)
 		}
 		if measurement.Value > measurement.Threshold {
 			return fmt.Errorf("%w: %s value %.4f exceeds threshold %.4f", ErrAdmissionBudgetExceeded, measurement.Metric, measurement.Value, measurement.Threshold)
 		}
-	}
-	if len(seen) != len(allowed) {
-		return ErrAdmissionBudgetExceeded
 	}
 	return nil
 }
