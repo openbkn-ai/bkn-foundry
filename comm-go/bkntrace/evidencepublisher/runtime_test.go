@@ -115,6 +115,77 @@ func TestPublisherRuntimeUsesVerifiedSnapshotAndAcknowledgesDisabledBoundary(t *
 	}
 }
 
+func TestPublisherRuntimeAcknowledgesDisabledEmptyDrainWithCumulativeDisposition(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := policySnapshotForTest(now)
+	disabled := policySnapshotForTest(now)
+	disabled.Revision = 43
+	disabled.TraceAdmission, disabled.EvidenceAdmission = "disabled", "disabled"
+	policyReads, acknowledgements := 0, 0
+	var received struct {
+		LastAcceptedSequence uint64 `json:"last_accepted_sequence"`
+		Published            uint64 `json:"published"`
+		Dropped              uint64 `json:"dropped"`
+		QueueEmpty           bool   `json:"queue_empty"`
+	}
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case traceEvidencePolicyPath:
+			policyReads++
+			snapshot := enabled
+			if policyReads > 1 {
+				snapshot = disabled
+			}
+			return policyResponse(signedPolicySnapshot(t, privateKey, snapshot)), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
+			return noContentResponse(), nil
+		case traceEvidenceConfigurationPath:
+			return configurationResponse(`{"kind":"configuration_get","policy_revision":43,"active_operation_id":"op-43"}`), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:publisher-ack":
+			acknowledgements++
+			if err := json.NewDecoder(request.Body).Decode(&received); err != nil {
+				t.Fatal(err)
+			}
+			return noContentResponse(), nil
+		default:
+			t.Fatalf("unexpected request: %s", request.URL)
+			return nil, nil
+		}
+	})}
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("enabled Refresh() error = %v", err)
+	}
+	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
+		t.Fatalf("TryPublish() = %+v", result)
+	}
+	if drain := runtime.Flush(context.Background()); drain.Published != 1 || drain.Dropped != 0 || drain.LastAcceptedSequence != 1 {
+		t.Fatalf("Flush() = %+v", drain)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("disabled Refresh() error = %v", err)
+	}
+	if acknowledgements != 1 || received.Published != 1 || received.Dropped != 0 || received.LastAcceptedSequence != 1 || !received.QueueEmpty {
+		t.Fatalf("acknowledgements=%d received=%+v", acknowledgements, received)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("repeat disabled Refresh() error = %v", err)
+	}
+	if acknowledgements != 1 {
+		t.Fatalf("duplicate disabled acknowledgement count = %d", acknowledgements)
+	}
+}
+
 func TestPublisherRuntimeDoesNotRequireStaticPolicyRevision(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)

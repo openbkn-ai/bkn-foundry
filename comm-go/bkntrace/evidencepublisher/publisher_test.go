@@ -206,6 +206,47 @@ func TestPublisherFlushSendsWithoutClosing(t *testing.T) {
 	}
 }
 
+func TestPublisherDrainAcknowledgementIsCumulativeAcrossFlushes(t *testing.T) {
+	sender := &fakeSender{}
+	publisher, err := New(publisherTestConfig(), sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer publisher.Close(context.Background())
+	for _, eventID := range []string{"evt-cumulative-a", "evt-cumulative-b"} {
+		event := publisherTestEvent()
+		event.EventID = eventID
+		if result := publisher.TryPublish(event); result.Disposition != Accepted {
+			t.Fatalf("TryPublish() = %+v", result)
+		}
+	}
+	if ack := publisher.Flush(context.Background()); ack.Published != 2 || ack.Dropped != 0 || ack.LastAcceptedSequence != 2 {
+		t.Fatalf("first flush ack = %+v", ack)
+	}
+	if ack := publisher.Flush(context.Background()); ack.Published != 2 || ack.Dropped != 0 || ack.LastAcceptedSequence != 2 || !ack.QueueEmpty {
+		t.Fatalf("empty flush ack = %+v", ack)
+	}
+
+	failing := publisherTestEvent()
+	failing.EventID = "evt-cumulative-dropped"
+	sender.failures = 3
+	if result := publisher.TryPublish(failing); result.Disposition != Accepted {
+		t.Fatalf("TryPublish() = %+v", result)
+	}
+	if ack := publisher.Flush(context.Background()); ack.Published != 2 || ack.Dropped != 1 || ack.LastAcceptedSequence != 3 {
+		t.Fatalf("failed flush ack = %+v", ack)
+	}
+
+	success := publisherTestEvent()
+	success.EventID = "evt-cumulative-published"
+	if result := publisher.TryPublish(success); result.Disposition != Accepted {
+		t.Fatalf("TryPublish() = %+v", result)
+	}
+	if ack := publisher.Flush(context.Background()); ack.Published != 3 || ack.Dropped != 1 || ack.LastAcceptedSequence != 4 {
+		t.Fatalf("subsequent flush ack = %+v", ack)
+	}
+}
+
 func TestPublisherFlushHonorsContextTimeoutAndCanRetry(t *testing.T) {
 	publisher, err := New(publisherTestConfig(), blockingSender{})
 	if err != nil {

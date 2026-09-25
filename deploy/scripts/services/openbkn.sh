@@ -510,6 +510,24 @@ _openbkn_trace_admission_values() {
     )
 }
 
+# A complete installation must not replace an existing publisher with an
+# explicitly disabled one merely because its deployment-time admission material
+# was omitted. Secret contents remain operator-managed, but these references
+# are mandatory before the two service-owned Kafka publishers can be enabled.
+_openbkn_require_trace_admission_profile() {
+    local release_name
+    for release_name in "$@"; do
+        [[ "${release_name}" == "bkn-backend" || "${release_name}" == "ontology-query" ]] || continue
+        if [[ -z "${OPENBKN_TRACE_ADMISSION_CLIENT_ID}" ||
+              -z "${OPENBKN_TRACE_ADMISSION_CLIENT_SECRET_SECRET_NAME}" ||
+              -z "${OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID}" ||
+              -z "${OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME}" ]]; then
+            log_error "BKN Trace Evidence Kafka requires Trace Admission client ID, client-credentials Secret, current key ID, and public-key Secret before installing ${release_name}"
+            return 1
+        fi
+    done
+}
+
 # The chart defaults keep standalone development lightweight. A complete
 # OpenBKN installation, however, must make managed Agent conversations durable
 # and queryable after agent-observability restarts. The trace/log indexes below
@@ -1708,6 +1726,10 @@ install_openbkn() {
     if _openbkn_release_list_contains "agent-observability" "${release_names[@]}"; then
         if ! _openbkn_prepare_trace_profile "${namespace}"; then
             log_error "BKN Trace installation profile is not ready"
+            return 1
+        fi
+        if ! _openbkn_require_trace_admission_profile "${release_names[@]}"; then
+            log_error "BKN Trace Evidence Kafka admission profile is not ready"
             return 1
         fi
         _openbkn_warn_unwired_evidence_producers "${release_names[@]}"

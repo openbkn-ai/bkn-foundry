@@ -17,6 +17,7 @@ not_contains() {
 }
 log_info() { :; }
 log_warn() { :; }
+log_error() { LAST_ERROR="$*"; }
 get_set_value() {
     local key="$1"
     shift
@@ -361,6 +362,14 @@ _openbkn_release_extra_sets bkn-backend openbkn
 missing_profile_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
 contains "publisher remains disabled without verified policy profile" "${missing_profile_sets}" "bknTrace.evidencePublisher.enabled=false"
 not_contains "publisher is not enabled with an incomplete policy profile" "${missing_profile_sets}" "bknTrace.evidencePublisher.enabled=true"
+LAST_ERROR=""
+if _openbkn_require_trace_admission_profile bkn-backend ontology-query; then
+    fail "complete install accepts an incomplete Trace Admission profile"
+elif [[ "${LAST_ERROR}" != *"Trace Admission client ID"* ]]; then
+    fail "incomplete Trace Admission profile has no actionable error: ${LAST_ERROR}"
+else
+    ok
+fi
 OPENBKN_TRACE_ADMISSION_CLIENT_ID="${saved_trace_admission_client_id}"
 OPENBKN_TRACE_ADMISSION_CLIENT_SECRET_SECRET_NAME="${saved_trace_admission_secret}"
 OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID="${saved_trace_admission_key_id}"

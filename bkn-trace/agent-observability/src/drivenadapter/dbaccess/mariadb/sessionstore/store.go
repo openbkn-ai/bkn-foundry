@@ -337,11 +337,30 @@ func applySchemaMigration(ctx context.Context, conn *sql.Conn, migration Migrati
 func splitSQLStatements(sqlText string) ([]string, error) {
 	var statements []string
 	start := 0
+	delimiter := ";"
 	var quote byte
 	lineComment := false
 	blockComment := false
 	for index := 0; index < len(sqlText); index++ {
 		current := sqlText[index]
+		if quote == 0 && !lineComment && !blockComment && (index == 0 || sqlText[index-1] == '\n') {
+			lineEnd := strings.IndexByte(sqlText[index:], '\n')
+			if lineEnd < 0 {
+				lineEnd = len(sqlText)
+			} else {
+				lineEnd += index
+			}
+			fields := strings.Fields(sqlText[index:lineEnd])
+			if len(fields) == 2 && strings.EqualFold(fields[0], "DELIMITER") {
+				if strings.TrimSpace(sqlText[start:index]) != "" {
+					return nil, errors.New("delimiter directive follows an unterminated SQL statement")
+				}
+				delimiter = fields[1]
+				start = lineEnd + 1
+				index = lineEnd
+				continue
+			}
+		}
 		if lineComment {
 			if current == '\n' {
 				lineComment = false
@@ -381,10 +400,14 @@ func splitSQLStatements(sqlText string) ([]string, error) {
 		switch current {
 		case '\'', '"', '`':
 			quote = current
-		case ';':
+		default:
+			if !strings.HasPrefix(sqlText[index:], delimiter) {
+				continue
+			}
 			if statement := strings.TrimSpace(sqlText[start:index]); statement != "" {
 				statements = append(statements, statement)
 			}
+			index += len(delimiter) - 1
 			start = index + 1
 		}
 	}

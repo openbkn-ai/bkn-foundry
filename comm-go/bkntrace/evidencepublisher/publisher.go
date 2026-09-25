@@ -21,9 +21,12 @@ type Publisher struct {
 	metrics Metrics
 
 	mu         sync.Mutex
+	drainMu    sync.Mutex
 	queue      []queuedRecord
 	queueBytes int
 	sequence   uint64
+	published  uint64
+	dropped    uint64
 	closed     bool
 	lastAck    DrainResult
 }
@@ -181,6 +184,8 @@ func (p *Publisher) CloseForPolicyRevision(ctx context.Context, capturePolicyRev
 }
 
 func (p *Publisher) drain(ctx context.Context, closePublisher bool, capturePolicyRevision string) DrainResult {
+	p.drainMu.Lock()
+	defer p.drainMu.Unlock()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -250,6 +255,10 @@ func (p *Publisher) drain(ctx context.Context, closePublisher bool, capturePolic
 		}
 	}
 	p.mu.Lock()
+	p.published += ack.Published
+	p.dropped += ack.Dropped
+	ack.Published = p.published
+	ack.Dropped = p.dropped
 	p.lastAck = ack
 	p.mu.Unlock()
 	return ack

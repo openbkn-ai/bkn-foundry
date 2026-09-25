@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	v030 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v030"
 )
 
 func TestTransactionRetryDelayUsesBoundedExponentialJitter(t *testing.T) {
@@ -174,6 +176,25 @@ func TestSplitSQLStatementsIgnoresSemicolonsInComments(t *testing.T) {
 	}
 	if len(statements) != 2 {
 		t.Fatalf("expected two statements, got %#v", statements)
+	}
+}
+
+func TestSplitSQLStatementsKeepsDelimitedTriggerBodyAsOneStatement(t *testing.T) {
+	statements, err := splitSQLStatements(v030.SchemaSQL())
+	if err != nil {
+		t.Fatalf("split v030 statements: %v", err)
+	}
+	triggerCount := 0
+	for _, statement := range statements {
+		if strings.HasPrefix(statement, "CREATE TRIGGER ") {
+			triggerCount++
+			if !strings.Contains(statement, "BEGIN") || !strings.Contains(statement, "END") {
+				t.Fatalf("trigger was split: %q", statement)
+			}
+		}
+	}
+	if triggerCount != 8 {
+		t.Fatalf("v030 trigger count = %d, want 8", triggerCount)
 	}
 }
 
