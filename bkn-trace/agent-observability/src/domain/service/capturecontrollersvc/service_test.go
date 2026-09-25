@@ -17,7 +17,6 @@ type fakeStore struct {
 	state icapturepolicy.ControlState
 	op    icapturepolicy.Operation
 	acks  []icapturepolicy.ExpectedAcknowledgement
-	now   time.Time
 }
 
 func (f *fakeStore) ReadControlState(context.Context) (icapturepolicy.ControlState, error) {
