@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from bridge import load_checkpoint, publish_entries
+from bridge import load_checkpoint, publish_encoded_entries, publish_entries, publish_frozen_snapshot
 from manifest import ManifestError, entries_digest
 
 FIXTURE = Path(__file__).resolve().parents[6] / "bkn-docs" / "docs" / "foundry" / "bkn-trace" / "testing" / "fixtures" / "0.2.0" / "evidence-kafka-record-golden.json"
@@ -45,6 +45,94 @@ class BridgeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ManifestError):
                 publish_entries(dict(self.manifest, state="draft"), self.entries, Path(root) / "checkpoint", self.ack)
+
+    def test_frozen_source_entries_need_no_central_entry_id(self):
+        entry = {key: value for key, value in self.publish.items() if key != "entry_id"}
+        manifest = dict(self.manifest, entry_count="1", entries_digest=entries_digest([entry]))
+        with tempfile.TemporaryDirectory() as root:
+            emitted = publish_entries(manifest, [entry], Path(root) / "checkpoint", self.ack)
+        self.assertEqual(emitted, [(entry["source_table"], entry["source_primary_key"])])
+
+    def test_encoded_bridge_uses_only_snapshot_event_and_kafka_ack(self):
+        class Metadata:
+            topic, partition, offset = "openbkn.evidence.v1", 0, 12
+
+        class Producer:
+            def send(self, topic, **kwargs):
+                self.topic, self.kwargs = topic, kwargs
+                return type("Future", (), {"get": lambda _self, timeout: Metadata()})()
+
+        event = {
+            "event_id": self.publish["event_id"], "payload_hash": self.publish["payload_hash"],
+            "producer_id": self.publish["producer_id"], "producer_stream_id": self.publish["producer_stream_id"],
+            "producer_epoch": self.publish["producer_epoch"], "producer_sequence": self.publish["producer_sequence"],
+        }
+        # This test uses just the publish entries; non-publish entries are
+        # deliberately absent from the source Event map and never sent.
+        entries = [self.publish]
+        manifest = dict(self.manifest, entry_count="1", entries_digest=entries_digest(entries))
+        producer = Producer()
+        with tempfile.TemporaryDirectory() as root:
+            emitted = publish_encoded_entries(
+                manifest, entries, {(self.publish["source_table"], self.publish["source_primary_key"]): event},
+                Path(root) / "checkpoint", producer, "openbkn.evidence.v1", 5, "bridge#boot-1",
+            )
+        self.assertEqual(emitted, ["z-last"])
+        self.assertEqual(producer.topic, "openbkn.evidence.v1")
+        self.assertEqual(producer.kwargs["key"], self.publish["producer_stream_id"].encode("utf-8"))
+        self.assertEqual(dict(producer.kwargs["headers"])["bkn-evidence-record-class"], b"migration")
+        self.assertEqual(dict(producer.kwargs["headers"])["bkn-evidence-migration-id"], self.manifest["manifest_id"].encode("utf-8"))
+
+    def test_source_drift_sends_nothing_and_never_creates_checkpoint(self):
+        event = {
+            "event_id": self.publish["event_id"], "payload_hash": self.publish["payload_hash"],
+            "producer_id": self.publish["producer_id"], "producer_stream_id": self.publish["producer_stream_id"],
+            "producer_epoch": int(self.publish["producer_epoch"]), "producer_sequence": int(self.publish["producer_sequence"]),
+        }
+        entry = {key: value for key, value in self.publish.items() if key != "entry_id"}
+        manifest = dict(self.manifest, entry_count="1", entries_digest=entries_digest([entry]))
+
+        class Cursor:
+            description = [(key,) for key in ("outbox_id", "event_id", "payload_hash", "producer_id", "producer_stream_id", "producer_epoch", "producer_sequence", "envelope", "status", "locked_until")]
+
+            def __init__(self, index):
+                self.index = index
+
+            def execute(self, _query, _args):
+                pass
+
+            def fetchall(self):
+                if self.index:
+                    return []
+                return [(int(entry["source_primary_key"]), event["event_id"], event["payload_hash"], event["producer_id"], event["producer_stream_id"], event["producer_epoch"], event["producer_sequence"], json.dumps({"event": event}), "retry", None)]
+
+            def close(self):
+                pass
+
+        class Connection:
+            def __init__(self):
+                self.index = 0
+
+            def cursor(self):
+                cursor = Cursor(self.index)
+                self.index += 1
+                return cursor
+
+        class Producer:
+            def __init__(self):
+                self.sent = 0
+
+            def send(self, *_args, **_kwargs):
+                self.sent += 1
+                raise AssertionError("source drift must not reach Kafka")
+
+        producer = Producer()
+        with tempfile.TemporaryDirectory() as root:
+            checkpoint = Path(root) / "bridge-checkpoint.json"
+            with self.assertRaises(ManifestError):
+                publish_frozen_snapshot(Connection(), manifest, [entry], checkpoint, producer, "openbkn.evidence.v1", 5, "bridge#boot-1")
+            self.assertEqual(producer.sent, 0)
+            self.assertFalse(checkpoint.exists())
 
     def test_crash_boundaries_never_skip_uncheckpointed_ack(self):
         for stage in ("after_temp_write", "after_file_fsync", "after_rename"):
