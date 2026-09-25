@@ -6,10 +6,18 @@ package boot
 
 import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/evidenceconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/kafkaruntime"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencemigration"
+)
+
+var (
+	_ evidenceconsumer.Ledger           = (*ledgersvc.Service)(nil)
+	_ ievidenceadmission.ReadOnlySource = (*sessionstore.Store)(nil)
+	_ evidenceconsumer.RejectionWriter  = (*sessionstore.Store)(nil)
 )
 
 func newEvidenceKafkaProcessor(
