@@ -35,6 +35,21 @@ func (commandStore) StartOperation(context.Context, icapturepolicy.ControlState,
 func (commandStore) AdvanceOperation(context.Context, string, uint64, string, string, string, time.Time) error {
 	return nil
 }
+func (commandStore) BeginRollback(context.Context, string, uint64, uint64, string, time.Time) error {
+	return nil
+}
+func (commandStore) CompleteSucceeded(context.Context, string, uint64, time.Time) error {
+	return nil
+}
+func (commandStore) CompleteFailed(context.Context, string, uint64, time.Time) error {
+	return nil
+}
+func (commandStore) CompleteRollback(context.Context, string, uint64, time.Time) error {
+	return nil
+}
+func (commandStore) CompleteRollbackFailed(context.Context, string, uint64, time.Time) error {
+	return nil
+}
 func (commandStore) AppendOperationEvent(context.Context, icapturepolicy.OperationEvent) error {
 	return nil
 }
@@ -87,6 +102,48 @@ func TestCommandServiceValidatesEndpointKindAndConditionalFacts(t *testing.T) {
 	}
 	if err := service.RecordAcknowledgement(context.Background(), ack); err != icapturepolicy.ErrInvalidAcknowledgement {
 		t.Fatalf("RecordAcknowledgement() error = %v, want invalid acknowledgement", err)
+	}
+}
+
+func TestCaptureControlEnumsAndTransitionsAreClosed(t *testing.T) {
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	if (icapturepolicy.ControlState{CurrentRevision: 1, DesiredState: "draining", EffectiveState: icapturepolicy.StateEnabled, LastStableRevision: 1, CoverageGapUpdatedAt: now, UpdatedAt: now}).Validate() == nil {
+		t.Fatal("ControlState accepted a non-contract state")
+	}
+	if (icapturepolicy.Operation{ID: "op", PolicyRevision: 2, RequestedState: icapturepolicy.StateEnabled, ExpectedRevision: 1, Phase: "draining", ConvergenceDeadline: now, CreatedAt: now, UpdatedAt: now}).Validate() == nil {
+		t.Fatal("Operation accepted a non-contract phase")
+	}
+	for _, transition := range [][2]string{{icapturepolicy.PhasePending, icapturepolicy.PhaseEnabling}, {icapturepolicy.PhaseEnabling, icapturepolicy.PhaseSucceeded}, {icapturepolicy.PhaseDisabling, icapturepolicy.PhaseRollingBack}, {icapturepolicy.PhaseRollingBack, icapturepolicy.PhaseRollbackCompleted}} {
+		if !icapturepolicy.CanTransition(transition[0], transition[1]) {
+			t.Fatalf("expected transition %s -> %s", transition[0], transition[1])
+		}
+	}
+	for _, transition := range [][2]string{{icapturepolicy.PhaseSucceeded, icapturepolicy.PhaseEnabling}, {icapturepolicy.PhasePending, icapturepolicy.PhaseSucceeded}, {icapturepolicy.PhaseRollingBack, icapturepolicy.PhaseSucceeded}} {
+		if icapturepolicy.CanTransition(transition[0], transition[1]) {
+			t.Fatalf("unexpected transition %s -> %s", transition[0], transition[1])
+		}
+	}
+}
+
+func TestCaptureControlAcknowledgementsKeepTraceAndEvidenceFactsSeparate(t *testing.T) {
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	exported, dropped, unaccounted := uint64(10), uint64(1), uint64(0)
+	trace := icapturepolicy.ExpectedAcknowledgement{OperationID: "op", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 2, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: &unaccounted, TraceDisposition: icapturepolicy.DispositionComplete}
+	if err := trace.Validate(); err != nil {
+		t.Fatalf("valid trace acknowledgement rejected: %v", err)
+	}
+	trace.LastAcceptedSequence = ptr(3)
+	if err := trace.Validate(); err == nil {
+		t.Fatal("trace acknowledgement accepted an Evidence sequence field")
+	}
+	published, queueEmpty := uint64(9), true
+	evidence := icapturepolicy.ExpectedAcknowledgement{OperationID: "op", EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: "publisher#1", WorkloadIdentity: "sa/publisher", ProcessBootID: "boot-1", PolicyRevision: 2, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now, LastAcceptedSequence: ptr(12), PublishedCount: &published, DroppedCount: &dropped, QueueEmpty: &queueEmpty, EvidenceDisposition: icapturepolicy.DispositionComplete}
+	if err := evidence.Validate(); err != nil {
+		t.Fatalf("valid evidence acknowledgement rejected: %v", err)
+	}
+	evidence.TraceDisposition = icapturepolicy.DispositionComplete
+	if err := evidence.Validate(); err == nil {
+		t.Fatal("evidence acknowledgement accepted a Trace disposition field")
 	}
 }
 

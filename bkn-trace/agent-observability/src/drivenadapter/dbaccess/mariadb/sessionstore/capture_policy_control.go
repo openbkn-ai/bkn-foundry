@@ -88,10 +88,11 @@ func (s *Store) StartOperation(ctx context.Context, expectedState icapturepolicy
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_capture_operations
 			(operation_id, policy_revision, requested_state, expected_revision, phase,
-			 lease_owner, lease_token, lease_expires_at, convergence_deadline,
+			 compensation_revision, restored_state, lease_owner, lease_token, lease_expires_at, convergence_deadline,
 			 created_at, updated_at, terminal_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, operation.ID, operation.PolicyRevision,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, operation.ID, operation.PolicyRevision,
 		operation.RequestedState, operation.ExpectedRevision, operation.Phase,
+		nil, nil,
 		nullString(operation.LeaseOwner), operation.LeaseToken, nullableTime(operation.LeaseExpiresAt),
 		operation.ConvergenceDeadline.UTC(), operation.CreatedAt.UTC(), operation.UpdatedAt.UTC(), nullableTime(operation.TerminalAt)); err != nil {
 		return err
@@ -112,7 +113,7 @@ func (s *Store) StartOperation(ctx context.Context, expectedState icapturepolicy
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_capture_operation_events
 			(operation_id, phase, event_type, lease_token, error_code, gap_reason, recorded_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, operation.ID, operation.Phase, "operation_created", operation.LeaseToken, nil, nil, operation.CreatedAt.UTC()); err != nil {
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, operation.ID, operation.Phase, icapturepolicy.EventOperationCreated, operation.LeaseToken, nil, nil, operation.CreatedAt.UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -127,13 +128,13 @@ func (s *Store) AdvanceOperation(ctx context.Context, operationID string, leaseT
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var storedToken, policyRevision uint64
-	var requestedState, currentPhase string
+	var storedToken uint64
+	var currentPhase string
 	var leaseExpires sql.NullTime
 	err = tx.QueryRowContext(ctx, `
-		SELECT policy_revision, requested_state, phase, lease_token, lease_expires_at
+		SELECT phase, lease_token, lease_expires_at
 		FROM bkn_trace_capture_operations
-		WHERE operation_id = ? FOR UPDATE`, operationID).Scan(&policyRevision, &requestedState, &currentPhase, &storedToken, &leaseExpires)
+		WHERE operation_id = ? FOR UPDATE`, operationID).Scan(&currentPhase, &storedToken, &leaseExpires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return icapturepolicy.ErrOperationNotFound
 	}
@@ -143,48 +144,179 @@ func (s *Store) AdvanceOperation(ctx context.Context, operationID string, leaseT
 	if storedToken != leaseToken || (leaseExpires.Valid && !leaseExpires.Time.After(now)) {
 		return icapturepolicy.ErrLeaseConflict
 	}
-	if currentPhase == "succeeded" || currentPhase == "failed" || currentPhase == "rollback_completed" || currentPhase == "rollback_failed" {
-		return icapturepolicy.ErrOperationInProgress
-	}
-	var terminalAt any
-	if phase == "succeeded" || phase == "failed" || phase == "rollback_completed" || phase == "rollback_failed" {
-		terminalAt = now.UTC()
+	if !icapturepolicy.CanTransition(currentPhase, phase) || phase == icapturepolicy.PhaseSucceeded || phase == icapturepolicy.PhaseFailed || phase == icapturepolicy.PhaseRollbackCompleted || phase == icapturepolicy.PhaseRollbackFailed {
+		if currentPhase == phase && currentPhase != icapturepolicy.PhasePending {
+			return tx.Commit()
+		}
+		return icapturepolicy.ErrInvalidTransition
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE bkn_trace_capture_operations
-		SET phase = ?, error_code = ?, updated_at = ?, terminal_at = ?
-		WHERE operation_id = ? AND lease_token = ?`, phase, nullString(errorCode), now.UTC(), terminalAt, operationID, leaseToken); err != nil {
+		SET phase = ?, error_code = ?, updated_at = ?
+		WHERE operation_id = ? AND lease_token = ?`, phase, nullString(errorCode), now.UTC(), operationID, leaseToken); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_capture_operation_events
 			(operation_id, phase, event_type, lease_token, error_code, gap_reason, recorded_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, operationID, phase, "operation_phase_changed", leaseToken, nullString(errorCode), nullString(gapReason), now.UTC()); err != nil {
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, operationID, phase, icapturepolicy.EventPhaseChanged, leaseToken, nullString(errorCode), nullString(gapReason), now.UTC()); err != nil {
 		return err
 	}
-	if terminalAt != nil {
-		if phase == "succeeded" || phase == "rollback_completed" {
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE bkn_trace_capture_control_state
-				SET active_operation_id = NULL, last_operation_id = ?, effective_state = ?,
-				    last_stable_revision = ?, updated_at = ?
-				WHERE singleton_id = 1 AND active_operation_id = ?`, operationID, requestedState, policyRevision, now.UTC(), operationID); err != nil {
-				return err
-			}
-		} else {
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE bkn_trace_capture_control_state
-				SET active_operation_id = NULL, last_operation_id = ?, updated_at = ?
-				WHERE singleton_id = 1 AND active_operation_id = ?`, operationID, now.UTC(), operationID); err != nil {
-				return err
-			}
+	return tx.Commit()
+}
+
+func (s *Store) BeginRollback(ctx context.Context, operationID string, leaseToken, compensationRevision uint64, restoredState string, now time.Time) error {
+	if operationID == "" || leaseToken == 0 || compensationRevision == 0 || (restoredState != icapturepolicy.StateEnabled && restoredState != icapturepolicy.StateDisabled) || now.IsZero() {
+		return icapturepolicy.ErrInvalidOperation
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var policyRevision, storedToken uint64
+	var currentPhase string
+	var leaseExpires sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		SELECT policy_revision, phase, lease_token, lease_expires_at
+		FROM bkn_trace_capture_operations
+		WHERE operation_id = ? FOR UPDATE`, operationID).Scan(&policyRevision, &currentPhase, &storedToken, &leaseExpires)
+	if errors.Is(err, sql.ErrNoRows) {
+		return icapturepolicy.ErrOperationNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if currentPhase == icapturepolicy.PhaseRollingBack {
+		return tx.Commit()
+	}
+	if !icapturepolicy.CanTransition(currentPhase, icapturepolicy.PhaseRollingBack) {
+		return icapturepolicy.ErrInvalidTransition
+	}
+	if storedToken != leaseToken || (leaseExpires.Valid && !leaseExpires.Time.After(now)) || compensationRevision <= policyRevision {
+		return icapturepolicy.ErrLeaseConflict
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO bkn_trace_capture_policy_revisions (revision, admission_enabled, recorded_at)
+		SELECT ?, ? , ?`, compensationRevision, restoredState == icapturepolicy.StateEnabled, now.UTC()); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE bkn_trace_capture_operations
+		SET phase = ?, compensation_revision = ?, restored_state = ?, updated_at = ?
+		WHERE operation_id = ? AND lease_token = ?`, icapturepolicy.PhaseRollingBack, compensationRevision, restoredState, now.UTC(), operationID, leaseToken); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO bkn_trace_capture_operation_events
+			(operation_id, phase, event_type, lease_token, error_code, gap_reason, recorded_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, operationID, icapturepolicy.PhaseRollingBack, icapturepolicy.EventRollbackStarted, leaseToken, nil, nil, now.UTC()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) CompleteSucceeded(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
+	return s.completeOperation(ctx, operationID, leaseToken, icapturepolicy.PhaseSucceeded, now)
+}
+
+func (s *Store) CompleteFailed(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
+	return s.completeOperation(ctx, operationID, leaseToken, icapturepolicy.PhaseFailed, now)
+}
+
+func (s *Store) CompleteRollback(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
+	return s.completeOperation(ctx, operationID, leaseToken, icapturepolicy.PhaseRollbackCompleted, now)
+}
+
+func (s *Store) CompleteRollbackFailed(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
+	return s.completeOperation(ctx, operationID, leaseToken, icapturepolicy.PhaseRollbackFailed, now)
+}
+
+func (s *Store) completeOperation(ctx context.Context, operationID string, leaseToken uint64, outcome string, now time.Time) error {
+	if operationID == "" || leaseToken == 0 || now.IsZero() {
+		return icapturepolicy.ErrInvalidOperation
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var policyRevision, expectedRevision, storedToken uint64
+	var compensationRevision sql.NullInt64
+	var requestedState, currentPhase string
+	var restoredState sql.NullString
+	var leaseExpires sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		SELECT policy_revision, expected_revision, requested_state, phase, lease_token,
+		       lease_expires_at, compensation_revision, restored_state
+		FROM bkn_trace_capture_operations
+		WHERE operation_id = ? FOR UPDATE`, operationID).Scan(&policyRevision, &expectedRevision, &requestedState, &currentPhase, &storedToken, &leaseExpires, &compensationRevision, &restoredState)
+	if errors.Is(err, sql.ErrNoRows) {
+		return icapturepolicy.ErrOperationNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if currentPhase == outcome {
+		return tx.Commit()
+	}
+	if !icapturepolicy.CanTransition(currentPhase, outcome) {
+		if currentPhase == icapturepolicy.PhaseSucceeded || currentPhase == icapturepolicy.PhaseFailed || currentPhase == icapturepolicy.PhaseRollbackCompleted || currentPhase == icapturepolicy.PhaseRollbackFailed {
+			return icapturepolicy.ErrTerminalOperation
 		}
+		return icapturepolicy.ErrInvalidTransition
+	}
+	if storedToken != leaseToken || (leaseExpires.Valid && !leaseExpires.Time.After(now)) {
+		return icapturepolicy.ErrLeaseConflict
+	}
+	if outcome == icapturepolicy.PhaseRollbackCompleted && (!compensationRevision.Valid || compensationRevision.Int64 <= 0 || !restoredState.Valid || restoredState.String == "") {
+		return icapturepolicy.ErrInvalidOperation
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE bkn_trace_capture_operations
+		SET phase = ?, updated_at = ?, terminal_at = ?
+		WHERE operation_id = ? AND lease_token = ?`, outcome, now.UTC(), now.UTC(), operationID, leaseToken); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO bkn_trace_capture_operation_events
+			(operation_id, phase, event_type, lease_token, error_code, gap_reason, recorded_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, operationID, outcome, icapturepolicy.EventPhaseChanged, leaseToken, nil, nil, now.UTC()); err != nil {
+		return err
+	}
+	switch outcome {
+	case icapturepolicy.PhaseSucceeded:
+		_, err = tx.ExecContext(ctx, `
+			UPDATE bkn_trace_capture_control_state
+			SET active_operation_id = NULL, last_operation_id = ?, effective_state = ?,
+			    last_stable_revision = ?, updated_at = ?
+			WHERE singleton_id = 1 AND active_operation_id = ?`, operationID, requestedState, policyRevision, now.UTC(), operationID)
+	case icapturepolicy.PhaseFailed:
+		_, err = tx.ExecContext(ctx, `
+			UPDATE bkn_trace_capture_control_state
+			SET current_revision = ?, desired_state = effective_state, active_operation_id = NULL,
+			    last_operation_id = ?, updated_at = ?
+			WHERE singleton_id = 1 AND active_operation_id = ?`, expectedRevision, operationID, now.UTC(), operationID)
+	case icapturepolicy.PhaseRollbackCompleted:
+		_, err = tx.ExecContext(ctx, `
+			UPDATE bkn_trace_capture_control_state
+			SET current_revision = ?, desired_state = ?, effective_state = ?,
+			last_stable_revision = ?, active_operation_id = NULL, last_operation_id = ?, updated_at = ?
+			WHERE singleton_id = 1 AND active_operation_id = ?`, uint64(compensationRevision.Int64), restoredState.String, restoredState.String, uint64(compensationRevision.Int64), operationID, now.UTC(), operationID)
+	case icapturepolicy.PhaseRollbackFailed:
+		_, err = tx.ExecContext(ctx, `
+			UPDATE bkn_trace_capture_control_state
+			SET active_operation_id = NULL, last_operation_id = ?, updated_at = ?
+			WHERE singleton_id = 1 AND active_operation_id = ?`, operationID, now.UTC(), operationID)
+	}
+	if err != nil {
+		return err
 	}
 	return tx.Commit()
 }
 
 func (s *Store) AppendOperationEvent(ctx context.Context, event icapturepolicy.OperationEvent) error {
-	if event.OperationID == "" || event.Phase == "" || event.EventType == "" || event.RecordedAt.IsZero() {
+	if event.OperationID == "" || !icapturepolicy.ValidPhase(event.Phase) || !icapturepolicy.ValidEventType(event.EventType) || event.RecordedAt.IsZero() {
 		return icapturepolicy.ErrInvalidOperation
 	}
 	_, err := s.db.ExecContext(ctx, `
@@ -199,7 +331,36 @@ func (s *Store) UpsertEndpointLease(ctx context.Context, lease icapturepolicy.En
 	if err := lease.Validate(); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var workloadIdentity, processBootID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT workload_identity, process_boot_id
+		FROM bkn_trace_capture_endpoint_leases
+		WHERE endpoint_kind = ? AND instance_id = ? FOR UPDATE`, lease.EndpointKind, lease.InstanceID).Scan(&workloadIdentity, &processBootID)
+	if errors.Is(err, sql.ErrNoRows) {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO bkn_trace_capture_endpoint_leases
+				(endpoint_kind, instance_id, workload_identity, process_boot_id, observed_revision,
+				 ready, heartbeat_at, lease_expires_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			lease.EndpointKind, lease.InstanceID, lease.WorkloadIdentity, lease.ProcessBootID, lease.ObservedRevision,
+			lease.Ready, lease.HeartbeatAt.UTC(), lease.LeaseExpiresAt.UTC(), lease.UpdatedAt.UTC())
+		if err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if err != nil {
+		return err
+	}
+	if workloadIdentity != lease.WorkloadIdentity || processBootID != lease.ProcessBootID {
+		return icapturepolicy.ErrExpectedSetConflict
+	}
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_capture_endpoint_leases
 			(endpoint_kind, instance_id, workload_identity, process_boot_id, observed_revision,
 			 ready, heartbeat_at, lease_expires_at, updated_at)
@@ -210,40 +371,61 @@ func (s *Store) UpsertEndpointLease(ctx context.Context, lease icapturepolicy.En
 			lease_expires_at = VALUES(lease_expires_at), updated_at = VALUES(updated_at)`,
 		lease.EndpointKind, lease.InstanceID, lease.WorkloadIdentity, lease.ProcessBootID, lease.ObservedRevision,
 		lease.Ready, lease.HeartbeatAt.UTC(), lease.LeaseExpiresAt.UTC(), lease.UpdatedAt.UTC())
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) RecordAcknowledgement(ctx context.Context, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
 	if err := acknowledgement.Validate(); err != nil {
 		return err
 	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
 	var expectedRevision uint64
-	err := s.db.QueryRowContext(ctx, `
-		SELECT policy_revision
+	var workloadIdentity, processBootID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT policy_revision, workload_identity, process_boot_id
 		FROM bkn_trace_capture_operation_acknowledgements
-		WHERE operation_id = ? AND endpoint_kind = ? AND instance_id = ?`,
-		acknowledgement.OperationID, acknowledgement.EndpointKind, acknowledgement.InstanceID).Scan(&expectedRevision)
+		WHERE operation_id = ? AND endpoint_kind = ? AND instance_id = ? FOR UPDATE`,
+		acknowledgement.OperationID, acknowledgement.EndpointKind, acknowledgement.InstanceID).Scan(&expectedRevision, &workloadIdentity, &processBootID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return icapturepolicy.ErrExpectedSetConflict
 	}
 	if err != nil {
 		return err
 	}
-	if expectedRevision != acknowledgement.PolicyRevision {
+	if expectedRevision != acknowledgement.PolicyRevision || workloadIdentity != acknowledgement.WorkloadIdentity || processBootID != acknowledgement.ProcessBootID {
 		return icapturepolicy.ErrExpectedSetConflict
 	}
-	_, err = s.db.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		UPDATE bkn_trace_capture_operation_acknowledgements
 		SET ready = ?, ack_state = ?, acknowledged_at = ?, exported_count = ?, dropped_count = ?,
 		    unaccounted_count = ?, trace_disposition = ?, last_accepted_sequence = ?,
 		    published_count = ?, queue_empty = ?, evidence_disposition = ?, gap_reason = ?
-		WHERE operation_id = ? AND endpoint_kind = ? AND instance_id = ?`,
+		WHERE operation_id = ? AND endpoint_kind = ? AND instance_id = ?
+		  AND workload_identity = ? AND process_boot_id = ? AND policy_revision = ?`,
 		acknowledgement.Ready, acknowledgement.AckState, nullableTime(acknowledgement.AcknowledgedAt),
 		uint64Ptr(acknowledgement.ExportedCount), uint64Ptr(acknowledgement.DroppedCount), uint64Ptr(acknowledgement.UnaccountedCount),
 		nullString(acknowledgement.TraceDisposition), uint64Ptr(acknowledgement.LastAcceptedSequence),
 		uint64Ptr(acknowledgement.PublishedCount), boolPtr(acknowledgement.QueueEmpty), nullString(acknowledgement.EvidenceDisposition),
-		nullString(acknowledgement.GapReason), acknowledgement.OperationID, acknowledgement.EndpointKind, acknowledgement.InstanceID)
-	return err
+		nullString(acknowledgement.GapReason), acknowledgement.OperationID, acknowledgement.EndpointKind, acknowledgement.InstanceID,
+		acknowledgement.WorkloadIdentity, acknowledgement.ProcessBootID, acknowledgement.PolicyRevision)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return icapturepolicy.ErrExpectedSetConflict
+	}
+	return tx.Commit()
 }
 
 func insertExpectedAcknowledgement(ctx context.Context, tx *sql.Tx, a icapturepolicy.ExpectedAcknowledgement) error {

@@ -105,3 +105,37 @@ func (s *CommandService) AdvanceOperation(ctx context.Context, operationID strin
 	}
 	return s.store.AdvanceOperation(ctx, operationID, leaseToken, phase, errorCode, gapReason, now)
 }
+
+func (s *CommandService) BeginRollback(ctx context.Context, operationID string, leaseToken, compensationRevision uint64, restoredState string, now time.Time) error {
+	if s == nil || s.store == nil || operationID == "" || leaseToken == 0 || compensationRevision == 0 || !validStableState(restoredState) || now.IsZero() {
+		return icapturepolicy.ErrInvalidOperation
+	}
+	return s.store.BeginRollback(ctx, operationID, leaseToken, compensationRevision, restoredState, now)
+}
+
+func (s *CommandService) CompleteSucceeded(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
+	return s.complete(ctx, operationID, leaseToken, now, func() error { return s.store.CompleteSucceeded(ctx, operationID, leaseToken, now) })
+}
+
+func (s *CommandService) CompleteFailed(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
+	return s.complete(ctx, operationID, leaseToken, now, func() error { return s.store.CompleteFailed(ctx, operationID, leaseToken, now) })
+}
+
+func (s *CommandService) CompleteRollback(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
+	return s.complete(ctx, operationID, leaseToken, now, func() error { return s.store.CompleteRollback(ctx, operationID, leaseToken, now) })
+}
+
+func (s *CommandService) CompleteRollbackFailed(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
+	return s.complete(ctx, operationID, leaseToken, now, func() error { return s.store.CompleteRollbackFailed(ctx, operationID, leaseToken, now) })
+}
+
+func (s *CommandService) complete(_ context.Context, operationID string, leaseToken uint64, now time.Time, fn func() error) error {
+	if s == nil || s.store == nil || operationID == "" || leaseToken == 0 || now.IsZero() {
+		return icapturepolicy.ErrInvalidOperation
+	}
+	return fn()
+}
+
+func validStableState(state string) bool {
+	return state == icapturepolicy.StateEnabled || state == icapturepolicy.StateDisabled
+}

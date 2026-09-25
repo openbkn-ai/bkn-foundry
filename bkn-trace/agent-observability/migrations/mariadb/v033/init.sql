@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS bkn_trace_capture_operations (
     expected_revision BIGINT UNSIGNED NOT NULL,
     phase VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     error_code VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    compensation_revision BIGINT UNSIGNED NULL,
+    restored_state VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL,
     lease_owner VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NULL,
     lease_token BIGINT UNSIGNED NOT NULL DEFAULT 0,
     lease_expires_at DATETIME(6) NULL,
