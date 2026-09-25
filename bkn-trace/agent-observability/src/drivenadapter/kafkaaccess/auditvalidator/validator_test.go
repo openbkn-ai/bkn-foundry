@@ -62,8 +62,45 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsRejected(t 
 		Headers:    []auditconsumer.Header{{Key: "bkn-audit-schema-version", Value: []byte("1.0")}},
 		BrokerTime: time.Date(2026, 9, 24, 8, 31, 0, 0, time.UTC),
 	}
-	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "source_not_kafka_audit") {
+	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "source_not_integrated") {
 		t.Fatalf("canonical registry must permanently reject not_integrated execution-factory source; got %v", err)
+	}
+}
+
+func TestValidatorAcceptsRegisteredSourceAdapterForAuditKafka(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kafkaFixture, err := os.ReadFile("assets/audit-kafka-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Key string `json:"key_base64"`
+	}
+	if err := json.Unmarshal(kafkaFixture, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	key, err := base64.StdEncoding.DecodeString(fixture.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{
+		Topic: auditconsumer.Topic,
+		Key:   key,
+		Value: value,
+		Headers: []auditconsumer.Header{{
+			Key: "bkn-audit-schema-version", Value: []byte("1.0"),
+		}},
+		BrokerTime: time.Date(2026, 9, 24, 8, 31, 0, 0, time.UTC),
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("registered source_adapter event must be accepted over Kafka: %v", err)
 	}
 }
 
