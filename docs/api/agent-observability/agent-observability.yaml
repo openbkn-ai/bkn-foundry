@@ -131,6 +131,152 @@ definitions:
           $ref: '#/definitions/sessionvo.EvidenceRef'
         type: array
     type: object
+  capturepolicysvc.AckState:
+    enum:
+    - ready
+    - draining
+    - disabled
+    - gap
+    type: string
+    x-enum-varnames:
+    - AckReady
+    - AckDraining
+    - AckDisabled
+    - AckGap
+  capturepolicysvc.AdmissionBudget:
+    properties:
+      contract_version:
+        type: string
+      fresh_until:
+        type: string
+      measurements:
+        items:
+          $ref: '#/definitions/capturepolicysvc.AdmissionMeasurement'
+        type: array
+      profile:
+        type: string
+      sampled_at:
+        type: string
+    type: object
+  capturepolicysvc.AdmissionMeasurement:
+    properties:
+      fresh:
+        type: boolean
+      metric:
+        type: string
+      sample_time:
+        type: string
+      source:
+        type: string
+      threshold:
+        type: number
+      value:
+        type: number
+    type: object
+  capturepolicysvc.ChangeRequest:
+    properties:
+      desired_state:
+        allOf:
+        - $ref: '#/definitions/capturepolicysvc.State'
+        enum:
+        - enabled
+        - disabled
+      expected_revision:
+        type: integer
+    type: object
+  capturepolicysvc.ConfigurationGetResponse:
+    properties:
+      active_operation_id:
+        type: string
+      admission_budget:
+        $ref: '#/definitions/capturepolicysvc.AdmissionBudget'
+      desired_state:
+        $ref: '#/definitions/capturepolicysvc.State'
+      effective_state:
+        $ref: '#/definitions/capturepolicysvc.State'
+      heartbeat_interval_seconds:
+        type: integer
+      kind:
+        type: string
+      last_stable_revision:
+        type: integer
+      lease_ttl_seconds:
+        type: integer
+      policy_revision:
+        type: integer
+    type: object
+  capturepolicysvc.EndpointAcknowledgement:
+    properties:
+      generation:
+        type: string
+      instance_id:
+        type: string
+      queue_disposition:
+        $ref: '#/definitions/capturepolicysvc.QueueDisposition'
+      ready:
+        type: boolean
+      revision:
+        type: integer
+      state:
+        $ref: '#/definitions/capturepolicysvc.AckState'
+    type: object
+  capturepolicysvc.Operation:
+    properties:
+      error_code:
+        type: string
+      expected_revision:
+        type: integer
+      id:
+        type: string
+      phase:
+        $ref: '#/definitions/capturepolicysvc.Phase'
+      requested_state:
+        $ref: '#/definitions/capturepolicysvc.State'
+    type: object
+  capturepolicysvc.Phase:
+    enum:
+    - pending
+    - enabling
+    - disabling
+    - rolling_back
+    - succeeded
+    - failed
+    - rollback_completed
+    - rollback_failed
+    type: string
+    x-enum-varnames:
+    - PhasePending
+    - PhaseEnabling
+    - PhaseDisabling
+    - PhaseRollingBack
+    - PhaseSucceeded
+    - PhaseFailed
+    - PhaseRollbackComplete
+    - PhaseRollbackFailed
+  capturepolicysvc.QueueDisposition:
+    properties:
+      dropped:
+        type: integer
+      exported:
+        type: integer
+      unaccounted:
+        type: integer
+        x-nullable: true
+    type: object
+  capturepolicysvc.State:
+    enum:
+    - enabled
+    - disabled
+    - enabling
+    - disabling
+    - rolling_back
+    type: string
+    x-enum-varnames:
+    - StateEnabled
+    - StateDisabled
+    - StateEnabling
+    - StateDisabling
+    - StateRollingBack
   evidencevo.ArtifactIngestResponse:
     properties:
       artifact_id:
@@ -1069,6 +1215,25 @@ definitions:
         type: string
       trace_id:
         type: string
+    type: object
+  rdto.TraceEvidenceConfigurationResponse:
+    properties:
+      acknowledgements:
+        items:
+          $ref: '#/definitions/capturepolicysvc.EndpointAcknowledgement'
+        type: array
+      coverage_gap:
+        type: boolean
+      desired_state:
+        $ref: '#/definitions/capturepolicysvc.State'
+      effective_state:
+        $ref: '#/definitions/capturepolicysvc.State'
+      last_stable_revision:
+        type: integer
+      operation:
+        $ref: '#/definitions/capturepolicysvc.Operation'
+      revision:
+        type: integer
     type: object
   sessionvo.AssemblyRevision:
     properties:
@@ -3253,6 +3418,161 @@ paths:
       summary: Get one request projection from durable Receipts
       tags:
       - lifecycle
+  /trace-evidence-configuration:
+    get:
+      description: |-
+        Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.
+        Requires the existing trace_evidence_configuration:global read permission.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/capturepolicysvc.ConfigurationGetResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the unified Trace/Evidence capture configuration
+      tags:
+      - trace-evidence
+    put:
+      consumes:
+      - application/json
+      description: Requires the existing trace_evidence_configuration:global write
+        permission. The requested state is asynchronous; effective_state reports the
+        last observed runtime state.
+      parameters:
+      - description: Desired state and expected policy revision
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/capturepolicysvc.ChangeRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/rdto.TraceEvidenceConfigurationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change the unified Trace/Evidence capture configuration
+      tags:
+      - trace-evidence
+  /trace-evidence-operations/{operation_id}:
+    get:
+      description: Requires the existing trace_evidence_configuration:global read
+        permission.
+      parameters:
+      - description: Configuration operation ID
+        in: path
+        name: operation_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/capturepolicysvc.Operation'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a Trace/Evidence configuration operation
+      tags:
+      - trace-evidence
+  /trace-evidence-operations/{operation_id}:reconcile:
+    post:
+      description: Requests reconciliation of the addressed operation and returns
+        the current configuration snapshot. Requires the existing trace_evidence_configuration:global
+        reconcile permission.
+      parameters:
+      - description: Configuration operation ID
+        in: path
+        name: operation_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/rdto.TraceEvidenceConfigurationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Reconcile a Trace/Evidence configuration operation
+      tags:
+      - trace-evidence
   /traces:
     get:
       description: Returns stable trace summaries with reverse request links, generated

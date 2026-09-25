@@ -74,6 +74,22 @@ func NewCapturePolicyHandlerWithInternal(reader capturepolicysvc.Reader, command
 // HandleTraceEvidenceConfiguration dispatches the stable configuration
 // contract. GET is the truthful read model; PUT creates a guarded operation
 // and returns 202 while effective state converges asynchronously.
+//
+// @Summary Change the unified Trace/Evidence capture configuration
+// @Description Requires the existing trace_evidence_configuration:global write permission. The requested state is asynchronous; effective_state reports the last observed runtime state.
+// @Tags trace-evidence
+// @Accept json
+// @Produce json
+// @Param request body capturepolicysvc.ChangeRequest true "Desired state and expected policy revision"
+// @Success 202 {object} rdto.TraceEvidenceConfigurationResponse
+// @Failure 400 {object} rdto.ErrorResponse
+// @Failure 401 {object} rdto.ErrorResponse
+// @Failure 403 {object} rdto.ErrorResponse
+// @Failure 409 {object} rdto.ErrorResponse
+// @Failure 422 {object} rdto.ErrorResponse
+// @Failure 503 {object} rdto.ErrorResponse
+// @Security BearerAuth
+// @Router /trace-evidence-configuration [put]
 func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseWriter, r *http.Request) {
 	if r != nil && r.Method == http.MethodGet {
 		h.GetTraceEvidenceConfiguration(w, r)
@@ -134,6 +150,18 @@ func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseW
 
 // GetTraceEvidenceConfiguration returns desired/effective state separately;
 // clients must not infer rollout progress from a boolean enabled field.
+//
+// @Summary Get the unified Trace/Evidence capture configuration
+// @Description Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.
+// @Description Requires the existing trace_evidence_configuration:global read permission.
+// @Tags trace-evidence
+// @Produce json
+// @Success 200 {object} capturepolicysvc.ConfigurationGetResponse
+// @Failure 401 {object} rdto.ErrorResponse
+// @Failure 403 {object} rdto.ErrorResponse
+// @Failure 503 {object} rdto.ErrorResponse
+// @Security BearerAuth
+// @Router /trace-evidence-configuration [get]
 func (h *CapturePolicyHandler) GetTraceEvidenceConfiguration(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -196,6 +224,20 @@ func frozenConfigurationGetResponse(snapshot capturepolicysvc.Snapshot, budget c
 	return response, nil
 }
 
+// GetTraceEvidenceOperation returns the durable state of one configuration operation.
+//
+// @Summary Get a Trace/Evidence configuration operation
+// @Description Requires the existing trace_evidence_configuration:global read permission.
+// @Tags trace-evidence
+// @Produce json
+// @Param operation_id path string true "Configuration operation ID"
+// @Success 200 {object} capturepolicysvc.Operation
+// @Failure 401 {object} rdto.ErrorResponse
+// @Failure 403 {object} rdto.ErrorResponse
+// @Failure 404 {object} rdto.ErrorResponse
+// @Failure 503 {object} rdto.ErrorResponse
+// @Security BearerAuth
+// @Router /trace-evidence-operations/{operation_id} [get]
 func (h *CapturePolicyHandler) GetTraceEvidenceOperation(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -227,6 +269,20 @@ func (h *CapturePolicyHandler) GetTraceEvidenceOperation(w http.ResponseWriter, 
 	writeJSON(w, r, http.StatusOK, snapshot.Operation)
 }
 
+// ReconcileTraceEvidenceOperation asks the existing reconciler to advance a known operation.
+//
+// @Summary Reconcile a Trace/Evidence configuration operation
+// @Description Requests reconciliation of the addressed operation and returns the current configuration snapshot. Requires the existing trace_evidence_configuration:global reconcile permission.
+// @Tags trace-evidence
+// @Produce json
+// @Param operation_id path string true "Configuration operation ID"
+// @Success 202 {object} rdto.TraceEvidenceConfigurationResponse
+// @Failure 401 {object} rdto.ErrorResponse
+// @Failure 403 {object} rdto.ErrorResponse
+// @Failure 404 {object} rdto.ErrorResponse
+// @Failure 503 {object} rdto.ErrorResponse
+// @Security BearerAuth
+// @Router /trace-evidence-operations/{operation_id}:reconcile [post]
 func (h *CapturePolicyHandler) ReconcileTraceEvidenceOperation(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodPost {

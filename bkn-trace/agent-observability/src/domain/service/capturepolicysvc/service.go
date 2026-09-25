@@ -60,7 +60,7 @@ const (
 type QueueDisposition struct {
 	Exported    int  `json:"exported"`
 	Dropped     int  `json:"dropped"`
-	Unaccounted *int `json:"unaccounted"`
+	Unaccounted *int `json:"unaccounted" extensions:"x-nullable"`
 }
 
 type EndpointAcknowledgement struct {
@@ -123,7 +123,7 @@ type ConfigurationGetResponse struct {
 }
 
 type ChangeRequest struct {
-	DesiredState     State  `json:"desired_state"`
+	DesiredState     State  `json:"desired_state" enums:"enabled,disabled"`
 	ExpectedRevision uint64 `json:"expected_revision"`
 }
 
