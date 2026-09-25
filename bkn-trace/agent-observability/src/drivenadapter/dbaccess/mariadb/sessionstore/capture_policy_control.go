@@ -227,6 +227,9 @@ func (s *Store) BeginRollback(ctx context.Context, operationID string, leaseToke
 		if !storedCompensationRevision.Valid || uint64(storedCompensationRevision.Int64) != compensationRevision || !operationRestoredState.Valid || operationRestoredState.String != restoredState || currentRevision != compensationRevision || currentDesired != restoredState || activeOperationID != operationID {
 			return icapturepolicy.ErrRevisionConflict
 		}
+		if err := verifyFrozenAcknowledgements(ctx, tx, operationID, compensationRevision, expected); err != nil {
+			return err
+		}
 		return tx.Commit()
 	}
 	if !icapturepolicy.CanTransition(currentPhase, icapturepolicy.PhaseRollingBack) || activeOperationID != operationID || restoredState != currentEffective || compensationRevision <= policyRevision {
@@ -336,11 +339,16 @@ func (s *Store) completeOperation(ctx context.Context, operationID string, lease
 	if outcome == icapturepolicy.PhaseRollbackCompleted && (!compensationRevision.Valid || compensationRevision.Int64 <= 0 || !restoredState.Valid || restoredState.String == "") {
 		return icapturepolicy.ErrInvalidOperation
 	}
-	if _, err := tx.ExecContext(ctx, `
+	operationResult, err := tx.ExecContext(ctx, `
 		UPDATE bkn_trace_capture_operations
 		SET phase = ?, updated_at = ?, terminal_at = ?
-		WHERE operation_id = ? AND lease_token = ?`, outcome, now.UTC(), now.UTC(), operationID, leaseToken); err != nil {
+		WHERE operation_id = ? AND lease_token = ?`, outcome, now.UTC(), now.UTC(), operationID, leaseToken)
+	if err != nil {
 		return err
+	}
+	operationRows, err := operationResult.RowsAffected()
+	if err != nil || operationRows != 1 {
+		return icapturepolicy.ErrRevisionConflict
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_capture_operation_events
@@ -512,6 +520,134 @@ func insertExpectedAcknowledgement(ctx context.Context, tx *sql.Tx, a icapturepo
 		nullString(a.TraceDisposition), uint64Ptr(a.LastAcceptedSequence), uint64Ptr(a.PublishedCount), boolPtr(a.QueueEmpty),
 		nullString(a.EvidenceDisposition), nullString(a.GapReason))
 	return err
+}
+
+type acknowledgementIdentity struct {
+	EndpointKind     string
+	InstanceID       string
+	WorkloadIdentity string
+	ProcessBootID    string
+}
+
+func verifyFrozenAcknowledgements(ctx context.Context, tx *sql.Tx, operationID string, policyRevision uint64, expected []icapturepolicy.ExpectedAcknowledgement) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT endpoint_kind, instance_id, workload_identity, process_boot_id,
+		       ready, ack_state, acknowledged_at, exported_count, dropped_count, unaccounted_count,
+		       trace_disposition, last_accepted_sequence, published_count, queue_empty,
+		       evidence_disposition, gap_reason
+		FROM bkn_trace_capture_operation_acknowledgements
+		WHERE operation_id = ? AND policy_revision = ?
+		ORDER BY endpoint_kind, instance_id, workload_identity, process_boot_id`, operationID, policyRevision)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	frozen := make(map[acknowledgementIdentity]icapturepolicy.ExpectedAcknowledgement, len(expected))
+	for rows.Next() {
+		var endpointKind, instanceID, workloadIdentity, processBootID, ackState string
+		var ready bool
+		var acknowledgedAt sql.NullTime
+		var exportedCount, droppedCount, unaccountedCount, lastAcceptedSequence, publishedCount sql.NullInt64
+		var traceDisposition, evidenceDisposition, gapReason sql.NullString
+		var queueEmpty sql.NullBool
+		if err := rows.Scan(&endpointKind, &instanceID, &workloadIdentity, &processBootID,
+			&ready, &ackState, &acknowledgedAt, &exportedCount, &droppedCount, &unaccountedCount,
+			&traceDisposition, &lastAcceptedSequence, &publishedCount, &queueEmpty,
+			&evidenceDisposition, &gapReason); err != nil {
+			return err
+		}
+		acknowledgement := icapturepolicy.ExpectedAcknowledgement{
+			OperationID: operationID, EndpointKind: endpointKind, InstanceID: instanceID,
+			WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID,
+			PolicyRevision: policyRevision, Ready: ready, AckState: ackState,
+			AcknowledgedAt: nullableTimePtr(acknowledgedAt), ExportedCount: nullableUint64Ptr(exportedCount),
+			DroppedCount: nullableUint64Ptr(droppedCount), UnaccountedCount: nullableUint64Ptr(unaccountedCount),
+			TraceDisposition: traceDisposition.String, LastAcceptedSequence: nullableUint64Ptr(lastAcceptedSequence),
+			PublishedCount: nullableUint64Ptr(publishedCount), QueueEmpty: nullableBoolPtr(queueEmpty),
+			EvidenceDisposition: evidenceDisposition.String, GapReason: gapReason.String,
+		}
+		if err := acknowledgement.Validate(); err != nil {
+			return icapturepolicy.ErrExpectedSetConflict
+		}
+		identity := acknowledgementIdentity{EndpointKind: endpointKind, InstanceID: instanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID}
+		if _, exists := frozen[identity]; exists {
+			return icapturepolicy.ErrExpectedSetConflict
+		}
+		frozen[identity] = acknowledgement
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(frozen) != len(expected) {
+		return icapturepolicy.ErrExpectedSetConflict
+	}
+	for _, acknowledgement := range expected {
+		if err := acknowledgement.Validate(); err != nil || acknowledgement.OperationID != operationID || acknowledgement.PolicyRevision != policyRevision {
+			return icapturepolicy.ErrExpectedSetConflict
+		}
+		identity := acknowledgementIdentity{EndpointKind: acknowledgement.EndpointKind, InstanceID: acknowledgement.InstanceID, WorkloadIdentity: acknowledgement.WorkloadIdentity, ProcessBootID: acknowledgement.ProcessBootID}
+		frozenAcknowledgement, exists := frozen[identity]
+		if !exists || !sameAcknowledgement(frozenAcknowledgement, acknowledgement) {
+			return icapturepolicy.ErrExpectedSetConflict
+		}
+	}
+	return nil
+}
+
+func sameAcknowledgement(left, right icapturepolicy.ExpectedAcknowledgement) bool {
+	return left.OperationID == right.OperationID && left.EndpointKind == right.EndpointKind && left.InstanceID == right.InstanceID &&
+		left.WorkloadIdentity == right.WorkloadIdentity && left.ProcessBootID == right.ProcessBootID && left.PolicyRevision == right.PolicyRevision &&
+		left.Ready == right.Ready && left.AckState == right.AckState && sameTimePtr(left.AcknowledgedAt, right.AcknowledgedAt) &&
+		sameUint64Ptr(left.ExportedCount, right.ExportedCount) && sameUint64Ptr(left.DroppedCount, right.DroppedCount) &&
+		sameUint64Ptr(left.UnaccountedCount, right.UnaccountedCount) && left.TraceDisposition == right.TraceDisposition &&
+		sameUint64Ptr(left.LastAcceptedSequence, right.LastAcceptedSequence) && sameUint64Ptr(left.PublishedCount, right.PublishedCount) &&
+		sameBoolPtr(left.QueueEmpty, right.QueueEmpty) && left.EvidenceDisposition == right.EvidenceDisposition && left.GapReason == right.GapReason
+}
+
+func sameTimePtr(left, right *time.Time) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.UTC().Equal(right.UTC())
+}
+
+func sameUint64Ptr(left, right *uint64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func sameBoolPtr(left, right *bool) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func nullableTimePtr(value sql.NullTime) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Time.UTC()
+	return &result
+}
+
+func nullableUint64Ptr(value sql.NullInt64) *uint64 {
+	if !value.Valid {
+		return nil
+	}
+	result := uint64(value.Int64)
+	return &result
+}
+
+func nullableBoolPtr(value sql.NullBool) *bool {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Bool
+	return &result
 }
 
 func nullString(value string) any {
