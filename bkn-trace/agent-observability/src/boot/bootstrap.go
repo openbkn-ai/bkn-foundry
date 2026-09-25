@@ -25,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturecontrollersvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysnapshot"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
@@ -68,6 +69,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/server/httpserver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
@@ -176,11 +178,22 @@ func NewApp() (*App, error) {
 		capturePolicyCommander = memoryCapturePolicyStore
 	}
 	var capturePolicyHandler *httphandler.CapturePolicyHandler
-	if captureController != nil {
-		capturePolicyHandler = httphandler.NewCapturePolicyHandlerWithReconciler(capturePolicyReader, capturePolicyCommander, captureController)
-	} else {
-		capturePolicyHandler = httphandler.NewCapturePolicyHandler(capturePolicyReader, capturePolicyCommander)
+	var capturePolicyWriter interface {
+		UpsertEndpointLease(context.Context, icapturepolicy.EndpointLease) error
+		RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
 	}
+	if maria, ok := sessionStore.(*mariadbsessionstore.Store); ok {
+		capturePolicyWriter = maria
+	}
+	capturePolicyHandler = httphandler.NewCapturePolicyHandlerWithInternal(
+		capturePolicyReader, capturePolicyCommander, captureController,
+		capturepolicysnapshot.Signer{
+			PrivateKey: coreConfig.CapturePolicySigningKey,
+			KeyID:      coreConfig.CapturePolicySigningKeyID,
+			Audience:   coreConfig.CapturePolicyAudience,
+			TTL:        coreConfig.CapturePolicySnapshotTTL,
+		}, capturePolicyWriter,
+	)
 	var kafkaRuntimes []*kafkaruntime.Runtime
 	if kafkaConfig.Evidence.Enabled {
 		if closeDatabase != nil {
@@ -816,6 +829,14 @@ func newAppWithArchiveAndCapture(
 		return internal(evidenceHandler.RequireTrustedLifecycleIdentity(next))
 	}
 	httphandler.RegisterSessionRoutes(internalMux, APIBasePath, sessionHandler, lifecycle)
+	if capturePolicyHandler != nil {
+		workload := func(next http.HandlerFunc) http.HandlerFunc {
+			return internal(evidenceHandler.RequireTrustedServicePrincipal(next))
+		}
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/policy", workload(capturePolicyHandler.GetInternalTraceEvidencePolicy))
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/endpoints:heartbeat", workload(capturePolicyHandler.HeartbeatInternalTraceEvidenceEndpoint))
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/operations/", workload(capturePolicyHandler.AcknowledgeInternalTraceEvidenceOperation))
+	}
 
 	publicHandler := observabilitylocale.PrivateNoCacheForPrefixes(
 		observabilitylocale.LanguageMiddleware(mux),

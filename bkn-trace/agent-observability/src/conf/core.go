@@ -36,6 +36,10 @@ type CoreConfig struct {
 	ProjectionGrantTTL            time.Duration
 	EvidenceCollectionState       string
 	CapturePolicyInitialState     string
+	CapturePolicySigningKey       ed25519.PrivateKey
+	CapturePolicySigningKeyID     string
+	CapturePolicyAudience         string
+	CapturePolicySnapshotTTL      time.Duration
 	MaxOperationsPerInteraction   int
 	MaxClaimsPerInteraction       int
 	MaxEvidenceRefsPerInteraction int
@@ -132,6 +136,23 @@ func NewCoreConfig() (CoreConfig, error) {
 	if capturePolicyInitialState != "enabled" && capturePolicyInitialState != "disabled" {
 		return CoreConfig{}, fmt.Errorf("BKN_TRACE_EVIDENCE_INITIAL_STATE must be enabled or disabled")
 	}
+	capturePolicySigningKey, err := privateKeyFromEnv("BKN_TRACE_CAPTURE_POLICY_SIGNING_KEY")
+	if err != nil {
+		return CoreConfig{}, err
+	}
+	capturePolicySigningKeyID := strings.TrimSpace(os.Getenv("BKN_TRACE_CAPTURE_POLICY_SIGNING_KEY_ID"))
+	capturePolicyAudience := strings.TrimSpace(os.Getenv("BKN_TRACE_CAPTURE_POLICY_AUDIENCE"))
+	capturePolicySnapshotTTL := 15 * time.Minute
+	if configured := strings.TrimSpace(os.Getenv("BKN_TRACE_CAPTURE_POLICY_SNAPSHOT_TTL")); configured != "" {
+		parsed, parseErr := time.ParseDuration(configured)
+		if parseErr != nil || parsed <= 0 {
+			return CoreConfig{}, fmt.Errorf("BKN_TRACE_CAPTURE_POLICY_SNAPSHOT_TTL must be positive")
+		}
+		capturePolicySnapshotTTL = parsed
+	}
+	if len(capturePolicySigningKey) > 0 && (capturePolicySigningKeyID == "" || capturePolicyAudience == "") {
+		return CoreConfig{}, fmt.Errorf("BKN_TRACE_CAPTURE_POLICY_SIGNING_KEY_ID and BKN_TRACE_CAPTURE_POLICY_AUDIENCE are required when a capture policy key is configured")
+	}
 	return CoreConfig{
 		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),
 		AutoMigrate: autoMigrate, AbandonInterval: interval, OneShotIdleTTL: oneShotIdleTTL,
@@ -146,10 +167,29 @@ func NewCoreConfig() (CoreConfig, error) {
 		ProjectionGrantTTL:            projectionGrantTTL,
 		EvidenceCollectionState:       strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_COLLECTION_STATE")),
 		CapturePolicyInitialState:     capturePolicyInitialState,
+		CapturePolicySigningKey:       capturePolicySigningKey,
+		CapturePolicySigningKeyID:     capturePolicySigningKeyID,
+		CapturePolicyAudience:         capturePolicyAudience,
+		CapturePolicySnapshotTTL:      capturePolicySnapshotTTL,
 		MaxOperationsPerInteraction:   maxOperationsPerInteraction,
 		MaxClaimsPerInteraction:       maxClaimsPerInteraction,
 		MaxEvidenceRefsPerInteraction: maxEvidenceRefsPerInteraction,
 	}, nil
+}
+
+func privateKeyFromEnv(name string) (ed25519.PrivateKey, error) {
+	configured := strings.TrimSpace(os.Getenv(name))
+	if configured == "" {
+		return nil, nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(configured)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", name, err)
+	}
+	if len(decoded) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("%s must be an Ed25519 private key", name)
+	}
+	return ed25519.PrivateKey(decoded), nil
 }
 
 func optionalBoolEnv(name string) (bool, error) {

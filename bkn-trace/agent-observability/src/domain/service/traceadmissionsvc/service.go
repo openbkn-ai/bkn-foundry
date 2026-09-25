@@ -125,6 +125,17 @@ func (g *Gateway) verify(snapshot SignedSnapshot) bool {
 	return err == nil && len(signature) == ed25519.SignatureSize && ed25519.Verify(key, snapshot.canonicalBytes(), signature)
 }
 
+// SignSnapshot signs the canonical policy snapshot with the dedicated Trace
+// capture policy key. Projection-grant keys are intentionally not accepted by
+// this API; callers provide an independent key and key ID/audience.
+func SignSnapshot(snapshot SignedSnapshot, privateKey ed25519.PrivateKey) (SignedSnapshot, error) {
+	if snapshot.Revision == 0 || (snapshot.Mode != ModeEnabled && snapshot.Mode != ModeDisabled) || snapshot.KeyID == "" || snapshot.Audience == "" || snapshot.IssuedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.IssuedAt) || len(privateKey) != ed25519.PrivateKeySize {
+		return SignedSnapshot{}, ErrInvalidSnapshot
+	}
+	snapshot.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, snapshot.canonicalBytes()))
+	return snapshot, nil
+}
+
 type AdmissionDecision struct {
 	Accepted int
 	Dropped  int

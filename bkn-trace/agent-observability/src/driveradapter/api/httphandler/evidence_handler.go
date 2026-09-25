@@ -942,6 +942,26 @@ func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc)
 	}
 }
 
+// RequireTrustedServicePrincipal is the private workload boundary for
+// Trace/Evidence control endpoints. It reuses the existing verified gateway
+// identity and Access Profile; endpoint bodies cannot self-assert workload
+// identity.
+func (h *EvidenceHandler) RequireTrustedServicePrincipal(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isTrustedInternalCaller(r.Context()) {
+			writeLifecycleError(w, r, http.StatusUnauthorized, "permission_denied", "workload requests are accepted only through the internal OpenBKN gateway")
+			return
+		}
+		scope, ok := h.queryScopeFromRequest(w, r, false)
+		if !ok || scope.AccessProfile == nil || !scope.AccessProfile.AccountActive || (scope.AccountType != "app" && scope.AccountType != "service") {
+			writeLifecycleError(w, r, http.StatusUnauthorized, "permission_denied", "a verified service principal is required")
+			return
+		}
+		ctx := context.WithValue(r.Context(), trustedQueryScopeContextKey{}, scope)
+		next(w, r.WithContext(ctx))
+	}
+}
+
 // InternalLifecycle marks requests accepted by the private Core listener.
 // It is intentionally applied only while registering the internal listener;
 // request headers can never grant this privilege.

@@ -11,10 +11,22 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/traceadmissionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 )
+
+type CapturePolicySigner interface {
+	Sign(uint64, capturepolicysvc.State) (traceadmissionsvc.SignedSnapshot, error)
+}
+
+type CapturePolicyControlWriter interface {
+	UpsertEndpointLease(context.Context, icapturepolicy.EndpointLease) error
+	RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
+}
 
 // CapturePolicyHandler exposes the frozen Trace/Evidence control-plane
 // read/write model. Bootstrap owns the route and Access Profile middleware.
@@ -24,6 +36,8 @@ type CapturePolicyHandler struct {
 	reconciler interface {
 		Reconcile(context.Context) (bool, error)
 	}
+	signer CapturePolicySigner
+	writer CapturePolicyControlWriter
 }
 
 func NewCapturePolicyHandler(reader capturepolicysvc.Reader, commanders ...capturepolicysvc.Commander) *CapturePolicyHandler {
@@ -38,6 +52,12 @@ func NewCapturePolicyHandlerWithReconciler(reader capturepolicysvc.Reader, comma
 	Reconcile(context.Context) (bool, error)
 }) *CapturePolicyHandler {
 	return &CapturePolicyHandler{service: capturepolicysvc.New(reader), commander: commander, reconciler: reconciler}
+}
+
+func NewCapturePolicyHandlerWithInternal(reader capturepolicysvc.Reader, commander capturepolicysvc.Commander, reconciler interface {
+	Reconcile(context.Context) (bool, error)
+}, signer CapturePolicySigner, writer CapturePolicyControlWriter) *CapturePolicyHandler {
+	return &CapturePolicyHandler{service: capturepolicysvc.New(reader), commander: commander, reconciler: reconciler, signer: signer, writer: writer}
 }
 
 // HandleTraceEvidenceConfiguration dispatches the stable configuration
@@ -161,6 +181,297 @@ func (h *CapturePolicyHandler) ReconcileTraceEvidenceOperation(w http.ResponseWr
 		return
 	}
 	writeJSON(w, r, http.StatusAccepted, rdto.TraceEvidenceConfigurationResponse(after))
+}
+
+func (h *CapturePolicyHandler) GetInternalTraceEvidencePolicy(w http.ResponseWriter, r *http.Request) {
+	ensureResponseTraceID(w, r)
+	if r.Method != http.MethodGet {
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		return
+	}
+	if h == nil || h.signer == nil || h.service == nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_SIGNER_UNAVAILABLE", Message: "capture policy signing is not configured"})
+		return
+	}
+	if _, ok := workloadIdentityFromRequest(r); !ok {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
+		return
+	}
+	snapshot, err := h.service.Read(contextWithRequest(r))
+	if err != nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_UNAVAILABLE", Message: "capture policy is not available"})
+		return
+	}
+	signed, err := h.signer.Sign(snapshot.Revision, snapshot.DesiredState)
+	if err != nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_SIGNING_FAILED", Message: "capture policy could not be signed"})
+		return
+	}
+	writeJSON(w, r, http.StatusOK, signed)
+}
+
+type endpointHeartbeatRequest struct {
+	InstanceID       string `json:"instance_id"`
+	ProcessBootID    string `json:"process_boot_id"`
+	ObservedRevision uint64 `json:"observed_revision"`
+	Ready            bool   `json:"ready"`
+}
+
+func (h *CapturePolicyHandler) HeartbeatInternalTraceEvidenceEndpoint(w http.ResponseWriter, r *http.Request) {
+	ensureResponseTraceID(w, r)
+	if r.Method != http.MethodPost {
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only POST is supported"})
+		return
+	}
+	if h == nil || h.writer == nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_WRITER_UNAVAILABLE", Message: "capture policy writer is not configured"})
+		return
+	}
+	workloadIdentity, ok := workloadIdentityFromRequest(r)
+	if !ok {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
+		return
+	}
+	var request endpointHeartbeatRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || request.InstanceID == "" || request.ProcessBootID == "" || request.ObservedRevision == 0 {
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ENDPOINT_HEARTBEAT", Message: "endpoint identity and observed_revision are required"})
+		return
+	}
+	endpointKind, ok := endpointKindFromScope(r)
+	if !ok {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_ENDPOINT_FORBIDDEN", Message: "the verified service principal is not bound to one endpoint kind"})
+		return
+	}
+	if request.InstanceID != workloadIdentity+"#"+request.ProcessBootID {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "endpoint instance and process boot identity do not match"})
+		return
+	}
+	now := time.Now().UTC()
+	if err := h.writer.UpsertEndpointLease(contextWithRequest(r), icapturepolicy.EndpointLease{
+		EndpointKind: endpointKind, InstanceID: request.InstanceID, WorkloadIdentity: workloadIdentity,
+		ProcessBootID: request.ProcessBootID, ObservedRevision: request.ObservedRevision, Ready: request.Ready,
+		HeartbeatAt: now, LeaseExpiresAt: now.Add(30 * time.Second), UpdatedAt: now,
+	}); err != nil {
+		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_ENDPOINT_HEARTBEAT", Message: "endpoint heartbeat was rejected"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type gatewayAcknowledgementRequest struct {
+	ContractVersion   string    `json:"contract_version"`
+	GatewayInstanceID string    `json:"gateway_instance_id"`
+	WorkloadIdentity  string    `json:"workload_identity"`
+	ProcessBootID     string    `json:"process_boot_id"`
+	PolicyRevision    uint64    `json:"capture_policy_revision"`
+	Mode              string    `json:"admission_state"`
+	Ready             bool      `json:"ready"`
+	AcknowledgedAt    time.Time `json:"acknowledged_at"`
+	Queue             struct {
+		Status      string  `json:"state"`
+		Exported    uint64  `json:"exported"`
+		Dropped     uint64  `json:"dropped"`
+		Unaccounted *uint64 `json:"unaccounted"`
+		GapReason   string  `json:"gap_reason"`
+	} `json:"queue_disposition"`
+}
+
+func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(strings.TrimSuffix(r.URL.Path, "/"), ":publisher-ack") {
+		h.AcknowledgeInternalEvidencePublisherOperation(w, r)
+		return
+	}
+	ensureResponseTraceID(w, r)
+	if r.Method != http.MethodPost {
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only POST is supported"})
+		return
+	}
+	if h == nil || h.writer == nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_WRITER_UNAVAILABLE", Message: "capture policy writer is not configured"})
+		return
+	}
+	path := strings.TrimSuffix(r.URL.Path, "/")
+	path = strings.TrimSuffix(path, ":ack")
+	path = strings.TrimPrefix(path, "/api/agent-observability/v1/internal/trace-evidence/operations/")
+	if path == "" || strings.Contains(path, "/") {
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "TRACE_EVIDENCE_OPERATION_NOT_FOUND", Message: "capture policy operation was not found"})
+		return
+	}
+	workloadIdentity, ok := workloadIdentityFromRequest(r)
+	if !ok {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
+		return
+	}
+	var request gatewayAcknowledgementRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || request.ContractVersion != "TraceGatewayAcknowledgementV1" || request.GatewayInstanceID == "" || request.WorkloadIdentity == "" || request.ProcessBootID == "" || request.PolicyRevision == 0 || request.AcknowledgedAt.IsZero() || !request.Ready {
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "the frozen TraceGatewayAcknowledgementV1 contract is required"})
+		return
+	}
+	if request.WorkloadIdentity != workloadIdentity || !strings.HasPrefix(request.GatewayInstanceID, request.WorkloadIdentity+"#") {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "gateway identity does not match the verified service principal"})
+		return
+	}
+	if endpointKind, bound := endpointKindFromScope(r); !bound || endpointKind != icapturepolicy.EndpointTraceGateway {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_ENDPOINT_FORBIDDEN", Message: "a trace gateway capability is required"})
+		return
+	}
+	if request.GatewayInstanceID != request.WorkloadIdentity+"#"+request.ProcessBootID {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "gateway instance and process boot identity do not match"})
+		return
+	}
+	mode := traceadmissionsvc.Mode(request.Mode)
+	queueStatus := traceadmissionsvc.QueueDispositionStatus(request.Queue.Status)
+	ack := traceadmissionsvc.Acknowledgement{Mode: mode, Queue: traceadmissionsvc.QueueDisposition{Status: queueStatus, Exported: int(request.Queue.Exported), Dropped: int(request.Queue.Dropped), Unaccounted: intPointer(request.Queue.Unaccounted)}}
+	if err := traceadmissionsvc.ValidateAcknowledgement(ack); err != nil || mode != traceadmissionsvc.ModeEnabled && mode != traceadmissionsvc.ModeDisabled {
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement does not satisfy the frozen contract"})
+		return
+	}
+	ackState := icapturepolicy.AckReady
+	traceDisposition := icapturepolicy.DispositionNotApplicable
+	if mode == traceadmissionsvc.ModeDisabled {
+		ackState, traceDisposition = icapturepolicy.AckDisabled, string(queueStatus)
+	}
+	exported, dropped := request.Queue.Exported, request.Queue.Dropped
+	if !validGatewayQueueDisposition(mode, request.Queue.Status, exported, dropped, request.Queue.Unaccounted, request.Queue.GapReason) {
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "queue disposition does not satisfy TraceGatewayAcknowledgementV1"})
+		return
+	}
+	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: request.GatewayInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: request.ProcessBootID, PolicyRevision: request.PolicyRevision, Ready: request.Ready, AckState: string(ackState), AcknowledgedAt: &request.AcknowledgedAt, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: request.Queue.Unaccounted, TraceDisposition: traceDisposition, GapReason: request.Queue.GapReason}); err != nil {
+		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement was rejected"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// evidencePublisherAcknowledgement is the Session 1 wire contract consumed by
+// this control plane. It intentionally remains private: the producer-owned
+// contract is not re-exported or renamed by agent-observability.
+type evidencePublisherAcknowledgement struct {
+	ProducerInstanceID   string    `json:"producer_instance_id"`
+	PolicyRevision       uint64    `json:"capture_policy_revision"`
+	LastAcceptedSequence uint64    `json:"last_accepted_sequence"`
+	Published            uint64    `json:"published"`
+	Dropped              uint64    `json:"dropped"`
+	QueueEmpty           bool      `json:"queue_empty"`
+	AcknowledgedAt       time.Time `json:"acknowledged_at"`
+}
+
+func (h *CapturePolicyHandler) AcknowledgeInternalEvidencePublisherOperation(w http.ResponseWriter, r *http.Request) {
+	ensureResponseTraceID(w, r)
+	if r.Method != http.MethodPost {
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only POST is supported"})
+		return
+	}
+	if h == nil || h.writer == nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_WRITER_UNAVAILABLE", Message: "capture policy writer is not configured"})
+		return
+	}
+	path := strings.TrimSuffix(strings.TrimSuffix(r.URL.Path, "/"), ":publisher-ack")
+	path = strings.TrimPrefix(path, "/api/agent-observability/v1/internal/trace-evidence/operations/")
+	if path == "" || strings.Contains(path, "/") {
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "TRACE_EVIDENCE_OPERATION_NOT_FOUND", Message: "capture policy operation was not found"})
+		return
+	}
+	workloadIdentity, ok := workloadIdentityFromRequest(r)
+	if !ok {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
+		return
+	}
+	if endpointKind, bound := endpointKindFromScope(r); !bound || endpointKind != icapturepolicy.EndpointEvidencePublisher {
+		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_ENDPOINT_FORBIDDEN", Message: "an evidence publisher capability is required"})
+		return
+	}
+	var request evidencePublisherAcknowledgement
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || request.ProducerInstanceID == "" || request.PolicyRevision == 0 || request.AcknowledgedAt.IsZero() || !request.QueueEmpty || request.LastAcceptedSequence != request.Published+request.Dropped || !strings.HasPrefix(request.ProducerInstanceID, workloadIdentity+"#") {
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement does not satisfy the Session 1 closure contract"})
+		return
+	}
+	processBootID := strings.TrimPrefix(request.ProducerInstanceID, workloadIdentity+"#")
+	if processBootID == "" {
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "producer_instance_id must include a process boot identity"})
+		return
+	}
+	published, dropped, last := request.Published, request.Dropped, request.LastAcceptedSequence
+	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: request.ProducerInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID, PolicyRevision: request.PolicyRevision, Ready: true, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &request.AcknowledgedAt, DroppedCount: &dropped, LastAcceptedSequence: &last, PublishedCount: &published, QueueEmpty: &request.QueueEmpty, EvidenceDisposition: icapturepolicy.DispositionComplete}); err != nil {
+		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement was rejected"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func validGatewayQueueDisposition(mode traceadmissionsvc.Mode, status string, exported, dropped uint64, unaccounted *uint64, gapReason string) bool {
+	switch mode {
+	case traceadmissionsvc.ModeEnabled:
+		return status == string(traceadmissionsvc.QueueNotApplicable) && exported == 0 && dropped == 0 && unaccounted != nil && *unaccounted == 0 && gapReason == ""
+	case traceadmissionsvc.ModeDisabled:
+		switch status {
+		case string(traceadmissionsvc.QueueComplete):
+			return unaccounted != nil && *unaccounted == 0 && gapReason == ""
+		case string(traceadmissionsvc.QueueGap):
+			if gapReason == "" {
+				return false
+			}
+			switch gapReason {
+			case "collector_restarted", "exporter_telemetry_unavailable", "unaccounted_span", "lease_expired":
+				return unaccounted == nil || *unaccounted > 0
+			default:
+				return false
+			}
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+func workloadIdentityFromRequest(r *http.Request) (string, bool) {
+	scope, ok := trustedQueryScopeFromContext(r.Context())
+	if !ok || scope.AccessProfile == nil || !scope.AccessProfile.AccountActive {
+		return "", false
+	}
+	if scope.AccessProfile.ApplicationPrincipalID != "" && (scope.AccountType == "app" || scope.AccountType == "service") {
+		return scope.AccessProfile.ApplicationPrincipalID, true
+	}
+	if (scope.AccountType == "app" || scope.AccountType == "service") && scope.AccountID != "" {
+		return scope.AccountID, true
+	}
+	return "", false
+}
+
+// endpointKindFromScope binds endpoint identity to the verified Access Profile.
+// The heartbeat body deliberately has no endpoint_kind field: a workload may
+// only announce the endpoint kind granted by BKN Safe, and a principal with
+// zero or multiple endpoint grants is rejected rather than guessing.
+func endpointKindFromScope(r *http.Request) (string, bool) {
+	scope, ok := trustedQueryScopeFromContext(r.Context())
+	if !ok || scope.AccessProfile == nil {
+		return "", false
+	}
+	profile := *scope.AccessProfile
+	trace := profile.HasPermission("trace_evidence_endpoint", icapturepolicy.EndpointTraceGateway, "heartbeat")
+	evidence := profile.HasPermission("trace_evidence_endpoint", icapturepolicy.EndpointEvidencePublisher, "heartbeat")
+	if trace == evidence {
+		return "", false
+	}
+	if trace {
+		return icapturepolicy.EndpointTraceGateway, true
+	}
+	return icapturepolicy.EndpointEvidencePublisher, true
+}
+
+func intPointer(value *uint64) *int {
+	if value == nil {
+		return nil
+	}
+	converted := int(*value)
+	return &converted
 }
 
 func contextWithRequest(r *http.Request) context.Context {

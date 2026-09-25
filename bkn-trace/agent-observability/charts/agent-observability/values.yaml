@@ -184,6 +184,12 @@ core:
   # the safe default disabled and emits a bootstrap warning annotation; an
   # existing singleton always remains authoritative.
   capturePolicyInitialState: ""
+  capturePolicySigning:
+    keyID: trace-capture-policy-2026
+    audience: trace-admission-gateway
+    snapshotTTL: 15m
+    existingSecret: ""
+    privateKeyKey: private-key
   projection:
     enabled: false
     # Single runtime authority for signed historical-provenance projection.
