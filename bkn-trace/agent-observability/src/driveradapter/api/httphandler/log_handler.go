@@ -6,7 +6,6 @@
 package httphandler
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"regexp"
@@ -23,14 +22,6 @@ import (
 type LogHandler struct {
 	service    *logsvc.Service
 	authorizer *EvidenceHandler
-	audit      auditLogDelegate
-}
-
-// auditLogDelegate is the narrow center-ledger seam used only when a query
-// selects registered Audit categories. All other categories retain logsvc's
-// existing source fan-out and authorization behavior.
-type auditLogDelegate interface {
-	List(context.Context, evidencevo.AccessProfile, observabilityvo.LogQuery) (observabilityvo.ListResult, error)
 }
 
 type observabilityErrorEnvelope struct {
@@ -50,10 +41,6 @@ var traceIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func NewLogHandler(service *logsvc.Service, authorizer *EvidenceHandler) *LogHandler {
 	return &LogHandler{service: service, authorizer: authorizer}
-}
-
-func NewLogHandlerWithAuditDelegate(service *logsvc.Service, authorizer *EvidenceHandler, audit auditLogDelegate) *LogHandler {
-	return &LogHandler{service: service, authorizer: authorizer, audit: audit}
 }
 
 func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
@@ -79,12 +66,7 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	query.ScopeFingerprint = scope.AccessProfile.Fingerprint
 	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
-	var result observabilityvo.ListResult
-	if handler.audit != nil && auditCategoriesOnly(query.Categories) {
-		result, err = handler.audit.List(sourceContext, *scope.AccessProfile, query)
-	} else {
-		result, err = handler.service.List(sourceContext, *scope.AccessProfile, query)
-	}
+	result, err := handler.service.List(sourceContext, *scope.AccessProfile, query)
 	if err != nil {
 		switch {
 		case errors.Is(err, logsvc.ErrCursorInvalid):
@@ -123,18 +105,6 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 			RequestID: requestID, CurrentTraceID: currentTraceID, RelatedTraceIDs: relatedTraceIDs,
 		},
 	})
-}
-
-func auditCategoriesOnly(categories []string) bool {
-	if len(categories) == 0 {
-		return false
-	}
-	for _, category := range categories {
-		if category != observabilityvo.CategoryAuditAdmin && category != observabilityvo.CategoryAuditSecurity {
-			return false
-		}
-	}
-	return true
 }
 
 func (handler *LogHandler) GetLog(w http.ResponseWriter, r *http.Request) {

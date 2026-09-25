@@ -95,4 +95,14 @@ func TestReaderRejectsMalformedLedgerPayload(t *testing.T) {
 	}
 }
 
+func TestAuditQueryTablesDoesNotIncludeExclusiveEndMonth(t *testing.T) {
+	tables, err := auditQueryTables(
+		time.Date(2026, 9, 30, 23, 0, 0, 0, time.UTC),
+		time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+	)
+	if err != nil || len(tables) != 1 || tables[0] != "audit_event_202609" {
+		t.Fatalf("tables=%v err=%v", tables, err)
+	}
+}
+
 var _ = sql.ErrNoRows

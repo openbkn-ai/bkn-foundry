@@ -79,12 +79,43 @@ func (reader *Reader) Query(ctx context.Context, query auditsvc.Query) (auditsvc
 	return page, nil
 }
 
+// Get resolves an Audit event through the dedup index before selecting its
+// controlled monthly table. It never probes module-local audit stores.
+func (reader *Reader) Get(ctx context.Context, eventID string) (auditsvc.Record, bool, error) {
+	var table string
+	err := reader.db.QueryRowContext(ctx, `SELECT target_table FROM bkn_audit.audit_event_dedup WHERE event_id=?`, eventID).Scan(&table)
+	if errors.Is(err, sql.ErrNoRows) {
+		return auditsvc.Record{}, false, nil
+	}
+	if err != nil {
+		return auditsvc.Record{}, false, fmt.Errorf("lookup Audit dedup: %w", err)
+	}
+	if !tableNamePattern.MatchString(table) {
+		return auditsvc.Record{}, false, ErrInvalidMonth
+	}
+	var sourceID string
+	var payload []byte
+	var occurredAt time.Time
+	err = reader.db.QueryRowContext(ctx, "SELECT source_id, payload, occurred_at FROM bkn_audit."+table+" WHERE event_id=?", eventID).Scan(&sourceID, &payload, &occurredAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return auditsvc.Record{}, false, nil
+	}
+	if err != nil {
+		return auditsvc.Record{}, false, fmt.Errorf("read Audit ledger detail: %w", err)
+	}
+	record, err := decodeAuditRecord(eventID, sourceID, occurredAt.UTC(), payload)
+	return record, err == nil, err
+}
+
 func auditQueryTables(from, to time.Time) ([]string, error) {
 	if from.IsZero() || to.IsZero() || !from.Before(to) {
 		return nil, errors.New("Audit query window is invalid")
 	}
 	month := time.Date(from.UTC().Year(), from.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-	last := time.Date(to.UTC().Year(), to.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
+	// The upper bound is exclusive. A query ending exactly at a UTC month start
+	// must not require that next month's table to exist.
+	lastIncluded := to.UTC().Add(-time.Nanosecond)
+	last := time.Date(lastIncluded.Year(), lastIncluded.Month(), 1, 0, 0, 0, 0, time.UTC)
 	tables := make([]string, 0, 3)
 	for !month.After(last) {
 		table := "audit_event_" + month.Format("200601")
@@ -122,6 +153,22 @@ func auditSelect(table string, query auditsvc.Query) (string, []any) {
 	addJSONFilter("$.target.id", query.TargetID)
 	addJSONFilter("$.facts.action", query.Action)
 	addJSONFilter("$.outcome", query.Outcome)
+	if len(query.EventNames) > 0 {
+		statement += " AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.event_name')) IN (" + strings.TrimSuffix(strings.Repeat("?,", len(query.EventNames)), ",") + ")"
+		for _, value := range query.EventNames {
+			args = append(args, value)
+		}
+	}
+	outcomes := append([]string(nil), query.Outcomes...)
+	if query.FailedOnly {
+		outcomes = []string{"failure", "denied"}
+	}
+	if len(outcomes) > 0 {
+		statement += " AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.outcome')) IN (" + strings.TrimSuffix(strings.Repeat("?,", len(outcomes)), ",") + ")"
+		for _, value := range outcomes {
+			args = append(args, value)
+		}
+	}
 	if query.Cursor != nil {
 		statement += " AND (occurred_at < ? OR (occurred_at = ? AND event_id < ?))"
 		args = append(args, query.Cursor.OccurredAt.UTC(), query.Cursor.OccurredAt.UTC(), query.Cursor.EventID)
@@ -138,7 +185,11 @@ type storedAuditPayload struct {
 	EventName string `json:"event_name"`
 	Occurred  string `json:"occurred_at"`
 	Actor     struct {
-		ID string `json:"id"`
+		ID               string `json:"id"`
+		EffectiveSubject string `json:"effective_subject"`
+		DisplayName      string `json:"display_name_snapshot"`
+		Type             string `json:"type"`
+		AuthMethod       string `json:"auth_method"`
 	} `json:"actor"`
 	Target struct {
 		Type string `json:"type"`
@@ -146,11 +197,16 @@ type storedAuditPayload struct {
 	} `json:"target"`
 	Scope struct {
 		BusinessModule string `json:"business_module"`
+		Environment    string `json:"environment"`
 	} `json:"scope"`
 	Facts struct {
 		Action string `json:"action"`
 	} `json:"facts"`
-	Outcome string `json:"outcome"`
+	Outcome        string `json:"outcome"`
+	Summary        string `json:"summary"`
+	RequestContext struct {
+		SourceChannel string `json:"source_channel"`
+	} `json:"request_context"`
 }
 
 func decodeAuditRecord(eventID, sourceID string, occurredAt time.Time, payload []byte) (auditsvc.Record, error) {
@@ -167,5 +223,5 @@ func decodeAuditRecord(eventID, sourceID string, occurredAt time.Time, payload [
 	}
 	return auditsvc.Record{EventID: eventID, OccurredAt: occurredAt.UTC(), SourceID: sourceID, Category: stored.Category,
 		EventName: stored.EventName, ActorID: stored.Actor.ID, TargetType: stored.Target.Type, TargetID: stored.Target.ID,
-		BusinessModule: stored.Scope.BusinessModule, Action: stored.Facts.Action, Outcome: stored.Outcome}, nil
+		BusinessModule: stored.Scope.BusinessModule, Action: stored.Facts.Action, Outcome: stored.Outcome, Environment: stored.Scope.Environment, EffectiveSubjectID: stored.Actor.EffectiveSubject, ActorNameSnapshot: stored.Actor.DisplayName, ActorType: stored.Actor.Type, AuthMethod: stored.Actor.AuthMethod, SourceChannel: stored.RequestContext.SourceChannel, Summary: stored.Summary}, nil
 }

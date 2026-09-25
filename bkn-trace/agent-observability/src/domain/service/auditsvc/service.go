@@ -35,6 +35,9 @@ type Query struct {
 	TargetID       string
 	Action         string
 	Outcome        string
+	EventNames     []string
+	Outcomes       []string
+	FailedOnly     bool
 	Cursor         *Position
 	Limit          int
 }
@@ -45,17 +48,24 @@ type Position struct {
 }
 
 type Record struct {
-	EventID        string    `json:"event_id"`
-	OccurredAt     time.Time `json:"occurred_at"`
-	SourceID       string    `json:"source_id"`
-	Category       string    `json:"category"`
-	EventName      string    `json:"event_name"`
-	BusinessModule string    `json:"business_module"`
-	ActorID        string    `json:"actor_id"`
-	TargetType     string    `json:"target_type"`
-	TargetID       string    `json:"target_id"`
-	Action         string    `json:"action"`
-	Outcome        string    `json:"outcome"`
+	EventID            string    `json:"event_id"`
+	OccurredAt         time.Time `json:"occurred_at"`
+	SourceID           string    `json:"source_id"`
+	Category           string    `json:"category"`
+	EventName          string    `json:"event_name"`
+	BusinessModule     string    `json:"business_module"`
+	ActorID            string    `json:"actor_id"`
+	TargetType         string    `json:"target_type"`
+	TargetID           string    `json:"target_id"`
+	Action             string    `json:"action"`
+	Outcome            string    `json:"outcome"`
+	Environment        string    `json:"environment"`
+	EffectiveSubjectID string    `json:"effective_subject_id"`
+	ActorNameSnapshot  string    `json:"actor_name_snapshot"`
+	ActorType          string    `json:"actor_type"`
+	AuthMethod         string    `json:"auth_method"`
+	SourceChannel      string    `json:"source_channel"`
+	Summary            string    `json:"summary"`
 }
 
 type Page struct {
