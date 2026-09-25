@@ -85,6 +85,21 @@ func TestInternalTraceEvidenceHeartbeatRejectsUnboundEndpointKind(t *testing.T) 
 	}
 }
 
+func TestInternalTraceEvidenceHeartbeatRequiresEndpointGrant(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
+	}), nil, nil, nil, writer)
+	profile := capturePolicyWorkloadProfile()
+	profile.Permissions = nil
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`, profile)
+	response := httptest.NewRecorder()
+	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", response.Code)
+	}
+}
+
 func TestInternalTraceEvidenceHeartbeatRejectsBootIdentityMismatch(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
 	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
@@ -173,7 +188,13 @@ func TestInternalTraceGatewayAckRequiresGatewayCapabilityAndExactBootBinding(t *
 
 func TestInternalEvidencePublisherAckConsumesSession1FixtureShape(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return capturepolicysvc.Snapshot{}, nil }), nil, nil, nil, writer)
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{
+			Revision: 41, DesiredState: capturepolicysvc.StateDisabled, EffectiveState: capturepolicysvc.StateEnabled,
+			LastStableRevision: 40,
+			Operation:          capturepolicysvc.Operation{ID: "op-publisher", Phase: capturepolicysvc.PhaseDisabling, RequestedState: capturepolicysvc.StateDisabled},
+		}, nil
+	}), nil, nil, nil, writer)
 	profile := capturePolicyWorkloadProfile()
 	profile.ApplicationPrincipalID = "spiffe://cluster.local/ns/openbkn/sa/bkn-backend"
 	profile.Permissions = []evidencevo.Permission{{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}}}
@@ -183,8 +204,32 @@ func TestInternalEvidencePublisherAckConsumesSession1FixtureShape(t *testing.T) 
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if writer.ack.EndpointKind != icapturepolicy.EndpointEvidencePublisher || writer.ack.EvidenceDisposition != icapturepolicy.DispositionComplete || writer.ack.PublishedCount == nil || *writer.ack.PublishedCount != 5 {
+	if writer.ack.EndpointKind != icapturepolicy.EndpointEvidencePublisher || writer.ack.AckState != icapturepolicy.AckDisabled || writer.ack.EvidenceDisposition != icapturepolicy.DispositionComplete || writer.ack.PublishedCount == nil || *writer.ack.PublishedCount != 5 {
 		t.Fatalf("unexpected publisher acknowledgement: %+v", writer.ack)
+	}
+}
+
+func TestInternalEvidencePublisherAckUsesReadyStateForEnabledPolicy(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	reader := capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{
+			Revision: 42, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateDisabled,
+			LastStableRevision: 41,
+			Operation:          capturepolicysvc.Operation{ID: "op-enable", Phase: capturepolicysvc.PhaseEnabling, RequestedState: capturepolicysvc.StateEnabled},
+		}, nil
+	})
+	handler := NewCapturePolicyHandlerWithInternal(reader, nil, nil, nil, writer)
+	profile := capturePolicyWorkloadProfile()
+	profile.ApplicationPrincipalID = "spiffe://cluster.local/ns/openbkn/sa/bkn-backend"
+	profile.Permissions = []evidencevo.Permission{{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}}}
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-enable:publisher-ack", `{"producer_instance_id":"spiffe://cluster.local/ns/openbkn/sa/bkn-backend#boot-42","capture_policy_revision":42,"last_accepted_sequence":0,"published":0,"dropped":0,"queue_empty":true,"acknowledged_at":"2026-09-22T08:00:10.000Z"}`, profile)
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if writer.ack.AckState != icapturepolicy.AckReady || writer.ack.EvidenceDisposition != icapturepolicy.DispositionNotApplicable {
+		t.Fatalf("enabled policy did not produce a ready publisher acknowledgement: %+v", writer.ack)
 	}
 }
 

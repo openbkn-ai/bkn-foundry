@@ -242,7 +242,7 @@ func converged(operationID string, revision uint64, desiredState string, acks []
 			}
 			continue
 		}
-		if ack.AckState != icapturepolicy.AckDisabled || ack.Ready {
+		if ack.AckState != icapturepolicy.AckDisabled || !ack.Ready {
 			return false
 		}
 		if ack.EndpointKind == icapturepolicy.EndpointTraceGateway && ack.TraceDisposition != icapturepolicy.DispositionComplete && ack.TraceDisposition != icapturepolicy.DispositionGap && ack.TraceDisposition != icapturepolicy.DispositionNotApplicable {

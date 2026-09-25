@@ -397,8 +397,17 @@ func (h *CapturePolicyHandler) AcknowledgeInternalEvidencePublisherOperation(w h
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "producer_instance_id must include a process boot identity"})
 		return
 	}
+	policy, err := h.service.Read(contextWithRequest(r))
+	if err != nil || policy.Revision != request.PolicyRevision {
+		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement was rejected"})
+		return
+	}
 	published, dropped, last := request.Published, request.Dropped, request.LastAcceptedSequence
-	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: request.ProducerInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID, PolicyRevision: request.PolicyRevision, Ready: true, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &request.AcknowledgedAt, DroppedCount: &dropped, LastAcceptedSequence: &last, PublishedCount: &published, QueueEmpty: &request.QueueEmpty, EvidenceDisposition: icapturepolicy.DispositionComplete}); err != nil {
+	ackState, evidenceDisposition := icapturepolicy.AckDisabled, icapturepolicy.DispositionComplete
+	if policy.DesiredState == capturepolicysvc.StateEnabled {
+		ackState, evidenceDisposition = icapturepolicy.AckReady, icapturepolicy.DispositionNotApplicable
+	}
+	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: request.ProducerInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID, PolicyRevision: request.PolicyRevision, Ready: true, AckState: ackState, AcknowledgedAt: &request.AcknowledgedAt, DroppedCount: &dropped, LastAcceptedSequence: &last, PublishedCount: &published, QueueEmpty: &request.QueueEmpty, EvidenceDisposition: evidenceDisposition}); err != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement was rejected"})
 		return
 	}

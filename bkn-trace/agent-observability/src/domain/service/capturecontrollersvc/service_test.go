@@ -88,7 +88,7 @@ func TestControllerRequestAndReconcileUsesFrozenExpectedSet(t *testing.T) {
 	}
 	exported, dropped, unaccounted := uint64(3), uint64(2), uint64(0)
 	ackTime := now.Add(time.Second)
-	store.acks[0].AckState, store.acks[0].Ready, store.acks[0].AcknowledgedAt = icapturepolicy.AckDisabled, false, &ackTime
+	store.acks[0].AckState, store.acks[0].Ready, store.acks[0].AcknowledgedAt = icapturepolicy.AckDisabled, true, &ackTime
 	store.acks[0].ExportedCount, store.acks[0].DroppedCount, store.acks[0].UnaccountedCount = &exported, &dropped, &unaccounted
 	store.acks[0].TraceDisposition = icapturepolicy.DispositionComplete
 	if _, err := controller.Reconcile(context.Background()); err != nil {
@@ -96,6 +96,40 @@ func TestControllerRequestAndReconcileUsesFrozenExpectedSet(t *testing.T) {
 	}
 	if store.op.Phase != icapturepolicy.PhaseSucceeded || store.state.EffectiveState != icapturepolicy.StateDisabled {
 		t.Fatalf("operation did not converge: op=%+v state=%+v", store.op, store.state)
+	}
+}
+
+func TestControllerReconcilesEnabledGatewayAndPublisherAcks(t *testing.T) {
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	store := &fakeStore{state: icapturepolicy.ControlState{CurrentRevision: 41, DesiredState: icapturepolicy.StateDisabled, EffectiveState: icapturepolicy.StateDisabled, LastStableRevision: 41, CoverageGapUpdatedAt: now, UpdatedAt: now}}
+	controller, err := New(Options{Store: store, WorkerID: "controller-1", Lease: time.Minute, Convergence: time.Minute, Targets: []Target{
+		{EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#boot-1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1"},
+		{EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: "publisher#boot-1", WorkloadIdentity: "sa/publisher", ProcessBootID: "boot-1"},
+	}, Now: func() time.Time { return now }, OperationID: func() (string, error) { return "op-enable", nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Request(context.Background(), capturepolicysvc.ChangeRequest{DesiredState: capturepolicysvc.StateEnabled, ExpectedRevision: 41}); err != nil {
+		t.Fatal(err)
+	}
+	ackTime := now.Add(time.Second)
+	zero := uint64(0)
+	queueEmpty := true
+	for i := range store.acks {
+		ack := &store.acks[i]
+		ack.AckState, ack.Ready, ack.AcknowledgedAt = icapturepolicy.AckReady, true, &ackTime
+		if ack.EndpointKind == icapturepolicy.EndpointTraceGateway {
+			ack.TraceDisposition = icapturepolicy.DispositionNotApplicable
+			continue
+		}
+		ack.LastAcceptedSequence, ack.PublishedCount, ack.DroppedCount = &zero, &zero, &zero
+		ack.QueueEmpty, ack.EvidenceDisposition = &queueEmpty, icapturepolicy.DispositionNotApplicable
+	}
+	if _, err := controller.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if store.op.Phase != icapturepolicy.PhaseSucceeded || store.state.EffectiveState != icapturepolicy.StateEnabled {
+		t.Fatalf("enabled operation did not converge across both endpoint kinds: op=%+v state=%+v", store.op, store.state)
 	}
 }
 
