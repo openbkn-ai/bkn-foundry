@@ -13,6 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencemigration"
 )
 
 type processorAdmission struct {
@@ -36,6 +37,22 @@ type processorRejections struct {
 	record  ievidenceadmission.Record
 	details ievidenceadmission.RejectionDetails
 	err     error
+}
+
+type processorMigration struct {
+	admission ievidencemigration.Admission
+	found     bool
+	err       error
+	result    ievidencemigration.ConsumerResult
+}
+
+func (m *processorMigration) LookupAdmission(context.Context, string, string) (ievidencemigration.Admission, bool, error) {
+	return m.admission, m.found, m.err
+}
+
+func (m *processorMigration) RecordConsumerResult(_ context.Context, result ievidencemigration.ConsumerResult) error {
+	m.result = result
+	return nil
 }
 
 func (r *processorRejections) RecordKafkaRejection(_ context.Context, record ievidenceadmission.Record, details ievidenceadmission.RejectionDetails) error {
@@ -79,5 +96,28 @@ func TestProcessorDoesNotMakeAdmissionRejectionOnTemporaryHistoryFailure(t *test
 	}
 	if rejections.called {
 		t.Fatal("temporary failure was persisted as a permanent rejection")
+	}
+}
+
+func TestMigrationRecordRejectsManifestHashMismatchBeforeLedger(t *testing.T) {
+	stream := "bkn-backend"
+	now := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+	record := Record{Topic: Topic, Key: stream, ProducerStreamID: stream, ProducerSequence: 1, BrokerTime: now, BrokerTimestamp: now.Format(time.RFC3339Nano), Partition: 2, Offset: 20,
+		Value:   []byte(`{"event_id":"evt-1","payload_hash":"actual","producer_stream_id":"bkn-backend","producer_sequence":1,"envelope":{"owner":{"application_principal_id":"bkn-backend","effective_subject_type":"service","effective_subject_id":"svc"}}}`),
+		Headers: []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "0"}, {Key: "producer_instance_id", Value: "bridge#boot"}, {Key: "bkn-evidence-record-class", Value: "migration"}, {Key: "bkn-evidence-migration-id", Value: "m-1"}}}
+	ledger, rejections := &processorLedger{}, &processorRejections{}
+	migration := &processorMigration{found: true, admission: ievidencemigration.Admission{ManifestID: "m-1", State: ievidencemigration.ManifestActive, EntryID: "entry-1", EventID: "evt-1", PayloadHash: "other"}}
+	processor, err := NewProcessorWithMigration(processorAdmission{}, migration, migration, ledger, rejections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.Process(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if !rejections.called || rejections.details.ReasonCode != "migration_manifest_entry_mismatch" {
+		t.Fatalf("expected durable mismatch rejection: %+v", rejections)
+	}
+	if ledger.called {
+		t.Fatal("mismatched migration record reached Ledger")
 	}
 }

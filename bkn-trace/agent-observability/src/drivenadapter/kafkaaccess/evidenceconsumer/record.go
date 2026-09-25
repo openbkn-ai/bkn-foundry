@@ -90,3 +90,33 @@ func ValidateLiveRecordContract(record Record) error {
 	}
 	return nil
 }
+
+// ValidateMigrationRecordContract keeps the migration control plane separate
+// from live capture: revision 0 is a fixed marker, never a live-policy
+// revision, and the active manifest is the sole admission authority.
+func ValidateMigrationRecordContract(record Record) error {
+	headers, err := ParseHeaders(record.Headers)
+	if err != nil {
+		return err
+	}
+	want := map[string]string{
+		"content-type":              "application/json",
+		"bkn-trace-schema-version":  "3.0.0",
+		"capture_policy_revision":   "0",
+		"producer_instance_id":      headers["producer_instance_id"],
+		"bkn-evidence-record-class": "migration",
+		"bkn-evidence-migration-id": headers["bkn-evidence-migration-id"],
+	}
+	if len(headers) != len(want) {
+		return fmt.Errorf("migration header set mismatch")
+	}
+	for key, value := range want {
+		if got, exists := headers[key]; !exists || got != value || value == "" {
+			return fmt.Errorf("invalid migration header %s", key)
+		}
+	}
+	if record.Key != record.ProducerStreamID {
+		return fmt.Errorf("record key must equal producer_stream_id")
+	}
+	return nil
+}
