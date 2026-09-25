@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 )
@@ -27,6 +28,28 @@ func TestCapturePolicyFactsPersistPolicyRevisionIdempotently(t *testing.T) {
 	mock.ExpectCommit()
 	if err := store.PersistPolicyRevision(context.Background(), icapturepolicy.PolicyRevision{Revision: 7, AdmissionEnabled: true, RecordedAt: now}); err != nil {
 		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyFactsRetriesTransientPolicyRevisionRead(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT admission_enabled FROM bkn_trace_capture_policy_revisions").WithArgs(uint64(7)).WillReturnError(&mysql.MySQLError{Number: 1213, Message: "deadlock"})
+	mock.ExpectRollback()
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT admission_enabled FROM bkn_trace_capture_policy_revisions").WithArgs(uint64(7)).WillReturnRows(sqlmock.NewRows([]string{"admission_enabled"}).AddRow(true))
+	mock.ExpectCommit()
+	if err := store.PersistPolicyRevision(context.Background(), icapturepolicy.PolicyRevision{Revision: 7, AdmissionEnabled: true, RecordedAt: now}); err != nil {
+		t.Fatalf("PersistPolicyRevision() error = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

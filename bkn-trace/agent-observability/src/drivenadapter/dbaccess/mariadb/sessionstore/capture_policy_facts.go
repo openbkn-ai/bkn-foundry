@@ -20,13 +20,14 @@ func (s *Store) PersistPolicyRevision(ctx context.Context, revision icapturepoli
 	if err := revision.Validate(); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.persistPolicyRevisionTx(ctx, tx, revision)
+	})
+}
+
+func (s *Store) persistPolicyRevisionTx(ctx context.Context, tx *sql.Tx, revision icapturepolicy.PolicyRevision) error {
 	var enabled bool
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT admission_enabled
 		FROM bkn_trace_capture_policy_revisions
 		WHERE revision = ? FOR UPDATE`, revision.Revision).Scan(&enabled)
@@ -56,21 +57,22 @@ func (s *Store) PersistPolicyRevision(ctx context.Context, revision icapturepoli
 	default:
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) RegisterProducer(ctx context.Context, registration icapturepolicy.ProducerRegistration) error {
 	if err := registration.Validate(); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.registerProducerTx(ctx, tx, registration)
+	})
+}
+
+func (s *Store) registerProducerTx(ctx context.Context, tx *sql.Tx, registration icapturepolicy.ProducerRegistration) error {
 	var bootID, state string
 	var revokedAt sql.NullTime
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT process_boot_id, registration_state, revoked_at
 		FROM bkn_trace_producer_instance_registrations
 		WHERE producer_instance_id = ? AND policy_revision = ? FOR UPDATE`, registration.InstanceID, registration.PolicyRevision).Scan(&bootID, &state, &revokedAt)
@@ -90,21 +92,22 @@ func (s *Store) RegisterProducer(ctx context.Context, registration icapturepolic
 			return fmt.Errorf("producer instance %q revision %d: %w", registration.InstanceID, registration.PolicyRevision, icapturepolicy.ErrCaptureFactConflict)
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) PersistClosureWatermark(ctx context.Context, watermark icapturepolicy.ClosureWatermark) error {
 	if err := watermark.Validate(); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.persistClosureWatermarkTx(ctx, tx, watermark)
+	})
+}
+
+func (s *Store) persistClosureWatermarkTx(ctx context.Context, tx *sql.Tx, watermark icapturepolicy.ClosureWatermark) error {
 	var sequence uint64
 	var closedAt, acknowledgedAt sql.NullTime
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT last_accepted_sequence, closed_at, acknowledged_at
 		FROM bkn_trace_producer_closure_watermarks
 		WHERE producer_instance_id = ? AND policy_revision = ? FOR UPDATE`, watermark.InstanceID, watermark.PolicyRevision).Scan(&sequence, &closedAt, &acknowledgedAt)
@@ -124,7 +127,7 @@ func (s *Store) PersistClosureWatermark(ctx context.Context, watermark icapturep
 			return fmt.Errorf("closure watermark %q revision %d: %w", watermark.InstanceID, watermark.PolicyRevision, icapturepolicy.ErrCaptureFactConflict)
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func sameNullableTime(value sql.NullTime, expected *time.Time) bool {
