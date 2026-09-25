@@ -10,7 +10,10 @@ mode: deployment
 image:
   registry: ghcr.io/openbkn-ai
   repository: otelcol-openbkn
-  tag: "0.148.0-openbkn.1"
+  # Replaced by reusable-chart.yml with the product release version. Keeping
+  # this as a placeholder prevents a chart from pointing at an unpublished
+  # OCB development image.
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
   name: opentelemetry-collector-contrib
 

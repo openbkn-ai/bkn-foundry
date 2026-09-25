@@ -12,9 +12,11 @@ receivers:
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.148.0
   - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.148.0
-  # This module is published from the checked-out repository by the release
-  # workflow before the image build. It is not fetched from an unpinned HEAD.
+  # Build the processor from the checked-out source. The gomod/version keeps
+  # the generated registration and compatibility checks pinned, while path
+  # prevents OCB from fetching an unpublished or mutable repository revision.
   - gomod: github.com/openbkn-ai/bkn-foundry/bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor v0.148.0-openbkn.1
+    path: ./processor/traceadmissionprocessor
 
 exporters:
   - gomod: go.opentelemetry.io/collector-contrib/exporter/opensearchexporter v0.148.0

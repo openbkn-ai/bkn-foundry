@@ -71,7 +71,7 @@ ghcr.io/<github_org_or_user>/charts/otelcol-contrib
 默认 collector 镜像：
 
 ```text
-ghcr.io/openbkn-ai/otelcol-openbkn:0.148.0-openbkn.1
+ghcr.io/openbkn-ai/otelcol-openbkn:<release-version>
 ```
 
 该镜像由 `builder-config.yaml` 生成，额外包含 traces-only 的
