@@ -234,7 +234,7 @@ func NewApp() (*App, error) {
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			stats := database.Stats()
 			if stats.MaxOpenConnections <= 0 {
-				return capturepolicysvc.AdmissionMeasurement{}, errors.New("Trace storage pool max open connections is not configured")
+				return capturepolicysvc.AdmissionMeasurement{}, errors.New("trace storage pool max open connections is not configured")
 			}
 			value := float64(stats.InUse) / float64(stats.MaxOpenConnections)
 			if value > 1 {
@@ -244,7 +244,7 @@ func NewApp() (*App, error) {
 		}))
 	} else {
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
-			return capturepolicysvc.AdmissionMeasurement{}, errors.New("Trace storage pool is not configured")
+			return capturepolicysvc.AdmissionMeasurement{}, errors.New("trace storage pool is not configured")
 		}))
 	}
 	budgetConfig := observabilityConfig.AdmissionBudgetThresholds
