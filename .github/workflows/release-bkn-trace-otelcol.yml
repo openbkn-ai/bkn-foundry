@@ -62,6 +62,10 @@ jobs:
           go-version: '1.25'
           cache: false
 
+      - uses: azure/setup-helm@v4
+
+      - uses: docker/setup-buildx-action@v3
+
       - name: Verify OCB registration and image contract
         working-directory: bkn-trace/otelcol-contribute-chart
         run: ./scripts/test_ocb_build_contract.sh
@@ -69,6 +73,15 @@ jobs:
       - name: Test traceadmission processor module
         working-directory: bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor
         run: go test ./...
+
+      - name: Build local amd64 OCB smoke image
+        run: docker build --platform linux/amd64 --load \
+          -f bkn-trace/otelcol-contribute-chart/Dockerfile.openbkn \
+          -t otelcol-openbkn:ci-smoke .
+
+      - name: Validate enabled Trace Admission chart with OCB image
+        working-directory: bkn-trace/otelcol-contribute-chart
+        run: ./scripts/test_ocb_image_local.sh otelcol-openbkn:ci-smoke
 
   image:
     needs: [version, verify, chart-regression, ocb-contract]

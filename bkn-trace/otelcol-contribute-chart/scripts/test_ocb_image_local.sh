@@ -49,6 +49,7 @@ awk '
   in_config && $0 == "---" { exit }
   in_config { sub(/^    /, ""); print }
 ' "${manifest}" >"${config}"
+chmod a+r "${config}"
 
 docker run --rm \
   -e TRACE_ADMISSION_POLICY_URL=http://agent-observability-internal:8081/policy \
