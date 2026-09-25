@@ -37,7 +37,7 @@ func closureDigest(header closureHeader, results []closureResult) (string, error
 	}
 	entryCount, err := canonicalUint(header.EntryCount)
 	if err != nil || entryCount != uint64(len(results)) {
-		return "", errors.New("Evidence migration closure entry count mismatch")
+		return "", errors.New("evidence migration closure entry count mismatch")
 	}
 	counts := map[string]uint64{"conflict": 0, "coverage_gap": 0, "ledger_committed": 0, "rejected": 0, "verified_delivered": 0}
 	ordered := append([]closureResult(nil), results...)
@@ -103,7 +103,7 @@ func closureDigest(header closureHeader, results []closureResult) (string, error
 	} {
 		count, err := canonicalUint(value)
 		if err != nil || count != counts[name] {
-			return "", fmt.Errorf("Evidence migration closure count mismatch: %s", name)
+			return "", fmt.Errorf("evidence migration closure count mismatch: %s", name)
 		}
 	}
 	for _, value := range []string{header.ContractSHA, header.EntriesDigest, header.EntryCount, header.ManifestID, header.SourceSnapshotAt} {

@@ -164,13 +164,13 @@ func (s *Store) RecordReconcilerResult(ctx context.Context, result ievidencemigr
 		JOIN bkn_trace_evidence_migration_entries e ON e.manifest_id=m.manifest_id
 		WHERE m.manifest_id=? AND e.entry_id=? FOR UPDATE`, result.ManifestID, result.EntryID).Scan(&state, &classification)
 	if errors.Is(err, sql.ErrNoRows) {
-		return errors.New("Evidence migration entry not found")
+		return errors.New("evidence migration entry not found")
 	}
 	if err != nil {
 		return fmt.Errorf("read Evidence migration reconciler admission: %w", err)
 	}
 	if state != string(ievidencemigration.ManifestActive) {
-		return errors.New("Evidence migration reconciler requires an active manifest")
+		return errors.New("evidence migration reconciler requires an active manifest")
 	}
 	wantClassification := map[ievidencemigration.Adjudication]string{
 		ievidencemigration.AdjudicationVerifiedDelivered: "verify_delivered",

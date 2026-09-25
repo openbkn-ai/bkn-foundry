@@ -14,6 +14,7 @@ _COVERAGE_GAP = {"abandoned", "conflict", "dlq"}
 _STRING_IDENTITY = ("event_id", "payload_hash", "producer_id", "producer_stream_id")
 _NUMERIC_IDENTITY = ("producer_epoch", "producer_sequence")
 _UINT64_MAX = (1 << 64) - 1
+_MAX_RECORD_VALUE_BYTES = 1_048_576
 
 
 class ActiveLeaseError(ManifestError):
@@ -122,6 +123,9 @@ def classify_row(row, manifest_id, snapshot_at):
         return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
     if event["producer_id"] != expected_producer_id or not _uses_base_stream(event["producer_stream_id"], base_stream):
         return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
+    value_bytes = json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    if classification == "publish" and len(value_bytes) > _MAX_RECORD_VALUE_BYTES:
+        return _coverage_entry(row, manifest_id, service, table, "bad_payload"), None
     return {
         "classification": classification, "classification_reason": reason,
         "event_id": event["event_id"], "manifest_id": manifest_id, "payload_hash": event["payload_hash"],

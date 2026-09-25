@@ -1,12 +1,45 @@
 """Read-only, timestamp-bounded snapshots of the two historical Event tables."""
 
-from manifest import ManifestError, entries_digest
+from datetime import datetime, timezone
+
+from manifest import CONTRACT_SHA, ManifestError, entries_digest
 from source import classify_row
 
 _EVENT_TABLES = (
     "bkn_backend_trace_outbox",
     "ontology_query_trace_outbox",
 )
+
+
+def issue_manifest(manifest_id, source_snapshot_at, rows):
+    """Create the frozen payload-free C1 artifact and an in-memory Event map."""
+    if not isinstance(manifest_id, str) or not manifest_id:
+        raise ManifestError("manifest ID is required")
+    if not isinstance(source_snapshot_at, str):
+        raise ManifestError("source snapshot timestamp is required")
+    try:
+        snapshot = datetime.fromisoformat(source_snapshot_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ManifestError("source snapshot timestamp is invalid") from error
+    if snapshot.tzinfo is None or snapshot.microsecond % 1000:
+        raise ManifestError("source snapshot timestamp must be timezone-aware with millisecond precision")
+    snapshot_at = snapshot.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    entries, events = [], {}
+    for row in rows:
+        entry, event = classify_row(row, manifest_id, snapshot_at)
+        entries.append(entry)
+        if event is not None:
+            events[(entry["source_table"], entry["source_primary_key"])] = event
+    entries.sort(key=lambda entry: (entry["source_table"], entry["source_primary_key"]))
+    artifact = {
+        "manifest_id": manifest_id,
+        "contract_sha": CONTRACT_SHA,
+        "source_snapshot_at": snapshot_at,
+        "entry_count": str(len(entries)),
+        "entries_digest": entries_digest(entries),
+        "entries": entries,
+    }
+    return artifact, events
 
 
 def read_event_snapshot(connection, source_snapshot_at):
