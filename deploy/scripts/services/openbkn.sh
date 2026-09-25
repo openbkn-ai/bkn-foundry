@@ -1095,6 +1095,14 @@ _openbkn_release_extra_sets() {
             # with Helm's target namespace so the private lifecycle policy matches.
             CORE_RELEASE_EXTRA_SETS+=("namespace=${namespace}")
         fi
+    elif [[ "${release_name}" == "bkn-sample-studio" ]]; then
+        local base_url
+        base_url="$(get_access_address_base_url)"
+        if [[ -n "${base_url}" ]]; then
+            CORE_RELEASE_EXTRA_SET_STRINGS+=("baseURL=${base_url}")
+        else
+            log_warn "accessAddress is not recorded; bkn-sample-studio has no gateway URL, so sample install cannot call OpenBKN."
+        fi
     elif [[ "${release_name}" == "bkn-safe" ]]; then
         local initial_pwd
         initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
