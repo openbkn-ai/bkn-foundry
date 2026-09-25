@@ -109,7 +109,7 @@ func (reader *Reader) Get(ctx context.Context, eventID string) (auditsvc.Record,
 
 func auditQueryTables(from, to time.Time) ([]string, error) {
 	if from.IsZero() || to.IsZero() || !from.Before(to) {
-		return nil, errors.New("Audit query window is invalid")
+		return nil, errors.New("audit query window is invalid")
 	}
 	month := time.Date(from.UTC().Year(), from.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
 	// The upper bound is exclusive. A query ending exactly at a UTC month start
@@ -223,11 +223,11 @@ func decodeAuditRecord(eventID, sourceID string, occurredAt, brokerReceivedAt, r
 		return auditsvc.Record{}, fmt.Errorf("decode Audit ledger payload: %w", err)
 	}
 	if stored.EventID != eventID || stored.SourceID != sourceID || stored.Category == "" || stored.EventName == "" || stored.Actor.ID == "" || stored.Target.Type == "" || stored.Target.ID == "" || stored.Scope.BusinessModule == "" || stored.Outcome == "" {
-		return auditsvc.Record{}, errors.New("Audit ledger payload does not match its stored record")
+		return auditsvc.Record{}, errors.New("audit ledger payload does not match its stored record")
 	}
 	parsedOccurredAt, err := time.Parse(time.RFC3339Nano, stored.Occurred)
 	if err != nil || !parsedOccurredAt.UTC().Equal(occurredAt.UTC()) {
-		return auditsvc.Record{}, errors.New("Audit ledger payload occurred_at does not match its stored record")
+		return auditsvc.Record{}, errors.New("audit ledger payload occurred_at does not match its stored record")
 	}
 	return auditsvc.Record{
 		EventID: eventID, OccurredAt: occurredAt.UTC(), BrokerReceivedAt: brokerReceivedAt.UTC(), RecordedAt: recordedAt.UTC(),

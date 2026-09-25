@@ -286,9 +286,7 @@ func NewApp() (*App, error) {
 		}
 		reader, err := auditstore.NewReader(auditQueryDB)
 		if err != nil {
-			if closeDatabase != nil {
-				_ = closeDatabase()
-			}
+			_ = closeDatabase()
 			return nil, err
 		}
 		if kafkaConfig.Audit.Enabled {
@@ -299,7 +297,7 @@ func NewApp() (*App, error) {
 		if closeDatabase != nil {
 			_ = closeDatabase()
 		}
-		return nil, errors.New("Audit Kafka query source requires the MariaDB ledger")
+		return nil, errors.New("audit Kafka query source requires the MariaDB ledger")
 	}
 	logSources := assembleLogSources(runtimeLogSources, legacyAuditSources, auditSource, kafkaConfig.Audit.Enabled)
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
