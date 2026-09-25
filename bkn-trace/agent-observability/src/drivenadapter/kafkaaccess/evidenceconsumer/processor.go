@@ -166,10 +166,12 @@ func (p *Processor) processMigration(ctx context.Context, record Record, headers
 	switch admission.Classification {
 	case "publish":
 		// The only manifest classification allowed to enter the Ledger.
-	case "verify_delivered":
-		return p.recordMigrationTerminal(ctx, record, admission, ievidencemigration.AdjudicationVerifiedDelivered, "verified_delivered", admission.ClassificationReason, 0)
-	case "coverage_gap":
-		return p.recordMigrationTerminal(ctx, record, admission, ievidencemigration.AdjudicationCoverageGap, "coverage_gap", admission.ClassificationReason, 0)
+	case "verify_delivered", "coverage_gap":
+		// These are reconciler conclusions, not Consumer authorization. The
+		// unexpected Record gets the bounded durable rejection that makes its
+		// offset terminal; it must not write this entry's result, because the
+		// reconciler remains the sole authority for those classifications.
+		return p.reject(ctx, record, "migration_manifest_entry_mismatch", event)
 	default:
 		return p.rejectMigration(ctx, record, admission, "migration_manifest_entry_mismatch", event)
 	}

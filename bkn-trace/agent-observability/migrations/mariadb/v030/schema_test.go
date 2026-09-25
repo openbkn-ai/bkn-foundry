@@ -20,6 +20,7 @@ func TestSchemaHasFrozenManifestLifecycleAndResultGuards(t *testing.T) {
 		"active Evidence migration entries are immutable",
 		"closed Evidence migration results are immutable",
 		"active Evidence migration manifest core fields are immutable",
+		"active or closed Evidence migration manifest cannot be deleted",
 		"uq_evidence_manifest_source",
 		"FOREIGN KEY (manifest_id, entry_id)",
 	} {
@@ -29,5 +30,8 @@ func TestSchemaHasFrozenManifestLifecycleAndResultGuards(t *testing.T) {
 	}
 	if strings.Contains(strings.ToUpper(schema), "DROP TABLE") {
 		t.Fatal("v030 must not contain destructive migration SQL")
+	}
+	if strings.Count(schema, "bkn_trace_evidence_entries_draft_only_") != 3 {
+		t.Fatal("entries must have draft-only insert, update, and delete guards")
 	}
 }

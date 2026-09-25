@@ -140,10 +140,9 @@ func TestMigrationRecordRejectsManifestHashMismatchBeforeLedger(t *testing.T) {
 func TestMigrationNonPublishClassificationsNeverReachLedger(t *testing.T) {
 	for _, tc := range []struct {
 		classification string
-		want           ievidencemigration.Adjudication
 	}{
-		{classification: "verify_delivered", want: ievidencemigration.AdjudicationVerifiedDelivered},
-		{classification: "coverage_gap", want: ievidencemigration.AdjudicationCoverageGap},
+		{classification: "verify_delivered"},
+		{classification: "coverage_gap"},
 	} {
 		t.Run(tc.classification, func(t *testing.T) {
 			stream := "bkn-backend"
@@ -163,11 +162,11 @@ func TestMigrationNonPublishClassificationsNeverReachLedger(t *testing.T) {
 			if ledger.called {
 				t.Fatalf("%s must not reach Ledger", tc.classification)
 			}
-			if rejections.called {
-				t.Fatalf("%s is a canonical migration terminal result, not a global rejection", tc.classification)
+			if !rejections.called || rejections.details.ReasonCode != "migration_manifest_entry_mismatch" {
+				t.Fatalf("%s must be durably rejected: %+v", tc.classification, rejections)
 			}
-			if migration.result.Adjudication != tc.want || migration.result.EntryID != "entry-1" {
-				t.Fatalf("unexpected migration terminal result: %+v", migration.result)
+			if migration.result != (ievidencemigration.ConsumerResult{}) {
+				t.Fatalf("%s result belongs exclusively to the reconciler: %+v", tc.classification, migration.result)
 			}
 		})
 	}
