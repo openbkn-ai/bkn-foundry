@@ -38,6 +38,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/archivestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
+	mariadbevidencemigration "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/evidencemigration"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknbackendaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
@@ -58,6 +59,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/vegaaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/evidenceconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/kafkaruntime"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/capturepolicystore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
@@ -71,6 +73,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
@@ -263,11 +266,48 @@ func NewApp() (*App, error) {
 		capturePolicyHandler.SetAdmissionBudgetReader(budgetProvider)
 	}
 	var kafkaRuntimes []*kafkaruntime.Runtime
+	var evidenceKafkaRuntime *kafkaruntime.Runtime
+	var auditKafkaRuntime *kafkaruntime.Runtime
 	if kafkaConfig.Evidence.Enabled {
-		if closeDatabase != nil {
-			_ = closeDatabase()
+		if !strings.EqualFold(coreConfig.Store, "mariadb") || !coreConfig.AutoMigrate {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("enabled Evidence Kafka consumer requires Core MariaDB with AutoMigrate enabled")
 		}
-		return nil, errors.New("evidence Kafka consumer is blocked until the C1 control-plane writer for policy, producer registration, and closure history is integrated")
+		databaseStore, ok := sessionStore.(interface{ Database() *sql.DB })
+		if !ok || databaseStore.Database() == nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("enabled Evidence Kafka consumer requires the shared MariaDB ledger connection")
+		}
+		migrationStore, err := mariadbevidencemigration.New(databaseStore.Database())
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, err
+		}
+		admission, admissionOK := sessionStore.(ievidenceadmission.ReadOnlySource)
+		ledger, ledgerOK := ledgerStore.(evidenceconsumer.Ledger)
+		rejections, rejectionsOK := sessionStore.(evidenceconsumer.RejectionWriter)
+		if !admissionOK || !ledgerOK || !rejectionsOK {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("enabled Evidence Kafka consumer requires persisted admission, Kafka Ledger, and rejection stores")
+		}
+		evidenceKafkaRuntime, err = newEvidenceKafkaRuntime(
+			kafkaConfig, kafkaConfig.Evidence, admission, migrationStore, migrationStore, ledger, rejections, nil,
+		)
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, fmt.Errorf("initialize Evidence Kafka consumer: %w", err)
+		}
+		kafkaRuntimes = append(kafkaRuntimes, evidenceKafkaRuntime)
 	}
 	if kafkaConfig.Audit.Enabled {
 		if !strings.EqualFold(coreConfig.Store, "mariadb") || !coreConfig.AutoMigrate {
@@ -324,6 +364,7 @@ func NewApp() (*App, error) {
 			}
 			return nil, err
 		}
+		auditKafkaRuntime = runtime
 		kafkaRuntimes = append(kafkaRuntimes, runtime)
 	}
 	coverageStore, coverageStoreSupported := sessionStore.(isourcecoveragestore.Store)
@@ -502,8 +543,11 @@ func NewApp() (*App, error) {
 	)
 	app.closeDatabase = closeDatabase
 	app.kafkaRuntimes = kafkaRuntimes
-	for _, runtime := range kafkaRuntimes {
-		app.kafkaHealth.set("audit", runtime)
+	if evidenceKafkaRuntime != nil {
+		app.kafkaHealth.set("evidence", evidenceKafkaRuntime)
+	}
+	if auditKafkaRuntime != nil {
+		app.kafkaHealth.set("audit", auditKafkaRuntime)
 	}
 	workerContext, stopWorkers := context.WithCancel(context.Background())
 	app.stopWorkers = stopWorkers
