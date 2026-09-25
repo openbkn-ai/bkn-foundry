@@ -860,6 +860,7 @@ func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQue
 	return (query.TimeFrom == nil || !record.EventTimestamp.Before(*query.TimeFrom)) &&
 		(query.TimeTo == nil || record.EventTimestamp.Before(*query.TimeTo)) &&
 		(query.ObservedBefore == nil || !record.ObservedTimestamp.After(*query.ObservedBefore)) &&
+		matchesOptional(record.SourceID, query.SourceID) &&
 		matchesOptional(record.TraceID, query.TraceID) && matchesOptional(record.SpanID, query.SpanID) &&
 		matchesOptional(record.RequestID, query.RequestID) && matchesOptional(record.ConversationID, query.ConversationID) &&
 		matchesOptional(record.InteractionID, query.InteractionID) && matchesOptional(record.OperationID, query.OperationID) &&

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/auditsvc"
 )
 
@@ -111,6 +112,53 @@ func TestReaderDefaultsNonPositiveLimits(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestReaderTreatsMissingHistoricalMonthAsEmpty(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	reader, err := NewReader(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := time.Date(2026, 8, 31, 23, 0, 0, 0, time.UTC)
+	to := from.Add(2 * time.Hour)
+	for _, month := range []struct {
+		name string
+		err  error
+	}{
+		{name: "audit_event_202608", err: &mysql.MySQLError{Number: 1146, Message: "table does not exist"}},
+		{name: "audit_event_202609"},
+	} {
+		expectation := mock.ExpectQuery(regexp.QuoteMeta("SELECT event_id, source_id, payload, occurred_at, broker_received_at, recorded_at FROM bkn_audit."+month.name)).
+			WithArgs(from, to, "audit.admin", 51)
+		if month.err != nil {
+			expectation.WillReturnError(month.err)
+		} else {
+			expectation.WillReturnRows(sqlmock.NewRows([]string{"event_id", "source_id", "payload", "occurred_at", "broker_received_at", "recorded_at"}))
+		}
+	}
+
+	page, err := reader.Query(context.Background(), auditsvc.Query{
+		Categories: []string{"audit.admin"}, From: from, To: to, Limit: 50,
+	})
+	if err != nil || len(page.Records) != 0 {
+		t.Fatalf("page=%#v err=%v", page, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDecodeAuditRecordComparesOccurredAtAtLedgerPrecision(t *testing.T) {
+	columnTime := time.Date(2026, 9, 25, 9, 30, 0, 123456000, time.UTC)
+	payload := []byte(`{"event_id":"evt-precision","source_id":"execution-factory","category":"audit.admin","event_name":"execution_factory.operation.observed","occurred_at":"2026-09-25T09:30:00.123456789Z","actor":{"id":"user-1"},"target":{"type":"toolbox","id":"box-1"},"scope":{"business_module":"execution_factory"},"facts":{"action":"execute"},"outcome":"success"}`)
+	if _, err := decodeAuditRecord("evt-precision", "execution-factory", columnTime, columnTime, columnTime, payload); err != nil {
+		t.Fatalf("ledger precision match rejected: %v", err)
 	}
 }
 

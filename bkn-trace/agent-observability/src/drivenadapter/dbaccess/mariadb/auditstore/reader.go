@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/auditsvc"
 )
 
@@ -45,6 +46,9 @@ func (reader *Reader) Query(ctx context.Context, query auditsvc.Query) (auditsvc
 		statement, args := auditSelect(table, query)
 		rows, err := reader.db.QueryContext(ctx, statement, args...)
 		if err != nil {
+			if isMissingMonthlyTable(err) {
+				continue
+			}
 			return auditsvc.Page{}, fmt.Errorf("query Audit ledger %s: %w", table, err)
 		}
 		for rows.Next() {
@@ -83,6 +87,11 @@ func (reader *Reader) Query(ctx context.Context, query auditsvc.Query) (auditsvc
 		page.Next = &auditsvc.Position{OccurredAt: last.OccurredAt, EventID: last.EventID}
 	}
 	return page, nil
+}
+
+func isMissingMonthlyTable(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1146
 }
 
 // Get resolves an Audit event through the dedup index before selecting its
@@ -232,7 +241,7 @@ func decodeAuditRecord(eventID, sourceID string, occurredAt, brokerReceivedAt, r
 		return auditsvc.Record{}, errors.New("audit ledger payload does not match its stored record")
 	}
 	parsedOccurredAt, err := time.Parse(time.RFC3339Nano, stored.Occurred)
-	if err != nil || !parsedOccurredAt.UTC().Equal(occurredAt.UTC()) {
+	if err != nil || !parsedOccurredAt.UTC().Truncate(time.Microsecond).Equal(occurredAt.UTC().Truncate(time.Microsecond)) {
 		return auditsvc.Record{}, errors.New("audit ledger payload occurred_at does not match its stored record")
 	}
 	return auditsvc.Record{

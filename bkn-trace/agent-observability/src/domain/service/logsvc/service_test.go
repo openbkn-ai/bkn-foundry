@@ -1031,11 +1031,13 @@ func TestMatchesQueryExcludesRecordsObservedAfterTheQueryWatermark(t *testing.T)
 
 func TestMatchesQueryFiltersOperationAuditBusinessFields(t *testing.T) {
 	record := observabilityvo.LogRecord{
+		SourceID:       "execution-factory",
 		BusinessModule: "domain_knowledge_network", Action: "create",
 		TargetType: "conversation", TargetID: "conv-a",
 		ActorID: "user-a", Outcome: "success",
 	}
 	query := observabilityvo.LogQuery{
+		SourceID:       "execution-factory",
 		BusinessModule: "domain_knowledge_network", Action: "create",
 		TargetType: "conversation", TargetID: "conv-a",
 		ActorID: "user-a", Outcomes: []string{"success"},
@@ -1045,6 +1047,7 @@ func TestMatchesQueryFiltersOperationAuditBusinessFields(t *testing.T) {
 	}
 
 	for name, mutate := range map[string]func(*observabilityvo.LogQuery){
+		"source":  func(value *observabilityvo.LogQuery) { value.SourceID = "bkn-safe" },
 		"module":  func(value *observabilityvo.LogQuery) { value.BusinessModule = "authorization" },
 		"action":  func(value *observabilityvo.LogQuery) { value.Action = "delete" },
 		"target":  func(value *observabilityvo.LogQuery) { value.TargetID = "conv-b" },
