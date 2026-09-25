@@ -111,6 +111,85 @@ func TestPublisherRuntimeUsesVerifiedSnapshotAndAcknowledgesDisabledBoundary(t *
 	}
 }
 
+func TestPublisherRuntimeDoesNotRequireStaticPolicyRevision(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case traceEvidencePolicyPath:
+			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
+			return noContentResponse(), nil
+		default:
+			t.Fatalf("unexpected request: %s", request.URL)
+			return nil, nil
+		}
+	})}
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	config := publisherTestConfig()
+	config.CapturePolicyRevision = ""
+	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: config, Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("NewPublisherRuntime() error = %v", err)
+	}
+	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
+		t.Fatalf("TryPublish() = %+v", result)
+	}
+	if got := runtime.publisher.SnapshotQueue()[0].Header("capture_policy_revision"); got != "42" {
+		t.Fatalf("capture_policy_revision = %q; want 42", got)
+	}
+}
+
+func TestPublisherRuntimeStartsStableDisabledWithoutOperationOrAck(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := policySnapshotForTest(now)
+	snapshot.TraceAdmission, snapshot.EvidenceAdmission = "disabled", "disabled"
+	configurationReads, acknowledgements := 0, 0
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case traceEvidencePolicyPath:
+			return policyResponse(signedPolicySnapshot(t, privateKey, snapshot)), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
+			return noContentResponse(), nil
+		case traceEvidenceConfigurationPath:
+			configurationReads++
+			return configurationResponse(`{"kind":"configuration_get","policy_revision":42,"active_operation_id":null}`), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/operations/":
+			acknowledgements++
+			t.Fatal("stable disabled runtime must not ACK without an active operation")
+			return nil, nil
+		default:
+			t.Fatalf("unexpected request: %s", request.URL)
+			return nil, nil
+		}
+	})}
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("NewPublisherRuntime() error = %v", err)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("stable disabled Refresh() error = %v", err)
+	}
+	if configurationReads != 2 || acknowledgements != 0 {
+		t.Fatalf("configuration reads=%d acknowledgements=%d", configurationReads, acknowledgements)
+	}
+	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Dropped || result.Reason != ReasonPublisherClosing {
+		t.Fatalf("TryPublish() = %+v", result)
+	}
+}
+
 func TestPublisherRuntimeFailsClosedWhenCachedSnapshotExpires(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)

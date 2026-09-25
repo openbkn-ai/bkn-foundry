@@ -21,12 +21,14 @@ type PublisherRuntime struct {
 	control       *ControlClient
 	now           func() time.Time
 
-	refreshMu sync.Mutex
-	mu        sync.Mutex
-	snapshot  PolicySnapshot
-	hasPolicy bool
-	admitting bool
-	lastError error
+	refreshMu   sync.Mutex
+	mu          sync.Mutex
+	snapshot    PolicySnapshot
+	hasPolicy   bool
+	admitting   bool
+	lastError   error
+	ackRevision uint64
+	ackSequence uint64
 }
 
 type PublisherRuntimeConfig struct {
@@ -41,6 +43,12 @@ type PublisherRuntimeConfig struct {
 func NewPublisherRuntime(ctx context.Context, config PublisherRuntimeConfig) (*PublisherRuntime, error) {
 	if config.Policy == nil || config.Configuration == nil || config.Control == nil {
 		return nil, errors.New("evidence publisher runtime control clients are required")
+	}
+	// Runtime records always receive the verified snapshot revision at
+	// TryPublish/Flush time. Keep the legacy Publisher constructor's required
+	// value internal so a workload has no static policy-revision setting.
+	if config.Publisher.CapturePolicyRevision == "" {
+		config.Publisher.CapturePolicyRevision = "1"
 	}
 	publisher, err := New(config.Publisher, config.Sender)
 	if err != nil {
@@ -181,10 +189,32 @@ func (r *PublisherRuntime) drainAndAcknowledge(ctx context.Context, revision uin
 		return drain, fmt.Errorf("read publisher acknowledgement candidate: %w", err)
 	}
 	if !allowed {
-		return drain, errors.New("no active publisher acknowledgement candidate for policy revision")
+		if r.hasUnacknowledgedDisposition(revision, drain.LastAcceptedSequence) {
+			return drain, errors.New("no active publisher acknowledgement candidate for unacknowledged queue disposition")
+		}
+		return drain, nil
+	}
+	if r.alreadyAcknowledged(revision, drain.LastAcceptedSequence) {
+		return drain, nil
 	}
 	if err := r.control.Acknowledge(ctx, operation, drain, r.now()); err != nil {
 		return drain, fmt.Errorf("acknowledge publisher queue disposition: %w", err)
 	}
+	r.mu.Lock()
+	r.ackRevision = revision
+	r.ackSequence = drain.LastAcceptedSequence
+	r.mu.Unlock()
 	return drain, nil
+}
+
+func (r *PublisherRuntime) hasUnacknowledgedDisposition(revision, sequence uint64) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return sequence > 0 && (r.ackRevision != revision || r.ackSequence != sequence)
+}
+
+func (r *PublisherRuntime) alreadyAcknowledged(revision, sequence uint64) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ackRevision == revision && r.ackSequence == sequence
 }
