@@ -24,8 +24,35 @@ type AccessProfile struct {
 	DelegationID               string
 	Roles                      []string
 	ManagedKnowledgeNetworkIDs []string
+	Permissions                []Permission
 	AccountActive              bool
 	Fingerprint                string
+}
+
+type Permission struct {
+	ResourceType string
+	ResourceID   string
+	Operations   []string
+}
+
+func (p AccessProfile) HasPermission(resourceType, resourceID, operation string) bool {
+	if !p.AccountActive || resourceType == "" || resourceID == "" || operation == "" {
+		return false
+	}
+	for _, permission := range p.Permissions {
+		if permission.ResourceType != "*" && permission.ResourceType != resourceType {
+			continue
+		}
+		if permission.ResourceID != "*" && permission.ResourceID != resourceID {
+			continue
+		}
+		for _, allowed := range permission.Operations {
+			if allowed == "*" || allowed == operation {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // RecordScope is the immutable access projection attached to a persisted run.

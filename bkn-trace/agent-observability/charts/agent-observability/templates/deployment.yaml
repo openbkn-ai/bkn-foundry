@@ -4,6 +4,12 @@ SPDX-License-Identifier: LicenseRef-OpenBKN
 Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
 Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 */ -}}
+{{- $captureInitialState := default "enabled" .Values.core.capturePolicyInitialState -}}
+{{- $captureBootstrapWarning := "" -}}
+{{- if and .Release.IsUpgrade (empty .Values.core.capturePolicyInitialState) -}}
+{{- $captureInitialState = "disabled" -}}
+{{- $captureBootstrapWarning = "ambiguous_legacy_state_safe_default_disabled" -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,6 +30,9 @@ spec:
         {{- end }}
       annotations:
         openbkn.ai/trace-timestamp-pipeline-revision: {{ .Values.opensearch.traceTimestampPipelineRevision | quote }}
+        {{- if $captureBootstrapWarning }}
+        openbkn.ai/trace-evidence-bootstrap-warning: {{ $captureBootstrapWarning | quote }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -73,6 +82,8 @@ spec:
               value: {{ .Values.core.capacity.maxEvidenceRefsPerInteraction | quote }}
             - name: BKN_TRACE_EVIDENCE_COLLECTION_STATE
               value: {{ .Values.core.evidenceCollectionState | quote }}
+            - name: BKN_TRACE_EVIDENCE_INITIAL_STATE
+              value: {{ $captureInitialState | quote }}
             - name: BKN_TRACE_PROJECTION_ENABLED
               value: {{ ternary "true" "false" .Values.core.projection.enabled | quote }}
             - name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED

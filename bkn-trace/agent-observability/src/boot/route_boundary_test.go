@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
@@ -65,6 +66,37 @@ func TestWriteRoutesKeepLifecycleAndEvidenceOnSeparateListeners(t *testing.T) {
 				t.Fatalf("POST %s = %d, want %d: %s", test.path, response.Code, test.wantStatus, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestCapturePolicyRouteUsesAgentObservabilityContractPath(t *testing.T) {
+	evidenceHandler := httphandler.NewEvidenceHandlerWithIngestToken(
+		evidencesvc.New(evidencestore.New()), "ingest-token",
+	)
+	capturePolicyHandler := httphandler.NewCapturePolicyHandler(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{
+			Revision: 1, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled,
+			LastStableRevision: 1, Operation: capturepolicysvc.Operation{ID: "bootstrap", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled},
+		}, nil
+	}))
+	app := newAppWithCapturePolicy(
+		conf.HTTPServerConfig{}, nil, evidenceHandler, nil, nil,
+		httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{})),
+		httphandler.NewLedgerHandler(ledgersvc.New(ledgerstore.New()), httphandler.LedgerSecurityConfig{IngestToken: "ingest-token"}),
+		nil, capturePolicyHandler,
+	)
+
+	request := httptest.NewRequest(http.MethodGet, APIBasePath+"/trace-evidence-configuration", nil)
+	response := httptest.NewRecorder()
+	app.server.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("frozen agent-observability route = %d, want configured-auth failure: %s", response.Code, response.Body.String())
+	}
+	legacy := httptest.NewRequest(http.MethodGet, ObservabilityAPIBasePath+"/trace-evidence-configuration", nil)
+	legacyResponse := httptest.NewRecorder()
+	app.server.ServeHTTP(legacyResponse, legacy)
+	if legacyResponse.Code != http.StatusNotFound {
+		t.Fatalf("legacy observability route = %d, want 404", legacyResponse.Code)
 	}
 }
 

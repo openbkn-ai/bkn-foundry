@@ -145,6 +145,24 @@ func TestCoreConfigRejectsInvalidAutoMigrate(t *testing.T) {
 	}
 }
 
+func TestCoreConfigParsesCapturePolicyInitialState(t *testing.T) {
+	t.Setenv("BKN_TRACE_EVIDENCE_INITIAL_STATE", "disabled")
+	config, err := NewCoreConfig()
+	if err != nil {
+		t.Fatalf("new core config: %v", err)
+	}
+	if config.CapturePolicyInitialState != "disabled" {
+		t.Fatalf("unexpected capture policy initial state: %#v", config)
+	}
+}
+
+func TestCoreConfigRejectsInvalidCapturePolicyInitialState(t *testing.T) {
+	t.Setenv("BKN_TRACE_EVIDENCE_INITIAL_STATE", "unknown")
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("invalid capture policy initial state must be rejected")
+	}
+}
+
 func TestCoreConfigDefaultsInteractionCapacity(t *testing.T) {
 	config, err := NewCoreConfig()
 	if err != nil {

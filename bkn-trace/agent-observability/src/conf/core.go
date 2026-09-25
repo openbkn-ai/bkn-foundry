@@ -35,6 +35,7 @@ type CoreConfig struct {
 	ProjectionGrantPrivateKey     ed25519.PrivateKey
 	ProjectionGrantTTL            time.Duration
 	EvidenceCollectionState       string
+	CapturePolicyInitialState     string
 	MaxOperationsPerInteraction   int
 	MaxClaimsPerInteraction       int
 	MaxEvidenceRefsPerInteraction int
@@ -124,6 +125,13 @@ func NewCoreConfig() (CoreConfig, error) {
 	if maxEvidenceRefsPerInteraction < maxOperationsPerInteraction {
 		return CoreConfig{}, fmt.Errorf("BKN_TRACE_CORE_MAX_EVIDENCE_REFS_PER_INTERACTION must be at least BKN_TRACE_CORE_MAX_OPERATIONS_PER_INTERACTION")
 	}
+	capturePolicyInitialState := strings.ToLower(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_INITIAL_STATE")))
+	if capturePolicyInitialState == "" {
+		capturePolicyInitialState = "enabled"
+	}
+	if capturePolicyInitialState != "enabled" && capturePolicyInitialState != "disabled" {
+		return CoreConfig{}, fmt.Errorf("BKN_TRACE_EVIDENCE_INITIAL_STATE must be enabled or disabled")
+	}
 	return CoreConfig{
 		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),
 		AutoMigrate: autoMigrate, AbandonInterval: interval, OneShotIdleTTL: oneShotIdleTTL,
@@ -137,6 +145,7 @@ func NewCoreConfig() (CoreConfig, error) {
 		ProjectionGrantPrivateKey:     projectionGrantPrivateKey,
 		ProjectionGrantTTL:            projectionGrantTTL,
 		EvidenceCollectionState:       strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_COLLECTION_STATE")),
+		CapturePolicyInitialState:     capturePolicyInitialState,
 		MaxOperationsPerInteraction:   maxOperationsPerInteraction,
 		MaxClaimsPerInteraction:       maxClaimsPerInteraction,
 		MaxEvidenceRefsPerInteraction: maxEvidenceRefsPerInteraction,

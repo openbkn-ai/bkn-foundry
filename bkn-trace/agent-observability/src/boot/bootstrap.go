@@ -24,6 +24,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturecontrollersvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
@@ -56,6 +58,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/kafkaruntime"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/capturepolicystore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
 	memorysessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
@@ -142,6 +145,41 @@ func NewApp() (*App, error) {
 	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)
 	if err != nil {
 		return nil, err
+	}
+	var capturePolicyReader capturepolicysvc.Reader
+	var capturePolicyCommander capturepolicysvc.Commander
+	var captureController *capturecontrollersvc.Controller
+	if durable, ok := sessionStore.(interface {
+		ReadCapturePolicySnapshot(context.Context) (capturepolicysvc.Snapshot, error)
+	}); ok {
+		capturePolicyReader = capturepolicysvc.ReaderFunc(durable.ReadCapturePolicySnapshot)
+		if maria, ok := sessionStore.(*mariadbsessionstore.Store); ok {
+			captureController, err = capturecontrollersvc.New(capturecontrollersvc.Options{
+				Store: maria, WorkerID: "agent-observability-control-controller",
+				Lease: 30 * time.Second, Convergence: 10 * time.Minute,
+			})
+			if err != nil {
+				if closeDatabase != nil {
+					_ = closeDatabase()
+				}
+				return nil, fmt.Errorf("initialize capture policy controller: %w", err)
+			}
+			capturePolicyCommander = captureController
+		}
+	} else {
+		memoryCapturePolicyStore := capturepolicystore.New(capturepolicysvc.Snapshot{
+			Revision: 1, DesiredState: capturepolicysvc.StateEnabled,
+			EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 1,
+			Operation: capturepolicysvc.Operation{ID: "bootstrap", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled, ExpectedRevision: 1},
+		})
+		capturePolicyReader = memoryCapturePolicyStore
+		capturePolicyCommander = memoryCapturePolicyStore
+	}
+	var capturePolicyHandler *httphandler.CapturePolicyHandler
+	if captureController != nil {
+		capturePolicyHandler = httphandler.NewCapturePolicyHandlerWithReconciler(capturePolicyReader, capturePolicyCommander, captureController)
+	} else {
+		capturePolicyHandler = httphandler.NewCapturePolicyHandler(capturePolicyReader, capturePolicyCommander)
 	}
 	var kafkaRuntimes []*kafkaruntime.Runtime
 	if kafkaConfig.Evidence.Enabled {
@@ -377,9 +415,9 @@ func NewApp() (*App, error) {
 		}
 	}
 	enterpriseReader := httphandler.NewEnterpriseInteractionFactsReader(evidenceService, sessionService, captureInput)
-	app := newAppWithArchive(
+	app := newAppWithCapturePolicy(
 		httpServerConfig, traceHandler, evidenceHandler, logHandler, archiveHandler,
-		sessionHandler, ledgerHandler, metrics, enterpriseReader,
+		sessionHandler, ledgerHandler, metrics, capturePolicyHandler, enterpriseReader,
 	)
 	app.closeDatabase = closeDatabase
 	app.kafkaRuntimes = kafkaRuntimes
@@ -388,6 +426,13 @@ func NewApp() (*App, error) {
 	}
 	workerContext, stopWorkers := context.WithCancel(context.Background())
 	app.stopWorkers = stopWorkers
+	if captureController != nil {
+		app.workers.Add(1)
+		go func() {
+			defer app.workers.Done()
+			runCapturePolicyController(workerContext, captureController)
+		}()
+	}
 	app.workers.Add(1)
 	go func() {
 		defer app.workers.Done()
@@ -506,6 +551,10 @@ func newCoreStores(config conf.CoreConfig) (isessionstore.Store, ievidenceledger
 	if err := store.EnsureSchema(context.Background(), config.AutoMigrate); err != nil {
 		_ = db.Close()
 		return nil, nil, nil, err
+	}
+	if err := store.EnsureControlState(context.Background(), config.CapturePolicyInitialState == "enabled", time.Now().UTC()); err != nil {
+		_ = db.Close()
+		return nil, nil, nil, fmt.Errorf("initialize Trace/Evidence control state: %w", err)
 	}
 	return store, store, db.Close, nil
 }
@@ -635,6 +684,21 @@ func newApp(
 	return newAppWithArchive(httpServerConfig, traceHandler, evidenceHandler, logHandler, nil, sessionHandler, ledgerHandler, metrics, enterpriseReaders...)
 }
 
+func newAppWithCapturePolicy(
+	httpServerConfig conf.HTTPServerConfig,
+	traceHandler *httphandler.TraceHandler,
+	evidenceHandler *httphandler.EvidenceHandler,
+	logHandler *httphandler.LogHandler,
+	archiveHandler *httphandler.ArchiveHandler,
+	sessionHandler *httphandler.SessionHandler,
+	ledgerHandler *httphandler.LedgerHandler,
+	metrics http.Handler,
+	capturePolicyHandler *httphandler.CapturePolicyHandler,
+	enterpriseReaders ...enterpriseroute.Reader,
+) *App {
+	return newAppWithArchiveAndCapture(httpServerConfig, traceHandler, evidenceHandler, logHandler, archiveHandler, sessionHandler, ledgerHandler, metrics, capturePolicyHandler, enterpriseReaders...)
+}
+
 func newAppWithArchive(
 	httpServerConfig conf.HTTPServerConfig,
 	traceHandler *httphandler.TraceHandler,
@@ -644,6 +708,21 @@ func newAppWithArchive(
 	sessionHandler *httphandler.SessionHandler,
 	ledgerHandler *httphandler.LedgerHandler,
 	metrics http.Handler,
+	enterpriseReaders ...enterpriseroute.Reader,
+) *App {
+	return newAppWithArchiveAndCapture(httpServerConfig, traceHandler, evidenceHandler, logHandler, archiveHandler, sessionHandler, ledgerHandler, metrics, nil, enterpriseReaders...)
+}
+
+func newAppWithArchiveAndCapture(
+	httpServerConfig conf.HTTPServerConfig,
+	traceHandler *httphandler.TraceHandler,
+	evidenceHandler *httphandler.EvidenceHandler,
+	logHandler *httphandler.LogHandler,
+	archiveHandler *httphandler.ArchiveHandler,
+	sessionHandler *httphandler.SessionHandler,
+	ledgerHandler *httphandler.LedgerHandler,
+	metrics http.Handler,
+	capturePolicyHandler *httphandler.CapturePolicyHandler,
 	enterpriseReaders ...enterpriseroute.Reader,
 ) *App {
 	health := newKafkaHealth()
@@ -699,6 +778,18 @@ func newAppWithArchive(
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs/", readAuth(logHandler.GetLog))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-policies", readAuth(logHandler.ListLogPolicies))
+	if capturePolicyHandler != nil {
+		capturePolicyRoute := evidenceHandler.RequireTraceEvidenceConfigurationPermission(capturePolicyHandler.HandleTraceEvidenceConfiguration)
+		mux.HandleFunc(APIBasePath+"/trace-evidence-configuration", readAuth(capturePolicyRoute))
+		captureOperationRoute := evidenceHandler.RequireTraceEvidenceConfigurationPermission(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				capturePolicyHandler.ReconcileTraceEvidenceOperation(w, r)
+				return
+			}
+			capturePolicyHandler.GetTraceEvidenceOperation(w, r)
+		})
+		mux.HandleFunc(APIBasePath+"/trace-evidence-operations/", readAuth(captureOperationRoute))
+	}
 	if archiveHandler != nil {
 		mux.HandleFunc(ObservabilityAPIBasePath+"/log-archive-overview", readAuth(archiveHandler.Overview(observabilityvo.ArchiveKindLog)))
 		mux.HandleFunc(ObservabilityAPIBasePath+"/trace-archive-overview", readAuth(archiveHandler.Overview(observabilityvo.ArchiveKindTrace)))

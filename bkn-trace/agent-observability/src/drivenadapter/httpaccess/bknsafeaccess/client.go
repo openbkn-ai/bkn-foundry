@@ -58,6 +58,16 @@ type knowledgeNetworkGrantsResponse struct {
 	} `json:"grants"`
 }
 
+type permissionsResponse struct {
+	Permissions []struct {
+		Resource struct {
+			Type string `json:"type"`
+			ID   string `json:"id"`
+		} `json:"resource"`
+		Operations []string `json:"operations"`
+	} `json:"permissions"`
+}
+
 type fingerprintInput struct {
 	ActorID                    string
 	EffectiveSubjectID         string
@@ -65,6 +75,7 @@ type fingerprintInput struct {
 	DelegationID               string
 	Roles                      []string
 	ManagedKnowledgeNetworkIDs []string
+	Permissions                []evidencevo.Permission
 }
 
 func New(baseURL string, httpClient *http.Client) *Client {
@@ -99,9 +110,17 @@ func (c *Client) Resolve(
 			return evidencevo.AccessProfile{}, classifyResolveError("resolve current BKN Safe knowledge-network grants", err)
 		}
 	}
+	var permissions permissionsResponse
+	if err := c.get(ctx, "/api/safe/v1/me/permissions", authorization, &permissions); err != nil {
+		var statusErr responseStatusError
+		if !errors.As(err, &statusErr) || statusErr.status != http.StatusNotFound {
+			return evidencevo.AccessProfile{}, classifyResolveError("resolve current BKN Safe permissions", err)
+		}
+	}
 
 	roles := currentBuiltInRoles(me.Roles)
 	managedNetworks := concreteManagedNetworks(grants)
+	permissionProjection := projectPermissions(permissions)
 	input := fingerprintInput{
 		ActorID:                    identity.ActorID,
 		EffectiveSubjectID:         identity.EffectiveSubjectID,
@@ -109,6 +128,7 @@ func (c *Client) Resolve(
 		DelegationID:               identity.DelegationID,
 		Roles:                      roles,
 		ManagedKnowledgeNetworkIDs: managedNetworks,
+		Permissions:                permissionProjection,
 	}
 	return evidencevo.AccessProfile{
 		ActorID:                    identity.ActorID,
@@ -117,9 +137,37 @@ func (c *Client) Resolve(
 		DelegationID:               identity.DelegationID,
 		Roles:                      roles,
 		ManagedKnowledgeNetworkIDs: managedNetworks,
+		Permissions:                permissionProjection,
 		AccountActive:              true,
 		Fingerprint:                accessScopeFingerprint(input),
 	}, nil
+}
+
+func projectPermissions(response permissionsResponse) []evidencevo.Permission {
+	permissions := make([]evidencevo.Permission, 0, len(response.Permissions))
+	for _, permission := range response.Permissions {
+		if strings.TrimSpace(permission.Resource.Type) == "" || strings.TrimSpace(permission.Resource.ID) == "" || len(permission.Operations) == 0 {
+			continue
+		}
+		operations := make([]string, 0, len(permission.Operations))
+		seen := map[string]struct{}{}
+		for _, operation := range permission.Operations {
+			operation = strings.TrimSpace(operation)
+			if operation == "" {
+				continue
+			}
+			if _, exists := seen[operation]; exists {
+				continue
+			}
+			seen[operation] = struct{}{}
+			operations = append(operations, operation)
+		}
+		if len(operations) == 0 {
+			continue
+		}
+		permissions = append(permissions, evidencevo.Permission{ResourceType: permission.Resource.Type, ResourceID: permission.Resource.ID, Operations: operations})
+	}
+	return permissions
 }
 
 func classifyResolveError(operation string, err error) error {
@@ -194,15 +242,23 @@ func concreteManagedNetworks(response knowledgeNetworkGrantsResponse) []string {
 func accessScopeFingerprint(input fingerprintInput) string {
 	roles := append([]string(nil), input.Roles...)
 	networks := append([]string(nil), input.ManagedKnowledgeNetworkIDs...)
+	permissions := append([]evidencevo.Permission(nil), input.Permissions...)
 	sort.Strings(roles)
 	sort.Strings(networks)
+	sort.Slice(permissions, func(i, j int) bool {
+		if permissions[i].ResourceType != permissions[j].ResourceType {
+			return permissions[i].ResourceType < permissions[j].ResourceType
+		}
+		return permissions[i].ResourceID < permissions[j].ResourceID
+	})
 	body, _ := json.Marshal(struct {
-		ActorID                    string   `json:"actor_id"`
-		EffectiveSubjectID         string   `json:"effective_subject_id"`
-		ApplicationPrincipalID     string   `json:"application_principal_id"`
-		DelegationID               string   `json:"delegation_id"`
-		Roles                      []string `json:"roles"`
-		ManagedKnowledgeNetworkIDs []string `json:"managed_knowledge_network_ids"`
+		ActorID                    string                  `json:"actor_id"`
+		EffectiveSubjectID         string                  `json:"effective_subject_id"`
+		ApplicationPrincipalID     string                  `json:"application_principal_id"`
+		DelegationID               string                  `json:"delegation_id"`
+		Roles                      []string                `json:"roles"`
+		ManagedKnowledgeNetworkIDs []string                `json:"managed_knowledge_network_ids"`
+		Permissions                []evidencevo.Permission `json:"permissions"`
 	}{
 		input.ActorID,
 		input.EffectiveSubjectID,
@@ -210,6 +266,7 @@ func accessScopeFingerprint(input fingerprintInput) string {
 		input.DelegationID,
 		roles,
 		networks,
+		permissions,
 	})
 	sum := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(sum[:])

@@ -15,6 +15,13 @@ import (
 	"fmt"
 )
 
+var (
+	ErrRevisionConflict     = errors.New("capture policy revision conflict")
+	ErrOperationInProgress  = errors.New("capture policy operation is already in progress")
+	ErrInvalidChangeRequest = errors.New("invalid capture policy change request")
+	ErrOperationNotFound    = errors.New("capture policy operation was not found")
+)
+
 type State string
 
 const (
@@ -82,6 +89,21 @@ type Snapshot struct {
 	Acknowledgements   []EndpointAcknowledgement `json:"acknowledgements"`
 }
 
+type ChangeRequest struct {
+	DesiredState     State  `json:"desired_state"`
+	ExpectedRevision uint64 `json:"expected_revision"`
+}
+
+type Commander interface {
+	Request(context.Context, ChangeRequest) (Snapshot, error)
+}
+
+type CommanderFunc func(context.Context, ChangeRequest) (Snapshot, error)
+
+func (f CommanderFunc) Request(ctx context.Context, request ChangeRequest) (Snapshot, error) {
+	return f(ctx, request)
+}
+
 func (s Snapshot) Validate() error {
 	if s.Revision == 0 {
 		return errors.New("capture policy revision must be positive")
@@ -123,6 +145,10 @@ type Reader interface {
 	Read(context.Context) (Snapshot, error)
 }
 
+type OperationReader interface {
+	ReadOperation(context.Context, string) (Operation, error)
+}
+
 type ReaderFunc func(context.Context) (Snapshot, error)
 
 func (f ReaderFunc) Read(ctx context.Context) (Snapshot, error) { return f(ctx) }
@@ -143,4 +169,15 @@ func (s *Service) Read(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	return snapshot, nil
+}
+
+func (s *Service) ReadOperation(ctx context.Context, operationID string) (Operation, error) {
+	if s == nil || s.reader == nil || operationID == "" {
+		return Operation{}, ErrOperationNotFound
+	}
+	reader, ok := s.reader.(OperationReader)
+	if !ok {
+		return Operation{}, ErrOperationNotFound
+	}
+	return reader.ReadOperation(ctx, operationID)
 }
