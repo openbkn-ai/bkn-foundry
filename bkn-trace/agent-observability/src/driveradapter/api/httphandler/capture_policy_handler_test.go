@@ -556,8 +556,8 @@ func TestCapturePolicyHandlerRejectsIncompleteAdmissionBudget(t *testing.T) {
 	handler.SetAdmissionBudgetReader(&countingCapturePolicyBudgetReader{budget: budget})
 	response := httptest.NewRecorder()
 	handler.GetTraceEvidenceConfiguration(response, httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/trace-evidence-configuration", nil))
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -663,6 +663,63 @@ func TestCapturePolicyHandlerDoesNotReadAdmissionBudgetToDisable(t *testing.T) {
 	calls = reader.calls
 	if response.Code != http.StatusAccepted || calls != 0 {
 		t.Fatalf("disable status=%d budget_calls=%d body=%s", response.Code, calls, response.Body.String())
+	}
+}
+
+func TestCapturePolicyHandlerMapsAdmissionBudgetFailuresToFrozenErrors(t *testing.T) {
+	validBudget, err := (capturePolicyBudgetReader{}).ReadAdmissionBudget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name       string
+		budget     capturepolicysvc.AdmissionBudget
+		readErr    error
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "missing measurement", budget: func() capturepolicysvc.AdmissionBudget {
+			copy := validBudget
+			copy.Measurements = copy.Measurements[:1]
+			return copy
+		}(), wantStatus: http.StatusUnprocessableEntity, wantCode: "ADMISSION_BUDGET_EXCEEDED"},
+		{name: "stale", budget: func() capturepolicysvc.AdmissionBudget {
+			copy := validBudget
+			copy.FreshUntil = time.Now().UTC().Add(-time.Minute)
+			return copy
+		}(), wantStatus: http.StatusUnprocessableEntity, wantCode: "ADMISSION_BUDGET_EXCEEDED"},
+		{name: "threshold", budget: func() capturepolicysvc.AdmissionBudget {
+			copy := validBudget
+			copy.Measurements[0].Value = 0.9
+			return copy
+		}(), wantStatus: http.StatusUnprocessableEntity, wantCode: "ADMISSION_BUDGET_EXCEEDED"},
+		{name: "provider unavailable", readErr: errors.New("opensearch unavailable"), wantStatus: http.StatusServiceUnavailable, wantCode: "POLICY_RECONCILER_UNAVAILABLE"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			called := false
+			handler := NewCapturePolicyHandler(
+				capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return capturepolicysvc.Snapshot{}, nil }),
+				capturePolicyCommanderFunc(func(context.Context, capturepolicysvc.ChangeRequest) (capturepolicysvc.Snapshot, error) {
+					called = true
+					return capturepolicysvc.Snapshot{}, nil
+				}),
+			)
+			handler.SetAdmissionBudgetReader(&countingCapturePolicyBudgetReader{budget: testCase.budget, err: testCase.readErr})
+			request := httptest.NewRequest(http.MethodPut, "/api/agent-observability/v1/trace-evidence-configuration", bytes.NewBufferString(`{"desired_state":"enabled","expected_revision":9}`))
+			response := httptest.NewRecorder()
+			handler.HandleTraceEvidenceConfiguration(response, request)
+			if response.Code != testCase.wantStatus || called {
+				t.Fatalf("status=%d called=%v body=%s", response.Code, called, response.Body.String())
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["code"] != testCase.wantCode {
+				t.Fatalf("error code=%v, want %s", payload["code"], testCase.wantCode)
+			}
+		})
 	}
 }
 

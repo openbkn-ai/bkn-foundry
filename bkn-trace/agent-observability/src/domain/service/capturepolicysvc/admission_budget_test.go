@@ -73,8 +73,8 @@ func TestAdmissionBudgetProviderRejectsStaleOrMissingMetric(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider.now = func() time.Time { return now }
-	if _, err := provider.ReadAdmissionBudget(context.Background()); !errors.Is(err, ErrAdmissionBudgetUnavailable) {
-		t.Fatalf("stale metric error = %v, want unavailable", err)
+	if _, err := provider.ReadAdmissionBudget(context.Background()); !errors.Is(err, ErrAdmissionBudgetExceeded) {
+		t.Fatalf("stale metric error = %v, want ErrAdmissionBudgetExceeded", err)
 	}
 }
 

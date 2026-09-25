@@ -89,11 +89,14 @@ func (p *AdmissionBudgetProvider) ReadAdmissionBudget(ctx context.Context) (Admi
 			return AdmissionBudget{}, fmt.Errorf("%w: %v", ErrAdmissionBudgetUnavailable, err)
 		}
 		if _, exists := seen[measurement.Metric]; exists {
-			return AdmissionBudget{}, fmt.Errorf("%w: duplicate metric %q", ErrAdmissionBudgetUnavailable, measurement.Metric)
+			return AdmissionBudget{}, fmt.Errorf("%w: duplicate metric %q", ErrAdmissionBudgetExceeded, measurement.Metric)
 		}
 		seen[measurement.Metric] = struct{}{}
+		if !isAdmissionBudgetMetric(measurement.Metric) {
+			return AdmissionBudget{}, fmt.Errorf("%w: metric %s is not part of AdmissionBudgetV1", ErrAdmissionBudgetExceeded, measurement.Metric)
+		}
 		if err := validateAdmissionMeasurement(measurement, now); err != nil {
-			return AdmissionBudget{}, err
+			return AdmissionBudget{}, fmt.Errorf("%w: %v", ErrAdmissionBudgetExceeded, err)
 		}
 		measurement.Threshold = p.thresholdFor(measurement.Metric)
 		if measurement.Threshold <= 0 {
@@ -103,10 +106,19 @@ func (p *AdmissionBudgetProvider) ReadAdmissionBudget(ctx context.Context) (Admi
 	}
 	for _, metric := range []string{"trace_opensearch_capacity", "trace_opensearch_heap", "trace_collector_queue", "trace_storage_connection_pool"} {
 		if _, ok := seen[metric]; !ok {
-			return AdmissionBudget{}, fmt.Errorf("%w: metric %s is missing", ErrAdmissionBudgetUnavailable, metric)
+			return AdmissionBudget{}, fmt.Errorf("%w: metric %s is missing", ErrAdmissionBudgetExceeded, metric)
 		}
 	}
 	return AdmissionBudget{ContractVersion: "AdmissionBudgetV1", Profile: p.profile, SampledAt: now, FreshUntil: now.Add(30 * time.Second), Measurements: measurements}, nil
+}
+
+func isAdmissionBudgetMetric(metric string) bool {
+	switch metric {
+	case "trace_opensearch_capacity", "trace_opensearch_heap", "trace_collector_queue", "trace_storage_connection_pool":
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *AdmissionBudgetProvider) thresholdFor(metric string) float64 {
@@ -133,7 +145,7 @@ func validateAdmissionMeasurement(measurement AdmissionMeasurement, now time.Tim
 
 func ValidateAdmissionBudgetForEnable(budget AdmissionBudget, now time.Time) error {
 	if budget.ContractVersion != "AdmissionBudgetV1" || budget.Profile == "" || budget.SampledAt.IsZero() || budget.FreshUntil.IsZero() || !budget.FreshUntil.After(now) || len(budget.Measurements) != 4 {
-		return ErrAdmissionBudgetUnavailable
+		return ErrAdmissionBudgetExceeded
 	}
 	allowed := map[string]struct{}{
 		"trace_opensearch_capacity":     {},
@@ -144,24 +156,24 @@ func ValidateAdmissionBudgetForEnable(budget AdmissionBudget, now time.Time) err
 	seen := make(map[string]struct{}, len(budget.Measurements))
 	for _, measurement := range budget.Measurements {
 		if _, ok := allowed[measurement.Metric]; !ok {
-			return fmt.Errorf("%w: unknown metric %q", ErrAdmissionBudgetUnavailable, measurement.Metric)
+			return fmt.Errorf("%w: unknown metric %q", ErrAdmissionBudgetExceeded, measurement.Metric)
 		}
 		if _, ok := seen[measurement.Metric]; ok {
-			return fmt.Errorf("%w: duplicate metric %q", ErrAdmissionBudgetUnavailable, measurement.Metric)
+			return fmt.Errorf("%w: duplicate metric %q", ErrAdmissionBudgetExceeded, measurement.Metric)
 		}
 		seen[measurement.Metric] = struct{}{}
 		if err := validateAdmissionMeasurement(measurement, now); err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrAdmissionBudgetExceeded, err)
 		}
 		if math.IsNaN(measurement.Threshold) || math.IsInf(measurement.Threshold, 0) || measurement.Threshold <= 0 || measurement.Threshold > 1 {
-			return fmt.Errorf("%w: invalid threshold for %s", ErrAdmissionBudgetUnavailable, measurement.Metric)
+			return fmt.Errorf("%w: invalid threshold for %s", ErrAdmissionBudgetExceeded, measurement.Metric)
 		}
 		if measurement.Value > measurement.Threshold {
 			return fmt.Errorf("%w: %s value %.4f exceeds threshold %.4f", ErrAdmissionBudgetExceeded, measurement.Metric, measurement.Value, measurement.Threshold)
 		}
 	}
 	if len(seen) != len(allowed) {
-		return ErrAdmissionBudgetUnavailable
+		return ErrAdmissionBudgetExceeded
 	}
 	return nil
 }

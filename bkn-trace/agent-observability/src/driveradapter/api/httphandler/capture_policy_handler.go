@@ -160,7 +160,11 @@ func (h *CapturePolicyHandler) GetTraceEvidenceConfiguration(w http.ResponseWrit
 	}
 	response, err := frozenConfigurationGetResponse(snapshot, budget)
 	if err != nil {
-		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "capture policy cannot satisfy the frozen configuration contract"})
+		status, code := http.StatusServiceUnavailable, "POLICY_RECONCILER_UNAVAILABLE"
+		if errors.Is(err, capturepolicysvc.ErrAdmissionBudgetExceeded) {
+			status, code = http.StatusUnprocessableEntity, "ADMISSION_BUDGET_EXCEEDED"
+		}
+		writeJSON(w, r, status, rdto.ErrorResponse{Code: code, Message: "capture policy cannot satisfy the frozen configuration contract"})
 		return
 	}
 	writeJSON(w, r, http.StatusOK, response)
@@ -168,7 +172,7 @@ func (h *CapturePolicyHandler) GetTraceEvidenceConfiguration(w http.ResponseWrit
 
 func frozenConfigurationGetResponse(snapshot capturepolicysvc.Snapshot, budget capturepolicysvc.AdmissionBudget) (capturepolicysvc.ConfigurationGetResponse, error) {
 	if err := capturepolicysvc.ValidateAdmissionBudgetForEnable(budget, time.Now().UTC()); err != nil {
-		return capturepolicysvc.ConfigurationGetResponse{}, errors.New("invalid admission budget")
+		return capturepolicysvc.ConfigurationGetResponse{}, err
 	}
 	response := capturepolicysvc.ConfigurationGetResponse{
 		Kind: "configuration_get", DesiredState: snapshot.DesiredState, PolicyRevision: snapshot.Revision,
