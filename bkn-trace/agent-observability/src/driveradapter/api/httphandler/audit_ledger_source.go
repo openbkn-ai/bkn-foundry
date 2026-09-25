@@ -2,10 +2,10 @@ package httphandler
 
 import (
 	"context"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/auditsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
-	"time"
 )
 
 type auditLedgerSource struct{ reader *auditstore.Reader }
@@ -25,7 +25,16 @@ func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQue
 	if q.PageBefore != nil {
 		cursor = &auditsvc.Position{OccurredAt: q.PageBefore.EventTimestamp, EventID: q.PageBefore.LogID}
 	}
-	p, err := s.reader.Query(ctx, auditsvc.Query{Categories: q.Categories, From: q.TimeFrom.UTC(), To: q.TimeTo.UTC(), BusinessModule: q.BusinessModule, ActorID: q.ActorID, TargetType: q.TargetType, TargetID: q.TargetID, Action: q.Action, EventNames: q.EventNames, Outcomes: q.Outcomes, FailedOnly: q.FailedOnly, Cursor: cursor, Limit: q.Limit})
+	query := auditsvc.Query{
+		Categories: auditQueryCategories(q), From: q.TimeFrom.UTC(), To: q.TimeTo.UTC(),
+		SourceID: q.SourceID, BusinessModule: q.BusinessModule, ActorID: q.ActorID,
+		TargetType: q.TargetType, TargetID: q.TargetID, Action: q.Action, Outcomes: q.Outcomes,
+		Cursor: cursor, Limit: q.Limit,
+	}
+	if q.ObservedBefore != nil {
+		query.ObservedBefore = q.ObservedBefore.UTC()
+	}
+	p, err := s.reader.Query(ctx, query)
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
@@ -40,6 +49,27 @@ func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQue
 	}
 	return out, nil
 }
+
+func auditQueryCategories(query observabilityvo.LogQuery) []string {
+	authorized := make(map[string]struct{}, len(query.AuthorizedCategories))
+	for _, category := range query.AuthorizedCategories {
+		if category == observabilityvo.CategoryAuditAdmin || category == observabilityvo.CategoryAuditSecurity {
+			authorized[category] = struct{}{}
+		}
+	}
+	requested := query.Categories
+	if len(requested) == 0 {
+		requested = []string{observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity}
+	}
+	result := make([]string, 0, len(requested))
+	for _, category := range requested {
+		if _, ok := authorized[category]; ok {
+			result = append(result, category)
+		}
+	}
+	return result
+}
+
 func (s *auditLedgerSource) Get(ctx context.Context, id string) (observabilityvo.LogRecord, bool, error) {
 	r, ok, e := s.reader.Get(ctx, id)
 	if !ok || e != nil {
@@ -48,5 +78,40 @@ func (s *auditLedgerSource) Get(ctx context.Context, id string) (observabilityvo
 	return auditLogRecord(r), true, nil
 }
 func auditLogRecord(r auditsvc.Record) observabilityvo.LogRecord {
-	return observabilityvo.LogRecord{SchemaVersion: "1.0", EventID: r.EventID, LogID: r.EventID, SourceID: r.SourceID, SourceLogID: r.EventID, Category: r.Category, EventName: r.EventName, EventTime: r.OccurredAt, EventTimestamp: r.OccurredAt, ObservedTimestamp: time.Now().UTC(), RecordedAt: r.OccurredAt, ActorID: r.ActorID, EffectiveSubjectID: r.EffectiveSubjectID, ActorNameSnapshot: r.ActorNameSnapshot, ActorType: r.ActorType, AuthMethod: r.AuthMethod, SourceChannel: r.SourceChannel, BusinessModule: r.BusinessModule, TargetType: r.TargetType, TargetID: r.TargetID, Action: r.Action, Outcome: r.Outcome, SafeSummary: r.Summary, ServiceName: r.SourceID, Environment: r.Environment, IngressPrincipal: "audit-kafka-validator", SeverityNumber: 9, SeverityText: "INFO", TrustLevel: "trusted", Attributes: map[string]any{}}
+	actorName := r.ActorNameSnapshot
+	if actorName == "" {
+		actorName = r.ActorID
+	}
+	targetName := r.TargetNameSnapshot
+	if targetName == "" {
+		targetName = r.TargetID
+	}
+	attributes := map[string]any{}
+	if r.Transport != "" {
+		attributes["transport"] = r.Transport
+	}
+	if r.Method != "" {
+		attributes["method"] = r.Method
+	}
+	if r.HTTPStatus != 0 {
+		attributes["status_code"] = r.HTTPStatus
+	}
+	if r.ClientIP != "" {
+		attributes["client_ip"] = r.ClientIP
+	}
+	return observabilityvo.LogRecord{
+		SchemaVersion: "1.0", EventID: r.EventID, LogID: r.EventID,
+		SourceID: r.SourceID, SourceLogID: r.EventID, Category: r.Category, EventName: r.EventName,
+		EventTime: r.OccurredAt, EventTimestamp: r.OccurredAt, ObservedTimestamp: r.BrokerReceivedAt, RecordedAt: r.RecordedAt,
+		ActorID: r.ActorID, EffectiveSubjectID: r.EffectiveSubjectID, ActorNameSnapshot: actorName,
+		ActorType: r.ActorType, AuthMethod: r.AuthMethod, SourceChannel: r.SourceChannel,
+		BusinessModule: r.BusinessModule, TargetType: r.TargetType, TargetID: r.TargetID,
+		TargetNameSnapshot: targetName, Action: r.Action, Outcome: r.Outcome, SafeSummary: r.Summary, FailureCode: r.FailureCode,
+		ServiceName: r.SourceID, Environment: r.Environment, IngressPrincipal: "audit-kafka-validator",
+		SeverityNumber: 9, SeverityText: "INFO", TrustLevel: "trusted", ApplicationID: r.ApplicationID,
+		KnowledgeNetworkIDs: append([]string(nil), r.KnowledgeNetworkIDs...), RequestID: r.RequestID,
+		TraceID: r.TraceID, OperationID: r.OperationID,
+		ResourceRef: &observabilityvo.ResourceRef{ResourceType: r.TargetType, ResourceID: r.TargetID},
+		Attributes:  attributes,
+	}
 }

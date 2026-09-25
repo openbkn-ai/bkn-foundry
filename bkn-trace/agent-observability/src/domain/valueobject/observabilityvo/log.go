@@ -133,20 +133,21 @@ type SourcePosition struct {
 }
 
 type SourceStatus struct {
-	SourceID         string     `json:"source_id"`
-	Status           string     `json:"status"`
-	Reason           string     `json:"reason,omitempty"`
-	Reliability      string     `json:"reliability"`
-	LastReceivedAt   *time.Time `json:"last_received_at"`
-	Watermark        *string    `json:"watermark"`
-	LatencyMS        *int64     `json:"latency_ms"`
-	CollectionMethod string     `json:"collection_method,omitempty"`
-	CoveredModules   []string   `json:"covered_modules,omitempty"`
-	DroppedRecords   *int64     `json:"dropped_records,omitempty"`
-	SamplingRate     *float64   `json:"sampling_rate,omitempty"`
-	SampledRecords   *int64     `json:"sampled_records,omitempty"`
-	CountAccuracy    string     `json:"count_accuracy,omitempty"`
-	Categories       []string   `json:"-"`
+	SourceID            string     `json:"source_id"`
+	Status              string     `json:"status"`
+	Reason              string     `json:"reason,omitempty"`
+	Reliability         string     `json:"reliability"`
+	LastReceivedAt      *time.Time `json:"last_received_at"`
+	Watermark           *string    `json:"watermark"`
+	LatencyMS           *int64     `json:"latency_ms"`
+	CollectionMethod    string     `json:"collection_method,omitempty"`
+	CoveredModules      []string   `json:"covered_modules,omitempty"`
+	DroppedRecords      *int64     `json:"dropped_records"`
+	DroppedRecordsSince *time.Time `json:"dropped_records_since"`
+	SamplingRate        *float64   `json:"sampling_rate,omitempty"`
+	SampledRecords      *int64     `json:"sampled_records,omitempty"`
+	CountAccuracy       string     `json:"count_accuracy,omitempty"`
+	Categories          []string   `json:"-"`
 }
 
 type ListResult struct {

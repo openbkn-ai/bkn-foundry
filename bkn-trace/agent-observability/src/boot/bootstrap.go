@@ -250,10 +250,12 @@ func NewApp() (*App, error) {
 		logOptions.CoverageStore = coverageStore
 		logOptions.CoverageDeploymentID = observabilityConfig.SourceCoverageDeploymentID
 	}
-	logSources := []logsvc.Source{
+	runtimeLogSources := []logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
-		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, localizedHTTPClient(accessScopeConfig.Timeout)),
 		bknsafeuseraccess.New(accessScopeConfig.BKNBaseURL, localizedHTTPClient(accessScopeConfig.Timeout)),
+	}
+	legacyAuditSources := []logsvc.Source{
+		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, localizedHTTPClient(accessScopeConfig.Timeout)),
 		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
 			observabilityvo.CategoryAuditSecurity,
 		}, []string{"BKN Safe Authorization"}),
@@ -263,12 +265,26 @@ func NewApp() (*App, error) {
 		modelmanageraudit.New(resolverConfig.ModelManagerURL, localizedHTTPClient(resolverConfig.Timeout)),
 	}
 	if coreConfig.ProjectionEnabled {
-		logSources = append(logSources, opensearchconversationaudit.New(openSearchClient, coreConfig.ProjectionIndex))
-		logSources = append(logSources, opensearchruntimeaudit.New(openSearchClient, coreConfig.ProjectionIndex))
+		runtimeLogSources = append(runtimeLogSources, opensearchconversationaudit.New(openSearchClient, coreConfig.ProjectionIndex))
+		runtimeLogSources = append(runtimeLogSources, opensearchruntimeaudit.New(openSearchClient, coreConfig.ProjectionIndex))
 	}
 	var auditSource logsvc.Source
-	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok && databaseStore.Database() != nil {
-		reader, err := auditstore.NewReader(databaseStore.Database())
+	if kafkaConfig.Audit.Enabled {
+		auditQueryDB, err := openMariaDBPool(coreConfig.MariaDBDSN, 8, 2)
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, fmt.Errorf("open isolated Audit query pool: %w", err)
+		}
+		primaryClose := closeDatabase
+		closeDatabase = func() error {
+			if primaryClose == nil {
+				return auditQueryDB.Close()
+			}
+			return errors.Join(auditQueryDB.Close(), primaryClose())
+		}
+		reader, err := auditstore.NewReader(auditQueryDB)
 		if err != nil {
 			if closeDatabase != nil {
 				_ = closeDatabase()
@@ -279,9 +295,13 @@ func NewApp() (*App, error) {
 			auditSource = httphandler.NewAuditLedgerSource(reader)
 		}
 	}
-	if auditSource != nil {
-		logSources = append([]logsvc.Source{auditSource}, logSources...)
+	if kafkaConfig.Audit.Enabled && auditSource == nil {
+		if closeDatabase != nil {
+			_ = closeDatabase()
+		}
+		return nil, errors.New("Audit Kafka query source requires the MariaDB ledger")
 	}
+	logSources := assembleLogSources(runtimeLogSources, legacyAuditSources, auditSource, kafkaConfig.Audit.Enabled)
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
 	provenanceHandler := enterpriseroute.HistoricalProvenanceHandler()
 	if coreConfig.HistoricalProvenanceEnabled && provenanceHandler == nil {
@@ -455,6 +475,24 @@ func NewApp() (*App, error) {
 	return app, nil
 }
 
+func assembleLogSources(runtimeSources, legacyAuditSources []logsvc.Source, centerAuditSource logsvc.Source, kafkaAuditEnabled bool) []logsvc.Source {
+	capacity := len(runtimeSources) + len(legacyAuditSources)
+	if kafkaAuditEnabled {
+		capacity = len(runtimeSources) + 1
+	}
+	sources := make([]logsvc.Source, 0, capacity)
+	if kafkaAuditEnabled {
+		if centerAuditSource != nil {
+			sources = append(sources, centerAuditSource)
+		}
+		sources = append(sources, runtimeSources...)
+		return sources
+	}
+	sources = append(sources, runtimeSources...)
+	sources = append(sources, legacyAuditSources...)
+	return sources
+}
+
 func newCoreStores(config conf.CoreConfig) (isessionstore.Store, ievidenceledger.Store, func() error, error) {
 	if !strings.EqualFold(config.Store, "mariadb") {
 		return memorysessionstore.New(), ledgerstore.New(), nil, nil
@@ -462,16 +500,9 @@ func newCoreStores(config conf.CoreConfig) (isessionstore.Store, ievidenceledger
 	if config.MariaDBDSN == "" {
 		return nil, nil, nil, errors.New("BKN_TRACE_CORE_MARIADB_DSN is required when BKN_TRACE_CORE_STORE=mariadb")
 	}
-	db, err := sql.Open("mysql", config.MariaDBDSN)
+	db, err := openMariaDBPool(config.MariaDBDSN, 16, 4)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("open BKN Trace MariaDB: %w", err)
-	}
-	db.SetMaxOpenConns(16)
-	db.SetMaxIdleConns(4)
-	db.SetConnMaxLifetime(30 * time.Minute)
-	if err := db.PingContext(context.Background()); err != nil {
-		_ = db.Close()
-		return nil, nil, nil, fmt.Errorf("connect BKN Trace MariaDB: %w", err)
+		return nil, nil, nil, err
 	}
 	store := mariadbsessionstore.New(db)
 	if err := store.EnsureSchema(context.Background(), config.AutoMigrate); err != nil {
@@ -479,6 +510,21 @@ func newCoreStores(config conf.CoreConfig) (isessionstore.Store, ievidenceledger
 		return nil, nil, nil, err
 	}
 	return store, store, db.Close, nil
+}
+
+func openMariaDBPool(dsn string, maxOpen, maxIdle int) (*sql.DB, error) {
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open BKN Trace MariaDB: %w", err)
+	}
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	if err := db.PingContext(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("connect BKN Trace MariaDB: %w", err)
+	}
+	return db, nil
 }
 
 func runLeaseReaper(

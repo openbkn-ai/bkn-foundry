@@ -44,12 +44,12 @@ func (reader *Reader) Query(ctx context.Context, query auditsvc.Query) (auditsvc
 		for rows.Next() {
 			var eventID, sourceID string
 			var payload []byte
-			var occurredAt time.Time
-			if err := rows.Scan(&eventID, &sourceID, &payload, &occurredAt); err != nil {
+			var occurredAt, brokerReceivedAt, recordedAt time.Time
+			if err := rows.Scan(&eventID, &sourceID, &payload, &occurredAt, &brokerReceivedAt, &recordedAt); err != nil {
 				_ = rows.Close()
 				return auditsvc.Page{}, fmt.Errorf("scan Audit ledger row: %w", err)
 			}
-			record, err := decodeAuditRecord(eventID, sourceID, occurredAt.UTC(), payload)
+			record, err := decodeAuditRecord(eventID, sourceID, occurredAt.UTC(), brokerReceivedAt.UTC(), recordedAt.UTC(), payload)
 			if err != nil {
 				_ = rows.Close()
 				return auditsvc.Page{}, err
@@ -95,15 +95,15 @@ func (reader *Reader) Get(ctx context.Context, eventID string) (auditsvc.Record,
 	}
 	var sourceID string
 	var payload []byte
-	var occurredAt time.Time
-	err = reader.db.QueryRowContext(ctx, "SELECT source_id, payload, occurred_at FROM bkn_audit."+table+" WHERE event_id=?", eventID).Scan(&sourceID, &payload, &occurredAt)
+	var occurredAt, brokerReceivedAt, recordedAt time.Time
+	err = reader.db.QueryRowContext(ctx, "SELECT source_id, payload, occurred_at, broker_received_at, recorded_at FROM bkn_audit."+table+" WHERE event_id=?", eventID).Scan(&sourceID, &payload, &occurredAt, &brokerReceivedAt, &recordedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return auditsvc.Record{}, false, nil
 	}
 	if err != nil {
 		return auditsvc.Record{}, false, fmt.Errorf("read Audit ledger detail: %w", err)
 	}
-	record, err := decodeAuditRecord(eventID, sourceID, occurredAt.UTC(), payload)
+	record, err := decodeAuditRecord(eventID, sourceID, occurredAt.UTC(), brokerReceivedAt.UTC(), recordedAt.UTC(), payload)
 	return record, err == nil, err
 }
 
@@ -130,7 +130,7 @@ func auditQueryTables(from, to time.Time) ([]string, error) {
 
 func auditSelect(table string, query auditsvc.Query) (string, []any) {
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(query.Categories)), ",")
-	statement := "SELECT event_id, source_id, payload, occurred_at FROM bkn_audit." + table +
+	statement := "SELECT event_id, source_id, payload, occurred_at, broker_received_at, recorded_at FROM bkn_audit." + table +
 		" WHERE occurred_at >= ? AND occurred_at < ? AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.category')) IN (" + placeholders + ")"
 	args := make([]any, 0, 2+len(query.Categories)+10)
 	args = append(args, query.From.UTC(), query.To.UTC())
@@ -153,21 +153,16 @@ func auditSelect(table string, query auditsvc.Query) (string, []any) {
 	addJSONFilter("$.target.id", query.TargetID)
 	addJSONFilter("$.facts.action", query.Action)
 	addJSONFilter("$.outcome", query.Outcome)
-	if len(query.EventNames) > 0 {
-		statement += " AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.event_name')) IN (" + strings.TrimSuffix(strings.Repeat("?,", len(query.EventNames)), ",") + ")"
-		for _, value := range query.EventNames {
-			args = append(args, value)
-		}
-	}
 	outcomes := append([]string(nil), query.Outcomes...)
-	if query.FailedOnly {
-		outcomes = []string{"failure", "denied"}
-	}
 	if len(outcomes) > 0 {
 		statement += " AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.outcome')) IN (" + strings.TrimSuffix(strings.Repeat("?,", len(outcomes)), ",") + ")"
 		for _, value := range outcomes {
 			args = append(args, value)
 		}
+	}
+	if !query.ObservedBefore.IsZero() {
+		statement += " AND broker_received_at <= ?"
+		args = append(args, query.ObservedBefore.UTC())
 	}
 	if query.Cursor != nil {
 		statement += " AND (occurred_at < ? OR (occurred_at = ? AND event_id < ?))"
@@ -194,22 +189,35 @@ type storedAuditPayload struct {
 	Target struct {
 		Type string `json:"type"`
 		ID   string `json:"id"`
+		Name string `json:"name"`
 	} `json:"target"`
 	Scope struct {
-		BusinessModule string `json:"business_module"`
-		Environment    string `json:"environment"`
+		BusinessModule      string   `json:"business_module"`
+		Environment         string   `json:"environment"`
+		ApplicationID       string   `json:"application_id"`
+		KnowledgeNetworkIDs []string `json:"knowledge_network_ids"`
 	} `json:"scope"`
 	Facts struct {
-		Action string `json:"action"`
+		Action      string `json:"action"`
+		OperationID string `json:"operation_id"`
 	} `json:"facts"`
 	Outcome        string `json:"outcome"`
 	Summary        string `json:"summary"`
+	FailureCode    string `json:"failure_code"`
+	HTTPStatus     int    `json:"http_status"`
 	RequestContext struct {
 		SourceChannel string `json:"source_channel"`
+		Transport     string `json:"transport"`
+		Method        string `json:"method"`
+		ClientIP      string `json:"client_ip"`
 	} `json:"request_context"`
+	Correlation struct {
+		RequestID string `json:"request_id"`
+		TraceID   string `json:"trace_id"`
+	} `json:"correlation"`
 }
 
-func decodeAuditRecord(eventID, sourceID string, occurredAt time.Time, payload []byte) (auditsvc.Record, error) {
+func decodeAuditRecord(eventID, sourceID string, occurredAt, brokerReceivedAt, recordedAt time.Time, payload []byte) (auditsvc.Record, error) {
 	var stored storedAuditPayload
 	if err := json.Unmarshal(payload, &stored); err != nil {
 		return auditsvc.Record{}, fmt.Errorf("decode Audit ledger payload: %w", err)
@@ -221,7 +229,18 @@ func decodeAuditRecord(eventID, sourceID string, occurredAt time.Time, payload [
 	if err != nil || !parsedOccurredAt.UTC().Equal(occurredAt.UTC()) {
 		return auditsvc.Record{}, errors.New("Audit ledger payload occurred_at does not match its stored record")
 	}
-	return auditsvc.Record{EventID: eventID, OccurredAt: occurredAt.UTC(), SourceID: sourceID, Category: stored.Category,
-		EventName: stored.EventName, ActorID: stored.Actor.ID, TargetType: stored.Target.Type, TargetID: stored.Target.ID,
-		BusinessModule: stored.Scope.BusinessModule, Action: stored.Facts.Action, Outcome: stored.Outcome, Environment: stored.Scope.Environment, EffectiveSubjectID: stored.Actor.EffectiveSubject, ActorNameSnapshot: stored.Actor.DisplayName, ActorType: stored.Actor.Type, AuthMethod: stored.Actor.AuthMethod, SourceChannel: stored.RequestContext.SourceChannel, Summary: stored.Summary}, nil
+	return auditsvc.Record{
+		EventID: eventID, OccurredAt: occurredAt.UTC(), BrokerReceivedAt: brokerReceivedAt.UTC(), RecordedAt: recordedAt.UTC(),
+		SourceID: sourceID, Category: stored.Category, EventName: stored.EventName,
+		ActorID: stored.Actor.ID, EffectiveSubjectID: stored.Actor.EffectiveSubject, ActorNameSnapshot: stored.Actor.DisplayName,
+		ActorType: stored.Actor.Type, AuthMethod: stored.Actor.AuthMethod,
+		TargetType: stored.Target.Type, TargetID: stored.Target.ID, TargetNameSnapshot: stored.Target.Name,
+		BusinessModule: stored.Scope.BusinessModule, Environment: stored.Scope.Environment,
+		ApplicationID: stored.Scope.ApplicationID, KnowledgeNetworkIDs: append([]string(nil), stored.Scope.KnowledgeNetworkIDs...),
+		Action: stored.Facts.Action, OperationID: stored.Facts.OperationID, Outcome: stored.Outcome,
+		SourceChannel: stored.RequestContext.SourceChannel, Transport: stored.RequestContext.Transport,
+		Method: stored.RequestContext.Method, ClientIP: stored.RequestContext.ClientIP,
+		Summary: stored.Summary, FailureCode: stored.FailureCode, HTTPStatus: stored.HTTPStatus,
+		RequestID: stored.Correlation.RequestID, TraceID: stored.Correlation.TraceID,
+	}, nil
 }
