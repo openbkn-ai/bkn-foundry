@@ -3,7 +3,7 @@
 // Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
 // Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
-package v030
+package v034
 
 import (
 	"strings"
@@ -26,16 +26,16 @@ func TestSchemaHasFrozenManifestLifecycleAndResultGuards(t *testing.T) {
 		"FOREIGN KEY (manifest_id, entry_id)",
 	} {
 		if !strings.Contains(schema, required) {
-			t.Fatalf("missing Evidence v030 invariant %q", required)
+			t.Fatalf("missing Evidence v034 invariant %q", required)
 		}
 	}
 	if strings.Contains(strings.ToUpper(schema), "DROP TABLE") {
-		t.Fatal("v030 must not contain destructive migration SQL")
+		t.Fatal("v034 must not contain destructive migration SQL")
 	}
 	if strings.Count(schema, "bkn_trace_evidence_entries_draft_only_") != 3 {
 		t.Fatal("entries must have draft-only insert, update, and delete guards")
 	}
 	if strings.Count(schema, "CREATE TRIGGER IF NOT EXISTS ") != 8 {
-		t.Fatal("v030 triggers must be idempotent when the migration re-runs")
+		t.Fatal("v034 triggers must be idempotent when the migration re-runs")
 	}
 }

@@ -4,7 +4,7 @@
 
 // Package evidencemigration implements only the Evidence bridge manifest
 // tables. It is intentionally independent of sessionstore/schema.go; Session
-// 0 owns registration of v030 with the shared migration manifest.
+// 1 owns registration of v034 with the shared migration manifest.
 package evidencemigration
 
 import (
