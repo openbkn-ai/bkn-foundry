@@ -30,7 +30,7 @@ func (s *Store) CloseManifest(ctx context.Context, manifestID, actor string) (st
 		FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=? FOR UPDATE`, manifestID).
 		Scan(&state, &contractSHA, &entriesDigestValue, &entryCountText, &storedManifestID, &activatedAtText, &sourceSnapshotAtText, &existingClosureDigest)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", errors.New("Evidence migration manifest not found")
+		return "", errors.New("evidence migration manifest not found")
 	}
 	if err != nil {
 		return "", fmt.Errorf("read Evidence migration close header: %w", err)
@@ -45,7 +45,7 @@ func (s *Store) CloseManifest(ctx context.Context, manifestID, actor string) (st
 		return existingClosureDigest.String, nil
 	}
 	if state != string(ievidencemigration.ManifestActive) {
-		return "", errors.New("Evidence migration manifest is not active")
+		return "", errors.New("evidence migration manifest is not active")
 	}
 	entryCount, err := canonicalUint(entryCountText)
 	if err != nil {
@@ -56,7 +56,7 @@ func (s *Store) CloseManifest(ctx context.Context, manifestID, actor string) (st
 		return "", err
 	}
 	if persistedEntryCount < 0 || uint64(persistedEntryCount) != entryCount {
-		return "", errors.New("Evidence migration entry count changed after activation")
+		return "", errors.New("evidence migration entry count changed after activation")
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM bkn_trace_evidence_migration_result_conflicts WHERE manifest_id=?", manifestID).Scan(&conflictCount); err != nil {
 		return "", err
