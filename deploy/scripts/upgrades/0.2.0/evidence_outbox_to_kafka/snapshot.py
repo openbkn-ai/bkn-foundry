@@ -1,6 +1,7 @@
 """Read-only, timestamp-bounded snapshots of the two historical Event tables."""
 
-from manifest import ManifestError
+from manifest import ManifestError, entries_digest
+from source import classify_row
 
 _EVENT_TABLES = (
     "bkn_backend_trace_outbox",
@@ -36,3 +37,32 @@ def read_event_snapshot(connection, source_snapshot_at):
         finally:
             cursor.close()
     return sorted(rows, key=lambda row: (row["source_table"], row["outbox_id"]))
+
+
+def verify_frozen_entries(rows, manifest, entries):
+    """Re-classify a bridge source reread against a payload-free artifact.
+
+    The artifact contains only immutable C1 entries. Event values remain in
+    the source database and are returned in memory solely for the immediate
+    Kafka send; they are never written into the artifact or passed to the
+    center-only admin/reconciler commands.
+    """
+    if not isinstance(manifest, dict) or manifest.get("entry_count") != str(len(entries)):
+        raise ManifestError("frozen artifact count does not match manifest")
+    actual_entries, events = [], {}
+    for row in rows:
+        entry, event = classify_row(row, manifest.get("manifest_id"), manifest.get("source_snapshot_at"))
+        actual_entries.append(entry)
+        if event is not None:
+            events[(entry["source_table"], entry["source_primary_key"])] = event
+    if len(actual_entries) != len(entries) or entries_digest(actual_entries) != manifest.get("entries_digest"):
+        raise ManifestError("source reread does not match frozen migration entries")
+    expected = sorted(entries, key=lambda entry: (entry["source_table"], entry["source_primary_key"]))
+    actual = sorted(actual_entries, key=lambda entry: (entry["source_table"], entry["source_primary_key"]))
+    if any(
+        {key: candidate[key] for key in candidate if key != "entry_id"}
+        != {key: frozen[key] for key in frozen if key != "entry_id"}
+        for candidate, frozen in zip(actual, expected, strict=True)
+    ):
+        raise ManifestError("source reread entry differs from frozen artifact")
+    return events

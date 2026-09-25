@@ -125,3 +125,21 @@ def publish_encoded_entries(manifest, entries, events_by_source_cursor, checkpoi
         return publish_with_ack(producer, topic, record, timeout_seconds)
 
     return publish_entries(manifest, entries, checkpoint_path, publish, fault)
+
+
+def publish_frozen_snapshot(connection, manifest, entries, checkpoint_path, producer,
+                            topic, timeout_seconds, producer_instance_id, fault=None):
+    """Reread source rows and publish only after they match frozen entries.
+
+    This is the C1 bridge capability set: source SELECT plus Kafka write.  It
+    has no center-store handle; activation is represented only by the supplied
+    receipt/manifest facts.
+    """
+    from snapshot import read_event_snapshot, verify_frozen_entries
+
+    rows = read_event_snapshot(connection, manifest["source_snapshot_at"])
+    events = verify_frozen_entries(rows, manifest, entries)
+    return publish_encoded_entries(
+        manifest, entries, events, checkpoint_path, producer, topic,
+        timeout_seconds, producer_instance_id, fault,
+    )
