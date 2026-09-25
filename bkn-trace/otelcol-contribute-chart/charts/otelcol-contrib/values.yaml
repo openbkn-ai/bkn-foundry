@@ -29,7 +29,9 @@ traceAdmission:
   clientID: ""
   workloadIdentity: ""
   scope: ""
+  # Must equal core.capturePolicySigning.audience in the agent-observability release.
   audienceClusterID: cluster-a
+  # Installer must set this to core.capturePolicySigning.keyID.
   currentKeyID: ""
   currentPublicKeySecret: ""
   currentPublicKeyKey: public-key

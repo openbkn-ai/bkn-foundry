@@ -65,3 +65,31 @@ func TestObservabilityConfigReadsSourceCoverageMonitor(t *testing.T) {
 		t.Fatalf("unexpected source coverage monitor config: %+v", config)
 	}
 }
+
+func TestObservabilityConfigReadsAdmissionBudgetProfileAndThresholds(t *testing.T) {
+	t.Setenv("BKN_TRACE_ADMISSION_BUDGET_PROFILE", "production")
+	t.Setenv("BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD", "0.8")
+	t.Setenv("BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD", "0.75")
+	t.Setenv("BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD", "0.7")
+	t.Setenv("BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD", "0.65")
+
+	config := NewObservabilityConfig()
+	if config.AdmissionBudgetProfile != "production" || config.AdmissionBudgetThresholds.OpenSearchCapacity != 0.8 || config.AdmissionBudgetThresholds.OpenSearchHeap != 0.75 || config.AdmissionBudgetThresholds.CollectorQueue != 0.7 || config.AdmissionBudgetThresholds.StoragePool != 0.65 {
+		t.Fatalf("unexpected admission budget config: %+v", config)
+	}
+}
+
+func TestObservabilityConfigLeavesMissingAdmissionThresholdUnavailable(t *testing.T) {
+	for _, name := range []string{
+		"BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD",
+		"BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD",
+		"BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD",
+		"BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD",
+	} {
+		t.Setenv(name, "")
+	}
+	config := NewObservabilityConfig()
+	if config.AdmissionBudgetThresholds.OpenSearchCapacity != 0 || config.AdmissionBudgetThresholds.OpenSearchHeap != 0 || config.AdmissionBudgetThresholds.CollectorQueue != 0 || config.AdmissionBudgetThresholds.StoragePool != 0 {
+		t.Fatalf("missing thresholds must remain unavailable: %+v", config.AdmissionBudgetThresholds)
+	}
+}

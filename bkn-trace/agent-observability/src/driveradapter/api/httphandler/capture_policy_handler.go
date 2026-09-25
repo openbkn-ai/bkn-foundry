@@ -95,6 +95,29 @@ func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseW
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_CONFIGURATION_REQUEST", Message: "desired_state and expected_revision are required"})
 		return
 	}
+	if request.DesiredState == capturepolicysvc.StateEnabled {
+		if h.budget == nil {
+			writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "admission budget is not available"})
+			return
+		}
+		budget, budgetErr := h.budget.ReadAdmissionBudget(contextWithRequest(r))
+		if budgetErr != nil {
+			status, code := http.StatusServiceUnavailable, "POLICY_RECONCILER_UNAVAILABLE"
+			if errors.Is(budgetErr, capturepolicysvc.ErrAdmissionBudgetExceeded) {
+				status, code = http.StatusUnprocessableEntity, "ADMISSION_BUDGET_EXCEEDED"
+			}
+			writeJSON(w, r, status, rdto.ErrorResponse{Code: code, Message: "admission budget does not permit enabling Trace/Evidence"})
+			return
+		}
+		if budgetErr = capturepolicysvc.ValidateAdmissionBudgetForEnable(budget, time.Now().UTC()); budgetErr != nil {
+			status, code := http.StatusServiceUnavailable, "POLICY_RECONCILER_UNAVAILABLE"
+			if errors.Is(budgetErr, capturepolicysvc.ErrAdmissionBudgetExceeded) {
+				status, code = http.StatusUnprocessableEntity, "ADMISSION_BUDGET_EXCEEDED"
+			}
+			writeJSON(w, r, status, rdto.ErrorResponse{Code: code, Message: "admission budget does not permit enabling Trace/Evidence"})
+			return
+		}
+	}
 	snapshot, err := h.commander.Request(contextWithRequest(r), request)
 	if err != nil {
 		status, code := http.StatusServiceUnavailable, "POLICY_RECONCILER_UNAVAILABLE"
@@ -144,7 +167,7 @@ func (h *CapturePolicyHandler) GetTraceEvidenceConfiguration(w http.ResponseWrit
 }
 
 func frozenConfigurationGetResponse(snapshot capturepolicysvc.Snapshot, budget capturepolicysvc.AdmissionBudget) (capturepolicysvc.ConfigurationGetResponse, error) {
-	if budget.ContractVersion != "AdmissionBudgetV1" || budget.Profile == "" || budget.SampledAt.IsZero() || !budget.FreshUntil.After(budget.SampledAt) || len(budget.Measurements) == 0 {
+	if err := capturepolicysvc.ValidateAdmissionBudgetForEnable(budget, time.Now().UTC()); err != nil {
 		return capturepolicysvc.ConfigurationGetResponse{}, errors.New("invalid admission budget")
 	}
 	response := capturepolicysvc.ConfigurationGetResponse{

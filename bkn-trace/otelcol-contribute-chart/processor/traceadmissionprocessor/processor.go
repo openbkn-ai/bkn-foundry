@@ -294,13 +294,39 @@ func (p *traceAdmissionProcessor) pullActiveOperation(ctx context.Context, revis
 	if err := decoder.Decode(&model); err != nil {
 		return "", err
 	}
-	if model.Kind != "configuration_get" || (model.DesiredState != "enabled" && model.DesiredState != "disabled") || (model.EffectiveState != "enabled" && model.EffectiveState != "disabled") || model.PolicyRevision == 0 || model.LastStableRevision == 0 || model.HeartbeatIntervalSecond != 10 || model.LeaseTTLSeconds != 30 || model.AdmissionBudget.ContractVersion != "AdmissionBudgetV1" || model.AdmissionBudget.Profile == "" || model.AdmissionBudget.SampledAt.IsZero() || model.AdmissionBudget.FreshUntil.IsZero() || !model.AdmissionBudget.FreshUntil.After(model.AdmissionBudget.SampledAt) || len(model.AdmissionBudget.Measurements) == 0 {
+	if model.Kind != "configuration_get" || (model.DesiredState != "enabled" && model.DesiredState != "disabled") || (model.EffectiveState != "enabled" && model.EffectiveState != "disabled") || model.PolicyRevision == 0 || model.LastStableRevision == 0 || model.HeartbeatIntervalSecond != 10 || model.LeaseTTLSeconds != 30 || !validConfigurationBudget(model.AdmissionBudget) {
 		return "", errors.New("configuration endpoint returned an invalid frozen configuration_get contract")
 	}
 	if model.PolicyRevision != revision || model.ActiveOperationID == nil || strings.TrimSpace(*model.ActiveOperationID) == "" {
 		return "", nil
 	}
 	return strings.TrimSpace(*model.ActiveOperationID), nil
+}
+
+func validConfigurationBudget(budget configurationBudget) bool {
+	if budget.ContractVersion != "AdmissionBudgetV1" || budget.Profile == "" || budget.SampledAt.IsZero() || budget.FreshUntil.IsZero() || !budget.FreshUntil.After(budget.SampledAt) || len(budget.Measurements) != 4 {
+		return false
+	}
+	allowed := map[string]struct{}{
+		"trace_opensearch_capacity":     {},
+		"trace_opensearch_heap":         {},
+		"trace_collector_queue":         {},
+		"trace_storage_connection_pool": {},
+	}
+	seen := make(map[string]struct{}, len(budget.Measurements))
+	for _, measurement := range budget.Measurements {
+		if _, ok := allowed[measurement.Metric]; !ok {
+			return false
+		}
+		if _, ok := seen[measurement.Metric]; ok {
+			return false
+		}
+		seen[measurement.Metric] = struct{}{}
+		if measurement.Source == "" || measurement.SampleTime.IsZero() || !measurement.Fresh || measurement.Value < 0 || measurement.Value > 1 || measurement.Threshold <= 0 || measurement.Threshold > 1 {
+			return false
+		}
+	}
+	return len(seen) == len(allowed)
 }
 
 type heartbeatRequest struct {

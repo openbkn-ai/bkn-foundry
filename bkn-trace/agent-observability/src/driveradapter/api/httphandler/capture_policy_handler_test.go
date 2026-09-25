@@ -11,6 +11,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -34,11 +35,27 @@ type capturePolicyInternalWriter struct {
 type capturePolicyBudgetReader struct{}
 
 func (capturePolicyBudgetReader) ReadAdmissionBudget(context.Context) (capturepolicysvc.AdmissionBudget, error) {
-	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	return capturepolicysvc.AdmissionBudget{
 		ContractVersion: "AdmissionBudgetV1", Profile: "default", SampledAt: now, FreshUntil: now.Add(time.Minute),
-		Measurements: []capturepolicysvc.AdmissionMeasurement{{Metric: "trace_opensearch_capacity", Source: "opensearch", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true}},
+		Measurements: []capturepolicysvc.AdmissionMeasurement{
+			{Metric: "trace_opensearch_capacity", Source: "opensearch", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
+			{Metric: "trace_opensearch_heap", Source: "opensearch", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
+			{Metric: "trace_collector_queue", Source: "collector", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
+			{Metric: "trace_storage_connection_pool", Source: "mariadb", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
+		},
 	}, nil
+}
+
+type countingCapturePolicyBudgetReader struct {
+	calls  int
+	budget capturepolicysvc.AdmissionBudget
+	err    error
+}
+
+func (reader *countingCapturePolicyBudgetReader) ReadAdmissionBudget(context.Context) (capturepolicysvc.AdmissionBudget, error) {
+	reader.calls++
+	return reader.budget, reader.err
 }
 
 func marshalJSON(t *testing.T, value any) string {
@@ -527,6 +544,23 @@ func TestCapturePolicyHandlerFailsClosedWithoutAdmissionBudget(t *testing.T) {
 	}
 }
 
+func TestCapturePolicyHandlerRejectsIncompleteAdmissionBudget(t *testing.T) {
+	budget, err := (capturePolicyBudgetReader{}).ReadAdmissionBudget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget.Measurements = budget.Measurements[:1]
+	handler := NewCapturePolicyHandler(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 1, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 1, Operation: capturepolicysvc.Operation{ID: "op-1", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled}}, nil
+	}))
+	handler.SetAdmissionBudgetReader(&countingCapturePolicyBudgetReader{budget: budget})
+	response := httptest.NewRecorder()
+	handler.GetTraceEvidenceConfiguration(response, httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/trace-evidence-configuration", nil))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestCapturePolicyHandlerOmitsTerminalActiveOperationID(t *testing.T) {
 	handler := NewCapturePolicyHandler(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
 		return capturepolicysvc.Snapshot{
@@ -583,6 +617,52 @@ func TestCapturePolicyHandlerAcceptsRevisionGuardedChange(t *testing.T) {
 	handler.HandleTraceEvidenceConfiguration(response, request)
 	if response.Code != http.StatusAccepted || !called {
 		t.Fatalf("status = %d, called=%v, body=%s", response.Code, called, response.Body.String())
+	}
+}
+
+func TestCapturePolicyHandlerRequiresAdmissionBudgetToEnable(t *testing.T) {
+	called := false
+	handler := NewCapturePolicyHandler(
+		capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return capturepolicysvc.Snapshot{}, nil }),
+		capturePolicyCommanderFunc(func(context.Context, capturepolicysvc.ChangeRequest) (capturepolicysvc.Snapshot, error) {
+			called = true
+			return capturepolicysvc.Snapshot{}, nil
+		}),
+	)
+	request := httptest.NewRequest(http.MethodPut, "/api/agent-observability/v1/trace-evidence-configuration", bytes.NewBufferString(`{"desired_state":"enabled","expected_revision":9}`))
+	response := httptest.NewRecorder()
+	handler.HandleTraceEvidenceConfiguration(response, request)
+	if response.Code != http.StatusServiceUnavailable || called {
+		t.Fatalf("enable without budget status=%d called=%v body=%s", response.Code, called, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["code"] != "POLICY_RECONCILER_UNAVAILABLE" {
+		t.Fatalf("error code=%v, want POLICY_RECONCILER_UNAVAILABLE", payload["code"])
+	}
+}
+
+func TestCapturePolicyHandlerDoesNotReadAdmissionBudgetToDisable(t *testing.T) {
+	calls := 0
+	handler := NewCapturePolicyHandler(
+		capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return capturepolicysvc.Snapshot{}, nil }),
+		capturePolicyCommanderFunc(func(_ context.Context, request capturepolicysvc.ChangeRequest) (capturepolicysvc.Snapshot, error) {
+			if request.DesiredState != capturepolicysvc.StateDisabled {
+				t.Fatalf("unexpected request: %+v", request)
+			}
+			return capturepolicysvc.Snapshot{Revision: 10, DesiredState: capturepolicysvc.StateDisabled, EffectiveState: capturepolicysvc.StateDisabling, LastStableRevision: 9, Operation: capturepolicysvc.Operation{ID: "op-10", Phase: capturepolicysvc.PhaseDisabling, RequestedState: capturepolicysvc.StateDisabled, ExpectedRevision: 9}}, nil
+		}),
+	)
+	handler.SetAdmissionBudgetReader(&countingCapturePolicyBudgetReader{err: errors.New("budget must not be read")})
+	reader := handler.budget.(*countingCapturePolicyBudgetReader)
+	request := httptest.NewRequest(http.MethodPut, "/api/agent-observability/v1/trace-evidence-configuration", bytes.NewBufferString(`{"desired_state":"disabled","expected_revision":9}`))
+	response := httptest.NewRecorder()
+	handler.HandleTraceEvidenceConfiguration(response, request)
+	calls = reader.calls
+	if response.Code != http.StatusAccepted || calls != 0 {
+		t.Fatalf("disable status=%d budget_calls=%d body=%s", response.Code, calls, response.Body.String())
 	}
 }
 

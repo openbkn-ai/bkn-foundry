@@ -176,7 +176,7 @@ func TestProcessorUsesFrozenConfigurationActiveOperationCandidate(t *testing.T) 
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy":               {status: http.StatusOK, body: mustJSON(snapshot)},
-		"https://safe.internal/config":               {status: http.StatusOK, body: []byte(`{"kind":"configuration_get","desired_state":"disabled","effective_state":"disabled","policy_revision":42,"last_stable_revision":41,"active_operation_id":"op-42","heartbeat_interval_seconds":10,"lease_ttl_seconds":30,"admission_budget":{"contract_version":"AdmissionBudgetV1","profile":"default","sampled_at":"2026-09-25T08:00:00Z","fresh_until":"2026-09-25T08:01:00Z","measurements":[{"metric":"trace_opensearch_capacity","source":"opensearch","sample_time":"2026-09-25T08:00:00Z","value":0.5,"threshold":0.8,"fresh":true}]}}`)},
+		"https://safe.internal/config":               {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
 		"https://safe.internal/token":                {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 		"https://safe.internal/operations/op-42:ack": {status: http.StatusNoContent},
 	}}
@@ -300,7 +300,12 @@ func frozenConfigurationBody(revision uint64, operationID string) []byte {
 		"admission_budget": map[string]any{
 			"contract_version": "AdmissionBudgetV1", "profile": "default",
 			"sampled_at": "2026-09-25T08:00:00Z", "fresh_until": "2026-09-25T08:01:00Z",
-			"measurements": []any{map[string]any{"metric": "trace_opensearch_capacity", "source": "opensearch", "sample_time": "2026-09-25T08:00:00Z", "value": 0.5, "threshold": 0.8, "fresh": true}},
+			"measurements": []any{
+				map[string]any{"metric": "trace_opensearch_capacity", "source": "opensearch", "sample_time": "2026-09-25T08:00:00Z", "value": 0.5, "threshold": 0.8, "fresh": true},
+				map[string]any{"metric": "trace_opensearch_heap", "source": "opensearch", "sample_time": "2026-09-25T08:00:00Z", "value": 0.5, "threshold": 0.8, "fresh": true},
+				map[string]any{"metric": "trace_collector_queue", "source": "collector", "sample_time": "2026-09-25T08:00:00Z", "value": 0.5, "threshold": 0.8, "fresh": true},
+				map[string]any{"metric": "trace_storage_connection_pool", "source": "mariadb", "sample_time": "2026-09-25T08:00:00Z", "value": 0.5, "threshold": 0.8, "fresh": true},
+			},
 		},
 	})
 }

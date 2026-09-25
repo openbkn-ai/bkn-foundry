@@ -267,6 +267,18 @@ spec:
               value: {{ .Values.observability.sourceTimeout | quote }}
             - name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
               value: {{ .Values.observability.maxConcurrentSources | quote }}
+            - name: BKN_TRACE_ADMISSION_BUDGET_PROFILE
+              value: {{ .Values.observability.admissionBudget.profile | quote }}
+            - name: BKN_TRACE_ADMISSION_COLLECTOR_METRICS_ENDPOINT
+              value: {{ .Values.observability.admissionBudget.collectorMetricsEndpoint | quote }}
+            - name: BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD
+              value: {{ .Values.observability.admissionBudget.opensearchCapacityThreshold | quote }}
+            - name: BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD
+              value: {{ .Values.observability.admissionBudget.opensearchHeapThreshold | quote }}
+            - name: BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD
+              value: {{ .Values.observability.admissionBudget.collectorQueueThreshold | quote }}
+            - name: BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD
+              value: {{ .Values.observability.admissionBudget.storagePoolThreshold | quote }}
             {{- $archive := default (dict) .Values.observability.archive }}
             {{- if and $archive.ossGatewayURL $archive.storageID }}
             - name: BKN_OBSERVABILITY_ARCHIVE_OSS_GATEWAY_URL

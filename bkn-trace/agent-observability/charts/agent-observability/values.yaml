@@ -161,6 +161,15 @@ observability:
     sourceID: otel-runtime
     deploymentID: observability/otelcol-contrib
     interval: 30s
+  admissionBudget:
+    # Thresholds are deployment/SLO inputs. Empty values intentionally keep
+    # enable fail-closed until the deployment supplies all four values.
+    profile: default
+    collectorMetricsEndpoint: ""
+    opensearchCapacityThreshold: ""
+    opensearchHeapThreshold: ""
+    collectorQueueThreshold: ""
+    storagePoolThreshold: ""
 
 core:
   # Keep existing trace/evidence reads available after an upgrade. Enable
@@ -186,7 +195,8 @@ core:
   capturePolicyInitialState: ""
   capturePolicySigning:
     keyID: trace-capture-policy-2026
-    audience: trace-admission-gateway
+    # Must equal traceAdmission.audienceClusterID in the Collector release.
+    audience: cluster-a
     snapshotTTL: 15m
     # Required external Secret. The referenced key must contain a base64
     # encoded raw 64-byte Ed25519 private key; Helm never generates or rotates it.

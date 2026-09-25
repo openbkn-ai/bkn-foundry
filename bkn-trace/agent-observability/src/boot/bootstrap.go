@@ -194,6 +194,74 @@ func NewApp() (*App, error) {
 			TTL:        coreConfig.CapturePolicySnapshotTTL,
 		}, capturePolicyWriter,
 	)
+	var admissionBudgetSources []capturepolicysvc.AdmissionMeasurementSource
+	admissionBudgetSources = append(admissionBudgetSources,
+		capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
+			metrics, err := openSearchClient.ReadAdmissionMetrics(ctx)
+			if err != nil {
+				return capturepolicysvc.AdmissionMeasurement{}, err
+			}
+			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_opensearch_capacity", Source: "opensearch-cluster-stats", SampleTime: metrics.SampledAt, Value: metrics.Capacity, Fresh: true}, nil
+		}),
+		capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
+			metrics, err := openSearchClient.ReadAdmissionMetrics(ctx)
+			if err != nil {
+				return capturepolicysvc.AdmissionMeasurement{}, err
+			}
+			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_opensearch_heap", Source: "opensearch-cluster-stats", SampleTime: metrics.SampledAt, Value: metrics.Heap, Fresh: true}, nil
+		}),
+	)
+	collectorMetricsEndpoint := strings.TrimSpace(observabilityConfig.AdmissionBudgetMetricsEndpoint)
+	if collectorMetricsEndpoint == "" {
+		collectorMetricsEndpoint = strings.TrimSpace(observabilityConfig.SourceCoverageMetricsEndpoint)
+	}
+	if endpoint := collectorMetricsEndpoint; endpoint != "" {
+		collectorMetrics := otelcolmetrics.New(endpoint, &http.Client{Timeout: 3 * time.Second})
+		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
+			sample, err := collectorMetrics.ReadQueueSample(ctx)
+			if err != nil {
+				return capturepolicysvc.AdmissionMeasurement{}, err
+			}
+			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_collector_queue", Source: endpoint, SampleTime: sample.SampledAt, Value: sample.Utilization, Fresh: true}, nil
+		}))
+	} else {
+		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
+			return capturepolicysvc.AdmissionMeasurement{}, errors.New("collector metrics endpoint is not configured")
+		}))
+	}
+	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok && databaseStore.Database() != nil {
+		database := databaseStore.Database()
+		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
+			stats := database.Stats()
+			if stats.MaxOpenConnections <= 0 {
+				return capturepolicysvc.AdmissionMeasurement{}, errors.New("Trace storage pool max open connections is not configured")
+			}
+			value := float64(stats.InUse) / float64(stats.MaxOpenConnections)
+			if value > 1 {
+				value = 1
+			}
+			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_storage_connection_pool", Source: "bkn-trace-mariadb", SampleTime: time.Now().UTC(), Value: value, Fresh: true}, nil
+		}))
+	} else {
+		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
+			return capturepolicysvc.AdmissionMeasurement{}, errors.New("Trace storage pool is not configured")
+		}))
+	}
+	budgetConfig := observabilityConfig.AdmissionBudgetThresholds
+	budgetProvider, budgetErr := capturepolicysvc.NewAdmissionBudgetProvider(
+		observabilityConfig.AdmissionBudgetProfile,
+		capturepolicysvc.AdmissionBudgetThresholds{
+			OpenSearchCapacity: budgetConfig.OpenSearchCapacity,
+			OpenSearchHeap:     budgetConfig.OpenSearchHeap,
+			CollectorQueue:     budgetConfig.CollectorQueue,
+			StoragePool:        budgetConfig.StoragePool,
+		}, admissionBudgetSources...,
+	)
+	if budgetErr != nil {
+		log.Printf("Trace admission budget provider unavailable: %v", budgetErr)
+	} else {
+		capturePolicyHandler.SetAdmissionBudgetReader(budgetProvider)
+	}
 	var kafkaRuntimes []*kafkaruntime.Runtime
 	if kafkaConfig.Evidence.Enabled {
 		if closeDatabase != nil {
