@@ -76,7 +76,7 @@ func NewCapturePolicyHandlerWithInternal(reader capturepolicysvc.Reader, command
 // and returns 202 while effective state converges asynchronously.
 //
 // @Summary Change the unified Trace/Evidence capture configuration
-// @Description Requires the existing Trace/Evidence configuration permission. The requested state is asynchronous; effective_state reports the last observed runtime state.
+// @Description Requires the existing trace_evidence_configuration:global write permission. The requested state is asynchronous; effective_state reports the last observed runtime state.
 // @Tags trace-evidence
 // @Accept json
 // @Produce json
@@ -153,7 +153,7 @@ func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseW
 //
 // @Summary Get the unified Trace/Evidence capture configuration
 // @Description Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.
-// @Description Requires the existing Trace/Evidence configuration permission.
+// @Description Requires the existing trace_evidence_configuration:global read permission.
 // @Tags trace-evidence
 // @Produce json
 // @Success 200 {object} capturepolicysvc.ConfigurationGetResponse
@@ -227,7 +227,7 @@ func frozenConfigurationGetResponse(snapshot capturepolicysvc.Snapshot, budget c
 // GetTraceEvidenceOperation returns the durable state of one configuration operation.
 //
 // @Summary Get a Trace/Evidence configuration operation
-// @Description Requires the existing Trace/Evidence configuration permission.
+// @Description Requires the existing trace_evidence_configuration:global read permission.
 // @Tags trace-evidence
 // @Produce json
 // @Param operation_id path string true "Configuration operation ID"
@@ -272,7 +272,7 @@ func (h *CapturePolicyHandler) GetTraceEvidenceOperation(w http.ResponseWriter, 
 // ReconcileTraceEvidenceOperation asks the existing reconciler to advance a known operation.
 //
 // @Summary Reconcile a Trace/Evidence configuration operation
-// @Description Requests reconciliation of the addressed operation and returns the current configuration snapshot. Requires the existing Trace/Evidence configuration permission.
+// @Description Requests reconciliation of the addressed operation and returns the current configuration snapshot. Requires the existing trace_evidence_configuration:global reconcile permission.
 // @Tags trace-evidence
 // @Produce json
 // @Param operation_id path string true "Configuration operation ID"

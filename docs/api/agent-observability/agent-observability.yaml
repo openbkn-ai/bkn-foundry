@@ -176,7 +176,11 @@ definitions:
   capturepolicysvc.ChangeRequest:
     properties:
       desired_state:
-        $ref: '#/definitions/capturepolicysvc.State'
+        allOf:
+        - $ref: '#/definitions/capturepolicysvc.State'
+        enum:
+        - enabled
+        - disabled
       expected_revision:
         type: integer
     type: object
@@ -257,6 +261,7 @@ definitions:
         type: integer
       unaccounted:
         type: integer
+        x-nullable: true
     type: object
   capturepolicysvc.State:
     enum:
@@ -3417,7 +3422,7 @@ paths:
     get:
       description: |-
         Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.
-        Requires the existing Trace/Evidence configuration permission.
+        Requires the existing trace_evidence_configuration:global read permission.
       produces:
       - application/json
       responses:
@@ -3445,9 +3450,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: Requires the existing Trace/Evidence configuration permission.
-        The requested state is asynchronous; effective_state reports the last observed
-        runtime state.
+      description: Requires the existing trace_evidence_configuration:global write
+        permission. The requested state is asynchronous; effective_state reports the
+        last observed runtime state.
       parameters:
       - description: Desired state and expected policy revision
         in: body
@@ -3493,7 +3498,8 @@ paths:
       - trace-evidence
   /trace-evidence-operations/{operation_id}:
     get:
-      description: Requires the existing Trace/Evidence configuration permission.
+      description: Requires the existing trace_evidence_configuration:global read
+        permission.
       parameters:
       - description: Configuration operation ID
         in: path
@@ -3531,8 +3537,8 @@ paths:
   /trace-evidence-operations/{operation_id}:reconcile:
     post:
       description: Requests reconciliation of the addressed operation and returns
-        the current configuration snapshot. Requires the existing Trace/Evidence configuration
-        permission.
+        the current configuration snapshot. Requires the existing trace_evidence_configuration:global
+        reconcile permission.
       parameters:
       - description: Configuration operation ID
         in: path

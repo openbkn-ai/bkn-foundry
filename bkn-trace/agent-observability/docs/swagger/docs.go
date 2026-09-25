@@ -2176,7 +2176,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.\nRequires the existing Trace/Evidence configuration permission.",
+                "description": "Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.\nRequires the existing trace_evidence_configuration:global read permission.",
                 "produces": [
                     "application/json"
                 ],
@@ -2217,7 +2217,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Requires the existing Trace/Evidence configuration permission. The requested state is asynchronous; effective_state reports the last observed runtime state.",
+                "description": "Requires the existing trace_evidence_configuration:global write permission. The requested state is asynchronous; effective_state reports the last observed runtime state.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2292,7 +2292,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Requires the existing Trace/Evidence configuration permission.",
+                "description": "Requires the existing trace_evidence_configuration:global read permission.",
                 "produces": [
                     "application/json"
                 ],
@@ -2350,7 +2350,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Requests reconciliation of the addressed operation and returns the current configuration snapshot. Requires the existing Trace/Evidence configuration permission.",
+                "description": "Requests reconciliation of the addressed operation and returns the current configuration snapshot. Requires the existing trace_evidence_configuration:global reconcile permission.",
                 "produces": [
                     "application/json"
                 ],
@@ -2810,7 +2810,15 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "desired_state": {
-                    "$ref": "#/definitions/capturepolicysvc.State"
+                    "enum": [
+                        "enabled",
+                        "disabled"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/capturepolicysvc.State"
+                        }
+                    ]
                 },
                 "expected_revision": {
                     "type": "integer"
@@ -2925,7 +2933,8 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "unaccounted": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             }
         },
