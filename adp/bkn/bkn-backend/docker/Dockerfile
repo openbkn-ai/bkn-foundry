@@ -9,7 +9,8 @@ ARG BASE_IMAGE=ubuntu:24.04
 
 FROM ${BUILD_IMAGE} AS builder
 
-COPY ./server /go/src
+COPY comm-go /workspace/comm-go
+COPY adp/bkn/bkn-backend/server /workspace/adp/bkn/bkn-backend/server
 
 ARG SERVER_VERSION=0.1.0
 ARG GOPROXY_URL="https://proxy.golang.org,direct"
@@ -17,7 +18,7 @@ ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
 
 RUN set -ex; \
-    cd /go/src; \
+    cd /workspace/adp/bkn/bkn-backend/server; \
     go mod download -x; \
     export flags="-X 'bkn-backend/version.ServerVersion=${SERVER_VERSION}'"; \
     CGO_ENABLED=1 go build -ldflags "-s -w $flags" -o ./bin/bkn-backend-server;
@@ -32,10 +33,10 @@ ARG GID=1001
 RUN groupadd -r -g $GID openbkn \
     && useradd -r -u $UID -g $GID openbkn
 
-COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/bkn-backend
+COPY --from=builder --chown=$UID:$GID /workspace/adp/bkn/bkn-backend/server/bin /opt/bkn-backend
 
-ADD server/config/bkn-backend-config.yaml /opt/bkn-backend/config/
-ADD server/locale /opt/bkn-backend/locale
+ADD adp/bkn/bkn-backend/server/config/bkn-backend-config.yaml /opt/bkn-backend/config/
+ADD adp/bkn/bkn-backend/server/locale /opt/bkn-backend/locale
 
 # Set the working directory.
 WORKDIR /opt/bkn-backend/

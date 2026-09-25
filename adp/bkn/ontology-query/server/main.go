@@ -42,11 +42,11 @@ import (
 )
 
 type mgrService struct {
-	appSetting        *common.AppSetting
-	otelProviders     *otel.Providers
-	restHandler       driveradapters.RestHandler
-	evidencePublisher *evidencepublisher.Publisher
-	evidenceProducer  interface{ Close() error }
+	appSetting       *common.AppSetting
+	otelProviders    *otel.Providers
+	restHandler      driveradapters.RestHandler
+	evidenceRuntime  *evidencepublisher.PublisherRuntime
+	evidenceProducer interface{ Close() error }
 }
 
 func (server *mgrService) start() {
@@ -62,7 +62,15 @@ func (server *mgrService) start() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Receiving a signal triggers ctx.Done. stop stops receiving registered signals and releases those resources.
 	defer stop()
-	flushDone := startEvidenceFlushLoop(ctx, server.evidencePublisher, time.Second)
+	var runtimeDone <-chan error
+	var flusher evidenceFlusher
+	if server.evidenceRuntime != nil {
+		flusher = server.evidenceRuntime
+		done := make(chan error, 1)
+		runtimeDone = done
+		go func() { done <- server.evidenceRuntime.Run(ctx) }()
+	}
+	flushDone := startEvidenceFlushLoop(ctx, flusher, time.Second)
 
 	// Initialize the HTTP service.
 	s := &http.Server{
@@ -89,15 +97,19 @@ func (server *mgrService) start() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	<-flushDone
+	if runtimeDone != nil {
+		<-runtimeDone
+	}
 
 	// Stop the HTTP service.
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(ctx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
 	}
-	if server.evidencePublisher != nil {
-		server.evidencePublisher.Flush(ctx)
-		server.evidencePublisher.Close(ctx)
+	if server.evidenceRuntime != nil {
+		if _, err := server.evidenceRuntime.Close(ctx); err != nil {
+			logger.Warnf("Evidence publisher runtime close failed: %v", err)
+		}
 	}
 	if server.evidenceProducer != nil {
 		if err := server.evidenceProducer.Close(); err != nil {
@@ -139,9 +151,11 @@ func main() {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
 		publisherRuntime, err = bkntrace.NewEvidencePublisherRuntime()
 		if err != nil {
-			logger.Fatalf("Failed to configure Evidence Kafka publisher: %v", err)
+			logger.Warnf("Evidence Kafka publisher unavailable; evidence will be dropped: %v", err)
+			publisherRuntime = nil
+		} else {
+			bkntrace.SetEvidencePublisher(publisherRuntime.Runtime)
 		}
-		bkntrace.SetEvidencePublisher(publisherRuntime.Publisher)
 	} else {
 		logger.Warn("BKN Trace Evidence Kafka publisher is disabled; workload is not 0.2-ready and evidence events will be dropped")
 	}
@@ -165,13 +179,17 @@ func main() {
 		restHandler:   driveradapters.NewRestHandler(appSetting),
 	}
 	if publisherRuntime != nil {
-		server.evidencePublisher = publisherRuntime.Publisher
+		server.evidenceRuntime = publisherRuntime.Runtime
 		server.evidenceProducer = publisherRuntime.Producer
 	}
 	server.start()
 }
 
-func startEvidenceFlushLoop(ctx context.Context, publisher *evidencepublisher.Publisher, interval time.Duration) <-chan struct{} {
+type evidenceFlusher interface {
+	Flush(context.Context) evidencepublisher.DrainResult
+}
+
+func startEvidenceFlushLoop(ctx context.Context, publisher evidenceFlusher, interval time.Duration) <-chan struct{} {
 	done := make(chan struct{})
 	if publisher == nil {
 		close(done)

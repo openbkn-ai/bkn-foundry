@@ -12,13 +12,14 @@ const (
 	Accepted Disposition = "accepted"
 	Dropped  Disposition = "dropped"
 
-	ReasonInvalidEvent     = "invalid_event"
-	ReasonSerialization    = "serialization_failed"
-	ReasonMessageTooLarge  = "message_too_large"
-	ReasonQueueFull        = "queue_full"
-	ReasonPublisherClosing = "publisher_closing"
-	ReasonRetryExhausted   = "retry_exhausted"
-	ReasonShutdownTimeout  = "shutdown_timeout"
+	ReasonInvalidEvent         = "invalid_event"
+	ReasonSerialization        = "serialization_failed"
+	ReasonMessageTooLarge      = "message_too_large"
+	ReasonQueueFull            = "queue_full"
+	ReasonPublisherClosing     = "publisher_closing"
+	ReasonPublisherUnavailable = "publisher_unavailable"
+	ReasonRetryExhausted       = "retry_exhausted"
+	ReasonShutdownTimeout      = "shutdown_timeout"
 )
 
 type Disposition string

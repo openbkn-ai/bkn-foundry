@@ -2,7 +2,7 @@ package bkntrace
 
 import "testing"
 
-func TestLoadEvidencePublisherConfigRejectsMissingFrozenInputs(t *testing.T) {
+func TestLoadEvidencePublisherConfigDoesNotRequireStaticPolicyRevision(t *testing.T) {
 	t.Setenv("BKN_TRACE_KAFKA_BROKERS", "kafka:9092")
 	t.Setenv("BKN_TRACE_KAFKA_SASL_MECHANISM", "PLAIN")
 	t.Setenv("BKN_TRACE_KAFKA_USERNAME", "producer")
@@ -12,8 +12,12 @@ func TestLoadEvidencePublisherConfigRejectsMissingFrozenInputs(t *testing.T) {
 	t.Setenv("BKN_TRACE_PRODUCER_STREAM_ID", "ontology-query")
 	t.Setenv("BKN_TRACE_CAPTURE_POLICY_REVISION", "")
 
-	if _, err := loadEvidencePublisherConfig(); err == nil {
-		t.Fatal("loadEvidencePublisherConfig() error = nil, want missing policy revision error")
+	cfg, err := loadEvidencePublisherConfig()
+	if err != nil {
+		t.Fatalf("loadEvidencePublisherConfig() error = %v", err)
+	}
+	if cfg.Publisher.CapturePolicyRevision != "" {
+		t.Fatalf("CapturePolicyRevision = %q; want policy from verified runtime", cfg.Publisher.CapturePolicyRevision)
 	}
 }
 

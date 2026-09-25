@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencemigration"
 )
 
 type processorAdmission struct {
@@ -31,11 +33,41 @@ func (l *processorLedger) IngestKafka(context.Context, ledgervo.Event, ievidence
 	return ievidenceledger.KafkaResult{}, errors.New("unexpected ledger call")
 }
 
+type acceptedProcessorLedger struct{ called bool }
+
+func (l *acceptedProcessorLedger) IngestKafka(context.Context, ledgervo.Event, ievidenceledger.KafkaCoordinate) (ievidenceledger.KafkaResult, error) {
+	l.called = true
+	return ievidenceledger.KafkaResult{Decision: ievidenceledger.KafkaAccepted, Ack: ledgervo.DurableAck{Durable: true, IngestSequence: 7}}, nil
+}
+
+type invalidProcessorLedger struct{ called bool }
+
+func (l *invalidProcessorLedger) IngestKafka(context.Context, ledgervo.Event, ievidenceledger.KafkaCoordinate) (ievidenceledger.KafkaResult, error) {
+	l.called = true
+	return ievidenceledger.KafkaResult{}, &ledgersvc.DomainError{Code: ledgersvc.CodeInvalidEvent, Message: "invalid test event"}
+}
+
 type processorRejections struct {
 	called  bool
 	record  ievidenceadmission.Record
 	details ievidenceadmission.RejectionDetails
 	err     error
+}
+
+type processorMigration struct {
+	admission ievidencemigration.Admission
+	found     bool
+	err       error
+	result    ievidencemigration.ConsumerResult
+}
+
+func (m *processorMigration) LookupAdmission(context.Context, string, string) (ievidencemigration.Admission, bool, error) {
+	return m.admission, m.found, m.err
+}
+
+func (m *processorMigration) RecordConsumerResult(_ context.Context, result ievidencemigration.ConsumerResult) error {
+	m.result = result
+	return nil
 }
 
 func (r *processorRejections) RecordKafkaRejection(_ context.Context, record ievidenceadmission.Record, details ievidenceadmission.RejectionDetails) error {
@@ -79,5 +111,138 @@ func TestProcessorDoesNotMakeAdmissionRejectionOnTemporaryHistoryFailure(t *test
 	}
 	if rejections.called {
 		t.Fatal("temporary failure was persisted as a permanent rejection")
+	}
+}
+
+func TestMigrationRecordRejectsManifestHashMismatchBeforeLedger(t *testing.T) {
+	stream := "bkn-backend"
+	now := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+	record := Record{Topic: Topic, Key: stream, ProducerStreamID: stream, ProducerSequence: 1, BrokerTime: now, BrokerTimestamp: now.Format(time.RFC3339Nano), Partition: 2, Offset: 20,
+		Value:   []byte(`{"event_id":"evt-1","payload_hash":"actual","producer_stream_id":"bkn-backend","producer_sequence":1,"envelope":{"owner":{"application_principal_id":"bkn-backend","effective_subject_type":"service","effective_subject_id":"svc"}}}`),
+		Headers: []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "0"}, {Key: "producer_instance_id", Value: "bridge#boot"}, {Key: "bkn-evidence-record-class", Value: "migration"}, {Key: "bkn-evidence-migration-id", Value: "m-1"}}}
+	ledger, rejections := &processorLedger{}, &processorRejections{}
+	migration := &processorMigration{found: true, admission: ievidencemigration.Admission{ManifestID: "m-1", State: ievidencemigration.ManifestActive, EntryID: "entry-1", EventID: "evt-1", PayloadHash: "other", Classification: "publish"}}
+	processor, err := NewProcessorWithMigration(processorAdmission{}, migration, migration, ledger, rejections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.Process(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if !rejections.called || rejections.details.ReasonCode != "migration_manifest_entry_mismatch" {
+		t.Fatalf("expected durable mismatch rejection: %+v", rejections)
+	}
+	if ledger.called {
+		t.Fatal("mismatched migration record reached Ledger")
+	}
+}
+
+func TestMigrationNonPublishClassificationsNeverReachLedger(t *testing.T) {
+	for _, tc := range []struct {
+		classification string
+	}{
+		{classification: "verify_delivered"},
+		{classification: "coverage_gap"},
+	} {
+		t.Run(tc.classification, func(t *testing.T) {
+			stream := "bkn-backend"
+			now := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+			record := Record{Topic: Topic, Key: stream, ProducerStreamID: stream, ProducerSequence: 1, BrokerTime: now, BrokerTimestamp: now.Format(time.RFC3339Nano), Partition: 2, Offset: 21,
+				Value:   []byte(`{"event_id":"evt-1","payload_hash":"hash-1","producer_stream_id":"bkn-backend","producer_sequence":1,"envelope":{"owner":{"application_principal_id":"bkn-backend","effective_subject_type":"service","effective_subject_id":"svc"}}}`),
+				Headers: []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "0"}, {Key: "producer_instance_id", Value: "bridge#boot"}, {Key: "bkn-evidence-record-class", Value: "migration"}, {Key: "bkn-evidence-migration-id", Value: "m-1"}}}
+			ledger, rejections := &processorLedger{}, &processorRejections{}
+			migration := &processorMigration{found: true, admission: ievidencemigration.Admission{ManifestID: "m-1", State: ievidencemigration.ManifestActive, EntryID: "entry-1", EventID: "evt-1", PayloadHash: "hash-1", Classification: tc.classification, ClassificationReason: "historical"}}
+			processor, err := NewProcessorWithMigration(processorAdmission{}, migration, migration, ledger, rejections)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := processor.Process(context.Background(), record); err != nil {
+				t.Fatal(err)
+			}
+			if ledger.called {
+				t.Fatalf("%s must not reach Ledger", tc.classification)
+			}
+			if !rejections.called || rejections.details.ReasonCode != "migration_manifest_entry_mismatch" {
+				t.Fatalf("%s must be durably rejected: %+v", tc.classification, rejections)
+			}
+			if migration.result != (ievidencemigration.ConsumerResult{}) {
+				t.Fatalf("%s result belongs exclusively to the reconciler: %+v", tc.classification, migration.result)
+			}
+		})
+	}
+}
+
+func TestMigrationPublishClassificationIsTheOnlyClassThatReachesLedger(t *testing.T) {
+	stream := "bkn-backend"
+	now := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+	record := Record{Topic: Topic, Key: stream, ProducerStreamID: stream, ProducerSequence: 1, BrokerTime: now, BrokerTimestamp: now.Format(time.RFC3339Nano), Partition: 2, Offset: 23,
+		Value:   []byte(`{"event_id":"evt-1","payload_hash":"hash-1","producer_stream_id":"bkn-backend","producer_sequence":1,"envelope":{"owner":{"application_principal_id":"bkn-backend","effective_subject_type":"service","effective_subject_id":"svc"}}}`),
+		Headers: []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "0"}, {Key: "producer_instance_id", Value: "bridge#boot"}, {Key: "bkn-evidence-record-class", Value: "migration"}, {Key: "bkn-evidence-migration-id", Value: "m-1"}}}
+	ledger, rejections := &acceptedProcessorLedger{}, &processorRejections{}
+	migration := &processorMigration{found: true, admission: ievidencemigration.Admission{ManifestID: "m-1", State: ievidencemigration.ManifestActive, EntryID: "entry-1", EventID: "evt-1", PayloadHash: "hash-1", Classification: "publish"}}
+	processor, err := NewProcessorWithMigration(processorAdmission{}, migration, migration, ledger, rejections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.Process(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if !ledger.called {
+		t.Fatal("publish migration entry did not reach Ledger")
+	}
+	if migration.result.Adjudication != ievidencemigration.AdjudicationLedgerCommitted || migration.result.Observation != "accepted" {
+		t.Fatalf("unexpected publish terminal result: %+v", migration.result)
+	}
+}
+
+func TestMigrationActivePermanentRejectionWritesResultBeforeGlobalRejection(t *testing.T) {
+	stream := "bkn-backend"
+	now := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+	record := Record{Topic: Topic, Key: stream, ProducerStreamID: stream, ProducerSequence: 2, BrokerTime: now, BrokerTimestamp: now.Format(time.RFC3339Nano), Partition: 2, Offset: 22,
+		Value:   []byte(`{"event_id":"evt-1","payload_hash":"hash-1","producer_stream_id":"bkn-backend","producer_sequence":1,"envelope":{"owner":{"application_principal_id":"bkn-backend","effective_subject_type":"service","effective_subject_id":"svc"}}}`),
+		Headers: []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "0"}, {Key: "producer_instance_id", Value: "bridge#boot"}, {Key: "bkn-evidence-record-class", Value: "migration"}, {Key: "bkn-evidence-migration-id", Value: "m-1"}}}
+	ledger, rejections := &processorLedger{}, &processorRejections{}
+	migration := &processorMigration{found: true, admission: ievidencemigration.Admission{ManifestID: "m-1", State: ievidencemigration.ManifestActive, EntryID: "entry-1", EventID: "evt-1", PayloadHash: "hash-1", Classification: "publish"}}
+	processor, err := NewProcessorWithMigration(processorAdmission{}, migration, migration, ledger, rejections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.Process(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if ledger.called {
+		t.Fatal("transport mismatch must not reach Ledger")
+	}
+	if migration.result.Adjudication != ievidencemigration.AdjudicationRejected || migration.result.ReasonCode != "record_value_transport_mismatch" {
+		t.Fatalf("missing canonical rejected result: %+v", migration.result)
+	}
+	if !rejections.called || rejections.details.ReasonCode != "record_value_transport_mismatch" {
+		t.Fatalf("missing durable global rejection: %+v", rejections)
+	}
+}
+
+func TestMigrationLedgerInvalidEventWritesResultBeforeGlobalRejection(t *testing.T) {
+	stream := "bkn-backend"
+	now := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+	record := Record{Topic: Topic, Key: stream, ProducerStreamID: stream, ProducerSequence: 1, BrokerTime: now, BrokerTimestamp: now.Format(time.RFC3339Nano), Partition: 2, Offset: 24,
+		Value:   []byte(`{"event_id":"evt-1","payload_hash":"hash-1","producer_stream_id":"bkn-backend","producer_sequence":1,"envelope":{"owner":{"application_principal_id":"bkn-backend","effective_subject_type":"service","effective_subject_id":"svc"}}}`),
+		Headers: []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "0"}, {Key: "producer_instance_id", Value: "bridge#boot"}, {Key: "bkn-evidence-record-class", Value: "migration"}, {Key: "bkn-evidence-migration-id", Value: "m-1"}}}
+	ledger, rejections := &invalidProcessorLedger{}, &processorRejections{}
+	migration := &processorMigration{found: true, admission: ievidencemigration.Admission{ManifestID: "m-1", State: ievidencemigration.ManifestActive, EntryID: "entry-1", EventID: "evt-1", PayloadHash: "hash-1", Classification: "publish"}}
+	processor, err := NewProcessorWithMigration(processorAdmission{}, migration, migration, ledger, rejections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.Process(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if !ledger.called {
+		t.Fatal("publish entry must call Ledger")
+	}
+	if migration.result.Adjudication != ievidencemigration.AdjudicationRejected || migration.result.ReasonCode != "invalid_evidence_event" {
+		t.Fatalf("missing rejected migration result: %+v", migration.result)
+	}
+	if !rejections.called || rejections.details.ReasonCode != "invalid_evidence_event" {
+		t.Fatalf("missing global rejection: %+v", rejections)
 	}
 }
