@@ -34,4 +34,19 @@ secret = "trace-gateway-oauth"
 assert secret not in configmaps[0]["data"]["collector-config.yaml"], "Secret name leaked into ConfigMap"
 PY
 
+disabled_error="$(mktemp)"
+trap 'rm -f "$rendered" "$disabled_error"' EXIT
+if helm template trace-admission "$chart_dir" \
+  --set traceAdmission.enabled=false \
+  --set traceAdmission.clientID=trace-gateway \
+  --set traceAdmission.clientSecretSecret=trace-gateway-oauth \
+  --set traceAdmission.currentKeyID=trace-policy-2026q3 \
+  --set traceAdmission.currentPublicKeySecret=trace-policy-public \
+  --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol \
+  > /dev/null 2>"$disabled_error"; then
+  echo "traceAdmission.enabled=false must be rejected" >&2
+  exit 1
+fi
+grep -Fq 'traceAdmission.enabled=false is unsupported' "$disabled_error"
+
 echo "trace admission chart wiring: PASS"

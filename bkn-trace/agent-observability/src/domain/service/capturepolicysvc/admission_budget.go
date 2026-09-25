@@ -77,7 +77,6 @@ func (p *AdmissionBudgetProvider) ReadAdmissionBudget(ctx context.Context) (Admi
 	if p == nil || len(p.sources) != 4 {
 		return AdmissionBudget{}, ErrAdmissionBudgetUnavailable
 	}
-	now := p.now().UTC()
 	measurements := make([]AdmissionMeasurement, 0, len(p.sources))
 	seen := make(map[string]struct{}, len(p.sources))
 	for _, source := range p.sources {
@@ -95,7 +94,11 @@ func (p *AdmissionBudgetProvider) ReadAdmissionBudget(ctx context.Context) (Admi
 		if !isAdmissionBudgetMetric(measurement.Metric) {
 			return AdmissionBudget{}, fmt.Errorf("%w: metric %s is not part of AdmissionBudgetV1", ErrAdmissionBudgetExceeded, measurement.Metric)
 		}
-		if err := validateAdmissionMeasurement(measurement, now); err != nil {
+		// Sources such as OpenSearch timestamp the sample when the HTTP response
+		// is received. Capture the validation clock after Read so a sample created
+		// during the read is accepted, while a genuinely future/skewed sample is
+		// still rejected.
+		if err := validateAdmissionMeasurement(measurement, p.now().UTC()); err != nil {
 			return AdmissionBudget{}, fmt.Errorf("%w: %v", ErrAdmissionBudgetExceeded, err)
 		}
 		measurement.Threshold = p.thresholdFor(measurement.Metric)
@@ -109,7 +112,8 @@ func (p *AdmissionBudgetProvider) ReadAdmissionBudget(ctx context.Context) (Admi
 			return AdmissionBudget{}, fmt.Errorf("%w: metric %s is missing", ErrAdmissionBudgetExceeded, metric)
 		}
 	}
-	return AdmissionBudget{ContractVersion: "AdmissionBudgetV1", Profile: p.profile, SampledAt: now, FreshUntil: now.Add(30 * time.Second), Measurements: measurements}, nil
+	sampledAt := p.now().UTC()
+	return AdmissionBudget{ContractVersion: "AdmissionBudgetV1", Profile: p.profile, SampledAt: sampledAt, FreshUntil: sampledAt.Add(30 * time.Second), Measurements: measurements}, nil
 }
 
 func isAdmissionBudgetMetric(metric string) bool {

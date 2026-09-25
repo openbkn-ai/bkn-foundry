@@ -62,6 +62,46 @@ func TestAdmissionBudgetProviderBuildsFrozenFourMetricBudget(t *testing.T) {
 	}
 }
 
+func TestAdmissionBudgetProviderAcceptsSampleTimestampCreatedDuringRead(t *testing.T) {
+	clock := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	sources := make([]AdmissionMeasurementSource, 0, 4)
+	for _, metric := range []string{"trace_opensearch_capacity", "trace_opensearch_heap", "trace_collector_queue", "trace_storage_connection_pool"} {
+		metric := metric
+		sources = append(sources, admissionMetricSourceFunc(func(context.Context) (AdmissionMeasurement, error) {
+			clock = clock.Add(time.Millisecond)
+			return AdmissionMeasurement{Metric: metric, Source: "runtime", SampleTime: clock, Value: 0.2, Fresh: true}, nil
+		}))
+	}
+	provider, err := NewAdmissionBudgetProvider("default", admissionBudgetThresholds(), sources...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.now = func() time.Time { return clock }
+	budget, err := provider.ReadAdmissionBudget(context.Background())
+	if err != nil {
+		t.Fatalf("sample timestamp created during Read was rejected: %v", err)
+	}
+	if err := ValidateAdmissionBudgetForEnable(budget, clock); err != nil {
+		t.Fatalf("budget with read-time samples failed enable validation: %v", err)
+	}
+}
+
+func TestAdmissionBudgetProviderRejectsGenuinelyFutureSample(t *testing.T) {
+	now := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	sources := admissionMetricSources(now)
+	sources[0] = admissionMetricSourceFunc(func(context.Context) (AdmissionMeasurement, error) {
+		return AdmissionMeasurement{Metric: "trace_opensearch_capacity", Source: "opensearch", SampleTime: now.Add(time.Second), Value: 0.2, Fresh: true}, nil
+	})
+	provider, err := NewAdmissionBudgetProvider("default", admissionBudgetThresholds(), sources...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.now = func() time.Time { return now }
+	if _, err := provider.ReadAdmissionBudget(context.Background()); !errors.Is(err, ErrAdmissionBudgetExceeded) {
+		t.Fatalf("future sample error = %v, want ErrAdmissionBudgetExceeded", err)
+	}
+}
+
 func TestAdmissionBudgetProviderRejectsStaleOrMissingMetric(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	sources := admissionMetricSources(now)
