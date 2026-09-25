@@ -18,6 +18,32 @@ import (
 )
 
 func TestMariaDBConnectorListTables(t *testing.T) {
+	t.Run("rejects database outside configured scope before querying", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanup()
+		connector.connected = true
+
+		tables, err := connector.listTables(context.Background(), "audit", "")
+
+		require.ErrorContains(t, err, "outside the connector scope")
+		assert.Nil(t, tables)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("allows explicit database with unrestricted scope", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
+		defer cleanup()
+		connector.connected = true
+		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
+			WithArgs("audit").WillReturnRows(mariaDBTableRows())
+
+		tables, err := connector.listTables(context.Background(), "audit", "")
+
+		require.NoError(t, err)
+		assert.Empty(t, tables)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("accepts null optional metadata", func(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 		defer cleanup()
@@ -32,6 +58,23 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		require.Len(t, tables, 1)
 		assert.Equal(t, "", tables[0].Description)
 		assert.Equal(t, "", tables[0].Properties["engine"])
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("maps view metadata type", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanup()
+		connector.connected = true
+		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
+			WithArgs("app").WillReturnRows(
+			mariaDBTableRows().AddRow("app", "orders_view", "VIEW", nil, nil, nil, nil, nil, nil, nil, nil),
+		)
+
+		tables, err := connector.ListTables(context.Background())
+
+		require.NoError(t, err)
+		require.Len(t, tables, 1)
+		assert.Equal(t, "view", tables[0].TableType)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package mariadb provides MariaDB database connector implementation.
+// Package mariadb provides table connectors for MariaDB and MySQL.
 package mariadb
 
 import (
@@ -14,7 +14,10 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
+	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/mitchellh/mapstructure"
 
@@ -22,6 +25,36 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 )
 
+const (
+	// PORT_MIN is the lowest valid TCP port.
+	PORT_MIN = 1
+	// PORT_MAX is the highest valid TCP port.
+	PORT_MAX = 65535
+	// DATABASE_NAME_MAX_LENGTH is the maximum byte length accepted for a configured database name.
+	DATABASE_NAME_MAX_LENGTH = 64
+)
+
+var (
+	// SYSTEM_DBS are excluded from discovery when no databases are configured.
+	SYSTEM_DBS = []string{
+		"information_schema",
+		"mariadb",
+		"mysql",
+		"performance_schema",
+		"sys",
+	}
+	// allowedOptions lists the driver settings accepted by the connector.
+	allowedOptions = map[string]struct{}{
+		"charset":      {},
+		"collation":    {},
+		"timeout":      {},
+		"readTimeout":  {},
+		"writeTimeout": {},
+		"tls":          {},
+	}
+)
+
+// mariadbConfig holds the connection settings and optional database scope.
 type mariadbConfig struct {
 	Host      string         `mapstructure:"host"`
 	Port      int            `mapstructure:"port"`
@@ -31,44 +64,16 @@ type mariadbConfig struct {
 	Options   map[string]any `mapstructure:"options"`
 }
 
-var (
-	SYSTEM_DBS = []string{
-		"information_schema",
-		"mariadb",
-		"mysql",
-		"performance_schema",
-		"sys",
-	}
-	SYSTEM_DBS_MAP = map[string]bool{
-		"information_schema": true,
-		"mariadb":            true,
-		"mysql":              true,
-		"performance_schema": true,
-		"sys":                true,
-	}
-)
-
-const (
-	// DATABASE_NAME_MAX_LENGTH the maximum length of the MariaDB database name
-	DATABASE_NAME_MAX_LENGTH = 64
-	// The minimum valid port value of PORT_MIN
-	PORT_MIN = 1
-	// PORT_MAX is the maximum value of the valid port
-	PORT_MAX = 65535
-)
-
-// MariaDBConnector implements TableConnector for MariaDB.
+// MariaDBConnector implements TableConnector for MariaDB and MySQL.
 type MariaDBConnector struct {
 	connectorType string
 	enabled       bool
-
-	config *mariadbConfig
-
-	connected bool
-	db        *sql.DB
+	config        *mariadbConfig
+	connected     bool
+	db            *sql.DB
 }
 
-// NewMariaDBConnector creates the MariaDB connector builder
+// NewMariaDBConnector creates the MariaDB connector builder.
 func NewMariaDBConnector() interfaces.TableConnector {
 	return &MariaDBConnector{}
 }
@@ -112,12 +117,12 @@ func (c *MariaDBConnector) SetEnabled(enabled bool) {
 	c.enabled = enabled
 }
 
-// GetSensitiveFields returns the sensitive fields for MariaDB connector.
+// GetSensitiveFields identifies the credential fields that must be protected.
 func (c *MariaDBConnector) GetSensitiveFields() []string {
 	return []string{"password"}
 }
 
-// GetFieldConfig returns the field configuration for MariaDB connector.
+// GetFieldConfig describes the fields shared by the MariaDB and MySQL connectors.
 func (c *MariaDBConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
 		"host":      {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
@@ -129,35 +134,43 @@ func (c *MariaDBConnector) GetFieldConfig() map[string]interfaces.ConnectorField
 	}
 }
 
-// New creates a new MariaDB connector.
-// Databases is an optional field. When not specified, it connects to the instance level.
+// New validates MariaDB settings and creates a connector with an optional database scope.
 func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var mCfg mariadbConfig
 	if err := mapstructure.Decode(cfg, &mCfg); err != nil {
 		return nil, fmt.Errorf("failed to decode mariadb config: %w", err)
 	}
 
-	if mCfg.Host == "" || mCfg.Port == 0 || mCfg.Username == "" || mCfg.Password == "" {
+	mCfg.Host = strings.TrimSpace(mCfg.Host)
+	mCfg.Username = strings.TrimSpace(mCfg.Username)
+	if mCfg.Host == "" || mCfg.Username == "" || mCfg.Password == "" {
 		return nil, fmt.Errorf("mariadb connector config is incomplete")
 	}
 
-	// Verify the range of port numbers
+	// Verify the TCP port range.
 	if mCfg.Port < PORT_MIN || mCfg.Port > PORT_MAX {
 		return nil, fmt.Errorf("port %d is out of valid range (%d-%d)", mCfg.Port, PORT_MIN, PORT_MAX)
 	}
 
-	seen := make(map[string]bool)
-	for _, db := range mCfg.Databases {
-		// Verify the length of the databases name (the maximum MariaDB database name is 64 characters)
-		if len(db) > DATABASE_NAME_MAX_LENGTH {
+	seen := make(map[string]struct{})
+	for idx, db := range mCfg.Databases {
+		// Trim each database name before applying the connector's byte limit.
+		db = strings.TrimSpace(db)
+		if db == "" || len(db) > DATABASE_NAME_MAX_LENGTH {
 			return nil, fmt.Errorf("database name '%s' exceeds maximum length of %d characters", db, DATABASE_NAME_MAX_LENGTH)
 		}
-		// Check whether there are duplicate elements in the array
-		if seen[db] {
+		// Reject duplicate database names after trimming.
+		if _, exists := seen[db]; exists {
 			return nil, fmt.Errorf("duplicate element found in 'databases': %s", db)
 		}
-		seen[db] = true
+		seen[db] = struct{}{}
+		mCfg.Databases[idx] = db
 	}
+	options, err := normalizeOptions(mCfg.Options)
+	if err != nil {
+		return nil, err
+	}
+	mCfg.Options = options
 
 	return &MariaDBConnector{
 		connectorType: c.GetType(),
@@ -165,15 +178,61 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 	}, nil
 }
 
-// connectionString builds the MariaDB driver connection string from connector settings.
+// normalizeOptions validates supported driver options and converts their values to DSN strings.
+func normalizeOptions(options map[string]any) (map[string]any, error) {
+	normalized := make(map[string]any, len(options))
+	for key, value := range options {
+		name := strings.TrimSpace(key)
+		if _, allowed := allowedOptions[name]; !allowed {
+			return nil, fmt.Errorf("unsupported mariadb option %q", name)
+		}
+		if _, duplicate := normalized[name]; duplicate {
+			return nil, fmt.Errorf("duplicate mariadb option %q", name)
+		}
+		switch name {
+		case "charset", "collation":
+			text, ok := value.(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				return nil, fmt.Errorf("mariadb option %q must be a non-empty string", name)
+			}
+			value = strings.TrimSpace(text)
+		case "timeout", "readTimeout", "writeTimeout":
+			duration, ok := value.(string)
+			if !ok || strings.TrimSpace(duration) == "" {
+				return nil, fmt.Errorf("mariadb option %q must be a non-negative duration", name)
+			}
+			value = strings.TrimSpace(duration)
+			parsed, err := time.ParseDuration(duration)
+			if err != nil || parsed < 0 {
+				return nil, fmt.Errorf("mariadb option %q must be a non-negative duration", name)
+			}
+		case "tls":
+			switch tls := value.(type) {
+			case bool:
+				value = strconv.FormatBool(tls)
+			case string:
+				value = strings.TrimSpace(tls)
+				if value != "true" && value != "false" && value != "skip-verify" && value != "preferred" {
+					return nil, fmt.Errorf("mariadb option %q must be true, false, skip-verify, or preferred", name)
+				}
+			default:
+				return nil, fmt.Errorf("mariadb option %q must be a boolean or supported TLS mode", name)
+			}
+		}
+		normalized[name] = value
+	}
+	return normalized, nil
+}
+
+// connectionString builds a driver DSN without selecting a default database.
 func (c *MariaDBConnector) connectionString() string {
 	values := url.Values{}
 	values.Set("charset", "utf8mb4")
 	values.Set("parseTime", "true")
 
-	// Apply options
+	// Apply validated options before setting the server time zone.
 	for k, v := range c.config.Options {
-		values.Set(k, fmt.Sprintf("%v", v))
+		values.Set(k, v.(string))
 	}
 	values.Set("loc", table.ServerTimeZone())
 	values.Set("time_zone", "'"+table.ServerTimeZone()+"'")
@@ -185,8 +244,7 @@ func (c *MariaDBConnector) connectionString() string {
 		values.Encode())
 }
 
-// Connect establishes connection to MariaDB database.
-// If Config.Database is empty, connect to the instance level (without specifying the database).
+// Connect opens an instance-level pool; configured databases scope discovery and validation.
 func (c *MariaDBConnector) Connect(ctx context.Context) error {
 	if c.connected {
 		return nil
@@ -201,13 +259,13 @@ func (c *MariaDBConnector) Connect(ctx context.Context) error {
 		_ = db.Close()
 		return err
 	}
+
 	c.db = db
 	c.connected = true
-
 	return nil
 }
 
-// Close closes the database connection.
+// Close releases the database connection pool and clears the connected state.
 func (c *MariaDBConnector) Close(ctx context.Context) error {
 	if c.db != nil {
 		err := c.db.Close()
@@ -227,13 +285,13 @@ func (c *MariaDBConnector) Ping(ctx context.Context) error {
 	return c.db.PingContext(ctx)
 }
 
-// TestConnection tests the connection to MariaDB database.
+// TestConnection checks connectivity and the existence of configured databases.
 func (c *MariaDBConnector) TestConnection(ctx context.Context) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	// If the databases list is configured, verify whether these databases exist
+	// Validate the configured database scope when present.
 	if len(c.config.Databases) > 0 {
 		if err := c.validateDatabases(ctx); err != nil {
 			return err
@@ -243,17 +301,28 @@ func (c *MariaDBConnector) TestConnection(ctx context.Context) error {
 	return nil
 }
 
-// validateDatabases verifies whether the configured database exists
+// validateDatabases checks all configured databases with one catalog query.
 func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
-	// Obtain the list of all databases/schemas; In MariaDB, database and schema are equivalent.
-	rows, err := c.db.QueryContext(ctx,
-		"SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
+	if len(c.config.Databases) == 0 {
+		return nil
+	}
+
+	// In MariaDB, databases and schemas are equivalent.
+	query, args, err := sq.Select("SCHEMA_NAME").
+		From("information_schema.SCHEMATA").
+		Where(sq.Eq{"SCHEMA_NAME": c.config.Databases}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build database validation query: %w", err)
+	}
+
+	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to list databases: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	existingDBs := make(map[string]bool)
+	found := make(map[string]struct{})
 	for rows.Next() {
 		var dbName sql.NullString
 		if err := rows.Scan(&dbName); err != nil {
@@ -262,22 +331,17 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 		if !dbName.Valid {
 			return fmt.Errorf("required schema metadata contains NULL")
 		}
-		existingDBs[dbName.String] = true
+		found[dbName.String] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("failed to iterate databases: %w", err)
 	}
 
-	// Check whether all the configured databases exist
-	var notFoundDBs []string
+	// Report the first configured database missing from the query result.
 	for _, db := range c.config.Databases {
-		if !existingDBs[db] {
-			notFoundDBs = append(notFoundDBs, db)
+		if _, exists := found[db]; !exists {
+			return fmt.Errorf("databases not found: %v", db)
 		}
-	}
-
-	if len(notFoundDBs) > 0 {
-		return fmt.Errorf("databases not found: %v", notFoundDBs)
 	}
 
 	return nil
