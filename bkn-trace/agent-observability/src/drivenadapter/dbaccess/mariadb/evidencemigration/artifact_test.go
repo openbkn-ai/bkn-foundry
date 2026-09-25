@@ -25,6 +25,9 @@ func TestManifestArtifactConvertsOnlyValidFrozenC1Entries(t *testing.T) {
 	if input.ManifestID != artifact.ManifestID || input.EntriesDigest != digest || len(input.Entries) != 1 || input.Entries[0] != frozen {
 		t.Fatalf("admin input = %+v", input)
 	}
+	if input.SourceSnapshotAt != artifact.SourceSnapshotAt {
+		t.Fatalf("admin snapshot time = %q, want canonical RFC3339 %q", input.SourceSnapshotAt, artifact.SourceSnapshotAt)
+	}
 }
 
 func TestManifestArtifactRejectsCountDigestAndClassificationDrift(t *testing.T) {

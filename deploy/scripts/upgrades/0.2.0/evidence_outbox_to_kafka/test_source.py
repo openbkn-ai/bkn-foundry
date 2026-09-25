@@ -74,6 +74,13 @@ class SourceTest(unittest.TestCase):
         self.assertEqual(entry["classification"], "publish")
         self.assertIsNotNone(returned)
 
+    def test_delivered_oversize_event_remains_eligible_for_ledger_verification(self):
+        event = dict(self.event, padding="x" * (1024 * 1024))
+        row = dict(self.row, status="delivered", envelope=json.dumps({"event": event}))
+        entry, returned = classify_row(row, "mig-1", self.snapshot)
+        self.assertEqual((entry["classification"], entry["classification_reason"]), ("verify_delivered", "delivered"))
+        self.assertIsNotNone(returned)
+
     def test_event_identity_requires_exact_schema_types_and_uint64_range(self):
         for field, value in (("producer_epoch", True), ("producer_sequence", "7"), ("producer_epoch", (1 << 64))):
             with self.subTest(field=field, value=value):

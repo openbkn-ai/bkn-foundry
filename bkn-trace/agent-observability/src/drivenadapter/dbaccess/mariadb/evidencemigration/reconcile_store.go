@@ -29,6 +29,9 @@ func (s *Store) ReconcileManifest(ctx context.Context, manifestID string) error 
 	if err != nil {
 		return fmt.Errorf("read Evidence migration reconciliation state: %w", err)
 	}
+	if state == string(ievidencemigration.ManifestClosed) {
+		return nil
+	}
 	if state != string(ievidencemigration.ManifestActive) {
 		return errors.New("Evidence migration reconciliation requires an active manifest")
 	}

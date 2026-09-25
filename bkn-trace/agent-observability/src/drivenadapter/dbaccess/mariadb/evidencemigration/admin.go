@@ -46,7 +46,7 @@ func (s *Store) CreateDraftAndActivate(ctx context.Context, in manifestAdminInpu
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var existingContract, existingState, existingSnapshot, existingDigest string
 	var existingCount int
 	err = tx.QueryRowContext(ctx, "SELECT contract_sha,state,CAST(source_snapshot_at AS CHAR),entry_count,entries_digest FROM bkn_trace_evidence_migration_manifests WHERE manifest_id=? FOR UPDATE", in.ManifestID).Scan(&existingContract, &existingState, &existingSnapshot, &existingCount, &existingDigest)
@@ -112,7 +112,7 @@ func verifyPersistedEntries(ctx context.Context, tx *sql.Tx, manifestID string, 
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	entries := make([]frozenEntry, 0, expectedCount)
 	for rows.Next() {
 		var entry frozenEntry

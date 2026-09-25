@@ -49,7 +49,7 @@ func main() {
 	if err != nil {
 		fail(fmt.Errorf("open Evidence migration store: %w", err))
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := db.PingContext(context.Background()); err != nil {
 		fail(fmt.Errorf("connect Evidence migration store: %w", err))
 	}
@@ -82,7 +82,7 @@ func run(ctx context.Context, args []string, store adminStore, output io.Writer)
 		if err != nil {
 			return fmt.Errorf("open Evidence migration manifest: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		decoder := json.NewDecoder(file)
 		decoder.DisallowUnknownFields()
 		var artifact evidencemigration.ManifestArtifact
@@ -91,7 +91,7 @@ func run(ctx context.Context, args []string, store adminStore, output io.Writer)
 		}
 		var trailing any
 		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-			return errors.New("Evidence migration manifest must contain exactly one JSON value")
+			return errors.New("evidence migration manifest must contain exactly one JSON value")
 		}
 		if err := store.ActivateArtifact(ctx, artifact, *actor); err != nil {
 			return fmt.Errorf("activate Evidence migration manifest: %w", err)

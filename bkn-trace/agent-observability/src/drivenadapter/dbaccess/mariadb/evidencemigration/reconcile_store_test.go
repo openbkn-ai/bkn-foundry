@@ -33,6 +33,25 @@ func TestReconcileManifestPersistsOnlyVerifiedAndCoverageGapResults(t *testing.T
 	}
 }
 
+func TestReconcileManifestIsIdempotentAfterManifestClosed(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { mock.ExpectClose(); _ = db.Close() })
+	store, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectQuery("SELECT state FROM bkn_trace_evidence_migration_manifests").WithArgs("m-1").WillReturnRows(sqlmock.NewRows([]string{"state"}).AddRow("closed"))
+	if err := store.ReconcileManifest(context.Background(), "m-1"); err != nil {
+		t.Fatalf("closed manifest reconciliation should be a no-op: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReconcileManifestRejectsDeliveredEntryWithoutExactLedgerIdentity(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

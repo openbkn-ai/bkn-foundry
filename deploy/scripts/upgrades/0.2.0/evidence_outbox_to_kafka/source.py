@@ -124,7 +124,7 @@ def classify_row(row, manifest_id, snapshot_at):
     if event["producer_id"] != expected_producer_id or not _uses_base_stream(event["producer_stream_id"], base_stream):
         return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
     value_bytes = json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    if len(value_bytes) > _MAX_RECORD_VALUE_BYTES:
+    if classification == "publish" and len(value_bytes) > _MAX_RECORD_VALUE_BYTES:
         return _coverage_entry(row, manifest_id, service, table, "bad_payload"), None
     return {
         "classification": classification, "classification_reason": reason,
