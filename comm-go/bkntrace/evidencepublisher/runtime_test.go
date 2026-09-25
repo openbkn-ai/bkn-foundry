@@ -145,6 +145,39 @@ func TestPublisherRuntimeDoesNotRequireStaticPolicyRevision(t *testing.T) {
 	}
 }
 
+func TestPublisherRuntimeFlushUsesVerifiedRevisionWithoutControlIO(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender := &fakeSender{}
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case traceEvidencePolicyPath:
+			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
+			return noContentResponse(), nil
+		default:
+			t.Fatalf("Flush() made unexpected control request: %s", request.URL)
+			return nil, nil
+		}
+	})}
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: sender, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.TryPublish(publisherTestEvent()).Disposition != Accepted {
+		t.Fatal("TryPublish() rejected event")
+	}
+	if drain := runtime.Flush(context.Background()); drain.CapturePolicyRevision != "42" || drain.Published != 1 || !drain.QueueEmpty {
+		t.Fatalf("Flush() = %+v", drain)
+	}
+}
+
 func TestPublisherRuntimeStartsStableDisabledWithoutOperationOrAck(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)

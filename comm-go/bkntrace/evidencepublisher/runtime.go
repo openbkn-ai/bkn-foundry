@@ -153,6 +153,20 @@ func (r *PublisherRuntime) LastRefreshError() error {
 	return r.lastError
 }
 
+// Flush performs only the bounded Kafka disposition for the current verified
+// revision. It is safe for a background transport loop and never reads the
+// control plane or sends an operation acknowledgement.
+func (r *PublisherRuntime) Flush(ctx context.Context) DrainResult {
+	r.mu.Lock()
+	hasPolicy := r.hasPolicy
+	revision := r.snapshot.Revision
+	r.mu.Unlock()
+	if !hasPolicy {
+		return DrainResult{}
+	}
+	return r.publisher.FlushForPolicyRevision(ctx, strconv.FormatUint(revision, 10))
+}
+
 func (r *PublisherRuntime) disableWithError(err error) {
 	r.mu.Lock()
 	r.admitting = false
