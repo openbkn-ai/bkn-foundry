@@ -41,6 +41,8 @@ type metadataSource interface {
 	Metadata() observabilityvo.SourceStatus
 }
 
+type sourceIDFilterSource interface{ SupportsSourceIDFilter() bool }
+
 type Service struct {
 	sources              []Source
 	cursorKey            []byte
@@ -292,7 +294,11 @@ func (service *Service) listPage(
 				candidates = append(candidates, logCandidate{record: record, adapterSourceID: source.ID()})
 			}
 		}
-		if rejectedProjections > 0 || filterQuery.ActorQuery != "" || normalizedAccuracy(page.CountAccuracy) != "exact" {
+		sourceIDPostFilter := filterQuery.SourceID != ""
+		if capable, ok := source.(sourceIDFilterSource); ok && capable.SupportsSourceIDFilter() {
+			sourceIDPostFilter = false
+		}
+		if rejectedProjections > 0 || filterQuery.ActorQuery != "" || sourceIDPostFilter || normalizedAccuracy(page.CountAccuracy) != "exact" {
 			// Source totals describe its raw result set. Once the public contract
 			// rejects records or an adapter has already filtered its source result,
 			// retaining that raw total produces an impossible UI (for example “5

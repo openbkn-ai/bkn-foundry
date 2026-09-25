@@ -22,6 +22,22 @@ type fakeSource struct {
 	err     error
 }
 
+type sourceIDFilteringSource struct {
+	fakeSource
+	count int64
+}
+
+func (source sourceIDFilteringSource) SupportsSourceIDFilter() bool { return true }
+
+func (source sourceIDFilteringSource) Search(
+	context.Context,
+	observabilityvo.LogQuery,
+) (observabilityvo.SourcePage, error) {
+	return observabilityvo.SourcePage{
+		Records: validTestRecords(source.records), Count: source.count, CountAccuracy: "exact",
+	}, nil
+}
+
 type partialCountSource struct {
 	record observabilityvo.LogRecord
 }
@@ -1060,6 +1076,63 @@ func TestMatchesQueryFiltersOperationAuditBusinessFields(t *testing.T) {
 				t.Fatalf("%s mismatch was accepted", name)
 			}
 		})
+	}
+}
+
+func TestListReportsLowerBoundWhenSourceIDIsPostFiltered(t *testing.T) {
+	now := time.Now().UTC()
+	records := []observabilityvo.LogRecord{
+		{LogID: "matching", SourceID: "execution-factory", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created", EventTimestamp: now, TrustLevel: "trusted", IngressPrincipal: "audit-sdk"},
+		{LogID: "other", SourceID: "bkn-safe", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created", EventTimestamp: now.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "audit-sdk"},
+	}
+	result, err := New([]Source{fakeSource{id: "legacy", records: records}}).List(
+		context.Background(), activeProfile("admin-a", "super_admin"), observabilityvo.LogQuery{
+			SourceID: "execution-factory", Categories: []string{observabilityvo.CategoryAuditAdmin},
+		},
+	)
+	if err != nil {
+		t.Fatalf("list logs: %v", err)
+	}
+	if len(result.Records) != 1 || result.Records[0].SourceID != "execution-factory" || result.Count != 1 || result.CountExact {
+		t.Fatalf("post-filtered source_id must expose only a visible lower-bound count: %+v", result)
+	}
+}
+
+func TestListReportsZeroLowerBoundWhenSourceIDPostFilterRejectsWholePage(t *testing.T) {
+	record := observabilityvo.LogRecord{
+		LogID: "other", SourceID: "bkn-safe", Category: observabilityvo.CategoryAuditAdmin,
+		EventName: "user.created", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "audit-sdk",
+	}
+	result, err := New([]Source{fakeSource{id: "legacy", records: []observabilityvo.LogRecord{record}}}).List(
+		context.Background(), activeProfile("admin-a", "super_admin"), observabilityvo.LogQuery{
+			SourceID: "execution-factory", Categories: []string{observabilityvo.CategoryAuditAdmin},
+		},
+	)
+	if err != nil {
+		t.Fatalf("list logs: %v", err)
+	}
+	if len(result.Records) != 0 || result.Count != 0 || result.CountExact {
+		t.Fatalf("fully post-filtered source_id must not retain the raw exact count: %+v", result)
+	}
+}
+
+func TestListPreservesExactCountWhenSourcePushesDownSourceID(t *testing.T) {
+	record := observabilityvo.LogRecord{
+		LogID: "matching", SourceID: "execution-factory", Category: observabilityvo.CategoryAuditAdmin,
+		EventName: "user.created", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "audit-sdk",
+	}
+	result, err := New([]Source{sourceIDFilteringSource{
+		fakeSource: fakeSource{id: "audit-ledger", records: []observabilityvo.LogRecord{record}}, count: 7,
+	}}).List(
+		context.Background(), activeProfile("admin-a", "super_admin"), observabilityvo.LogQuery{
+			SourceID: "execution-factory", Categories: []string{observabilityvo.CategoryAuditAdmin},
+		},
+	)
+	if err != nil {
+		t.Fatalf("list logs: %v", err)
+	}
+	if len(result.Records) != 1 || result.Count != 7 || !result.CountExact {
+		t.Fatalf("source_id pushdown must preserve the source's exact count: %+v", result)
 	}
 }
 

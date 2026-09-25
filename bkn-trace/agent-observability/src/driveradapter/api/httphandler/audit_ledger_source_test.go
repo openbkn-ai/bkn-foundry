@@ -32,6 +32,12 @@ func TestAuditLedgerSourceStatusReturnsDropWindowAsAnUnknownPair(t *testing.T) {
 	}
 }
 
+func TestAuditLedgerSourceDeclaresSourceIDPushdown(t *testing.T) {
+	if !NewAuditLedgerSource(nil).SupportsSourceIDFilter() {
+		t.Fatal("audit ledger must preserve exact counts by declaring its source_id pushdown")
+	}
+}
+
 func TestAuditQueryCategoriesUsesAuthorizedDefaultAndIntersection(t *testing.T) {
 	authorized := []string{"runtime.system", "audit.admin", "audit.security"}
 	if got := auditQueryCategories(observabilityvo.LogQuery{AuthorizedCategories: authorized}); !reflect.DeepEqual(got, []string{"audit.admin", "audit.security"}) {

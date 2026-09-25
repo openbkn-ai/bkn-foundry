@@ -18,7 +18,8 @@ type auditLedgerSource struct{ reader *auditstore.Reader }
 func NewAuditLedgerSource(reader *auditstore.Reader) *auditLedgerSource {
 	return &auditLedgerSource{reader: reader}
 }
-func (s *auditLedgerSource) ID() string { return "audit-ledger" }
+func (s *auditLedgerSource) ID() string                   { return "audit-ledger" }
+func (s *auditLedgerSource) SupportsSourceIDFilter() bool { return true }
 func (s *auditLedgerSource) Metadata() observabilityvo.SourceStatus {
 	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: "degraded", Reason: "producer_coverage_unverified", Reliability: "best_effort", CollectionMethod: "kafka_audit", CountAccuracy: "partial", Categories: []string{"audit.admin", "audit.security"}}
 }
