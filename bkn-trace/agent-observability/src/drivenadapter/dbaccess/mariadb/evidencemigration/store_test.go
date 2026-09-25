@@ -44,6 +44,27 @@ func TestLookupAdmissionSeparatesMissingFromActiveAndClosed(t *testing.T) {
 	}
 }
 
+func TestCreateDraftAndActivatePersistsFrozenManifest(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil { t.Fatal(err) }
+	t.Cleanup(func() { mock.ExpectClose(); _ = db.Close() })
+	store, err := New(db)
+	if err != nil { t.Fatal(err) }
+	entry := frozenEntry{Classification:"coverage_gap", ClassificationReason:"bad_payload", ManifestID:"mig-1", SourcePrimaryKey:"1", SourceService:"bkn-backend", SourceStatus:"dlq", SourceTable:"bkn_backend_trace_outbox"}
+	digest, err := entriesDigest([]frozenEntry{entry})
+	if err != nil { t.Fatal(err) }
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT contract_sha").WithArgs("mig-1").WillReturnRows(sqlmock.NewRows([]string{"contract_sha"}))
+	mock.ExpectExec("INSERT INTO bkn_trace_evidence_migration_manifests").WillReturnResult(sqlmock.NewResult(1,1))
+	mock.ExpectExec("INSERT INTO bkn_trace_evidence_migration_entries").WillReturnResult(sqlmock.NewResult(1,1))
+	mock.ExpectExec("INSERT INTO bkn_trace_evidence_migration_manifest_audit").WillReturnResult(sqlmock.NewResult(1,1))
+	mock.ExpectExec("UPDATE bkn_trace_evidence_migration_manifests").WillReturnResult(sqlmock.NewResult(1,1))
+	mock.ExpectCommit()
+	err = store.CreateDraftAndActivate(context.Background(), manifestAdminInput{ManifestID:"mig-1", ContractSHA:"0016ad359b11d162e04bb11a78784c33fad0ec8d", SourceSnapshotAt:"2026-09-22T08:00:00.000Z", EntriesDigest:digest, Actor:"migration-admin", Entries:[]frozenEntry{entry}})
+	if err != nil { t.Fatal(err) }
+	if err := mock.ExpectationsWereMet(); err != nil { t.Fatal(err) }
+}
+
 func TestRecordConsumerResultUsesIdempotentTerminalUpsert(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
