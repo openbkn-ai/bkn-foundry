@@ -1,3 +1,7 @@
+// Copyright (c) 2026 OpenBKN
+// SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt.
+
 package evidencemigration
 
 import (
