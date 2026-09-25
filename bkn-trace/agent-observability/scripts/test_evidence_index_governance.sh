@@ -8,7 +8,8 @@ set -euo pipefail
 
 chart_dir="${1:-charts/agent-observability}"
 render_chart() {
-  helm template --kube-version 1.23.0 "$@"
+  helm template --kube-version 1.23.0 "$@" \
+    --set core.capturePolicySigning.existingSecret=trace-capture-policy-test
 }
 if ! grep -Fq 'kubeVersion: ">=1.23.0-0"' "${chart_dir}/Chart.yaml"; then
   echo "chart must declare the Kubernetes version required by namespace label selectors" >&2

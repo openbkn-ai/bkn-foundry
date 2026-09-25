@@ -8,7 +8,6 @@ package traceadmissionsvc
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/base64"
 	"testing"
 	"time"
 )
@@ -32,8 +31,11 @@ func TestGatewayDropsWhenPolicyIsDisabledOrExpired(t *testing.T) {
 			currentTime := now
 			gateway := NewGateway(GatewayConfig{Audience: "cluster-a", CurrentKeyID: "k1", CurrentKey: publicKey, Now: func() time.Time { return currentTime }})
 			expires := now.Add(time.Minute)
-			snapshot := SignedSnapshot{Revision: 2, Mode: test.mode, IssuedAt: now.Add(-time.Second), ExpiresAt: expires, KeyID: "k1", Audience: "cluster-a"}
-			snapshot.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, snapshot.canonicalBytes()))
+			snapshot := SignedSnapshot{ContractVersion: ContractVersion, Revision: 2, TraceAdmission: test.mode, EvidenceAdmission: test.mode, IssuedAt: now.Add(-time.Second), ExpiresAt: expires, KeyID: "k1", Audience: "cluster-a"}
+			snapshot, err = SignSnapshot(snapshot, privateKey)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if err := gateway.Apply(snapshot); err != nil {
 				t.Fatal(err)
 			}
@@ -55,21 +57,30 @@ func TestGatewayRejectsStaleAndInvalidAudienceSnapshots(t *testing.T) {
 	}
 	now := time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC)
 	gateway := NewGateway(GatewayConfig{Audience: "cluster-a", CurrentKeyID: "k1", CurrentKey: publicKey, Now: func() time.Time { return now }})
-	valid := SignedSnapshot{Revision: 3, Mode: ModeEnabled, IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a"}
-	valid.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, valid.canonicalBytes()))
+	valid := SignedSnapshot{ContractVersion: ContractVersion, Revision: 3, TraceAdmission: ModeEnabled, EvidenceAdmission: ModeEnabled, IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a"}
+	valid, err = SignSnapshot(valid, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := gateway.Apply(valid); err != nil {
 		t.Fatal(err)
 	}
 	stale := valid
 	stale.Revision = 2
-	stale.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, stale.canonicalBytes()))
+	stale, err = SignSnapshot(stale, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := gateway.Apply(stale); err != ErrStaleRevision {
 		t.Fatalf("stale Apply() error = %v", err)
 	}
 	wrongAudience := valid
 	wrongAudience.Revision = 4
 	wrongAudience.Audience = "cluster-b"
-	wrongAudience.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, wrongAudience.canonicalBytes()))
+	wrongAudience, err = SignSnapshot(wrongAudience, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := gateway.Apply(wrongAudience); err != ErrInvalidSnapshot {
 		t.Fatalf("wrong audience Apply() error = %v", err)
 	}
@@ -97,8 +108,11 @@ func TestGatewayDoesNotReportOldPodReadyForNewRevision(t *testing.T) {
 	}
 	now := time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC)
 	gateway := NewGateway(GatewayConfig{Audience: "cluster-a", CurrentKeyID: "k1", CurrentKey: publicKey, Now: func() time.Time { return now }})
-	snapshot := SignedSnapshot{Revision: 12, Mode: ModeEnabled, IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a"}
-	snapshot.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, snapshot.canonicalBytes()))
+	snapshot := SignedSnapshot{ContractVersion: ContractVersion, Revision: 12, TraceAdmission: ModeEnabled, EvidenceAdmission: ModeEnabled, IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a"}
+	snapshot, err = SignSnapshot(snapshot, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := gateway.Apply(snapshot); err != nil {
 		t.Fatal(err)
 	}

@@ -7,14 +7,17 @@
 set -euo pipefail
 
 chart_dir="${1:-charts/agent-observability}"
+render_chart() {
+    helm template "$@" --set core.capturePolicySigning.existingSecret=trace-capture-policy-test
+}
 
-disabled="$(helm template agent-observability "${chart_dir}")"
+disabled="$(render_chart agent-observability "${chart_dir}")"
 if grep -q 'business-provenance-bootstrap' <<<"${disabled}"; then
     echo "bootstrap Job must stay absent when Enterprise provenance is disabled" >&2
     exit 1
 fi
 
-enabled="$(helm template agent-observability "${chart_dir}" \
+enabled="$(render_chart agent-observability "${chart_dir}" \
     --set enterpriseBusinessProvenance.enabled=true \
     --set enterpriseBusinessProvenance.agentURL=http://bkn-agent:30800 \
     --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \
@@ -48,7 +51,7 @@ for required in \
     }
 done
 
-historical_only="$(helm template agent-observability "${chart_dir}" \
+historical_only="$(render_chart agent-observability "${chart_dir}" \
     --set core.projection.enabled=true \
     --set core.projection.historicalProvenance.enabled=true \
     --set core.projection.grant.existingSecret=trace-projection-grant \
@@ -67,7 +70,7 @@ grep -A1 'name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED' <<<"${historical_only}"
     exit 1
 }
 
-private_registry="$(helm template agent-observability "${chart_dir}" \
+private_registry="$(render_chart agent-observability "${chart_dir}" \
     --set image.registry=registry.internal/openbkn \
     --set image.tag=observability-hotfix \
     --set enterpriseBusinessProvenance.enabled=true \
@@ -81,7 +84,7 @@ grep -q 'image: "registry.internal/openbkn/bkn-agent:__VERSION__"' <<<"${private
 }
 
 long_name="rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
-long_render="$(helm template "${long_name}" "${chart_dir}" \
+long_render="$(render_chart "${long_name}" "${chart_dir}" \
     --set enterpriseBusinessProvenance.enabled=true \
     --set enterpriseBusinessProvenance.agentURL=http://bkn-agent:30800 \
     --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \

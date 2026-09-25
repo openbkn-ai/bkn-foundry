@@ -39,6 +39,37 @@ func TestCapturePolicyControlReadsSingletonState(t *testing.T) {
 	}
 }
 
+func TestCapturePolicyControlInitializesSingletonAndRevisionIdempotently(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+
+	// A clean install creates the singleton and immutable revision 1 in one
+	// transaction. The second bootstrap sees the row and must not rewrite it.
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT current_revision FROM bkn_trace_capture_control_state").WillReturnRows(sqlmock.NewRows([]string{"current_revision"}))
+	mock.ExpectExec("INSERT INTO bkn_trace_capture_control_state").WithArgs(uint8(1), uint64(1), icapturepolicy.StateEnabled, icapturepolicy.StateEnabled, uint64(1), now, now).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO bkn_trace_capture_policy_revisions").WithArgs(uint64(1), true, now).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	if err := store.EnsureControlState(context.Background(), true, now); err != nil {
+		t.Fatal(err)
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT current_revision FROM bkn_trace_capture_control_state").WillReturnRows(sqlmock.NewRows([]string{"current_revision"}).AddRow(uint64(1)))
+	mock.ExpectCommit()
+	if err := store.EnsureControlState(context.Background(), false, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCapturePolicyControlUsesHistoricalMaxAfterFailedOperation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -344,7 +375,7 @@ func TestCapturePolicyControlBeginsRollbackWithNewRevisionAndExpectedSet(t *test
 	mock.ExpectQuery("SELECT revision FROM bkn_trace_capture_policy_revisions").WillReturnRows(sqlmock.NewRows([]string{"revision"}).AddRow(uint64(9)))
 	mock.ExpectExec("INSERT INTO bkn_trace_capture_policy_revisions").WithArgs(uint64(10), true, now).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO bkn_trace_capture_operation_acknowledgements").WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("UPDATE bkn_trace_capture_operations").WithArgs(icapturepolicy.PhaseRollingBack, uint64(10), icapturepolicy.StateEnabled, now, "op-10", uint64(4)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE bkn_trace_capture_operations").WithArgs(icapturepolicy.PhaseRollingBack, uint64(10), icapturepolicy.StateEnabled, now.Add(10*time.Minute), now, "op-10", uint64(4)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE bkn_trace_capture_control_state").WithArgs(uint64(10), icapturepolicy.StateEnabled, now, uint64(9), "op-10").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO bkn_trace_capture_operation_events").WithArgs("op-10", icapturepolicy.PhaseRollingBack, icapturepolicy.EventRollbackStarted, uint64(4), nil, nil, now).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()

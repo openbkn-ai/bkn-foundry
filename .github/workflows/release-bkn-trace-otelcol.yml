@@ -1,7 +1,7 @@
 name: release-bkn-trace-otelcol
 
-# Chart-only. Deploys upstream opentelemetry-collector-contrib (values.yaml left
-# pointing upstream, not a first-party GHCR image).
+# Builds and publishes the OpenBKN OCB Collector image, then packages the chart
+# against the exact release version. Verify-only runs build without pushing.
 
 on:
   push:
@@ -51,12 +51,60 @@ jobs:
           ./scripts/test_4c8g_baseline.sh
           ./scripts/test_config_rollout.sh
 
+  ocb-contract:
+    needs: [version, verify]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: false
+
+      - uses: azure/setup-helm@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Verify OCB registration and image contract
+        working-directory: bkn-trace/otelcol-contribute-chart
+        run: ./scripts/test_ocb_build_contract.sh
+
+      - name: Test traceadmission processor module
+        working-directory: bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor
+        run: go test ./...
+
+      - name: Build local amd64 OCB smoke image
+        run: |
+          docker build --platform linux/amd64 --load \
+            -f bkn-trace/otelcol-contribute-chart/Dockerfile.openbkn \
+            -t otelcol-openbkn:ci-smoke .
+
+      - name: Validate enabled Trace Admission chart with OCB image
+        working-directory: bkn-trace/otelcol-contribute-chart
+        run: ./scripts/test_ocb_image_local.sh otelcol-openbkn:ci-smoke
+
+  image:
+    needs: [version, verify, chart-regression, ocb-contract]
+    uses: ./.github/workflows/reusable-container-image.yml
+    secrets: inherit
+    with:
+      # The custom processor imports the checked-out agent-observability
+      # traceadmissionsvc module, so the Docker context must be the repository
+      # root. The Dockerfile and builder config remain under the chart path.
+      service-path: .
+      context: .
+      dockerfile: bkn-trace/otelcol-contribute-chart/Dockerfile.openbkn
+      image-name: otelcol-openbkn
+      version: ${{ needs.version.outputs.version }}
+      publish: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
   chart:
-    needs: [version, verify, chart-regression]
+    needs: [version, verify, chart-regression, ocb-contract, image]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: bkn-trace/otelcol-contribute-chart
       chart-path: charts/otelcol-contrib
       chart-name: otelcol-contrib
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

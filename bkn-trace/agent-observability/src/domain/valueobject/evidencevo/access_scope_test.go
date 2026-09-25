@@ -36,6 +36,18 @@ func TestAccessProfileCanReadOwnAndDelegatedBusinessRecord(t *testing.T) {
 	}
 }
 
+func TestAccessProfileMatchesExplicitObservabilityPermissions(t *testing.T) {
+	profile := AccessProfile{AccountActive: true, Permissions: []Permission{
+		{ResourceType: "trace_evidence_configuration", ResourceID: "global", Operations: []string{"read"}},
+	}}
+	if !profile.HasPermission("trace_evidence_configuration", "global", "read") {
+		t.Fatal("explicit read permission should be accepted")
+	}
+	if profile.HasPermission("trace_evidence_configuration", "global", "write") {
+		t.Fatal("write permission must not be inferred from read")
+	}
+}
+
 func TestAccessProfileCanReadTechnicalTraceForOwnOrManagedRecord(t *testing.T) {
 	record := RecordScope{
 		EffectiveSubjectID:  "owner-a",

@@ -36,6 +36,17 @@ type MultiGetDocument struct {
 	Source []byte
 }
 
+// AdmissionMetrics is the small, read-only OpenSearch health sample used by
+// Trace admission. Capacity is disk utilization across the reported nodes;
+// heap is the aggregate JVM heap utilization. Both values are normalized to
+// [0,1] and are intentionally sampled directly from OpenSearch rather than
+// inferred from application traffic.
+type AdmissionMetrics struct {
+	Capacity  float64
+	Heap      float64
+	SampledAt time.Time
+}
+
 type StatusError struct {
 	Operation  string
 	StatusCode int
@@ -91,6 +102,74 @@ func NewWithHTTPClient(baseURL string, auth AuthConfig, httpClient *http.Client)
 		auth:       auth,
 		httpClient: httpClient,
 	}
+}
+
+// ReadAdmissionMetrics reads the OpenSearch node filesystem and JVM stats.
+// Missing or non-positive totals are errors: a caller must not turn an
+// unavailable health source into a fabricated healthy budget.
+func (c *Client) ReadAdmissionMetrics(ctx context.Context) (AdmissionMetrics, error) {
+	if c == nil || strings.TrimSpace(c.baseURL) == "" {
+		return AdmissionMetrics{}, errors.New("opensearch client is not configured")
+	}
+	requestURL := fmt.Sprintf("%s/_nodes/stats/jvm,fs", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return AdmissionMetrics{}, fmt.Errorf("create opensearch admission metrics request: %w", err)
+	}
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return AdmissionMetrics{}, fmt.Errorf("execute opensearch admission metrics request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return AdmissionMetrics{}, fmt.Errorf("opensearch admission metrics returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		Nodes map[string]struct {
+			FS struct {
+				Total struct {
+					TotalInBytes     int64 `json:"total_in_bytes"`
+					AvailableInBytes int64 `json:"available_in_bytes"`
+				} `json:"total"`
+			} `json:"fs"`
+			JVM struct {
+				Mem struct {
+					HeapUsedInBytes int64 `json:"heap_used_in_bytes"`
+					HeapMaxInBytes  int64 `json:"heap_max_in_bytes"`
+				} `json:"mem"`
+			} `json:"jvm"`
+		} `json:"nodes"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&payload); err != nil {
+		return AdmissionMetrics{}, fmt.Errorf("decode opensearch admission metrics: %w", err)
+	}
+	var totalBytes, availableBytes, heapUsedBytes, heapMaxBytes int64
+	for _, node := range payload.Nodes {
+		totalBytes += node.FS.Total.TotalInBytes
+		availableBytes += node.FS.Total.AvailableInBytes
+		heapUsedBytes += node.JVM.Mem.HeapUsedInBytes
+		heapMaxBytes += node.JVM.Mem.HeapMaxInBytes
+	}
+	if totalBytes <= 0 || availableBytes < 0 || heapMaxBytes <= 0 || heapUsedBytes < 0 {
+		return AdmissionMetrics{}, errors.New("opensearch admission metrics omitted positive filesystem or heap totals")
+	}
+	capacity := 1 - float64(availableBytes)/float64(totalBytes)
+	heap := float64(heapUsedBytes) / float64(heapMaxBytes)
+	return AdmissionMetrics{Capacity: clampAdmissionRatio(capacity), Heap: clampAdmissionRatio(heap), SampledAt: time.Now().UTC()}, nil
+}
+
+func clampAdmissionRatio(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > 1 {
+		return 1
+	}
+	return value
 }
 
 // EnsureTraceTimestampPipeline installs the OpenSearch-side compatibility

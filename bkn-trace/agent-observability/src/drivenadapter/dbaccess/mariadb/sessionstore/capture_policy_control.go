@@ -16,6 +16,47 @@ import (
 
 var _ icapturepolicy.Store = (*Store)(nil)
 
+// EnsureControlState creates the singleton policy and its first immutable
+// revision exactly once. It is intentionally a runtime bootstrap operation,
+// not a migration seed: existing installations keep their authoritative
+// state and configuration changes never overwrite it.
+func (s *Store) EnsureControlState(ctx context.Context, enabled bool, now time.Time) error {
+	if now.IsZero() {
+		return icapturepolicy.ErrInvalidControlState
+	}
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		var revision uint64
+		err := tx.QueryRowContext(ctx, `
+			SELECT current_revision
+			FROM bkn_trace_capture_control_state
+			WHERE singleton_id = 1
+			FOR UPDATE`).Scan(&revision)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		state := icapturepolicy.StateDisabled
+		if enabled {
+			state = icapturepolicy.StateEnabled
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO bkn_trace_capture_control_state
+				(singleton_id, current_revision, desired_state, effective_state,
+				 last_stable_revision, coverage_gap, coverage_gap_updated_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, FALSE, ?, ?)`,
+			uint8(1), uint64(1), state, state, uint64(1), now.UTC(), now.UTC()); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO bkn_trace_capture_policy_revisions
+				(revision, admission_enabled, recorded_at)
+			VALUES (?, ?, ?)`, uint64(1), enabled, now.UTC())
+		return err
+	})
+}
+
 func (s *Store) withSerializableTransaction(ctx context.Context, fn func(*sql.Tx) error) error {
 	var lastErr error
 	for attempt := 0; attempt < transactionRetries; attempt++ {
@@ -306,8 +347,8 @@ func (s *Store) beginRollbackTx(ctx context.Context, tx *sql.Tx, operationID str
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE bkn_trace_capture_operations
-		SET phase = ?, compensation_revision = ?, restored_state = ?, updated_at = ?
-		WHERE operation_id = ? AND lease_token = ?`, icapturepolicy.PhaseRollingBack, compensationRevision, restoredState, now.UTC(), operationID, leaseToken); err != nil {
+		SET phase = ?, compensation_revision = ?, restored_state = ?, convergence_deadline = ?, updated_at = ?
+		WHERE operation_id = ? AND lease_token = ?`, icapturepolicy.PhaseRollingBack, compensationRevision, restoredState, now.Add(10*time.Minute).UTC(), now.UTC(), operationID, leaseToken); err != nil {
 		return err
 	}
 	result, err := tx.ExecContext(ctx, `

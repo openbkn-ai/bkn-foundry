@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sourcecoveragesvc"
 )
@@ -26,6 +27,11 @@ const (
 type Client struct {
 	endpoint   string
 	httpClient *http.Client
+}
+
+type QueueSample struct {
+	Utilization float64
+	SampledAt   time.Time
 }
 
 func New(endpoint string, httpClient *http.Client) *Client {
@@ -56,6 +62,27 @@ func (client *Client) Read(ctx context.Context) (sourcecoveragesvc.Snapshot, err
 		RefusedLogs: values[refusedLogsMetric], FailedLogs: values[failedLogsMetric],
 		QueueSize: values[queueSizeMetric], QueueCapacity: values[queueCapacityMetric],
 	}, nil
+}
+
+// ReadQueueSample reuses the Collector metrics endpoint already used by the
+// source-coverage monitor. A missing/zero queue capacity is not a healthy
+// zero; it is an unavailable admission source and must fail closed.
+func (client *Client) ReadQueueSample(ctx context.Context) (QueueSample, error) {
+	snapshot, err := client.Read(ctx)
+	if err != nil {
+		return QueueSample{}, err
+	}
+	if snapshot.QueueCapacity <= 0 || snapshot.QueueSize < 0 {
+		return QueueSample{}, fmt.Errorf("collector queue metrics omitted positive queue capacity")
+	}
+	utilization := float64(snapshot.QueueSize) / float64(snapshot.QueueCapacity)
+	if utilization < 0 {
+		utilization = 0
+	}
+	if utilization > 1 {
+		utilization = 1
+	}
+	return QueueSample{Utilization: utilization, SampledAt: time.Now().UTC()}, nil
 }
 
 func readMetrics(body interface{ Read([]byte) (int, error) }) (map[string]int64, error) {

@@ -161,6 +161,15 @@ observability:
     sourceID: otel-runtime
     deploymentID: observability/otelcol-contrib
     interval: 30s
+  admissionBudget:
+    # Thresholds are deployment/SLO inputs. Empty values intentionally keep
+    # enable fail-closed until the deployment supplies all four values.
+    profile: default
+    collectorMetricsEndpoint: ""
+    opensearchCapacityThreshold: ""
+    opensearchHeapThreshold: ""
+    collectorQueueThreshold: ""
+    storagePoolThreshold: ""
 
 core:
   # Keep existing trace/evidence reads available after an upgrade. Enable
@@ -175,6 +184,24 @@ core:
     maxClaimsPerInteraction: 32
     maxEvidenceRefsPerInteraction: 4096
   evidenceCollectionState: enabled
+  # Initial control-plane state is used only when the v033 singleton is
+  # absent. New installs default to enabled in the deployment template;
+  # upgrade automation must set this explicitly to the last known effective
+  # state and must use disabled when legacy trace flags cannot be mapped safely.
+  # Leave empty only when the installer cannot prove the legacy effective
+  # state. On an upgrade with an absent v033 singleton, the chart then uses
+  # the safe default disabled and emits a bootstrap warning annotation; an
+  # existing singleton always remains authoritative.
+  capturePolicyInitialState: ""
+  capturePolicySigning:
+    keyID: trace-capture-policy-2026
+    # Must equal traceAdmission.audienceClusterID in the Collector release.
+    audience: cluster-a
+    snapshotTTL: 15m
+    # Required external Secret. The referenced key must contain a base64
+    # encoded raw 64-byte Ed25519 private key; Helm never generates or rotates it.
+    existingSecret: ""
+    privateKeyKey: private-key
   projection:
     enabled: false
     # Single runtime authority for signed historical-provenance projection.

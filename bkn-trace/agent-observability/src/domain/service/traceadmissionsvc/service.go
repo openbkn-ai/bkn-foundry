@@ -24,6 +24,8 @@ const (
 	ModeDisabled Mode = "disabled"
 )
 
+const ContractVersion = "TraceEvidencePolicySnapshotV1"
+
 const (
 	ReasonAccepted       = "accepted"
 	ReasonPolicyDisabled = "policy_disabled"
@@ -38,24 +40,28 @@ var (
 )
 
 type SignedSnapshot struct {
-	Revision  uint64    `json:"revision"`
-	Mode      Mode      `json:"admission_mode"`
-	IssuedAt  time.Time `json:"issued_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	KeyID     string    `json:"key_id"`
-	Audience  string    `json:"audience_cluster_id"`
-	Signature string    `json:"signature"`
+	ContractVersion   string    `json:"contract_version"`
+	Revision          uint64    `json:"revision"`
+	TraceAdmission    Mode      `json:"trace_admission"`
+	EvidenceAdmission Mode      `json:"evidence_admission"`
+	IssuedAt          time.Time `json:"issued_at"`
+	ExpiresAt         time.Time `json:"expires_at"`
+	KeyID             string    `json:"key_id"`
+	Audience          string    `json:"audience_cluster_id"`
+	Signature         string    `json:"signature"`
 }
 
 func (s SignedSnapshot) canonicalBytes() []byte {
 	payload := struct {
-		Revision  uint64    `json:"revision"`
-		Mode      Mode      `json:"admission_mode"`
-		IssuedAt  time.Time `json:"issued_at"`
-		ExpiresAt time.Time `json:"expires_at"`
-		KeyID     string    `json:"key_id"`
-		Audience  string    `json:"audience_cluster_id"`
-	}{s.Revision, s.Mode, s.IssuedAt, s.ExpiresAt, s.KeyID, s.Audience}
+		ContractVersion   string    `json:"contract_version"`
+		Revision          uint64    `json:"revision"`
+		TraceAdmission    Mode      `json:"trace_admission"`
+		EvidenceAdmission Mode      `json:"evidence_admission"`
+		IssuedAt          time.Time `json:"issued_at"`
+		ExpiresAt         time.Time `json:"expires_at"`
+		KeyID             string    `json:"key_id"`
+		Audience          string    `json:"audience_cluster_id"`
+	}{s.ContractVersion, s.Revision, s.TraceAdmission, s.EvidenceAdmission, s.IssuedAt, s.ExpiresAt, s.KeyID, s.Audience}
 	bytes, _ := json.Marshal(payload)
 	return bytes
 }
@@ -105,7 +111,7 @@ func (g *Gateway) Apply(snapshot SignedSnapshot) error {
 
 func (g *Gateway) verify(snapshot SignedSnapshot) bool {
 	now := g.now().UTC()
-	if snapshot.Revision == 0 || (snapshot.Mode != ModeEnabled && snapshot.Mode != ModeDisabled) || snapshot.KeyID == "" || snapshot.Audience != g.cfg.Audience || snapshot.IssuedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.IssuedAt) || now.Before(snapshot.IssuedAt) || !now.Before(snapshot.ExpiresAt) {
+	if snapshot.ContractVersion != ContractVersion || snapshot.Revision == 0 || (snapshot.TraceAdmission != ModeEnabled && snapshot.TraceAdmission != ModeDisabled) || snapshot.EvidenceAdmission != snapshot.TraceAdmission || snapshot.KeyID == "" || snapshot.Audience != g.cfg.Audience || snapshot.IssuedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.IssuedAt) || now.Before(snapshot.IssuedAt) || !now.Before(snapshot.ExpiresAt) {
 		return false
 	}
 	key := g.cfg.CurrentKey
@@ -118,11 +124,29 @@ func (g *Gateway) verify(snapshot SignedSnapshot) bool {
 	if len(key) != ed25519.PublicKeySize {
 		return false
 	}
-	signature, err := base64.RawURLEncoding.DecodeString(snapshot.Signature)
+	if len(snapshot.Signature) <= len("ed25519:") || snapshot.Signature[:len("ed25519:")] != "ed25519:" {
+		return false
+	}
+	signatureText := snapshot.Signature[len("ed25519:"):]
+	signature, err := base64.RawURLEncoding.DecodeString(signatureText)
 	if err != nil {
-		signature, err = base64.StdEncoding.DecodeString(snapshot.Signature)
+		signature, err = base64.StdEncoding.DecodeString(signatureText)
 	}
 	return err == nil && len(signature) == ed25519.SignatureSize && ed25519.Verify(key, snapshot.canonicalBytes(), signature)
+}
+
+// SignSnapshot signs the canonical policy snapshot with the dedicated Trace
+// capture policy key. Projection-grant keys are intentionally not accepted by
+// this API; callers provide an independent key and key ID/audience.
+func SignSnapshot(snapshot SignedSnapshot, privateKey ed25519.PrivateKey) (SignedSnapshot, error) {
+	if snapshot.ContractVersion == "" {
+		snapshot.ContractVersion = ContractVersion
+	}
+	if snapshot.ContractVersion != ContractVersion || snapshot.Revision == 0 || (snapshot.TraceAdmission != ModeEnabled && snapshot.TraceAdmission != ModeDisabled) || snapshot.EvidenceAdmission != snapshot.TraceAdmission || snapshot.KeyID == "" || snapshot.Audience == "" || snapshot.IssuedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.IssuedAt) || len(privateKey) != ed25519.PrivateKeySize {
+		return SignedSnapshot{}, ErrInvalidSnapshot
+	}
+	snapshot.Signature = "ed25519:" + base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, snapshot.canonicalBytes()))
+	return snapshot, nil
 }
 
 type AdmissionDecision struct {
@@ -144,7 +168,7 @@ func (g *Gateway) Admit(spanCount int) AdmissionDecision {
 	if !g.now().UTC().Before(snapshot.ExpiresAt) {
 		return AdmissionDecision{Dropped: spanCount, Reason: ReasonPolicyExpired}
 	}
-	if snapshot.Mode == ModeDisabled {
+	if snapshot.TraceAdmission == ModeDisabled {
 		return AdmissionDecision{Dropped: spanCount, Reason: ReasonPolicyDisabled}
 	}
 	return AdmissionDecision{Accepted: spanCount, Reason: ReasonAccepted}

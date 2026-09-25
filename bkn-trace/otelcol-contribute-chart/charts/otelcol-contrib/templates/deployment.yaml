@@ -68,6 +68,53 @@ spec:
                   name: {{ required "opensearchExporter.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearchExporter.auth.existingSecret | quote }}
                   key: {{ .Values.opensearchExporter.auth.passwordKey | quote }}
             {{- end }}
+            {{- if .Values.traceAdmission.enabled }}
+            - name: TRACE_ADMISSION_POLICY_URL
+              value: {{ .Values.traceAdmission.policyURL | quote }}
+            - name: TRACE_ADMISSION_CONFIGURATION_URL
+              value: {{ .Values.traceAdmission.configurationURL | quote }}
+            - name: TRACE_ADMISSION_HEARTBEAT_URL
+              value: {{ .Values.traceAdmission.heartbeatURL | quote }}
+            - name: TRACE_ADMISSION_ACK_URL_BASE
+              value: {{ .Values.traceAdmission.ackURLBase | quote }}
+            - name: TRACE_ADMISSION_TOKEN_URL
+              value: {{ .Values.traceAdmission.tokenURL | quote }}
+            - name: TRACE_ADMISSION_CLIENT_ID
+              value: {{ required "traceAdmission.clientID is required when Trace Admission is enabled" .Values.traceAdmission.clientID | quote }}
+            - name: TRACE_ADMISSION_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "traceAdmission.clientSecretSecret is required when Trace Admission is enabled" .Values.traceAdmission.clientSecretSecret | quote }}
+                  key: {{ .Values.traceAdmission.clientSecretKey | quote }}
+            - name: TRACE_ADMISSION_SCOPE
+              value: {{ .Values.traceAdmission.scope | quote }}
+            - name: TRACE_ADMISSION_AUDIENCE
+              value: {{ .Values.traceAdmission.audienceClusterID | quote }}
+            - name: TRACE_ADMISSION_CURRENT_KEY_ID
+              value: {{ required "traceAdmission.currentKeyID is required when Trace Admission is enabled" .Values.traceAdmission.currentKeyID | quote }}
+            - name: TRACE_ADMISSION_CURRENT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "traceAdmission.currentPublicKeySecret is required when Trace Admission is enabled" .Values.traceAdmission.currentPublicKeySecret | quote }}
+                  key: {{ .Values.traceAdmission.currentPublicKeyKey | quote }}
+            - name: TRACE_ADMISSION_PREVIOUS_KEY_ID
+              value: {{ .Values.traceAdmission.previousKeyID | quote }}
+            - name: TRACE_ADMISSION_PREVIOUS_PUBLIC_KEY
+              {{- if .Values.traceAdmission.previousPublicKeySecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.traceAdmission.previousPublicKeySecret | quote }}
+                  key: {{ .Values.traceAdmission.previousPublicKeyKey | quote }}
+              {{- else }}
+              value: ""
+              {{- end }}
+            - name: TRACE_ADMISSION_WORKLOAD_IDENTITY
+              value: {{ required "traceAdmission.workloadIdentity is required when Trace Admission is enabled" .Values.traceAdmission.workloadIdentity | quote }}
+            - name: TRACE_ADMISSION_POLL_INTERVAL
+              value: {{ .Values.traceAdmission.pollInterval | quote }}
+            - name: TRACE_ADMISSION_HTTP_TIMEOUT
+              value: {{ .Values.traceAdmission.httpTimeout | quote }}
+            {{- end }}
             {{- with .Values.extraEnvs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

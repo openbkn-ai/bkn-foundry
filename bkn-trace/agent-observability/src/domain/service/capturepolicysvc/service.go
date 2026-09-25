@@ -13,6 +13,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+)
+
+var (
+	ErrRevisionConflict     = errors.New("capture policy revision conflict")
+	ErrOperationInProgress  = errors.New("capture policy operation is already in progress")
+	ErrInvalidChangeRequest = errors.New("invalid capture policy change request")
+	ErrOperationNotFound    = errors.New("capture policy operation was not found")
 )
 
 type State string
@@ -82,6 +90,53 @@ type Snapshot struct {
 	Acknowledgements   []EndpointAcknowledgement `json:"acknowledgements"`
 }
 
+// AdmissionMeasurement and AdmissionBudget are the frozen configuration_get
+// read-model contract. The control plane must not fabricate a healthy budget;
+// callers without a current provider must fail closed at the HTTP boundary.
+type AdmissionMeasurement struct {
+	Metric     string    `json:"metric"`
+	Source     string    `json:"source"`
+	SampleTime time.Time `json:"sample_time"`
+	Value      float64   `json:"value"`
+	Threshold  float64   `json:"threshold"`
+	Fresh      bool      `json:"fresh"`
+}
+
+type AdmissionBudget struct {
+	ContractVersion string                 `json:"contract_version"`
+	Profile         string                 `json:"profile"`
+	SampledAt       time.Time              `json:"sampled_at"`
+	FreshUntil      time.Time              `json:"fresh_until"`
+	Measurements    []AdmissionMeasurement `json:"measurements"`
+}
+
+type ConfigurationGetResponse struct {
+	Kind                  string          `json:"kind"`
+	DesiredState          State           `json:"desired_state"`
+	EffectiveState        State           `json:"effective_state"`
+	PolicyRevision        uint64          `json:"policy_revision"`
+	LastStableRevision    uint64          `json:"last_stable_revision"`
+	ActiveOperationID     *string         `json:"active_operation_id,omitempty"`
+	HeartbeatIntervalSecs int             `json:"heartbeat_interval_seconds"`
+	LeaseTTLSeconds       int             `json:"lease_ttl_seconds"`
+	AdmissionBudget       AdmissionBudget `json:"admission_budget"`
+}
+
+type ChangeRequest struct {
+	DesiredState     State  `json:"desired_state"`
+	ExpectedRevision uint64 `json:"expected_revision"`
+}
+
+type Commander interface {
+	Request(context.Context, ChangeRequest) (Snapshot, error)
+}
+
+type CommanderFunc func(context.Context, ChangeRequest) (Snapshot, error)
+
+func (f CommanderFunc) Request(ctx context.Context, request ChangeRequest) (Snapshot, error) {
+	return f(ctx, request)
+}
+
 func (s Snapshot) Validate() error {
 	if s.Revision == 0 {
 		return errors.New("capture policy revision must be positive")
@@ -123,6 +178,10 @@ type Reader interface {
 	Read(context.Context) (Snapshot, error)
 }
 
+type OperationReader interface {
+	ReadOperation(context.Context, string) (Operation, error)
+}
+
 type ReaderFunc func(context.Context) (Snapshot, error)
 
 func (f ReaderFunc) Read(ctx context.Context) (Snapshot, error) { return f(ctx) }
@@ -143,4 +202,15 @@ func (s *Service) Read(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	return snapshot, nil
+}
+
+func (s *Service) ReadOperation(ctx context.Context, operationID string) (Operation, error) {
+	if s == nil || s.reader == nil || operationID == "" {
+		return Operation{}, ErrOperationNotFound
+	}
+	reader, ok := s.reader.(OperationReader)
+	if !ok {
+		return Operation{}, ErrOperationNotFound
+	}
+	return reader.ReadOperation(ctx, operationID)
 }
