@@ -20,6 +20,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
+// GenericDialect is SQLGlot's empty dialect, which emits generic SQL.
+const GenericDialect = ""
+
 // ExtractTablesResult stores the extraction results of the table
 type ExtractTablesResult struct {
 	Tables  []*Table `json:"tables"`
@@ -107,6 +110,10 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 		return "mysql", nil // MariaDB uses the mysql dialect
 	case "tsql", interfaces.ConnectorTypeSQLServer:
 		return "tsql", nil
+	case interfaces.ConnectorTypeOracle:
+		return "oracle", nil
+	case interfaces.ConnectorTypeHANA, GenericDialect:
+		return GenericDialect, nil
 	default:
 		logger.Errorf("unsupported dataSourceType: %s", dataSourceType)
 		return "", fmt.Errorf("unsupported dataSourceType: %s", dataSourceType)

@@ -39,6 +39,33 @@ func NewRawQueryServiceWithDeps(cs interfaces.CatalogService, rs interfaces.Reso
 	return &rawQueryService{cs: cs, rs: rs}
 }
 
+func TestTargetDialectForCatalog(t *testing.T) {
+	cases := []struct {
+		name          string
+		connectorType string
+		want          string
+	}{
+		{name: "mysql", connectorType: interfaces.ConnectorTypeMySQL, want: "mysql"},
+		{name: "mariadb", connectorType: interfaces.ConnectorTypeMariaDB, want: "mysql"},
+		{name: "postgresql", connectorType: interfaces.ConnectorTypePostgreSQL, want: "postgres"},
+		{name: "sqlserver", connectorType: interfaces.ConnectorTypeSQLServer, want: "tsql"},
+		{name: "oracle", connectorType: interfaces.ConnectorTypeOracle, want: "oracle"},
+		{name: "hana", connectorType: interfaces.ConnectorTypeHANA, want: sqlglot.GenericDialect},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := targetDialectForCatalog(context.Background(), &interfaces.Catalog{ConnectorType: tc.connectorType})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+	t.Run("rejects unsupported connector type", func(t *testing.T) {
+		got, err := targetDialectForCatalog(context.Background(), &interfaces.Catalog{ConnectorType: "unknown"})
+		require.Error(t, err)
+		assert.Empty(t, got)
+	})
+}
+
 func int64Pointer(value int64) *int64 {
 	return &value
 }
