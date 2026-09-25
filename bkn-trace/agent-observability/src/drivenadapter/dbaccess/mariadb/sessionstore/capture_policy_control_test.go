@@ -6,10 +6,12 @@ package sessionstore_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 )
@@ -99,6 +101,60 @@ func TestCapturePolicyControlRejectsAcknowledgementOutsideFrozenExpectedSet(t *t
 	})
 	if err != icapturepolicy.ErrExpectedSetConflict {
 		t.Fatalf("RecordAcknowledgement() error = %v, want expected-set conflict", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlRetriesAfterTransientDeadlock(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	exported, dropped, unaccounted := uint64(10), uint64(1), uint64(0)
+	acknowledgement := icapturepolicy.ExpectedAcknowledgement{OperationID: "op-retry", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 7, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: &unaccounted, TraceDisposition: icapturepolicy.DispositionComplete}
+	for attempt := 0; attempt < 2; attempt++ {
+		mock.ExpectBegin()
+		query := mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id").WithArgs("op-retry", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1")
+		if attempt == 0 {
+			query.WillReturnError(&mysql.MySQLError{Number: 1213, Message: "deadlock"})
+			mock.ExpectRollback()
+			continue
+		}
+		query.WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(7), "sa/gateway", "boot-1"))
+		mock.ExpectExec("UPDATE bkn_trace_capture_operation_acknowledgements").WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+	}
+	if err := store.RecordAcknowledgement(context.Background(), acknowledgement); err != nil {
+		t.Fatalf("RecordAcknowledgement() error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlExhaustsTransientTransactionRetries(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	exported, dropped, unaccounted := uint64(10), uint64(1), uint64(0)
+	acknowledgement := icapturepolicy.ExpectedAcknowledgement{OperationID: "op-exhausted", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 7, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: &unaccounted, TraceDisposition: icapturepolicy.DispositionComplete}
+	for attempt := 0; attempt < 4; attempt++ {
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id").WithArgs("op-exhausted", uint64(7), icapturepolicy.EndpointTraceGateway, "gateway#1").WillReturnError(&mysql.MySQLError{Number: 1205, Message: "lock wait timeout"})
+		mock.ExpectRollback()
+	}
+	err = store.RecordAcknowledgement(context.Background(), acknowledgement)
+	if err == nil || !strings.Contains(err.Error(), "transaction retry budget exhausted") {
+		t.Fatalf("RecordAcknowledgement() error = %v, want exhausted retry error", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

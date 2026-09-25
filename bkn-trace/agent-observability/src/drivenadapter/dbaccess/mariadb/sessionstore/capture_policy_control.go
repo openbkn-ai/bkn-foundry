@@ -8,12 +8,57 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 )
 
 var _ icapturepolicy.Store = (*Store)(nil)
+
+func (s *Store) withSerializableTransaction(ctx context.Context, fn func(*sql.Tx) error) error {
+	var lastErr error
+	for attempt := 0; attempt < transactionRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+		if err != nil {
+			if !retryableTransactionError(err) {
+				return err
+			}
+			lastErr = err
+			if waitErr := waitForTransactionRetry(ctx, attempt); waitErr != nil {
+				return waitErr
+			}
+			continue
+		}
+		callbackErr := fn(tx)
+		if callbackErr != nil {
+			_ = tx.Rollback()
+			if !retryableTransactionError(callbackErr) {
+				return callbackErr
+			}
+			lastErr = callbackErr
+			if waitErr := waitForTransactionRetry(ctx, attempt); waitErr != nil {
+				return waitErr
+			}
+			continue
+		}
+		if err := tx.Commit(); err != nil {
+			if !retryableTransactionError(err) {
+				return err
+			}
+			lastErr = err
+			if waitErr := waitForTransactionRetry(ctx, attempt); waitErr != nil {
+				return waitErr
+			}
+			continue
+		}
+		return nil
+	}
+	return fmt.Errorf("transaction retry budget exhausted: %w", lastErr)
+}
 
 func (s *Store) ReadControlState(ctx context.Context) (icapturepolicy.ControlState, error) {
 	var state icapturepolicy.ControlState
@@ -58,12 +103,12 @@ func (s *Store) StartOperation(ctx context.Context, expectedState icapturepolicy
 	if err := operation.Validate(); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.startOperationTx(ctx, tx, operation, expected)
+	})
+}
 
+func (s *Store) startOperationTx(ctx context.Context, tx *sql.Tx, operation icapturepolicy.Operation, expected []icapturepolicy.ExpectedAcknowledgement) error {
 	var currentRevision uint64
 	var activeID sql.NullString
 	if err := tx.QueryRowContext(ctx, `
@@ -133,22 +178,23 @@ func (s *Store) StartOperation(ctx context.Context, expectedState icapturepolicy
 		VALUES (?, ?, ?, ?, ?, ?, ?)`, operation.ID, operation.Phase, icapturepolicy.EventOperationCreated, operation.LeaseToken, nil, nil, operation.CreatedAt.UTC()); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) AdvanceOperation(ctx context.Context, operationID string, leaseToken uint64, phase, errorCode, gapReason string, now time.Time) error {
 	if operationID == "" || leaseToken == 0 || phase == "" || now.IsZero() {
 		return icapturepolicy.ErrInvalidOperation
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.advanceOperationTx(ctx, tx, operationID, leaseToken, phase, errorCode, gapReason, now)
+	})
+}
+
+func (s *Store) advanceOperationTx(ctx context.Context, tx *sql.Tx, operationID string, leaseToken uint64, phase, errorCode, gapReason string, now time.Time) error {
 	var storedToken uint64
 	var currentPhase string
 	var leaseExpires sql.NullTime
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT phase, lease_token, lease_expires_at
 		FROM bkn_trace_capture_operations
 		WHERE operation_id = ? FOR UPDATE`, operationID).Scan(&currentPhase, &storedToken, &leaseExpires)
@@ -163,7 +209,7 @@ func (s *Store) AdvanceOperation(ctx context.Context, operationID string, leaseT
 	}
 	if !icapturepolicy.CanTransition(currentPhase, phase) || phase == icapturepolicy.PhaseSucceeded || phase == icapturepolicy.PhaseFailed || phase == icapturepolicy.PhaseRollbackCompleted || phase == icapturepolicy.PhaseRollbackFailed {
 		if currentPhase == phase && currentPhase != icapturepolicy.PhasePending {
-			return tx.Commit()
+			return nil
 		}
 		return icapturepolicy.ErrInvalidTransition
 	}
@@ -179,7 +225,7 @@ func (s *Store) AdvanceOperation(ctx context.Context, operationID string, leaseT
 		VALUES (?, ?, ?, ?, ?, ?, ?)`, operationID, phase, icapturepolicy.EventPhaseChanged, leaseToken, nullString(errorCode), nullString(gapReason), now.UTC()); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) BeginRollback(ctx context.Context, operationID string, leaseToken, compensationRevision uint64, restoredState string, expected []icapturepolicy.ExpectedAcknowledgement, now time.Time) error {
@@ -191,17 +237,18 @@ func (s *Store) BeginRollback(ctx context.Context, operationID string, leaseToke
 			return icapturepolicy.ErrExpectedSetConflict
 		}
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.beginRollbackTx(ctx, tx, operationID, leaseToken, compensationRevision, restoredState, expected, now)
+	})
+}
+
+func (s *Store) beginRollbackTx(ctx context.Context, tx *sql.Tx, operationID string, leaseToken, compensationRevision uint64, restoredState string, expected []icapturepolicy.ExpectedAcknowledgement, now time.Time) error {
 	var policyRevision, storedToken uint64
 	var currentPhase string
 	var operationRestoredState sql.NullString
 	var storedCompensationRevision sql.NullInt64
 	var leaseExpires sql.NullTime
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT policy_revision, phase, lease_token, lease_expires_at, compensation_revision, restored_state
 		FROM bkn_trace_capture_operations
 		WHERE operation_id = ? FOR UPDATE`, operationID).Scan(&policyRevision, &currentPhase, &storedToken, &leaseExpires, &storedCompensationRevision, &operationRestoredState)
@@ -230,7 +277,7 @@ func (s *Store) BeginRollback(ctx context.Context, operationID string, leaseToke
 		if err := verifyFrozenAcknowledgements(ctx, tx, operationID, compensationRevision, expected); err != nil {
 			return err
 		}
-		return tx.Commit()
+		return nil
 	}
 	if !icapturepolicy.CanTransition(currentPhase, icapturepolicy.PhaseRollingBack) || activeOperationID != operationID || restoredState != currentEffective || compensationRevision <= policyRevision {
 		return icapturepolicy.ErrInvalidTransition
@@ -280,7 +327,7 @@ func (s *Store) BeginRollback(ctx context.Context, operationID string, leaseToke
 		VALUES (?, ?, ?, ?, ?, ?, ?)`, operationID, icapturepolicy.PhaseRollingBack, icapturepolicy.EventRollbackStarted, leaseToken, nil, nil, now.UTC()); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) CompleteSucceeded(ctx context.Context, operationID string, leaseToken uint64, now time.Time) error {
@@ -303,17 +350,18 @@ func (s *Store) completeOperation(ctx context.Context, operationID string, lease
 	if operationID == "" || leaseToken == 0 || now.IsZero() {
 		return icapturepolicy.ErrInvalidOperation
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.completeOperationTx(ctx, tx, operationID, leaseToken, outcome, now)
+	})
+}
+
+func (s *Store) completeOperationTx(ctx context.Context, tx *sql.Tx, operationID string, leaseToken uint64, outcome string, now time.Time) error {
 	var policyRevision, expectedRevision, storedToken uint64
 	var compensationRevision sql.NullInt64
 	var requestedState, currentPhase string
 	var restoredState sql.NullString
 	var leaseExpires sql.NullTime
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT policy_revision, expected_revision, requested_state, phase, lease_token,
 		       lease_expires_at, compensation_revision, restored_state
 		FROM bkn_trace_capture_operations
@@ -328,7 +376,7 @@ func (s *Store) completeOperation(ctx context.Context, operationID string, lease
 		return icapturepolicy.ErrLeaseConflict
 	}
 	if currentPhase == outcome {
-		return tx.Commit()
+		return nil
 	}
 	if !icapturepolicy.CanTransition(currentPhase, outcome) {
 		if currentPhase == icapturepolicy.PhaseSucceeded || currentPhase == icapturepolicy.PhaseFailed || currentPhase == icapturepolicy.PhaseRollbackCompleted || currentPhase == icapturepolicy.PhaseRollbackFailed {
@@ -389,7 +437,7 @@ func (s *Store) completeOperation(ctx context.Context, operationID string, lease
 	if err != nil || rows != 1 {
 		return icapturepolicy.ErrRevisionConflict
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) AppendOperationEvent(ctx context.Context, event icapturepolicy.OperationEvent) error {
@@ -408,13 +456,14 @@ func (s *Store) UpsertEndpointLease(ctx context.Context, lease icapturepolicy.En
 	if err := lease.Validate(); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.upsertEndpointLeaseTx(ctx, tx, lease)
+	})
+}
+
+func (s *Store) upsertEndpointLeaseTx(ctx context.Context, tx *sql.Tx, lease icapturepolicy.EndpointLease) error {
 	var workloadIdentity, processBootID string
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT workload_identity, process_boot_id
 		FROM bkn_trace_capture_endpoint_leases
 		WHERE endpoint_kind = ? AND instance_id = ? AND process_boot_id = ? FOR UPDATE`, lease.EndpointKind, lease.InstanceID, lease.ProcessBootID).Scan(&workloadIdentity, &processBootID)
@@ -429,7 +478,7 @@ func (s *Store) UpsertEndpointLease(ctx context.Context, lease icapturepolicy.En
 		if err != nil {
 			return err
 		}
-		return tx.Commit()
+		return nil
 	}
 	if err != nil {
 		return err
@@ -451,21 +500,22 @@ func (s *Store) UpsertEndpointLease(ctx context.Context, lease icapturepolicy.En
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) RecordAcknowledgement(ctx context.Context, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
 	if err := acknowledgement.Validate(); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		return s.recordAcknowledgementTx(ctx, tx, acknowledgement)
+	})
+}
+
+func (s *Store) recordAcknowledgementTx(ctx context.Context, tx *sql.Tx, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
 	var expectedRevision uint64
 	var workloadIdentity, processBootID string
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT policy_revision, workload_identity, process_boot_id
 		FROM bkn_trace_capture_operation_acknowledgements
 		WHERE operation_id = ? AND policy_revision = ? AND endpoint_kind = ? AND instance_id = ? FOR UPDATE`,
@@ -502,7 +552,7 @@ func (s *Store) RecordAcknowledgement(ctx context.Context, acknowledgement icapt
 	if rows != 1 {
 		return icapturepolicy.ErrExpectedSetConflict
 	}
-	return tx.Commit()
+	return nil
 }
 
 func insertExpectedAcknowledgement(ctx context.Context, tx *sql.Tx, a icapturepolicy.ExpectedAcknowledgement) error {
