@@ -77,6 +77,13 @@ def verify_activation(manifest, entries):
     return computed
 
 
+def verify_active_runtime(manifest, entries):
+    """Validate an already issued manifest before bridge publication."""
+    verify_activation(manifest, entries)
+    if manifest.get("state") != "active":
+        raise ManifestError("bridge requires an active immutable manifest")
+
+
 def closure_digest(manifest_header, results):
     required_header = {"activated_at", "closed_at", "contract_sha", "entries_digest", "entry_count", "manifest_id", "source_snapshot_at", "terminal_counts"}
     if set(manifest_header) != required_header or manifest_header.get("contract_sha") != CONTRACT_SHA:
