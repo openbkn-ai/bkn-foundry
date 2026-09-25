@@ -2161,6 +2161,238 @@
                 }
             }
         },
+        "/trace-evidence-configuration": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.\nRequires the existing Trace/Evidence configuration permission.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trace-evidence"
+                ],
+                "summary": "Get the unified Trace/Evidence capture configuration",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/capturepolicysvc.ConfigurationGetResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Requires the existing Trace/Evidence configuration permission. The requested state is asynchronous; effective_state reports the last observed runtime state.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trace-evidence"
+                ],
+                "summary": "Change the unified Trace/Evidence capture configuration",
+                "parameters": [
+                    {
+                        "description": "Desired state and expected policy revision",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/capturepolicysvc.ChangeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.TraceEvidenceConfigurationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/trace-evidence-operations/{operation_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Requires the existing Trace/Evidence configuration permission.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trace-evidence"
+                ],
+                "summary": "Get a Trace/Evidence configuration operation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Configuration operation ID",
+                        "name": "operation_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/capturepolicysvc.Operation"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/trace-evidence-operations/{operation_id}:reconcile": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Requests reconciliation of the addressed operation and returns the current configuration snapshot. Requires the existing Trace/Evidence configuration permission.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trace-evidence"
+                ],
+                "summary": "Reconcile a Trace/Evidence configuration operation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Configuration operation ID",
+                        "name": "operation_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.TraceEvidenceConfigurationResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/traces": {
             "get": {
                 "description": "Returns stable trace summaries with reverse request links, generated from authorized trace evidence.",
@@ -2504,6 +2736,207 @@
                     }
                 }
             }
+        },
+        "capturepolicysvc.AckState": {
+            "type": "string",
+            "enum": [
+                "ready",
+                "draining",
+                "disabled",
+                "gap"
+            ],
+            "x-enum-varnames": [
+                "AckReady",
+                "AckDraining",
+                "AckDisabled",
+                "AckGap"
+            ]
+        },
+        "capturepolicysvc.AdmissionBudget": {
+            "type": "object",
+            "properties": {
+                "contract_version": {
+                    "type": "string"
+                },
+                "fresh_until": {
+                    "type": "string"
+                },
+                "measurements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/capturepolicysvc.AdmissionMeasurement"
+                    }
+                },
+                "profile": {
+                    "type": "string"
+                },
+                "sampled_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "capturepolicysvc.AdmissionMeasurement": {
+            "type": "object",
+            "properties": {
+                "fresh": {
+                    "type": "boolean"
+                },
+                "metric": {
+                    "type": "string"
+                },
+                "sample_time": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "number"
+                },
+                "value": {
+                    "type": "number"
+                }
+            }
+        },
+        "capturepolicysvc.ChangeRequest": {
+            "type": "object",
+            "properties": {
+                "desired_state": {
+                    "$ref": "#/definitions/capturepolicysvc.State"
+                },
+                "expected_revision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "capturepolicysvc.ConfigurationGetResponse": {
+            "type": "object",
+            "properties": {
+                "active_operation_id": {
+                    "type": "string"
+                },
+                "admission_budget": {
+                    "$ref": "#/definitions/capturepolicysvc.AdmissionBudget"
+                },
+                "desired_state": {
+                    "$ref": "#/definitions/capturepolicysvc.State"
+                },
+                "effective_state": {
+                    "$ref": "#/definitions/capturepolicysvc.State"
+                },
+                "heartbeat_interval_seconds": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "last_stable_revision": {
+                    "type": "integer"
+                },
+                "lease_ttl_seconds": {
+                    "type": "integer"
+                },
+                "policy_revision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "capturepolicysvc.EndpointAcknowledgement": {
+            "type": "object",
+            "properties": {
+                "generation": {
+                    "type": "string"
+                },
+                "instance_id": {
+                    "type": "string"
+                },
+                "queue_disposition": {
+                    "$ref": "#/definitions/capturepolicysvc.QueueDisposition"
+                },
+                "ready": {
+                    "type": "boolean"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "state": {
+                    "$ref": "#/definitions/capturepolicysvc.AckState"
+                }
+            }
+        },
+        "capturepolicysvc.Operation": {
+            "type": "object",
+            "properties": {
+                "error_code": {
+                    "type": "string"
+                },
+                "expected_revision": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "phase": {
+                    "$ref": "#/definitions/capturepolicysvc.Phase"
+                },
+                "requested_state": {
+                    "$ref": "#/definitions/capturepolicysvc.State"
+                }
+            }
+        },
+        "capturepolicysvc.Phase": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "enabling",
+                "disabling",
+                "rolling_back",
+                "succeeded",
+                "failed",
+                "rollback_completed",
+                "rollback_failed"
+            ],
+            "x-enum-varnames": [
+                "PhasePending",
+                "PhaseEnabling",
+                "PhaseDisabling",
+                "PhaseRollingBack",
+                "PhaseSucceeded",
+                "PhaseFailed",
+                "PhaseRollbackComplete",
+                "PhaseRollbackFailed"
+            ]
+        },
+        "capturepolicysvc.QueueDisposition": {
+            "type": "object",
+            "properties": {
+                "dropped": {
+                    "type": "integer"
+                },
+                "exported": {
+                    "type": "integer"
+                },
+                "unaccounted": {
+                    "type": "integer"
+                }
+            }
+        },
+        "capturepolicysvc.State": {
+            "type": "string",
+            "enum": [
+                "enabled",
+                "disabled",
+                "enabling",
+                "disabling",
+                "rolling_back"
+            ],
+            "x-enum-varnames": [
+                "StateEnabled",
+                "StateDisabled",
+                "StateEnabling",
+                "StateDisabling",
+                "StateRollingBack"
+            ]
         },
         "evidencevo.ArtifactIngestResponse": {
             "type": "object",
@@ -3894,6 +4327,35 @@
                 },
                 "trace_id": {
                     "type": "string"
+                }
+            }
+        },
+        "rdto.TraceEvidenceConfigurationResponse": {
+            "type": "object",
+            "properties": {
+                "acknowledgements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/capturepolicysvc.EndpointAcknowledgement"
+                    }
+                },
+                "coverage_gap": {
+                    "type": "boolean"
+                },
+                "desired_state": {
+                    "$ref": "#/definitions/capturepolicysvc.State"
+                },
+                "effective_state": {
+                    "$ref": "#/definitions/capturepolicysvc.State"
+                },
+                "last_stable_revision": {
+                    "type": "integer"
+                },
+                "operation": {
+                    "$ref": "#/definitions/capturepolicysvc.Operation"
+                },
+                "revision": {
+                    "type": "integer"
                 }
             }
         },
