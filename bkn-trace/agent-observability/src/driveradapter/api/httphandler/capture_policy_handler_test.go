@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -390,8 +391,15 @@ func TestInternalTracePolicySnapshotUsesDedicatedSigner(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil {
 		t.Fatalf("decode snapshot: %v", err)
 	}
-	if snapshot.Revision != 42 || snapshot.Signature == "" {
+	if snapshot.ContractVersion != traceadmissionsvc.ContractVersion || snapshot.Revision != 42 || snapshot.TraceAdmission != traceadmissionsvc.ModeEnabled || snapshot.EvidenceAdmission != traceadmissionsvc.ModeEnabled || !strings.HasPrefix(snapshot.Signature, "ed25519:") {
 		t.Fatalf("unexpected signed snapshot: %+v", snapshot)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
+		t.Fatal(err)
+	}
+	if _, legacy := wire["admission_mode"]; legacy {
+		t.Fatal("legacy admission_mode field leaked into TraceEvidencePolicySnapshotV1")
 	}
 }
 

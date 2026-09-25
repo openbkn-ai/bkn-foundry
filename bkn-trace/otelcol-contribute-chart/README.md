@@ -71,8 +71,22 @@ ghcr.io/<github_org_or_user>/charts/otelcol-contrib
 默认 collector 镜像：
 
 ```text
-docker.io/otel/opentelemetry-collector-contrib:0.148.0
+ghcr.io/openbkn-ai/otelcol-openbkn:0.148.0-openbkn.1
 ```
+
+该镜像由 `builder-config.yaml` 生成，额外包含 traces-only 的
+`traceadmission` processor。Processor 使用现有 BKN Safe OAuth2
+`client_credentials` 获取 Bearer token，拉取签名的
+`TraceEvidencePolicySnapshotV1`，并在 policy revision 与现有 configuration GET
+的 active operation/revision 一致时发送 heartbeat/ACK。client secret 与签名公钥
+只通过 Pod Secret 注入，不写入 ConfigMap。
+
+Trace Admission 的内部路由使用 agent-observability chart 单独创建的
+`agent-observability-internal:8081` Service（private listener）；
+configuration GET 使用 `:8080` public listener。部署平台必须确保 Collector Pod 能访问
+这两个现有 listener，且 BKN Safe client principal 已授予精确的
+`trace_evidence_configuration/global/read` 与 `trace_evidence_endpoint/{trace_gateway}/heartbeat`
+能力。Processor 不读取或改变 logs pipeline。
 
 默认会渲染以下 exporter 结构：
 

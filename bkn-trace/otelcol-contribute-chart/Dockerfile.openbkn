@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+# Copyright (c) 2026 OpenBKN
+# SPDX-License-Identifier: LicenseRef-OpenBKN
+
+FROM golang:1.25 AS builder
+WORKDIR /src
+COPY . .
+RUN go install go.opentelemetry.io/collector/cmd/builder@v0.148.0
+RUN /go/bin/builder --config /src/bkn-trace/otelcol-contribute-chart/builder-config.yaml
+
+FROM gcr.io/distroless/base-debian12:nonroot
+COPY --from=builder /src/bkn-trace/otelcol-contribute-chart/_build/otelcol-openbkn /otelcol-openbkn
+USER nonroot:nonroot
+ENTRYPOINT ["/otelcol-openbkn"]

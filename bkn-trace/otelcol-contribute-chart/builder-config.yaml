@@ -1,0 +1,23 @@
+dist:
+  name: otelcol-openbkn
+  description: OpenBKN Collector with traces-only Trace Admission Gateway
+  output_path: ./_build
+  module: github.com/openbkn-ai/bkn-foundry/bkn-trace/otelcol-contribute-chart/otelcol-openbkn
+  version: 0.148.0-openbkn.1
+  otelcol_version: 0.148.0
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.148.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.148.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.148.0
+  # This module is published from the checked-out repository by the release
+  # workflow before the image build. It is not fetched from an unpinned HEAD.
+  - gomod: github.com/openbkn-ai/bkn-foundry/bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor v0.148.0-openbkn.1
+
+exporters:
+  - gomod: go.opentelemetry.io/collector-contrib/exporter/opensearchexporter v0.148.0
+
+extensions:
+  - gomod: go.opentelemetry.io/collector/extension/healthcheckextension v0.148.0

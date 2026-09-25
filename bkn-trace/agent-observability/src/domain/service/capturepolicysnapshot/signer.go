@@ -38,6 +38,8 @@ func (s Signer) Sign(revision uint64, state capturepolicysvc.State) (traceadmiss
 		mode = traceadmissionsvc.ModeEnabled
 	}
 	return traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
-		Revision: revision, Mode: mode, IssuedAt: now, ExpiresAt: now.Add(s.TTL), KeyID: s.KeyID, Audience: s.Audience,
+		ContractVersion: traceadmissionsvc.ContractVersion,
+		Revision:        revision, TraceAdmission: mode, EvidenceAdmission: mode,
+		IssuedAt: now, ExpiresAt: now.Add(s.TTL), KeyID: s.KeyID, Audience: s.Audience,
 	}, s.PrivateKey)
 }
