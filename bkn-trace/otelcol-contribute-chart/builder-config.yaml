@@ -5,6 +5,9 @@ dist:
   module: github.com/openbkn-ai/bkn-foundry/bkn-trace/otelcol-contribute-chart/otelcol-openbkn
   version: 0.148.0-openbkn.1
   otelcol_version: 0.148.0
+  # The image build uses the repository root as context because the local
+  # processor imports the shared traceadmissionsvc module.
+  use_absolute_replace_paths: true
 
 receivers:
   - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.148.0
@@ -16,10 +19,15 @@ processors:
   # the generated registration and compatibility checks pinned, while path
   # prevents OCB from fetching an unpublished or mutable repository revision.
   - gomod: github.com/openbkn-ai/bkn-foundry/bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor v0.148.0-openbkn.1
-    path: ./processor/traceadmissionprocessor
+    path: ./bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor
 
 exporters:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opensearchexporter v0.148.0
 
 extensions:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.148.0
+
+replaces:
+  # Keep the processor build on the checked-out control-plane implementation;
+  # never resolve this internal module from a tag or mutable remote branch.
+  - github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability => /src/bkn-trace/agent-observability

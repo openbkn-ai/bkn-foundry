@@ -16,10 +16,10 @@ require_line() {
   fi
 }
 
-# The build context used by reusable-container-image.yml is this service
-# directory. These paths must therefore resolve from /src, not from the
-# repository root.
-require_line "${DOCKERFILE}" 'RUN /go/bin/builder --config /src/builder-config.yaml'
+# The image workflow intentionally uses the repository root as its build
+# context because the local processor imports the shared agent-observability
+# module. The Dockerfile and builder config remain under the chart directory.
+require_line "${DOCKERFILE}" 'RUN /go/bin/builder --config /src/bkn-trace/otelcol-contribute-chart/builder-config.yaml'
 require_line "${DOCKERFILE}" 'COPY --from=builder /src/_build/otelcol-openbkn /otelcol-openbkn'
 
 # The custom processor is compiled from the checked-out source. A remote
@@ -27,9 +27,10 @@ require_line "${DOCKERFILE}" 'COPY --from=builder /src/_build/otelcol-openbkn /o
 # checks; no release workflow may fetch an unpublished HEAD or publish a
 # temporary module as a side effect.
 require_line "${CONFIG}" 'gomod: github.com/openbkn-ai/bkn-foundry/bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor v0.148.0-openbkn.1'
-require_line "${CONFIG}" 'path: ./processor/traceadmissionprocessor'
+require_line "${CONFIG}" 'path: ./bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor'
 require_line "${CONFIG}" 'gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opensearchexporter v0.148.0'
 require_line "${CONFIG}" 'gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.148.0'
+require_line "${CONFIG}" 'github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability => /src/bkn-trace/agent-observability'
 
 if grep -Fq 'gomod: go.opentelemetry.io/collector-contrib/exporter/opensearchexporter' "${CONFIG}"; then
   echo "OpenSearch exporter uses the wrong Go module path" >&2
@@ -57,10 +58,6 @@ rendered="$(helm template ocb-contract "${ROOT}/charts/otelcol-contrib" \
   --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol)"
 grep -Fq 'image: "ghcr.io/openbkn-ai/otelcol-openbkn:0.2.0-local"' <<<"${rendered}"
 
-if grep -Fq '/src/bkn-trace/otelcol-contribute-chart/' "${DOCKERFILE}"; then
-  echo "Dockerfile contains a repository-root path that is invalid for the service build context" >&2
-  exit 1
-fi
 if grep -Fq '0.148.0-openbkn.1' "${VALUES}"; then
   echo "chart must not pin an unpublished OCB development image" >&2
   exit 1

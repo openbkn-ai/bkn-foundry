@@ -75,9 +75,12 @@ jobs:
     uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
-      service-path: bkn-trace/otelcol-contribute-chart
+      # The custom processor imports the checked-out agent-observability
+      # traceadmissionsvc module, so the Docker context must be the repository
+      # root. The Dockerfile and builder config remain under the chart path.
+      service-path: .
       context: .
-      dockerfile: Dockerfile.openbkn
+      dockerfile: bkn-trace/otelcol-contribute-chart/Dockerfile.openbkn
       image-name: otelcol-openbkn
       version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
