@@ -37,36 +37,9 @@ const (
 	ConnectorTypeSQLServer  string = "sqlserver"
 	ConnectorTypeOpenSearch string = "opensearch"
 	ConnectorTypeOracle     string = "oracle"
+	ConnectorTypeHANA       string = "hana"
 	ConnectorTypeAnyShare   string = "anyshare"
 )
-
-// The list of connector types supported by the current unified query interface
-// Note: The system supports more connector types, but the current unified query interface only supports the following types
-var SupportedConnectorTypesForQuery = map[string]bool{
-	ConnectorTypeMySQL:      true,
-	ConnectorTypeMariaDB:    true,
-	ConnectorTypePostgreSQL: true,
-	ConnectorTypeSQLServer:  true,
-	ConnectorTypeOpenSearch: true,
-}
-
-// Support GetSupportedConnectorTypesForQuery returns the current unified query interface connector type list
-// Note: The system supports more connector types, but the current unified query interface only supports the following types
-func GetSupportedConnectorTypesForQuery() []string {
-	return []string{
-		ConnectorTypeMySQL,
-		ConnectorTypeMariaDB,
-		ConnectorTypePostgreSQL,
-		ConnectorTypeSQLServer,
-		ConnectorTypeOpenSearch,
-	}
-}
-
-// IsConnectorTypeSupportedForQuery check whether a given connector type supported by the current unified query interface
-// Note: The system supports more connector types, but the current unified query interface only supports some types
-func IsConnectorTypeSupportedForQuery(connectorType string) bool {
-	return SupportedConnectorTypesForQuery[connectorType]
-}
 
 // ConnectorFieldConfig defines the metadata of the connector configuration field (compatible with JSON Schema properties)
 type ConnectorFieldConfig struct {

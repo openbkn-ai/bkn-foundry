@@ -19,6 +19,16 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 	requireSQLGlotRuntime(t)
 
 	adapter := NewSQLGlotAdapter()
+	t.Run("accepts generic SQL", func(t *testing.T) {
+		require.NoError(t, adapter.ValidateSQL(context.Background(),
+			`SELECT "id" FROM "SCHEMA"."orders" LIMIT 10`, ""))
+	})
+	t.Run("rejects generic SQL mutation", func(t *testing.T) {
+		err := adapter.ValidateSQL(context.Background(), `DELETE FROM "SCHEMA"."orders"`, "")
+		require.Error(t, err)
+		var validationErr *ReadOnlySQLValidationError
+		require.ErrorAs(t, err, &validationErr)
+	})
 	for _, sql := range []string{
 		"SELECT id, name FROM orders WHERE id = 1",
 		"SELECT COUNT(*) AS total FROM orders",
@@ -162,6 +172,17 @@ func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
 	requireSQLGlotRuntime(t)
 
 	adapter := NewSQLGlotAdapter()
+	t.Run("accepts generic SQL bound table", func(t *testing.T) {
+		require.NoError(t, adapter.ValidateTableReferences(context.Background(),
+			`SELECT "id" FROM "SCHEMA"."orders"`, "", []string{`"SCHEMA"."orders"`}))
+	})
+	t.Run("rejects generic SQL unbound table", func(t *testing.T) {
+		err := adapter.ValidateTableReferences(context.Background(),
+			`SELECT "id" FROM "SCHEMA"."secret"`, "", []string{`"SCHEMA"."orders"`})
+		require.Error(t, err)
+		var validationErr *ReadOnlySQLValidationError
+		require.ErrorAs(t, err, &validationErr)
+	})
 	t.Run("accepts allowed table references", func(t *testing.T) {
 		require.NoError(t, adapter.ValidateTableReferences(context.Background(),
 			"SELECT * FROM public.orders JOIN public.customers ON orders.customer_id = customers.id",

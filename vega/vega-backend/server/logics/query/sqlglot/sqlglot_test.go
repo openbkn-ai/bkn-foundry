@@ -28,6 +28,9 @@ func TestMapDataSourceTypeToDialect(t *testing.T) {
 		{name: "postgres connector type", sourceType: interfaces.ConnectorTypePostgreSQL, want: "postgres"},
 		{name: "mariadb", sourceType: interfaces.ConnectorTypeMariaDB, want: "mysql"},
 		{name: "sqlserver", sourceType: interfaces.ConnectorTypeSQLServer, want: "tsql"},
+		{name: "oracle", sourceType: interfaces.ConnectorTypeOracle, want: "oracle"},
+		{name: "hana", sourceType: interfaces.ConnectorTypeHANA, want: GenericDialect},
+		{name: "generic dialect", sourceType: GenericDialect, want: GenericDialect},
 		{name: "tsql target dialect", sourceType: "tsql", want: "tsql"},
 		{name: "maria alias", sourceType: "maria", want: "mysql"},
 	}
@@ -41,11 +44,11 @@ func TestMapDataSourceTypeToDialect(t *testing.T) {
 		})
 	}
 	t.Run("returns error for unsupported source type", func(t *testing.T) {
-		got, err := MapDataSourceTypeToDialect("oracle")
+		got, err := MapDataSourceTypeToDialect("unknown")
 
 		require.Error(t, err)
 		assert.Empty(t, got)
-		assert.Contains(t, err.Error(), "unsupported dataSourceType: oracle")
+		assert.Contains(t, err.Error(), "unsupported dataSourceType: unknown")
 	})
 }
 
@@ -68,12 +71,30 @@ func TestTranspileSQL(t *testing.T) {
 		assert.Equal(t, "SELECT TOP 10 [id] FROM [orders]", got.SQL)
 	})
 
+	t.Run("transpiles trino input to oracle target dialect", func(t *testing.T) {
+		requireSQLGlotRuntime(t)
+		got, err := TranspileSQL(context.Background(), "SELECT id FROM orders LIMIT 10", "trino", interfaces.ConnectorTypeOracle)
+
+		require.NoError(t, err)
+		assert.Equal(t, "oracle", got.Dialect)
+		assert.Equal(t, "SELECT id FROM orders FETCH FIRST 10 ROWS ONLY", got.SQL)
+	})
+
+	t.Run("transpiles postgres input to generic target dialect", func(t *testing.T) {
+		requireSQLGlotRuntime(t)
+		got, err := TranspileSQL(context.Background(), `SELECT "id" FROM "SCHEMA"."orders" LIMIT 10`, "postgres", GenericDialect)
+
+		require.NoError(t, err)
+		assert.Equal(t, GenericDialect, got.Dialect)
+		assert.Equal(t, `SELECT "id" FROM "SCHEMA"."orders" LIMIT 10`, got.SQL)
+	})
+
 	t.Run("returns mapping error before invoking sqlglot", func(t *testing.T) {
-		got, err := TranspileSQL(context.Background(), "select * from t", "mysql", "oracle")
+		got, err := TranspileSQL(context.Background(), "select * from t", "mysql", "unknown")
 
 		require.Error(t, err)
 		assert.Nil(t, got)
-		assert.Contains(t, err.Error(), "unsupported dataSourceType: oracle")
+		assert.Contains(t, err.Error(), "unsupported dataSourceType: unknown")
 	})
 
 	t.Run("honors canceled context", func(t *testing.T) {
