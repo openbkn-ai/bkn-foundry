@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -33,7 +32,31 @@ func quote(b []byte, s string) ([]byte, error) {
 	if !utf8.ValidString(s) {
 		return nil, errors.New("manifest entry string is not valid UTF-8")
 	}
-	return strconv.AppendQuote(b, s), nil
+	b = append(b, '"')
+	const hex = "0123456789abcdef"
+	for _, c := range []byte(s) {
+		switch c {
+		case '"', '\\':
+			b = append(b, '\\', c)
+		case '\b':
+			b = append(b, '\\', 'b')
+		case '\t':
+			b = append(b, '\\', 't')
+		case '\n':
+			b = append(b, '\\', 'n')
+		case '\f':
+			b = append(b, '\\', 'f')
+		case '\r':
+			b = append(b, '\\', 'r')
+		default:
+			if c < 0x20 {
+				b = append(b, '\\', 'u', '0', '0', hex[c>>4], hex[c&15])
+			} else {
+				b = append(b, c)
+			}
+		}
+	}
+	return append(b, '"'), nil
 }
 func appendEntry(b []byte, e frozenEntry) ([]byte, error) {
 	m, _ := canonicalEntry(e)

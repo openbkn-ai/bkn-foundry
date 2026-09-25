@@ -17,6 +17,17 @@ func TestManifestEntryQuoteEscapesJSONWithoutEscapingUTF8(t *testing.T) {
 	}
 }
 
+func TestManifestEntryQuoteUsesJSONControlEscapes(t *testing.T) {
+	got, err := quote(nil, "\x01\b\t\n\f\r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "\"\\u0001\\b\\t\\n\\f\\r\""
+	if string(got) != want {
+		t.Fatalf("quote = %q, want %q", got, want)
+	}
+}
+
 func TestEntriesDigestMatchesC1Golden(t *testing.T) {
 	entry := frozenEntry{
 		Classification: "publish", ClassificationReason: "pending",
