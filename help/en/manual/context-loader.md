@@ -79,9 +79,12 @@ Once configured, MCP clients can discover and call these tools (your deployment 
 | `get_action_execution` / `list_action_executions` | Action execution status and history |
 | `search_capabilities` | Rank every capability the network mounted — Skills, Function tools, API tools and MCP tools — in one space |
 | `list_knowledge_networks` | List knowledge networks |
-| `list_resources` / `describe_resource` | List and describe Vega resources |
-| `run_sql` | Run SQL directly against a resource |
 | `bkn_start_interaction` / `bkn_finish_interaction` | Session lifecycle (business traceability) |
+
+`run_sql`, `list_resources` and `describe_resource` are not on the MCP surface: they answer
+with physical columns under the caller's own data-resource grants, outside the property-level
+rules the knowledge network applies, so only their REST routes remain (`POST /kn/run_sql` and
+the other two). Aggregate with `run_cypher`; read a modelled figure with `query_metric`.
 
 Every tool call requires `kn_id` (knowledge network ID). Use `openbkn bkn list` to find it.
 
@@ -191,7 +194,7 @@ openbkn context find-skills <kn-id> ot_orders --top-k 5
 The catalog grows between releases and the CLI does not wrap every tool. `tool-call` invokes any MCP tool by name; `call-method` invokes any MCP method:
 
 ```bash
-openbkn context tool-call <kn-id> run_sql --args '{"sql":"SELECT 1"}'
+openbkn context tool-call <kn-id> run_cypher --args '{"query":"MATCH (o:orders) RETURN count(*) AS n"}'
 openbkn context tool-call <kn-id> execute_action --args '{
   "at_id": "at_escalate",
   "_instance_identities": [{"...": "as above"}],
@@ -301,7 +304,9 @@ const actions = await bkn.context.actionInfo(knId, {
 const skills = await bkn.context.findSkills(knId, 'ot_orders', 5);
 
 // Anything not wrapped: call the tool by name
-const sql = await bkn.context.toolCall(knId, 'run_sql', { sql: 'SELECT 1' });
+const counted = await bkn.context.toolCall(knId, 'run_cypher', {
+  query: 'MATCH (o:orders) RETURN count(*) AS n',
+});
 ```
 
 ---

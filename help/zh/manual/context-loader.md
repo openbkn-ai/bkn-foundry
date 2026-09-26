@@ -83,9 +83,10 @@ Token 可通过 `openbkn auth token` 命令获取。配置保存后，Cursor 会
 | `get_action_execution` / `list_action_executions` | 查询行动执行状态与历史 |
 | `search_capabilities` | 在一个排序空间里检索该网络已挂载的全部能力:Skill、函数工具、API 工具与 MCP 工具 |
 | `list_knowledge_networks` | 列出知识网络 |
-| `list_resources` / `describe_resource` | 列出与描述 Vega 资源 |
-| `run_sql` | 直接对资源执行 SQL |
 | `bkn_start_interaction` / `bkn_finish_interaction` | 会话生命周期（业务可追溯性） |
+
+`run_sql`、`list_resources`、`describe_resource` 不在 MCP 面上：它们按调用者自己的数据资源授权返回物理列，绕开知识网络的属性级规则，只保留 REST 入口
+（`POST /kn/run_sql` 等）。模型侧要聚合用 `run_cypher`，要指标用 `query_metric`。
 
 每个工具调用需要 `kn_id`（知识网络 ID），可用 `openbkn bkn list` 获取。
 
@@ -192,7 +193,7 @@ openbkn context find-skills <kn-id> ot_customer --top-k 5
 工具目录会随版本增长，CLI 未必为每个工具都配了子命令。`tool-call` 按名调用任意 MCP 工具，`call-method` 调任意 MCP 方法：
 
 ```bash
-openbkn context tool-call <kn-id> run_sql --args '{"sql":"SELECT 1"}'
+openbkn context tool-call <kn-id> run_cypher --args '{"query":"MATCH (o:orders) RETURN count(*) AS n"}'
 openbkn context tool-call <kn-id> execute_action --args '{
   "at_id": "at_send_coupon",
   "_instance_identities": [{"...": "同上"}],
@@ -302,7 +303,9 @@ const actions = await bkn.context.actionInfo(knId, {
 const skills = await bkn.context.findSkills(knId, 'ot_customer', 5);
 
 // 目录之外的工具：按名调用
-const sql = await bkn.context.toolCall(knId, 'run_sql', { sql: 'SELECT 1' });
+const counted = await bkn.context.toolCall(knId, 'run_cypher', {
+  query: 'MATCH (o:orders) RETURN count(*) AS n',
+});
 ```
 
 ---
