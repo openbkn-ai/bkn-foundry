@@ -313,7 +313,7 @@ func verifyEvidenceOwnership(ctx context.Context, tx *sql.Tx, event ledgervo.Eve
 		subjectType != string(event.Owner.EffectiveSubjectType) ||
 		subjectID != event.Owner.EffectiveSubjectID ||
 		delegationID != event.Owner.DelegationID {
-		return errors.New("evidence owner does not match trusted conversation owner")
+		return ievidenceledger.ErrOwnerMismatch
 	}
 	if event.OperationID != "" {
 		var count int

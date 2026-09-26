@@ -23,11 +23,21 @@ type kafkaLedgerStore struct {
 	ievidenceledger.Store
 	coordinate ievidenceledger.KafkaCoordinate
 	result     ievidenceledger.KafkaResult
+	err        error
 }
 
 func (s *kafkaLedgerStore) CommitKafka(_ context.Context, _ ledgervo.Event, coordinate ievidenceledger.KafkaCoordinate) (ievidenceledger.KafkaResult, error) {
 	s.coordinate = coordinate
-	return s.result, nil
+	return s.result, s.err
+}
+
+func TestIngestKafkaClassifiesTrustedOwnerMismatchAsInvalidEvent(t *testing.T) {
+	store := &kafkaLedgerStore{err: ievidenceledger.ErrOwnerMismatch}
+	service := ledgersvc.New(store)
+	_, err := service.IngestKafka(context.Background(), testEvent(), ievidenceledger.KafkaCoordinate{Topic: "openbkn.evidence.v1", Partition: 0, Offset: 5})
+	if !ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent) {
+		t.Fatalf("owner mismatch = %v, want invalid_evidence_event terminal decision", err)
+	}
 }
 
 func TestIngestKafkaPassesCoordinateAndPreservesDurableConflictDecision(t *testing.T) {

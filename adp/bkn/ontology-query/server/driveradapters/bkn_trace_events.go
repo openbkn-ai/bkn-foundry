@@ -8,7 +8,6 @@ package driveradapters
 
 import (
 	"context"
-	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -27,14 +26,14 @@ func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hy
 		RequestID:              traceContext.RequestID,
 		AccountID:              visitor.ID,
 		AccountType:            string(visitor.Type),
-		ApplicationPrincipalID: strings.TrimSpace(os.Getenv("BKN_TRACE_APPLICATION_PRINCIPAL_ID")),
-		EffectiveSubjectID:     visitor.ID,
+		ApplicationPrincipalID: strings.TrimSpace(visitor.ClientID),
+		EffectiveSubjectID:     strings.TrimSpace(visitor.ID),
 		EffectiveSubjectType:   ontologyTraceSubjectType(string(visitor.Type)),
-		DelegationID:           strings.TrimSpace(c.GetHeader("x-bkn-delegation-id")),
 		ConversationID:         traceContext.ConversationID,
 		InteractionID:          traceContext.InteractionID,
 		SessionScopePresent:    traceContext.ConversationID != "" && traceContext.InteractionID != "",
 		OperationID:            traceContext.OperationID,
+		OperationScopePresent:  strings.TrimSpace(c.GetHeader(common.HeaderBKNOperationID)) != "" && strings.TrimSpace(c.GetHeader(common.HeaderBKNOperationID)) == traceContext.OperationID,
 		CausationEventID:       traceContext.CausationEventID,
 		ClaimID:                traceContext.ClaimID,
 		Attempt:                traceContext.Attempt,

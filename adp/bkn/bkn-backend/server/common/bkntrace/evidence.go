@@ -65,6 +65,7 @@ type RequestContext struct {
 	InteractionID          string
 	SessionScopePresent    bool
 	OperationID            string
+	OperationScopePresent  bool
 	ParentOperationID      string
 	CausationEventID       string
 	ClaimID                string
@@ -90,19 +91,24 @@ type EvidenceRef struct {
 }
 
 type eventContext struct {
-	traceID           string
-	spanID            string
-	traceparent       string
-	requestID         string
-	accountID         string
-	accountType       string
-	conversationID    string
-	interactionID     string
-	operationID       string
-	parentOperationID string
-	causationEventID  string
-	attempt           uint32
-	observedAt        string
+	traceID                string
+	spanID                 string
+	traceparent            string
+	requestID              string
+	accountID              string
+	accountType            string
+	applicationPrincipalID string
+	effectiveSubjectID     string
+	effectiveSubjectType   string
+	delegationID           string
+	conversationID         string
+	interactionID          string
+	operationID            string
+	operationScopePresent  bool
+	parentOperationID      string
+	causationEventID       string
+	attempt                uint32
+	observedAt             string
 }
 
 var (
@@ -202,7 +208,7 @@ func EmitSchemaReadEvents(ctx context.Context, reqCtx RequestContext, subject Re
 	}
 	events := BuildSchemaReadEvents(ctx, reqCtx, subject, refs)
 	SubmitEvents(ctx, reqCtx, events)
-	if len(events) == 0 || !hasSessionScope(reqCtx) {
+	if len(events) == 0 || !hasSessionScope(reqCtx) || !hasVerifiedOwner(reqCtx) {
 		return ""
 	}
 	eventID, _ := events[0]["event_id"].(string)
@@ -215,6 +221,10 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 	}
 	if !hasSessionScope(reqCtx) {
 		log.Printf("BKN Trace evidence publisher dropped events reason=missing_trusted_session_scope")
+		return
+	}
+	if !hasVerifiedOwner(reqCtx) {
+		log.Printf("BKN Trace evidence publisher dropped events reason=missing_verified_owner")
 		return
 	}
 	ec, ok := contextFromRequest(ctx, reqCtx)
@@ -250,6 +260,10 @@ func hasSessionScope(reqCtx RequestContext) bool {
 	return reqCtx.SessionScopePresent && strings.TrimSpace(reqCtx.ConversationID) != "" && strings.TrimSpace(reqCtx.InteractionID) != ""
 }
 
+func hasVerifiedOwner(reqCtx RequestContext) bool {
+	return strings.TrimSpace(reqCtx.ApplicationPrincipalID) != "" && strings.TrimSpace(reqCtx.EffectiveSubjectID) != "" && strings.TrimSpace(reqCtx.EffectiveSubjectType) != ""
+}
+
 type coreEvidenceEvent struct {
 	EventID, EventType, ConversationID, InteractionID, OperationID string
 	Attempt                                                        uint32
@@ -272,9 +286,13 @@ func toCoreEvent(event Event, ec eventContext) (coreEvidenceEvent, error) {
 	if eventID == "" || eventType == "" {
 		return coreEvidenceEvent{}, errors.New("evidence event ID and type are required")
 	}
+	coreOperationID := ""
+	if ec.operationScopePresent {
+		coreOperationID = ec.operationID
+	}
 	return coreEvidenceEvent{
 		EventID: eventID, EventType: eventType,
-		ConversationID: ec.conversationID, InteractionID: ec.interactionID, OperationID: ec.operationID,
+		ConversationID: ec.conversationID, InteractionID: ec.interactionID, OperationID: coreOperationID,
 		Attempt: ec.attempt, RequestID: ec.requestID, TraceID: ec.traceID, SpanID: ec.spanID,
 		StartedAt: observedAt, ObservedAt: observedAt, EmittedAt: observedAt, Envelope: raw,
 	}, nil
@@ -447,19 +465,24 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		flags = "01"
 	}
 	return eventContext{
-		traceID:           spanContext.TraceID().String(),
-		spanID:            spanContext.SpanID().String(),
-		traceparent:       fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
-		requestID:         requestID,
-		accountID:         accountID,
-		accountType:       accountType,
-		conversationID:    strings.TrimSpace(reqCtx.ConversationID),
-		interactionID:     interactionID,
-		operationID:       operationID,
-		parentOperationID: strings.TrimSpace(reqCtx.ParentOperationID),
-		causationEventID:  strings.TrimSpace(reqCtx.CausationEventID),
-		attempt:           attempt,
-		observedAt:        observedAt,
+		traceID:                spanContext.TraceID().String(),
+		spanID:                 spanContext.SpanID().String(),
+		traceparent:            fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
+		requestID:              requestID,
+		accountID:              accountID,
+		accountType:            accountType,
+		applicationPrincipalID: strings.TrimSpace(reqCtx.ApplicationPrincipalID),
+		effectiveSubjectID:     strings.TrimSpace(reqCtx.EffectiveSubjectID),
+		effectiveSubjectType:   strings.TrimSpace(reqCtx.EffectiveSubjectType),
+		delegationID:           strings.TrimSpace(reqCtx.DelegationID),
+		conversationID:         strings.TrimSpace(reqCtx.ConversationID),
+		interactionID:          interactionID,
+		operationID:            operationID,
+		operationScopePresent:  reqCtx.OperationScopePresent,
+		parentOperationID:      strings.TrimSpace(reqCtx.ParentOperationID),
+		causationEventID:       strings.TrimSpace(reqCtx.CausationEventID),
+		attempt:                attempt,
+		observedAt:             observedAt,
 	}, true
 }
 
@@ -480,6 +503,17 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 		"operation_id":             ec.operationID,
 		"attempt":                  int(ec.attempt),
 		"payload":                  payload,
+	}
+	if ec.applicationPrincipalID != "" && ec.effectiveSubjectID != "" && ec.effectiveSubjectType != "" {
+		owner := map[string]any{
+			"application_principal_id": ec.applicationPrincipalID,
+			"effective_subject_type":   ec.effectiveSubjectType,
+			"effective_subject_id":     ec.effectiveSubjectID,
+		}
+		if ec.delegationID != "" {
+			owner["delegation_id"] = ec.delegationID
+		}
+		event["owner"] = owner
 	}
 	if ec.causationEventID != "" {
 		event["causation_event_id"] = ec.causationEventID

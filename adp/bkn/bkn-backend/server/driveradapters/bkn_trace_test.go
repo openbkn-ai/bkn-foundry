@@ -34,10 +34,25 @@ func TestBKNTraceRequestContextReadsBusinessCausalityHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bknTraceRequestContext() error = %v", err)
 	}
-	if got.ConversationID != "conv_context_loader_001" || !got.SessionScopePresent || got.InteractionID != "int_backend_001" || got.OperationID != "op_backend_001" ||
+	if got.ConversationID != "conv_context_loader_001" || !got.SessionScopePresent || got.InteractionID != "int_backend_001" || got.OperationID != "op_backend_001" || !got.OperationScopePresent ||
 		got.ParentOperationID != "op_context_loader_001" || got.CausationEventID != "evt_upstream_001" ||
 		got.ClaimID != "claim_upstream_001" || got.Attempt != 1 {
 		t.Fatalf("causality headers not parsed: %#v", got)
+	}
+}
+
+func TestBKNTraceRequestContextUsesVerifiedOAuthOwner(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("GET", "/", nil)
+	c.Request.Header.Set("x-account-id", "spoofed-user")
+	c.Request.Header.Set("x-bkn-delegation-id", "spoofed-delegation")
+	visitor := hydra.Visitor{ID: "real-user", ClientID: "openbkn-sdk", Type: hydra.VisitorType_User}
+	got, err := bknTraceRequestContext(c, visitor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ApplicationPrincipalID != "openbkn-sdk" || got.EffectiveSubjectID != "real-user" || got.EffectiveSubjectType != "user" || got.DelegationID != "" {
+		t.Fatalf("owner = %+v, want verified OAuth visitor without caller-supplied delegation", got)
 	}
 }
 
@@ -55,7 +70,7 @@ func TestBKNTraceRequestContextCreatesReplayEnvelopeForDirectStudioRequest(t *te
 	if got.RequestID == "" || !strings.HasPrefix(got.InteractionID, "int_") || !strings.HasPrefix(got.OperationID, "op_") {
 		t.Fatalf("direct request replay envelope not generated: %#v", got)
 	}
-	if got.ConversationID != "" || got.SessionScopePresent {
+	if got.ConversationID != "" || got.SessionScopePresent || got.OperationScopePresent {
 		t.Fatalf("direct request must not fabricate session scope: %#v", got)
 	}
 	if _, err := time.Parse(time.RFC3339Nano, got.ObservedAt); err != nil {

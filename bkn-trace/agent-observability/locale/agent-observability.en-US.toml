@@ -73,6 +73,7 @@
 "event cannot cause itself" = "event cannot cause itself"
 "event ID already exists with a different payload hash" = "event ID already exists with a different payload hash"
 "event causality is cyclic or crosses its trusted interaction scope" = "event causality is cyclic or crosses its trusted interaction scope"
+"evidence owner does not match trusted conversation owner" = "evidence owner does not match trusted conversation owner"
 "event envelope is not valid JSON" = "event envelope is not valid JSON"
 "event timestamps must satisfy started_at <= observed_at <= emitted_at" = "event timestamps must satisfy started_at <= observed_at <= emitted_at"
 "event_id already exists with different content" = "event_id already exists with different content"

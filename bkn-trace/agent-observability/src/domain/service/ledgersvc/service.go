@@ -90,6 +90,9 @@ func (s *Service) IngestKafka(ctx context.Context, event ledgervo.Event, coordin
 		return ievidenceledger.KafkaResult{}, errors.New("evidence store does not support atomic Kafka terminal decisions")
 	}
 	result, err := store.CommitKafka(ctx, event, coordinate)
+	if errors.Is(err, ievidenceledger.ErrOwnerMismatch) {
+		return ievidenceledger.KafkaResult{}, &DomainError{Code: CodeInvalidEvent, Message: "evidence owner does not match trusted conversation owner"}
+	}
 	if err != nil {
 		return result, err
 	}
