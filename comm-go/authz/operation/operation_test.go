@@ -17,16 +17,18 @@ func TestPublishedWireValues(t *testing.T) {
 		Authorize: "authorize", Create: "create", CreateSystemAgent: "create_system_agent",
 		DataWrite: "data_write", Delete: "delete", Display: "display", Edit: "edit",
 		Execute: "execute", FullBusinessAccess: "full_business_access", Grant: "grant",
-		Manage: "manage", Members: "members", ManageBuiltInAgent: "mgnt_built_in_agent",
+		Heartbeat: "heartbeat",
+		Manage:    "manage", Members: "members", ManageBuiltInAgent: "mgnt_built_in_agent",
 		Modify: "modify", Permissions: "permissions", PublicAccess: "public_access",
 		Publish: "publish", PublishToAPI: "publish_to_be_api_agent",
 		PublishToDataFlow: "publish_to_be_data_flow_agent", PublishToSkill: "publish_to_be_skill_agent",
 		PublishToWebSDK: "publish_to_be_web_sdk_agent", QueryData: "query_data",
+		Read: "read", Reconcile: "reconcile",
 		ResetPassword: "reset-password", ResourceManage: "resource_manage", Revoke: "revoke",
 		SeeTrajectoryAnalysis: "see_trajectory_analysis", TaskManage: "task_manage", Toggle: "toggle",
 		Unpublish: "unpublish", UnpublishOtherUserAgent: "unpublish_other_user_agent",
 		UnpublishOtherUserAgentTpl: "unpublish_other_user_agent_tpl", Use: "use", View: "view",
-		ViewDetail: "view_detail", ViewSummary: "view_summary",
+		ViewDetail: "view_detail", ViewSummary: "view_summary", Write: "write",
 	}
 	if len(All()) != len(want) {
 		t.Fatalf("published operation count = %d, want %d", len(All()), len(want))

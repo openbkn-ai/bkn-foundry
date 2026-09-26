@@ -31,6 +31,7 @@ const (
 	Execute                    ID = "execute"
 	FullBusinessAccess         ID = "full_business_access"
 	Grant                      ID = "grant"
+	Heartbeat                  ID = "heartbeat"
 	Manage                     ID = "manage"
 	Members                    ID = "members"
 	ManageBuiltInAgent         ID = "mgnt_built_in_agent"
@@ -43,6 +44,8 @@ const (
 	PublishToSkill             ID = "publish_to_be_skill_agent"
 	PublishToWebSDK            ID = "publish_to_be_web_sdk_agent"
 	QueryData                  ID = "query_data"
+	Read                       ID = "read"
+	Reconcile                  ID = "reconcile"
 	ResetPassword              ID = "reset-password"
 	ResourceManage             ID = "resource_manage"
 	Revoke                     ID = "revoke"
@@ -56,16 +59,17 @@ const (
 	View                       ID = "view"
 	ViewDetail                 ID = "view_detail"
 	ViewSummary                ID = "view_summary"
+	Write                      ID = "write"
 )
 
 var all = []ID{
 	Authorize, Create, CreateSystemAgent, DataWrite, Delete, Display, Edit,
-	Execute, FullBusinessAccess, Grant, Manage, Members, ManageBuiltInAgent,
+	Execute, FullBusinessAccess, Grant, Heartbeat, Manage, Members, ManageBuiltInAgent,
 	Modify, Permissions, PublicAccess, Publish, PublishToAPI, PublishToDataFlow,
-	PublishToSkill, PublishToWebSDK, QueryData, ResetPassword, ResourceManage,
+	PublishToSkill, PublishToWebSDK, QueryData, Read, Reconcile, ResetPassword, ResourceManage,
 	Revoke, SeeTrajectoryAnalysis, TaskManage, Toggle, Unpublish,
 	UnpublishOtherUserAgent, UnpublishOtherUserAgentTpl, Use, View, ViewDetail,
-	ViewSummary,
+	ViewSummary, Write,
 }
 
 var known = func() map[ID]struct{} {
