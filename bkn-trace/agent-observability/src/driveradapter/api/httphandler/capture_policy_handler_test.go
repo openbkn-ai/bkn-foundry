@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/traceadmissionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iauthorizationscope"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 )
 
@@ -91,6 +93,34 @@ func capturePolicyWorkloadProfile() evidencevo.AccessProfile {
 	}
 }
 
+func newTraceEvidenceWorkloadAuth(
+	t *testing.T,
+	profile evidencevo.AccessProfile,
+	introspection string,
+) (*EvidenceHandler, *fakeAccessScopeResolver) {
+	t.Helper()
+	resolver := &fakeAccessScopeResolver{profile: profile}
+	auth := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{
+		HydraAdminURL: "http://hydra.test",
+		QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Method != http.MethodPost || request.URL.Path != "/admin/oauth2/introspect" {
+				t.Fatalf("unexpected OAuth introspection request: %s %s", request.Method, request.URL.Path)
+			}
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(introspection))}, nil
+		})},
+		AuthorizationScopeResolver: resolver,
+	})
+	return auth, resolver
+}
+
+func traceEvidenceAppProfile(principalID string, permissions ...evidencevo.Permission) evidencevo.AccessProfile {
+	return evidencevo.AccessProfile{ActorID: principalID, EffectiveSubjectID: principalID, ApplicationPrincipalID: principalID, AccountActive: true, Permissions: permissions}
+}
+
+func traceEvidenceAppIntrospection(principalID string) string {
+	return `{"active":true,"sub":"` + principalID + `","client_id":"` + principalID + `","ext":{"visitor_type":"app"}}`
+}
+
 func traceGatewayAckReader(operationID string, revision uint64, phase capturepolicysvc.Phase) capturepolicysvc.ReaderFunc {
 	return func(context.Context) (capturepolicysvc.Snapshot, error) {
 		return capturepolicysvc.Snapshot{
@@ -113,6 +143,156 @@ func (traceGatewayAckRaceReader) Read(context.Context) (capturepolicysvc.Snapsho
 
 func (traceGatewayAckRaceReader) ReadOperation(context.Context, string) (capturepolicysvc.Operation, error) {
 	return capturepolicysvc.Operation{ID: "op-race", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateDisabled}, nil
+}
+
+func TestInternalTracePolicyAcceptsBearerOnlyWorkload(t *testing.T) {
+	auth, resolver := newTraceEvidenceWorkloadAuth(t, traceEvidenceAppProfile("trace-gateway"), traceEvidenceAppIntrospection("trace-gateway"))
+	signer := capturepolicysnapshot.Signer{PrivateKey: ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), KeyID: "capture-2026", Audience: "cluster-a", TTL: time.Minute}
+	policy := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 42, Operation: capturepolicysvc.Operation{ID: "op-42", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled}}, nil
+	}), nil, nil, signer, nil)
+	handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(policy.GetInternalTraceEvidencePolicy))
+	request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
+	request.Header.Set("Authorization", "Bearer gateway-token")
+	response := httptest.NewRecorder()
+	handler(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+	}
+	if resolver.calls != 1 || resolver.trustedIdentity.ApplicationPrincipalID != "trace-gateway" {
+		t.Fatalf("Bearer identity not resolved: calls=%d identity=%+v", resolver.calls, resolver.trustedIdentity)
+	}
+	if request.Header.Get("x-account-id") != "trace-gateway" || request.Header.Get("x-account-type") != "app" {
+		t.Fatalf("OAuth identity headers not derived from token: %v", request.Header)
+	}
+}
+
+func TestInternalTraceHeartbeatAcceptsBearerOnlyWorkload(t *testing.T) {
+	profile := traceEvidenceAppProfile("trace-gateway", evidencevo.Permission{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointTraceGateway, Operations: []string{"heartbeat"}})
+	auth, resolver := newTraceEvidenceWorkloadAuth(t, profile, traceEvidenceAppIntrospection("trace-gateway"))
+	writer := &capturePolicyInternalWriter{}
+	policy := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
+	}), nil, nil, nil, writer)
+	handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(policy.HeartbeatInternalTraceEvidenceEndpoint))
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", strings.NewReader(`{"instance_id":"trace-gateway#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`))
+	request.Header.Set("Authorization", "Bearer gateway-token")
+	response := httptest.NewRecorder()
+	handler(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204: %s", response.Code, response.Body.String())
+	}
+	if resolver.calls != 1 || resolver.trustedIdentity.ApplicationPrincipalID != "trace-gateway" {
+		t.Fatalf("Bearer identity not resolved: calls=%d identity=%+v", resolver.calls, resolver.trustedIdentity)
+	}
+	if writer.lease.EndpointKind != icapturepolicy.EndpointTraceGateway || writer.lease.WorkloadIdentity != "trace-gateway" {
+		t.Fatalf("heartbeat not bound to verified grant: %+v", writer.lease)
+	}
+}
+
+func TestInternalTraceWorkloadRejectsMissingAndInactiveBearer(t *testing.T) {
+	for _, test := range []struct {
+		name, introspection string
+		includeToken        bool
+	}{
+		{name: "missing bearer", introspection: traceEvidenceAppIntrospection("trace-gateway")},
+		{name: "inactive bearer", introspection: `{"active":false}`, includeToken: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth, resolver := newTraceEvidenceWorkloadAuth(t, traceEvidenceAppProfile("trace-gateway"), test.introspection)
+			nextCalled := false
+			handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(func(w http.ResponseWriter, _ *http.Request) { nextCalled = true; w.WriteHeader(http.StatusNoContent) }))
+			request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
+			request.Header.Set("x-account-id", "trace-gateway")
+			request.Header.Set("x-account-type", "app")
+			if test.includeToken {
+				request.Header.Set("Authorization", "Bearer inactive-token")
+			}
+			response := httptest.NewRecorder()
+			handler(response, request)
+			if response.Code != http.StatusUnauthorized || nextCalled {
+				t.Fatalf("absent/inactive bearer must fail: status=%d nextCalled=%v body=%s", response.Code, nextCalled, response.Body.String())
+			}
+			if resolver.calls != 0 {
+				t.Fatalf("unverified identity reached resolver: %d calls", resolver.calls)
+			}
+		})
+	}
+}
+
+func TestInternalTraceWorkloadRejectsForgedIdentityHeaders(t *testing.T) {
+	for _, test := range []struct{ name, header, value string }{
+		{name: "account id", header: "x-account-id", value: "other-app"},
+		{name: "account type", header: "x-account-type", value: "user"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth, resolver := newTraceEvidenceWorkloadAuth(t, traceEvidenceAppProfile("trace-gateway"), traceEvidenceAppIntrospection("trace-gateway"))
+			nextCalled := false
+			handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(func(w http.ResponseWriter, _ *http.Request) { nextCalled = true; w.WriteHeader(http.StatusNoContent) }))
+			request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
+			request.Header.Set("Authorization", "Bearer gateway-token")
+			request.Header.Set(test.header, test.value)
+			response := httptest.NewRecorder()
+			handler(response, request)
+			if response.Code != http.StatusUnauthorized || nextCalled {
+				t.Fatalf("forged identity must fail: status=%d nextCalled=%v body=%s", response.Code, nextCalled, response.Body.String())
+			}
+			if resolver.calls != 0 {
+				t.Fatalf("mismatched identity reached resolver: %d calls", resolver.calls)
+			}
+		})
+	}
+}
+
+func TestInternalTraceGatewayAckRejectsPublisherOnlyBearer(t *testing.T) {
+	profile := traceEvidenceAppProfile("trace-gateway", evidencevo.Permission{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}})
+	auth, resolver := newTraceEvidenceWorkloadAuth(t, profile, traceEvidenceAppIntrospection("trace-gateway"))
+	writer := &capturePolicyInternalWriter{}
+	policy := NewCapturePolicyHandlerWithInternal(traceGatewayAckReader("op-43", 43, capturepolicysvc.PhaseDisabling), nil, nil, nil, writer)
+	handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(policy.AcknowledgeInternalTraceEvidenceOperation))
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:ack", strings.NewReader(`{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"trace-gateway#boot-1","workload_identity":"trace-gateway","process_boot_id":"boot-1","capture_policy_revision":43,"admission_state":"disabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"complete","exported":16,"dropped":2,"unaccounted":0}}`))
+	request.Header.Set("Authorization", "Bearer gateway-token")
+	response := httptest.NewRecorder()
+	handler(response, request)
+	if response.Code != http.StatusForbidden || writer.ack.OperationID != "" {
+		t.Fatalf("publisher-only principal acknowledged as gateway: status=%d ack=%+v body=%s", response.Code, writer.ack, response.Body.String())
+	}
+	if resolver.calls != 1 || resolver.trustedIdentity.ApplicationPrincipalID != "trace-gateway" {
+		t.Fatalf("Bearer identity not resolved before endpoint auth: calls=%d identity=%+v", resolver.calls, resolver.trustedIdentity)
+	}
+}
+
+func TestInternalTraceWorkloadResolverFailuresWriteSingleResponse(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "denied", err: iauthorizationscope.ErrDenied},
+		{name: "unavailable", err: iauthorizationscope.ErrUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth, resolver := newTraceEvidenceWorkloadAuth(t, traceEvidenceAppProfile("trace-gateway"), traceEvidenceAppIntrospection("trace-gateway"))
+			resolver.err = test.err
+			handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(func(http.ResponseWriter, *http.Request) {
+				t.Fatal("resolver failure reached workload handler")
+			}))
+			request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
+			request.Header.Set("Authorization", "Bearer gateway-token")
+			response := httptest.NewRecorder()
+
+			handler(response, request)
+
+			var envelope struct {
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("resolver failure must produce one JSON response, got %q: %v", response.Body.String(), err)
+			}
+			if response.Code != http.StatusUnauthorized || envelope.Code != "QUERY_ACCESS_DENIED" {
+				t.Fatalf("unexpected resolver failure response: status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
 }
 
 func TestInternalTraceEvidenceHeartbeatBindsEndpointKindToVerifiedGrant(t *testing.T) {
