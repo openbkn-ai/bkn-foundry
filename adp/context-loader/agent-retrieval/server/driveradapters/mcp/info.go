@@ -121,6 +121,14 @@ func buildMCPInfoForLocale(endpoint, localeName string, withToolkitVersion bool)
 		if _, gateway := gatewayTools[key]; gateway {
 			continue
 		}
+		// A retired tool is assembled but published by nothing, and this
+		// endpoint exists so a reader can see the callable surface without a
+		// handshake. The sandbox toolkit is rendered from this list too, so
+		// leaving one here would put a function in the stub that every call
+		// refuses.
+		if _, gone := retiredTools[key]; gone {
+			continue
+		}
 		m := locale.ToolMeta(key)
 		in, out := tryLoadToolSchemas(locale, key)
 		if d, ok := mcptool.DecoratorFor(key); ok && d.Allowed() {

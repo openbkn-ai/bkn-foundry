@@ -71,7 +71,7 @@
       "include_columns": {
         "type": "boolean",
         "default": false,
-        "description": "是否在每个对象类的 data_property 上额外返回物理列名 column（取自 mapped_field）。写 run_sql 时列名要用 column（物理列），而非 name（逻辑名）——二者可不同，且同一资源可被多个对象类用不同逻辑名映射。默认 false 以保持响应精简，准备写 SQL 时再开启。"
+        "description": "是否在每个对象类的 data_property 上额外返回物理列名 column（取自 mapped_field）。直接访问底层数据资源时列名要用 column（物理列），而非 name（逻辑名）——二者可不同，且同一资源可被多个对象类用不同逻辑名映射。默认 false 以保持响应精简。"
       }
     },
     "required": [
@@ -103,7 +103,7 @@
             "data_source": {
               "type": "object",
               "additionalProperties": true,
-              "description": "绑定的数据资源 {type, id, name}；id 可作为 run_sql 的 {{.<resource_id>}} 占位符。"
+              "description": "绑定的数据资源 {type, id, name}。"
             },
             "data_properties": {
               "type": "array",

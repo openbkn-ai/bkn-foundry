@@ -115,7 +115,7 @@ func TestCoreToolCallIsUnaffectedByTheGate(t *testing.T) {
 
 	// The gate consults a snapshot of enterprise tools only; a core tool must
 	// take exactly the path it took before the socket existed.
-	got := errorText(t, callTool(t, toolKeyRunSQL, map[string]any{}))
+	got := errorText(t, callTool(t, toolKeyRunCypher, map[string]any{}))
 	if strings.Contains(got, "not found") {
 		t.Fatalf("a core tool must not be refused as unknown: %s", got)
 	}

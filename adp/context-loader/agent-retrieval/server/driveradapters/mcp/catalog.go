@@ -61,6 +61,13 @@ func newNativeCatalog(b *toolBuilder) *nativeCatalog {
 		if _, gateway := gatewayTools[name]; gateway {
 			continue
 		}
+		// A retired tool is not long tail, it is withdrawn: the gateway must
+		// not offer it as a target. builder.filter refuses it on lookup as
+		// well; leaving it out here is what keeps it out of a search that
+		// lists every target.
+		if _, gone := retiredTools[b.names[name]]; gone {
+			continue
+		}
 		catalog.targets[name] = p
 		catalog.order = append(catalog.order, name)
 	}

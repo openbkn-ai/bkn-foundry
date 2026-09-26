@@ -138,7 +138,7 @@
             "data_source": {
               "type": "object",
               "additionalProperties": true,
-              "description": "绑定的数据资源 {type, id, name}；id 可作为 run_sql 的 {{.<resource_id>}} 占位符。"
+              "description": "绑定的数据资源 {type, id, name}。"
             },
             "data_properties": {
               "type": "array",

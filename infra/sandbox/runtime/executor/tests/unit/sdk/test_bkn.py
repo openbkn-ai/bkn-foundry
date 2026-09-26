@@ -206,8 +206,12 @@ def test_shipped_artifact_is_importable_and_versioned():
     assert callable(_bkn_tools._configure)
     # Spot-check several capabilities: changes to the signature manifest must not silently remove functions.
     for name in ("list_knowledge_networks", "query_object_instance",
-                 "run_sql", "run_cypher", "list_resources"):
+                 "run_cypher", "search_schema", "query_metric"):
         assert callable(getattr(_bkn_tools, name)), name
+    # run_sql and the resource tools are retired from the MCP surface, so the
+    # renderer must not put them back into the shipped artifact.
+    for name in ("run_sql", "list_resources", "describe_resource"):
+        assert not hasattr(_bkn_tools, name), name
 
 
 def test_internal_queries_carry_parent_without_reusing_operation_id(monkeypatch):
@@ -235,7 +239,6 @@ def test_internal_queries_carry_parent_without_reusing_operation_id(monkeypatch)
         bkn.configure_runtime({})
         calls_to_make = (
             lambda: bkn.query_object_instance(kn_id="kn_test", ot_id="inventory"),
-            lambda: bkn.run_sql(sql="select * from inventory"),
             lambda: bkn.run_cypher(kn_id="kn_test", query="MATCH (n) RETURN n LIMIT 1"),
         )
         for make_call in calls_to_make:

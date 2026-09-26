@@ -11,7 +11,7 @@ sandbox_sdk.bkn —— 沙箱内的 BKN 能力面
     @tool
     def top_teams(kn_id: str, limit: int = 3) -> dict:
         "取该知识网络里进球最多的若干支球队。"
-        res = bkn.list_resources(kn_id=kn_id)
+        res = bkn.search_schema(kn_id=kn_id, query="球队")
         ...
 
 用户看不到 event、token、conversation_id —— dispatch() 在调用用户函数前已经把
