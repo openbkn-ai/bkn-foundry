@@ -312,7 +312,7 @@
   "search_native_tools": {
     "title": "Find Query Tools",
     "group_title": "On-demand Queries",
-    "description": "Find the right tool for a task among the tools this entry offers on demand. Returns up to 5 candidates with their name, purpose, when to use them, when not to, the next step and an argument signature. The search covers every capability this entry does not publish directly, including statistics, actions, skills and the tool that finds mounted functions. Candidates cannot be called by name: get the arguments schema with describe_native_tool, then run them through the executor; when you know the name and arguments, run them directly. Tools this entry publishes directly are not searched."
+    "description": "Find the right tool for a task among the tools this entry offers on demand. Returns up to 5 candidates with their name, purpose, when to use them, when not to, the next step and an argument signature. The search covers every capability this entry does not publish directly, including statistics, actions, skills and the tool that finds mounted functions. Candidates cannot be called by name; run them through the executor. When the result carries `ready`, that is the top candidate's executable arguments schema and a call template for it: go straight to execute_native_tool with them and skip describe_native_tool. Ask describe_native_tool only when there is no `ready` — several candidates tied, or that tool's schema is too large to carry. Tools this entry publishes directly are not searched."
   },
   "describe_native_tool": {
     "title": "Describe Query Tool",

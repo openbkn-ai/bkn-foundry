@@ -226,8 +226,12 @@ paths:
         `run_code` / `run_shell`，以及许可证覆盖的企业版工具）不出现在 `tools/list`，
         经网关使用：
 
-        1. `search_native_tools`：用一句话说明要做的事，返回候选工具及其适用场景；
-        2. `describe_native_tool`：取目标的参数 schema 与调用模板，已知参数时可跳过；
+        1. `search_native_tools`：用一句话说明要做的事，返回候选工具及其适用场景。
+           只有一个候选明显胜出、且它的参数 schema 不超过 4000 字节时，结果里还会带
+           `ready`：`{name, arguments_schema, call_template}`，与
+           `describe_native_tool` 对同一个名字的回答逐字节一致，直接据此执行即可；
+        2. `describe_native_tool`：取目标的参数 schema 与调用模板。上一步给了
+           `ready` 就不必再调；候选打平或 schema 过大时才需要这一跳；
         3. `execute_native_tool`：`name` 填目标工具名，`arguments` 填目标参数，
            `bkn_context` 放在外层。目标按自身名称经过与直接调用相同的许可证闸门和受管
            guard，Trace 记录的是目标工具名。

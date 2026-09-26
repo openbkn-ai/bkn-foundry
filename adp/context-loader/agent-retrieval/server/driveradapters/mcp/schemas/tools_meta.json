@@ -755,7 +755,7 @@
     "group": "gateway",
     "group_title": "按需查询",
     "order": 710,
-    "description": "在本入口按需提供的工具中，按要做的事查找合适的工具，返回最多 5 个候选：名称、用途、适用与不适用的场景、下一步和参数签名。范围覆盖本入口没有直接公布的全部能力，包括统计查询、行动、技能和查找挂载函数的工具。候选不能按名称直接调用：先用 describe_native_tool 取参数 schema，再经执行器执行；已知名称和参数时可以直接执行。本入口直接公布的工具不在搜索范围内。"
+    "description": "在本入口按需提供的工具中，按要做的事查找合适的工具，返回最多 5 个候选：名称、用途、适用与不适用的场景、下一步和参数签名。范围覆盖本入口没有直接公布的全部能力，包括统计查询、行动、技能和查找挂载函数的工具。候选不能按名称直接调用，要经执行器执行。结果里带 ready 时，它就是最佳候选的可执行参数 schema 与调用模板，直接照它调 execute_native_tool，不必再调 describe_native_tool；没有 ready（多个候选打平，或该工具 schema 太大）才去 describe_native_tool 取。本入口直接公布的工具不在搜索范围内。"
   },
   "describe_native_tool": {
     "name": "describe_native_tool",

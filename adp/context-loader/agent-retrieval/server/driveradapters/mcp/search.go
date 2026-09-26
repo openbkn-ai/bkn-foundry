@@ -30,6 +30,22 @@ const (
 	// maxExecutableSchemaChars bounds what describe_native_tool hands back. A
 	// target over it is a catalogue defect, reported rather than truncated.
 	maxExecutableSchemaChars = 8000
+	// maxReadySchemaBytes bounds the schema search carries back with an
+	// unambiguous hit (see gatewaySearchResult.Ready).
+	//
+	// It is a safety rail, not a tuning knob. Carrying a schema costs that
+	// schema once; the describe_native_tool call it replaces costs the same
+	// schema plus a model turn, so carrying wins as long as the model would
+	// have asked often enough — and in the #1704 evaluation two thirds of the
+	// searches were followed by a describe. The rail is here for the outlier
+	// whose schema dwarfs the search result it rides on, which today is
+	// query_instance_subgraph and nothing else.
+	//
+	// Bytes rather than runes, unlike maxExecutableSchemaChars: a schema in
+	// Chinese has about half the runes of the same schema in English and about
+	// as many bytes, so a rune budget would hand the shortcut to one locale
+	// and withhold it from the other for the same tool.
+	maxReadySchemaBytes = 4000
 )
 
 // Search weights. The catalogue is a handful of tools with short copy, so
@@ -53,8 +69,21 @@ type gatewayCandidate struct {
 	Arguments string `json:"arguments,omitempty"`
 }
 
+// gatewayReadyCall is what describe_native_tool would answer for the one
+// candidate a search settled on, minus what the candidate already carries.
+type gatewayReadyCall struct {
+	Name            string          `json:"name"`
+	ArgumentsSchema json.RawMessage `json:"arguments_schema"`
+	CallTemplate    gatewayCall     `json:"call_template"`
+}
+
 type gatewaySearchResult struct {
 	Candidates []gatewayCandidate `json:"candidates"`
+	// Ready is the top candidate ready to run: its arguments schema and a
+	// call template. It is filled only when one candidate outscored every
+	// other and its schema is small enough to carry, and it saves the
+	// describe_native_tool hop those searches would otherwise cost.
+	Ready *gatewayReadyCall `json:"ready,omitempty"`
 	// Matched counts the targets that matched, before the limit.
 	Matched   int  `json:"matched"`
 	Truncated bool `json:"truncated,omitempty"`
@@ -101,6 +130,13 @@ func (r *gatewayRefusal) Error() string {
 	return string(raw)
 }
 
+// scoredTarget is one catalogue entry against one query.
+type scoredTarget struct {
+	candidate gatewayCandidate
+	score     int
+	order     int
+}
+
 // search ranks the targets the caller can use now against what they want to
 // do.
 func (c *nativeCatalog) search(ctx context.Context, query string, limit int) gatewaySearchResult {
@@ -110,12 +146,7 @@ func (c *nativeCatalog) search(ctx context.Context, query string, limit int) gat
 	limit = min(limit, searchMaxLimit)
 	query = normalizeSearchText(query)
 
-	type scored struct {
-		candidate gatewayCandidate
-		score     int
-		order     int
-	}
-	var matched, all []scored
+	var matched, all []scoredTarget
 	for order, name := range c.order {
 		tool, _, ok := c.lookup(ctx, name)
 		if !ok {
@@ -135,7 +166,7 @@ func (c *nativeCatalog) search(ctx context.Context, query string, limit int) gat
 		} else {
 			candidate.Summary = firstRunes(meta.Description, maxUncardedSummaryRunes)
 		}
-		entry := scored{candidate: candidate, score: matchScore(query, meta), order: order}
+		entry := scoredTarget{candidate: candidate, score: matchScore(query, meta), order: order}
 		all = append(all, entry)
 		if entry.score > 0 {
 			matched = append(matched, entry)
@@ -163,7 +194,41 @@ func (c *nativeCatalog) search(ctx context.Context, query string, limit int) gat
 	for _, entry := range matched[:min(limit, len(matched))] {
 		result.Candidates = append(result.Candidates, entry.candidate)
 	}
+	result.Ready = c.readyCall(ctx, matched)
 	return result
+}
+
+// readyCall returns the top candidate ready to run, or nil.
+//
+// Two conditions, and both are about not paying for a guess. The top score has
+// to be strictly higher than the second: a tie means the model still has a
+// choice to make, and handing it one schema would weigh that choice by which
+// tool happened to sort first. And the schema has to fit maxReadySchemaBytes,
+// which keeps the one outsized schema in the catalogue off every search.
+//
+// What it returns has to be what describe_native_tool returns for the same
+// name, or a caller that trusts it will build a call the executor then refuses
+// against a different schema — hence describe rather than a second rendering.
+func (c *nativeCatalog) readyCall(ctx context.Context, matched []scoredTarget) *gatewayReadyCall {
+	if len(matched) == 0 {
+		return nil
+	}
+	if len(matched) > 1 && matched[0].score == matched[1].score {
+		return nil
+	}
+	name := matched[0].candidate.Name
+	described, err := c.describe(ctx, name, false)
+	if err != nil {
+		return nil
+	}
+	if len(described.ArgumentsSchema) > maxReadySchemaBytes {
+		return nil
+	}
+	return &gatewayReadyCall{
+		Name:            described.Name,
+		ArgumentsSchema: described.ArgumentsSchema,
+		CallTemplate:    described.CallTemplate,
+	}
 }
 
 // targetMeta is a target's metadata. A core tool has it in tools_meta.json;
