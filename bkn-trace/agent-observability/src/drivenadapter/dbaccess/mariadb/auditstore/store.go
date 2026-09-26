@@ -135,7 +135,7 @@ func (s *Store) ValidateMonthlyWindow(ctx context.Context, now time.Time) error 
 		return err
 	}
 	month := time.Date(now.UTC().Year(), now.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 3; i++ {
+	for i := -1; i < 3; i++ {
 		table := "audit_event_" + month.AddDate(0, i, 0).Format("200601")
 		if err := verifyMonthlyTableSchema(ctx, s.db, table); err != nil {
 			return fmt.Errorf("validate Audit monthly table %s: %w", table, err)
@@ -144,7 +144,7 @@ func (s *Store) ValidateMonthlyWindow(ctx context.Context, now time.Time) error 
 	return nil
 }
 
-// EnsureMonthlyWindow provisions the current UTC month and next two months,
+// EnsureMonthlyWindow provisions the previous/current UTC month and next two months,
 // then validates the complete window. It is safe to run on every Audit-enabled
 // service startup; the migration is repeatable and only touches those tables.
 func (s *Store) EnsureMonthlyWindow(ctx context.Context, now time.Time) error {
@@ -153,13 +153,15 @@ func (s *Store) EnsureMonthlyWindow(ctx context.Context, now time.Time) error {
 
 // MigrateMonthlyWindow is the explicit, repeatable operator migration. It is
 // shared by startup reconciliation and the operator command; it may alter only
-// the current UTC month and the next two months.
+// the previous/current UTC month and the next two months. The previous month
+// admits late records still within the Kafka retention window; older months
+// remain outside this bounded operational migration.
 func (s *Store) MigrateMonthlyWindow(ctx context.Context, now time.Time) error {
 	if err := verifyMonthlyTemplate(); err != nil {
 		return err
 	}
 	month := time.Date(now.UTC().Year(), now.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 3; i++ {
+	for i := -1; i < 3; i++ {
 		table := "audit_event_" + month.AddDate(0, i, 0).Format("200601")
 		if err := s.migrateMonthlyTable(ctx, table); err != nil {
 			return fmt.Errorf("migrate Audit monthly table %s: %w", table, err)
