@@ -7,6 +7,7 @@ package evidenceconsumer
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,6 +60,23 @@ type processorMigration struct {
 	found     bool
 	err       error
 	result    ievidencemigration.ConsumerResult
+}
+
+type failingMigrationResultWriter struct {
+	err    error
+	called bool
+}
+
+func (w *failingMigrationResultWriter) LookupAdmission(context.Context, string, string) (ievidencemigration.Admission, bool, error) {
+	return ievidencemigration.Admission{
+		ManifestID: "m-1", State: ievidencemigration.ManifestActive, EntryID: "entry-1",
+		EventID: "evt-1", PayloadHash: "hash-1", Classification: "publish",
+	}, true, nil
+}
+
+func (w *failingMigrationResultWriter) RecordConsumerResult(context.Context, ievidencemigration.ConsumerResult) error {
+	w.called = true
+	return w.err
 }
 
 func (m *processorMigration) LookupAdmission(context.Context, string, string) (ievidencemigration.Admission, bool, error) {
@@ -192,6 +210,29 @@ func TestMigrationPublishClassificationIsTheOnlyClassThatReachesLedger(t *testin
 	}
 	if migration.result.Adjudication != ievidencemigration.AdjudicationLedgerCommitted || migration.result.Observation != "accepted" {
 		t.Fatalf("unexpected publish terminal result: %+v", migration.result)
+	}
+}
+
+func TestMigrationResultPersistenceFailureIsRetryableAfterLedgerCommit(t *testing.T) {
+	stream := "bkn-backend"
+	now := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+	record := Record{Topic: Topic, Key: stream, ProducerStreamID: stream, ProducerSequence: 1, BrokerTime: now, BrokerTimestamp: now.Format(time.RFC3339Nano), Partition: 0, Offset: 9,
+		Value:   []byte(`{"event_id":"evt-1","payload_hash":"hash-1","producer_stream_id":"bkn-backend","producer_sequence":1,"envelope":{"owner":{"application_principal_id":"bkn-backend","effective_subject_type":"service","effective_subject_id":"svc"}}}`),
+		Headers: []Header{{Key: "content-type", Value: "application/json"}, {Key: "bkn-trace-schema-version", Value: "3.0.0"}, {Key: "capture_policy_revision", Value: "0"}, {Key: "producer_instance_id", Value: "bridge#boot"}, {Key: "bkn-evidence-record-class", Value: "migration"}, {Key: "bkn-evidence-migration-id", Value: "m-1"}}}
+	ledger := &acceptedProcessorLedger{}
+	resultWriter := &failingMigrationResultWriter{err: errors.New("migration result database unavailable")}
+	processor, err := NewProcessorWithMigration(processorAdmission{}, resultWriter, resultWriter, ledger, &processorRejections{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.Process(context.Background(), record); err == nil || !strings.Contains(err.Error(), "durable Evidence migration result failed") {
+		t.Fatalf("Process() error = %v, want retryable migration-result persistence failure", err)
+	}
+	if !ledger.called {
+		t.Fatal("migration record must first reach the idempotent Ledger")
+	}
+	if !resultWriter.called {
+		t.Fatal("migration result persistence must be attempted")
 	}
 }
 

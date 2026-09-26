@@ -1,4 +1,6 @@
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -171,6 +173,67 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(publish_entries(self.manifest, self.entries, checkpoint, self.ack), ["a-first"])
             saved = load_checkpoint(checkpoint, self.manifest["manifest_id"], self.manifest["source_snapshot_at"])
             self.assertEqual(saved["classification_counts"], {"coverage_gap": 2, "publish": 2})
+
+    def test_missing_kafka_ack_does_not_advance_checkpoint(self):
+        class NoAckFuture:
+            def get(self, timeout):
+                raise TimeoutError("broker ACK timeout")
+
+        class Producer:
+            def send(self, *_args, **_kwargs):
+                return NoAckFuture()
+
+        event = {
+            "event_id": self.publish["event_id"], "payload_hash": self.publish["payload_hash"],
+            "producer_id": self.publish["producer_id"], "producer_stream_id": self.publish["producer_stream_id"],
+            "producer_epoch": int(self.publish["producer_epoch"]), "producer_sequence": int(self.publish["producer_sequence"]),
+        }
+        entry = {key: value for key, value in self.publish.items() if key != "entry_id"}
+        manifest = dict(self.manifest, entry_count="1", entries_digest=entries_digest([entry]))
+
+        with tempfile.TemporaryDirectory() as root:
+            checkpoint = Path(root) / "bridge-checkpoint.json"
+            with self.assertRaisesRegex(TimeoutError, "broker ACK timeout"):
+                publish_encoded_entries(
+                    manifest, [entry], {(entry["source_table"], entry["source_primary_key"]): event},
+                    checkpoint, Producer(), "openbkn.evidence.v1", 1, "bridge#boot-1",
+                )
+            self.assertFalse(checkpoint.exists())
+
+    def test_durable_checkpoint_survives_real_process_exit_and_restart(self):
+        child = r'''import json, os, sys
+from pathlib import Path
+from bridge import load_checkpoint, publish_entries
+root = Path(sys.argv[1])
+manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+entries = json.loads((root / "entries.json").read_text(encoding="utf-8"))
+checkpoint = root / "checkpoint.json"
+def ack(entry):
+    return {"topic": "openbkn.evidence.v1", "partition": 0, "offset": int(entry["source_primary_key"])}
+if sys.argv[2] == "crash":
+    def fault(stage):
+        if stage == "after_directory_fsync":
+            os._exit(73)
+    publish_entries(manifest, entries, checkpoint, ack, fault)
+else:
+    emitted = publish_entries(manifest, entries, checkpoint, ack)
+    saved = load_checkpoint(checkpoint, manifest["manifest_id"], manifest["source_snapshot_at"])
+    print(json.dumps({"emitted": emitted, "completed": saved["completed"], "counts": saved["classification_counts"]}))
+'''
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            (root / "manifest.json").write_text(json.dumps(self.manifest), encoding="utf-8")
+            (root / "entries.json").write_text(json.dumps(self.entries), encoding="utf-8")
+            script_dir = Path(__file__).parent
+            crashed = subprocess.run([sys.executable, "-c", child, str(root), "crash"], cwd=script_dir, capture_output=True, text=True)
+            self.assertEqual(crashed.returncode, 73, crashed.stderr)
+
+            restarted = subprocess.run([sys.executable, "-c", child, str(root), "restart"], cwd=script_dir, capture_output=True, text=True)
+            self.assertEqual(restarted.returncode, 0, restarted.stderr)
+            result = json.loads(restarted.stdout)
+            self.assertEqual(result["emitted"], ["a-first"])
+            self.assertTrue(result["completed"])
+            self.assertEqual(result["counts"], {"coverage_gap": 2, "publish": 2})
 
 
 if __name__ == "__main__":
