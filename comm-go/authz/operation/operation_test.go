@@ -5,7 +5,12 @@
 
 package operation
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestPublishedWireValues(t *testing.T) {
 	want := map[ID]string{
@@ -37,6 +42,12 @@ func TestPublishedWireValues(t *testing.T) {
 	if Known("not_a_published_operation") {
 		t.Error("Known accepted an unknown operation")
 	}
+	if Known(string(Wildcard)) {
+		t.Error("Known accepted the wildcard policy matcher as an operation")
+	}
+	if !KnownReference(string(Wildcard)) {
+		t.Error("KnownReference rejected the wildcard policy matcher")
+	}
 }
 
 func TestAllReturnsCopy(t *testing.T) {
@@ -44,5 +55,49 @@ func TestAllReturnsCopy(t *testing.T) {
 	first[0] = "changed"
 	if All()[0] == "changed" {
 		t.Error("All exposes the package operation list for mutation")
+	}
+}
+
+func TestMonorepoRegistryMatchesPublishedVocabulary(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "bkn-safe", "server", "internal", "seed", "data", "authorization-registry.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// The published comm-go module does not contain the monorepo's
+			// bkn-safe checkout. The repository CI runs this assertion from
+			// the monorepo; standalone module users do not have that fixture.
+			t.Skip("bkn-safe registry is only available in the monorepo checkout")
+		}
+		t.Fatalf("read bkn-safe authorization registry: %v", err)
+	}
+	var catalog struct {
+		ResourceTypes []struct {
+			Operations []struct {
+				ID string `json:"id"`
+			} `json:"operations"`
+		} `json:"resource_types"`
+	}
+	if err := json.Unmarshal(data, &catalog); err != nil {
+		t.Fatalf("decode bkn-safe authorization registry: %v", err)
+	}
+
+	registered := make(map[string]struct{})
+	for _, resourceType := range catalog.ResourceTypes {
+		for _, operation := range resourceType.Operations {
+			registered[operation.ID] = struct{}{}
+			if !Known(operation.ID) {
+				t.Errorf("registry operation %q is missing from comm-go vocabulary", operation.ID)
+			}
+		}
+	}
+	for _, operation := range All() {
+		if operation == FullBusinessAccess {
+			// This is a logical request bundle, intentionally absent from the
+			// resource catalog and therefore not a registry operation.
+			continue
+		}
+		if _, ok := registered[string(operation)]; !ok {
+			t.Errorf("comm-go operation %q is missing from authorization registry", operation)
+		}
 	}
 }

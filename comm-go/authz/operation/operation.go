@@ -15,6 +15,11 @@ package operation
 // ID is an authorization operation wire value.
 type ID string
 
+// Wildcard is an authorization policy matcher, not an operation. It is valid
+// in policy references such as a super-admin grant, but it is deliberately not
+// returned by All and Known(Wildcard) remains false.
+const Wildcard ID = "*"
+
 const (
 	Authorize                  ID = "authorize"
 	Create                     ID = "create"
@@ -81,4 +86,11 @@ func All() []ID {
 func Known(value string) bool {
 	_, ok := known[ID(value)]
 	return ok
+}
+
+// KnownReference reports whether value is either a published operation or the
+// wildcard policy matcher. Use this for policy/seed references; use Known when
+// validating an actual operation requested by an authorization decision.
+func KnownReference(value string) bool {
+	return value == string(Wildcard) || Known(value)
 }

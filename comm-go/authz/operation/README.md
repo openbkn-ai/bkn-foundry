@@ -6,7 +6,7 @@ This package is the single source of truth for published authorization operation
 
 Non-Go consumers use the same wire values without inventing a second vocabulary:
 
-- bkn-safe JSON seed files retain explicit resource-to-operation references and validate every reference with `operation.Known` after upgrading to the release containing this package.
+- bkn-safe JSON seed files retain explicit resource-to-operation references. Validate operation references with `operation.Known`; validate policy references with `operation.KnownReference`, because `"*"` is a wildcard policy matcher rather than an operation and is intentionally absent from `All`/`Known`.
 - Python clients expose generated or hand-imported aliases from this published vocabulary; they do not define new wire values.
 - OpenAPI schemas expose operation fields as an enum generated from this package's published list, while resource-specific endpoint constraints remain explicit schemas.
 
