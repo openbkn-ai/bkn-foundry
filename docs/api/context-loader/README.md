@@ -37,7 +37,7 @@ query_object_instance    → retrieve instances and read the primary key from _i
 ```
 
 For modeled metrics, prefer the ontology contract rather than rebuilding the
-definition with `run_sql`:
+definition yourself:
 
 ```text
 search_schema / get_kn_detail  → identify an object type; related_metric_count must be positive
@@ -51,9 +51,13 @@ The Skill surface also has a knowledge-network-independent entry point:
 `get_skill_content` → `read_skill_file` → `execute_skill` flow.
 
 To bypass the ontology and access data directly, use
-`list_resources` → `describe_resource` → `run_sql`.
+`list_resources` → `describe_resource` → `run_sql`. These three are REST only:
+they return physical columns under the caller's own data-resource grants,
+outside the property-level rules the knowledge network applies, so the MCP
+surface withholds them — they appear in neither `tools/list` nor the on-demand
+gateway nor the sandbox capability surface.
 
-Multi-hop retrieval across object types: `search_schema` → `run_cypher`. Labels are object types, relationship types are relation types, and properties are logical property names, so neither `resource_id` nor physical column names are needed. Fall back to `run_sql` only for what the Cypher subset cannot express.
+Multi-hop retrieval across object types: `search_schema` → `run_cypher`. Labels are object types, relationship types are relation types, and properties are logical property names, so neither `resource_id` nor physical column names are needed.
 
 ## Managed calls and ad-hoc calls
 

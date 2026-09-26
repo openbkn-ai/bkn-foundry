@@ -13,10 +13,14 @@ info:
     结果，不关闭可跨轮、跨日复用的 Conversation。业务工具包括 `search_schema`、
     `query_object_instance`、`query_instance_subgraph`、`get_logic_properties_values`、
     `get_action_info`、`execute_action`、`get_action_execution`、
-    `list_action_executions`、`run_sql`、`list_knowledge_networks`、
-    `get_kn_detail`、`get_object_types`、`get_relation_types`、`list_resources`、
-    `describe_resource`、`list_skills`、`get_skill_content`、`read_skill_file`、
+    `list_action_executions`、`list_knowledge_networks`、
+    `get_kn_detail`、`get_object_types`、`get_relation_types`、
+    `list_skills`、`get_skill_content`、`read_skill_file`、
     `search_capabilities`、`execute_tool`。
+    `run_sql`、`list_resources`、`describe_resource` 已从 MCP 面下线：它们按调用者
+    自己的数据资源授权返回物理列，绕开知识网络的属性级规则，因此只保留 REST
+    入口（`POST /kn/run_sql`、`POST /kn/list_resources`、`POST /kn/describe_resource`），
+    `tools/list`、`tools/call`、按需网关与沙箱能力面都不再提供。
     另有一个默认不装配的 `execute_skill`：它把入口命令送进沙箱执行，只有显式开启
     （`EXECUTE_SKILL_ENABLED=true`）才出现在 `tools/list` 与 `GET /mcp/info`，
     未开启时与「没编译进来」无异。该开关是技能执行能力的总闸，同时决定
@@ -217,7 +221,7 @@ paths:
           `search_instance`、`query_object_instance`、`query_metric`；
         - 按需网关：`search_native_tools`、`describe_native_tool`、`execute_native_tool`。
 
-        **按需网关**：`/mcp` 上的其余业务工具（含 `run_cypher`、`run_sql`、
+        **按需网关**：`/mcp` 上的其余业务工具（含 `run_cypher`、
         `execute_action`、`search_capabilities`、`execute_tool`、技能工具、沙箱执行工具
         `run_code` / `run_shell`，以及许可证覆盖的企业版工具）不出现在 `tools/list`，
         经网关使用：

@@ -57,8 +57,8 @@ func TestMCPProtocolLifecycleThreeRoundsAcrossConversationsAndReconnect(t *testi
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			inline, _ := body.Input["inline"].(map[string]any)
-			if body.OperationKey == "" || body.ToolName != "run_sql" ||
-				body.Input["mode"] != "inline" || inline["sql"] != "DELETE FROM forbidden" {
+			if body.OperationKey == "" || body.ToolName != "run_cypher" ||
+				body.Input["mode"] != "inline" || inline["query"] != "MATCH (n:Order) WITH n RETURN n" {
 				t.Errorf("invalid ensure body: %#v", body)
 			}
 			parts := strings.Split(r.URL.Path, "/")
@@ -134,14 +134,14 @@ func TestMCPProtocolLifecycleThreeRoundsAcrossConversationsAndReconnect(t *testi
 	ctx := context.Background()
 	first := newInitializedMCPClient(t, ctx, mcpHTTP.URL+endpointPath)
 	assertLifecycleToolDiscovery(t, ctx, first)
-	callInvalidSQLRound(t, ctx, first, "conv-a", "int-a", "round-a-1")
-	callInvalidSQLRound(t, ctx, first, "conv-b", "int-b", "round-b-1")
+	callRefusedQueryRound(t, ctx, first, "conv-a", "int-a", "round-a-1")
+	callRefusedQueryRound(t, ctx, first, "conv-b", "int-b", "round-b-1")
 	if err := first.Close(); err != nil {
 		t.Fatalf("close first MCP transport: %v", err)
 	}
 
 	second := newInitializedMCPClient(t, ctx, mcpHTTP.URL+endpointPath)
-	callInvalidSQLRound(t, ctx, second, "conv-a", "int-a", "round-a-2")
+	callRefusedQueryRound(t, ctx, second, "conv-a", "int-a", "round-a-2")
 	if err := second.Close(); err != nil {
 		t.Fatalf("close reconnected MCP transport: %v", err)
 	}
@@ -201,7 +201,7 @@ func assertLifecycleToolDiscovery(t *testing.T, ctx context.Context, client *mcp
 	}
 }
 
-func callInvalidSQLRound(
+func callRefusedQueryRound(
 	t *testing.T,
 	ctx context.Context,
 	client *mcpclient.Client,
@@ -209,9 +209,12 @@ func callInvalidSQLRound(
 ) {
 	t.Helper()
 	result, err := client.CallTool(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
-		Name: "run_sql",
+		Name: "run_cypher",
 		Arguments: map[string]any{
-			"sql": "DELETE FROM forbidden",
+			"kn_id": "kn-001",
+			// WITH is outside the accepted Cypher subset, so the guard refuses
+			// the query itself and no backend is reached.
+			"query": "MATCH (n:Order) WITH n RETURN n",
 			"bkn_context": map[string]any{
 				"conversation_id": conversationID,
 				"interaction_id":  interactionID,
@@ -222,7 +225,7 @@ func callInvalidSQLRound(
 		t.Fatalf("tools/call %s: %v", operationKey, err)
 	}
 	if !result.IsError {
-		t.Fatalf("read-only validation must remain a business error: %#v", result)
+		t.Fatalf("query validation must remain a business error: %#v", result)
 	}
 	structured, _ := result.StructuredContent.(map[string]any)
 	if _, ok := structured["bkn_receipt"]; !ok {

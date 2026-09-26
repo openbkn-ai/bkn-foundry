@@ -5,4 +5,4 @@
  * See the LICENSE file in the project root for details.
  */
 
-Use .get() for optional response fields. For database-side aggregation, prefer run_cypher whenever the question can be stated in object types, relation types and logical properties; it needs only the knowledge-network grant. Use run_sql only for what the Cypher subset cannot express or for resources not modelled as object types; it runs under the caller's own grant on the underlying resource, so a caller authorized only through the knowledge network is refused. Use run_shell only to inspect files or the sandbox environment. Keep intermediate results in the sandbox work directory instead of printing large payloads.
+Use .get() for optional response fields. For database-side aggregation, prefer run_cypher whenever the question can be stated in object types, relation types and logical properties; it needs only the knowledge-network grant. When the figure is already modelled, use query_metric or get_logic_properties_values instead. Use run_shell only to inspect files or the sandbox environment. Keep intermediate results in the sandbox work directory instead of printing large payloads.

@@ -37,12 +37,15 @@ func TestMain(m *testing.M) {
 // This is the baseline the enterprise socket must not disturb. Adding a tool to
 // core means adding it here in the same change; a diff that touches only the
 // socket and moves this list is the bug this file exists to catch.
+//
+// run_sql, list_resources and describe_resource are assembled but withheld
+// (see retiredTools), so they are absent here exactly as they are absent from
+// tools/list.
 var communityTools = []string{
 	// Tracing lifecycle tool (bkntrace adaptation layer is directly hung on the server without using toolBuilder)
 	"bkn_finish_interaction",
 	"bkn_start_interaction",
 	// knowledge network tools.
-	"describe_resource",
 	"execute_action",
 	"execute_tool",
 	"explore_subgraph",
@@ -55,7 +58,6 @@ var communityTools = []string{
 	"get_skill_content",
 	"list_action_executions",
 	"list_knowledge_networks",
-	"list_resources",
 	"list_skills",
 	"query_instance_subgraph",
 	"query_metric",
@@ -67,7 +69,6 @@ var communityTools = []string{
 	// Cypher over the model, compiled by bkn-backend.
 	"run_cypher",
 	"run_shell",
-	"run_sql",
 	// One ranking over all four kinds; the two narrow tools below are it with types pinned (#1388).
 	"search_capabilities",
 	"search_instance",

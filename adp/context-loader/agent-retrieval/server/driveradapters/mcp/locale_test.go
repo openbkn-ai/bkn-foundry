@@ -183,12 +183,16 @@ func TestServerInstructionsLeadWithManagedInteractionLifecycle(t *testing.T) {
 	}
 }
 
-// #1545: run_cypher needs only the knowledge-network grant while run_sql needs
-// the caller's own grant on the resource, so aggregation that can be written
-// on the model is routed to run_cypher first, in both locales and in both the
-// server instructions and the PTC digest, and run_sql is described as the
-// fallback that needs a resource grant.
-func TestServerInstructionsRouteModelAggregationToCypherFirst(t *testing.T) {
+// retiredToolNames is what no model-facing text may name any more.
+var retiredToolNames = []string{"run_sql", "list_resources", "describe_resource"}
+
+// #1545 routed model-expressible aggregation to run_cypher and left run_sql as
+// the fallback; retiredTools has since withdrawn run_sql and the two resource
+// tools from the MCP surface, so run_cypher is the whole routing. Both locales,
+// in the server instructions and in the PTC digest, must say that — and must
+// name none of the withheld tools, because an instruction pointing at one
+// spends a turn on a call that answers "no such tool".
+func TestServerInstructionsRouteModelAggregationToCypher(t *testing.T) {
 	tests := []struct {
 		locale       string
 		expected     []string
@@ -199,32 +203,27 @@ func TestServerInstructionsRouteModelAggregationToCypherFirst(t *testing.T) {
 		{
 			locale: "zh-CN",
 			expected: []string{
-				"能用对象类、关系类和逻辑属性说清楚的，先用 run_cypher",
-				"run_sql 按调用者自己对底层资源的授权（view_detail）执行",
-				"聚合类问题（如「每个 X 的 Y 总数/排名」）先用 run_cypher",
+				"跨表 join）→ run_cypher",
+				"聚合类问题（如「每个 X 的 Y 总数/排名」）用 run_cypher",
 			},
-			forbidden: []string{"直接走 run_sql"},
+			forbidden: retiredToolNames,
 			ptcExpected: []string{
 				"**优先写一条 `run_cypher`**",
-				"才写 `run_sql`，它按调用者自己对底层资源",
 				`print("答案:", run_cypher(`,
 			},
-			ptcForbidden: []string{"**优先写一条 `run_sql`**", `print("答案:", run_sql(`},
+			ptcForbidden: retiredToolNames,
 		},
 		{
 			locale: "en-US",
 			expected: []string{
-				"use run_cypher first whenever the question can be stated in object types, relation types and logical properties",
-				"run_sql runs under the caller's own grant on the underlying resource (view_detail)",
-				"write them on the model with run_cypher first",
+				"use run_cypher whenever the question can be stated in object types, relation types and logical properties",
+				"write them on the model with run_cypher",
 			},
-			forbidden: []string{"go directly to run_sql", "Use run_sql for joins, aggregation"},
+			forbidden: retiredToolNames,
 			ptcExpected: []string{
 				"prefer run_cypher whenever the question can be stated in object types, relation types and logical properties",
-				"Use run_sql only for what the Cypher subset cannot express",
-				"it runs under the caller's own grant on the underlying resource",
 			},
-			ptcForbidden: []string{"Prefer run_sql for database-side aggregation"},
+			ptcForbidden: retiredToolNames,
 		},
 	}
 	for _, test := range tests {

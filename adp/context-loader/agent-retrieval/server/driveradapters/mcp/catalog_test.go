@@ -34,7 +34,8 @@ func cardEligible(name string) bool {
 	_, published := compactProfile.published[name]
 	_, gateway := gatewayTools[name]
 	_, lifecycle := lifecycleToolNames[name]
-	return !published && !gateway && !lifecycle
+	_, retired := retiredTools[name]
+	return !published && !gateway && !lifecycle && !retired
 }
 
 // The compact profile narrows loading, not capability: every assembled tool
@@ -150,6 +151,14 @@ func TestGatewayCardsCoverExactlyTheReachableTools(t *testing.T) {
 		bundle := buildMCPLocaleBundle(locale)
 		for name := range allToolMeta() {
 			card := bundle.ToolMeta(name).Gateway
+			// A retired tool keeps its card, because retirement is a line in
+			// retiredTools and putting it back should not mean writing four
+			// paragraphs of routing copy again in two locales. The card is
+			// unreachable while the tool is: search only reads cards off
+			// catalogue targets.
+			if _, gone := retiredTools[name]; gone {
+				continue
+			}
 			if !cardEligible(name) {
 				if card != nil {
 					t.Errorf("%s: %s cannot be a gateway target but has a card", locale, name)

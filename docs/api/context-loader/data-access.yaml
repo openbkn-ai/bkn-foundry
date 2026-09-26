@@ -19,6 +19,11 @@ info:
     run_sql           → SELECT ... FROM {{.<resource_id>}} ...
     ```
 
+    **只有 REST**：这三个接口返回的是物理列，走的是调用者自己的数据资源授权，
+    绕开知识网络的属性级规则，因此已从 MCP 面下线——`tools/list`、`tools/call`、
+    按需网关与沙箱能力面都不提供 `run_sql` / `list_resources` / `describe_resource`。
+    模型侧要聚合请走 `run_cypher`，要指标请走 `query_metric`。
+
     **授权**：资源可见性与读取权限由下游 vega 按账户强制（空账户直接拒绝），本服务
     不做二次放行。
 

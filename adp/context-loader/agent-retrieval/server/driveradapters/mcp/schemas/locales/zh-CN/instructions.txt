@@ -40,44 +40,22 @@ ContextLoader 知识网络查询工具集使用指南。
 
 查询分流：
 - 单对象类过滤 + 排序 + 分页（field op value，可 and/or 组合）→ query_object_instance；比较算子（==/!=/in/>/range/like/regex 等）按属性 type 自行判断，索引算子 match / knn 才看索引能力：search_schema / search_instance 把共用的算子放在对象类的 index_operations，支持它的属性写 indexed=true，能力不同的属性自带 condition_operations（get_object_types 始终逐属性给全量）——两个键都没有才说明字段没建索引，而没建索引不代表不能过滤；text 字段走本地索引时，==/!=/in/not_in 使用 keyword。新保存或重新保存的配置会自动补齐；若旧配置/旧索引返回 400 缺 keyword，重新保存资源配置后新建构建任务，或改用 match。默认 keyword 只索引长度不超过 256 的值，超长值不能精确比较。like/not_like 是字面子串包含（不要自己拼 %），要通配用 regex（锚定与大小写敏感性随资源存储而变，「包含」写 .*词.*）。
-- 聚合 / 统计 / 排名（SUM、COUNT、AVG、GROUP BY、按聚合值排序、跨表 join）→ 能用对象类、关系类和逻辑属性说清楚的，先用 run_cypher（见下：count/sum/avg/min/max，按 RETURN 中其余列自动分组，配 ORDER BY / LIMIT），它只需要知识网络授权；Cypher 子集表达不了的口径、或资源没建成对象类时，才用 run_sql（MySQL 只读 SQL）。run_sql 按调用者自己对底层资源的授权（view_detail）执行，只有知识网络授权的调用者会被拒。run_sql 表名用占位符 {{.<data_source.id>}}，<data_source.id> 必须替换成 search_schema 返回的真实 id 值（禁止照抄字面 resource_id；JOIN 多表时每个表用各自不同的 id）；列名用 search_schema 的 data_property.column（物理列，需 include_columns=true 获取），不是 name（逻辑名）。query_object_instance 不支持聚合。
+- 聚合 / 统计 / 排名（SUM、COUNT、AVG、GROUP BY、按聚合值排序、跨表 join）→ run_cypher（见下：count/sum/avg/min/max，按 RETURN 中其余列自动分组，配 ORDER BY / LIMIT），它只需要知识网络授权。口径已经建成指标的走 query_metric 或 get_logic_properties_values；网络挂了函数的按函数口径走 execute_tool。query_object_instance 不支持聚合。
 - 已知路径长什么样（说得出经过哪几个对象类、走哪几条关系类）→ query_instance_subgraph，按路径模板批量取数，可逐节点加过滤与排序。
-- 跨对象类的多跳查询、路径上带过滤、或要在路径结果上聚合 → run_cypher（只读 Cypher）。标签写对象类 id 或名称，关系写关系类 id 或名称，属性写逻辑属性名——都用 search_schema / get_object_types / get_relation_types 返回的名字，不需要 resource_id，也不需要物理列名，关系怎么 join 由服务端按关系类定义补。支持多个 MATCH、逗号分隔的多条路径、WHERE（= <> < > <= >=、IN、IS NULL、AND/OR/NOT、$参数）、RETURN（AS 别名、DISTINCT、count/sum/avg/min/max，聚合按 RETURN 中其余列自动分组）、ORDER BY / SKIP / LIMIT。不支持 OPTIONAL MATCH、WITH、UNION、变长路径 [:R*1..3]、函数与算术、返回整个节点；一条查询最多 8 条关系、9 个节点。被拒时报错会指名是哪个语法，按提示改写或退回 run_sql。
+- 跨对象类的多跳查询、路径上带过滤、或要在路径结果上聚合 → run_cypher（只读 Cypher）。标签写对象类 id 或名称，关系写关系类 id 或名称，属性写逻辑属性名——都用 search_schema / get_object_types / get_relation_types 返回的名字，不需要 resource_id，也不需要物理列名，关系怎么 join 由服务端按关系类定义补。支持多个 MATCH、逗号分隔的多条路径、WHERE（= <> < > <= >=、IN、IS NULL、AND/OR/NOT、$参数）、RETURN（AS 别名、DISTINCT、count/sum/avg/min/max，聚合按 RETURN 中其余列自动分组）、ORDER BY / SKIP / LIMIT。不支持 OPTIONAL MATCH、WITH、UNION、变长路径 [:R*1..3]、函数与算术、返回整个节点；一条查询最多 8 条关系、9 个节点。被拒时报错会指名是哪个语法，按提示改写；子集表达不了的口径改走已建模指标或已发布函数。
 - 不知道拓扑、要发现关联（「这张订单牵连到什么」「这个供应商两跳内碰到谁」）→ explore_subgraph，只给起点对象类 + 方向 + 跳数，路径由引擎散。**别为了用 query_instance_subgraph 去先枚举关系类拼路径**，那是把探索硬凑成取数，路径一长就组合爆炸。
 - 反向上溯 / 反查用途（「这个零件被哪些成品用到」「这条记录往上挂在谁身上」）→ 同样是 explore_subgraph，传 direction=backward 沿入边走。**别在 run_code 里逐节点循环调 query_object_instance 自己爬父链**：那会把一次交互的操作预算耗光，中途被拒。
-  注意 path_length 上限是 3。层级更深（多级 BOM 之类）走这条到不了根，改用已发布函数，或一次性分页取回全表在本地遍历——run_sql 不支持 WITH/CTE，递归查询写不出来。
+  注意 path_length 上限是 3。层级更深（多级 BOM 之类）走这条到不了根，改用已发布函数，或一次性分页取回全表在本地遍历——run_cypher 不支持变长路径，递归展开写不出来。
 - 对象可执行行动召回 → get_action_info。
 
-指标取数（OT 优先，三选一，禁止用 run_sql 重写已建模指标的口径）：
+指标取数（OT 优先，三选一，禁止自行重写已建模指标的口径）：
 1. 先锁定对象类：search_schema 或 get_kn_detail（summary 里 related_metric_count>0 的对象类才有指标）。
 2. get_object_types(ids) 看该对象类下有什么：logic_properties（data_source.type=metric）是实例级，related_metrics 是这个对象类 scope 下的全部指标（含未绑逻辑属性的）。
 3. 选定后计算：
    - 实例级 + 已绑逻辑属性 → get_logic_properties_values
    - 类级 / 未绑逻辑属性 → query_metric（传 metric_id，可选 condition / analysis_dimensions / time）
-   - 指标压根没建模，才用 run_sql 现算
+   - 指标压根没建模，才用 run_cypher 按对象类与关系类现算
 
-数据层直查（资源未建成对象类、或只想绕本体直查数据时）：
-- list_resources 列出数据资源（resource_id、name、type、catalog_id）。想知道「某张知识网络有哪些表」就传 kn_id，一次全返该网络绑定的资源（还会把没绑数据源的对象类放进 unbound、绑了但取不回来的放进 missing）；不传 kn_id 才是账户级资源池分页，可按 catalog_id / type 过滤。别用「不带 kn_id 拉一页再自己求交集」的办法找本网络的表——资源池一大就必然漏。
-- describe_resource 取某 resource 的物理列（columns）与 connector_type。
-- 然后 run_sql：表名用占位符 {{.<resource_id>}}，列名用 describe_resource 返回的物理列名。
-即数据层链路：list_resources → describe_resource → run_sql（无需 search_schema/对象类）。与本体路（search_schema）互补，两者都喂给 run_sql。
+提示：聚合类问题（如「每个 X 的 Y 总数/排名」）用 run_cypher 在模型上写（如 MATCH (x:X)-[:R]->(y:Y) RETURN x.name AS name, sum(y.v) AS total ORDER BY total DESC LIMIT 10）；不要用 query_object_instance 的 sort 近似。
 
-run_cypher 与 run_sql 的分工：能用对象类和关系类说清楚的查询走 run_cypher（走模型，不碰物理表名和列名，只需要知识网络授权），聚合也不例外；run_cypher 子集表达不了的口径（CTE、UNION、窗口函数、复杂表达式）或资源根本没建成对象类时，才落 run_sql，且 run_sql 需要调用者自己对底层资源有授权。
-
-提示：聚合类问题（如「每个 X 的 Y 总数/排名」）先用 run_cypher 在模型上写（如 MATCH (x:X)-[:R]->(y:Y) RETURN x.name AS name, sum(y.v) AS total ORDER BY total DESC LIMIT 10），子集写不出再落 run_sql；不要用 query_object_instance 的 sort 近似。
-
-成员资格、多条件阈值、求和、计数和去重也必须下推到 run_cypher、已建模指标或已授权的 run_sql。用户同时要求总数和明细时，让同一次可重算查询返回聚合结果及对应明细，或用共享条件的两次查询分别返回。不能先用 query_object_instance 拉回多页数据，再在 Agent 上下文里自行筛选、计数或去重；这种上下文计算无法形成完整、可重放的业务证据。
-
-run_sql 语法边界：仅写单条 SELECT；可用同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 与常用聚合函数。不得使用 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 或跨 catalog join；子查询和窗口函数不在当前兼容性承诺内。
-
-MySQL 标识符需要引用时用反引号包裹；双引号是字符串字面量，不是标识符。
-
-run_sql 占位符示例（id 必须来自 search_schema / list_resources 的真实返回值，逐表替换，别照抄 'resource_id' 字面量；JOIN 多表 = 多个不同 id）：
-  search_schema("进球") → data_source.id = "goals_rid"
-  search_schema("赛事") → data_source.id = "tourn_rid"
-  run_sql:
-    SELECT t.tournament_name, g.family_name, COUNT(*) AS c
-    FROM {{.goals_rid}} g
-    JOIN {{.tourn_rid}} t ON g.tournament_id = t.tournament_id
-    GROUP BY t.tournament_name, g.family_name ORDER BY c DESC
-  其中 goals_rid / tourn_rid 是上面两次 search_schema 各自返回的真实 data_source.id（点可选：{{id}} 与 {{.id}} 等价）。
+成员资格、多条件阈值、求和、计数和去重也必须下推到 run_cypher 或已建模指标。用户同时要求总数和明细时，让同一次可重算查询返回聚合结果及对应明细，或用共享条件的两次查询分别返回。不能先用 query_object_instance 拉回多页数据，再在 Agent 上下文里自行筛选、计数或去重；这种上下文计算无法形成完整、可重放的业务证据。
