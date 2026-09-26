@@ -92,11 +92,12 @@ func (r *PublisherRuntime) Refresh(ctx context.Context) error {
 		return err
 	}
 	r.mu.Lock()
+	keepAdmission := r.hasPolicy && r.admitting && r.snapshot.Revision == snapshot.Revision && r.snapshot.EvidenceAdmission == "enabled" && snapshot.EvidenceAdmission == "enabled"
 	r.snapshot = snapshot
 	r.hasPolicy = true
-	// A newly read revision is not admitted until this instance has completed
-	// its matching heartbeat. This avoids records from an unregistered revision.
-	r.admitting = false
+	// A new revision stays closed through heartbeat and ACK. A healthy enabled
+	// revision need not close on every repeated configuration read.
+	r.admitting = keepAdmission
 	r.lastError = nil
 	r.mu.Unlock()
 	if err := r.control.Heartbeat(ctx, r.publisher.config.WorkloadIdentity, r.publisher.config.ProcessBootID, snapshot.Revision); err != nil {
