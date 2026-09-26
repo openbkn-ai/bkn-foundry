@@ -97,10 +97,14 @@ func TestValidatorAcceptsRegisteredSourceAdapterForAuditKafka(t *testing.T) {
 		Headers: []auditconsumer.Header{{
 			Key: "bkn-audit-schema-version", Value: []byte("1.0"),
 		}},
-		BrokerTime: time.Date(2026, 9, 24, 8, 31, 0, 0, time.UTC),
+		BrokerTime: time.Date(2026, 9, 22, 8, 30, 0, 0, time.UTC).Add(auditstore.MaxAcceptedOccurredAtAge),
 	}
 	if _, err := validator.Validate(context.Background(), record); err != nil {
-		t.Fatalf("registered source_adapter event must be accepted over Kafka: %v", err)
+		t.Fatalf("registered source_adapter event at the maximum accepted age must be accepted: %v", err)
+	}
+	record.BrokerTime = record.BrokerTime.Add(time.Nanosecond)
+	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "retention_expired") {
+		t.Fatalf("event older than the maximum accepted age must be rejected: %v", err)
 	}
 }
 

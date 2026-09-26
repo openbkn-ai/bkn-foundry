@@ -54,7 +54,10 @@ var (
 	ErrMonthlySchemaUnavailable = errors.New("audit monthly table does not satisfy v032 Kafka coordinate schema")
 )
 
-const MonthlyTemplateSHA256 = "52acd735cb9c9bd3442e9280c50de0f26676faadc829453ef99d0e53546979d7"
+const (
+	MaxAcceptedOccurredAtAge = 365 * 24 * time.Hour
+	MonthlyTemplateSHA256    = "52acd735cb9c9bd3442e9280c50de0f26676faadc829453ef99d0e53546979d7"
+)
 
 type Store struct {
 	db  *sql.DB
@@ -134,9 +137,9 @@ func (s *Store) ValidateMonthlyWindow(ctx context.Context, now time.Time) error 
 	if err := verifyMonthlyTemplate(); err != nil {
 		return err
 	}
-	month := time.Date(now.UTC().Year(), now.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-	for i := -1; i < 3; i++ {
-		table := "audit_event_" + month.AddDate(0, i, 0).Format("200601")
+	firstMonth, lastMonth := monthlyWindow(now)
+	for month := firstMonth; !month.After(lastMonth); month = month.AddDate(0, 1, 0) {
+		table := "audit_event_" + month.Format("200601")
 		if err := verifyMonthlyTableSchema(ctx, s.db, table); err != nil {
 			return fmt.Errorf("validate Audit monthly table %s: %w", table, err)
 		}
@@ -144,30 +147,38 @@ func (s *Store) ValidateMonthlyWindow(ctx context.Context, now time.Time) error 
 	return nil
 }
 
-// EnsureMonthlyWindow provisions the previous/current UTC month and next two months,
-// then validates the complete window. It is safe to run on every Audit-enabled
-// service startup; the migration is repeatable and only touches those tables.
+// EnsureMonthlyWindow provisions the UTC months covered by the accepted
+// occurred_at age limit, plus the next two months, then validates the
+// complete window. It is safe to run on every Audit-enabled service startup;
+// the migration is repeatable and only touches those tables.
 func (s *Store) EnsureMonthlyWindow(ctx context.Context, now time.Time) error {
 	return s.MigrateMonthlyWindow(ctx, now)
 }
 
 // MigrateMonthlyWindow is the explicit, repeatable operator migration. It is
 // shared by startup reconciliation and the operator command; it may alter only
-// the previous/current UTC month and the next two months. The previous month
-// admits late records still within the Kafka retention window; older months
-// remain outside this bounded operational migration.
+// the UTC months covered by the accepted occurred_at age limit and the next
+// two months.
 func (s *Store) MigrateMonthlyWindow(ctx context.Context, now time.Time) error {
 	if err := verifyMonthlyTemplate(); err != nil {
 		return err
 	}
-	month := time.Date(now.UTC().Year(), now.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
-	for i := -1; i < 3; i++ {
-		table := "audit_event_" + month.AddDate(0, i, 0).Format("200601")
+	firstMonth, lastMonth := monthlyWindow(now)
+	for month := firstMonth; !month.After(lastMonth); month = month.AddDate(0, 1, 0) {
+		table := "audit_event_" + month.Format("200601")
 		if err := s.migrateMonthlyTable(ctx, table); err != nil {
 			return fmt.Errorf("migrate Audit monthly table %s: %w", table, err)
 		}
 	}
 	return nil
+}
+
+func monthlyWindow(now time.Time) (time.Time, time.Time) {
+	currentMonth := now.UTC()
+	currentMonth = time.Date(currentMonth.Year(), currentMonth.Month(), 1, 0, 0, 0, 0, time.UTC)
+	oldestAccepted := now.UTC().Add(-MaxAcceptedOccurredAtAge)
+	firstMonth := time.Date(oldestAccepted.Year(), oldestAccepted.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return firstMonth, currentMonth.AddDate(0, 2, 0)
 }
 
 func (s *Store) migrateMonthlyTable(ctx context.Context, table string) error {
