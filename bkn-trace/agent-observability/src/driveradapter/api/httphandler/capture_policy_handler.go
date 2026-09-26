@@ -25,11 +25,8 @@ type CapturePolicySigner interface {
 
 type CapturePolicyControlWriter interface {
 	UpsertEndpointLease(context.Context, icapturepolicy.EndpointLease) error
-	RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
-}
-
-type EvidencePublisherHeartbeatWriter interface {
 	RegisterEvidencePublisherHeartbeat(context.Context, icapturepolicy.EndpointLease) error
+	RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
 }
 
 type AdmissionBudgetReader interface {
@@ -394,12 +391,7 @@ func (h *CapturePolicyHandler) HeartbeatInternalTraceEvidenceEndpoint(w http.Res
 	}
 	var err error
 	if endpointKind == icapturepolicy.EndpointEvidencePublisher && request.Ready {
-		registrar, ok := h.writer.(EvidencePublisherHeartbeatWriter)
-		if !ok {
-			writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_WRITER_UNAVAILABLE", Message: "capture policy writer is not configured"})
-			return
-		}
-		err = registrar.RegisterEvidencePublisherHeartbeat(contextWithRequest(r), lease)
+		err = h.writer.RegisterEvidencePublisherHeartbeat(contextWithRequest(r), lease)
 	} else {
 		err = h.writer.UpsertEndpointLease(contextWithRequest(r), lease)
 	}

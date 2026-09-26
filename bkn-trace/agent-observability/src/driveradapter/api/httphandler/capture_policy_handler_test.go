@@ -89,6 +89,14 @@ func (w *capturePolicyInternalWriter) RecordAcknowledgement(_ context.Context, a
 	return nil
 }
 
+func TestCapturePolicyControlWriterIncludesEvidencePublisherHeartbeat(t *testing.T) {
+	var writer CapturePolicyControlWriter = &capturePolicyInternalWriter{}
+	lease := icapturepolicy.EndpointLease{EndpointKind: icapturepolicy.EndpointEvidencePublisher}
+	if err := writer.RegisterEvidencePublisherHeartbeat(context.Background(), lease); err != nil {
+		t.Fatalf("RegisterEvidencePublisherHeartbeat() error = %v", err)
+	}
+}
+
 func capturePolicyWorkloadRequest(method, url, body string, profile evidencevo.AccessProfile) *http.Request {
 	scope := evidencevo.QueryScope{AccountID: "svc-account", AccountType: "service", AccessProfile: &profile}
 	request := httptest.NewRequest(method, url, bytes.NewBufferString(body))
