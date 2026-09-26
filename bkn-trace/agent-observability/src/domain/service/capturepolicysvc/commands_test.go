@@ -60,7 +60,7 @@ func (commandStore) RecordAcknowledgement(context.Context, icapturepolicy.Expect
 	return nil
 }
 
-func (commandStore) RecordEvidencePublisherAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error {
+func (commandStore) RecordEvidencePublisherAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement, time.Time) error {
 	return nil
 }
 

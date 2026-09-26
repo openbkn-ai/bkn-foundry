@@ -27,7 +27,7 @@ type CapturePolicyControlWriter interface {
 	UpsertEndpointLease(context.Context, icapturepolicy.EndpointLease) error
 	RegisterEvidencePublisherHeartbeat(context.Context, icapturepolicy.EndpointLease) error
 	RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
-	RecordEvidencePublisherAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
+	RecordEvidencePublisherAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement, time.Time) error
 }
 
 type AdmissionBudgetReader interface {
@@ -621,7 +621,7 @@ func (h *CapturePolicyHandler) AcknowledgeInternalEvidencePublisherOperation(w h
 	ack := icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: request.ProducerInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID, PolicyRevision: request.PolicyRevision, Ready: true, AckState: ackState, AcknowledgedAt: &request.AcknowledgedAt, DroppedCount: &dropped, LastAcceptedSequence: &last, PublishedCount: &published, QueueEmpty: &request.QueueEmpty, EvidenceDisposition: evidenceDisposition}
 	var recordErr error
 	if ackState == icapturepolicy.AckDisabled {
-		recordErr = h.writer.RecordEvidencePublisherAcknowledgement(contextWithRequest(r), ack)
+		recordErr = h.writer.RecordEvidencePublisherAcknowledgement(contextWithRequest(r), ack, time.Now().UTC())
 	} else {
 		recordErr = h.writer.RecordAcknowledgement(contextWithRequest(r), ack)
 	}

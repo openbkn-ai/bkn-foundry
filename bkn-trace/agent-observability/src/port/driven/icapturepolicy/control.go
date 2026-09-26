@@ -138,7 +138,7 @@ type Store interface {
 	AppendOperationEvent(context.Context, OperationEvent) error
 	UpsertEndpointLease(context.Context, EndpointLease) error
 	RecordAcknowledgement(context.Context, ExpectedAcknowledgement) error
-	RecordEvidencePublisherAcknowledgement(context.Context, ExpectedAcknowledgement) error
+	RecordEvidencePublisherAcknowledgement(context.Context, ExpectedAcknowledgement, time.Time) error
 }
 
 func (s ControlState) Validate() error {

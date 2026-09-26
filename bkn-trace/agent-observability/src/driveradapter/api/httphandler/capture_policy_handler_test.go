@@ -90,7 +90,7 @@ func (w *capturePolicyInternalWriter) RecordAcknowledgement(_ context.Context, a
 	return nil
 }
 
-func (w *capturePolicyInternalWriter) RecordEvidencePublisherAcknowledgement(_ context.Context, ack icapturepolicy.ExpectedAcknowledgement) error {
+func (w *capturePolicyInternalWriter) RecordEvidencePublisherAcknowledgement(_ context.Context, ack icapturepolicy.ExpectedAcknowledgement, _ time.Time) error {
 	w.publisherClosureAcks++
 	w.ack = ack
 	return nil

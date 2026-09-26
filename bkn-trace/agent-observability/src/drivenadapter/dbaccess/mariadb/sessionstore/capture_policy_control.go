@@ -556,12 +556,14 @@ func (s *Store) RecordAcknowledgement(ctx context.Context, acknowledgement icapt
 // RecordEvidencePublisherAcknowledgement persists a disabled publisher ACK
 // and its closure watermark atomically. The ACK already carries the frozen
 // Session 1 disposition (including the last accepted sequence); no second
-// wire contract or asynchronous follow-up is needed.
-func (s *Store) RecordEvidencePublisherAcknowledgement(ctx context.Context, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
+// wire contract or asynchronous follow-up is needed. closedAt is captured by
+// Agent Observability when it receives the ACK, so the Kafka broker timestamp
+// comparison does not depend on the publisher clock or millisecond truncation.
+func (s *Store) RecordEvidencePublisherAcknowledgement(ctx context.Context, acknowledgement icapturepolicy.ExpectedAcknowledgement, closedAt time.Time) error {
 	if err := acknowledgement.Validate(); err != nil {
 		return err
 	}
-	if acknowledgement.EndpointKind != icapturepolicy.EndpointEvidencePublisher || acknowledgement.AckState != icapturepolicy.AckDisabled || acknowledgement.AcknowledgedAt == nil || acknowledgement.LastAcceptedSequence == nil || acknowledgement.EvidenceDisposition != icapturepolicy.DispositionComplete || acknowledgement.QueueEmpty == nil || !*acknowledgement.QueueEmpty {
+	if acknowledgement.EndpointKind != icapturepolicy.EndpointEvidencePublisher || acknowledgement.AckState != icapturepolicy.AckDisabled || acknowledgement.AcknowledgedAt == nil || acknowledgement.LastAcceptedSequence == nil || acknowledgement.EvidenceDisposition != icapturepolicy.DispositionComplete || acknowledgement.QueueEmpty == nil || !*acknowledgement.QueueEmpty || closedAt.IsZero() {
 		return icapturepolicy.ErrInvalidAcknowledgement
 	}
 	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
@@ -579,7 +581,7 @@ func (s *Store) RecordEvidencePublisherAcknowledgement(ctx context.Context, ackn
 			// historical lookup can reject late records deterministically.
 			InstanceID: acknowledgement.InstanceID, PolicyRevision: registrationRevision,
 			LastAcceptedSequence: *acknowledgement.LastAcceptedSequence,
-			ClosedAt:             *acknowledgement.AcknowledgedAt, AcknowledgedAt: *acknowledgement.AcknowledgedAt,
+			ClosedAt:             closedAt.UTC(), AcknowledgedAt: closedAt.UTC(),
 		}
 		return s.persistClosureWatermarkTx(ctx, tx, watermark)
 	})
