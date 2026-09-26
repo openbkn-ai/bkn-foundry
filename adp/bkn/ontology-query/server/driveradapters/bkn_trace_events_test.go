@@ -8,13 +8,34 @@ package driveradapters
 
 import (
 	"context"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
+	"ontology-query/common"
 	"ontology-query/common/bkntrace"
 	"ontology-query/interfaces"
 )
+
+func TestOntologyTraceRequestContextUsesVerifiedOwnerAndIncomingOperation(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("GET", "/", nil)
+	c.Request.Header.Set("x-bkn-delegation-id", "spoofed")
+	traceCtx := common.TraceContext{RequestID: "req_ontology_owner_001", ConversationID: "conv-1", InteractionID: "int-1", OperationID: "op-local"}
+	ctx := common.SetTraceContextToCtx(context.Background(), traceCtx)
+	visitor := hydra.Visitor{ID: "real-user", ClientID: "openbkn-sdk", Type: hydra.VisitorType_User}
+	got := ontologyTraceRequestContext(c, ctx, visitor)
+	if got.ApplicationPrincipalID != "openbkn-sdk" || got.EffectiveSubjectID != "real-user" || got.EffectiveSubjectType != "user" || got.DelegationID != "" || got.OperationScopePresent {
+		t.Fatalf("owner and local operation = %+v, want verified owner without asserted Core operation", got)
+	}
+	c.Request.Header.Set(common.HeaderBKNOperationID, "op-local")
+	got = ontologyTraceRequestContext(c, ctx, visitor)
+	if !got.OperationScopePresent {
+		t.Fatal("matching incoming Core operation was not preserved")
+	}
+}
 
 func TestOntologyEvidenceEmittersReturnBeforeWorkWhenDisabled(t *testing.T) {
 	bkntrace.SetEvidencePublisher(nil)

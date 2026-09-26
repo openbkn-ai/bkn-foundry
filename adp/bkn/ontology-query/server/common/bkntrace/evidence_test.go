@@ -34,9 +34,36 @@ func testTraceContext() context.Context {
 func testRequestContext() RequestContext {
 	return RequestContext{
 		RequestID: "req_ontology_data_0001", AccountID: "acct_demo", AccountType: "user",
+		ApplicationPrincipalID: "openbkn-sdk", EffectiveSubjectType: "user", EffectiveSubjectID: "acct_demo",
 		ConversationID: "conv_data_query_001", SessionScopePresent: true,
 		InteractionID: "int_data_query_001", OperationID: "op_data_query_001", CausationEventID: "evt_tool_called_001", Attempt: 1,
 		ObservedAt: "2026-07-25T08:00:00Z",
+	}
+}
+
+func TestDataQueryEvidenceCarriesOwnerAndOnlyTrustedCoreOperation(t *testing.T) {
+	req := testRequestContext()
+	event := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{EntityKind: EntityKindObjectInstance, KNID: "kn_demo"}, nil)[0]
+	owner, ok := event["owner"].(map[string]any)
+	if !ok || owner["application_principal_id"] != "openbkn-sdk" || owner["effective_subject_id"] != "acct_demo" {
+		t.Fatalf("owner = %#v, want verified caller identity", event["owner"])
+	}
+	ec, _ := contextFromRequest(testTraceContext(), req)
+	core, err := toCoreEvent(event, ec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if core.OperationID != "" {
+		t.Fatalf("core operation ID = %q, want omitted local ID", core.OperationID)
+	}
+	req.OperationScopePresent = true
+	ec, _ = contextFromRequest(testTraceContext(), req)
+	core, err = toCoreEvent(event, ec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if core.OperationID != req.OperationID {
+		t.Fatalf("core operation ID = %q, want upstream %q", core.OperationID, req.OperationID)
 	}
 }
 
@@ -51,6 +78,20 @@ func TestEmitDataQueryEventsDoesNotAdvertiseDroppedEvidence(t *testing.T) {
 	reqCtx.SessionScopePresent = false
 	if eventID := EmitDataQueryEvents(testTraceContext(), reqCtx, DataQuerySubject{EntityKind: EntityKindObjectInstance, KNID: "kn_demo"}, nil); eventID != "" {
 		t.Fatalf("event ID = %q, want empty without trusted session scope", eventID)
+	}
+}
+
+func TestEmitDataQueryEventsDoesNotAdvertiseMissingOwner(t *testing.T) {
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "ontology-query", BaseStreamID: "ontology-query", WorkloadIdentity: "ontology-query", ProcessBootID: "boot-owner", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
+	req := testRequestContext()
+	req.ApplicationPrincipalID = ""
+	if got := EmitDataQueryEvents(testTraceContext(), req, DataQuerySubject{EntityKind: EntityKindObjectInstance, KNID: "kn_demo"}, nil); got != "" {
+		t.Fatalf("event ID = %q, want empty without verified owner", got)
 	}
 }
 

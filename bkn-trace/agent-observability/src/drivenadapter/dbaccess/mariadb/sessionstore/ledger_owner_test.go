@@ -29,7 +29,7 @@ func TestVerifyEvidenceOwnershipDistinguishesMismatchFromMissingInteraction(t *t
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			mock.ExpectBegin()
 			mock.ExpectQuery("SELECT c.application_principal_id").WithArgs("conv-1", "int-1").WillReturnRows(tt.rows)
 			mock.ExpectRollback()
