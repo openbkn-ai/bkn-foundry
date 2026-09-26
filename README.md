@@ -153,18 +153,25 @@ Beyond "seeing more", Agents must "do it right". BKN Foundry provides constraint
 
 ### Core Architecture
 
-![BKN reference architecture](docs/images/bkn-architecture.svg)
+BKN Foundry is positioned as a **production-grade ontology development platform for AI application developers**: ontology development is the foundation, and AI applications are built on top of it.
 
-| Component | Description |
+![BKN Foundry architecture](docs/images/bkn-architecture.svg)
+
+| Layer / Component | Description |
 | --- | --- |
-| **Access layer** | **BKN SDK / CLI** (unified access interface) and **BKN Skill** (platform-level skill layer wrapping SDK capabilities) — for users, apps, and agents. **BKN Studio** (the user-facing web console) lives in a separate frontend repo ([openbkn-ai/bkn-studio](https://github.com/openbkn-ai/bkn-studio)) and is **not** part of this backend release. |
-| **BKN Engine** | The Business Knowledge Network engine: **Context Loader** (Retrieval recall + Ranker ordering) over the **BKN**, which describes the business through four elements — Data / Logic / Risk / Action — and maps concepts down to the execution layer |
-| **VEGA** | Data virtualization — hides differences between underlying multi-source & multi-modal data |
-| **Exec Factory** | Execution factory — orchestrates tools, MCP, and Skills |
+| **Access layer** | **BKN SDK / CLI** (unified access interface) and **BKN Skill** (platform-level skill layer wrapping SDK capabilities). **BKN Studio** (the web console) lives in a separate frontend repo ([openbkn-ai/bkn-studio](https://github.com/openbkn-ai/bkn-studio)) and is **not** part of this backend release. |
+| **BKN Dev** (develop, evaluate, and apply the knowledge network; in progress) | BKN Project produces the BKN; BKN Eval and BKN Workshop are peers that open inside a given knowledge network and work on it: |
+| &emsp;**BKN Project** | The ontology building pipeline — requirements, modeling, data mapping, release — which produces and releases the BKN. Covers structured and unstructured ingestion; top-down (high-level design first) and bottom-up (derived from data) paths; dynamic ontology, including versioning, AI-assisted interactive updates, and keeping the network in sync when source data changes |
+| &emsp;**BKN Eval** | Quality and test evaluation on a released BKN — checks across data, ontology, and agent. Ontology quality rules (missing-edge rate, dangling edges, property completeness, ambiguity, …) produce an automatic report once a network is built and bound to data, which feeds back into BKN Project; also semantic alignment, logical consistency, function and schema evaluation, benchmarks |
+| &emsp;**BKN Workshop** | Business application development on a released BKN — metrics, functions, graph visualization widgets, and assembling AI applications |
+| **BKN Engine** | The Business Knowledge Network engine: **Context Loader** (Retrieval recall + Reranker reordering) over the **BKN**, which describes the business through four elements — Data / Logic / Risk / Action — and maps concepts down to the foundation layer |
+| **VEGA** | Data virtualization — hides differences between underlying multi-source & multi-modal data, and owns data quality checks |
+| **Operator layer / Exec Factory** | Registration and execution of operators and functions; Exec Factory orchestrates APIs, tools, MCP, and Skills |
 | **BKN Safe** | Access control — unified identity, permissions, and policy entry point; security controls and auditing per business object / action |
+| **BKN Agent** | Cross-cutting — the built-in agent runtime, kept simple; ontology building, graph analysis, and evaluation all run on it, and it consumes the BKN Engine over MCP |
 | **BKN Trace** | Evidence chain — traces BKN call chains (intent → knowledge node → data source → mapping / operator); traceable and explainable |
 
-See the full write-up in [BKN Reference Architecture](docs/bkn-architecture.md).
+"BKN Foundry" as a family covers the whole product, including frontends such as Studio; this repository holds only the backend part. Modules in the diagram are not separately deployed services: new modules live in existing backend services by default. See the [architecture rules](rules/ARCHITECTURE.md).
 
 <a id="toc-bkn-lang"></a>
 
