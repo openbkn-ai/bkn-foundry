@@ -52,6 +52,66 @@ func TestEmitSchemaReadEventsDoesNotAdvertiseDroppedEvidence(t *testing.T) {
 	}
 }
 
+func TestBuildSchemaReadEventsCarriesVerifiedOwner(t *testing.T) {
+	req := testRequestContext()
+	req.ApplicationPrincipalID = "openbkn-sdk"
+	req.EffectiveSubjectType = "user"
+	req.EffectiveSubjectID = "user-123"
+	events := BuildSchemaReadEvents(testTraceContext(), req, ReadSubject{EntityKind: EntityKindObjectType, KNID: "kn_demo"}, nil)
+	if len(events) != 1 {
+		t.Fatalf("events = %d, want 1", len(events))
+	}
+	owner, ok := events[0]["owner"].(map[string]any)
+	if !ok || owner["application_principal_id"] != "openbkn-sdk" || owner["effective_subject_type"] != "user" || owner["effective_subject_id"] != "user-123" {
+		t.Fatalf("owner = %#v, want verified request identity", events[0]["owner"])
+	}
+}
+
+func TestCoreEvidenceEventOmitsLocallyGeneratedOperation(t *testing.T) {
+	req := testRequestContext()
+	req.ConversationID = "conv_real"
+	req.SessionScopePresent = true
+	req.ApplicationPrincipalID = "openbkn-sdk"
+	req.EffectiveSubjectType = "user"
+	req.EffectiveSubjectID = "user-123"
+	event := BuildSchemaReadEvents(testTraceContext(), req, ReadSubject{EntityKind: EntityKindObjectType, KNID: "kn_demo"}, nil)[0]
+	ec, ok := contextFromRequest(testTraceContext(), req)
+	if !ok {
+		t.Fatal("request context not created")
+	}
+	core, err := toCoreEvent(event, ec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if core.OperationID != "" {
+		t.Fatalf("core operation ID = %q, want empty for locally generated ID", core.OperationID)
+	}
+	req.OperationScopePresent = true
+	ec, _ = contextFromRequest(testTraceContext(), req)
+	core, err = toCoreEvent(event, ec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if core.OperationID != req.OperationID {
+		t.Fatalf("core operation ID = %q, want trusted upstream %q", core.OperationID, req.OperationID)
+	}
+}
+
+func TestEmitSchemaReadEventsDoesNotAdvertiseMissingOwner(t *testing.T) {
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "bkn-backend", BaseStreamID: "backend", WorkloadIdentity: "bkn-backend", ProcessBootID: "boot-owner", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setEvidencePublisher(publisher)
+	t.Cleanup(func() { setEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
+	req := testRequestContext()
+	req.ConversationID = "conv_real"
+	req.SessionScopePresent = true
+	if got := EmitSchemaReadEvents(testTraceContext(), req, ReadSubject{EntityKind: EntityKindObjectType, KNID: "kn_demo"}, nil); got != "" {
+		t.Fatalf("event ID = %q, want empty without verified owner", got)
+	}
+}
+
 func TestBuildSchemaReadEventsRejectsMissingReplayEnvelope(t *testing.T) {
 	req := testRequestContext()
 	req.ObservedAt = ""

@@ -73,6 +73,7 @@
 "event cannot cause itself" = "事件不能以自身作为原因"
 "event ID already exists with a different payload hash" = "事件 ID 已存在，但载荷哈希不同"
 "event causality is cyclic or crosses its trusted interaction scope" = "事件因果关系存在循环或超出可信交互范围"
+"evidence owner does not match trusted conversation owner" = "证据事件归属与可信会话所有者不一致"
 "event envelope is not valid JSON" = "事件信封不是有效的 JSON"
 "event timestamps must satisfy started_at <= observed_at <= emitted_at" = "事件时间必须满足 started_at <= observed_at <= emitted_at"
 "event_id already exists with different content" = "event_id 已存在，但内容不同"

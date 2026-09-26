@@ -51,6 +51,9 @@ func TestSubmitEventsMatchesCanonicalEvidenceFixture(t *testing.T) {
 	reqCtx := testRequestContext()
 	reqCtx.ConversationID = "conv_schema_read_001"
 	reqCtx.SessionScopePresent = true
+	reqCtx.ApplicationPrincipalID = "openbkn-sdk"
+	reqCtx.EffectiveSubjectType = "user"
+	reqCtx.EffectiveSubjectID = "acct_demo"
 	events := BuildSchemaReadEvents(testTraceContext(), reqCtx, ReadSubject{
 		EntityKind: EntityKindObjectType, Operation: "bkn.schema.object_type.list", KNID: "kn_demo",
 	}, nil)

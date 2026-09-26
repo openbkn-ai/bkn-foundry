@@ -9,7 +9,6 @@ package driveradapters
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -70,6 +69,7 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.Request
 		interactionID = "int_" + id.String()
 	}
 	operationID := strings.TrimSpace(c.GetHeader(headerBKNOperationID))
+	operationScopePresent := operationID != ""
 	if operationID == "" {
 		id, err := uuid.NewV7()
 		if err != nil {
@@ -89,14 +89,14 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.Request
 		RequestID:              requestID,
 		AccountID:              accountID,
 		AccountType:            accountType,
-		ApplicationPrincipalID: strings.TrimSpace(os.Getenv("BKN_TRACE_APPLICATION_PRINCIPAL_ID")),
-		EffectiveSubjectID:     accountID,
-		EffectiveSubjectType:   bknTraceSubjectType(accountType),
-		DelegationID:           strings.TrimSpace(c.GetHeader("x-bkn-delegation-id")),
+		ApplicationPrincipalID: strings.TrimSpace(vis.ClientID),
+		EffectiveSubjectID:     strings.TrimSpace(vis.ID),
+		EffectiveSubjectType:   bknTraceSubjectType(string(vis.Type)),
 		ConversationID:         conversationID,
 		InteractionID:          interactionID,
 		SessionScopePresent:    sessionScopePresent,
 		OperationID:            operationID,
+		OperationScopePresent:  operationScopePresent,
 		ParentOperationID:      strings.TrimSpace(c.GetHeader(headerBKNParentOperationID)),
 		CausationEventID:       strings.TrimSpace(c.GetHeader(headerBKNCausationEventID)),
 		ClaimID:                strings.TrimSpace(c.GetHeader(headerBKNClaimID)),
