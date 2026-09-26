@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf8" />
+  <title>MCP 服务</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.5.4/bundles/redoc.standalone.js" integrity="sha384-w447zOpYfw/1Tv/5AK9NfHTlQIqE3RVR6KY62jCyy9zNDgO64cMwGGP1Fj0zJVf5" crossorigin="anonymous"></script><style data-styled="true" data-styled-version="6.4.2">.kktglN{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.kktglN{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hKVpXn"]{content:"kktglN,"}/*!sc*/
+.jleRXN{padding:40px 0;}/*!sc*/
+.jleRXN:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.jleRXN>.jleRXN:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.jleRXN{padding:0;}}/*!sc*/
+.grDwca{padding:40px 0;position:relative;}/*!sc*/
+.grDwca:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.grDwca>.grDwca:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.grDwca{padding:0;}}/*!sc*/
+.grDwca:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eCQgVK"]{content:"jleRXN,grDwca,"}/*!sc*/
+.fpMlmc{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.fpMlmc{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jSppWd"]{content:"fpMlmc,"}/*!sc*/
+.bdQQyo{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gKkgUA"]{content:"bdQQyo,"}/*!sc*/
+.lhRBUS{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.lhRBUS{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iCECmn"]{content:"lhRBUS,"}/*!sc*/
+.eRMVDe{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-fuztkK"]{content:"eRMVDe,"}/*!sc*/
+.MOVBZ{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-qdQOe"]{content:"MOVBZ,"}/*!sc*/
+.iamDfj{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kEbgWM"]{content:"iamDfj,"}/*!sc*/
+.jprlAr{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.7);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-iqkkDd"]{content:"jprlAr,"}/*!sc*/
+.jmoZom{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.jmoZom:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.jmoZom::before,h2:hover>.jmoZom::before,.jmoZom:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-crPgjm"]{content:"jmoZom,"}/*!sc*/
+.kdgFPv{height:18px;width:18px;min-width:18px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.bEEWJa{height:1.3em;width:1.3em;min-width:1.3em;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.gngmNp{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.gngmNp polygon{fill:#1d8127;}/*!sc*/
+.hJoFRR{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.hJoFRR polygon{fill:#d41f1c;}/*!sc*/
+.bQKUih{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.bQKUih polygon{fill:white;}/*!sc*/
+data-styled.g16[id="sc-dYjPD"]{content:"kdgFPv,bEEWJa,gngmNp,hJoFRR,bQKUih,"}/*!sc*/
+.jFNAwF{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.jFNAwF{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.jFNAwF,tr.last>.jFNAwF{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.jFNAwF{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.jFNAwF{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.jFNAwF{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.jFNAwF{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hCcPtG"]{content:"jFNAwF,"}/*!sc*/
+.lcdEEX{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.lcdEEX.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFCZOx"]{content:"lcdEEX,"}/*!sc*/
+.gLpZiQ{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .gLpZiQ{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.gLpZiQ{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.gLpZiQ{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bjLslk"]{content:"gLpZiQ,"}/*!sc*/
+.kkMuqc{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.kkMuqc::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.kkMuqc::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-ieCSdj"]{content:"kkMuqc,"}/*!sc*/
+.bsjUmE{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.bsjUmE >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.bsjUmE{display:block;}.bsjUmE >tr,.bsjUmE >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.bsjUmE td{float:left;width:100%;}}/*!sc*/
+.bsjUmE .sc-dILkzW,.bsjUmE .sc-dILkzW .sc-dILkzW .sc-dILkzW,.bsjUmE .sc-dILkzW .sc-dILkzW .sc-dILkzW .sc-dILkzW .sc-dILkzW{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.bsjUmE .sc-dILkzW .sc-dILkzW,.bsjUmE .sc-dILkzW .sc-dILkzW .sc-dILkzW .sc-dILkzW,.bsjUmE .sc-dILkzW .sc-dILkzW .sc-dILkzW .sc-dILkzW .sc-dILkzW .sc-dILkzW{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hHopjF"]{content:"bsjUmE,"}/*!sc*/
+.fcGuQW >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.fcGuQW >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.fcGuQW >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.fcGuQW >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.fcGuQW >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.fcGuQW >ul >li.tab-success{color:#33d143;}/*!sc*/
+.fcGuQW >ul >li.tab-success.react-tabs__tab--selected{color:#1d8127;}/*!sc*/
+.fcGuQW >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.fcGuQW >ul >li.tab-redirect.react-tabs__tab--selected{color:#996300;}/*!sc*/
+.fcGuQW >ul >li.tab-info{color:#30aadc;}/*!sc*/
+.fcGuQW >ul >li.tab-info.react-tabs__tab--selected{color:#186c8e;}/*!sc*/
+.fcGuQW >ul >li.tab-error{color:#eb6d6b;}/*!sc*/
+.fcGuQW >ul >li.tab-error.react-tabs__tab--selected{color:#d41f1c;}/*!sc*/
+.fcGuQW >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.fcGuQW >.react-tabs__tab-panel>div,.fcGuQW >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.fcGuQW >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxxQMU"]{content:"fcGuQW,"}/*!sc*/
+.fiNpIH code[class*='language-'],.fiNpIH pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.fiNpIH code[class*='language-'],.fiNpIH pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.fiNpIH pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.fiNpIH .token.comment,.fiNpIH .token.prolog,.fiNpIH .token.doctype,.fiNpIH .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.fiNpIH .token.punctuation{opacity:0.7;}/*!sc*/
+.fiNpIH .namespace{opacity:0.7;}/*!sc*/
+.fiNpIH .token.property,.fiNpIH .token.tag,.fiNpIH .token.number,.fiNpIH .token.constant,.fiNpIH .token.symbol{color:#4a8bb3;}/*!sc*/
+.fiNpIH .token.boolean{color:#e64441;}/*!sc*/
+.fiNpIH .token.selector,.fiNpIH .token.attr-name,.fiNpIH .token.string,.fiNpIH .token.char,.fiNpIH .token.builtin,.fiNpIH .token.inserted{color:#a0fbaa;}/*!sc*/
+.fiNpIH .token.selector+a,.fiNpIH .token.attr-name+a,.fiNpIH .token.string+a,.fiNpIH .token.char+a,.fiNpIH .token.builtin+a,.fiNpIH .token.inserted+a,.fiNpIH .token.selector+a:visited,.fiNpIH .token.attr-name+a:visited,.fiNpIH .token.string+a:visited,.fiNpIH .token.char+a:visited,.fiNpIH .token.builtin+a:visited,.fiNpIH .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.fiNpIH .token.property.string{color:white;}/*!sc*/
+.fiNpIH .token.operator,.fiNpIH .token.entity,.fiNpIH .token.url,.fiNpIH .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.fiNpIH .token.atrule,.fiNpIH .token.attr-value,.fiNpIH .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.fiNpIH .token.regex,.fiNpIH .token.important{color:#e90;}/*!sc*/
+.fiNpIH .token.important,.fiNpIH .token.bold{font-weight:bold;}/*!sc*/
+.fiNpIH .token.italic{font-style:italic;}/*!sc*/
+.fiNpIH .token.entity{cursor:help;}/*!sc*/
+.fiNpIH .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iJSMbW"]{content:"fiNpIH,"}/*!sc*/
+.dzKJV{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.dzKJV:focus-within{opacity:1;}/*!sc*/
+.dzKJV >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.dzKJV >button :hover,.dzKJV >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-giQkEn"]{content:"dzKJV,"}/*!sc*/
+.iOXjCz{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLEbxe"]{content:"iOXjCz,"}/*!sc*/
+.chhzbL{position:absolute;pointer-events:none;z-index:1;top:50%;-webkit-transform:translateY(-50%);-ms-transform:translateY(-50%);transform:translateY(-50%);right:8px;margin:auto;text-align:center;}/*!sc*/
+.chhzbL polyline{color:white;}/*!sc*/
+data-styled.g39[id="sc-ikBzZv"]{content:"chhzbL,"}/*!sc*/
+.inOnpk{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.5);vertical-align:bottom;padding:2px 0px 2px 6px;position:relative;width:auto;background:white;color:#263238;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;cursor:pointer;transition:border 0.25s ease,color 0.25s ease,box-shadow 0.25s ease;}/*!sc*/
+.inOnpk label{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;font-family:Montserrat,sans-serif;color:#333333;vertical-align:bottom;width:auto;text-transform:none;padding:0 22px 0 4px;font-size:0.929em;line-height:1.5em;font-family:inherit;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}/*!sc*/
+.inOnpk .dropdown-select{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;border:none;appearance:none;cursor:pointer;color:#333333;line-height:inherit;font-family:inherit;}/*!sc*/
+.inOnpk:hover,.inOnpk:focus-within{border:1px solid #32329f;color:#32329f;box-shadow:0px 0px 0px 1px #32329f;}/*!sc*/
+data-styled.g40[id="sc-jJwPsw"]{content:"inOnpk,"}/*!sc*/
+.kxMqOs{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gXvOjn"]{content:"kxMqOs,"}/*!sc*/
+.htbHfQ{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.htbHfQ p:last-child{margin-bottom:0;}/*!sc*/
+.htbHfQ h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.htbHfQ h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.htbHfQ code{color:#c62828;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.htbHfQ pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.htbHfQ pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.htbHfQ pre code:before,.htbHfQ pre code:after{content:none;}/*!sc*/
+.htbHfQ blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.htbHfQ img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.htbHfQ ul,.htbHfQ ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.htbHfQ ul ul,.htbHfQ ol ul,.htbHfQ ul ol,.htbHfQ ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.htbHfQ table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.htbHfQ table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.htbHfQ table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.htbHfQ table th,.htbHfQ table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.htbHfQ table th{text-align:left;font-weight:bold;}/*!sc*/
+.htbHfQ .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.htbHfQ .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.htbHfQ h1:hover>.share-link::before,.htbHfQ h2:hover>.share-link::before,.htbHfQ .share-link:hover::before{visibility:visible;}/*!sc*/
+.htbHfQ a{text-decoration:underline;color:#32329f;}/*!sc*/
+.htbHfQ a:visited{color:#32329f;}/*!sc*/
+.htbHfQ a:hover{color:#6868cf;text-decoration:underline;}/*!sc*/
+.bWgCZK{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.bWgCZK p:last-child{margin-bottom:0;}/*!sc*/
+.bWgCZK p:first-child{margin-top:0;}/*!sc*/
+.bWgCZK p:last-child{margin-bottom:0;}/*!sc*/
+.bWgCZK h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.bWgCZK h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.bWgCZK code{color:#c62828;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.bWgCZK pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.bWgCZK pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.bWgCZK pre code:before,.bWgCZK pre code:after{content:none;}/*!sc*/
+.bWgCZK blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.bWgCZK img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.bWgCZK ul,.bWgCZK ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.bWgCZK ul ul,.bWgCZK ol ul,.bWgCZK ul ol,.bWgCZK ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.bWgCZK table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.bWgCZK table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.bWgCZK table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.bWgCZK table th,.bWgCZK table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.bWgCZK table th{text-align:left;font-weight:bold;}/*!sc*/
+.bWgCZK .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.bWgCZK .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.bWgCZK h1:hover>.share-link::before,.bWgCZK h2:hover>.share-link::before,.bWgCZK .share-link:hover::before{visibility:visible;}/*!sc*/
+.bWgCZK a{text-decoration:underline;color:#32329f;}/*!sc*/
+.bWgCZK a:visited{color:#32329f;}/*!sc*/
+.bWgCZK a:hover{color:#6868cf;text-decoration:underline;}/*!sc*/
+.iHFyeq{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.iHFyeq p:last-child{margin-bottom:0;}/*!sc*/
+.iHFyeq p:first-child{margin-top:0;}/*!sc*/
+.iHFyeq p:last-child{margin-bottom:0;}/*!sc*/
+.iHFyeq p{display:inline-block;}/*!sc*/
+.iHFyeq h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.iHFyeq h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.iHFyeq code{color:#c62828;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.iHFyeq pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.iHFyeq pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.iHFyeq pre code:before,.iHFyeq pre code:after{content:none;}/*!sc*/
+.iHFyeq blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.iHFyeq img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.iHFyeq ul,.iHFyeq ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.iHFyeq ul ul,.iHFyeq ol ul,.iHFyeq ul ol,.iHFyeq ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.iHFyeq table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.iHFyeq table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.iHFyeq table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.iHFyeq table th,.iHFyeq table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.iHFyeq table th{text-align:left;font-weight:bold;}/*!sc*/
+.iHFyeq .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.iHFyeq .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.iHFyeq h1:hover>.share-link::before,.iHFyeq h2:hover>.share-link::before,.iHFyeq .share-link:hover::before{visibility:visible;}/*!sc*/
+.iHFyeq a{text-decoration:underline;color:#32329f;}/*!sc*/
+.iHFyeq a:visited{color:#32329f;}/*!sc*/
+.iHFyeq a:hover{color:#6868cf;text-decoration:underline;}/*!sc*/
+data-styled.g43[id="sc-cBEgGa"]{content:"htbHfQ,bWgCZK,iHFyeq,"}/*!sc*/
+.dDDioG{display:inline;}/*!sc*/
+data-styled.g44[id="sc-ciCrSJ"]{content:"dDDioG,"}/*!sc*/
+.feYhXE{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jcgtOs"]{content:"feYhXE,"}/*!sc*/
+.hHzuQA:hover>.sc-giQkEn{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cTZdpT"]{content:"hHzuQA,"}/*!sc*/
+.jgTAJz{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.jgTAJz .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.jgTAJz .callback-function{color:gray;}/*!sc*/
+.jgTAJz .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.jgTAJz .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.jgTAJz .ellipsis:after{content:' … ';}/*!sc*/
+.jgTAJz .collapsible{margin-left:2em;}/*!sc*/
+.jgTAJz .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.jgTAJz .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.jgTAJz .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.jgTAJz .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.jgTAJz ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.jgTAJz li{position:relative;display:block;}/*!sc*/
+.jgTAJz .hoverable{display:inline-block;}/*!sc*/
+.jgTAJz .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.jgTAJz .collapsed>.collapsible{display:none;}/*!sc*/
+.jgTAJz .ellipsis{display:none;}/*!sc*/
+.jgTAJz .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNDflC"]{content:"jgTAJz,"}/*!sc*/
+.kgKexQ{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dPqFhK"]{content:"kgKexQ,"}/*!sc*/
+.BuCyN{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBzIOb"]{content:"BuCyN,"}/*!sc*/
+.bMFMGt{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cNSlRw"]{content:"bMFMGt,"}/*!sc*/
+.iOLOBz{margin:0 0 10px 0;display:block;background-color:rgba(38,50,56,0.4);border:none;padding:0.9em 1.6em 0.9em 0.9em;box-shadow:none;}/*!sc*/
+.iOLOBz label{color:#ffffff;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;font-size:1em;text-transform:none;border:none;}/*!sc*/
+.iOLOBz:hover,.iOLOBz:focus-within{border:none;box-shadow:none;background-color:rgba(38,50,56,0.7);}/*!sc*/
+data-styled.g55[id="sc-AbpxN"]{content:"iOLOBz,"}/*!sc*/
+.jUCYlq{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hUheUT"]{content:"jUCYlq,"}/*!sc*/
+.jMRTsl{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gSILEF"]{content:"jMRTsl,"}/*!sc*/
+.NncTE{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-lbpDNm"]{content:"NncTE,"}/*!sc*/
+.kUjPnZ{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNyHtD"]{content:"kUjPnZ,"}/*!sc*/
+.dHYagA{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eIYgEQ"]{content:"dHYagA,"}/*!sc*/
+.ctiotw{color:#6868cf;}/*!sc*/
+data-styled.g64[id="sc-otWXT"]{content:"ctiotw,"}/*!sc*/
+.hAYuWG:after{content:' and ';font-weight:normal;}/*!sc*/
+.hAYuWG:last-child:after{content:none;}/*!sc*/
+.hAYuWG a{text-decoration:underline;color:#32329f;}/*!sc*/
+.hAYuWG a:visited{color:#32329f;}/*!sc*/
+.hAYuWG a:hover{color:#6868cf;text-decoration:underline;}/*!sc*/
+data-styled.g82[id="sc-hPfayn"]{content:"hAYuWG,"}/*!sc*/
+.hFacFb{white-space:nowrap;}/*!sc*/
+.hFacFb:after{content:' or ';white-space:pre;}/*!sc*/
+.hFacFb:last-child:after,.hFacFb:only-child:after{content:none;}/*!sc*/
+.hFacFb a{text-decoration:underline;color:#32329f;}/*!sc*/
+.hFacFb a:visited{color:#32329f;}/*!sc*/
+.hFacFb a:hover{color:#6868cf;text-decoration:underline;}/*!sc*/
+data-styled.g83[id="sc-dtnsVa"]{content:"hFacFb,"}/*!sc*/
+.jdqJPb{flex:1 1 auto;cursor:pointer;}/*!sc*/
+data-styled.g84[id="sc-dalEhJ"]{content:"jdqJPb,"}/*!sc*/
+.cVAkzL{width:75%;text-overflow:ellipsis;border-radius:4px;overflow:hidden;}/*!sc*/
+@media screen and (max-width: 50rem){.cVAkzL{margin-top:10px;}}/*!sc*/
+data-styled.g85[id="sc-jTPGds"]{content:"cVAkzL,"}/*!sc*/
+.kEkHzF{display:inline-block;margin:0;}/*!sc*/
+data-styled.g86[id="sc-jQQpTv"]{content:"kEkHzF,"}/*!sc*/
+.kGZLat{width:100%;display:flex;margin:1em 0;flex-direction:row;}/*!sc*/
+@media screen and (max-width: 50rem){.kGZLat{flex-direction:column;}}/*!sc*/
+data-styled.g87[id="sc-fuYIqi"]{content:"kGZLat,"}/*!sc*/
+.cBgvIi{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-ctiVdb"]{content:"cBgvIi,"}/*!sc*/
+.jjsIAS{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.jjsIAS.get{background-color:#2F8132;}/*!sc*/
+.jjsIAS.post{background-color:#186FAF;}/*!sc*/
+.jjsIAS.put{background-color:#95507c;}/*!sc*/
+.jjsIAS.options{background-color:#947014;}/*!sc*/
+.jjsIAS.patch{background-color:#bf581d;}/*!sc*/
+.jjsIAS.delete{background-color:#cc3333;}/*!sc*/
+.jjsIAS.basic{background-color:#707070;}/*!sc*/
+.jjsIAS.link{background-color:#07818F;}/*!sc*/
+.jjsIAS.head{background-color:#A23DAD;}/*!sc*/
+.jjsIAS.hook{background-color:#32329f;}/*!sc*/
+.jjsIAS.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-XpSrr"]{content:"jjsIAS,"}/*!sc*/
+.dqIuaF{margin:0;padding:0;}/*!sc*/
+.dqIuaF:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ilnrqe .sc-ilnrqe{font-size:0.929em;}/*!sc*/
+.gTfiRs{margin:0;padding:0;display:none;}/*!sc*/
+.gTfiRs:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ilnrqe .sc-ilnrqe{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ilnrqe"]{content:"dqIuaF,gTfiRs,"}/*!sc*/
+.cQETmj{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-uMZhz"]{content:"cQETmj,"}/*!sc*/
+.buxoPL{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;font-size:0.929em;text-transform:none;background-color:#fafafa;}/*!sc*/
+.buxoPL:hover{color:#32329f;background-color:#e1e1e1;}/*!sc*/
+.buxoPL .sc-dYjPD{height:1.5em;width:1.5em;}/*!sc*/
+.buxoPL .sc-dYjPD polygon{fill:#333333;}/*!sc*/
+.cGOuox{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.cGOuox:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.cGOuox .sc-dYjPD{height:1.5em;width:1.5em;}/*!sc*/
+.cGOuox .sc-dYjPD polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-bitxrY"]{content:"buxoPL,cGOuox,"}/*!sc*/
+.ehBKwY{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eHoOIp"]{content:"ehBKwY,"}/*!sc*/
+.gtBLyN{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.gtBLyN a,.gtBLyN a:visited,.gtBLyN a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.gtBLyN img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.gtBLyN{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hAkAFK"]{content:"gtBLyN,"}/*!sc*/
+.fYxpnv{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fXwuWv"]{content:"fYxpnv,"}/*!sc*/
+.dsIRaZ{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-FpjRO"]{content:"dsIRaZ,"}/*!sc*/
+.jzaJhV{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.jzaJhV ..sc-FpjRO{color:#ffffff;}/*!sc*/
+.jzaJhV:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jWMFtl"]{content:"jzaJhV,"}/*!sc*/
+.hlSrtW{font-size:0.929em;line-height:20px;background-color:#2F8132;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+.hOENFc{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eEFuoE"]{content:"hlSrtW,hOENFc,"}/*!sc*/
+.tUxhh{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmtEmb"]{content:"tUxhh,"}/*!sc*/
+.bAnPPh{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljIcGq"]{content:"bAnPPh,"}/*!sc*/
+.PEJyb{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.PEJyb >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jlJOIR"]{content:"PEJyb,"}/*!sc*/
+.bxWqzP{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dTCDEk"]{content:"bxWqzP,"}/*!sc*/
+.iSTZHA{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.iSTZHA:focus{outline:auto #1d8127;}/*!sc*/
+.cKkXxa{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);}/*!sc*/
+.cKkXxa:focus{outline:auto #d41f1c;}/*!sc*/
+data-styled.g121[id="sc-cbuLjy"]{content:"iSTZHA,cKkXxa,"}/*!sc*/
+.cqDULz{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fXmTIC"]{content:"cqDULz,"}/*!sc*/
+.hgNHCh{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fINhYD"]{content:"hgNHCh,"}/*!sc*/
+.ktZmcf{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iFUzrA"]{content:"ktZmcf,"}/*!sc*/
+.kjuNaM{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-iruNHB"]{content:"kjuNaM,"}/*!sc*/
+.cczbHe{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.cczbHe{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.cczbHe{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eVYbGh"]{content:"cczbHe,"}/*!sc*/
+.ddPveE{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.ddPveE{display:flex;}}/*!sc*/
+.ddPveE svg{color:#0065FB;}/*!sc*/
+@media print{.ddPveE{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kTmAaw"]{content:"ddPveE,"}/*!sc*/
+.jetsmW{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.jetsmW *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dwkskT"]{content:"jetsmW,"}/*!sc*/
+.ldXCvc{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.ldXCvc{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jtyQFi"]{content:"ldXCvc,"}/*!sc*/
+.bjzTxL{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.bjzTxL{display:none;}}/*!sc*/
+data-styled.g136[id="sc-ekVkVN"]{content:"bjzTxL,"}/*!sc*/
+.uMSfb{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kijJqc"]{content:"uMSfb,"}/*!sc*/
+.fTcICO{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cLhBAz"]{content:"fTcICO,"}/*!sc*/
+.kAmnlO{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.kAmnlO path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iIvZUO"]{content:"kAmnlO,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dwkskT jetsmW redoc-wrap"><div class="sc-eVYbGh cczbHe menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kijJqc uMSfb"><svg class="sc-iIvZUO kAmnlO search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cLhBAz fTcICO search-input" value=""/></div><div class="sc-kLEbxe iOXjCz scrollbar-container undefined"><ul role="menu" class="sc-ilnrqe dqIuaF"><li tabindex="0" depth="1" data-item-id="tag/MCP" role="menuitem" aria-label="MCP" aria-expanded="false" class="sc-uMZhz cQETmj"><label class="sc-bitxrY buxoPL -depth1"><span width="calc(100% - 38px)" title="MCP" class="sc-eHoOIp ehBKwY">MCP</span><svg class="sc-dYjPD kdgFPv" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></label><ul role="menu" class="sc-ilnrqe gTfiRs"><li tabindex="0" depth="2" data-item-id="tag/MCP/operation/getMCPInfo" role="menuitem" aria-label="MCP 服务自描述文档" aria-expanded="false" class="sc-uMZhz cQETmj"><label class="sc-bitxrY cGOuox -depth2"><span type="get" class="sc-XpSrr jjsIAS operation-type get">get</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHoOIp ehBKwY">MCP 服务自描述文档</span></label></li><li tabindex="0" depth="2" data-item-id="tag/MCP/operation/mcpStreamableHTTP" role="menuitem" aria-label="MCP Streamable HTTP 端点" aria-expanded="false" class="sc-uMZhz cQETmj"><label class="sc-bitxrY cGOuox -depth2"><span type="post" class="sc-XpSrr jjsIAS operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHoOIp ehBKwY">MCP Streamable HTTP 端点</span></label></li><li tabindex="0" depth="2" data-item-id="tag/MCP/operation/getCompactMCPInfo" role="menuitem" aria-label="精简入口自描述文档" aria-expanded="false" class="sc-uMZhz cQETmj"><label class="sc-bitxrY cGOuox -depth2"><span type="get" class="sc-XpSrr jjsIAS operation-type get">get</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHoOIp ehBKwY">精简入口自描述文档</span></label></li><li tabindex="0" depth="2" data-item-id="tag/MCP/operation/compactMCPStreamableHTTP" role="menuitem" aria-label="精简入口的 MCP Streamable HTTP 端点" aria-expanded="false" class="sc-uMZhz cQETmj"><label class="sc-bitxrY cGOuox -depth2"><span type="post" class="sc-XpSrr jjsIAS operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHoOIp ehBKwY">精简入口的 MCP Streamable HTTP 端点</span></label></li></ul></li></ul><div class="sc-hAkAFK gtBLyN"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kTmAaw ddPveE"><div class="sc-iruNHB kjuNaM"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jtyQFi ldXCvc api-content"><div class="sc-eCQgVK jleRXN"><div class="sc-iCECmn lhRBUS"><div class="sc-hKVpXn kktglN api-info"><h1 class="sc-fuztkK sc-ctiVdb eRMVDe cBgvIi">MCP 服务<!-- --> <span>(<!-- -->0.1.3<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"></div><div data-role="redoc-summary" html="" class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"></div><div data-role="redoc-description" html="&lt;p&gt;Context Loader 把自己的检索能力同时以 &lt;strong&gt;MCP Server&lt;/strong&gt; 形式对外：Cursor、Claude
+Desktop 等 MCP 客户端可以直接接入，不必逐个封装 REST 调用。&lt;/p&gt;
+&lt;p&gt;普通 Agent 默认只使用两个受管生命周期工具：&lt;code&gt;bkn_start_interaction&lt;/code&gt;、
+&lt;code&gt;bkn_finish_interaction&lt;/code&gt;。每轮 start 都提交完整问题、固定的 &lt;code&gt;agent_name&lt;/code&gt; 和 &lt;code&gt;conversation_mode&lt;/code&gt;：没有当前
+Conversation 时用 &lt;code&gt;new&lt;/code&gt; 且不传 &lt;code&gt;conversation_id&lt;/code&gt;；按显式 id 延续时用 &lt;code&gt;continue&lt;/code&gt; 并传入 start 返回的 id。
+宿主提供会话映射时，以宿主映射为准。finish 只提交当前 Interaction 的
+结果，不关闭可跨轮、跨日复用的 Conversation。业务工具包括 &lt;code&gt;search_schema&lt;/code&gt;、
+&lt;code&gt;query_object_instance&lt;/code&gt;、&lt;code&gt;query_instance_subgraph&lt;/code&gt;、&lt;code&gt;get_logic_properties_values&lt;/code&gt;、
+&lt;code&gt;get_action_info&lt;/code&gt;、&lt;code&gt;execute_action&lt;/code&gt;、&lt;code&gt;get_action_execution&lt;/code&gt;、
+&lt;code&gt;list_action_executions&lt;/code&gt;、&lt;code&gt;list_knowledge_networks&lt;/code&gt;、
+&lt;code&gt;get_kn_detail&lt;/code&gt;、&lt;code&gt;get_object_types&lt;/code&gt;、&lt;code&gt;get_relation_types&lt;/code&gt;、
+&lt;code&gt;list_skills&lt;/code&gt;、&lt;code&gt;get_skill_content&lt;/code&gt;、&lt;code&gt;read_skill_file&lt;/code&gt;、
+&lt;code&gt;search_capabilities&lt;/code&gt;、&lt;code&gt;execute_tool&lt;/code&gt;。
+&lt;code&gt;run_sql&lt;/code&gt;、&lt;code&gt;list_resources&lt;/code&gt;、&lt;code&gt;describe_resource&lt;/code&gt; 已从 MCP 面下线：它们按调用者
+自己的数据资源授权返回物理列，绕开知识网络的属性级规则，因此只保留 REST
+入口（&lt;code&gt;POST /kn/run_sql&lt;/code&gt;、&lt;code&gt;POST /kn/list_resources&lt;/code&gt;、&lt;code&gt;POST /kn/describe_resource&lt;/code&gt;），
+&lt;code&gt;tools/list&lt;/code&gt;、&lt;code&gt;tools/call&lt;/code&gt;、按需网关与沙箱能力面都不再提供。
+另有一个默认不装配的 &lt;code&gt;execute_skill&lt;/code&gt;：它把入口命令送进沙箱执行，只有显式开启
+（&lt;code&gt;EXECUTE_SKILL_ENABLED=true&lt;/code&gt;）才出现在 &lt;code&gt;tools/list&lt;/code&gt; 与 &lt;code&gt;GET /mcp/info&lt;/code&gt;，
+未开启时与「没编译进来」无异。该开关是技能执行能力的总闸，同时决定
+&lt;code&gt;/kn/execute_skill&lt;/code&gt; 这条 REST 路由是否注册。业务工具必须显式携带服务自描述 schema 中的 &lt;code&gt;bkn_context&lt;/code&gt;，
+其中只要求权威返回的 &lt;code&gt;conversation_id&lt;/code&gt; 和 &lt;code&gt;interaction_id&lt;/code&gt;；Operation key、租约、
+重试和 closure manifest 由 Context Loader 与 BKN Trace Core 管理；
+各工具的语义与参数含义见本目录下对应的 REST 文档。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;接入方式&lt;/strong&gt;：Streamable HTTP，端点 &lt;code&gt;/api/agent-retrieval/v1/mcp&lt;/code&gt;，
+协议流程 &lt;code&gt;initialize&lt;/code&gt; → &lt;code&gt;tools/list&lt;/code&gt; → &lt;code&gt;tools/call&lt;/code&gt;（JSON-RPC 2.0）。
+鉴权与 REST 一致：&lt;code&gt;Authorization: Bearer &amp;lt;token&amp;gt;&lt;/code&gt;，OAuth access token 或
+&lt;code&gt;bak_&lt;/code&gt; 前缀的 AppKey。宿主适配器可选使用
+&lt;code&gt;X-OpenBKN-Host-Conversation-Key&lt;/code&gt; 和 &lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt;，或对应的
+&lt;code&gt;openbkn.ai/host-conversation-key&lt;/code&gt;、&lt;code&gt;openbkn.ai/client-invocation-id&lt;/code&gt; MCP &lt;code&gt;_meta&lt;/code&gt;
+提示会话关联与调用幂等；&lt;code&gt;client-invocation-id&lt;/code&gt; 可用于 start 和每一次业务工具调用，
+同一 ID 重试复用原 Interaction 或 Operation / Receipt，不同输入返回幂等冲突。
+未提供逐调用提示时，跨连接重试退化为 at-least-once。这些提示不参与身份和权限判定，
+普通 Agent 参数不得提交。&lt;/p&gt;
+&lt;p&gt;不想先握手就想知道有哪些工具时，直接 &lt;code&gt;GET /mcp/info&lt;/code&gt;——它返回完整的工具目录
+（含每个工具的输入输出 schema）与一份可直接粘贴的客户端配置。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;精简入口&lt;/strong&gt;：&lt;code&gt;/api/agent-retrieval/v1/mcp-compact&lt;/code&gt; 是同一进程里的第二个 MCP
+端点，鉴权、受管生命周期和工具语义与 &lt;code&gt;/mcp&lt;/code&gt; 相同，面向每次模型调用都携带全部
+工具定义的宿主。它只公布 11 个工具，其余能力经按需网关使用，见下文
+&lt;code&gt;/mcp-compact&lt;/code&gt; 与 &lt;code&gt;GET /mcp-compact/info&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"><p>Context Loader 把自己的检索能力同时以 <strong>MCP Server</strong> 形式对外：Cursor、Claude
+Desktop 等 MCP 客户端可以直接接入，不必逐个封装 REST 调用。</p>
+<p>普通 Agent 默认只使用两个受管生命周期工具：<code>bkn_start_interaction</code>、
+<code>bkn_finish_interaction</code>。每轮 start 都提交完整问题、固定的 <code>agent_name</code> 和 <code>conversation_mode</code>：没有当前
+Conversation 时用 <code>new</code> 且不传 <code>conversation_id</code>；按显式 id 延续时用 <code>continue</code> 并传入 start 返回的 id。
+宿主提供会话映射时，以宿主映射为准。finish 只提交当前 Interaction 的
+结果，不关闭可跨轮、跨日复用的 Conversation。业务工具包括 <code>search_schema</code>、
+<code>query_object_instance</code>、<code>query_instance_subgraph</code>、<code>get_logic_properties_values</code>、
+<code>get_action_info</code>、<code>execute_action</code>、<code>get_action_execution</code>、
+<code>list_action_executions</code>、<code>list_knowledge_networks</code>、
+<code>get_kn_detail</code>、<code>get_object_types</code>、<code>get_relation_types</code>、
+<code>list_skills</code>、<code>get_skill_content</code>、<code>read_skill_file</code>、
+<code>search_capabilities</code>、<code>execute_tool</code>。
+<code>run_sql</code>、<code>list_resources</code>、<code>describe_resource</code> 已从 MCP 面下线：它们按调用者
+自己的数据资源授权返回物理列，绕开知识网络的属性级规则，因此只保留 REST
+入口（<code>POST /kn/run_sql</code>、<code>POST /kn/list_resources</code>、<code>POST /kn/describe_resource</code>），
+<code>tools/list</code>、<code>tools/call</code>、按需网关与沙箱能力面都不再提供。
+另有一个默认不装配的 <code>execute_skill</code>：它把入口命令送进沙箱执行，只有显式开启
+（<code>EXECUTE_SKILL_ENABLED=true</code>）才出现在 <code>tools/list</code> 与 <code>GET /mcp/info</code>，
+未开启时与「没编译进来」无异。该开关是技能执行能力的总闸，同时决定
+<code>/kn/execute_skill</code> 这条 REST 路由是否注册。业务工具必须显式携带服务自描述 schema 中的 <code>bkn_context</code>，
+其中只要求权威返回的 <code>conversation_id</code> 和 <code>interaction_id</code>；Operation key、租约、
+重试和 closure manifest 由 Context Loader 与 BKN Trace Core 管理；
+各工具的语义与参数含义见本目录下对应的 REST 文档。</p>
+<p><strong>接入方式</strong>：Streamable HTTP，端点 <code>/api/agent-retrieval/v1/mcp</code>，
+协议流程 <code>initialize</code> → <code>tools/list</code> → <code>tools/call</code>（JSON-RPC 2.0）。
+鉴权与 REST 一致：<code>Authorization: Bearer &lt;token&gt;</code>，OAuth access token 或
+<code>bak_</code> 前缀的 AppKey。宿主适配器可选使用
+<code>X-OpenBKN-Host-Conversation-Key</code> 和 <code>X-OpenBKN-Client-Invocation-Id</code>，或对应的
+<code>openbkn.ai/host-conversation-key</code>、<code>openbkn.ai/client-invocation-id</code> MCP <code>_meta</code>
+提示会话关联与调用幂等；<code>client-invocation-id</code> 可用于 start 和每一次业务工具调用，
+同一 ID 重试复用原 Interaction 或 Operation / Receipt，不同输入返回幂等冲突。
+未提供逐调用提示时，跨连接重试退化为 at-least-once。这些提示不参与身份和权限判定，
+普通 Agent 参数不得提交。</p>
+<p>不想先握手就想知道有哪些工具时，直接 <code>GET /mcp/info</code>——它返回完整的工具目录
+（含每个工具的输入输出 schema）与一份可直接粘贴的客户端配置。</p>
+<p><strong>精简入口</strong>：<code>/api/agent-retrieval/v1/mcp-compact</code> 是同一进程里的第二个 MCP
+端点，鉴权、受管生命周期和工具语义与 <code>/mcp</code> 相同，面向每次模型调用都携带全部
+工具定义的宿主。它只公布 11 个工具，其余能力经按需网关使用，见下文
+<code>/mcp-compact</code> 与 <code>GET /mcp-compact/info</code>。</p>
+</div></div></div></div><div id="tag/MCP" data-section-id="tag/MCP" class="sc-eCQgVK jleRXN"><div class="sc-iCECmn lhRBUS"><div class="sc-hKVpXn kktglN"><h2 class="sc-qdQOe MOVBZ"><a class="sc-crPgjm jmoZom" href="#tag/MCP" aria-label="tag/MCP"></a>MCP</h2></div></div></div><div id="tag/MCP/operation/getMCPInfo" data-section-id="tag/MCP/operation/getMCPInfo" class="sc-eCQgVK grDwca"><div data-section-id="operation/getMCPInfo" id="operation/getMCPInfo" class="sc-iCECmn lhRBUS"><div class="sc-hKVpXn kktglN"><h2 class="sc-qdQOe MOVBZ"><a class="sc-crPgjm jmoZom" href="#tag/MCP/operation/getMCPInfo" aria-label="tag/MCP/operation/getMCPInfo"></a>MCP 服务自描述文档<!-- --> </h2><div class="sc-iFUzrA ktZmcf"><div html="&lt;p&gt;一次 GET 拿到端点、协议、鉴权方式、全部工具的名称 / 描述 / 输入输出 schema，
+以及一份可直接用的客户端配置示例。给人看，也给 Agent 自举用。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;endpoint&lt;/code&gt; 按当次请求推导（识别 &lt;code&gt;X-Forwarded-Proto&lt;/code&gt;），因此走网关访问时
+返回的就是网关地址，可直接抄进客户端配置。&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"><p>一次 GET 拿到端点、协议、鉴权方式、全部工具的名称 / 描述 / 输入输出 schema，
+以及一份可直接用的客户端配置示例。给人看，也给 Agent 自举用。</p>
+<p><code>endpoint</code> 按当次请求推导（识别 <code>X-Forwarded-Proto</code>），因此走网关访问时
+返回的就是网关地址，可直接抄进客户端配置。</p>
+</div></div><div class="sc-fuYIqi kGZLat"><div class="sc-dalEhJ jdqJPb"><h5 class="sc-iqkkDd sc-jQQpTv jprlAr kEkHzF">Authorizations:</h5><svg class="sc-dYjPD bEEWJa" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jTPGds cVAkzL"><span class="sc-dtnsVa hFacFb"><span class="sc-hPfayn hAYuWG"><i>OAuth2</i></span></span><span class="sc-dtnsVa hFacFb"><span class="sc-hPfayn hAYuWG"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqkkDd jprlAr">header<!-- --> Parameters</h5><table class="sc-hHopjF bsjUmE"><tbody><tr class="last "><td kind="field" title="Accept-Language" class="sc-hCcPtG sc-fFCZOx jFNAwF lcdEEX"><span class="sc-ieCSdj kkMuqc"></span><span class="property-name">Accept-Language</span></td><td class="sc-bjLslk gLpZiQ"><div><div><span class="sc-gSILEF sc-lbpDNm jMRTsl NncTE"></span><span class="sc-gSILEF sc-iNyHtD jMRTsl kUjPnZ">string</span></div> <div><div html="&lt;p&gt;可选的 RFC 9110 语言偏好。服务从支持的 &lt;code&gt;zh-CN&lt;/code&gt;、&lt;code&gt;en-US&lt;/code&gt; 中选择工具目录
+（&lt;code&gt;title&lt;/code&gt; / &lt;code&gt;description&lt;/code&gt; / schema 描述）与服务端说明的语言。&lt;/p&gt;
+&lt;p&gt;MCP 协议本身不定义语言协商，&lt;code&gt;initialize&lt;/code&gt; 参数里没有 locale 字段，所以这个
+传输层请求头是唯一的通道。客户端在 MCP 连接配置的 &lt;code&gt;headers&lt;/code&gt; 里设置它。&lt;/p&gt;
+&lt;p&gt;不传则使用部署配置的服务默认语言，无需客户端参与。&lt;strong&gt;每个请求独立判定&lt;/strong&gt;，
+不与 &lt;code&gt;Mcp-Session-Id&lt;/code&gt; 绑定。&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"><p>可选的 RFC 9110 语言偏好。服务从支持的 <code>zh-CN</code>、<code>en-US</code> 中选择工具目录
+（<code>title</code> / <code>description</code> / schema 描述）与服务端说明的语言。</p>
+<p>MCP 协议本身不定义语言协商，<code>initialize</code> 参数里没有 locale 字段，所以这个
+传输层请求头是唯一的通道。客户端在 MCP 连接配置的 <code>headers</code> 里设置它。</p>
+<p>不传则使用部署配置的服务默认语言，无需客户端参与。<strong>每个请求独立判定</strong>，
+不与 <code>Mcp-Session-Id</code> 绑定。</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fINhYD hgNHCh">Responses</h3><div><button class="sc-cbuLjy iSTZHA"><svg class="sc-dYjPD gngmNp" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">200<!-- --> </strong><div html="&lt;p&gt;自描述文档&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>自描述文档</p>
+</div></button></div><div><button class="sc-cbuLjy cKkXxa"><svg class="sc-dYjPD hJoFRR" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbuLjy cKkXxa"><svg class="sc-dYjPD hJoFRR" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误（内嵌的工具元数据读取失败）&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>服务内部错误（内嵌的工具元数据读取失败）</p>
+</div></button></div></div></div><div class="sc-jSppWd sc-gKkgUA fpMlmc bdQQyo"><div class="sc-fXwuWv fYxpnv"><button class="sc-jWMFtl jzaJhV"><span type="get" class="sc-eEFuoE hlSrtW http-verb get">get</span><span class="sc-FpjRO dsIRaZ">/mcp/info</span><svg class="sc-dYjPD bQKUih" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmtEmb tUxhh"><div class="sc-ljIcGq bAnPPh"><div html="" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"></div><div tabindex="0" role="button"><div class="sc-jlJOIR PEJyb"><span>/api/agent-retrieval/v1</span>/mcp/info</div></div></div></div></div><div><h3 class="sc-kEbgWM iamDfj"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxxQMU fcGuQW" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9p6q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9p6q_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9p6q_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9p6q_1" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_9p6q_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9p6q_2" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9p6q_0" aria-labelledby="tab_R_9p6q_0"><div><div class="sc-cNSlRw bMFMGt"><span class="sc-bBzIOb BuCyN">Content type</span><div class="sc-dPqFhK kgKexQ">application/json</div></div><div class="sc-hUheUT jUCYlq"><div class="sc-cTZdpT hHzuQA"><div class="sc-giQkEn dzKJV"><button><div class="sc-jcgtOs feYhXE">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJSMbW fiNpIH sc-jNDflC jgTAJz"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"service"</span>: <span class="token string">&quot;context-loader&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"endpoint"</span>: <span class="token string">&quot;</span><a href="https://example.com/api/agent-retrieval/v1/mcp">https://example.com/api/agent-retrieval/v1/mcp</a><span class="token string">&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"protocol"</span>: <span class="token string">&quot;MCP / JSON-RPC 2.0 (initialize → tools/list → tools/call)&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"transport"</span>: <span class="token string">&quot;Streamable HTTP&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"auth"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"language"</span>: <span class="token string">&quot;zh-CN&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"supported_languages"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;zh-CN&quot;</span>,</div></li><li><div class="hoverable collapsed"><span class="token string">&quot;en-US&quot;</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"tool_count"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"toolkit_version"</span>: <span class="token string">&quot;sha256:55dd56a2d9df5a549923c85826e6cfeec4a49c4f3fce6a25f19bd7c807d24843&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"tools"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"title"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"group"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"group_title"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"order"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"input_schema"</span>: <span class="token punctuation">{ }</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"output_schema"</span>: <span class="token punctuation">{ }</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"client_config_example"</span>: <span class="token punctuation">{ }</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9p6q_1" aria-labelledby="tab_R_9p6q_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9p6q_2" aria-labelledby="tab_R_9p6q_2"></div></div></div></div></div></div><div id="tag/MCP/operation/mcpStreamableHTTP" data-section-id="tag/MCP/operation/mcpStreamableHTTP" class="sc-eCQgVK grDwca"><div data-section-id="operation/mcpStreamableHTTP" id="operation/mcpStreamableHTTP" class="sc-iCECmn lhRBUS"><div class="sc-hKVpXn kktglN"><h2 class="sc-qdQOe MOVBZ"><a class="sc-crPgjm jmoZom" href="#tag/MCP/operation/mcpStreamableHTTP" aria-label="tag/MCP/operation/mcpStreamableHTTP"></a>MCP Streamable HTTP 端点<!-- --> </h2><div class="sc-iFUzrA ktZmcf"><div html="&lt;p&gt;标准 MCP Streamable HTTP 入口，收发 JSON-RPC 2.0 报文。请求与响应结构由
+MCP 协议定义，本文档不再复述——用现成的 MCP 客户端接入即可，不要手写调用。&lt;/p&gt;
+&lt;p&gt;同一路径也接受协议规定的其他方法（如用于服务端推送的 &lt;code&gt;GET&lt;/code&gt;、用于结束会话的
+&lt;code&gt;DELETE&lt;/code&gt;），具体以 MCP 规范为准。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;tools/list&lt;/code&gt; 的每个工具除协议必备字段外，还带一组展示元数据，供客户端直接
+渲染工具目录，不必自行维护工具名到中文名的映射表：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;title&lt;/code&gt;：展示名，MCP 协议自身的字段（2025-06-18 起）。缺失时回退到 &lt;code&gt;name&lt;/code&gt;。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;_meta[&amp;quot;openbkn.ai/group&amp;quot;]&lt;/code&gt;：分组标识，稳定值，可用于分支判断。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;_meta[&amp;quot;openbkn.ai/group_title&amp;quot;]&lt;/code&gt;：分组展示名。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;_meta[&amp;quot;openbkn.ai/order&amp;quot;]&lt;/code&gt;：目录内位置，升序；未声明的排在末尾。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;code&gt;title&lt;/code&gt; 与 &lt;code&gt;group_title&lt;/code&gt; 随部署的语言设置本地化；&lt;code&gt;group&lt;/code&gt; 与 &lt;code&gt;order&lt;/code&gt; 不随语言
+变化。&lt;code&gt;_meta&lt;/code&gt; 下这三项不是协议字段，不认识它们的客户端会按协议忽略。
+&lt;code&gt;GET /mcp/info&lt;/code&gt; 返回同一份元数据，只是平铺成普通字段。&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"><p>标准 MCP Streamable HTTP 入口，收发 JSON-RPC 2.0 报文。请求与响应结构由
+MCP 协议定义，本文档不再复述——用现成的 MCP 客户端接入即可，不要手写调用。</p>
+<p>同一路径也接受协议规定的其他方法（如用于服务端推送的 <code>GET</code>、用于结束会话的
+<code>DELETE</code>），具体以 MCP 规范为准。</p>
+<p><code>tools/list</code> 的每个工具除协议必备字段外，还带一组展示元数据，供客户端直接
+渲染工具目录，不必自行维护工具名到中文名的映射表：</p>
+<ul>
+<li><code>title</code>：展示名，MCP 协议自身的字段（2025-06-18 起）。缺失时回退到 <code>name</code>。</li>
+<li><code>_meta[&quot;openbkn.ai/group&quot;]</code>：分组标识，稳定值，可用于分支判断。</li>
+<li><code>_meta[&quot;openbkn.ai/group_title&quot;]</code>：分组展示名。</li>
+<li><code>_meta[&quot;openbkn.ai/order&quot;]</code>：目录内位置，升序；未声明的排在末尾。</li>
+</ul>
+<p><code>title</code> 与 <code>group_title</code> 随部署的语言设置本地化；<code>group</code> 与 <code>order</code> 不随语言
+变化。<code>_meta</code> 下这三项不是协议字段，不认识它们的客户端会按协议忽略。
+<code>GET /mcp/info</code> 返回同一份元数据，只是平铺成普通字段。</p>
+</div></div><div class="sc-fuYIqi kGZLat"><div class="sc-dalEhJ jdqJPb"><h5 class="sc-iqkkDd sc-jQQpTv jprlAr kEkHzF">Authorizations:</h5><svg class="sc-dYjPD bEEWJa" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jTPGds cVAkzL"><span class="sc-dtnsVa hFacFb"><span class="sc-hPfayn hAYuWG"><i>OAuth2</i></span></span><span class="sc-dtnsVa hFacFb"><span class="sc-hPfayn hAYuWG"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqkkDd jprlAr">header<!-- --> Parameters</h5><table class="sc-hHopjF bsjUmE"><tbody><tr class="last "><td kind="field" title="Accept-Language" class="sc-hCcPtG sc-fFCZOx jFNAwF lcdEEX"><span class="sc-ieCSdj kkMuqc"></span><span class="property-name">Accept-Language</span></td><td class="sc-bjLslk gLpZiQ"><div><div><span class="sc-gSILEF sc-lbpDNm jMRTsl NncTE"></span><span class="sc-gSILEF sc-iNyHtD jMRTsl kUjPnZ">string</span></div> <div><div html="&lt;p&gt;可选的 RFC 9110 语言偏好。服务从支持的 &lt;code&gt;zh-CN&lt;/code&gt;、&lt;code&gt;en-US&lt;/code&gt; 中选择工具目录
+（&lt;code&gt;title&lt;/code&gt; / &lt;code&gt;description&lt;/code&gt; / schema 描述）与服务端说明的语言。&lt;/p&gt;
+&lt;p&gt;MCP 协议本身不定义语言协商，&lt;code&gt;initialize&lt;/code&gt; 参数里没有 locale 字段，所以这个
+传输层请求头是唯一的通道。客户端在 MCP 连接配置的 &lt;code&gt;headers&lt;/code&gt; 里设置它。&lt;/p&gt;
+&lt;p&gt;不传则使用部署配置的服务默认语言，无需客户端参与。&lt;strong&gt;每个请求独立判定&lt;/strong&gt;，
+不与 &lt;code&gt;Mcp-Session-Id&lt;/code&gt; 绑定。&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"><p>可选的 RFC 9110 语言偏好。服务从支持的 <code>zh-CN</code>、<code>en-US</code> 中选择工具目录
+（<code>title</code> / <code>description</code> / schema 描述）与服务端说明的语言。</p>
+<p>MCP 协议本身不定义语言协商，<code>initialize</code> 参数里没有 locale 字段，所以这个
+传输层请求头是唯一的通道。客户端在 MCP 连接配置的 <code>headers</code> 里设置它。</p>
+<p>不传则使用部署配置的服务默认语言，无需客户端参与。<strong>每个请求独立判定</strong>，
+不与 <code>Mcp-Session-Id</code> 绑定。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqkkDd jprlAr">Request Body schema: <span class="sc-gXvOjn kxMqOs">application/json</span><div class="sc-gSILEF sc-eIYgEQ sc-dTCDEk jMRTsl dHYagA bxWqzP">required</div></h5><div html="" class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"></div><table class="sc-hHopjF bsjUmE"><tbody><tr class="last "><td kind="additionalProperties" title="property name*" class="sc-hCcPtG sc-fFCZOx jFNAwF lcdEEX"><span class="sc-ieCSdj kkMuqc"></span><span class="property-name">property name*</span><div class="sc-gSILEF sc-eIYgEQ sc-otWXT jMRTsl dHYagA ctiotw">additional property</div></td><td class="sc-bjLslk gLpZiQ"><div><div><span class="sc-gSILEF sc-lbpDNm jMRTsl NncTE"></span><span class="sc-gSILEF sc-iNyHtD jMRTsl kUjPnZ">any</span></div> <div><div html="" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"></div></div></div></td></tr></tbody></table><div><h3 class="sc-fINhYD hgNHCh">Responses</h3><div><button class="sc-cbuLjy iSTZHA"><svg class="sc-dYjPD gngmNp" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">200<!-- --> </strong><div html="&lt;p&gt;JSON-RPC 2.0 响应或 SSE 事件流&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>JSON-RPC 2.0 响应或 SSE 事件流</p>
+</div></button></div><div><button class="sc-cbuLjy cKkXxa"><svg class="sc-dYjPD hJoFRR" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>凭据缺失或无效</p>
+</div></button></div></div></div><div class="sc-jSppWd sc-gKkgUA fpMlmc bdQQyo"><div class="sc-fXwuWv fYxpnv"><button class="sc-jWMFtl jzaJhV"><span type="post" class="sc-eEFuoE hOENFc http-verb post">post</span><span class="sc-FpjRO dsIRaZ">/mcp</span><svg class="sc-dYjPD bQKUih" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmtEmb tUxhh"><div class="sc-ljIcGq bAnPPh"><div html="" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"></div><div tabindex="0" role="button"><div class="sc-jlJOIR PEJyb"><span>/api/agent-retrieval/v1</span>/mcp</div></div></div></div></div><div><h3 class="sc-kEbgWM iamDfj"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxxQMU fcGuQW" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_99aq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_99aq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_99aq_0" aria-labelledby="tab_R_99aq_0"><div><div class="sc-cNSlRw bMFMGt"><span class="sc-bBzIOb BuCyN">Content type</span><div class="sc-dPqFhK kgKexQ">application/json</div></div><div class="sc-hUheUT jUCYlq"><div class="sc-cNSlRw bMFMGt"><span class="sc-bBzIOb BuCyN">Example</span><div class="sc-jJwPsw sc-AbpxN inOnpk iOLOBz"><svg class="sc-ikBzZv chhzbL" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select" aria-label="Example"><option value="列出工具" selected="">列出工具</option><option value="调用工具">调用工具</option></select><label>列出工具</label></div></div><div><div class="sc-cTZdpT hHzuQA"><div class="sc-giQkEn dzKJV"><button><div class="sc-jcgtOs feYhXE">Copy</div></button></div><div tabindex="0" class="sc-iJSMbW fiNpIH sc-jNDflC jgTAJz"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"jsonrpc"</span>: <span class="token string">&quot;2.0&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"id"</span>: <span class="token number">1</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"method"</span>: <span class="token string">&quot;tools/list&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div></div><div><h3 class="sc-kEbgWM iamDfj"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxxQMU fcGuQW" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9paq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9paq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9paq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9paq_1" data-rttab="true">401</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9paq_0" aria-labelledby="tab_R_9paq_0"><div><div class="sc-cNSlRw bMFMGt"><span class="sc-bBzIOb BuCyN">Content type</span><div class="sc-jJwPsw sc-AbpxN inOnpk iOLOBz"><svg class="sc-ikBzZv chhzbL" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select" aria-label="Content type"><option value="application/json" selected="">application/json</option><option value="text/event-stream">text/event-stream</option></select><label>application/json</label></div></div><div class="sc-hUheUT jUCYlq"><div class="sc-cTZdpT hHzuQA"><div class="sc-giQkEn dzKJV"><button><div class="sc-jcgtOs feYhXE">Copy</div></button></div><div tabindex="0" class="sc-iJSMbW fiNpIH sc-jNDflC jgTAJz"><div class="redoc-json"><code><span class="token punctuation">{ }</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9paq_1" aria-labelledby="tab_R_9paq_1"></div></div></div></div></div></div><div id="tag/MCP/operation/getCompactMCPInfo" data-section-id="tag/MCP/operation/getCompactMCPInfo" class="sc-eCQgVK grDwca"><div data-section-id="operation/getCompactMCPInfo" id="operation/getCompactMCPInfo" class="sc-iCECmn lhRBUS"><div class="sc-hKVpXn kktglN"><h2 class="sc-qdQOe MOVBZ"><a class="sc-crPgjm jmoZom" href="#tag/MCP/operation/getCompactMCPInfo" aria-label="tag/MCP/operation/getCompactMCPInfo"></a>精简入口自描述文档<!-- --> </h2><div class="sc-iFUzrA ktZmcf"><div html="&lt;p&gt;&lt;code&gt;/mcp-compact&lt;/code&gt; 的自描述，结构与 &lt;code&gt;GET /mcp/info&lt;/code&gt; 相同，区别只有：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;endpoint&lt;/code&gt; 指向精简入口；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;tools&lt;/code&gt; 只含本入口公布的 11 个工具，schema 与本入口 &lt;code&gt;tools/list&lt;/code&gt; 一致
+（业务工具无输出 schema，&lt;code&gt;bkn_context&lt;/code&gt; 只声明两个 ID，见 &lt;code&gt;/mcp-compact&lt;/code&gt;）；&lt;/li&gt;
+&lt;li&gt;不返回 &lt;code&gt;toolkit_version&lt;/code&gt;：该哈希描述的是 &lt;code&gt;/mcp&lt;/code&gt; 公布的工具面，也是沙箱镜像
+构建时对齐的对象；本入口经网关可达沙箱执行工具，但不公布它们，要比对版本
+请用 &lt;code&gt;GET /mcp/info&lt;/code&gt;。&lt;/li&gt;
+&lt;/ul&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"><p><code>/mcp-compact</code> 的自描述，结构与 <code>GET /mcp/info</code> 相同，区别只有：</p>
+<ul>
+<li><code>endpoint</code> 指向精简入口；</li>
+<li><code>tools</code> 只含本入口公布的 11 个工具，schema 与本入口 <code>tools/list</code> 一致
+（业务工具无输出 schema，<code>bkn_context</code> 只声明两个 ID，见 <code>/mcp-compact</code>）；</li>
+<li>不返回 <code>toolkit_version</code>：该哈希描述的是 <code>/mcp</code> 公布的工具面，也是沙箱镜像
+构建时对齐的对象；本入口经网关可达沙箱执行工具，但不公布它们，要比对版本
+请用 <code>GET /mcp/info</code>。</li>
+</ul>
+</div></div><div class="sc-fuYIqi kGZLat"><div class="sc-dalEhJ jdqJPb"><h5 class="sc-iqkkDd sc-jQQpTv jprlAr kEkHzF">Authorizations:</h5><svg class="sc-dYjPD bEEWJa" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jTPGds cVAkzL"><span class="sc-dtnsVa hFacFb"><span class="sc-hPfayn hAYuWG"><i>OAuth2</i></span></span><span class="sc-dtnsVa hFacFb"><span class="sc-hPfayn hAYuWG"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqkkDd jprlAr">header<!-- --> Parameters</h5><table class="sc-hHopjF bsjUmE"><tbody><tr class="last "><td kind="field" title="Accept-Language" class="sc-hCcPtG sc-fFCZOx jFNAwF lcdEEX"><span class="sc-ieCSdj kkMuqc"></span><span class="property-name">Accept-Language</span></td><td class="sc-bjLslk gLpZiQ"><div><div><span class="sc-gSILEF sc-lbpDNm jMRTsl NncTE"></span><span class="sc-gSILEF sc-iNyHtD jMRTsl kUjPnZ">string</span></div> <div><div html="&lt;p&gt;可选的 RFC 9110 语言偏好。服务从支持的 &lt;code&gt;zh-CN&lt;/code&gt;、&lt;code&gt;en-US&lt;/code&gt; 中选择工具目录
+（&lt;code&gt;title&lt;/code&gt; / &lt;code&gt;description&lt;/code&gt; / schema 描述）与服务端说明的语言。&lt;/p&gt;
+&lt;p&gt;MCP 协议本身不定义语言协商，&lt;code&gt;initialize&lt;/code&gt; 参数里没有 locale 字段，所以这个
+传输层请求头是唯一的通道。客户端在 MCP 连接配置的 &lt;code&gt;headers&lt;/code&gt; 里设置它。&lt;/p&gt;
+&lt;p&gt;不传则使用部署配置的服务默认语言，无需客户端参与。&lt;strong&gt;每个请求独立判定&lt;/strong&gt;，
+不与 &lt;code&gt;Mcp-Session-Id&lt;/code&gt; 绑定。&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"><p>可选的 RFC 9110 语言偏好。服务从支持的 <code>zh-CN</code>、<code>en-US</code> 中选择工具目录
+（<code>title</code> / <code>description</code> / schema 描述）与服务端说明的语言。</p>
+<p>MCP 协议本身不定义语言协商，<code>initialize</code> 参数里没有 locale 字段，所以这个
+传输层请求头是唯一的通道。客户端在 MCP 连接配置的 <code>headers</code> 里设置它。</p>
+<p>不传则使用部署配置的服务默认语言，无需客户端参与。<strong>每个请求独立判定</strong>，
+不与 <code>Mcp-Session-Id</code> 绑定。</p>
+</div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fINhYD hgNHCh">Responses</h3><div><button class="sc-cbuLjy iSTZHA"><svg class="sc-dYjPD gngmNp" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">200<!-- --> </strong><div html="&lt;p&gt;自描述文档&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>自描述文档</p>
+</div></button></div><div><button class="sc-cbuLjy cKkXxa"><svg class="sc-dYjPD hJoFRR" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbuLjy cKkXxa"><svg class="sc-dYjPD hJoFRR" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误（内嵌的工具元数据读取失败）&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>服务内部错误（内嵌的工具元数据读取失败）</p>
+</div></button></div></div></div><div class="sc-jSppWd sc-gKkgUA fpMlmc bdQQyo"><div class="sc-fXwuWv fYxpnv"><button class="sc-jWMFtl jzaJhV"><span type="get" class="sc-eEFuoE hlSrtW http-verb get">get</span><span class="sc-FpjRO dsIRaZ">/mcp-compact/info</span><svg class="sc-dYjPD bQKUih" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmtEmb tUxhh"><div class="sc-ljIcGq bAnPPh"><div html="" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"></div><div tabindex="0" role="button"><div class="sc-jlJOIR PEJyb"><span>/api/agent-retrieval/v1</span>/mcp-compact/info</div></div></div></div></div><div><h3 class="sc-kEbgWM iamDfj"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxxQMU fcGuQW" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9peq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9peq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9peq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9peq_1" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_9peq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9peq_2" data-rttab="true">500</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9peq_0" aria-labelledby="tab_R_9peq_0"><div><div class="sc-cNSlRw bMFMGt"><span class="sc-bBzIOb BuCyN">Content type</span><div class="sc-dPqFhK kgKexQ">application/json</div></div><div class="sc-hUheUT jUCYlq"><div class="sc-cTZdpT hHzuQA"><div class="sc-giQkEn dzKJV"><button><div class="sc-jcgtOs feYhXE">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJSMbW fiNpIH sc-jNDflC jgTAJz"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"service"</span>: <span class="token string">&quot;context-loader&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"endpoint"</span>: <span class="token string">&quot;</span><a href="https://example.com/api/agent-retrieval/v1/mcp">https://example.com/api/agent-retrieval/v1/mcp</a><span class="token string">&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"protocol"</span>: <span class="token string">&quot;MCP / JSON-RPC 2.0 (initialize → tools/list → tools/call)&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"transport"</span>: <span class="token string">&quot;Streamable HTTP&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"auth"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"language"</span>: <span class="token string">&quot;zh-CN&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"supported_languages"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;zh-CN&quot;</span>,</div></li><li><div class="hoverable collapsed"><span class="token string">&quot;en-US&quot;</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"tool_count"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"toolkit_version"</span>: <span class="token string">&quot;sha256:55dd56a2d9df5a549923c85826e6cfeec4a49c4f3fce6a25f19bd7c807d24843&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"tools"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"title"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"group"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"group_title"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"order"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"input_schema"</span>: <span class="token punctuation">{ }</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"output_schema"</span>: <span class="token punctuation">{ }</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"client_config_example"</span>: <span class="token punctuation">{ }</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9peq_1" aria-labelledby="tab_R_9peq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9peq_2" aria-labelledby="tab_R_9peq_2"></div></div></div></div></div></div><div id="tag/MCP/operation/compactMCPStreamableHTTP" data-section-id="tag/MCP/operation/compactMCPStreamableHTTP" class="sc-eCQgVK grDwca"><div data-section-id="operation/compactMCPStreamableHTTP" id="operation/compactMCPStreamableHTTP" class="sc-iCECmn lhRBUS"><div class="sc-hKVpXn kktglN"><h2 class="sc-qdQOe MOVBZ"><a class="sc-crPgjm jmoZom" href="#tag/MCP/operation/compactMCPStreamableHTTP" aria-label="tag/MCP/operation/compactMCPStreamableHTTP"></a>精简入口的 MCP Streamable HTTP 端点<!-- --> </h2><div class="sc-iFUzrA ktZmcf"><div html="&lt;p&gt;与 &lt;code&gt;/mcp&lt;/code&gt; 相同的 MCP Streamable HTTP 协议、鉴权与受管生命周期，工具定义更少，
+适合每次模型调用都携带全部工具定义的宿主。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;公布的工具&lt;/strong&gt;（固定 11 个，不随连接变化）：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;生命周期：&lt;code&gt;bkn_start_interaction&lt;/code&gt;、&lt;code&gt;bkn_finish_interaction&lt;/code&gt;；&lt;/li&gt;
+&lt;li&gt;直接查询：&lt;code&gt;list_knowledge_networks&lt;/code&gt;、&lt;code&gt;get_kn_detail&lt;/code&gt;、&lt;code&gt;search_schema&lt;/code&gt;、
+&lt;code&gt;search_instance&lt;/code&gt;、&lt;code&gt;query_object_instance&lt;/code&gt;、&lt;code&gt;query_metric&lt;/code&gt;；&lt;/li&gt;
+&lt;li&gt;按需网关：&lt;code&gt;search_native_tools&lt;/code&gt;、&lt;code&gt;describe_native_tool&lt;/code&gt;、&lt;code&gt;execute_native_tool&lt;/code&gt;。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;按需网关&lt;/strong&gt;：&lt;code&gt;/mcp&lt;/code&gt; 上的其余业务工具（含 &lt;code&gt;run_cypher&lt;/code&gt;、
+&lt;code&gt;execute_action&lt;/code&gt;、&lt;code&gt;search_capabilities&lt;/code&gt;、&lt;code&gt;execute_tool&lt;/code&gt;、技能工具、沙箱执行工具
+&lt;code&gt;run_code&lt;/code&gt; / &lt;code&gt;run_shell&lt;/code&gt;，以及许可证覆盖的企业版工具）不出现在 &lt;code&gt;tools/list&lt;/code&gt;，
+经网关使用：&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;code&gt;search_native_tools&lt;/code&gt;：用一句话说明要做的事，返回候选工具及其适用场景；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;describe_native_tool&lt;/code&gt;：取目标的参数 schema 与调用模板，已知参数时可跳过；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;execute_native_tool&lt;/code&gt;：&lt;code&gt;name&lt;/code&gt; 填目标工具名，&lt;code&gt;arguments&lt;/code&gt; 填目标参数，
+&lt;code&gt;bkn_context&lt;/code&gt; 放在外层。目标按自身名称经过与直接调用相同的许可证闸门和受管
+guard，Trace 记录的是目标工具名。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;本入口未公布的工具直接用 &lt;code&gt;tools/call&lt;/code&gt; 调用时，按不存在的工具返回协议标准错误。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;与 &lt;code&gt;/mcp&lt;/code&gt; 的差异&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;业务工具不公布输出 schema，也不接受 &lt;code&gt;response_format&lt;/code&gt;；结果为文本，
+受管回执放在结果的 &lt;code&gt;_meta[&amp;quot;openbkn.ai/receipt&amp;quot;]&lt;/code&gt;，不返回
+&lt;code&gt;structuredContent&lt;/code&gt;。两个生命周期工具的结果与 &lt;code&gt;/mcp&lt;/code&gt; 相同。&lt;/li&gt;
+&lt;li&gt;输入 schema 中的 &lt;code&gt;bkn_context&lt;/code&gt; 只声明 &lt;code&gt;conversation_id&lt;/code&gt; 与
+&lt;code&gt;interaction_id&lt;/code&gt;；&lt;code&gt;business_refs&lt;/code&gt; 等其余字段仍被接受。&lt;/li&gt;
+&lt;li&gt;传入工具未声明的参数时直接拒绝（&lt;code&gt;unknown_arguments&lt;/code&gt;，附允许的参数列表），
+拒绝发生在受管 Operation 创建之前。&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;execute_native_tool&lt;/code&gt; 会解析字符串形式的 &lt;code&gt;arguments&lt;/code&gt;，并去掉与外层一致的
+内层 &lt;code&gt;bkn_context&lt;/code&gt;；发生这类归一时，实际执行的参数回显在结果的
+&lt;code&gt;_meta[&amp;quot;openbkn.ai/normalized_arguments&amp;quot;]&lt;/code&gt;。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;网关的拒绝码&lt;/strong&gt;（结果 &lt;code&gt;isError=true&lt;/code&gt;，正文为 JSON，&lt;code&gt;error&lt;/code&gt; 字段取值如下）：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;取值&lt;/th&gt;
+&lt;th&gt;含义&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;unknown_tool&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;网关里没有这个名字；正文说明挂载函数与技能的正确调用方式&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;published_directly&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;目标已在本入口直接公布，应直接调用&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;invalid_arguments&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;参数不符合目标 schema；附 &lt;code&gt;violations&lt;/code&gt;，schema 不超过 8000 字符时一并返回&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;schema_too_large&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;目标的参数 schema 超过 8000 字符，&lt;code&gt;describe_native_tool&lt;/code&gt; 不返回&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;bkn_context_mismatch&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;内层 &lt;code&gt;bkn_context&lt;/code&gt; 与外层不一致&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;response_format_not_accepted&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;目标参数里带了 &lt;code&gt;response_format&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;unknown_arguments&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;调用了未声明的参数&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;&lt;/table&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"><p>与 <code>/mcp</code> 相同的 MCP Streamable HTTP 协议、鉴权与受管生命周期，工具定义更少，
+适合每次模型调用都携带全部工具定义的宿主。</p>
+<p><strong>公布的工具</strong>（固定 11 个，不随连接变化）：</p>
+<ul>
+<li>生命周期：<code>bkn_start_interaction</code>、<code>bkn_finish_interaction</code>；</li>
+<li>直接查询：<code>list_knowledge_networks</code>、<code>get_kn_detail</code>、<code>search_schema</code>、
+<code>search_instance</code>、<code>query_object_instance</code>、<code>query_metric</code>；</li>
+<li>按需网关：<code>search_native_tools</code>、<code>describe_native_tool</code>、<code>execute_native_tool</code>。</li>
+</ul>
+<p><strong>按需网关</strong>：<code>/mcp</code> 上的其余业务工具（含 <code>run_cypher</code>、
+<code>execute_action</code>、<code>search_capabilities</code>、<code>execute_tool</code>、技能工具、沙箱执行工具
+<code>run_code</code> / <code>run_shell</code>，以及许可证覆盖的企业版工具）不出现在 <code>tools/list</code>，
+经网关使用：</p>
+<ol>
+<li><code>search_native_tools</code>：用一句话说明要做的事，返回候选工具及其适用场景；</li>
+<li><code>describe_native_tool</code>：取目标的参数 schema 与调用模板，已知参数时可跳过；</li>
+<li><code>execute_native_tool</code>：<code>name</code> 填目标工具名，<code>arguments</code> 填目标参数，
+<code>bkn_context</code> 放在外层。目标按自身名称经过与直接调用相同的许可证闸门和受管
+guard，Trace 记录的是目标工具名。</li>
+</ol>
+<p>本入口未公布的工具直接用 <code>tools/call</code> 调用时，按不存在的工具返回协议标准错误。</p>
+<p><strong>与 <code>/mcp</code> 的差异</strong>：</p>
+<ul>
+<li>业务工具不公布输出 schema，也不接受 <code>response_format</code>；结果为文本，
+受管回执放在结果的 <code>_meta[&quot;openbkn.ai/receipt&quot;]</code>，不返回
+<code>structuredContent</code>。两个生命周期工具的结果与 <code>/mcp</code> 相同。</li>
+<li>输入 schema 中的 <code>bkn_context</code> 只声明 <code>conversation_id</code> 与
+<code>interaction_id</code>；<code>business_refs</code> 等其余字段仍被接受。</li>
+<li>传入工具未声明的参数时直接拒绝（<code>unknown_arguments</code>，附允许的参数列表），
+拒绝发生在受管 Operation 创建之前。</li>
+<li><code>execute_native_tool</code> 会解析字符串形式的 <code>arguments</code>，并去掉与外层一致的
+内层 <code>bkn_context</code>；发生这类归一时，实际执行的参数回显在结果的
+<code>_meta[&quot;openbkn.ai/normalized_arguments&quot;]</code>。</li>
+</ul>
+<p><strong>网关的拒绝码</strong>（结果 <code>isError=true</code>，正文为 JSON，<code>error</code> 字段取值如下）：</p>
+<table>
+<thead>
+<tr>
+<th>取值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>unknown_tool</code></td>
+<td>网关里没有这个名字；正文说明挂载函数与技能的正确调用方式</td>
+</tr>
+<tr>
+<td><code>published_directly</code></td>
+<td>目标已在本入口直接公布，应直接调用</td>
+</tr>
+<tr>
+<td><code>invalid_arguments</code></td>
+<td>参数不符合目标 schema；附 <code>violations</code>，schema 不超过 8000 字符时一并返回</td>
+</tr>
+<tr>
+<td><code>schema_too_large</code></td>
+<td>目标的参数 schema 超过 8000 字符，<code>describe_native_tool</code> 不返回</td>
+</tr>
+<tr>
+<td><code>bkn_context_mismatch</code></td>
+<td>内层 <code>bkn_context</code> 与外层不一致</td>
+</tr>
+<tr>
+<td><code>response_format_not_accepted</code></td>
+<td>目标参数里带了 <code>response_format</code></td>
+</tr>
+<tr>
+<td><code>unknown_arguments</code></td>
+<td>调用了未声明的参数</td>
+</tr>
+</tbody></table>
+</div></div><div class="sc-fuYIqi kGZLat"><div class="sc-dalEhJ jdqJPb"><h5 class="sc-iqkkDd sc-jQQpTv jprlAr kEkHzF">Authorizations:</h5><svg class="sc-dYjPD bEEWJa" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jTPGds cVAkzL"><span class="sc-dtnsVa hFacFb"><span class="sc-hPfayn hAYuWG"><i>OAuth2</i></span></span><span class="sc-dtnsVa hFacFb"><span class="sc-hPfayn hAYuWG"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqkkDd jprlAr">header<!-- --> Parameters</h5><table class="sc-hHopjF bsjUmE"><tbody><tr class="last "><td kind="field" title="Accept-Language" class="sc-hCcPtG sc-fFCZOx jFNAwF lcdEEX"><span class="sc-ieCSdj kkMuqc"></span><span class="property-name">Accept-Language</span></td><td class="sc-bjLslk gLpZiQ"><div><div><span class="sc-gSILEF sc-lbpDNm jMRTsl NncTE"></span><span class="sc-gSILEF sc-iNyHtD jMRTsl kUjPnZ">string</span></div> <div><div html="&lt;p&gt;可选的 RFC 9110 语言偏好。服务从支持的 &lt;code&gt;zh-CN&lt;/code&gt;、&lt;code&gt;en-US&lt;/code&gt; 中选择工具目录
+（&lt;code&gt;title&lt;/code&gt; / &lt;code&gt;description&lt;/code&gt; / schema 描述）与服务端说明的语言。&lt;/p&gt;
+&lt;p&gt;MCP 协议本身不定义语言协商，&lt;code&gt;initialize&lt;/code&gt; 参数里没有 locale 字段，所以这个
+传输层请求头是唯一的通道。客户端在 MCP 连接配置的 &lt;code&gt;headers&lt;/code&gt; 里设置它。&lt;/p&gt;
+&lt;p&gt;不传则使用部署配置的服务默认语言，无需客户端参与。&lt;strong&gt;每个请求独立判定&lt;/strong&gt;，
+不与 &lt;code&gt;Mcp-Session-Id&lt;/code&gt; 绑定。&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"><p>可选的 RFC 9110 语言偏好。服务从支持的 <code>zh-CN</code>、<code>en-US</code> 中选择工具目录
+（<code>title</code> / <code>description</code> / schema 描述）与服务端说明的语言。</p>
+<p>MCP 协议本身不定义语言协商，<code>initialize</code> 参数里没有 locale 字段，所以这个
+传输层请求头是唯一的通道。客户端在 MCP 连接配置的 <code>headers</code> 里设置它。</p>
+<p>不传则使用部署配置的服务默认语言，无需客户端参与。<strong>每个请求独立判定</strong>，
+不与 <code>Mcp-Session-Id</code> 绑定。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqkkDd jprlAr">Request Body schema: <span class="sc-gXvOjn kxMqOs">application/json</span><div class="sc-gSILEF sc-eIYgEQ sc-dTCDEk jMRTsl dHYagA bxWqzP">required</div></h5><div html="" class="sc-iJSMbW sc-cBEgGa fiNpIH htbHfQ"></div><table class="sc-hHopjF bsjUmE"><tbody><tr class="last "><td kind="additionalProperties" title="property name*" class="sc-hCcPtG sc-fFCZOx jFNAwF lcdEEX"><span class="sc-ieCSdj kkMuqc"></span><span class="property-name">property name*</span><div class="sc-gSILEF sc-eIYgEQ sc-otWXT jMRTsl dHYagA ctiotw">additional property</div></td><td class="sc-bjLslk gLpZiQ"><div><div><span class="sc-gSILEF sc-lbpDNm jMRTsl NncTE"></span><span class="sc-gSILEF sc-iNyHtD jMRTsl kUjPnZ">any</span></div> <div><div html="" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"></div></div></div></td></tr></tbody></table><div><h3 class="sc-fINhYD hgNHCh">Responses</h3><div><button class="sc-cbuLjy iSTZHA"><svg class="sc-dYjPD gngmNp" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">200<!-- --> </strong><div html="&lt;p&gt;JSON-RPC 2.0 响应或 SSE 事件流&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>JSON-RPC 2.0 响应或 SSE 事件流</p>
+</div></button></div><div><button class="sc-cbuLjy cKkXxa"><svg class="sc-dYjPD hJoFRR" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fXmTIC cqDULz">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJSMbW sc-cBEgGa sc-ciCrSJ fiNpIH iHFyeq dDDioG"><p>凭据缺失或无效</p>
+</div></button></div></div></div><div class="sc-jSppWd sc-gKkgUA fpMlmc bdQQyo"><div class="sc-fXwuWv fYxpnv"><button class="sc-jWMFtl jzaJhV"><span type="post" class="sc-eEFuoE hOENFc http-verb post">post</span><span class="sc-FpjRO dsIRaZ">/mcp-compact</span><svg class="sc-dYjPD bQKUih" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmtEmb tUxhh"><div class="sc-ljIcGq bAnPPh"><div html="" class="sc-iJSMbW sc-cBEgGa fiNpIH bWgCZK"></div><div tabindex="0" role="button"><div class="sc-jlJOIR PEJyb"><span>/api/agent-retrieval/v1</span>/mcp-compact</div></div></div></div></div><div><h3 class="sc-kEbgWM iamDfj"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxxQMU fcGuQW" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_99iq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_99iq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_99iq_0" aria-labelledby="tab_R_99iq_0"><div><div class="sc-cNSlRw bMFMGt"><span class="sc-bBzIOb BuCyN">Content type</span><div class="sc-dPqFhK kgKexQ">application/json</div></div><div class="sc-hUheUT jUCYlq"><div class="sc-cTZdpT hHzuQA"><div class="sc-giQkEn dzKJV"><button><div class="sc-jcgtOs feYhXE">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJSMbW fiNpIH sc-jNDflC jgTAJz"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"jsonrpc"</span>: <span class="token string">&quot;2.0&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"id"</span>: <span class="token number">3</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"method"</span>: <span class="token string">&quot;tools/call&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"params"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;execute_native_tool&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"arguments"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;run_cypher&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"arguments"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"kn_id"</span>: <span class="token string">&quot;kn_demo&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"query"</span>: <span class="token string">&quot;MATCH (o:orders) RETURN o.status, count(o.id) AS n&quot;</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"bkn_context"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"conversation_id"</span>: <span class="token string">&quot;conv_...&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"interaction_id"</span>: <span class="token string">&quot;int_...&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEbgWM iamDfj"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxxQMU fcGuQW" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9piq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9piq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9piq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9piq_1" data-rttab="true">401</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9piq_0" aria-labelledby="tab_R_9piq_0"><div><div class="sc-cNSlRw bMFMGt"><span class="sc-bBzIOb BuCyN">Content type</span><div class="sc-jJwPsw sc-AbpxN inOnpk iOLOBz"><svg class="sc-ikBzZv chhzbL" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select" aria-label="Content type"><option value="application/json" selected="">application/json</option><option value="text/event-stream">text/event-stream</option></select><label>application/json</label></div></div><div class="sc-hUheUT jUCYlq"><div class="sc-cTZdpT hHzuQA"><div class="sc-giQkEn dzKJV"><button><div class="sc-jcgtOs feYhXE">Copy</div></button></div><div tabindex="0" class="sc-iJSMbW fiNpIH sc-jNDflC jgTAJz"><div class="redoc-json"><code><span class="token punctuation">{ }</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9piq_1" aria-labelledby="tab_R_9piq_1"></div></div></div></div></div></div></div><div class="sc-ekVkVN bjzTxL"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.0.3","info":{"title":"MCP 服务","description":"Context Loader 把自己的检索能力同时以 **MCP Server** 形式对外：Cursor、Claude\nDesktop 等 MCP 客户端可以直接接入，不必逐个封装 REST 调用。\n\n普通 Agent 默认只使用两个受管生命周期工具：`bkn_start_interaction`、\n`bkn_finish_interaction`。每轮 start 都提交完整问题、固定的 `agent_name` 和 `conversation_mode`：没有当前\nConversation 时用 `new` 且不传 `conversation_id`；按显式 id 延续时用 `continue` 并传入 start 返回的 id。\n宿主提供会话映射时，以宿主映射为准。finish 只提交当前 Interaction 的\n结果，不关闭可跨轮、跨日复用的 Conversation。业务工具包括 `search_schema`、\n`query_object_instance`、`query_instance_subgraph`、`get_logic_properties_values`、\n`get_action_info`、`execute_action`、`get_action_execution`、\n`list_action_executions`、`list_knowledge_networks`、\n`get_kn_detail`、`get_object_types`、`get_relation_types`、\n`list_skills`、`get_skill_content`、`read_skill_file`、\n`search_capabilities`、`execute_tool`。\n`run_sql`、`list_resources`、`describe_resource` 已从 MCP 面下线：它们按调用者\n自己的数据资源授权返回物理列，绕开知识网络的属性级规则，因此只保留 REST\n入口（`POST /kn/run_sql`、`POST /kn/list_resources`、`POST /kn/describe_resource`），\n`tools/list`、`tools/call`、按需网关与沙箱能力面都不再提供。\n另有一个默认不装配的 `execute_skill`：它把入口命令送进沙箱执行，只有显式开启\n（`EXECUTE_SKILL_ENABLED=true`）才出现在 `tools/list` 与 `GET /mcp/info`，\n未开启时与「没编译进来」无异。该开关是技能执行能力的总闸，同时决定\n`/kn/execute_skill` 这条 REST 路由是否注册。业务工具必须显式携带服务自描述 schema 中的 `bkn_context`，\n其中只要求权威返回的 `conversation_id` 和 `interaction_id`；Operation key、租约、\n重试和 closure manifest 由 Context Loader 与 BKN Trace Core 管理；\n各工具的语义与参数含义见本目录下对应的 REST 文档。\n\n**接入方式**：Streamable HTTP，端点 `/api/agent-retrieval/v1/mcp`，\n协议流程 `initialize` → `tools/list` → `tools/call`（JSON-RPC 2.0）。\n鉴权与 REST 一致：`Authorization: Bearer <token>`，OAuth access token 或\n`bak_` 前缀的 AppKey。宿主适配器可选使用\n`X-OpenBKN-Host-Conversation-Key` 和 `X-OpenBKN-Client-Invocation-Id`，或对应的\n`openbkn.ai/host-conversation-key`、`openbkn.ai/client-invocation-id` MCP `_meta`\n提示会话关联与调用幂等；`client-invocation-id` 可用于 start 和每一次业务工具调用，\n同一 ID 重试复用原 Interaction 或 Operation / Receipt，不同输入返回幂等冲突。\n未提供逐调用提示时，跨连接重试退化为 at-least-once。这些提示不参与身份和权限判定，\n普通 Agent 参数不得提交。\n\n不想先握手就想知道有哪些工具时，直接 `GET /mcp/info`——它返回完整的工具目录\n（含每个工具的输入输出 schema）与一份可直接粘贴的客户端配置。\n\n**精简入口**：`/api/agent-retrieval/v1/mcp-compact` 是同一进程里的第二个 MCP\n端点，鉴权、受管生命周期和工具语义与 `/mcp` 相同，面向每次模型调用都携带全部\n工具定义的宿主。它只公布 11 个工具，其余能力经按需网关使用，见下文\n`/mcp-compact` 与 `GET /mcp-compact/info`。\n","version":"0.1.3"},"servers":[{"url":"/api/agent-retrieval/v1"}],"security":[{"OAuth2":[]},{"AppKey":[]}],"paths":{"/mcp/info":{"get":{"tags":["MCP"],"summary":"MCP 服务自描述文档","operationId":"getMCPInfo","parameters":[{"$ref":"#/components/parameters/AcceptLanguage"}],"description":"一次 GET 拿到端点、协议、鉴权方式、全部工具的名称 / 描述 / 输入输出 schema，\n以及一份可直接用的客户端配置示例。给人看，也给 Agent 自举用。\n\n`endpoint` 按当次请求推导（识别 `X-Forwarded-Proto`），因此走网关访问时\n返回的就是网关地址，可直接抄进客户端配置。\n","responses":{"200":{"description":"自描述文档","content":{"application/json":{"schema":{"$ref":"#/components/schemas/MCPInfo"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"500":{"description":"服务内部错误（内嵌的工具元数据读取失败）","content":{"application/json":{"schema":{"type":"object","properties":{"error":{"type":"string"}}}}}}}}},"/mcp":{"post":{"tags":["MCP"],"summary":"MCP Streamable HTTP 端点","operationId":"mcpStreamableHTTP","parameters":[{"$ref":"#/components/parameters/AcceptLanguage"}],"description":"标准 MCP Streamable HTTP 入口，收发 JSON-RPC 2.0 报文。请求与响应结构由\nMCP 协议定义，本文档不再复述——用现成的 MCP 客户端接入即可，不要手写调用。\n\n同一路径也接受协议规定的其他方法（如用于服务端推送的 `GET`、用于结束会话的\n`DELETE`），具体以 MCP 规范为准。\n\n`tools/list` 的每个工具除协议必备字段外，还带一组展示元数据，供客户端直接\n渲染工具目录，不必自行维护工具名到中文名的映射表：\n\n- `title`：展示名，MCP 协议自身的字段（2025-06-18 起）。缺失时回退到 `name`。\n- `_meta[\"openbkn.ai/group\"]`：分组标识，稳定值，可用于分支判断。\n- `_meta[\"openbkn.ai/group_title\"]`：分组展示名。\n- `_meta[\"openbkn.ai/order\"]`：目录内位置，升序；未声明的排在末尾。\n\n`title` 与 `group_title` 随部署的语言设置本地化；`group` 与 `order` 不随语言\n变化。`_meta` 下这三项不是协议字段，不认识它们的客户端会按协议忽略。\n`GET /mcp/info` 返回同一份元数据，只是平铺成普通字段。\n","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","description":"JSON-RPC 2.0 请求（`initialize` / `tools/list` / `tools/call` 等）。","additionalProperties":true},"examples":{"列出工具":{"value":{"jsonrpc":"2.0","id":1,"method":"tools/list"}},"调用工具":{"value":{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_schema","arguments":{"kn_id":"kn_medical","query":"药品不良反应","bkn_context":{"conversation_id":"conv_...","interaction_id":"int_..."}}}}}}}}},"responses":{"200":{"description":"JSON-RPC 2.0 响应或 SSE 事件流","content":{"application/json":{"schema":{"type":"object","additionalProperties":true}},"text/event-stream":{"schema":{"type":"string"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}},"/mcp-compact/info":{"get":{"tags":["MCP"],"summary":"精简入口自描述文档","operationId":"getCompactMCPInfo","parameters":[{"$ref":"#/components/parameters/AcceptLanguage"}],"description":"`/mcp-compact` 的自描述，结构与 `GET /mcp/info` 相同，区别只有：\n\n- `endpoint` 指向精简入口；\n- `tools` 只含本入口公布的 11 个工具，schema 与本入口 `tools/list` 一致\n  （业务工具无输出 schema，`bkn_context` 只声明两个 ID，见 `/mcp-compact`）；\n- 不返回 `toolkit_version`：该哈希描述的是 `/mcp` 公布的工具面，也是沙箱镜像\n  构建时对齐的对象；本入口经网关可达沙箱执行工具，但不公布它们，要比对版本\n  请用 `GET /mcp/info`。\n","responses":{"200":{"description":"自描述文档","content":{"application/json":{"schema":{"$ref":"#/components/schemas/MCPInfo"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"500":{"description":"服务内部错误（内嵌的工具元数据读取失败）","content":{"application/json":{"schema":{"type":"object","properties":{"error":{"type":"string"}}}}}}}}},"/mcp-compact":{"post":{"tags":["MCP"],"summary":"精简入口的 MCP Streamable HTTP 端点","operationId":"compactMCPStreamableHTTP","parameters":[{"$ref":"#/components/parameters/AcceptLanguage"}],"description":"与 `/mcp` 相同的 MCP Streamable HTTP 协议、鉴权与受管生命周期，工具定义更少，\n适合每次模型调用都携带全部工具定义的宿主。\n\n**公布的工具**（固定 11 个，不随连接变化）：\n\n- 生命周期：`bkn_start_interaction`、`bkn_finish_interaction`；\n- 直接查询：`list_knowledge_networks`、`get_kn_detail`、`search_schema`、\n  `search_instance`、`query_object_instance`、`query_metric`；\n- 按需网关：`search_native_tools`、`describe_native_tool`、`execute_native_tool`。\n\n**按需网关**：`/mcp` 上的其余业务工具（含 `run_cypher`、\n`execute_action`、`search_capabilities`、`execute_tool`、技能工具、沙箱执行工具\n`run_code` / `run_shell`，以及许可证覆盖的企业版工具）不出现在 `tools/list`，\n经网关使用：\n\n1. `search_native_tools`：用一句话说明要做的事，返回候选工具及其适用场景；\n2. `describe_native_tool`：取目标的参数 schema 与调用模板，已知参数时可跳过；\n3. `execute_native_tool`：`name` 填目标工具名，`arguments` 填目标参数，\n   `bkn_context` 放在外层。目标按自身名称经过与直接调用相同的许可证闸门和受管\n   guard，Trace 记录的是目标工具名。\n\n本入口未公布的工具直接用 `tools/call` 调用时，按不存在的工具返回协议标准错误。\n\n**与 `/mcp` 的差异**：\n\n- 业务工具不公布输出 schema，也不接受 `response_format`；结果为文本，\n  受管回执放在结果的 `_meta[\"openbkn.ai/receipt\"]`，不返回\n  `structuredContent`。两个生命周期工具的结果与 `/mcp` 相同。\n- 输入 schema 中的 `bkn_context` 只声明 `conversation_id` 与\n  `interaction_id`；`business_refs` 等其余字段仍被接受。\n- 传入工具未声明的参数时直接拒绝（`unknown_arguments`，附允许的参数列表），\n  拒绝发生在受管 Operation 创建之前。\n- `execute_native_tool` 会解析字符串形式的 `arguments`，并去掉与外层一致的\n  内层 `bkn_context`；发生这类归一时，实际执行的参数回显在结果的\n  `_meta[\"openbkn.ai/normalized_arguments\"]`。\n\n**网关的拒绝码**（结果 `isError=true`，正文为 JSON，`error` 字段取值如下）：\n\n| 取值 | 含义 |\n| --- | --- |\n| `unknown_tool` | 网关里没有这个名字；正文说明挂载函数与技能的正确调用方式 |\n| `published_directly` | 目标已在本入口直接公布，应直接调用 |\n| `invalid_arguments` | 参数不符合目标 schema；附 `violations`，schema 不超过 8000 字符时一并返回 |\n| `schema_too_large` | 目标的参数 schema 超过 8000 字符，`describe_native_tool` 不返回 |\n| `bkn_context_mismatch` | 内层 `bkn_context` 与外层不一致 |\n| `response_format_not_accepted` | 目标参数里带了 `response_format` |\n| `unknown_arguments` | 调用了未声明的参数 |\n","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","description":"JSON-RPC 2.0 请求（`initialize` / `tools/list` / `tools/call` 等）。","additionalProperties":true},"examples":{"经网关调用":{"value":{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"execute_native_tool","arguments":{"name":"run_cypher","arguments":{"kn_id":"kn_demo","query":"MATCH (o:orders) RETURN o.status, count(o.id) AS n"},"bkn_context":{"conversation_id":"conv_...","interaction_id":"int_..."}}}}}}}}},"responses":{"200":{"description":"JSON-RPC 2.0 响应或 SSE 事件流","content":{"application/json":{"schema":{"type":"object","additionalProperties":true}},"text/event-stream":{"schema":{"type":"string"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}}},"components":{"securitySchemes":{"OAuth2":{"type":"oauth2","description":"OAuth2 authentication for public APIs.","flows":{"clientCredentials":{"tokenUrl":"/oauth2/token","scopes":{}}}},"AppKey":{"type":"apiKey","in":"header","name":"Authorization","description":"Application key with the `bak_` prefix. Send it as\n`Authorization: Bearer bak_xxx` for service-to-service or\napplication-level calls.\n"}},"parameters":{"AcceptLanguage":{"name":"Accept-Language","in":"header","required":false,"schema":{"type":"string"},"description":"可选的 RFC 9110 语言偏好。服务从支持的 `zh-CN`、`en-US` 中选择工具目录\n（`title` / `description` / schema 描述）与服务端说明的语言。\n\nMCP 协议本身不定义语言协商，`initialize` 参数里没有 locale 字段，所以这个\n传输层请求头是唯一的通道。客户端在 MCP 连接配置的 `headers` 里设置它。\n\n不传则使用部署配置的服务默认语言，无需客户端参与。**每个请求独立判定**，\n不与 `Mcp-Session-Id` 绑定。\n"}},"schemas":{"MCPInfo":{"type":"object","properties":{"service":{"type":"string","description":"MCP 服务名。","example":"context-loader"},"endpoint":{"type":"string","description":"本服务对外的 MCP Streamable HTTP 地址，按当次请求推导。","example":"https://example.com/api/agent-retrieval/v1/mcp"},"protocol":{"type":"string","description":"协议说明。","example":"MCP / JSON-RPC 2.0 (initialize → tools/list → tools/call)"},"transport":{"type":"string","description":"传输方式。","example":"Streamable HTTP"},"auth":{"type":"string","description":"鉴权说明。"},"language":{"type":"string","enum":["zh-CN","en-US"],"description":"本次响应实际使用的语言，即工具目录（`title` / `description` / schema\n描述）与服务端说明的语言。由请求的 `Accept-Language` 决定；不传或不支持\n时为部署配置的服务默认语言。\n","example":"zh-CN"},"supported_languages":{"type":"array","items":{"type":"string"},"description":"本服务支持的语言标签。","example":["zh-CN","en-US"]},"tool_count":{"type":"integer","description":"工具数量。"},"toolkit_version":{"type":"string","description":"当前工具面的内容哈希，与沙箱镜像里的 `__toolkit_version__` 同源同算法。\n镜像滞后于服务端时，症状只是签名对不上、失败信息里看不出根因；\n比对这两个值即可判定。\n`GET /mcp-compact/info` 不返回此字段。\n","example":"sha256:55dd56a2d9df5a549923c85826e6cfeec4a49c4f3fce6a25f19bd7c807d24843"},"tools":{"type":"array","items":{"$ref":"#/components/schemas/MCPToolInfo"},"description":"工具目录，按工具名字典序。"},"client_config_example":{"type":"object","additionalProperties":true,"description":"可直接粘贴到 MCP 客户端的配置片段（`mcpServers` 形态），\n其中 Authorization 处需替换为真实凭据。\n"}}},"MCPToolInfo":{"type":"object","properties":{"name":{"type":"string","description":"工具名，调用时使用的程序标识，不随展示需要变化。"},"title":{"type":"string","description":"工具展示名（随部署语言设置本地化）。对应 `tools/list` 里 MCP 协议\n自身的 `title` 字段；客户端应优先展示它，缺失时回退到 `name`。\n"},"group":{"type":"string","description":"分组标识，稳定值，供客户端分组或分支判断。当前取值：\n`lifecycle` / `discovery` / `query` / `action` / `resource` /\n`skill` / `tool` / `execution` / `gateway`（`gateway` 只出现在精简入口）。\n扩展工具未声明时不返回。\n"},"group_title":{"type":"string","description":"分组展示名（随部署语言设置本地化）。"},"order":{"type":"integer","description":"目录内的排列位置，升序。未声明时不返回，客户端应把这类工具排在末尾。\n"},"description":{"type":"string","description":"工具描述（随部署语言设置本地化）。"},"input_schema":{"type":"object","additionalProperties":true,"description":"入参 JSON Schema；元数据缺失时不返回。"},"output_schema":{"type":"object","additionalProperties":true,"description":"出参 JSON Schema；元数据缺失时不返回。"}}},"ErrorCompact":{"description":"Error response shared by context-loader (`agent-retrieval`) and\nexecution-factory (`agent-operator-integration`) under adp. It is\nserialized from each service's `infra/errors.HTTPError`. Its field names\ndiffer from `Error` above and clients must not treat them as the same\nenvelope.\n\nWhen an error originates from a downstream service, these services pass\nthe downstream body through unchanged. In that case the field names are\nthose of the downstream envelope, commonly `error_code` and\n`error_details`. Use the `code` prefix to identify locally generated\nerrors: `Public.*`, `agentRetrieval.*`, or\n`AgentOperatorIntegration.*` (the last prefix starts with a capital\nletter).\n\nErrors from mf-model-api are an exception to the prefix rule.\n`/v1/chat/completions` exposes an OpenAI-compatible surface and always\nreturns `{\"error\": {\"message\", \"type\", \"param\", \"code\"}}` on failure.\nThere is no top-level `code`; the original business code is in\n`error.code`. Endpoints that call a large model, such as\nexecution-factory `/ai_generate/*`, pass this shape through. A top-level\n`error` object therefore identifies an error from the model call chain.\nRead `error.message` for the text and `error.type` for classifications\nsuch as `rate_limit_exceeded`, `service_unavailable_error`, and\n`invalid_request_error`.\n","type":"object","properties":{"code":{"type":"string","description":"Machine-readable error code. Generic errors use\n`Public.<ErrCode>`, such as `Public.BadRequest`. Business errors use\n`<service>.<ErrCode>.<ExtCode>`, for example\n`AgentOperatorIntegration.BadRequest.ValidationRequired`.\n","example":"Public.BadRequest"},"description":{"type":"string","description":"Localized, human-readable error description."},"solution":{"type":"string","description":"Recommended remediation."},"link":{"type":"string","description":"Link to error documentation; may indicate that no link is available."},"details":{"description":"Error details, commonly a string or object."}}},"ErrorAgentRetrieval":{"description":"Alias of `ErrorCompact` retained for the context-loader YAML files added\nin #578. The structure is identical. New documentation should reference\n`ErrorCompact` directly.\n","allOf":[{"$ref":"#/components/schemas/ErrorCompact"}]}}}}},"searchIndex":{"store":["tag/MCP","tag/MCP/operation/getMCPInfo","tag/MCP/operation/mcpStreamableHTTP","tag/MCP/operation/getCompactMCPInfo","tag/MCP/operation/compactMCPStreamableHTTP"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,0.244]],["description/0",[]],["title/1",[0,0.201,1,0.285]],["description/1",[1,0.535,2,0.742,3,1.909,4,1.206,5,1.909,6,0.742]],["title/2",[0,0.149,1,0.211,7,0.236,8,0.236]],["description/2",[0,0.327,1,0.535,6,0.556,7,0.297,8,0.297,9,1.43,10,1.43,11,1.43,12,0.556,13,1.43,14,1.43,15,1.43,16,1.43,17,1.43,18,1.43,19,1.43,20,1.43,21,1.43,22,1.43,23,1.43]],["title/3",[1,0.345]],["description/3",[0,0.214,1,0.536,2,0.632,4,1.027,6,0.825,12,0.632,24,1.34,25,1.627,26,1.027,27,1.627,28,1.627,29,1.627,30,1.627]],["title/4",[0,0.132,1,0.281,7,0.209,8,0.209]],["description/4",[0,0.248,1,0.546,2,0.732,7,0.155,8,0.155,12,0.29,24,0.47,26,0.47,31,0.745,32,0.745,33,0.745,34,0.745,35,0.745,36,0.745,37,0.745,38,0.745,39,0.745,40,0.745,41,0.745,42,1.197,43,0.745,44,0.745,45,1.197,46,1.719,47,0.745,48,0.745,49,1.197,50,0.745,51,0.745,52,0.745,53,0.745,54,1.197,55,0.745,56,0.745,57,0.745,58,0.745,59,0.745,60,0.745,61,0.745,62,0.745,63,0.745,64,1.197,65,0.745,66,0.745,67,0.745]]],"invertedIndex":[["",{"_index":1,"title":{"1":{},"2":{},"3":{},"4":{}},"description":{"1":{},"2":{},"3":{},"4":{}}}],["1",{"_index":39,"title":{},"description":{"4":{}}}],["11",{"_index":26,"title":{},"description":{"3":{},"4":{}}}],["2",{"_index":41,"title":{},"description":{"4":{}}}],["2.0",{"_index":10,"title":{},"description":{"2":{}}}],["2025-06-18",{"_index":14,"title":{},"description":{"2":{}}}],["3",{"_index":43,"title":{},"description":{"4":{}}}],["8000",{"_index":64,"title":{},"description":{"4":{}}}],["_meta",{"_index":23,"title":{},"description":{"2":{}}}],["_meta[\"openbkn.ai/group",{"_index":16,"title":{},"description":{"2":{}}}],["_meta[\"openbkn.ai/group_titl",{"_index":17,"title":{},"description":{"2":{}}}],["_meta[\"openbkn.ai/normalized_argu",{"_index":57,"title":{},"description":{"4":{}}}],["_meta[\"openbkn.ai/ord",{"_index":18,"title":{},"description":{"2":{}}}],["_meta[\"openbkn.ai/receipt",{"_index":50,"title":{},"description":{"4":{}}}],["agent",{"_index":3,"title":{},"description":{"1":{}}}],["argument",{"_index":45,"title":{},"description":{"4":{}}}],["bkn_context",{"_index":46,"title":{},"description":{"4":{}}}],["bkn_context_mismatch",{"_index":66,"title":{},"description":{"4":{}}}],["bkn_start_interaction`、`bkn_finish_interact",{"_index":31,"title":{},"description":{"4":{}}}],["conversation_id",{"_index":52,"title":{},"description":{"4":{}}}],["delet",{"_index":11,"title":{},"description":{"2":{}}}],["describe_native_tool",{"_index":42,"title":{},"description":{"4":{}}}],["endpoint",{"_index":4,"title":{},"description":{"1":{},"3":{}}}],["execute_action`、`search_capabilities`、`execute_tool",{"_index":36,"title":{},"description":{"4":{}}}],["execute_native_tool",{"_index":56,"title":{},"description":{"4":{}}}],["execute_native_tool`：`nam",{"_index":44,"title":{},"description":{"4":{}}}],["group",{"_index":21,"title":{},"description":{"2":{}}}],["group_titl",{"_index":20,"title":{},"description":{"2":{}}}],["guard，trac",{"_index":47,"title":{},"description":{"4":{}}}],["http",{"_index":8,"title":{"2":{},"4":{}},"description":{"2":{},"4":{}}}],["id",{"_index":28,"title":{},"description":{"3":{}}}],["interaction_id`；`business_ref",{"_index":53,"title":{},"description":{"4":{}}}],["invalid_argu",{"_index":62,"title":{},"description":{"4":{}}}],["iserror=tru",{"_index":58,"title":{},"description":{"4":{}}}],["json-rpc",{"_index":9,"title":{},"description":{"2":{}}}],["json，`error",{"_index":59,"title":{},"description":{"4":{}}}],["list_knowledge_networks`、`get_kn_detail`、`search_schema",{"_index":32,"title":{},"description":{"4":{}}}],["mcp",{"_index":0,"title":{"0":{},"1":{},"2":{},"4":{}},"description":{"2":{},"3":{},"4":{}}}],["mcp-compact",{"_index":24,"title":{},"description":{"3":{},"4":{}}}],["mcp-compact/info",{"_index":30,"title":{},"description":{"3":{}}}],["mcp/info",{"_index":6,"title":{},"description":{"1":{},"2":{},"3":{}}}],["name",{"_index":15,"title":{},"description":{"2":{}}}],["oper",{"_index":55,"title":{},"description":{"4":{}}}],["order",{"_index":22,"title":{},"description":{"2":{}}}],["published_directli",{"_index":61,"title":{},"description":{"4":{}}}],["response_format",{"_index":49,"title":{},"description":{"4":{}}}],["response_format_not_accept",{"_index":67,"title":{},"description":{"4":{}}}],["run_cod",{"_index":37,"title":{},"description":{"4":{}}}],["run_cyph",{"_index":35,"title":{},"description":{"4":{}}}],["run_shel",{"_index":38,"title":{},"description":{"4":{}}}],["schema",{"_index":2,"title":{},"description":{"1":{},"3":{},"4":{}}}],["schema_too_larg",{"_index":65,"title":{},"description":{"4":{}}}],["schema，`bkn_context",{"_index":27,"title":{},"description":{"3":{}}}],["search_instance`、`query_object_instance`、`query_metr",{"_index":33,"title":{},"description":{"4":{}}}],["search_native_tool",{"_index":40,"title":{},"description":{"4":{}}}],["search_native_tools`、`describe_native_tool`、`execute_native_tool",{"_index":34,"title":{},"description":{"4":{}}}],["streamabl",{"_index":7,"title":{"2":{},"4":{}},"description":{"2":{},"4":{}}}],["structuredcont",{"_index":51,"title":{},"description":{"4":{}}}],["titl",{"_index":19,"title":{},"description":{"2":{}}}],["title`：展示名，mcp",{"_index":13,"title":{},"description":{"2":{}}}],["tool",{"_index":25,"title":{},"description":{"3":{}}}],["toolkit_vers",{"_index":29,"title":{},"description":{"3":{}}}],["tools/cal",{"_index":48,"title":{},"description":{"4":{}}}],["tools/list",{"_index":12,"title":{},"description":{"2":{},"3":{},"4":{}}}],["unknown_argu",{"_index":54,"title":{},"description":{"4":{}}}],["unknown_tool",{"_index":60,"title":{},"description":{"4":{}}}],["violations`，schema",{"_index":63,"title":{},"description":{"4":{}}}],["x-forwarded-proto",{"_index":5,"title":{},"description":{"1":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>
