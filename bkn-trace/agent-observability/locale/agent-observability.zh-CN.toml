@@ -254,6 +254,7 @@
 "producer_instance_id must include a process boot identity" = "producer_instance_id 必须包含进程启动身份"
 "publisher acknowledgement does not satisfy the Session 1 closure contract" = "Publisher 确认不符合 Session 1 closure 合同"
 "publisher acknowledgement was rejected" = "Publisher 确认被拒绝"
+"publisher acknowledgement is stale or the operation is no longer active" = "Publisher 确认已过期或操作已不再活跃"
 "queue disposition does not satisfy TraceGatewayAcknowledgementV1" = "queue disposition 不符合 TraceGatewayAcknowledgementV1"
 "the current access profile cannot manage trace/evidence configuration" = "当前访问配置无权管理 Trace/Evidence 配置"
 "the frozen TraceGatewayAcknowledgementV1 contract is required" = "必须提供冻结的 TraceGatewayAcknowledgementV1 合同"

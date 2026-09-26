@@ -692,6 +692,26 @@ func TestInternalEvidencePublisherAckUsesReadyStateForEnabledPolicy(t *testing.T
 	}
 }
 
+func TestInternalEvidencePublisherAckRejectsCompletedOperation(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{
+			Revision: 41, DesiredState: capturepolicysvc.StateDisabled, EffectiveState: capturepolicysvc.StateDisabled,
+			LastStableRevision: 40,
+			Operation:          capturepolicysvc.Operation{ID: "op-publisher", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateDisabled},
+		}, nil
+	}), nil, nil, nil, writer)
+	profile := capturePolicyWorkloadProfile()
+	profile.ApplicationPrincipalID = "spiffe://cluster.local/ns/openbkn/sa/bkn-backend"
+	profile.Permissions = []evidencevo.Permission{{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}}}
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-publisher:publisher-ack", `{"producer_instance_id":"spiffe://cluster.local/ns/openbkn/sa/bkn-backend#boot-1","capture_policy_revision":41,"last_accepted_sequence":7,"published":5,"dropped":2,"queue_empty":true,"acknowledged_at":"2026-09-22T08:00:10.000Z"}`, profile)
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusConflict || writer.publisherClosureAcks != 0 {
+		t.Fatalf("status = %d, closure ACKs = %d, body = %s", response.Code, writer.publisherClosureAcks, response.Body.String())
+	}
+}
+
 func TestSession1PublisherAcknowledgementFixtureCompatibility(t *testing.T) {
 	path := os.Getenv("BKN_DOCS_EVIDENCE_PUBLISHER_ACK_FIXTURE")
 	if path == "" {

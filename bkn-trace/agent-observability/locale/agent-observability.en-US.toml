@@ -254,6 +254,7 @@
 "producer_instance_id must include a process boot identity" = "producer_instance_id must include a process boot identity"
 "publisher acknowledgement does not satisfy the Session 1 closure contract" = "publisher acknowledgement does not satisfy the Session 1 closure contract"
 "publisher acknowledgement was rejected" = "publisher acknowledgement was rejected"
+"publisher acknowledgement is stale or the operation is no longer active" = "publisher acknowledgement is stale or the operation is no longer active"
 "queue disposition does not satisfy TraceGatewayAcknowledgementV1" = "queue disposition does not satisfy TraceGatewayAcknowledgementV1"
 "the current access profile cannot manage trace/evidence configuration" = "the current access profile cannot manage trace/evidence configuration"
 "the frozen TraceGatewayAcknowledgementV1 contract is required" = "the frozen TraceGatewayAcknowledgementV1 contract is required"
