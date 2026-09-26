@@ -239,8 +239,11 @@ func validateRegistry(value map[string]any, rules registry) error {
 			return permanent("registry_mapping_rejected")
 		}
 	}
-	if source.CollectionMethod != "kafka_audit" {
-		return permanent("source_not_kafka_audit")
+	if source.CollectionMethod == "not_integrated" {
+		return permanent("source_not_integrated")
+	}
+	if source.CollectionMethod != "source_adapter" {
+		return permanent("source_collection_method_rejected")
 	}
 	return nil
 }

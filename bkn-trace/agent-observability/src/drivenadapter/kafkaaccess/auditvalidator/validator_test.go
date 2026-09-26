@@ -62,8 +62,82 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsRejected(t 
 		Headers:    []auditconsumer.Header{{Key: "bkn-audit-schema-version", Value: []byte("1.0")}},
 		BrokerTime: time.Date(2026, 9, 24, 8, 31, 0, 0, time.UTC),
 	}
-	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "source_not_kafka_audit") {
+	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "source_not_integrated") {
 		t.Fatalf("canonical registry must permanently reject not_integrated execution-factory source; got %v", err)
+	}
+}
+
+func TestValidatorAcceptsRegisteredSourceAdapterForAuditKafka(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kafkaFixture, err := os.ReadFile("assets/audit-kafka-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Key string `json:"key_base64"`
+	}
+	if err := json.Unmarshal(kafkaFixture, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	key, err := base64.StdEncoding.DecodeString(fixture.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{
+		Topic: auditconsumer.Topic,
+		Key:   key,
+		Value: value,
+		Headers: []auditconsumer.Header{{
+			Key: "bkn-audit-schema-version", Value: []byte("1.0"),
+		}},
+		BrokerTime: time.Date(2026, 9, 24, 8, 31, 0, 0, time.UTC),
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("registered source_adapter event must be accepted over Kafka: %v", err)
+	}
+}
+
+func TestValidatorRejectsNonKafkaAuditCollectionMethods(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		method string
+		want   string
+	}{
+		{method: "direct_otlp", want: "source_collection_method_rejected"},
+		{method: "container_stdout", want: "source_collection_method_rejected"},
+		{method: "not_integrated", want: "source_not_integrated"},
+		{method: "", want: "source_collection_method_rejected"},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			rules := validator.registry
+			for i := range rules.Sources {
+				if rules.Sources[i].ID == "bkn-backend" {
+					rules.Sources[i].CollectionMethod = tc.method
+				}
+			}
+			if err := validateRegistry(value, rules); !IsPermanentReason(err, tc.want) {
+				t.Fatalf("collection method %q must be rejected as %s, got %v", tc.method, tc.want, err)
+			}
+		})
 	}
 }
 
@@ -130,7 +204,7 @@ func TestValidatorCarriesKafkaCoordinateIntoAuthoritativeLedgerEvent(t *testing.
 	}
 	for i := range validator.registry.Sources {
 		if validator.registry.Sources[i].ID == "bkn-backend" {
-			validator.registry.Sources[i].CollectionMethod = "kafka_audit"
+			validator.registry.Sources[i].CollectionMethod = "source_adapter"
 		}
 	}
 	value, err := os.ReadFile("assets/audit-record-golden.json")
