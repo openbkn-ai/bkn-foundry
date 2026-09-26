@@ -48,10 +48,13 @@ func TestSubmitEventsMatchesCanonicalEvidenceFixture(t *testing.T) {
 	setEvidencePublisher(publisher)
 	t.Cleanup(func() { setEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
-	events := BuildSchemaReadEvents(testTraceContext(), testRequestContext(), ReadSubject{
+	reqCtx := testRequestContext()
+	reqCtx.ConversationID = "conv_schema_read_001"
+	reqCtx.SessionScopePresent = true
+	events := BuildSchemaReadEvents(testTraceContext(), reqCtx, ReadSubject{
 		EntityKind: EntityKindObjectType, Operation: "bkn.schema.object_type.list", KNID: "kn_demo",
 	}, nil)
-	SubmitEvents(testTraceContext(), testRequestContext(), events)
+	SubmitEvents(testTraceContext(), reqCtx, events)
 	queued := publisher.SnapshotQueue()
 	if len(queued) != 1 {
 		t.Fatalf("queued records = %d, want 1", len(queued))
@@ -63,6 +66,7 @@ func TestSubmitEventsMatchesCanonicalEvidenceFixture(t *testing.T) {
 	for key, want := range map[string]any{
 		"event_id":           events[0]["event_id"],
 		"event_type":         "knowledge.read.observed",
+		"conversation_id":    "conv_schema_read_001",
 		"producer_id":        "bkn-backend",
 		"producer_stream_id": "backend:boot-1",
 	} {
@@ -78,5 +82,37 @@ func TestSubmitEventsMatchesCanonicalEvidenceFixture(t *testing.T) {
 		if queued[0].Headers[i] != wantHeaders[i] {
 			t.Fatalf("header[%d] = %+v, want %+v", i, queued[0].Headers[i], wantHeaders[i])
 		}
+	}
+}
+
+func TestSubmitEventsSkipsEventsWithoutTrustedSessionScope(t *testing.T) {
+	for _, field := range []string{"conversation_id", "interaction_id", "source_flag"} {
+		t.Run(field, func(t *testing.T) {
+			publisher, err := evidencepublisher.New(evidencepublisher.Config{
+				ProducerID: "bkn-backend", BaseStreamID: "backend", WorkloadIdentity: "bkn-backend",
+				ProcessBootID: "boot-1", CapturePolicyRevision: "41",
+			}, &captureEvidenceSender{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			setEvidencePublisher(publisher)
+			t.Cleanup(func() { setEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
+			reqCtx := testRequestContext()
+			reqCtx.ConversationID = "conv_schema_read_001"
+			reqCtx.SessionScopePresent = true
+			switch field {
+			case "conversation_id":
+				reqCtx.ConversationID = ""
+			case "interaction_id":
+				reqCtx.InteractionID = ""
+			case "source_flag":
+				reqCtx.SessionScopePresent = false
+			}
+			events := BuildSchemaReadEvents(testTraceContext(), reqCtx, ReadSubject{EntityKind: EntityKindObjectType, KNID: "kn_demo"}, nil)
+			SubmitEvents(testTraceContext(), reqCtx, events)
+			if got := len(publisher.SnapshotQueue()); got != 0 {
+				t.Fatalf("queued records = %d, want 0 without %s", got, field)
+			}
+		})
 	}
 }

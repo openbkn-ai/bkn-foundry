@@ -40,6 +40,7 @@ var businessTraceIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`
 // TraceContext carries the OpenBKN phase-one correlation context.
 type TraceContext struct {
 	RequestID        string
+	ConversationID   string
 	InteractionID    string
 	OperationID      string
 	CausationEventID string
@@ -54,6 +55,7 @@ func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) contex
 		traceContext.RequestID = NewBKNRequestID()
 	}
 	traceContext.InteractionID = sanitizeBusinessTraceID(traceContext.InteractionID)
+	traceContext.ConversationID = sanitizeBusinessTraceID(traceContext.ConversationID)
 	traceContext.OperationID = sanitizeBusinessTraceID(traceContext.OperationID)
 	traceContext.CausationEventID = sanitizeBusinessTraceID(traceContext.CausationEventID)
 	traceContext.ClaimID = sanitizeBusinessTraceID(traceContext.ClaimID)
@@ -78,6 +80,7 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	baggage := parseBaggage(getHeader(HeaderBaggage))
 	return TraceContext{
 		RequestID:        requestID,
+		ConversationID:   sanitizeBusinessTraceID(getHeader(HeaderBKNConversationID)),
 		InteractionID:    sanitizeBusinessTraceID(getHeader(HeaderBKNInteractionID)),
 		OperationID:      sanitizeBusinessTraceID(getHeader(HeaderBKNOperationID)),
 		CausationEventID: sanitizeBusinessTraceID(getHeader(HeaderBKNCausationEventID)),
@@ -108,6 +111,9 @@ func BuildTraceHeaders(ctx context.Context) map[string]string {
 	if ok {
 		headers[HeaderBKNRequestID] = traceContext.RequestID
 		headers[HeaderLegacyRequestID] = traceContext.RequestID
+		if traceContext.ConversationID != "" {
+			headers[HeaderBKNConversationID] = traceContext.ConversationID
+		}
 		if baggage := formatBaggage(traceContext.Baggage); baggage != "" {
 			headers[HeaderBaggage] = baggage
 		}

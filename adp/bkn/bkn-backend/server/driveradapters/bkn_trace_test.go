@@ -22,7 +22,8 @@ func TestBKNTraceRequestContextReadsBusinessCausalityHeaders(t *testing.T) {
 	for key, value := range map[string]string{
 		"bkn-request-id": "req_backend_headers_001",
 		"x-account-id":   "acct_demo", "x-account-type": "service",
-		"bkn-interaction-id": "int_backend_001", "bkn-operation-id": "op_backend_001",
+		"bkn-conversation-id": "conv_context_loader_001",
+		"bkn-interaction-id":  "int_backend_001", "bkn-operation-id": "op_backend_001",
 		"bkn-parent-operation-id": "op_context_loader_001",
 		"bkn-causation-event-id":  "evt_upstream_001", "bkn-claim-id": "claim_upstream_001",
 	} {
@@ -33,7 +34,7 @@ func TestBKNTraceRequestContextReadsBusinessCausalityHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bknTraceRequestContext() error = %v", err)
 	}
-	if got.InteractionID != "int_backend_001" || got.OperationID != "op_backend_001" ||
+	if got.ConversationID != "conv_context_loader_001" || !got.SessionScopePresent || got.InteractionID != "int_backend_001" || got.OperationID != "op_backend_001" ||
 		got.ParentOperationID != "op_context_loader_001" || got.CausationEventID != "evt_upstream_001" ||
 		got.ClaimID != "claim_upstream_001" || got.Attempt != 1 {
 		t.Fatalf("causality headers not parsed: %#v", got)
@@ -53,6 +54,9 @@ func TestBKNTraceRequestContextCreatesReplayEnvelopeForDirectStudioRequest(t *te
 	}
 	if got.RequestID == "" || !strings.HasPrefix(got.InteractionID, "int_") || !strings.HasPrefix(got.OperationID, "op_") {
 		t.Fatalf("direct request replay envelope not generated: %#v", got)
+	}
+	if got.ConversationID != "" || got.SessionScopePresent {
+		t.Fatalf("direct request must not fabricate session scope: %#v", got)
 	}
 	if _, err := time.Parse(time.RFC3339Nano, got.ObservedAt); err != nil {
 		t.Fatalf("observed_at is not RFC3339Nano: %q: %v", got.ObservedAt, err)
