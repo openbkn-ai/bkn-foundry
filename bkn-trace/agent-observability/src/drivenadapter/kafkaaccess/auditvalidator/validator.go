@@ -242,6 +242,9 @@ func validateRegistry(value map[string]any, rules registry) error {
 	if source.CollectionMethod == "not_integrated" {
 		return permanent("source_not_integrated")
 	}
+	if source.CollectionMethod != "source_adapter" {
+		return permanent("source_collection_method_rejected")
+	}
 	return nil
 }
 

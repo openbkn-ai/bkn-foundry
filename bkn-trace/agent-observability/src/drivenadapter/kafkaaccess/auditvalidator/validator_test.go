@@ -104,6 +104,43 @@ func TestValidatorAcceptsRegisteredSourceAdapterForAuditKafka(t *testing.T) {
 	}
 }
 
+func TestValidatorRejectsNonKafkaAuditCollectionMethods(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		method string
+		want   string
+	}{
+		{method: "direct_otlp", want: "source_collection_method_rejected"},
+		{method: "container_stdout", want: "source_collection_method_rejected"},
+		{method: "not_integrated", want: "source_not_integrated"},
+		{method: "", want: "source_collection_method_rejected"},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			rules := validator.registry
+			for i := range rules.Sources {
+				if rules.Sources[i].ID == "bkn-backend" {
+					rules.Sources[i].CollectionMethod = tc.method
+				}
+			}
+			if err := validateRegistry(value, rules); !IsPermanentReason(err, tc.want) {
+				t.Fatalf("collection method %q must be rejected as %s, got %v", tc.method, tc.want, err)
+			}
+		})
+	}
+}
+
 func TestValidatorRejectsOversizedAndWrongHeaderPermanently(t *testing.T) {
 	validator, err := New()
 	if err != nil {
@@ -167,7 +204,7 @@ func TestValidatorCarriesKafkaCoordinateIntoAuthoritativeLedgerEvent(t *testing.
 	}
 	for i := range validator.registry.Sources {
 		if validator.registry.Sources[i].ID == "bkn-backend" {
-			validator.registry.Sources[i].CollectionMethod = "kafka_audit"
+			validator.registry.Sources[i].CollectionMethod = "source_adapter"
 		}
 	}
 	value, err := os.ReadFile("assets/audit-record-golden.json")
