@@ -367,6 +367,39 @@ func TestRecordConsumerResultUsesIdempotentTerminalUpsert(t *testing.T) {
 	}
 }
 
+func TestRecordConsumerResultReturnsPersistenceFailureAndRollsBack(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		if closeErr := db.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
+	store, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistErr := errors.New("migration result insert unavailable")
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT adjudication").WithArgs("m-1", "entry-1").WillReturnRows(sqlmock.NewRows([]string{"adjudication", "reason_code"}))
+	mock.ExpectExec("INSERT INTO bkn_trace_evidence_migration_results").WillReturnError(persistErr)
+	mock.ExpectRollback()
+
+	err = store.RecordConsumerResult(context.Background(), ievidencemigration.ConsumerResult{
+		ManifestID: "m-1", EntryID: "entry-1", Adjudication: ievidencemigration.AdjudicationLedgerCommitted,
+		Observation: "accepted", Topic: "openbkn.evidence.v1", Partition: 0, Offset: 9, IngestSequence: 42,
+	})
+	if !errors.Is(err, persistErr) {
+		t.Fatalf("RecordConsumerResult() error = %v, want wrapped persistence error", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRecordConsumerResultPersistsIncompatibleTerminalAsConflict(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
