@@ -32,6 +32,10 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
+	if database != "" && !c.databaseAllowed(database) {
+		return nil, fmt.Errorf("mysql database %q is outside the connector scope", database)
+	}
+
 	builder := sq.Select(
 		"TABLE_SCHEMA",
 		"TABLE_NAME",
@@ -194,31 +198,11 @@ func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.T
 
 // GetTableMetaByIdentifier loads complete metadata for a database.table identifier.
 func (c *MariaDBConnector) GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.TableMeta, error) {
-	database, tableName, err := c.splitTableIdentifier(sourceIdentifier)
-	if err != nil {
-		return nil, err
-	}
-	table, err := c.findTableByIdentifier(ctx, database, tableName)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.GetTableMeta(ctx, table); err != nil {
-		return nil, err
-	}
-	return table, nil
-}
-
-// splitTableIdentifier parses a database.table identifier into database and table names.
-func (c *MariaDBConnector) splitTableIdentifier(sourceIdentifier string) (database, tableName string, err error) {
-	separator := strings.LastIndex(sourceIdentifier, ".")
+	separator := strings.LastIndexByte(sourceIdentifier, '.')
 	if separator <= 0 || separator == len(sourceIdentifier)-1 {
-		return "", "", fmt.Errorf("invalid MariaDB table source identifier %q", sourceIdentifier)
+		return nil, fmt.Errorf("invalid MariaDB table source identifier %q", sourceIdentifier)
 	}
-	return sourceIdentifier[:separator], sourceIdentifier[separator+1:], nil
-}
-
-// findTableByIdentifier locates a table within the connector scope.
-func (c *MariaDBConnector) findTableByIdentifier(ctx context.Context, database, tableName string) (*interfaces.TableMeta, error) {
+	database, tableName := sourceIdentifier[:separator], sourceIdentifier[separator+1:]
 	tables, err := c.listTables(ctx, database, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("list tables: %w", err)
@@ -229,7 +213,11 @@ func (c *MariaDBConnector) findTableByIdentifier(ctx context.Context, database, 
 	if len(tables) > 1 {
 		return nil, fmt.Errorf("table %q in database %q is ambiguous", tableName, database)
 	}
-	return tables[0], nil
+	table := tables[0]
+	if err := c.GetTableMeta(ctx, table); err != nil {
+		return nil, err
+	}
+	return table, nil
 }
 
 // fetchTableStatus retrieves table status from information_schema.TABLES.
@@ -347,8 +335,8 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 	}
 	defer func() { _ = rows.Close() }()
 
-	var columns []interfaces.TableColumnMeta
-	var pkColumns []string
+	columns := make([]interfaces.TableColumnMeta, 0)
+	pkColumns := make([]string, 0)
 
 	for rows.Next() {
 		var name, columnType, dataType, isNullable, columnKey sql.NullString
@@ -377,11 +365,10 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 			return fmt.Errorf("required column metadata contains NULL")
 		}
 
-		col := interfaces.TableColumnMeta{
-			Name:        name.String,
-			Type:        columnType.String, // Use COLUMN_TYPE to correctly identify unsigned (such as "int unsigned")
-			Description: description.String,
-
+		column := interfaces.TableColumnMeta{
+			Name:              name.String,
+			Type:              columnType.String, // Use COLUMN_TYPE to correctly identify unsigned (such as "int unsigned")
+			Description:       description.String,
 			Nullable:          isNullable.String == "YES",
 			DefaultValue:      columnDefault.String,
 			CharMaxLen:        int(charMaxLen.Int64),
@@ -393,11 +380,11 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 			OrdinalPosition:   int(position.Int64),
 			ColumnKey:         columnKey.String,
 		}
-		columns = append(columns, col)
+		columns = append(columns, column)
 
 		// Check if it is the primary key
 		if columnKey.String == "PRI" {
-			pkColumns = append(pkColumns, col.Name)
+			pkColumns = append(pkColumns, column.Name)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -502,6 +489,7 @@ func (c *MariaDBConnector) fetchForeignKeys(ctx context.Context, table *interfac
 	fkMap := make(map[string]*interfaces.TableForeignKeyMeta)
 	for rows.Next() {
 		var constraintName, columnName, refTableName, refColumnName sql.NullString
+
 		if err := rows.Scan(
 			&constraintName,
 			&columnName,
@@ -532,7 +520,7 @@ func (c *MariaDBConnector) fetchForeignKeys(ctx context.Context, table *interfac
 
 	// Note: Handling OnDelete/OnUpdate requires joining with REFERENTIAL_CONSTRAINTS, skipping for simplicity unless requested.
 
-	var fks []interfaces.TableForeignKeyMeta
+	fks := make([]interfaces.TableForeignKeyMeta, 0)
 	for _, fk := range fkMap {
 		fks = append(fks, *fk)
 	}
