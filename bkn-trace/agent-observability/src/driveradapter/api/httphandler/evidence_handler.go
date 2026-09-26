@@ -952,8 +952,15 @@ func (h *EvidenceHandler) RequireTrustedServicePrincipal(next http.HandlerFunc) 
 			writeLifecycleError(w, r, http.StatusUnauthorized, "permission_denied", "workload requests are accepted only through the internal OpenBKN gateway")
 			return
 		}
+		if failure := h.applyOAuthIdentity(r); failure != nil {
+			writeLifecycleAuthorizationFailure(w, r, failure)
+			return
+		}
 		scope, ok := h.queryScopeFromRequest(w, r, false)
-		if !ok || scope.AccessProfile == nil || !scope.AccessProfile.AccountActive || (scope.AccountType != "app" && scope.AccountType != "service") {
+		if !ok {
+			return
+		}
+		if scope.AccessProfile == nil || !scope.AccessProfile.AccountActive || (scope.AccountType != "app" && scope.AccountType != "service") {
 			writeLifecycleError(w, r, http.StatusUnauthorized, "permission_denied", "a verified service principal is required")
 			return
 		}
