@@ -70,9 +70,12 @@ func (s *Store) RegisterProducer(ctx context.Context, registration icapturepolic
 }
 
 // RegisterEvidencePublisherHeartbeat atomically refreshes a verified Publisher
-// lease and registers that exact process boot for the current enabled policy
-// revision. The control-state row serializes this write with policy changes, so
-// a stale process cannot register against an earlier revision after a switch.
+// lease and registers that exact process boot only for the current enabled
+// policy revision. A heartbeat for the current disabled revision refreshes the
+// lease without registering a producer, allowing the Publisher to drain and
+// acknowledge the disable operation. The control-state row serializes this
+// write with policy changes, so a stale process cannot register against an
+// earlier revision after a switch.
 func (s *Store) RegisterEvidencePublisherHeartbeat(ctx context.Context, lease icapturepolicy.EndpointLease) error {
 	if err := lease.Validate(); err != nil {
 		return err
@@ -107,11 +110,14 @@ func (s *Store) RegisterEvidencePublisherHeartbeat(ctx context.Context, lease ic
 			SELECT admission_enabled
 			FROM bkn_trace_capture_policy_revisions
 			WHERE revision = ? FOR UPDATE`, lease.ObservedRevision).Scan(&admissionEnabled)
-		if errors.Is(err, sql.ErrNoRows) || (err == nil && !admissionEnabled) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return icapturepolicy.ErrCaptureFactConflict
 		}
 		if err != nil {
 			return err
+		}
+		if !admissionEnabled {
+			return s.upsertEndpointLeaseTx(ctx, tx, lease)
 		}
 		if err := s.upsertEndpointLeaseTx(ctx, tx, lease); err != nil {
 			return err

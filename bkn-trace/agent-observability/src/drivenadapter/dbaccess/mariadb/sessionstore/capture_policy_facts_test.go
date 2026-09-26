@@ -92,7 +92,7 @@ func TestCapturePolicyFactsRejectsEvidencePublisherHeartbeatForStaleRevision(t *
 	}
 }
 
-func TestCapturePolicyFactsRejectsEvidencePublisherHeartbeatWhenAdmissionDisabled(t *testing.T) {
+func TestCapturePolicyFactsRefreshesLeaseWithoutRegisteringWhenAdmissionDisabled(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -112,9 +112,11 @@ func TestCapturePolicyFactsRejectsEvidencePublisherHeartbeatWhenAdmissionDisable
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT current_revision FROM bkn_trace_capture_control_state").WillReturnRows(sqlmock.NewRows([]string{"current_revision"}).AddRow(uint64(7)))
 	mock.ExpectQuery("SELECT admission_enabled FROM bkn_trace_capture_policy_revisions").WithArgs(uint64(7)).WillReturnRows(sqlmock.NewRows([]string{"admission_enabled"}).AddRow(false))
-	mock.ExpectRollback()
-	if err := writer.RegisterEvidencePublisherHeartbeat(context.Background(), lease); err == nil {
-		t.Fatal("RegisterEvidencePublisherHeartbeat() accepted a disabled policy revision")
+	mock.ExpectQuery("SELECT workload_identity, process_boot_id FROM bkn_trace_capture_endpoint_leases").WithArgs(icapturepolicy.EndpointEvidencePublisher, lease.InstanceID, "boot-1").WillReturnRows(sqlmock.NewRows([]string{"workload_identity", "process_boot_id"}))
+	mock.ExpectExec("INSERT INTO bkn_trace_capture_endpoint_leases").WithArgs(icapturepolicy.EndpointEvidencePublisher, lease.InstanceID, "bkn-backend", "boot-1", uint64(7), true, now, now.Add(30*time.Second), now).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	if err := writer.RegisterEvidencePublisherHeartbeat(context.Background(), lease); err != nil {
+		t.Fatalf("RegisterEvidencePublisherHeartbeat() error = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
