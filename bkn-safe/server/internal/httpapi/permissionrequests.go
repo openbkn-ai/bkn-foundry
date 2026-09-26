@@ -39,6 +39,13 @@ func registerPermissionRequests(g *gin.RouterGroup, service *permissionrequest.S
 		}
 		writePermissionRequestPage(c, page)
 	})
+	group.GET("/todo/summary", func(c *gin.Context) {
+		summary, err := service.GetTodoSummary(c.Request.Context(), c.GetString(ctxAccessorID))
+		if writePermissionRequestError(c, err) {
+			return
+		}
+		c.JSON(http.StatusOK, summary)
+	})
 	group.GET("/:id", func(c *gin.Context) {
 		result, err := service.Get(c.Request.Context(), c.Param("id"))
 		if writePermissionRequestError(c, err) {
@@ -116,10 +123,15 @@ func permissionRequestPageOptions(c *gin.Context) permissionrequest.PageOptions 
 		offset = value
 	}
 	return permissionrequest.PageOptions{
-		Limit:     limit,
-		Offset:    offset,
-		Sort:      c.Query("sort"),
-		Direction: c.Query("direction"),
+		Limit:        limit,
+		Offset:       offset,
+		Sort:         c.Query("sort"),
+		Direction:    c.Query("direction"),
+		ResourceType: c.Query("resource_type"),
+		ResourceID:   c.Query("resource_id"),
+		Status:       c.Query("status"),
+		ResourceName: c.Query("resource_name"),
+		Requester:    c.Query("requester"),
 	}
 }
 
@@ -193,9 +205,11 @@ func writePermissionRequestError(c *gin.Context, err error) bool {
 	case errors.Is(err, permissionrequest.ErrClosed):
 		replyPublicError(c, http.StatusConflict)
 	case errors.Is(err, permissionrequest.ErrPermissionAlreadyGranted):
-		replyPublicError(c, http.StatusConflict)
+		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "permission_already_granted"})
+	case errors.Is(err, permissionrequest.ErrPrerequisiteMissing):
+		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "missing_prerequisite"})
 	case errors.Is(err, permissionrequest.ErrResourceDeleted):
-		replyPublicError(c, http.StatusConflict)
+		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "resource_deleted"})
 	case errors.Is(err, permissionrequest.ErrResourceUnavailable):
 		replyPublicError(c, http.StatusServiceUnavailable)
 	case errors.Is(err, permissionrequest.ErrUnsupportedResourceType):
