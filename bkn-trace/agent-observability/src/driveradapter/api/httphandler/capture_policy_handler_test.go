@@ -30,8 +30,11 @@ import (
 )
 
 type capturePolicyInternalWriter struct {
-	lease icapturepolicy.EndpointLease
-	ack   icapturepolicy.ExpectedAcknowledgement
+	lease                  icapturepolicy.EndpointLease
+	ack                    icapturepolicy.ExpectedAcknowledgement
+	leaseUpserts           int
+	registeredHeartbeats   int
+	registeredHeartbeatErr error
 }
 
 type capturePolicyBudgetReader struct{}
@@ -70,8 +73,15 @@ func marshalJSON(t *testing.T, value any) string {
 }
 
 func (w *capturePolicyInternalWriter) UpsertEndpointLease(_ context.Context, lease icapturepolicy.EndpointLease) error {
+	w.leaseUpserts++
 	w.lease = lease
 	return nil
+}
+
+func (w *capturePolicyInternalWriter) RegisterEvidencePublisherHeartbeat(_ context.Context, lease icapturepolicy.EndpointLease) error {
+	w.registeredHeartbeats++
+	w.lease = lease
+	return w.registeredHeartbeatErr
 }
 
 func (w *capturePolicyInternalWriter) RecordAcknowledgement(_ context.Context, ack icapturepolicy.ExpectedAcknowledgement) error {
@@ -308,6 +318,60 @@ func TestInternalTraceEvidenceHeartbeatBindsEndpointKindToVerifiedGrant(t *testi
 	}
 	if writer.lease.EndpointKind != icapturepolicy.EndpointTraceGateway || writer.lease.WorkloadIdentity != "spiffe://cluster-a/ns/openbkn/sa/otelcol" {
 		t.Fatalf("heartbeat was not bound to verified gateway grant: %+v", writer.lease)
+	}
+	if writer.registeredHeartbeats != 0 || writer.leaseUpserts != 1 {
+		t.Fatalf("Gateway heartbeat must remain lease-only: registered=%d lease-only=%d", writer.registeredHeartbeats, writer.leaseUpserts)
+	}
+}
+
+func TestInternalTraceEvidencePublisherHeartbeatRegistersAtomically(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
+	}), nil, nil, nil, writer)
+	profile := traceEvidenceAppProfile("bkn-backend", evidencevo.Permission{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}})
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"instance_id":"bkn-backend#boot-7","process_boot_id":"boot-7","observed_revision":42,"ready":true}`, profile)
+	response := httptest.NewRecorder()
+	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if writer.registeredHeartbeats != 1 || writer.leaseUpserts != 0 {
+		t.Fatalf("Publisher heartbeat must use the atomic lease+registration writer: registered=%d lease-only=%d", writer.registeredHeartbeats, writer.leaseUpserts)
+	}
+	if writer.lease.EndpointKind != icapturepolicy.EndpointEvidencePublisher || writer.lease.InstanceID != "bkn-backend#boot-7" || writer.lease.ObservedRevision != 42 || !writer.lease.Ready {
+		t.Fatalf("registered heartbeat was not bound to verified identity and revision: %+v", writer.lease)
+	}
+}
+
+func TestInternalTraceEvidencePublisherHeartbeatDoesNotRegisterWhenNotReady(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
+	}), nil, nil, nil, writer)
+	profile := traceEvidenceAppProfile("bkn-backend", evidencevo.Permission{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}})
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"instance_id":"bkn-backend#boot-7","process_boot_id":"boot-7","observed_revision":42,"ready":false}`, profile)
+	response := httptest.NewRecorder()
+	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if writer.registeredHeartbeats != 0 || writer.leaseUpserts != 1 || writer.lease.Ready {
+		t.Fatalf("not-ready heartbeat must update only the non-ready lease: registered=%d lease-only=%d lease=%+v", writer.registeredHeartbeats, writer.leaseUpserts, writer.lease)
+	}
+}
+
+func TestInternalTraceEvidencePublisherHeartbeatDoesNotFallbackWhenRegistrationFails(t *testing.T) {
+	writer := &capturePolicyInternalWriter{registeredHeartbeatErr: errors.New("registration rejected")}
+	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
+	}), nil, nil, nil, writer)
+	profile := traceEvidenceAppProfile("bkn-backend", evidencevo.Permission{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}})
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"instance_id":"bkn-backend#boot-7","process_boot_id":"boot-7","observed_revision":42,"ready":true}`, profile)
+	response := httptest.NewRecorder()
+	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
+	if response.Code != http.StatusConflict || writer.registeredHeartbeats != 1 || writer.leaseUpserts != 0 {
+		t.Fatalf("failed atomic registration must fail closed without lease-only fallback: status=%d registered=%d lease-only=%d body=%s", response.Code, writer.registeredHeartbeats, writer.leaseUpserts, response.Body.String())
 	}
 }
 
