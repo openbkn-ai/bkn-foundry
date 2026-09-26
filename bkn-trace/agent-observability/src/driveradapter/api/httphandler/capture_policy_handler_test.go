@@ -35,6 +35,7 @@ type capturePolicyInternalWriter struct {
 	leaseUpserts           int
 	registeredHeartbeats   int
 	registeredHeartbeatErr error
+	publisherClosureAcks   int
 }
 
 type capturePolicyBudgetReader struct{}
@@ -85,6 +86,12 @@ func (w *capturePolicyInternalWriter) RegisterEvidencePublisherHeartbeat(_ conte
 }
 
 func (w *capturePolicyInternalWriter) RecordAcknowledgement(_ context.Context, ack icapturepolicy.ExpectedAcknowledgement) error {
+	w.ack = ack
+	return nil
+}
+
+func (w *capturePolicyInternalWriter) RecordEvidencePublisherAcknowledgement(_ context.Context, ack icapturepolicy.ExpectedAcknowledgement) error {
+	w.publisherClosureAcks++
 	w.ack = ack
 	return nil
 }
@@ -656,7 +663,7 @@ func TestInternalEvidencePublisherAckConsumesSession1FixtureShape(t *testing.T) 
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if writer.ack.EndpointKind != icapturepolicy.EndpointEvidencePublisher || writer.ack.AckState != icapturepolicy.AckDisabled || writer.ack.EvidenceDisposition != icapturepolicy.DispositionComplete || writer.ack.PublishedCount == nil || *writer.ack.PublishedCount != 5 {
+	if writer.publisherClosureAcks != 1 || writer.ack.EndpointKind != icapturepolicy.EndpointEvidencePublisher || writer.ack.AckState != icapturepolicy.AckDisabled || writer.ack.EvidenceDisposition != icapturepolicy.DispositionComplete || writer.ack.PublishedCount == nil || *writer.ack.PublishedCount != 5 {
 		t.Fatalf("unexpected publisher acknowledgement: %+v", writer.ack)
 	}
 }
@@ -680,7 +687,7 @@ func TestInternalEvidencePublisherAckUsesReadyStateForEnabledPolicy(t *testing.T
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if writer.ack.AckState != icapturepolicy.AckReady || writer.ack.EvidenceDisposition != icapturepolicy.DispositionNotApplicable {
+	if writer.publisherClosureAcks != 0 || writer.ack.AckState != icapturepolicy.AckReady || writer.ack.EvidenceDisposition != icapturepolicy.DispositionNotApplicable {
 		t.Fatalf("enabled policy did not produce a ready publisher acknowledgement: %+v", writer.ack)
 	}
 }

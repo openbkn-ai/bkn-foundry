@@ -553,6 +553,52 @@ func (s *Store) RecordAcknowledgement(ctx context.Context, acknowledgement icapt
 	})
 }
 
+// RecordEvidencePublisherAcknowledgement persists a disabled publisher ACK
+// and its closure watermark atomically. The ACK already carries the frozen
+// Session 1 disposition (including the last accepted sequence); no second
+// wire contract or asynchronous follow-up is needed.
+func (s *Store) RecordEvidencePublisherAcknowledgement(ctx context.Context, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
+	if err := acknowledgement.Validate(); err != nil {
+		return err
+	}
+	if acknowledgement.EndpointKind != icapturepolicy.EndpointEvidencePublisher || acknowledgement.AckState != icapturepolicy.AckDisabled || acknowledgement.AcknowledgedAt == nil || acknowledgement.LastAcceptedSequence == nil || acknowledgement.EvidenceDisposition != icapturepolicy.DispositionComplete || acknowledgement.QueueEmpty == nil || !*acknowledgement.QueueEmpty {
+		return icapturepolicy.ErrInvalidAcknowledgement
+	}
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		if err := s.ensureRegisteredProducerTx(ctx, tx, acknowledgement); err != nil {
+			return err
+		}
+		if err := s.recordAcknowledgementTx(ctx, tx, acknowledgement); err != nil {
+			return err
+		}
+		watermark := icapturepolicy.ClosureWatermark{
+			InstanceID: acknowledgement.InstanceID, PolicyRevision: acknowledgement.PolicyRevision,
+			LastAcceptedSequence: *acknowledgement.LastAcceptedSequence,
+			ClosedAt:             *acknowledgement.AcknowledgedAt, AcknowledgedAt: *acknowledgement.AcknowledgedAt,
+		}
+		return s.persistClosureWatermarkTx(ctx, tx, watermark)
+	})
+}
+
+func (s *Store) ensureRegisteredProducerTx(ctx context.Context, tx *sql.Tx, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
+	var processBootID, registrationState string
+	err := tx.QueryRowContext(ctx, `
+		SELECT process_boot_id, registration_state
+		FROM bkn_trace_producer_instance_registrations
+		WHERE producer_instance_id = ? AND policy_revision = ? FOR UPDATE`,
+		acknowledgement.InstanceID, acknowledgement.PolicyRevision).Scan(&processBootID, &registrationState)
+	if errors.Is(err, sql.ErrNoRows) {
+		return icapturepolicy.ErrExpectedSetConflict
+	}
+	if err != nil {
+		return err
+	}
+	if processBootID != acknowledgement.ProcessBootID || registrationState != "registered" {
+		return icapturepolicy.ErrExpectedSetConflict
+	}
+	return nil
+}
+
 func (s *Store) recordAcknowledgementTx(ctx context.Context, tx *sql.Tx, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
 	var expectedRevision uint64
 	var workloadIdentity, processBootID string

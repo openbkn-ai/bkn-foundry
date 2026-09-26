@@ -27,6 +27,7 @@ type CapturePolicyControlWriter interface {
 	UpsertEndpointLease(context.Context, icapturepolicy.EndpointLease) error
 	RegisterEvidencePublisherHeartbeat(context.Context, icapturepolicy.EndpointLease) error
 	RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
+	RecordEvidencePublisherAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
 }
 
 type AdmissionBudgetReader interface {
@@ -613,7 +614,14 @@ func (h *CapturePolicyHandler) AcknowledgeInternalEvidencePublisherOperation(w h
 	if policy.DesiredState == capturepolicysvc.StateEnabled {
 		ackState, evidenceDisposition = icapturepolicy.AckReady, icapturepolicy.DispositionNotApplicable
 	}
-	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: request.ProducerInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID, PolicyRevision: request.PolicyRevision, Ready: true, AckState: ackState, AcknowledgedAt: &request.AcknowledgedAt, DroppedCount: &dropped, LastAcceptedSequence: &last, PublishedCount: &published, QueueEmpty: &request.QueueEmpty, EvidenceDisposition: evidenceDisposition}); err != nil {
+	ack := icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: request.ProducerInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID, PolicyRevision: request.PolicyRevision, Ready: true, AckState: ackState, AcknowledgedAt: &request.AcknowledgedAt, DroppedCount: &dropped, LastAcceptedSequence: &last, PublishedCount: &published, QueueEmpty: &request.QueueEmpty, EvidenceDisposition: evidenceDisposition}
+	var recordErr error
+	if ackState == icapturepolicy.AckDisabled {
+		recordErr = h.writer.RecordEvidencePublisherAcknowledgement(contextWithRequest(r), ack)
+	} else {
+		recordErr = h.writer.RecordAcknowledgement(contextWithRequest(r), ack)
+	}
+	if recordErr != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement was rejected"})
 		return
 	}

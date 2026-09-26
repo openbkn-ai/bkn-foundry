@@ -6,6 +6,7 @@ package sessionstore_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -132,6 +133,98 @@ func TestCapturePolicyControlRejectsAcknowledgementOutsideFrozenExpectedSet(t *t
 	})
 	if err != icapturepolicy.ErrExpectedSetConflict {
 		t.Fatalf("RecordAcknowledgement() error = %v, want expected-set conflict", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlRecordsPublisherAckAndClosureAtomically(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 10, 0, time.UTC)
+	queueEmpty := true
+	published, dropped, last := uint64(5), uint64(2), uint64(7)
+	ack := icapturepolicy.ExpectedAcknowledgement{
+		OperationID: "op-publisher", EndpointKind: icapturepolicy.EndpointEvidencePublisher,
+		InstanceID: "publisher#boot-1", WorkloadIdentity: "sa/publisher", ProcessBootID: "boot-1",
+		PolicyRevision: 41, Ready: true, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now,
+		LastAcceptedSequence: &last, PublishedCount: &published, DroppedCount: &dropped,
+		QueueEmpty: &queueEmpty, EvidenceDisposition: icapturepolicy.DispositionComplete,
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT process_boot_id, registration_state FROM bkn_trace_producer_instance_registrations").WithArgs("publisher#boot-1", uint64(41)).WillReturnRows(sqlmock.NewRows([]string{"process_boot_id", "registration_state"}).AddRow("boot-1", "registered"))
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WithArgs("op-publisher", uint64(41), icapturepolicy.EndpointEvidencePublisher, "publisher#boot-1", "sa/publisher", "boot-1").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(41), "sa/publisher", "boot-1"))
+	mock.ExpectExec("UPDATE bkn_trace_capture_operation_acknowledgements").WithArgs(true, icapturepolicy.AckDisabled, now, nil, uint64(2), nil, nil, uint64(7), uint64(5), true, icapturepolicy.DispositionComplete, nil, "op-publisher", icapturepolicy.EndpointEvidencePublisher, "publisher#boot-1", "sa/publisher", "boot-1", uint64(41)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT last_accepted_sequence, closed_at, acknowledged_at FROM bkn_trace_producer_closure_watermarks").WithArgs("publisher#boot-1", uint64(41)).WillReturnRows(sqlmock.NewRows([]string{"last_accepted_sequence", "closed_at", "acknowledged_at"}))
+	mock.ExpectExec("INSERT INTO bkn_trace_producer_closure_watermarks").WithArgs("publisher#boot-1", uint64(41), uint64(7), now, now).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	if err := store.RecordEvidencePublisherAcknowledgement(context.Background(), ack); err != nil {
+		t.Fatalf("RecordEvidencePublisherAcknowledgement() error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlRollsBackPublisherAckWhenClosureWriteFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 10, 0, time.UTC)
+	queueEmpty := true
+	published, dropped, last := uint64(5), uint64(2), uint64(7)
+	ack := icapturepolicy.ExpectedAcknowledgement{
+		OperationID: "op-publisher", EndpointKind: icapturepolicy.EndpointEvidencePublisher,
+		InstanceID: "publisher#boot-1", WorkloadIdentity: "sa/publisher", ProcessBootID: "boot-1",
+		PolicyRevision: 41, Ready: true, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now,
+		LastAcceptedSequence: &last, PublishedCount: &published, DroppedCount: &dropped,
+		QueueEmpty: &queueEmpty, EvidenceDisposition: icapturepolicy.DispositionComplete,
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT process_boot_id, registration_state FROM bkn_trace_producer_instance_registrations").WillReturnRows(sqlmock.NewRows([]string{"process_boot_id", "registration_state"}).AddRow("boot-1", "registered"))
+	mock.ExpectQuery("SELECT policy_revision, workload_identity, process_boot_id FROM bkn_trace_capture_operation_acknowledgements").WillReturnRows(sqlmock.NewRows([]string{"policy_revision", "workload_identity", "process_boot_id"}).AddRow(uint64(41), "sa/publisher", "boot-1"))
+	mock.ExpectExec("UPDATE bkn_trace_capture_operation_acknowledgements").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT last_accepted_sequence, closed_at, acknowledged_at FROM bkn_trace_producer_closure_watermarks").WillReturnRows(sqlmock.NewRows([]string{"last_accepted_sequence", "closed_at", "acknowledged_at"}))
+	mock.ExpectExec("INSERT INTO bkn_trace_producer_closure_watermarks").WillReturnError(errors.New("closure write failed"))
+	mock.ExpectRollback()
+	if err := store.RecordEvidencePublisherAcknowledgement(context.Background(), ack); err == nil || !strings.Contains(err.Error(), "closure write failed") {
+		t.Fatalf("RecordEvidencePublisherAcknowledgement() error = %v, want closure write failure", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapturePolicyControlRejectsClosureForUnregisteredPublisher(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	store := sessionstore.New(db)
+	now := time.Date(2026, 9, 25, 8, 0, 10, 0, time.UTC)
+	queueEmpty := true
+	published, dropped, last := uint64(5), uint64(2), uint64(7)
+	ack := icapturepolicy.ExpectedAcknowledgement{
+		OperationID: "op-publisher", EndpointKind: icapturepolicy.EndpointEvidencePublisher,
+		InstanceID: "publisher#boot-1", WorkloadIdentity: "sa/publisher", ProcessBootID: "boot-1",
+		PolicyRevision: 41, Ready: true, AckState: icapturepolicy.AckDisabled, AcknowledgedAt: &now,
+		LastAcceptedSequence: &last, PublishedCount: &published, DroppedCount: &dropped,
+		QueueEmpty: &queueEmpty, EvidenceDisposition: icapturepolicy.DispositionComplete,
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT process_boot_id, registration_state FROM bkn_trace_producer_instance_registrations").WithArgs("publisher#boot-1", uint64(41)).WillReturnRows(sqlmock.NewRows([]string{"process_boot_id", "registration_state"}))
+	mock.ExpectRollback()
+	if err := store.RecordEvidencePublisherAcknowledgement(context.Background(), ack); err != icapturepolicy.ErrExpectedSetConflict {
+		t.Fatalf("RecordEvidencePublisherAcknowledgement() error = %v, want expected-set conflict", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
