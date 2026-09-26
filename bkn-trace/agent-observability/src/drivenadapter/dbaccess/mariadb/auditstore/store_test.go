@@ -156,9 +156,9 @@ func TestMigrateMonthlyWindowUpgradesV031AndCreatesV032TablesIdempotently(t *tes
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
-	oldTable, newTable, existingV032 := "audit_event_202609", "audit_event_202610", "audit_event_202611"
+	oldTable, newTable, existingV032 := "audit_event_202608", "audit_event_202610", "audit_event_202611"
 
-	for _, table := range []string{oldTable, newTable, existingV032} {
+	for _, table := range []string{oldTable, "audit_event_202609", newTable, existingV032} {
 		count := 1
 		if table == newTable {
 			count = 0
@@ -176,7 +176,7 @@ func TestMigrateMonthlyWindowUpgradesV031AndCreatesV032TablesIdempotently(t *tes
 			mock.ExpectExec(regexp.QuoteMeta("CREATE UNIQUE INDEX IF NOT EXISTS uq_audit_kafka_coordinate ON bkn_audit." + table + " (topic, partition_id, offset_id)")).
 				WillReturnResult(sqlmock.NewResult(0, 0))
 		} else {
-			create := strings.ReplaceAll(monthlyaudit.TemplateSQL(), "YYYYMM", "202610")
+			create := strings.ReplaceAll(monthlyaudit.TemplateSQL(), "YYYYMM", strings.TrimPrefix(table, "audit_event_"))
 			mock.ExpectExec(regexp.QuoteMeta(create)).WillReturnResult(sqlmock.NewResult(0, 0))
 		}
 		expectMonthlySchemaV032(mock, table)
@@ -193,7 +193,7 @@ func TestEnsureMonthlyWindowCreatesAndValidatesCurrentAndNextTwoTables(t *testin
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
-	for _, table := range []string{"audit_event_202609", "audit_event_202610", "audit_event_202611"} {
+	for _, table := range []string{"audit_event_202608", "audit_event_202609", "audit_event_202610", "audit_event_202611"} {
 		expectMonthlyTableCount(mock, table, 0)
 		create := strings.ReplaceAll(monthlyaudit.TemplateSQL(), "YYYYMM", strings.TrimPrefix(table, "audit_event_"))
 		mock.ExpectExec(regexp.QuoteMeta(create)).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -211,7 +211,7 @@ func TestValidateMonthlyWindowUsesCurrentUTCMonthAndNextTwo(t *testing.T) {
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()
 	now := time.Date(2027, 1, 1, 0, 30, 0, 0, time.FixedZone("UTC+8", 8*60*60))
-	for _, table := range []string{"audit_event_202612", "audit_event_202701", "audit_event_202702"} {
+	for _, table := range []string{"audit_event_202611", "audit_event_202612", "audit_event_202701", "audit_event_202702"} {
 		expectMonthlySchemaV032(mock, table)
 	}
 	if err := store.ValidateMonthlyWindow(context.Background(), now); err != nil {
@@ -222,11 +222,26 @@ func TestValidateMonthlyWindowUsesCurrentUTCMonthAndNextTwo(t *testing.T) {
 	}
 }
 
+func TestValidateMonthlyWindowIncludesPreviousUTCMonthForLateKafkaRecords(t *testing.T) {
+	db, mock, store := testDB(t)
+	defer func() { _ = db.Close() }()
+	now := time.Date(2026, 9, 1, 0, 5, 0, 0, time.UTC)
+	for _, table := range []string{"audit_event_202608", "audit_event_202609", "audit_event_202610", "audit_event_202611"} {
+		expectMonthlySchemaV032(mock, table)
+	}
+	if err := store.ValidateMonthlyWindow(context.Background(), now); err != nil {
+		t.Fatalf("previous month must be accepted for retained late Kafka records: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidateMonthlyWindowFailsClosedWhenAnyRequiredTableIsMissingSchema(t *testing.T) {
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT column_name) FROM information_schema.columns")).
-		WithArgs("bkn_audit", "audit_event_202609", "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at", "topic", "partition_id", "offset_id").
+		WithArgs("bkn_audit", "audit_event_202608", "event_id", "source_id", "content_hash", "payload", "occurred_at", "broker_received_at", "recorded_at", "topic", "partition_id", "offset_id").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(7))
 	if err := store.ValidateMonthlyWindow(context.Background(), time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)); !errors.Is(err, ErrMonthlySchemaUnavailable) {
 		t.Fatalf("missing coordinate columns must fail closed, got %v", err)
