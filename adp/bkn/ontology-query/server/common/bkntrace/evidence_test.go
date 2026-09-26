@@ -34,8 +34,23 @@ func testTraceContext() context.Context {
 func testRequestContext() RequestContext {
 	return RequestContext{
 		RequestID: "req_ontology_data_0001", AccountID: "acct_demo", AccountType: "user",
+		ConversationID: "conv_data_query_001", SessionScopePresent: true,
 		InteractionID: "int_data_query_001", OperationID: "op_data_query_001", CausationEventID: "evt_tool_called_001", Attempt: 1,
 		ObservedAt: "2026-07-25T08:00:00Z",
+	}
+}
+
+func TestEmitDataQueryEventsDoesNotAdvertiseDroppedEvidence(t *testing.T) {
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "ontology-query", BaseStreamID: "ontology-query", WorkloadIdentity: "ontology-query", ProcessBootID: "boot-1", CapturePolicyRevision: "41"}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
+	reqCtx := testRequestContext()
+	reqCtx.SessionScopePresent = false
+	if eventID := EmitDataQueryEvents(testTraceContext(), reqCtx, DataQuerySubject{EntityKind: EntityKindObjectInstance, KNID: "kn_demo"}, nil); eventID != "" {
+		t.Fatalf("event ID = %q, want empty without trusted session scope", eventID)
 	}
 }
 
@@ -75,7 +90,7 @@ func TestSubmitEventsMatchesCanonicalEvidenceFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	for key, want := range map[string]any{
-		"event_id": events[0]["event_id"], "event_type": "data.query.observed", "conversation_id": "conv_req_ontology_data_0001",
+		"event_id": events[0]["event_id"], "event_type": "data.query.observed", "conversation_id": "conv_data_query_001",
 		"producer_id": "ontology-query", "producer_stream_id": "ontology-query:boot-1",
 	} {
 		if payload[key] != want {
@@ -96,6 +111,33 @@ func TestSubmitEventsMatchesCanonicalEvidenceFixture(t *testing.T) {
 		if queued[0].Headers[i] != wantHeaders[i] {
 			t.Fatalf("header[%d] = %+v, want %+v", i, queued[0].Headers[i], wantHeaders[i])
 		}
+	}
+}
+
+func TestSubmitEventsDropsWithoutTrustedSessionScope(t *testing.T) {
+	for _, field := range []string{"conversation_id", "interaction_id", "source_flag"} {
+		t.Run(field, func(t *testing.T) {
+			publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "ontology-query", BaseStreamID: "ontology-query", WorkloadIdentity: "ontology-query", ProcessBootID: "boot-1", CapturePolicyRevision: "41"}, &captureEvidenceSender{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			SetEvidencePublisher(publisher)
+			t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
+			reqCtx := testRequestContext()
+			switch field {
+			case "conversation_id":
+				reqCtx.ConversationID = ""
+			case "interaction_id":
+				reqCtx.InteractionID = ""
+			case "source_flag":
+				reqCtx.SessionScopePresent = false
+			}
+			events := BuildDataQueryEvents(testTraceContext(), reqCtx, DataQuerySubject{EntityKind: EntityKindObjectInstance, KNID: "kn_demo"}, nil)
+			SubmitEvents(testTraceContext(), reqCtx, events)
+			if got := len(publisher.SnapshotQueue()); got != 0 {
+				t.Fatalf("queued records = %d, want 0 without %s", got, field)
+			}
+		})
 	}
 }
 

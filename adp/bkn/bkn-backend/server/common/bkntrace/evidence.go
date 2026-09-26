@@ -61,7 +61,9 @@ type RequestContext struct {
 	EffectiveSubjectID     string
 	EffectiveSubjectType   string
 	DelegationID           string
+	ConversationID         string
 	InteractionID          string
+	SessionScopePresent    bool
 	OperationID            string
 	ParentOperationID      string
 	CausationEventID       string
@@ -94,6 +96,7 @@ type eventContext struct {
 	requestID         string
 	accountID         string
 	accountType       string
+	conversationID    string
 	interactionID     string
 	operationID       string
 	parentOperationID string
@@ -199,7 +202,7 @@ func EmitSchemaReadEvents(ctx context.Context, reqCtx RequestContext, subject Re
 	}
 	events := BuildSchemaReadEvents(ctx, reqCtx, subject, refs)
 	SubmitEvents(ctx, reqCtx, events)
-	if len(events) == 0 {
+	if len(events) == 0 || !hasSessionScope(reqCtx) {
 		return ""
 	}
 	eventID, _ := events[0]["event_id"].(string)
@@ -208,6 +211,10 @@ func EmitSchemaReadEvents(ctx context.Context, reqCtx RequestContext, subject Re
 
 func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 	if len(events) == 0 {
+		return
+	}
+	if !hasSessionScope(reqCtx) {
+		log.Printf("BKN Trace evidence publisher dropped events reason=missing_trusted_session_scope")
 		return
 	}
 	ec, ok := contextFromRequest(ctx, reqCtx)
@@ -223,7 +230,8 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 		if publisher := currentEvidencePublisher(); publisher != nil {
 			result := publishEvidenceEvent(ctx, Event{
 				"event_id": coreEvent.EventID, "event_type": coreEvent.EventType,
-				"interaction_id": coreEvent.InteractionID, "operation_id": coreEvent.OperationID,
+				"conversation_id": coreEvent.ConversationID,
+				"interaction_id":  coreEvent.InteractionID, "operation_id": coreEvent.OperationID,
 				"attempt": coreEvent.Attempt, "request_id": coreEvent.RequestID, "trace_id": coreEvent.TraceID,
 				"span_id": coreEvent.SpanID, "started_at": coreEvent.StartedAt.Format(time.RFC3339Nano),
 				"observed_at": coreEvent.ObservedAt.Format(time.RFC3339Nano), "emitted_at": coreEvent.EmittedAt.Format(time.RFC3339Nano),
@@ -238,12 +246,16 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 	}
 }
 
+func hasSessionScope(reqCtx RequestContext) bool {
+	return reqCtx.SessionScopePresent && strings.TrimSpace(reqCtx.ConversationID) != "" && strings.TrimSpace(reqCtx.InteractionID) != ""
+}
+
 type coreEvidenceEvent struct {
-	EventID, EventType, InteractionID, OperationID string
-	Attempt                                        uint32
-	RequestID, TraceID, SpanID                     string
-	StartedAt, ObservedAt, EmittedAt               time.Time
-	Envelope                                       json.RawMessage
+	EventID, EventType, ConversationID, InteractionID, OperationID string
+	Attempt                                                        uint32
+	RequestID, TraceID, SpanID                                     string
+	StartedAt, ObservedAt, EmittedAt                               time.Time
+	Envelope                                                       json.RawMessage
 }
 
 func toCoreEvent(event Event, ec eventContext) (coreEvidenceEvent, error) {
@@ -262,7 +274,7 @@ func toCoreEvent(event Event, ec eventContext) (coreEvidenceEvent, error) {
 	}
 	return coreEvidenceEvent{
 		EventID: eventID, EventType: eventType,
-		InteractionID: ec.interactionID, OperationID: ec.operationID,
+		ConversationID: ec.conversationID, InteractionID: ec.interactionID, OperationID: ec.operationID,
 		Attempt: ec.attempt, RequestID: ec.requestID, TraceID: ec.traceID, SpanID: ec.spanID,
 		StartedAt: observedAt, ObservedAt: observedAt, EmittedAt: observedAt, Envelope: raw,
 	}, nil
@@ -441,6 +453,7 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		requestID:         requestID,
 		accountID:         accountID,
 		accountType:       accountType,
+		conversationID:    strings.TrimSpace(reqCtx.ConversationID),
 		interactionID:     interactionID,
 		operationID:       operationID,
 		parentOperationID: strings.TrimSpace(reqCtx.ParentOperationID),

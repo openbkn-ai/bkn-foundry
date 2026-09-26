@@ -9,6 +9,7 @@ package bkntrace
 import (
 	"context"
 	"encoding/json"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"strings"
 	"testing"
 
@@ -35,6 +36,19 @@ func testRequestContext() RequestContext {
 		CausationEventID: "evt_retrieval_001",
 		Attempt:          2,
 		ObservedAt:       "2026-07-25T08:00:00Z",
+	}
+}
+
+func TestEmitSchemaReadEventsDoesNotAdvertiseDroppedEvidence(t *testing.T) {
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "bkn-backend", BaseStreamID: "backend", WorkloadIdentity: "bkn-backend", ProcessBootID: "boot-1", CapturePolicyRevision: "41"}, &captureEvidenceSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setEvidencePublisher(publisher)
+	t.Cleanup(func() { setEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
+	reqCtx := testRequestContext()
+	if eventID := EmitSchemaReadEvents(testTraceContext(), reqCtx, ReadSubject{EntityKind: EntityKindObjectType, KNID: "kn_demo"}, nil); eventID != "" {
+		t.Fatalf("event ID = %q, want empty without trusted session scope", eventID)
 	}
 }
 

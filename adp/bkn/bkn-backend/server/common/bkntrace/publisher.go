@@ -60,7 +60,7 @@ func publishEvidenceEvent(ctx context.Context, event Event) evidencepublisher.Pu
 		envelope = raw
 	}
 	return publisher.TryPublish(evidencepublisher.Event{
-		EventID: get("event_id"), EventType: get("event_type"), InteractionID: get("interaction_id"),
+		EventID: get("event_id"), EventType: get("event_type"), ConversationID: get("conversation_id"), InteractionID: get("interaction_id"),
 		OperationID: get("operation_id"), Attempt: attempt, RequestID: get("request_id"),
 		TraceID: get("trace_id"), SpanID: get("span_id"), StartedAt: parseTime("started_at"),
 		ObservedAt: parseTime("observed_at"), EmittedAt: parseTime("emitted_at"), Envelope: envelope,

@@ -64,6 +64,7 @@ func TestTraceContextFromHeaders(t *testing.T) {
 			HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000011",
 			HeaderBaggage:             "bkn.account.type=user,bkn.account.id=user-1,bkn.runtime.env=test",
 			HeaderBKNInteractionID:    "int_inbound_001",
+			HeaderBKNConversationID:   "conv_inbound_001",
 			HeaderBKNOperationID:      "op_inbound_001",
 			HeaderBKNCausationEventID: "evt_inbound_001",
 			HeaderBKNClaimID:          "claim_inbound_001",
@@ -76,6 +77,7 @@ func TestTraceContextFromHeaders(t *testing.T) {
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000011")
 		convey.So(traceCtx.InteractionID, convey.ShouldEqual, "int_inbound_001")
+		convey.So(traceCtx.ConversationID, convey.ShouldEqual, "conv_inbound_001")
 		convey.So(traceCtx.OperationID, convey.ShouldEqual, "op_inbound_001")
 		convey.So(traceCtx.CausationEventID, convey.ShouldEqual, "evt_inbound_001")
 		convey.So(traceCtx.ClaimID, convey.ShouldEqual, "claim_inbound_001")

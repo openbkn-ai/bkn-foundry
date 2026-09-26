@@ -27,6 +27,7 @@ const (
 	headerBKNRequestID         = "bkn-request-id"
 	headerLegacyRequestID      = "x-request-id"
 	headerBKNInteractionID     = "bkn-interaction-id"
+	headerBKNConversationID    = "bkn-conversation-id"
 	headerBKNOperationID       = "bkn-operation-id"
 	headerBKNParentOperationID = "bkn-parent-operation-id"
 	headerBKNCausationEventID  = "bkn-causation-event-id"
@@ -58,7 +59,9 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.Request
 	if err == nil && parsedAttempt >= 1 && parsedAttempt <= 1000 {
 		attempt = uint32(parsedAttempt)
 	}
+	conversationID := strings.TrimSpace(c.GetHeader(headerBKNConversationID))
 	interactionID := strings.TrimSpace(c.GetHeader(headerBKNInteractionID))
+	sessionScopePresent := conversationID != "" && interactionID != ""
 	if interactionID == "" {
 		id, err := uuid.NewV7()
 		if err != nil {
@@ -90,7 +93,9 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.Request
 		EffectiveSubjectID:     accountID,
 		EffectiveSubjectType:   bknTraceSubjectType(accountType),
 		DelegationID:           strings.TrimSpace(c.GetHeader("x-bkn-delegation-id")),
+		ConversationID:         conversationID,
 		InteractionID:          interactionID,
+		SessionScopePresent:    sessionScopePresent,
 		OperationID:            operationID,
 		ParentOperationID:      strings.TrimSpace(c.GetHeader(headerBKNParentOperationID)),
 		CausationEventID:       strings.TrimSpace(c.GetHeader(headerBKNCausationEventID)),

@@ -54,7 +54,9 @@ type RequestContext struct {
 	EffectiveSubjectID     string
 	EffectiveSubjectType   string
 	DelegationID           string
+	ConversationID         string
 	InteractionID          string
+	SessionScopePresent    bool
 	OperationID            string
 	CausationEventID       string
 	ClaimID                string
@@ -88,6 +90,7 @@ type eventContext struct {
 	requestID        string
 	accountID        string
 	accountType      string
+	conversationID   string
 	interactionID    string
 	operationID      string
 	causationEventID string
@@ -130,7 +133,7 @@ func EmitDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject Dat
 	}
 	events := BuildDataQueryEvents(ctx, reqCtx, subject, refs)
 	SubmitEvents(ctx, reqCtx, events)
-	if len(events) == 0 {
+	if len(events) == 0 || !hasSessionScope(reqCtx) {
 		return ""
 	}
 	eventID, _ := events[0]["event_id"].(string)
@@ -139,6 +142,10 @@ func EmitDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject Dat
 
 func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 	if len(events) == 0 {
+		return
+	}
+	if !hasSessionScope(reqCtx) {
+		log.Printf("BKN Trace evidence publisher dropped events reason=missing_trusted_session_scope")
 		return
 	}
 	ec, ok := contextFromRequest(ctx, reqCtx)
@@ -169,6 +176,10 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 	}
 }
 
+func hasSessionScope(reqCtx RequestContext) bool {
+	return reqCtx.SessionScopePresent && strings.TrimSpace(reqCtx.ConversationID) != "" && strings.TrimSpace(reqCtx.InteractionID) != ""
+}
+
 type coreEvidenceEvent struct {
 	EventID, EventType, ConversationID, InteractionID, OperationID string
 	Attempt                                                        uint32
@@ -192,7 +203,7 @@ func toCoreEvent(event Event, ec eventContext) (coreEvidenceEvent, error) {
 		return coreEvidenceEvent{}, errors.New("evidence event ID and type are required")
 	}
 	return coreEvidenceEvent{
-		EventID: eventID, EventType: eventType, ConversationID: "conv_" + ec.requestID,
+		EventID: eventID, EventType: eventType, ConversationID: ec.conversationID,
 		InteractionID: ec.interactionID, OperationID: ec.operationID,
 		Attempt: uint32(ec.attempt), RequestID: ec.requestID, TraceID: ec.traceID, SpanID: ec.spanID,
 		StartedAt: observedAt, ObservedAt: observedAt, EmittedAt: observedAt, Envelope: raw,
@@ -313,6 +324,7 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		requestID:        requestID,
 		accountID:        accountID,
 		accountType:      accountType,
+		conversationID:   strings.TrimSpace(reqCtx.ConversationID),
 		interactionID:    interactionID,
 		operationID:      operationID,
 		causationEventID: strings.TrimSpace(reqCtx.CausationEventID),
