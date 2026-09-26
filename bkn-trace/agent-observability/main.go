@@ -77,9 +77,9 @@ func runAuditMonthlyMigration() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if err := store.MigrateMonthlyWindow(ctx, time.Now().UTC()); err != nil {
-		return fmt.Errorf("migrate previous/current and next two UTC Audit months: %w", err)
+		return fmt.Errorf("migrate validator-accepted history, retained Kafka records, and next two UTC Audit months: %w", err)
 	}
-	log.Printf("Audit monthly schema migration complete: window=previous+current+2 UTC months template_sha256=%s", auditstore.MonthlyTemplateSHA256)
+	log.Printf("Audit monthly schema migration complete: window=accepted-occurred-at-age+retained-broker-records+current+2 UTC months template_sha256=%s", auditstore.MonthlyTemplateSHA256)
 	return nil
 }
 

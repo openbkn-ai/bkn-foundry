@@ -36,7 +36,6 @@ const (
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
 	maxAuditValueBytes            = 32 * 1024
 	maxClockSkew                  = 5 * time.Minute
-	maxRetentionAge               = 365 * 24 * time.Hour
 	schemaURL                     = "https://openbkn.io/schemas/audit-event/1.0"
 )
 
@@ -183,7 +182,7 @@ func (v *Validator) Validate(_ context.Context, record auditconsumer.Record) (au
 	if occurredAt.After(record.BrokerTime.Add(maxClockSkew)) {
 		return auditstore.Event{}, permanent("clock_skew_future")
 	}
-	if record.BrokerTime.Sub(occurredAt) > maxRetentionAge {
+	if record.BrokerTime.Sub(occurredAt) > auditstore.MaxAcceptedOccurredAtAge {
 		return auditstore.Event{}, permanent("retention_expired")
 	}
 	return auditstore.Event{
