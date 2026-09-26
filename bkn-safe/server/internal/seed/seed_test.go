@@ -100,6 +100,43 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	}
 }
 
+func TestApplySeedsTraceEvidenceCatalogIdempotently(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatalf("authz: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := Apply(db, e); err != nil {
+			t.Fatalf("apply seed #%d: %v", i+1, err)
+		}
+	}
+
+	want := map[string]map[string]bool{
+		"trace_evidence_configuration": {"read": true, "write": true, "reconcile": true},
+		"trace_evidence_endpoint":      {"heartbeat": true},
+	}
+	for resourceType, operations := range want {
+		var resource model.ResourceType
+		if err := db.First(&resource, "id = ?", resourceType).Error; err != nil {
+			t.Errorf("seeded resource type %q: %v", resourceType, err)
+			continue
+		}
+		var rows []model.Operation
+		if err := db.Where("resource_type_id = ?", resourceType).Order("id").Find(&rows).Error; err != nil {
+			t.Errorf("list %q operations: %v", resourceType, err)
+			continue
+		}
+		got := make(map[string]bool, len(rows))
+		for _, row := range rows {
+			got[row.ID] = true
+		}
+		if !reflect.DeepEqual(got, operations) {
+			t.Errorf("%s operations = %v, want exactly %v", resourceType, got, operations)
+		}
+	}
+}
+
 func TestSeedCatalogGrantableDefaultsTrueAndPersistsFalse(t *testing.T) {
 	db := newDB(t)
 	data := []byte(`{

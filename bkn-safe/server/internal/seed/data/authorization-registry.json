@@ -1092,6 +1092,42 @@
       ]
     },
     {
+      "id": "trace_evidence_configuration",
+      "name": "Trace Evidence 配置",
+      "_source": "bkn-trace agent-observability",
+      "_note": "The global capture-policy configuration is authorized independently from workload endpoint heartbeats.",
+      "operations": [
+        {
+          "id": "read",
+          "name": "读取",
+          "description": "读取 Trace Evidence 全局采集策略配置。"
+        },
+        {
+          "id": "write",
+          "name": "修改",
+          "description": "请求修改 Trace Evidence 全局采集策略配置。"
+        },
+        {
+          "id": "reconcile",
+          "name": "协调",
+          "description": "请求协调 Trace Evidence 采集策略操作。"
+        }
+      ]
+    },
+    {
+      "id": "trace_evidence_endpoint",
+      "name": "Trace Evidence 工作负载端点",
+      "_source": "bkn-trace agent-observability",
+      "_note": "Grant heartbeat on exactly one endpoint id per application principal; never grant both endpoint kinds to one principal.",
+      "operations": [
+        {
+          "id": "heartbeat",
+          "name": "心跳",
+          "description": "提交已绑定 Trace Gateway 或 Evidence Publisher 端点的心跳与确认。"
+        }
+      ]
+    },
+    {
       "id": "admin-license",
       "name": "产品授权管理",
       "_source": "bkn-studio system-admin",
