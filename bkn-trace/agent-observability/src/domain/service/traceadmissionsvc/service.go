@@ -103,7 +103,18 @@ func (g *Gateway) Apply(snapshot SignedSnapshot) error {
 		if *g.current == snapshot {
 			return nil
 		}
-		return ErrStaleRevision
+		// The control plane re-signs the same policy revision on each read.
+		// A changed mode requires a new policy revision. For unchanged modes,
+		// ignore an older issuance (for example, from a skewed signer replica)
+		// without interrupting the heartbeat. A newer issuance replaces the
+		// expiry even when the signer TTL has been shortened.
+		if snapshot.TraceAdmission != g.current.TraceAdmission ||
+			snapshot.EvidenceAdmission != g.current.EvidenceAdmission {
+			return ErrStaleRevision
+		}
+		if !snapshot.IssuedAt.After(g.current.IssuedAt) {
+			return nil
+		}
 	}
 	g.current = &snapshot
 	return nil

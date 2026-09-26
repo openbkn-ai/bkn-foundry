@@ -86,6 +86,109 @@ func TestGatewayRejectsStaleAndInvalidAudienceSnapshots(t *testing.T) {
 	}
 }
 
+func TestGatewayAcceptsFreshlySignedSameRevisionAndRenewsExpiry(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC)
+	gateway := NewGateway(GatewayConfig{Audience: "cluster-a", CurrentKeyID: "k1", CurrentKey: publicKey, Now: func() time.Time { return now }})
+	first, err := SignSnapshot(SignedSnapshot{ContractVersion: ContractVersion, Revision: 3, TraceAdmission: ModeEnabled, EvidenceAdmission: ModeEnabled, IssuedAt: now, ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a"}, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gateway.Apply(first); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(30 * time.Second)
+	refreshed := first
+	refreshed.IssuedAt = now
+	refreshed.ExpiresAt = now.Add(time.Minute)
+	refreshed, err = SignSnapshot(refreshed, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gateway.Apply(refreshed); err != nil {
+		t.Fatalf("fresh signed snapshot of the same policy revision was rejected: %v", err)
+	}
+	now = first.ExpiresAt.Add(time.Second)
+	if decision := gateway.Admit(1); decision.Accepted != 1 {
+		t.Fatalf("renewed policy expired at the first snapshot's deadline: %+v", decision)
+	}
+}
+
+func TestGatewayRejectsSameRevisionPolicyChangeAndIgnoresOlderRefresh(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 22, 8, 0, 30, 0, time.UTC)
+	gateway := NewGateway(GatewayConfig{Audience: "cluster-a", CurrentKeyID: "k1", CurrentKey: publicKey, Now: func() time.Time { return now }})
+	current, err := SignSnapshot(SignedSnapshot{ContractVersion: ContractVersion, Revision: 3, TraceAdmission: ModeEnabled, EvidenceAdmission: ModeEnabled, IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a"}, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gateway.Apply(current); err != nil {
+		t.Fatal(err)
+	}
+	changed := current
+	changed.TraceAdmission, changed.EvidenceAdmission = ModeDisabled, ModeDisabled
+	changed.IssuedAt = now
+	changed.ExpiresAt = now.Add(2 * time.Minute)
+	changed, err = SignSnapshot(changed, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gateway.Apply(changed); err != ErrStaleRevision {
+		t.Fatalf("changed policy with unchanged revision error = %v", err)
+	}
+	older := current
+	older.IssuedAt = now.Add(-2 * time.Second)
+	older.ExpiresAt = now.Add(30 * time.Second)
+	older, err = SignSnapshot(older, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gateway.Apply(older); err != nil {
+		t.Fatalf("older same-revision snapshot interrupted heartbeat: %v", err)
+	}
+	now = older.ExpiresAt.Add(time.Second)
+	if decision := gateway.Admit(1); decision.Accepted != 1 {
+		t.Fatalf("rejected/ignored snapshots changed the active policy: %+v", decision)
+	}
+}
+
+func TestGatewayAcceptsSameRevisionRefreshWhenSignerTTLShortens(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC)
+	gateway := NewGateway(GatewayConfig{Audience: "cluster-a", CurrentKeyID: "k1", CurrentKey: publicKey, Now: func() time.Time { return now }})
+	longTTL, err := SignSnapshot(SignedSnapshot{ContractVersion: ContractVersion, Revision: 3, TraceAdmission: ModeEnabled, EvidenceAdmission: ModeEnabled, IssuedAt: now, ExpiresAt: now.Add(15 * time.Minute), KeyID: "k1", Audience: "cluster-a"}, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gateway.Apply(longTTL); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	shortTTL := longTTL
+	shortTTL.IssuedAt = now
+	shortTTL.ExpiresAt = now.Add(5 * time.Minute)
+	shortTTL, err = SignSnapshot(shortTTL, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gateway.Apply(shortTTL); err != nil {
+		t.Fatalf("same-revision policy with shorter configured TTL was rejected: %v", err)
+	}
+	now = shortTTL.ExpiresAt.Add(time.Second)
+	if decision := gateway.Admit(1); decision.Reason != ReasonPolicyExpired {
+		t.Fatalf("shorter valid TTL was not applied: %+v", decision)
+	}
+}
+
 func TestDisabledAckRequiresCompleteQueueDisposition(t *testing.T) {
 	complete := QueueDisposition{Status: QueueComplete, Exported: 4, Dropped: 1, Unaccounted: intPtr(0)}
 	if err := ValidateAcknowledgement(Acknowledgement{Mode: ModeDisabled, Queue: complete}); err != nil {
