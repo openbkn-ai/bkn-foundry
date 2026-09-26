@@ -168,6 +168,56 @@ func TestPublisherRuntimeAcknowledgesEnabledOperationBeforeAdmission(t *testing.
 	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
 		t.Fatalf("admission after enabled ACK = %+v", result)
 	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("same-revision Refresh() error = %v", err)
+	}
+	if acknowledgements != 1 {
+		t.Fatalf("enabled ACK replayed after admission: %d attempts", acknowledgements)
+	}
+}
+
+func TestPublisherRuntimeAdmitsUnfrozenNewInstanceAfterEnabledAckConflict(t *testing.T) {
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ackAttempts := 0
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case traceEvidencePolicyPath:
+			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
+			return noContentResponse(), nil
+		case traceEvidenceConfigurationPath:
+			return configurationResponse(`{"kind":"configuration_get","policy_revision":42,"active_operation_id":"op-enable"}`), nil
+		case "/api/agent-observability/v1/internal/trace-evidence/operations/op-enable:publisher-ack":
+			ackAttempts++
+			return &http.Response{StatusCode: http.StatusConflict, Body: io.NopCloser(strings.NewReader(`{"code":"EVIDENCE_PUBLISHER_ACK_NOT_EXPECTED"}`))}, nil
+		default:
+			t.Fatalf("unexpected request: %s", request.URL)
+			return nil, nil
+		}
+	})}
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Refresh(context.Background()); err == nil {
+		t.Fatal("rejected enabled ACK was reported as accepted")
+	}
+	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
+		t.Fatalf("signed-policy admission after nonmember ACK conflict = %+v", result)
+	}
+	if err := runtime.Refresh(context.Background()); err != nil {
+		t.Fatalf("same-revision refresh retried an unacknowledgeable instance: %v", err)
+	}
+	if ackAttempts != 1 {
+		t.Fatalf("ACK attempts = %d, want 1 for the frozen operation", ackAttempts)
+	}
 }
 
 func TestPublisherRuntimeKeepsEvidenceClosedWhenEnabledAckCandidateUnavailable(t *testing.T) {

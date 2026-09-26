@@ -626,6 +626,10 @@ func (h *CapturePolicyHandler) AcknowledgeInternalEvidencePublisherOperation(w h
 		recordErr = h.writer.RecordAcknowledgement(contextWithRequest(r), ack)
 	}
 	if recordErr != nil {
+		if errors.Is(recordErr, icapturepolicy.ErrAcknowledgementNotExpected) {
+			writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "EVIDENCE_PUBLISHER_ACK_NOT_EXPECTED", Message: "publisher instance is not in the operation's frozen expected set"})
+			return
+		}
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement was rejected"})
 		return
 	}

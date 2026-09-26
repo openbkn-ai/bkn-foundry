@@ -131,8 +131,8 @@ func TestCapturePolicyControlRejectsAcknowledgementOutsideFrozenExpectedSet(t *t
 		OperationID: "op-7", EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway#missing",
 		WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1", PolicyRevision: 7, AckState: icapturepolicy.AckPending,
 	})
-	if err != icapturepolicy.ErrExpectedSetConflict {
-		t.Fatalf("RecordAcknowledgement() error = %v, want expected-set conflict", err)
+	if err != icapturepolicy.ErrAcknowledgementNotExpected {
+		t.Fatalf("RecordAcknowledgement() error = %v, want frozen-set nonmember", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

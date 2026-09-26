@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 const traceEvidenceControlPath = "/api/agent-observability/v1/internal/trace-evidence"
 
 var errInvalidControlClient = errors.New("invalid evidence publisher control client")
+var errPublisherAcknowledgementNotExpected = errors.New("publisher acknowledgement instance is outside the frozen expected set")
 
 // ControlClientConfig configures the workload-authenticated S3 heartbeat and
 // publisher-ack calls. Authentication is the BKN Safe bearer token; the
@@ -117,6 +119,14 @@ func (c *ControlClient) post(ctx context.Context, endpoint string, body []byte, 
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		if operation == "publisher acknowledgement" && response.StatusCode == http.StatusConflict {
+			var detail struct {
+				Code string `json:"code"`
+			}
+			if json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&detail) == nil && detail.Code == "EVIDENCE_PUBLISHER_ACK_NOT_EXPECTED" {
+				return fmt.Errorf("send trace evidence %s: unexpected status %d: %w", operation, response.StatusCode, errPublisherAcknowledgementNotExpected)
+			}
+		}
 		return fmt.Errorf("send trace evidence %s: unexpected status %d", operation, response.StatusCode)
 	}
 	return nil

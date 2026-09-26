@@ -2,6 +2,7 @@ package evidencepublisher
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -68,6 +69,31 @@ func TestControlClientDoesNotSendMismatchedAck(t *testing.T) {
 	ack := DrainResult{ProducerInstanceID: "producer#boot", CapturePolicyRevision: "41", LastAcceptedSequence: 7, Published: 5, Dropped: 2, QueueEmpty: true}
 	if err := control.Acknowledge(context.Background(), ConfigurationOperation{ID: "op-42", Revision: 42}, ack, time.Now()); err == nil {
 		t.Fatal("Acknowledge() error = nil; want revision mismatch rejected")
+	}
+}
+
+func TestControlClientOnlyClassifiesFrozenSetNonmemberConflict(t *testing.T) {
+	for _, test := range []struct {
+		code        string
+		notExpected bool
+	}{
+		{code: "EVIDENCE_PUBLISHER_ACK_NOT_EXPECTED", notExpected: true},
+		{code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", notExpected: false},
+	} {
+		t.Run(test.code, func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusConflict, Body: io.NopCloser(strings.NewReader(`{"code":"` + test.code + `"}`))}, nil
+			})}
+			control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ack := DrainResult{ProducerInstanceID: "producer#boot", CapturePolicyRevision: "42", QueueEmpty: true}
+			err = control.Acknowledge(context.Background(), ConfigurationOperation{ID: "op-42", Revision: 42}, ack, time.Now())
+			if err == nil || errors.Is(err, errPublisherAcknowledgementNotExpected) != test.notExpected {
+				t.Fatalf("Acknowledge() error = %v; nonmember = %t", err, test.notExpected)
+			}
+		})
 	}
 }
 

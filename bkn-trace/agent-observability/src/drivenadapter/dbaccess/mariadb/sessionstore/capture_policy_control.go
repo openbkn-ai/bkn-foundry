@@ -620,7 +620,7 @@ func (s *Store) recordAcknowledgementTx(ctx context.Context, tx *sql.Tx, acknowl
 		acknowledgement.OperationID, acknowledgement.PolicyRevision, acknowledgement.EndpointKind, acknowledgement.InstanceID,
 		acknowledgement.WorkloadIdentity, acknowledgement.ProcessBootID).Scan(&expectedRevision, &workloadIdentity, &processBootID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return icapturepolicy.ErrExpectedSetConflict
+		return icapturepolicy.ErrAcknowledgementNotExpected
 	}
 	if err != nil {
 		return err

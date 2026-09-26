@@ -47,6 +47,7 @@ var (
 	ErrOperationNotFound          = errors.New("capture policy operation was not found")
 	ErrLeaseConflict              = errors.New("capture operation lease is stale or held")
 	ErrExpectedSetConflict        = errors.New("capture operation expected instance set conflicts")
+	ErrAcknowledgementNotExpected = errors.New("capture operation acknowledgement instance is not in the frozen expected set")
 	ErrInvalidTransition          = errors.New("invalid capture operation phase transition")
 	ErrTerminalOperation          = errors.New("capture operation is terminal")
 )

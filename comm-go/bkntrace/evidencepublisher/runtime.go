@@ -21,14 +21,15 @@ type PublisherRuntime struct {
 	control       *ControlClient
 	now           func() time.Time
 
-	refreshMu   sync.Mutex
-	mu          sync.Mutex
-	snapshot    PolicySnapshot
-	hasPolicy   bool
-	admitting   bool
-	lastError   error
-	ackRevision uint64
-	ackSequence uint64
+	refreshMu              sync.Mutex
+	mu                     sync.Mutex
+	snapshot               PolicySnapshot
+	hasPolicy              bool
+	admitting              bool
+	lastError              error
+	ackRevision            uint64
+	ackSequence            uint64
+	ackNotExpectedRevision uint64
 }
 
 type PublisherRuntimeConfig struct {
@@ -111,8 +112,28 @@ func (r *PublisherRuntime) Refresh(ctx context.Context) error {
 		}
 		return nil
 	}
+	r.mu.Lock()
+	ackNotExpected := r.ackNotExpectedRevision == snapshot.Revision
+	alreadyAcknowledged := r.ackRevision == snapshot.Revision
+	if ackNotExpected || alreadyAcknowledged {
+		r.admitting = true
+	}
+	r.mu.Unlock()
+	if ackNotExpected || alreadyAcknowledged {
+		_ = r.publisher.FlushForPolicyRevision(ctx, strconv.FormatUint(snapshot.Revision, 10))
+		return nil
+	}
 	if _, err := r.drainAndAcknowledge(ctx, snapshot.Revision, false, false); err != nil {
 		r.setError(err)
+		if errors.Is(err, errPublisherAcknowledgementNotExpected) {
+			// A newly joined instance may be outside the operation's frozen ACK
+			// set. It cannot converge the operation, but its signed policy and
+			// successful heartbeat still permit live Evidence admission.
+			r.mu.Lock()
+			r.ackNotExpectedRevision = snapshot.Revision
+			r.admitting = true
+			r.mu.Unlock()
+		}
 		return err
 	}
 	r.mu.Lock()

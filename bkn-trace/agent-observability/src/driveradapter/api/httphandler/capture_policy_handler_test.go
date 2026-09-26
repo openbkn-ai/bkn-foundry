@@ -36,6 +36,7 @@ type capturePolicyInternalWriter struct {
 	registeredHeartbeats   int
 	registeredHeartbeatErr error
 	publisherClosureAcks   int
+	recordErr              error
 }
 
 type capturePolicyBudgetReader struct{}
@@ -87,7 +88,7 @@ func (w *capturePolicyInternalWriter) RegisterEvidencePublisherHeartbeat(_ conte
 
 func (w *capturePolicyInternalWriter) RecordAcknowledgement(_ context.Context, ack icapturepolicy.ExpectedAcknowledgement) error {
 	w.ack = ack
-	return nil
+	return w.recordErr
 }
 
 func (w *capturePolicyInternalWriter) RecordEvidencePublisherAcknowledgement(_ context.Context, ack icapturepolicy.ExpectedAcknowledgement, _ time.Time) error {
@@ -689,6 +690,20 @@ func TestInternalEvidencePublisherAckUsesReadyStateForEnabledPolicy(t *testing.T
 	}
 	if writer.publisherClosureAcks != 0 || writer.ack.AckState != icapturepolicy.AckReady || writer.ack.EvidenceDisposition != icapturepolicy.DispositionNotApplicable {
 		t.Fatalf("enabled policy did not produce a ready publisher acknowledgement: %+v", writer.ack)
+	}
+	writer.recordErr = icapturepolicy.ErrAcknowledgementNotExpected
+	request = capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-enable:publisher-ack", `{"producer_instance_id":"spiffe://cluster.local/ns/openbkn/sa/bkn-backend#boot-42","capture_policy_revision":42,"last_accepted_sequence":0,"published":0,"dropped":0,"queue_empty":true,"acknowledged_at":"2026-09-22T08:00:10.000Z"}`, profile)
+	response = httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "EVIDENCE_PUBLISHER_ACK_NOT_EXPECTED") {
+		t.Fatalf("frozen-set nonmember status = %d, body = %s", response.Code, response.Body.String())
+	}
+	writer.recordErr = icapturepolicy.ErrExpectedSetConflict
+	request = capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-enable:publisher-ack", `{"producer_instance_id":"spiffe://cluster.local/ns/openbkn/sa/bkn-backend#boot-42","capture_policy_revision":42,"last_accepted_sequence":0,"published":0,"dropped":0,"queue_empty":true,"acknowledged_at":"2026-09-22T08:00:10.000Z"}`, profile)
+	response = httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT") {
+		t.Fatalf("other ACK conflict status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
