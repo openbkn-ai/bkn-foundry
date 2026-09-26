@@ -237,12 +237,12 @@ func TestValidateMonthlyWindowCovers365DayAcceptedAgeAndNextTwo(t *testing.T) {
 	}
 }
 
-func TestValidateMonthlyWindowIncludesOldestAcceptedUTCMonth(t *testing.T) {
+func TestValidateMonthlyWindowIncludesOldestAcceptedUTCMonthAndRetainedBrokerLag(t *testing.T) {
 	db, mock, store := testDB(t)
 	defer func() { _ = db.Close() }()
 	now := time.Date(2026, 9, 1, 0, 5, 0, 0, time.UTC)
 	for _, table := range []string{
-		"audit_event_202509", "audit_event_202510", "audit_event_202511", "audit_event_202512",
+		"audit_event_202508", "audit_event_202509", "audit_event_202510", "audit_event_202511", "audit_event_202512",
 		"audit_event_202601", "audit_event_202602", "audit_event_202603", "audit_event_202604",
 		"audit_event_202605", "audit_event_202606", "audit_event_202607", "audit_event_202608",
 		"audit_event_202609", "audit_event_202610", "audit_event_202611",

@@ -56,6 +56,7 @@ var (
 
 const (
 	MaxAcceptedOccurredAtAge = 365 * 24 * time.Hour
+	maxRetainedBrokerTimeAge = 7 * 24 * time.Hour
 	MonthlyTemplateSHA256    = "52acd735cb9c9bd3442e9280c50de0f26676faadc829453ef99d0e53546979d7"
 )
 
@@ -148,17 +149,18 @@ func (s *Store) ValidateMonthlyWindow(ctx context.Context, now time.Time) error 
 }
 
 // EnsureMonthlyWindow provisions the UTC months covered by the accepted
-// occurred_at age limit, plus the next two months, then validates the
-// complete window. It is safe to run on every Audit-enabled service startup;
-// the migration is repeatable and only touches those tables.
+// occurred_at age limit and retained broker timestamp lag, plus the next two
+// months, then validates the complete window. It is safe to run on every
+// Audit-enabled service startup; the migration is repeatable and only touches
+// those tables.
 func (s *Store) EnsureMonthlyWindow(ctx context.Context, now time.Time) error {
 	return s.MigrateMonthlyWindow(ctx, now)
 }
 
 // MigrateMonthlyWindow is the explicit, repeatable operator migration. It is
 // shared by startup reconciliation and the operator command; it may alter only
-// the UTC months covered by the accepted occurred_at age limit and the next
-// two months.
+// the UTC months covered by the accepted occurred_at age limit and retained
+// broker timestamp lag, plus the next two months.
 func (s *Store) MigrateMonthlyWindow(ctx context.Context, now time.Time) error {
 	if err := verifyMonthlyTemplate(); err != nil {
 		return err
@@ -176,7 +178,10 @@ func (s *Store) MigrateMonthlyWindow(ctx context.Context, now time.Time) error {
 func monthlyWindow(now time.Time) (time.Time, time.Time) {
 	currentMonth := now.UTC()
 	currentMonth = time.Date(currentMonth.Year(), currentMonth.Month(), 1, 0, 0, 0, 0, time.UTC)
-	oldestAccepted := now.UTC().Add(-MaxAcceptedOccurredAtAge)
+	// Audit topics retain records for seven days. A retained record's
+	// LogAppendTime may therefore lag startup time by that amount; include it
+	// when deriving the earliest month that the validator can still accept.
+	oldestAccepted := now.UTC().Add(-(MaxAcceptedOccurredAtAge + maxRetainedBrokerTimeAge))
 	firstMonth := time.Date(oldestAccepted.Year(), oldestAccepted.Month(), 1, 0, 0, 0, 0, time.UTC)
 	return firstMonth, currentMonth.AddDate(0, 2, 0)
 }
