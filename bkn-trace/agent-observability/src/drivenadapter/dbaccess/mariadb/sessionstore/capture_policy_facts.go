@@ -69,6 +69,63 @@ func (s *Store) RegisterProducer(ctx context.Context, registration icapturepolic
 	})
 }
 
+// RegisterEvidencePublisherHeartbeat atomically refreshes a verified Publisher
+// lease and registers that exact process boot only for the current enabled
+// policy revision. A heartbeat for the current disabled revision refreshes the
+// lease without registering a producer, allowing the Publisher to drain and
+// acknowledge the disable operation. The control-state row serializes this
+// write with policy changes, so a stale process cannot register against an
+// earlier revision after a switch.
+func (s *Store) RegisterEvidencePublisherHeartbeat(ctx context.Context, lease icapturepolicy.EndpointLease) error {
+	if err := lease.Validate(); err != nil {
+		return err
+	}
+	if lease.EndpointKind != icapturepolicy.EndpointEvidencePublisher || !lease.Ready || lease.InstanceID != lease.WorkloadIdentity+"#"+lease.ProcessBootID {
+		return icapturepolicy.ErrInvalidProducerRegistration
+	}
+	registration := icapturepolicy.ProducerRegistration{
+		InstanceID: lease.InstanceID, PolicyRevision: lease.ObservedRevision,
+		ProcessBootID: lease.ProcessBootID, RegistrationState: "registered", RegisteredAt: lease.HeartbeatAt,
+	}
+	if err := registration.Validate(); err != nil {
+		return err
+	}
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		var currentRevision uint64
+		err := tx.QueryRowContext(ctx, `
+			SELECT current_revision
+			FROM bkn_trace_capture_control_state
+			WHERE singleton_id = 1 FOR UPDATE`).Scan(&currentRevision)
+		if errors.Is(err, sql.ErrNoRows) {
+			return icapturepolicy.ErrControlStateNotInitialized
+		}
+		if err != nil {
+			return err
+		}
+		if currentRevision != lease.ObservedRevision {
+			return fmt.Errorf("observed policy revision %d is not current %d: %w", lease.ObservedRevision, currentRevision, icapturepolicy.ErrCaptureFactConflict)
+		}
+		var admissionEnabled bool
+		err = tx.QueryRowContext(ctx, `
+			SELECT admission_enabled
+			FROM bkn_trace_capture_policy_revisions
+			WHERE revision = ? FOR UPDATE`, lease.ObservedRevision).Scan(&admissionEnabled)
+		if errors.Is(err, sql.ErrNoRows) {
+			return icapturepolicy.ErrCaptureFactConflict
+		}
+		if err != nil {
+			return err
+		}
+		if !admissionEnabled {
+			return s.upsertEndpointLeaseTx(ctx, tx, lease)
+		}
+		if err := s.upsertEndpointLeaseTx(ctx, tx, lease); err != nil {
+			return err
+		}
+		return s.registerProducerTx(ctx, tx, registration)
+	})
+}
+
 func (s *Store) registerProducerTx(ctx context.Context, tx *sql.Tx, registration icapturepolicy.ProducerRegistration) error {
 	var bootID, state string
 	var revokedAt sql.NullTime

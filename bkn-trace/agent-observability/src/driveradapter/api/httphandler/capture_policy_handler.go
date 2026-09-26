@@ -25,6 +25,7 @@ type CapturePolicySigner interface {
 
 type CapturePolicyControlWriter interface {
 	UpsertEndpointLease(context.Context, icapturepolicy.EndpointLease) error
+	RegisterEvidencePublisherHeartbeat(context.Context, icapturepolicy.EndpointLease) error
 	RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
 }
 
@@ -383,11 +384,18 @@ func (h *CapturePolicyHandler) HeartbeatInternalTraceEvidenceEndpoint(w http.Res
 		return
 	}
 	now := time.Now().UTC()
-	if err := h.writer.UpsertEndpointLease(contextWithRequest(r), icapturepolicy.EndpointLease{
+	lease := icapturepolicy.EndpointLease{
 		EndpointKind: endpointKind, InstanceID: request.InstanceID, WorkloadIdentity: workloadIdentity,
 		ProcessBootID: request.ProcessBootID, ObservedRevision: request.ObservedRevision, Ready: request.Ready,
 		HeartbeatAt: now, LeaseExpiresAt: now.Add(30 * time.Second), UpdatedAt: now,
-	}); err != nil {
+	}
+	var err error
+	if endpointKind == icapturepolicy.EndpointEvidencePublisher && request.Ready {
+		err = h.writer.RegisterEvidencePublisherHeartbeat(contextWithRequest(r), lease)
+	} else {
+		err = h.writer.UpsertEndpointLease(contextWithRequest(r), lease)
+	}
+	if err != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_ENDPOINT_HEARTBEAT", Message: "endpoint heartbeat was rejected"})
 		return
 	}
