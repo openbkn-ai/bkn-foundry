@@ -185,6 +185,7 @@ func NewApp() (*App, error) {
 		UpsertEndpointLease(context.Context, icapturepolicy.EndpointLease) error
 		RegisterEvidencePublisherHeartbeat(context.Context, icapturepolicy.EndpointLease) error
 		RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
+		RecordEvidencePublisherAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement, time.Time) error
 	}
 	if maria, ok := sessionStore.(*mariadbsessionstore.Store); ok {
 		capturePolicyWriter = maria

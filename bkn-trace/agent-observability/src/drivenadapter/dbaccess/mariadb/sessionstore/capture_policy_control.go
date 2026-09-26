@@ -553,6 +553,62 @@ func (s *Store) RecordAcknowledgement(ctx context.Context, acknowledgement icapt
 	})
 }
 
+// RecordEvidencePublisherAcknowledgement persists a disabled publisher ACK
+// and its closure watermark atomically. The ACK already carries the frozen
+// Session 1 disposition (including the last accepted sequence); no second
+// wire contract or asynchronous follow-up is needed. closedAt is captured by
+// Agent Observability when it receives the ACK, so the Kafka broker timestamp
+// comparison does not depend on the publisher clock or millisecond truncation.
+func (s *Store) RecordEvidencePublisherAcknowledgement(ctx context.Context, acknowledgement icapturepolicy.ExpectedAcknowledgement, closedAt time.Time) error {
+	if err := acknowledgement.Validate(); err != nil {
+		return err
+	}
+	if acknowledgement.EndpointKind != icapturepolicy.EndpointEvidencePublisher || acknowledgement.AckState != icapturepolicy.AckDisabled || acknowledgement.AcknowledgedAt == nil || acknowledgement.LastAcceptedSequence == nil || acknowledgement.EvidenceDisposition != icapturepolicy.DispositionComplete || acknowledgement.QueueEmpty == nil || !*acknowledgement.QueueEmpty || closedAt.IsZero() {
+		return icapturepolicy.ErrInvalidAcknowledgement
+	}
+	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
+		registrationRevision, err := s.registeredProducerRevisionTx(ctx, tx, acknowledgement)
+		if err != nil {
+			return err
+		}
+		if err := s.recordAcknowledgementTx(ctx, tx, acknowledgement); err != nil {
+			return err
+		}
+		watermark := icapturepolicy.ClosureWatermark{
+			// The operation ACK uses the newly-created disabled revision, but
+			// queued Kafka records carry the last enabled registration revision.
+			// Store the watermark against that record revision so the consumer's
+			// historical lookup can reject late records deterministically.
+			InstanceID: acknowledgement.InstanceID, PolicyRevision: registrationRevision,
+			LastAcceptedSequence: *acknowledgement.LastAcceptedSequence,
+			ClosedAt:             closedAt.UTC(), AcknowledgedAt: closedAt.UTC(),
+		}
+		return s.persistClosureWatermarkTx(ctx, tx, watermark)
+	})
+}
+
+func (s *Store) registeredProducerRevisionTx(ctx context.Context, tx *sql.Tx, acknowledgement icapturepolicy.ExpectedAcknowledgement) (uint64, error) {
+	var registrationRevision uint64
+	var processBootID, registrationState string
+	err := tx.QueryRowContext(ctx, `
+		SELECT policy_revision, process_boot_id, registration_state
+		FROM bkn_trace_producer_instance_registrations
+		WHERE producer_instance_id = ? AND policy_revision < ?
+		  AND registration_state = 'registered' AND revoked_at IS NULL
+		ORDER BY policy_revision DESC LIMIT 1 FOR UPDATE`,
+		acknowledgement.InstanceID, acknowledgement.PolicyRevision).Scan(&registrationRevision, &processBootID, &registrationState)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, icapturepolicy.ErrExpectedSetConflict
+	}
+	if err != nil {
+		return 0, err
+	}
+	if processBootID != acknowledgement.ProcessBootID || registrationState != "registered" {
+		return 0, icapturepolicy.ErrExpectedSetConflict
+	}
+	return registrationRevision, nil
+}
+
 func (s *Store) recordAcknowledgementTx(ctx context.Context, tx *sql.Tx, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
 	var expectedRevision uint64
 	var workloadIdentity, processBootID string

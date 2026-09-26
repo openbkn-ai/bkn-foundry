@@ -27,6 +27,7 @@ type CapturePolicyControlWriter interface {
 	UpsertEndpointLease(context.Context, icapturepolicy.EndpointLease) error
 	RegisterEvidencePublisherHeartbeat(context.Context, icapturepolicy.EndpointLease) error
 	RecordAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement) error
+	RecordEvidencePublisherAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement, time.Time) error
 }
 
 type AdmissionBudgetReader interface {
@@ -510,7 +511,7 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "queue disposition does not satisfy TraceGatewayAcknowledgementV1"})
 		return
 	}
-	if err := h.validateTraceGatewayAckOperation(contextWithRequest(r), path, *request.CapturePolicyRevision); err != nil {
+	if err := h.validateCapturePolicyAckOperation(contextWithRequest(r), path, *request.CapturePolicyRevision); err != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement is stale or the operation is no longer active"})
 		return
 	}
@@ -521,10 +522,10 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// validateTraceGatewayAckOperation closes the GET-to-ACK race. The
+// validateCapturePolicyAckOperation closes the GET-to-ACK race. The
 // configuration read only identifies a candidate operation; the authoritative
 // operation and policy revision are re-read immediately before persistence.
-func (h *CapturePolicyHandler) validateTraceGatewayAckOperation(ctx context.Context, operationID string, revision uint64) error {
+func (h *CapturePolicyHandler) validateCapturePolicyAckOperation(ctx context.Context, operationID string, revision uint64) error {
 	if h == nil || h.service == nil || operationID == "" || revision == 0 {
 		return errors.New("capture policy operation is unavailable")
 	}
@@ -608,12 +609,23 @@ func (h *CapturePolicyHandler) AcknowledgeInternalEvidencePublisherOperation(w h
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement was rejected"})
 		return
 	}
+	if err := h.validateCapturePolicyAckOperation(contextWithRequest(r), path, request.PolicyRevision); err != nil {
+		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement is stale or the operation is no longer active"})
+		return
+	}
 	published, dropped, last := request.Published, request.Dropped, request.LastAcceptedSequence
 	ackState, evidenceDisposition := icapturepolicy.AckDisabled, icapturepolicy.DispositionComplete
 	if policy.DesiredState == capturepolicysvc.StateEnabled {
 		ackState, evidenceDisposition = icapturepolicy.AckReady, icapturepolicy.DispositionNotApplicable
 	}
-	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: request.ProducerInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID, PolicyRevision: request.PolicyRevision, Ready: true, AckState: ackState, AcknowledgedAt: &request.AcknowledgedAt, DroppedCount: &dropped, LastAcceptedSequence: &last, PublishedCount: &published, QueueEmpty: &request.QueueEmpty, EvidenceDisposition: evidenceDisposition}); err != nil {
+	ack := icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointEvidencePublisher, InstanceID: request.ProducerInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: processBootID, PolicyRevision: request.PolicyRevision, Ready: true, AckState: ackState, AcknowledgedAt: &request.AcknowledgedAt, DroppedCount: &dropped, LastAcceptedSequence: &last, PublishedCount: &published, QueueEmpty: &request.QueueEmpty, EvidenceDisposition: evidenceDisposition}
+	var recordErr error
+	if ackState == icapturepolicy.AckDisabled {
+		recordErr = h.writer.RecordEvidencePublisherAcknowledgement(contextWithRequest(r), ack, time.Now().UTC())
+	} else {
+		recordErr = h.writer.RecordAcknowledgement(contextWithRequest(r), ack)
+	}
+	if recordErr != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement was rejected"})
 		return
 	}

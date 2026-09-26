@@ -60,6 +60,10 @@ func (commandStore) RecordAcknowledgement(context.Context, icapturepolicy.Expect
 	return nil
 }
 
+func (commandStore) RecordEvidencePublisherAcknowledgement(context.Context, icapturepolicy.ExpectedAcknowledgement, time.Time) error {
+	return nil
+}
+
 func TestCommandServiceRejectsRevisionThatDoesNotAdvanceCurrentState(t *testing.T) {
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
 	service := NewCommandService(commandFactWriter{}, commandStore{})
