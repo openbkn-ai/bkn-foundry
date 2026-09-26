@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -82,6 +85,28 @@ class MigrationCLITest(unittest.TestCase):
 
     def test_kafka_request_limit_includes_record_overhead_beyond_c1_event_value_limit(self):
         self.assertGreater(MAX_KAFKA_REQUEST_SIZE, 1_048_576)
+
+    def test_cli_directory_does_not_shadow_kafka_python_package(self):
+        script_dir = Path(__file__).resolve().parent
+        environment = os.environ.copy()
+        with tempfile.TemporaryDirectory() as root:
+            kafka_package = Path(root) / "kafka"
+            kafka_package.mkdir()
+            (kafka_package / "__init__.py").write_text("class KafkaProducer: pass\n", encoding="utf-8")
+            environment["PYTHONPATH"] = root
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "from kafka import KafkaProducer; from kafka_ack import publish_with_ack; assert KafkaProducer and publish_with_ack",
+                ],
+                cwd=script_dir,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_snapshot_command_uses_consistent_readonly_transaction_and_writes_payload_free_artifact(self):
         source = Source(self.event)

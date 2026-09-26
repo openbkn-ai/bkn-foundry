@@ -130,7 +130,7 @@ def publish_encoded_entries(manifest, entries, events_by_source_cursor, checkpoi
     commands.  A missing or identity-mismatched Event fails before any broker
     send so a checkpoint can never advance over an unverified source row.
     """
-    from kafka import publish_with_ack
+    from kafka_ack import publish_with_ack
     from source import encode_migration_record
 
     def publish(entry):

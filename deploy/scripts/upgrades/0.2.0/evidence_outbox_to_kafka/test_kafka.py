@@ -1,6 +1,6 @@
 import unittest
 
-from kafka import publish_with_ack
+from kafka_ack import publish_with_ack
 from manifest import ManifestError
 
 
