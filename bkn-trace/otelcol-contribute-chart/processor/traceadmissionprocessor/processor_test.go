@@ -147,6 +147,9 @@ func assertFrozenGatewayAckJSON(t *testing.T, body []byte) {
 			t.Fatalf("frozen ACK emitted non-contract field %q: %s", key, string(body))
 		}
 	}
+	if string(wire["contract_version"]) != `"TraceGatewayAcknowledgementV1"` {
+		t.Fatalf("frozen ACK contract_version = %s", wire["contract_version"])
+	}
 	var disposition map[string]json.RawMessage
 	if err := json.Unmarshal(wire["queue_disposition"], &disposition); err != nil {
 		t.Fatal(err)

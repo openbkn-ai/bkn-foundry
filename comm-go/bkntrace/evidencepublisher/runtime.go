@@ -79,8 +79,9 @@ func (r *PublisherRuntime) TryPublish(event Event) PublishResult {
 }
 
 // Refresh obtains and validates a new signed snapshot, sends the per-instance
-// heartbeat, and, on disabled policy, first closes admission then accounts the
-// bounded queue through the frozen configuration/ACK flow.
+// heartbeat, then accounts the bounded queue through the frozen
+// configuration/ACK flow before opening enabled admission. A failed ACK
+// lookup keeps Evidence closed without blocking business work.
 func (r *PublisherRuntime) Refresh(ctx context.Context) error {
 	r.refreshMu.Lock()
 	defer r.refreshMu.Unlock()
@@ -103,11 +104,15 @@ func (r *PublisherRuntime) Refresh(ctx context.Context) error {
 		return err
 	}
 	if snapshot.EvidenceAdmission == "disabled" {
-		if _, err := r.drainAndAcknowledge(ctx, snapshot.Revision, false); err != nil {
+		if _, err := r.drainAndAcknowledge(ctx, snapshot.Revision, false, true); err != nil {
 			r.setError(err)
 			return err
 		}
 		return nil
+	}
+	if _, err := r.drainAndAcknowledge(ctx, snapshot.Revision, false, false); err != nil {
+		r.setError(err)
+		return err
 	}
 	r.mu.Lock()
 	r.admitting = true
@@ -145,7 +150,7 @@ func (r *PublisherRuntime) Close(ctx context.Context) (DrainResult, error) {
 	if !hasPolicy {
 		return r.publisher.Close(ctx), errors.New("publisher runtime has no verified policy")
 	}
-	return r.drainAndAcknowledge(ctx, revision, true)
+	return r.drainAndAcknowledge(ctx, revision, true, true)
 }
 
 func (r *PublisherRuntime) LastRefreshError() error {
@@ -195,7 +200,7 @@ func (r *PublisherRuntime) flushCachedQueue(ctx context.Context) {
 	}
 }
 
-func (r *PublisherRuntime) drainAndAcknowledge(ctx context.Context, revision uint64, closePublisher bool) (DrainResult, error) {
+func (r *PublisherRuntime) drainAndAcknowledge(ctx context.Context, revision uint64, closePublisher, requireCandidate bool) (DrainResult, error) {
 	revisionText := strconv.FormatUint(revision, 10)
 	var drain DrainResult
 	if closePublisher {
@@ -208,7 +213,7 @@ func (r *PublisherRuntime) drainAndAcknowledge(ctx context.Context, revision uin
 		return drain, fmt.Errorf("read publisher acknowledgement candidate: %w", err)
 	}
 	if !allowed {
-		if r.hasUnacknowledgedDisposition(revision, drain.LastAcceptedSequence) {
+		if requireCandidate && r.hasUnacknowledgedDisposition(revision, drain.LastAcceptedSequence) {
 			return drain, errors.New("no active publisher acknowledgement candidate for unacknowledged queue disposition")
 		}
 		return drain, nil

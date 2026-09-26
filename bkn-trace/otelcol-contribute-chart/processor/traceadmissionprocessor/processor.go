@@ -370,7 +370,7 @@ func (p *traceAdmissionProcessor) sendAcknowledgement(ctx context.Context, opera
 		disposition = TraceGatewayQueueDispositionV1{State: "gap", Exported: 0, Dropped: p.dropped.Load(), Unaccounted: nil, GapReason: "exporter_telemetry_unavailable"}
 	}
 	ack := TraceGatewayAcknowledgementV1{
-		ContractVersion: traceadmissionsvc.ContractVersion, GatewayInstanceID: p.config.WorkloadIdentity + "#" + p.config.ProcessBootID,
+		ContractVersion: "TraceGatewayAcknowledgementV1", GatewayInstanceID: p.config.WorkloadIdentity + "#" + p.config.ProcessBootID,
 		WorkloadIdentity: p.config.WorkloadIdentity, ProcessBootID: p.config.ProcessBootID, CapturePolicyRevision: snapshot.Revision,
 		AdmissionState: state, Ready: p.gateway.ReadyFor(snapshot.Revision), AcknowledgedAt: p.now().UTC(), QueueDisposition: disposition,
 	}
