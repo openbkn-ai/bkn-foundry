@@ -565,14 +565,19 @@ func (s *Store) RecordEvidencePublisherAcknowledgement(ctx context.Context, ackn
 		return icapturepolicy.ErrInvalidAcknowledgement
 	}
 	return s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
-		if err := s.ensureRegisteredProducerTx(ctx, tx, acknowledgement); err != nil {
+		registrationRevision, err := s.registeredProducerRevisionTx(ctx, tx, acknowledgement)
+		if err != nil {
 			return err
 		}
 		if err := s.recordAcknowledgementTx(ctx, tx, acknowledgement); err != nil {
 			return err
 		}
 		watermark := icapturepolicy.ClosureWatermark{
-			InstanceID: acknowledgement.InstanceID, PolicyRevision: acknowledgement.PolicyRevision,
+			// The operation ACK uses the newly-created disabled revision, but
+			// queued Kafka records carry the last enabled registration revision.
+			// Store the watermark against that record revision so the consumer's
+			// historical lookup can reject late records deterministically.
+			InstanceID: acknowledgement.InstanceID, PolicyRevision: registrationRevision,
 			LastAcceptedSequence: *acknowledgement.LastAcceptedSequence,
 			ClosedAt:             *acknowledgement.AcknowledgedAt, AcknowledgedAt: *acknowledgement.AcknowledgedAt,
 		}
@@ -580,23 +585,26 @@ func (s *Store) RecordEvidencePublisherAcknowledgement(ctx context.Context, ackn
 	})
 }
 
-func (s *Store) ensureRegisteredProducerTx(ctx context.Context, tx *sql.Tx, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
+func (s *Store) registeredProducerRevisionTx(ctx context.Context, tx *sql.Tx, acknowledgement icapturepolicy.ExpectedAcknowledgement) (uint64, error) {
+	var registrationRevision uint64
 	var processBootID, registrationState string
 	err := tx.QueryRowContext(ctx, `
-		SELECT process_boot_id, registration_state
+		SELECT policy_revision, process_boot_id, registration_state
 		FROM bkn_trace_producer_instance_registrations
-		WHERE producer_instance_id = ? AND policy_revision = ? FOR UPDATE`,
-		acknowledgement.InstanceID, acknowledgement.PolicyRevision).Scan(&processBootID, &registrationState)
+		WHERE producer_instance_id = ? AND policy_revision < ?
+		  AND registration_state = 'registered' AND revoked_at IS NULL
+		ORDER BY policy_revision DESC LIMIT 1 FOR UPDATE`,
+		acknowledgement.InstanceID, acknowledgement.PolicyRevision).Scan(&registrationRevision, &processBootID, &registrationState)
 	if errors.Is(err, sql.ErrNoRows) {
-		return icapturepolicy.ErrExpectedSetConflict
+		return 0, icapturepolicy.ErrExpectedSetConflict
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if processBootID != acknowledgement.ProcessBootID || registrationState != "registered" {
-		return icapturepolicy.ErrExpectedSetConflict
+		return 0, icapturepolicy.ErrExpectedSetConflict
 	}
-	return nil
+	return registrationRevision, nil
 }
 
 func (s *Store) recordAcknowledgementTx(ctx context.Context, tx *sql.Tx, acknowledgement icapturepolicy.ExpectedAcknowledgement) error {
