@@ -118,6 +118,41 @@ class MigrationCLITest(unittest.TestCase):
         self.assertEqual(artifact["entry_count"], "1")
         self.assertNotIn("envelope", json.dumps(artifact))
 
+    def test_archive_only_gap_list_snapshots_and_publishes_no_kafka_records(self):
+        source = Source(self.event)
+        producer = Producer()
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            gap_path = root / "ownership-gaps.json"
+            gap_path.write_text(json.dumps([{
+                "source_table": "bkn_backend_trace_outbox", "source_primary_key": "1",
+                "event_id": "evt-1", "payload_hash": "a" * 64,
+            }]), encoding="utf-8")
+            artifact_path, receipt_path = root / "manifest.json", root / "active.json"
+            run(["snapshot", "--manifest-id", "mig-1", "--artifact", str(artifact_path),
+                 "--core-ownership-gaps", str(gap_path)], lambda: source, lambda: producer,
+                output=lambda _value: None)
+            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+            self.assertEqual(artifact["entries"][0]["classification_reason"], "core_ownership_unavailable")
+            receipt_path.write_text(json.dumps({
+                key: artifact[key] for key in ("manifest_id", "contract_sha", "source_snapshot_at", "entry_count", "entries_digest")
+            } | {"state": "active"}), encoding="utf-8")
+            def unexpected_producer():
+                self.fail("archive-only gap reconciliation must not construct KafkaProducer")
+
+            result = run(["publish", "--artifact", str(artifact_path), "--receipt", str(receipt_path),
+                          "--checkpoint", str(root / "checkpoint.json"), "--producer-instance-id", "bridge#boot",
+                          "--core-ownership-gaps", str(gap_path)], lambda: source, unexpected_producer,
+                         output=lambda _value: None)
+            self.assertEqual(result, 0)
+            self.assertEqual(producer.sent, [])
+            gap_path.write_text("[]", encoding="utf-8")
+            with self.assertRaises(ManifestError):
+                run(["publish", "--artifact", str(artifact_path), "--receipt", str(receipt_path),
+                     "--checkpoint", str(root / "checkpoint.json"), "--producer-instance-id", "bridge#boot",
+                     "--core-ownership-gaps", str(gap_path)], lambda: source, lambda: producer,
+                    output=lambda _value: None)
+
     def test_publish_command_requires_matching_active_receipt_before_creating_producer(self):
         source = Source(self.event)
         created = []

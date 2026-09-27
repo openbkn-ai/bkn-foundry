@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -11,6 +12,36 @@ from manifest import ManifestError
 from snapshot import issue_manifest, read_event_snapshot, verify_frozen_entries
 
 MAX_KAFKA_REQUEST_SIZE = 2_097_152
+_HASH = re.compile(r"[0-9a-f]{64}\Z")
+_SOURCE_TABLES = {"bkn_backend_trace_outbox", "ontology_query_trace_outbox"}
+
+
+def _load_core_ownership_gaps(path):
+    if path is None:
+        return None
+    try:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ManifestError("historical core ownership gap list is unreadable") from error
+    if not isinstance(rows, list):
+        raise ManifestError("historical core ownership gap list must be an array")
+    gaps = {}
+    required = {"source_table", "source_primary_key", "event_id", "payload_hash"}
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != required:
+            raise ManifestError("historical core ownership gap row shape is invalid")
+        table, primary_key = row["source_table"], row["source_primary_key"]
+        event_id, payload_hash = row["event_id"], row["payload_hash"]
+        if (table not in _SOURCE_TABLES or not isinstance(primary_key, str) or
+                not primary_key.isdecimal() or str(int(primary_key)) != primary_key or int(primary_key) <= 0 or
+                not isinstance(event_id, str) or not event_id or
+                not isinstance(payload_hash, str) or _HASH.fullmatch(payload_hash) is None):
+            raise ManifestError("historical core ownership gap identity is invalid")
+        key = (table, primary_key)
+        if key in gaps:
+            raise ManifestError("historical core ownership gap row is duplicated")
+        gaps[key] = (event_id, payload_hash)
+    return gaps
 
 
 def _source_connection():
@@ -120,23 +151,26 @@ def run(argv, source_factory=_source_connection, producer_factory=_kafka_produce
     snapshot = commands.add_parser("snapshot", help="create the payload-free frozen source artifact")
     snapshot.add_argument("--manifest-id", required=True)
     snapshot.add_argument("--artifact", required=True)
+    snapshot.add_argument("--core-ownership-gaps", help="exact payload-free archive-only gap list")
     publish = commands.add_parser("publish", help="reread and publish an activated frozen artifact")
     publish.add_argument("--artifact", required=True)
     publish.add_argument("--receipt", required=True)
     publish.add_argument("--checkpoint", required=True)
     publish.add_argument("--producer-instance-id", required=True)
     publish.add_argument("--timeout-seconds", type=float, default=30)
+    publish.add_argument("--core-ownership-gaps", help="same exact gap list used for snapshot")
     args = parser.parse_args(argv)
     output = sys.stdout if output is None else output
+    core_ownership_gaps = _load_core_ownership_gaps(args.core_ownership_gaps)
 
     if args.command == "snapshot":
         connection = source_factory()
         try:
             source_snapshot_at = _begin_readonly_snapshot(connection)
             rows = read_event_snapshot(connection, source_snapshot_at)
-            artifact, _ = issue_manifest(args.manifest_id, source_snapshot_at, rows)
+            artifact, _ = issue_manifest(args.manifest_id, source_snapshot_at, rows, core_ownership_gaps)
             _write_json(args.artifact, artifact)
-            _emit(output, {"manifest_id": args.manifest_id, "entry_count": artifact["entry_count"], "entries_digest": artifact["entries_digest"]})
+            _emit(output, {"manifest_id": artifact["manifest_id"], "entry_count": artifact["entry_count"], "entries_digest": artifact["entries_digest"]})
         finally:
             try:
                 connection.rollback()
@@ -149,22 +183,24 @@ def run(argv, source_factory=_source_connection, producer_factory=_kafka_produce
     try:
         _begin_readonly_snapshot(connection)
         rows = read_event_snapshot(connection, manifest["source_snapshot_at"])
-        events = verify_frozen_entries(rows, manifest, entries)
+        events = verify_frozen_entries(rows, manifest, entries, core_ownership_gaps)
     finally:
         try:
             connection.rollback()
         finally:
             connection.close()
 
-    producer = producer_factory()
+    producer = producer_factory() if any(entry["classification"] == "publish" for entry in entries) else None
     try:
         emitted = publish_encoded_entries(
             manifest, entries, events, args.checkpoint, producer, "openbkn.evidence.v1",
             args.timeout_seconds, args.producer_instance_id,
         )
-        producer.flush(timeout=args.timeout_seconds)
+        if producer is not None:
+            producer.flush(timeout=args.timeout_seconds)
     finally:
-        producer.close(timeout=args.timeout_seconds)
+        if producer is not None:
+            producer.close(timeout=args.timeout_seconds)
     _emit(output, {"manifest_id": manifest["manifest_id"], "published_count": len(emitted), "completed": True})
     return 0
 

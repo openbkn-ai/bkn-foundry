@@ -64,7 +64,7 @@ def _uses_base_stream(stream, base_stream):
     )
 
 
-def classify_row(row, manifest_id, snapshot_at):
+def classify_row(row, manifest_id, snapshot_at, core_ownership_gaps=None):
     """Return the immutable manifest entry and original Event value for one row.
 
     The caller supplies rows from a transactionally frozen source snapshot. This
@@ -116,11 +116,21 @@ def classify_row(row, manifest_id, snapshot_at):
         for key in _NUMERIC_IDENTITY
     ):
         return _coverage_entry(row, manifest_id, service, table, "bad_payload"), None
+    gap_key = (table, str(row["outbox_id"]))
+    gap_identity = core_ownership_gaps.get(gap_key) if core_ownership_gaps is not None else None
+    if gap_identity is not None and (row.get("event_id"), row.get("payload_hash")) != gap_identity:
+        raise ManifestError("historical core ownership gap source identity changed")
     if any(row.get(key) != event[key] for key in _STRING_IDENTITY) or any(
         type(row.get(key)) is not int or row[key] != event[key]
         for key in _NUMERIC_IDENTITY
     ):
         return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
+    if gap_identity is not None:
+        if status not in _PUBLISH:
+            raise ManifestError("historical core ownership gap requires pending or retry source status")
+        if gap_identity != (event["event_id"], event["payload_hash"]):
+            raise ManifestError("historical core ownership gap identity changed")
+        return _coverage_entry(row, manifest_id, service, table, "core_ownership_unavailable"), None
     if event["producer_id"] != expected_producer_id or not _uses_base_stream(event["producer_stream_id"], base_stream):
         return _coverage_entry(row, manifest_id, service, table, "source_identity_mismatch"), None
     value_bytes = json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode("utf-8")

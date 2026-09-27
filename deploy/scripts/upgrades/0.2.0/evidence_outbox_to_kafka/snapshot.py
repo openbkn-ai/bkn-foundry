@@ -1,5 +1,7 @@
 """Read-only, timestamp-bounded snapshots of the two historical Event tables."""
 
+import hashlib
+import json
 from datetime import datetime, timezone
 
 from manifest import CONTRACT_SHA, ManifestError, entries_digest
@@ -11,7 +13,21 @@ _EVENT_TABLES = (
 )
 
 
-def issue_manifest(manifest_id, source_snapshot_at, rows):
+def _require_exact_archive_gap_rows(rows, core_ownership_gaps):
+    if core_ownership_gaps is None:
+        return
+    source_keys = {(row["source_table"], str(row["outbox_id"])) for row in rows}
+    if source_keys != set(core_ownership_gaps):
+        raise ManifestError("historical core ownership gap list must match every source row")
+
+
+def _archive_gap_suffix(core_ownership_gaps):
+    identities = [(*key, *core_ownership_gaps[key]) for key in sorted(core_ownership_gaps)]
+    digest = hashlib.sha256(json.dumps(identities, separators=(",", ":"), ensure_ascii=True).encode("ascii")).hexdigest()
+    return ":gap:" + digest
+
+
+def issue_manifest(manifest_id, source_snapshot_at, rows, core_ownership_gaps=None):
     """Create the frozen payload-free C1 artifact and an in-memory Event map."""
     if not isinstance(manifest_id, str) or not manifest_id:
         raise ManifestError("manifest ID is required")
@@ -24,9 +40,16 @@ def issue_manifest(manifest_id, source_snapshot_at, rows):
     if snapshot.tzinfo is None or snapshot.microsecond % 1000:
         raise ManifestError("source snapshot timestamp must be timezone-aware with millisecond precision")
     snapshot_at = snapshot.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    _require_exact_archive_gap_rows(rows, core_ownership_gaps)
+    if core_ownership_gaps is not None:
+        manifest_id += _archive_gap_suffix(core_ownership_gaps)
+        if len(manifest_id) > 128:
+            raise ManifestError("historical archive manifest ID exceeds center-store limit")
     entries, events = [], {}
     for row in rows:
-        entry, event = classify_row(row, manifest_id, snapshot_at)
+        entry, event = classify_row(row, manifest_id, snapshot_at, core_ownership_gaps)
+        if core_ownership_gaps is not None and entry["classification_reason"] != "core_ownership_unavailable":
+            raise ManifestError("historical core ownership gap row cannot be classified as publish")
         entries.append(entry)
         if event is not None:
             events[(entry["source_table"], entry["source_primary_key"])] = event
@@ -72,7 +95,7 @@ def read_event_snapshot(connection, source_snapshot_at):
     return sorted(rows, key=lambda row: (row["source_table"], row["outbox_id"]))
 
 
-def verify_frozen_entries(rows, manifest, entries):
+def verify_frozen_entries(rows, manifest, entries, core_ownership_gaps=None):
     """Re-classify a bridge source reread against a payload-free artifact.
 
     The artifact contains only immutable C1 entries. Event values remain in
@@ -82,9 +105,14 @@ def verify_frozen_entries(rows, manifest, entries):
     """
     if not isinstance(manifest, dict) or manifest.get("entry_count") != str(len(entries)):
         raise ManifestError("frozen artifact count does not match manifest")
+    _require_exact_archive_gap_rows(rows, core_ownership_gaps)
+    if core_ownership_gaps is not None and not manifest.get("manifest_id", "").endswith(_archive_gap_suffix(core_ownership_gaps)):
+        raise ManifestError("historical core ownership gap list differs from frozen manifest")
     actual_entries, events = [], {}
     for row in rows:
-        entry, event = classify_row(row, manifest.get("manifest_id"), manifest.get("source_snapshot_at"))
+        entry, event = classify_row(row, manifest.get("manifest_id"), manifest.get("source_snapshot_at"), core_ownership_gaps)
+        if core_ownership_gaps is not None and entry["classification_reason"] != "core_ownership_unavailable":
+            raise ManifestError("historical core ownership gap row cannot be classified as publish")
         actual_entries.append(entry)
         if event is not None:
             events[(entry["source_table"], entry["source_primary_key"])] = event

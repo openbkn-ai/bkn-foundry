@@ -6,6 +6,25 @@ package evidencemigration
 
 import "testing"
 
+func TestHistoricalCoreOwnershipGapAllowsOnlyUnpublishedSourceRows(t *testing.T) {
+	entry := frozenEntry{
+		Classification: "coverage_gap", ClassificationReason: "core_ownership_unavailable",
+		ManifestID: "mig-1", SourcePrimaryKey: "1", SourceService: "bkn-backend",
+		SourceStatus: "pending", SourceTable: "bkn_backend_trace_outbox",
+	}
+	if err := validateArtifactEntry(entry); err != nil {
+		t.Fatalf("pending historical gap must be accepted: %v", err)
+	}
+	entry.SourceStatus = "retry"
+	if err := validateArtifactEntry(entry); err != nil {
+		t.Fatalf("retry historical gap must be accepted: %v", err)
+	}
+	entry.SourceStatus = "delivered"
+	if err := validateArtifactEntry(entry); err == nil {
+		t.Fatal("delivered record must not be silently reclassified as a gap")
+	}
+}
+
 func TestManifestArtifactConvertsOnlyValidFrozenC1Entries(t *testing.T) {
 	entry := ManifestArtifactEntry{
 		Classification: "coverage_gap", ClassificationReason: "abandoned", ManifestID: "mig-1",

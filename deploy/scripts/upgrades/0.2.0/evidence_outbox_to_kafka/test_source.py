@@ -28,6 +28,19 @@ class SourceTest(unittest.TestCase):
         self.assertEqual(record["headers"], {"content-type": "application/json", "bkn-trace-schema-version": "3.0.0", "capture_policy_revision": "0", "producer_instance_id": "bridge#boot-1", "bkn-evidence-record-class": "migration", "bkn-evidence-migration-id": "mig-1"})
         self.assertEqual(json.loads(record["value"]), self.event)
 
+    def test_exact_historical_core_ownership_gap_never_produces_a_record(self):
+        gaps = {("bkn_backend_trace_outbox", "17"): ("evt-1", "a" * 64)}
+        entry, event = classify_row(self.row, "mig-1", self.snapshot, core_ownership_gaps=gaps)
+        self.assertEqual((entry["classification"], entry["classification_reason"], event),
+                         ("coverage_gap", "core_ownership_unavailable", None))
+        self.assertIsNone(entry["event_id"])
+        with self.assertRaises(ManifestError):
+            classify_row(dict(self.row, event_id="evt-drifted"), "mig-1", self.snapshot,
+                         core_ownership_gaps=gaps)
+        with self.assertRaises(ManifestError):
+            classify_row(dict(self.row, status="delivered"), "mig-1", self.snapshot,
+                         core_ownership_gaps=gaps)
+
     def test_statuses_classify_without_source_mutation(self):
         for status, classification, reason in (("retry", "publish", "retry"), ("delivered", "verify_delivered", "delivered"), ("conflict", "coverage_gap", "conflict"), ("abandoned", "coverage_gap", "abandoned"), ("dlq", "coverage_gap", "dlq")):
             with self.subTest(status=status):

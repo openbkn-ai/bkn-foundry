@@ -218,6 +218,10 @@ func validateArtifactEntry(entry frozenEntry) error {
 			if entry.SourceStatus != "pending" && entry.SourceStatus != "retry" && entry.SourceStatus != "processing" && entry.SourceStatus != "delivered" {
 				return errors.New("evidence migration coverage-gap reason is inconsistent with source status")
 			}
+		case "core_ownership_unavailable":
+			if entry.SourceStatus != "pending" && entry.SourceStatus != "retry" {
+				return errors.New("historical core ownership gap requires pending or retry source status")
+			}
 		default:
 			return fmt.Errorf("evidence migration coverage-gap reason %q is invalid", entry.ClassificationReason)
 		}
