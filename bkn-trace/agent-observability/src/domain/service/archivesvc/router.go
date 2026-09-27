@@ -39,6 +39,15 @@ func (source TraceBundleSource) Freeze(ctx context.Context, kind observabilityvo
 	}
 	return source.Technical.Enrich(ctx, candidates)
 }
+
+func (source TraceBundleSource) Count(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) (int, error) {
+	counter, ok := source.Core.(CandidateCounter)
+	if !ok {
+		return 0, fmt.Errorf("trace archive source does not support candidate count")
+	}
+	return counter.Count(ctx, kind, archiveRange)
+}
+
 func (source TraceBundleSource) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, candidates []Candidate) error {
 	if source.Technical != nil {
 		if err := source.Technical.Purge(ctx, candidates); err != nil {
@@ -65,6 +74,19 @@ func (router Router) Freeze(ctx context.Context, kind observabilityvo.ArchiveKin
 	}
 	return source.Freeze(ctx, kind, archiveRange)
 }
+
+func (router Router) Count(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) (int, error) {
+	source, err := router.source(kind)
+	if err != nil {
+		return 0, err
+	}
+	if counter, ok := source.(CandidateCounter); ok {
+		return counter.Count(ctx, kind, archiveRange)
+	}
+	candidates, err := source.Freeze(ctx, kind, archiveRange)
+	return len(candidates), err
+}
+
 func (router Router) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, candidates []Candidate) error {
 	source, err := router.source(kind)
 	if err != nil {

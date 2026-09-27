@@ -51,6 +51,12 @@ type Source interface {
 	Purge(context.Context, observabilityvo.ArchiveKind, []Candidate) error
 }
 
+// CandidateCounter lets read-only overviews avoid materializing archive bundles.
+// Create still freezes the complete candidate set before writing or purging.
+type CandidateCounter interface {
+	Count(context.Context, observabilityvo.ArchiveKind, observabilityvo.ArchiveRange) (int, error)
+}
+
 type ObjectStore interface {
 	WriteAndVerify(context.Context, Job, []Candidate) (string, error)
 }
@@ -153,7 +159,15 @@ func (service *Service) Overview(ctx context.Context, kind observabilityvo.Archi
 		return Overview{}, fmt.Errorf("invalid archive overview")
 	}
 	archiveRange := observabilityvo.NewArchiveRange(kind, service.now().UTC(), service.location)
-	candidates, err := service.source.Freeze(ctx, kind, archiveRange)
+	var count int
+	var err error
+	if counter, ok := service.source.(CandidateCounter); ok {
+		count, err = counter.Count(ctx, kind, archiveRange)
+	} else {
+		var candidates []Candidate
+		candidates, err = service.source.Freeze(ctx, kind, archiveRange)
+		count = len(candidates)
+	}
 	if err != nil {
 		return Overview{}, err
 	}
@@ -165,7 +179,7 @@ func (service *Service) Overview(ctx context.Context, kind observabilityvo.Archi
 	} else if store, ok := service.objectStore.(interface{ Ready() bool }); ok {
 		ready = store.Ready()
 	}
-	return Overview{Kind: kind, RetentionDays: kind.RetentionDays(), Range: archiveRange, CandidateCount: len(candidates), StorageReady: ready}, nil
+	return Overview{Kind: kind, RetentionDays: kind.RetentionDays(), Range: archiveRange, CandidateCount: count, StorageReady: ready}, nil
 }
 
 func (service *Service) RetryCleanup(ctx context.Context, jobID string) (Job, error) {

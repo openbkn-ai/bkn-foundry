@@ -61,6 +61,17 @@ func (source *TraceArchiveSource) Freeze(ctx context.Context, kind observability
 	return candidates, rows.Err()
 }
 
+// Count uses exactly the Freeze eligibility predicate without fetching or
+// serializing Interaction packages for a read-only archive overview.
+func (source *TraceArchiveSource) Count(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) (int, error) {
+	if kind != observabilityvo.ArchiveKindTrace {
+		return 0, nil
+	}
+	var count int
+	err := source.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM bkn_trace_interactions WHERE execution_status<>? AND terminal_at<?`, sessionvo.InteractionActive, archiveRange.To.UTC()).Scan(&count)
+	return count, err
+}
+
 func (source *TraceArchiveSource) packageInteraction(ctx context.Context, interactionID string) ([]byte, time.Time, error) {
 	var interaction sessionvo.Interaction
 	var conversation sessionvo.Conversation

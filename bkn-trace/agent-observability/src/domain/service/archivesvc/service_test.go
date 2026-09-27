@@ -102,6 +102,20 @@ func TestCompletedArchiveDoesNotRetainRetryPayload(t *testing.T) {
 	}
 }
 
+func TestTraceOverviewCountsWithoutFreezingArchivePayloads(t *testing.T) {
+	now := time.Date(2026, time.September, 27, 8, 0, 0, 0, time.UTC)
+	source := &countingSource{count: 184}
+	service := New(NewMemoryStore(), source, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
+
+	overview, err := service.Overview(context.Background(), observabilityvo.ArchiveKindTrace)
+	if err != nil {
+		t.Fatalf("trace overview: %v", err)
+	}
+	if overview.CandidateCount != 184 || source.freezeCalls != 0 || source.countCalls != 1 {
+		t.Fatalf("overview must count without freezing: overview=%+v source=%+v", overview, source)
+	}
+}
+
 func TestOpenDownloadReadsTheArchivedDataBundleInsteadOfReturningStorageURL(t *testing.T) {
 	store := NewMemoryStore()
 	job := Job{ID: "arc_log_1", Kind: observabilityvo.ArchiveKindLog, Status: observabilityvo.ArchiveStatusCompleted, ManifestRef: "archive/manifest.json"}
@@ -132,6 +146,24 @@ type fakeSource struct {
 	candidates []Candidate
 	purged     map[string]bool
 	purgeErr   error
+}
+
+type countingSource struct {
+	count       int
+	countCalls  int
+	freezeCalls int
+}
+
+func (source *countingSource) Count(_ context.Context, _ observabilityvo.ArchiveKind, _ observabilityvo.ArchiveRange) (int, error) {
+	source.countCalls++
+	return source.count, nil
+}
+func (source *countingSource) Freeze(_ context.Context, _ observabilityvo.ArchiveKind, _ observabilityvo.ArchiveRange) ([]Candidate, error) {
+	source.freezeCalls++
+	return nil, errors.New("overview must not freeze archive payloads")
+}
+func (source *countingSource) Purge(_ context.Context, _ observabilityvo.ArchiveKind, _ []Candidate) error {
+	return nil
 }
 
 func (source *fakeSource) Freeze(_ context.Context, _ observabilityvo.ArchiveKind, _ observabilityvo.ArchiveRange) ([]Candidate, error) {
