@@ -45,6 +45,9 @@ networkPolicy:
     - namespace: ""
       podLabels:
         app: bkn-agent
+    - namespace: openbkn
+      podLabels:
+        module: ontology-query
 
 ingress:
   enabled: true
