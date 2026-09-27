@@ -130,6 +130,64 @@ func TestAcquireSessionStopsRetryWhenContextIsCanceled(t *testing.T) {
 	}
 }
 
+func TestAcquireSessionRetriesSameSlotAfterSuccessfulCreateStillStarting(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockSandBoxControlPlane(ctrl)
+	pool := &sessionPoolImpl{
+		client:             client,
+		sessions:           map[string]*sessionItem{},
+		maxSessions:        3,
+		maxConcurrentTasks: 10,
+		logger:             logger.DefaultLogger(),
+		templateID:         "python-basic",
+	}
+	gomock.InOrder(
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(false, nil, nil),
+		client.EXPECT().CreateSession(gomock.Any(), gomock.Any()).Return(nil, nil),
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(false, nil, nil),
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(false, nil, nil),
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(true,
+			&interfaces.SessionDetail{ID: "sess_aoi_0", Status: interfaces.SessionStatusCreating}, nil),
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(true,
+			&interfaces.SessionDetail{ID: "sess_aoi_0", Status: interfaces.SessionStatusRunning}, nil),
+	)
+	id, err := pool.AcquireSession(context.Background())
+	if err != nil {
+		t.Fatalf("AcquireSession: %v", err)
+	}
+	if id != "sess_aoi_0" {
+		t.Fatalf("acquired slot = %s, want sess_aoi_0", id)
+	}
+}
+
+func TestAcquireSessionRecreatesDeletedTerminalSession(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockSandBoxControlPlane(ctrl)
+	pool := &sessionPoolImpl{
+		client:             client,
+		sessions:           map[string]*sessionItem{},
+		maxSessions:        3,
+		maxConcurrentTasks: 10,
+		logger:             logger.DefaultLogger(),
+		templateID:         "python-basic",
+	}
+	gomock.InOrder(
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(false, nil, nil),
+		client.EXPECT().CreateSession(gomock.Any(), gomock.Any()).Return(nil, nil),
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(true,
+			&interfaces.SessionDetail{ID: "sess_aoi_0", Status: interfaces.SessionStatusFailed}, nil),
+		client.EXPECT().DeleteSession(gomock.Any(), "sess_aoi_0").Return(nil),
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(false, nil, nil),
+		client.EXPECT().CreateSession(gomock.Any(), gomock.Any()).Return(nil, nil),
+		client.EXPECT().QuerySession(gomock.Any(), "sess_aoi_0").Return(true,
+			&interfaces.SessionDetail{ID: "sess_aoi_0", Status: interfaces.SessionStatusRunning}, nil),
+	)
+	id, err := pool.AcquireSession(context.Background())
+	if err != nil || id != "sess_aoi_0" {
+		t.Fatalf("AcquireSession = %q, %v; want sess_aoi_0", id, err)
+	}
+}
+
 func TestExecuteCodeCreatesSessionWithBusinessContextEnv(t *testing.T) {
 	Convey("ExecuteCode should pass business context env vars when creating a sandbox session", t, func() {
 		ctrl := gomock.NewController(t)

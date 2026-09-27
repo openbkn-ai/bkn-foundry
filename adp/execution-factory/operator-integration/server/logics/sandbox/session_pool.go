@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -74,8 +75,11 @@ type sessionPoolImpl struct {
 }
 
 var (
-	poolInstance *sessionPoolImpl
-	poolOnce     sync.Once
+	poolInstance                 *sessionPoolImpl
+	poolOnce                     sync.Once
+	errSessionCreateFailed       = stderrors.New("sandbox session creation failed")
+	errSessionCreatedButNotReady = stderrors.New("sandbox session created but not ready")
+	errSessionTerminalDeleted    = stderrors.New("sandbox terminal session deleted")
 )
 
 // GetSessionPool Gets the session pool instance.
@@ -200,7 +204,7 @@ func (p *sessionPoolImpl) AcquireSession(ctx context.Context) (sessionID string,
 }
 
 func (p *sessionPoolImpl) acquireSessionWithEnv(ctx context.Context, envVars map[string]any) (sessionID string, err error) {
-	return p.acquireSessionWithOptions(ctx, p.slotRetryBudget(), envVars)
+	return p.acquireSessionWithOptions(ctx, p.slotRetryBudget(), 0, "", envVars)
 }
 
 func (p *sessionPoolImpl) slotRetryBudget() int {
@@ -230,10 +234,10 @@ func (p *sessionPoolImpl) initSessions() {
 
 // acquireSession Gets a session from the session pool.
 func (p *sessionPoolImpl) acquireSession(ctx context.Context, retryCount int) (sessionID string, err error) {
-	return p.acquireSessionWithOptions(ctx, retryCount, nil)
+	return p.acquireSessionWithOptions(ctx, retryCount, 0, "", nil)
 }
 
-func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCount int, envVars map[string]any) (sessionID string, err error) {
+func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCount, startSlot int, createdID string, envVars map[string]any) (sessionID string, err error) {
 	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -242,6 +246,8 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 	})
 	// Do you need to retry?.
 	var needRetry bool
+	nextStartSlot := startSlot
+	nextCreatedID := createdID
 	defer func(count int) {
 		if !needRetry { // No need to retry.
 			return
@@ -265,7 +271,7 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 			err = ctx.Err()
 			return
 		}
-		sessionID, err = p.acquireSessionWithOptions(ctx, count-1, envVars)
+		sessionID, err = p.acquireSessionWithOptions(ctx, count-1, nextStartSlot, nextCreatedID, envVars)
 	}(retryCount)
 	// 1. Stack allocation strategy: Find the session with the highest load but not full.
 	bestSession := p.findBestSession()
@@ -277,17 +283,15 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 
 	// 2. Try to find a slot that can be created.
 	var targetID string
-	// A create can fail after QuerySession returns 404 when an unmanaged Pod
-	// still occupies that deterministic ID. Retry another free slot instead of
-	// selecting the same blocked ID on every attempt.
-	startSlot := p.slotRetryBudget() - retryCount
-	if startSlot < 0 {
-		startSlot = 0
-	}
+	// Only a failed CreateSession advances to another deterministic slot.
+	// A successful create whose Pod is still starting must retry the same ID.
+	targetSlot := -1
 	for i := 0; i < p.maxSessions; i++ {
-		id := fmt.Sprintf("%s%d", sessionIDPrefix, (startSlot+i)%p.maxSessions)
+		slot := (startSlot + i) % p.maxSessions
+		id := fmt.Sprintf("%s%d", sessionIDPrefix, slot)
 		if _, ok := p.getSessionItem(id); !ok {
 			targetID = id
+			targetSlot = slot
 			break
 		}
 	}
@@ -304,8 +308,16 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 
 	// 5. Perform remote creation.
 	p.logger.Infof("Creating new session slot: %s", targetID)
-	if err = p.ensureRemoteSessionWithEnv(ctx, targetID, envVars); err != nil {
+	if err = p.ensureRemoteSessionWithEnv(ctx, targetID, envVars, targetID == createdID); err != nil {
 		p.logger.Errorf("Failed to create session %s: %v", targetID, err)
+		if stderrors.Is(err, errSessionCreateFailed) {
+			nextStartSlot = (targetSlot + 1) % p.maxSessions
+			nextCreatedID = ""
+		} else if stderrors.Is(err, errSessionCreatedButNotReady) {
+			nextCreatedID = targetID
+		} else if stderrors.Is(err, errSessionTerminalDeleted) {
+			nextCreatedID = ""
+		}
 		// A failed create never adds a local session. Do not remove this ID:
 		// another concurrent acquire may have created and registered it.
 		// Try again.
@@ -316,17 +328,17 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 }
 
 func (p *sessionPoolImpl) ensureRemoteSession(ctx context.Context, sessionID string) error {
-	return p.ensureRemoteSessionWithEnv(ctx, sessionID, nil)
+	return p.ensureRemoteSessionWithEnv(ctx, sessionID, nil, false)
 }
 
-func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessionID string, envVars map[string]any) error {
+func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessionID string, envVars map[string]any, alreadyCreated bool) error {
 	// Check existence before creating.
 	exists, _, err := p.querySessionAndCache(ctx, sessionID)
 	if err != nil {
 		p.logger.Errorf("QuerySession failed for session %s: %v", sessionID, err)
 		return err
 	}
-	if !exists {
+	if !exists && !alreadyCreated {
 		// Execute create.
 		req := &interfaces.CreateSessionReq{
 			ID:         sessionID,
@@ -341,13 +353,20 @@ func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessio
 		_, err := p.client.CreateSession(ctx, req)
 		if err != nil {
 			p.logger.Warnf("[ensureRemoteSession] Failed to create session %s: %v", sessionID, err)
-			return err
+			return fmt.Errorf("%w: %v", errSessionCreateFailed, err)
 		}
+		alreadyCreated = true
 	}
 
 	// Waiting for Running status.
 	err = p.waitForSessionRunning(ctx, sessionID)
 	if err != nil {
+		if stderrors.Is(err, errSessionTerminalDeleted) {
+			return err
+		}
+		if alreadyCreated {
+			return fmt.Errorf("%w: %v", errSessionCreatedButNotReady, err)
+		}
 		return err
 	}
 	p.addSession(sessionID)
@@ -449,7 +468,7 @@ func (p *sessionPoolImpl) waitForSessionRunning(ctx context.Context, sessionID s
 					p.logger.Warnf("Failed to delete session %s before creation: %v", sessionID, err)
 					return err
 				}
-				return fmt.Errorf("session %s failed to create, status: %s", sessionID, detail.Status)
+				return fmt.Errorf("%w: session %s failed to create, status: %s", errSessionTerminalDeleted, sessionID, detail.Status)
 			case interfaces.SessionStatusCreating:
 				// Keep waiting.
 			}
