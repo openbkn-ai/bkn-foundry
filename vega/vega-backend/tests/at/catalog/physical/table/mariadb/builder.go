@@ -78,9 +78,7 @@ func (b *MariaDBPayloadBuilder) BuildFullCreatePayload() map[string]any {
 	// 添加MariaDB options
 	connectorConfig := payload["connector_config"].(map[string]any)
 	connectorConfig["options"] = map[string]any{
-		"charset":   "utf8mb4",
-		"parseTime": "true",
-		"loc":       "Local",
+		"charset": "utf8mb4",
 	}
 
 	return payload

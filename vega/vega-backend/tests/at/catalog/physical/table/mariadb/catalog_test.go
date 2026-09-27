@@ -1165,22 +1165,22 @@ func TestMariaDBSpecificOptions(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 		})
 
-		Convey("MD602: MariaDB parseTime选项测试", func() {
+		Convey("MD602: MariaDB拒绝配置内置parseTime参数", func() {
 			options := map[string]any{
 				"parseTime": "true",
 			}
 			payload := builder.BuildCreatePayloadWithOptions(options)
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
-			So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
-		Convey("MD603: MariaDB loc选项测试（时区）", func() {
+		Convey("MD603: MariaDB拒绝配置内置loc参数", func() {
 			options := map[string]any{
 				"loc": "Local",
 			}
 			payload := builder.BuildCreatePayloadWithOptions(options)
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
-			So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("MD604: MariaDB timeout选项测试", func() {

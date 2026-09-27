@@ -307,7 +307,21 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 		err := connector.validateDatabases(context.Background())
 
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "databases not found")
+		assert.ErrorContains(t, err, "database not found: missing")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("reports first missing database", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "first_missing", "second_missing"})
+		defer cleanup()
+
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
+			WithArgs("app", "first_missing", "second_missing").
+			WillReturnRows(sqlmock.NewRows([]string{"Database"}).AddRow("app"))
+
+		err := connector.validateDatabases(context.Background())
+
+		require.EqualError(t, err, "database not found: first_missing")
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

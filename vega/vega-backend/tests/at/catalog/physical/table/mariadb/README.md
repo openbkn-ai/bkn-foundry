@@ -135,8 +135,8 @@
 | 用例ID | 测试场景 | 预期结果 |
 |--------|----------|----------|
 | MD601 | MariaDB charset 选项测试（utf8mb4） | 201 Created |
-| MD602 | MariaDB parseTime 选项测试 | 201 Created |
-| MD603 | MariaDB loc 选项测试（时区） | 201 Created |
+| MD602 | 拒绝配置内置的 parseTime 参数 | 400 Bad Request |
+| MD603 | 拒绝配置内置的 loc 参数 | 400 Bad Request |
 | MD604 | MariaDB timeout 选项测试 | 201 Created |
 | MD605 | MariaDB SSL 连接测试 | 201 Created 或 400 |
 | MD606 | MariaDB collation 选项测试 | 201 Created |

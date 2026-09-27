@@ -340,7 +340,7 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 	// Report the first configured database missing from the query result.
 	for _, db := range c.config.Databases {
 		if _, exists := found[db]; !exists {
-			return fmt.Errorf("databases not found: %v", db)
+			return fmt.Errorf("database not found: %s", db)
 		}
 	}
 
