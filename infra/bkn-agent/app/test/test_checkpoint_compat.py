@@ -28,3 +28,11 @@ def test_checkpoint_keeps_existing_callable_bytes_escape(monkeypatch):
     ensure_safe_escape()
 
     assert aiomysql.connection.escape_bytes_prefixed is original
+
+
+def test_checkpoint_restores_missing_bytes_escape_symbol(monkeypatch):
+    monkeypatch.delattr(aiomysql.connection, "escape_bytes_prefixed", raising=False)
+
+    checkpoint._ensure_safe_aiomysql_bytes_escape()
+
+    assert aiomysql.connection.escape_bytes_prefixed is converters.escape_bytes

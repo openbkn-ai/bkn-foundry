@@ -12,7 +12,7 @@ def _ensure_safe_aiomysql_bytes_escape() -> None:
     import aiomysql.connection
     from pymysql.converters import escape_bytes
 
-    if not callable(aiomysql.connection.escape_bytes_prefixed):
+    if not callable(getattr(aiomysql.connection, "escape_bytes_prefixed", None)):
         aiomysql.connection.escape_bytes_prefixed = escape_bytes
 
 
