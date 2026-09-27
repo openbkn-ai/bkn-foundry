@@ -86,6 +86,21 @@ func NewObjectSchemaAccess() interfaces.ObjectSchemaAccess {
 	return NewOntologyQueryAccess().(interfaces.ObjectSchemaAccess)
 }
 
+// Only a credential verified at the public boundary may supply the
+// application principal for downstream Evidence ownership.
+func withVerifiedApplicationPrincipal(ctx context.Context, headers map[string]string) map[string]string {
+	auth, ok := common.GetAccountAuthContextFromCtx(ctx)
+	if !ok || auth == nil || auth.TokenInfo == nil ||
+		(auth.AuthMethod != "oauth" && auth.AuthMethod != "api_key") ||
+		headers["x-account-id"] != auth.AccountID {
+		return headers
+	}
+	if clientID := strings.TrimSpace(auth.TokenInfo.ClientID); clientID != "" {
+		headers["X-BKN-Application-Principal-ID"] = clientID
+	}
+	return headers
+}
+
 // GetObjectTypeSchema retrieves the authorization-safe schema and effective
 // property permissions. Response bodies are never logged because even a
 // malformed downstream response may contain protected values.
@@ -184,7 +199,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	}
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
-	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", ontologyQueryIdentity(uri+"?"+query.Encode(), req))
+	header := withVerifiedApplicationPrincipal(ctx, common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", ontologyQueryIdentity(uri+"?"+query.Encode(), req)))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, req)
@@ -581,7 +596,7 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	}
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
-	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.subgraph.explore", ontologyQueryIdentity(uri+"?"+query.Encode(), req))
+	header := withVerifiedApplicationPrincipal(ctx, common.GetHeaderForChildOperationIdentity(ctx, "ontology.subgraph.explore", ontologyQueryIdentity(uri+"?"+query.Encode(), req)))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
@@ -635,7 +650,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] kn=%s", req.KnID)
 
 	// Build request headers.
-	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.subgraph.query", ontologyQueryIdentity(uri, body))
+	header := withVerifiedApplicationPrincipal(ctx, common.GetHeaderForChildOperationIdentity(ctx, "ontology.subgraph.query", ontologyQueryIdentity(uri, body)))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
@@ -673,7 +688,7 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 	if req == nil {
 		req = &interfaces.MetricQueryDownstreamReq{}
 	}
-	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.metric.query", ontologyQueryIdentity(uri+"?"+query.Encode(), req))
+	header := withVerifiedApplicationPrincipal(ctx, common.GetHeaderForChildOperationIdentity(ctx, "ontology.metric.query", ontologyQueryIdentity(uri+"?"+query.Encode(), req)))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, req)
 	if err != nil {

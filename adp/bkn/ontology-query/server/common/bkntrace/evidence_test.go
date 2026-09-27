@@ -57,13 +57,14 @@ func TestDataQueryEvidenceCarriesOwnerAndOnlyTrustedCoreOperation(t *testing.T) 
 		t.Fatalf("core operation ID = %q, want omitted local ID", core.OperationID)
 	}
 	req.OperationScopePresent = true
+	req.CoreOperationID = "op_core_registered_001"
 	ec, _ = contextFromRequest(testTraceContext(), req)
 	core, err = toCoreEvent(event, ec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if core.OperationID != req.OperationID {
-		t.Fatalf("core operation ID = %q, want upstream %q", core.OperationID, req.OperationID)
+	if core.OperationID != req.CoreOperationID {
+		t.Fatalf("core operation ID = %q, want registered parent %q", core.OperationID, req.CoreOperationID)
 	}
 }
 

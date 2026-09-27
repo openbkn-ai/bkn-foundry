@@ -22,6 +22,13 @@ const headerBKNEvidenceEventID = "bkn-evidence-event-id"
 
 func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hydra.Visitor) bkntrace.RequestContext {
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	coreOperationID := ""
+	if strings.HasPrefix(c.Request.URL.Path, "/api/ontology-query/in/v1/") {
+		coreOperationID = common.SanitizeBusinessTraceID(c.GetHeader(common.HeaderBKNParentOperationID))
+		if coreOperationID == "" && strings.TrimSpace(c.GetHeader(common.HeaderBKNOperationID)) == traceContext.OperationID {
+			coreOperationID = traceContext.OperationID
+		}
+	}
 	return bkntrace.RequestContext{
 		RequestID:              traceContext.RequestID,
 		AccountID:              visitor.ID,
@@ -33,7 +40,8 @@ func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hy
 		InteractionID:          traceContext.InteractionID,
 		SessionScopePresent:    traceContext.ConversationID != "" && traceContext.InteractionID != "",
 		OperationID:            traceContext.OperationID,
-		OperationScopePresent:  strings.TrimSpace(c.GetHeader(common.HeaderBKNOperationID)) != "" && strings.TrimSpace(c.GetHeader(common.HeaderBKNOperationID)) == traceContext.OperationID,
+		CoreOperationID:        coreOperationID,
+		OperationScopePresent:  coreOperationID != "",
 		CausationEventID:       traceContext.CausationEventID,
 		ClaimID:                traceContext.ClaimID,
 		Attempt:                traceContext.Attempt,

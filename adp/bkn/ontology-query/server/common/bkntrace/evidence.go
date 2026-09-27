@@ -58,6 +58,7 @@ type RequestContext struct {
 	InteractionID          string
 	SessionScopePresent    bool
 	OperationID            string
+	CoreOperationID        string
 	OperationScopePresent  bool
 	CausationEventID       string
 	ClaimID                string
@@ -98,6 +99,7 @@ type eventContext struct {
 	conversationID         string
 	interactionID          string
 	operationID            string
+	coreOperationID        string
 	operationScopePresent  bool
 	causationEventID       string
 	attempt                int
@@ -218,7 +220,7 @@ func toCoreEvent(event Event, ec eventContext) (coreEvidenceEvent, error) {
 	}
 	coreOperationID := ""
 	if ec.operationScopePresent {
-		coreOperationID = ec.operationID
+		coreOperationID = ec.coreOperationID
 	}
 	return coreEvidenceEvent{
 		EventID: eventID, EventType: eventType, ConversationID: ec.conversationID,
@@ -349,6 +351,7 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		conversationID:         strings.TrimSpace(reqCtx.ConversationID),
 		interactionID:          interactionID,
 		operationID:            operationID,
+		coreOperationID:        strings.TrimSpace(reqCtx.CoreOperationID),
 		operationScopePresent:  reqCtx.OperationScopePresent,
 		causationEventID:       strings.TrimSpace(reqCtx.CausationEventID),
 		attempt:                normalizedAttempt(reqCtx.Attempt),

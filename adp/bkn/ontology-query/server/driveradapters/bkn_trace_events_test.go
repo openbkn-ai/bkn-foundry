@@ -21,7 +21,7 @@ import (
 
 func TestOntologyTraceRequestContextUsesVerifiedOwnerAndIncomingOperation(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("GET", "/", nil)
+	c.Request = httptest.NewRequest("GET", "/api/ontology-query/in/v1/knowledge-networks/kn/object-types/ot", nil)
 	c.Request.Header.Set("x-bkn-delegation-id", "spoofed")
 	traceCtx := common.TraceContext{RequestID: "req_ontology_owner_001", ConversationID: "conv-1", InteractionID: "int-1", OperationID: "op-local"}
 	ctx := common.SetTraceContextToCtx(context.Background(), traceCtx)
@@ -34,6 +34,11 @@ func TestOntologyTraceRequestContextUsesVerifiedOwnerAndIncomingOperation(t *tes
 	got = ontologyTraceRequestContext(c, ctx, visitor)
 	if !got.OperationScopePresent {
 		t.Fatal("matching incoming Core operation was not preserved")
+	}
+	c.Request.Header.Set(common.HeaderBKNParentOperationID, "op-core")
+	got = ontologyTraceRequestContext(c, ctx, visitor)
+	if !got.OperationScopePresent || got.CoreOperationID != "op-core" || got.OperationID != "op-local" {
+		t.Fatalf("derived child and Core parent operation = %+v", got)
 	}
 }
 

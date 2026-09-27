@@ -7,6 +7,8 @@
 package visitor
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
@@ -14,6 +16,10 @@ import (
 )
 
 func GenerateVisitor(c *gin.Context) hydra.Visitor {
+	applicationPrincipalID := ""
+	if strings.HasPrefix(c.Request.URL.Path, "/api/ontology-query/in/v1/") {
+		applicationPrincipalID = strings.TrimSpace(c.GetHeader("X-BKN-Application-Principal-ID"))
+	}
 	accountInfo := interfaces.AccountInfo{
 		ID:   c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_ID),
 		Type: c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_TYPE),
@@ -22,6 +28,7 @@ func GenerateVisitor(c *gin.Context) hydra.Visitor {
 	visitor := hydra.Visitor{
 		ID:         accountInfo.ID,
 		Type:       hydra.VisitorType(accountInfo.Type),
+		ClientID:   applicationPrincipalID,
 		TokenID:    "", // No token.
 		IP:         c.ClientIP(),
 		Mac:        c.GetHeader("X-Request-MAC"),
