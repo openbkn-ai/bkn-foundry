@@ -4326,6 +4326,12 @@ const docTemplate = `{
                 },
                 "technical_trace": {
                     "type": "boolean"
+                },
+                "trace_evidence_configuration_read": {
+                    "type": "boolean"
+                },
+                "trace_evidence_configuration_write": {
+                    "type": "boolean"
                 }
             }
         },

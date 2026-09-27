@@ -86,3 +86,31 @@ func TestAccessProfileResponseFailsClosedForInactiveIdentity(t *testing.T) {
 		t.Fatalf("inactive identity received capabilities: %+v", response)
 	}
 }
+
+func TestAccessProfileResponseCapturePolicyCapabilitiesFollowPermissions(t *testing.T) {
+	grant := func(operations ...string) evidencevo.Permission {
+		return evidencevo.Permission{
+			ResourceType: "trace_evidence_configuration", ResourceID: "global", Operations: operations,
+		}
+	}
+	tests := []struct {
+		name         string
+		profile      evidencevo.AccessProfile
+		wantRead     bool
+		wantWrite    bool
+	}{
+		{name: "role alone is insufficient", profile: evidencevo.AccessProfile{AccountActive: true, Roles: []string{"super_admin"}}},
+		{name: "read only", profile: evidencevo.AccessProfile{AccountActive: true, Permissions: []evidencevo.Permission{grant("read")}}, wantRead: true},
+		{name: "write only", profile: evidencevo.AccessProfile{AccountActive: true, Permissions: []evidencevo.Permission{grant("write")}}, wantWrite: true},
+		{name: "both grants", profile: evidencevo.AccessProfile{AccountActive: true, Permissions: []evidencevo.Permission{grant("read", "write")}}, wantRead: true, wantWrite: true},
+		{name: "inactive identity", profile: evidencevo.AccessProfile{Permissions: []evidencevo.Permission{grant("read", "write")}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := accessProfileResponse(test.profile)
+			if response.TraceEvidenceConfigurationRead != test.wantRead || response.TraceEvidenceConfigurationWrite != test.wantWrite {
+				t.Fatalf("unexpected capture policy capabilities: read=%v write=%v", response.TraceEvidenceConfigurationRead, response.TraceEvidenceConfigurationWrite)
+			}
+		})
+	}
+}
