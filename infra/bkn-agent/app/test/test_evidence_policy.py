@@ -204,6 +204,7 @@ async def test_control_client_uses_oauth_and_frozen_heartbeat_ack_wires():
     async def request(method, url, headers, body):
         requests.append((method, url, headers, body))
         if url.endswith("/oauth2/token"):
+            assert body == {"grant_type": "client_credentials", "client_id": "bkn-agent", "client_secret": "client-secret"}
             return 200, {"access_token": "test-token", "expires_in": 300}
         assert headers["Authorization"] == "Bearer test-token"
         if url.endswith("/internal/trace-evidence/policy"):
@@ -248,10 +249,10 @@ async def test_oauth_transport_sends_form_encoded_client_credentials():
     try:
         status, body = await TraceAdmissionClient._http_request(
             "POST", f"http://127.0.0.1:{port}/oauth2/token",
-            {"Authorization": "Basic test", "Content-Type": "application/x-www-form-urlencoded"},
-            {"grant_type": "client_credentials"},
+            {"Content-Type": "application/x-www-form-urlencoded"},
+            {"grant_type": "client_credentials", "client_id": "bkn-agent", "client_secret": "client-secret"},
         )
         assert status == 200 and body["access_token"] == "test-token"
-        assert observed == [{"grant_type": "client_credentials"}]
+        assert observed == [{"grant_type": "client_credentials", "client_id": "bkn-agent", "client_secret": "client-secret"}]
     finally:
         await runner.cleanup()

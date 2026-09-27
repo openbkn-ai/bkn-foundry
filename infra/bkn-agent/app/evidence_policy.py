@@ -95,12 +95,14 @@ class TraceAdmissionClient:
     async def _token(self) -> str:
         if self._access_token and time.monotonic() < self._token_expires_at:
             return self._access_token
-        credentials = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
-        body = {"grant_type": "client_credentials"}
+        body = {
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        }
         if self.scope:
             body["scope"] = self.scope
         status, result = await self.request("POST", self.token_url, {
-            "Authorization": "Basic " + credentials,
             "Content-Type": "application/x-www-form-urlencoded",
         }, body)
         if status != 200 or not isinstance(result, dict) or not result.get("access_token"):
