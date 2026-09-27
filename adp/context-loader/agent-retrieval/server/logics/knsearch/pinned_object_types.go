@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -56,6 +57,15 @@ func (s *localSearchImpl) completePinnedObjectTypes(
 		if _, ok := known[normalizeObjectTypeID(id)]; ok {
 			continue
 		}
+		// An id that cannot name a resource is not worth a round trip, and
+		// asking anyway is how one bad character used to take the whole search
+		// down: a % that is not a valid escape fails url.Parse in this process,
+		// and the adapter turns that into an error carrying no status code at
+		// all. Ruling these out here means the classification below only ever
+		// sees answers the service actually gave.
+		if !addressableObjectTypeID(id) {
+			continue
+		}
 		absent = append(absent, id)
 	}
 	if len(absent) == 0 {
@@ -94,7 +104,15 @@ func (s *localSearchImpl) fetchExistingObjectTypes(
 	knID string,
 	ids []string,
 ) ([]*interfaces.ObjectType, error) {
-	resolved, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, ids, true)
+	// Object type ids are lower case, and the scope layer folds case, so the
+	// batch asks in the folded spelling. A caller who typed one id in the wrong
+	// case would otherwise miss the batch and send every pinned id through the
+	// fallback, turning one call into 1+2N.
+	folded := make([]string, 0, len(ids))
+	for _, id := range ids {
+		folded = append(folded, normalizeObjectTypeID(id))
+	}
+	resolved, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, folded, true)
 	if err == nil {
 		return resolved, nil
 	}
@@ -120,19 +138,19 @@ func (s *localSearchImpl) fetchExistingObjectTypes(
 // lookupOneObjectType resolves a single pinned id, or reports it as one the
 // caller cannot use by returning nil.
 //
-// It tries the caller's spelling and then the folded one. The scope layer
-// matches ids case-insensitively on purpose — it "forgives a caller who typed
-// the id back in the wrong case" — and resolving by id must forgive the same
-// thing, or a pinned Teams would resolve only while recall happened to surface
-// it, which is the inconsistency this whole change is about.
+// It asks in the folded spelling first and then as the caller wrote it. The
+// scope layer matches ids case-insensitively on purpose — it "forgives a caller
+// who typed the id back in the wrong case" — and resolving by id must forgive
+// the same thing, or a pinned Teams would resolve only while recall happened to
+// surface it, which is the inconsistency this whole change is about.
 func (s *localSearchImpl) lookupOneObjectType(
 	ctx context.Context,
 	knID string,
 	id string,
 ) (*interfaces.ObjectType, error) {
-	attempts := []string{id}
-	if folded := normalizeObjectTypeID(id); folded != id {
-		attempts = append(attempts, folded)
+	attempts := []string{normalizeObjectTypeID(id)}
+	if id != attempts[0] {
+		attempts = append(attempts, id)
 	}
 	for _, attempt := range attempts {
 		found, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, []string{attempt}, true)
@@ -178,4 +196,28 @@ func objectTypeLookupRefused(err error) bool {
 	default:
 		return false
 	}
+}
+
+// addressableObjectTypeID reports whether an id could name a resource at all.
+//
+// Two rules, from two places that both refuse before anything is looked up.
+// bkn-backend's IsValidAuthorizationID rejects an id holding * or /, because
+// those are wildcards in a Safe resource reference. And the id travels in a URL
+// path, where a % that does not open a valid escape, or a control character,
+// makes url.Parse fail inside this process — an error that arrives carrying no
+// status code, so it cannot be told apart from the service being down.
+//
+// An id failing either rule is the caller's mistake, and saying so costs
+// nothing. The alternative, learning it from a failed request, is what made a
+// single stray character fail an entire search.
+func addressableObjectTypeID(id string) bool {
+	if id == "" || strings.ContainsAny(id, "*/") {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if c := id[i]; c < 0x20 || c == 0x7f || c == '%' {
+			return false
+		}
+	}
+	return true
 }

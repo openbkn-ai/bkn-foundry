@@ -47,6 +47,12 @@ func (b *recallingBackend) GetObjectTypeDetail(
 		if strings.ContainsAny(id, "*/") {
 			return nil, &infraErr.HTTPError{HTTPCode: http.StatusBadRequest, Code: "InvalidParameter.ID"}
 		}
+		// The id travels in a URL path. A % that opens no valid escape fails
+		// url.Parse inside this process, and the adapter reports that with no
+		// status code at all — the shape nothing can classify.
+		if strings.Contains(id, "%") {
+			return nil, &infraErr.HTTPError{HTTPCode: 0, Code: "RequestFailed"}
+		}
 	}
 	out := make([]*interfaces.ObjectType, 0, len(otIDs))
 	for _, id := range otIDs {
@@ -219,7 +225,7 @@ func TestMalformedPinnedIDDoesNotFailTheSearch(t *testing.T) {
 // has to forgive the same thing, or a pinned id in the wrong case would work
 // only while recall happened to surface it.
 func TestPinnedObjectTypeIsResolvedCaseInsensitively(t *testing.T) {
-	svc, backend := newPinnedScenario(t, nil, []string{"teams"})
+	svc, _ := newPinnedScenario(t, nil, []string{"teams"})
 
 	res := retrievePinned(t, svc, "TEAMS")
 
@@ -229,7 +235,77 @@ func TestPinnedObjectTypeIsResolvedCaseInsensitively(t *testing.T) {
 	if len(res.UnmatchedObjectTypes) != 0 {
 		t.Fatalf("unmatched = %v", res.UnmatchedObjectTypes)
 	}
+}
+
+// The network is free to spell an id in mixed case, so the fallback still asks
+// as the caller wrote it after the folded spelling misses.
+func TestPinnedObjectTypeKeepsTheCallerSpellingAsAFallback(t *testing.T) {
+	svc, backend := newPinnedScenario(t, nil, []string{"Teams"})
+
+	res := retrievePinned(t, svc, "Teams", "nosuchtype")
+
+	if !containsConcept(res.ObjectTypes, "Teams") {
+		t.Fatalf("a mixed-case id the network really has was dropped: %v", conceptIDs(res.ObjectTypes))
+	}
+	if !equalStrings(res.UnmatchedObjectTypes, []string{"nosuchtype"}) {
+		t.Fatalf("unmatched = %v", res.UnmatchedObjectTypes)
+	}
 	if len(backend.lookups) < 2 {
-		t.Fatalf("expected the caller spelling and then the folded one, got %v", backend.lookups)
+		t.Fatalf("expected the folded spelling and then the caller's, got %v", backend.lookups)
+	}
+}
+
+// An id holding a stray % never reaches the service: url.Parse fails in this
+// process and the adapter reports it with no status code, which is the one
+// shape error classification cannot rescue. It is ruled out before the call.
+func TestUnaddressablePinnedIDIsReportedWithoutACall(t *testing.T) {
+	svc, backend := newPinnedScenario(t, nil, []string{"teams"})
+
+	res := retrievePinned(t, svc, "teams", "100%")
+
+	if !containsConcept(res.ObjectTypes, "teams") {
+		t.Fatalf("an unaddressable id took the good one down with it: %v", conceptIDs(res.ObjectTypes))
+	}
+	if !equalStrings(res.UnmatchedObjectTypes, []string{"100%"}) {
+		t.Fatalf("unmatched = %v, want only the unaddressable id", res.UnmatchedObjectTypes)
+	}
+	for _, lookup := range backend.lookups {
+		for _, id := range lookup {
+			if strings.Contains(id, "%") {
+				t.Fatalf("the unaddressable id was still sent: %v", backend.lookups)
+			}
+		}
+	}
+}
+
+// A malformed id is refused before the call too, so the ids that do go out are
+// only ever ones the service can answer about.
+func TestMalformedPinnedIDIsNotSent(t *testing.T) {
+	svc, backend := newPinnedScenario(t, nil, []string{"teams"})
+
+	retrievePinned(t, svc, "teams", "*")
+
+	for _, lookup := range backend.lookups {
+		for _, id := range lookup {
+			if strings.ContainsAny(id, "*/") {
+				t.Fatalf("a malformed id was still sent: %v", backend.lookups)
+			}
+		}
+	}
+}
+
+// One id in the wrong case must not push every pinned id through the fallback:
+// the batch asks in the folded spelling, which is how object type ids are
+// written, so the usual case still costs one call.
+func TestWrongCasePinnedIDStillResolvesInOneCall(t *testing.T) {
+	svc, backend := newPinnedScenario(t, nil, []string{"teams", "players"})
+
+	res := retrievePinned(t, svc, "TEAMS", "players")
+
+	if !containsConcept(res.ObjectTypes, "teams") || !containsConcept(res.ObjectTypes, "players") {
+		t.Fatalf("object types = %v", conceptIDs(res.ObjectTypes))
+	}
+	if len(backend.lookups) != 1 {
+		t.Fatalf("expected one batch lookup, got %v", backend.lookups)
 	}
 }
