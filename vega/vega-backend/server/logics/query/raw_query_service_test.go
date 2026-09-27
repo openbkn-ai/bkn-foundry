@@ -333,7 +333,7 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 		req  *interfaces.RawQueryRequest
 	}{
 		{
-			name: "new SQL contract defaults to postgres",
+			name: "new SQL contract defaults to mysql",
 			req: &interfaces.RawQueryRequest{
 				Query:       "select * from {{r1}}",
 				QueryFormat: interfaces.QueryFormatSQL,
@@ -367,6 +367,47 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		inputDialect  string
+		connectorType string
+		wantDialect   string
+		wantSQL       string
+	}{
+		{name: "generic input for HANA", inputDialect: "generic", connectorType: interfaces.ConnectorTypeHANA, wantDialect: sqlglot.GenericDialect, wantSQL: `SELECT id FROM "APP"."orders"`},
+		{name: "Oracle input for Oracle", inputDialect: "oracle", connectorType: interfaces.ConnectorTypeOracle, wantDialect: "oracle", wantSQL: `SELECT id FROM "APP"."orders"`},
+		{name: "MariaDB input for MariaDB", inputDialect: "mariadb", connectorType: interfaces.ConnectorTypeMariaDB, wantDialect: "mysql", wantSQL: "SELECT id FROM `APP`.`orders`"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+			mockRS := mock_interfaces.NewMockResourceService(ctrl)
+			resource := &interfaces.Resource{
+				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
+				Schema: "APP", SourceIdentifier: "APP.orders", Status: interfaces.ResourceStatusActive,
+				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+			}
+			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
+			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
+			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+				ID: "catalog-1", Enabled: true, ConnectorType: tc.connectorType,
+			}, nil)
+
+			policy := &recordingPolicy{resourceIDs: []string{"resource-1"}}
+			previousPolicy := rawQueryPolicy
+			rawQueryPolicy = policy
+			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+
+			prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
+				Query: "SELECT id FROM {{resource-1}}", QueryFormat: interfaces.QueryFormatSQL, InputDialect: tc.inputDialect,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantSQL, prepared.sql)
+			assert.Empty(t, policy.dialects)
+			assert.Equal(t, []string{tc.wantDialect}, policy.derivedDialects)
+		})
+	}
+
 	for _, sql := range []string{
 		"SELECT * FROM public.orders /* {{resource-1}} */",
 		"SELECT * FROM public.orders -- {{resource-1}}\n",

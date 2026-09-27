@@ -190,6 +190,10 @@ SELECT 'oracle', 'oracle', 'Oracle 关系型数据库连接器', 'local', 'table
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'oracle' );
 
 INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
+SELECT 'hana', 'hana', 'SAP HANA 关系型数据库连接器', 'local', 'table', TRUE
+FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'hana' );
+
+INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
 SELECT 'anyshare', 'anyshare', 'AnyShare 连接器', 'local', 'fileset', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'anyshare' );
 

@@ -18,7 +18,7 @@ const (
 	PagingModeSingle PagingMode = "single"
 	PagingModeCursor PagingMode = "cursor"
 
-	DefaultInputDialect       = "postgres"
+	DefaultInputDialect       = "mysql"
 	DefaultPageLimit          = 20
 	MinPageLimit              = 1
 	MaxPageLimit              = 10000
@@ -71,7 +71,17 @@ func (r RawQueryContract) EffectiveInputDialect() string {
 	if r.QueryFormat == QueryFormatSQL && r.InputDialect == "" {
 		return DefaultInputDialect
 	}
-	return strings.ToLower(r.InputDialect)
+	dialect := strings.ToLower(r.InputDialect)
+	if r.QueryFormat == QueryFormatSQL {
+		switch dialect {
+		case "generic":
+			// SQLGlot names its generic dialect with an empty string.
+			return ""
+		case "mariadb":
+			return "mysql"
+		}
+	}
+	return dialect
 }
 
 // Validate checks the mutually exclusive first-page and continuation forms.
@@ -173,7 +183,7 @@ func (r RawQueryContract) validateInputDialect() error {
 	switch r.QueryFormat {
 	case QueryFormatSQL:
 		switch dialect {
-		case "postgres", "mysql", "trino", "duckdb", "tsql":
+		case "", "postgres", "mysql", "trino", "duckdb", "tsql", "oracle":
 			return nil
 		default:
 			return fmt.Errorf("unsupported SQL input_dialect: %s", r.InputDialect)

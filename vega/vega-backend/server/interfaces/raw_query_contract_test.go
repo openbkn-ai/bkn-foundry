@@ -21,7 +21,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "sql defaults to postgres",
+			name: "sql defaults to mysql",
 			request: RawQueryContract{
 				Query:       "SELECT * FROM {{orders}}",
 				QueryFormat: QueryFormatSQL,
@@ -37,6 +37,30 @@ func TestRawQueryContractValidate(t *testing.T) {
 					Mode:  PagingModeCursor,
 					Limit: 100,
 				},
+			},
+		},
+		{
+			name: "oracle SQL input",
+			request: RawQueryContract{
+				Query:        "SELECT * FROM {{orders}}",
+				QueryFormat:  QueryFormatSQL,
+				InputDialect: "oracle",
+			},
+		},
+		{
+			name: "generic SQL input",
+			request: RawQueryContract{
+				Query:        "SELECT * FROM {{orders}}",
+				QueryFormat:  QueryFormatSQL,
+				InputDialect: "generic",
+			},
+		},
+		{
+			name: "MariaDB SQL input",
+			request: RawQueryContract{
+				Query:        "SELECT * FROM {{orders}}",
+				QueryFormat:  QueryFormatSQL,
+				InputDialect: "mariadb",
 			},
 		},
 		{
@@ -97,6 +121,20 @@ func TestRawQueryContractValidate(t *testing.T) {
 				InputDialect: "opensearch",
 			},
 			wantErr: "unsupported SQL input_dialect",
+		},
+		{
+			name: "rejects unsupported HANA input dialect",
+			request: RawQueryContract{
+				Query: "SELECT 1", QueryFormat: QueryFormatSQL, InputDialect: "hana",
+			},
+			wantErr: "unsupported SQL input_dialect",
+		},
+		{
+			name: "rejects generic dialect for DSL",
+			request: RawQueryContract{
+				Query: map[string]any{}, QueryFormat: QueryFormatDSL, InputDialect: "generic",
+			},
+			wantErr: "DSL input_dialect",
 		},
 		{
 			name: "rejects DSL without dialect",
@@ -271,9 +309,12 @@ func TestRawQueryRequestRejectsContinuationTimeout(t *testing.T) {
 }
 
 func TestRawQueryContractEffectiveInputDialect(t *testing.T) {
-	assert.Equal(t, "postgres", RawQueryContract{QueryFormat: QueryFormatSQL}.EffectiveInputDialect())
+	assert.Equal(t, "mysql", RawQueryContract{QueryFormat: QueryFormatSQL}.EffectiveInputDialect())
 	assert.Equal(t, "mysql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "MySQL"}.EffectiveInputDialect())
+	assert.Equal(t, "mysql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "MariaDB"}.EffectiveInputDialect())
 	assert.Equal(t, "tsql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "TSQL"}.EffectiveInputDialect())
+	assert.Equal(t, "oracle", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "ORACLE"}.EffectiveInputDialect())
+	assert.Equal(t, "", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "GENERIC"}.EffectiveInputDialect())
 	require.NoError(t, RawQueryContract{
 		Query:        "SELECT * FROM {{orders}}",
 		QueryFormat:  QueryFormatSQL,

@@ -51,7 +51,7 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 			DoAndReturn(func(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 				totalCount := int64(0)
 				assert.Equal(t, interfaces.QueryFormatSQL, req.QueryFormat)
-				assert.Equal(t, "postgres", req.EffectiveInputDialect())
+				assert.Equal(t, "mysql", req.EffectiveInputDialect())
 				assert.Equal(t, 60, req.QueryTimeoutSec)
 				assert.True(t, req.NeedTotal)
 				return &interfaces.RawQueryResponse{
