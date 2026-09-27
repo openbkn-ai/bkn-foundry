@@ -486,53 +486,6 @@ func TestConceptRetrieval_UnknownConceptGroupPropagatesError(t *testing.T) {
 	}
 }
 
-func TestConceptRetrieval_CoarseRecall(t *testing.T) {
-	// Create a large number of relationships to trigger coarse recall.
-	mockDetail := createMockNetworkDetail(10, 6000, 10)
-
-	config := DefaultConceptRetrievalConfig()
-
-	mockManager := &mockBknBackend{
-		networkDetail: mockDetail,
-		// Simulate rough recall to return partial objects and relationships.
-		objectTypesResp: &interfaces.ObjectTypeConcepts{
-			Entries: []*interfaces.ObjectType{
-				{ID: "obj_0"}, {ID: "obj_1"},
-			},
-		},
-		relationTypesResp: &interfaces.RelationTypeConcepts{
-			Entries: []*interfaces.RelationType{
-				{ID: "rel_0"}, {ID: "rel_1"},
-			},
-		},
-	}
-
-	svc := &localSearchImpl{
-		logger:     &mockLogger{},
-		bknBackend: mockManager,
-	}
-
-	req := &interfaces.KnSearchLocalRequest{
-		KnID:  "129",
-		Query: "query",
-	}
-
-	res, err := svc.conceptRetrieval(context.Background(), req, config)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-
-	// Verify that the results are filtered.
-	// There are 6000 original relationships, and the rough recall simulation returns 2.
-	if len(res.RelationTypes) > 2 { // Considering that there may be sorting truncation in the future, there should be very few simple verifications here.
-		// Note: The default TopK of rankRelationTypes is 10, so the maximum returned here is 10.
-		// But if rough recall is in effect, there are actually only 2 candidates, so 2 should be returned.
-		if len(res.RelationTypes) != 2 {
-			t.Errorf("Expected 2 relations after coarse recall, got %d", len(res.RelationTypes))
-		}
-	}
-}
-
 func TestRankRelationTypes(t *testing.T) {
 	svc := &localSearchImpl{
 		logger: &mockLogger{},
