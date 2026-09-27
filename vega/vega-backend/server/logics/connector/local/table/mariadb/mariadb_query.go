@@ -31,23 +31,67 @@ func convertValue(v any, preserveBinary bool) any {
 	return v
 }
 
+// qualTable converts a resource source identifier into a backtick-qualified table name;
+// it supports "db.table" -> "`db`.`table`".
+func qualTable(sourceIdentifier string) string {
+	return quoteColumnName(sourceIdentifier)
+}
+
+// quotedColumn returns a safely quoted physical source column name.
+func quotedColumn(property *interfaces.Property) string {
+	name := originalName(property)
+	if idx := strings.Index(name, "."); idx >= 0 {
+		alias := strings.TrimSpace(name[:idx])
+		col := strings.TrimSpace(name[idx+1:])
+		return "`" + strings.ReplaceAll(alias, "`", "``") + "`." + "`" + strings.ReplaceAll(col, "`", "``") + "`"
+	}
+	return "`" + strings.ReplaceAll(strings.TrimSpace(name), "`", "``") + "`"
+}
+
+// quoteColumnName converts column names to SQL identifiers; Support "alias.col" -> "alias.col"
+func quoteColumnName(name string) string {
+	if name == "" {
+		return "``"
+	}
+	if idx := strings.Index(name, "."); idx >= 0 {
+		alias := strings.TrimSpace(name[:idx])
+		col := strings.TrimSpace(name[idx+1:])
+		return "`" + strings.ReplaceAll(alias, "`", "``") + "`." + "`" + strings.ReplaceAll(col, "`", "``") + "`"
+	}
+	return "`" + strings.ReplaceAll(strings.TrimSpace(name), "`", "``") + "`"
+}
+
+// originalName selects the source column name when one is available.
+func originalName(property *interfaces.Property) string {
+	if property.OriginalName != "" {
+		return property.OriginalName
+	}
+	return property.Name
+}
+
 // BuildPagedSQL applies MariaDB paging syntax to a validated query.
-func (c *MariaDBConnector) BuildPagedSQL(sql string, offset, limit int) string {
-	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_page LIMIT %d OFFSET %d", sql, limit, offset)
+func (c *MariaDBConnector) BuildPagedSQL(sqlStr string, offset, limit int) string {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = interfaces.DefaultPageLimit
+	}
+	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_page LIMIT %d OFFSET %d", strings.TrimSpace(sqlStr), limit, offset)
 }
 
 // BuildCountSQL applies MariaDB total-count syntax to a validated query.
-func (c *MariaDBConnector) BuildCountSQL(sql string) string {
-	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) AS _raw_query_total", sql)
+func (c *MariaDBConnector) BuildCountSQL(sqlStr string) string {
+	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) AS _raw_query_total", strings.TrimSpace(sqlStr))
 }
 
 // ExecuteRawSQL executes the original SQL query
-func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
+func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("connect failed: %w", err)
 	}
 
-	rows, err := c.db.QueryContext(ctx, sql)
+	rows, err := c.db.QueryContext(ctx, sqlStr)
 	if err != nil {
 		return nil, fmt.Errorf("execute query failed: %w", err)
 	}
