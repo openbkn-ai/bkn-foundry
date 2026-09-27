@@ -196,11 +196,17 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 
 // AcquireSession Get available sessions.
 func (p *sessionPoolImpl) AcquireSession(ctx context.Context) (sessionID string, err error) {
-	return p.acquireSession(ctx, maxRetryCount)
+	return p.acquireSession(ctx, p.slotRetryBudget())
 }
 
 func (p *sessionPoolImpl) acquireSessionWithEnv(ctx context.Context, envVars map[string]any) (sessionID string, err error) {
-	return p.acquireSessionWithOptions(ctx, maxRetryCount, envVars)
+	return p.acquireSessionWithOptions(ctx, p.slotRetryBudget(), envVars)
+}
+
+func (p *sessionPoolImpl) slotRetryBudget() int {
+	// The final attempt runs with retryCount=-1, so a budget of N-2 visits
+	// every one of N deterministic slots while retaining the old minimum.
+	return max(maxRetryCount, p.maxSessions-2)
 }
 
 func (p *sessionPoolImpl) initSessions() {
@@ -242,11 +248,23 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 		}
 		// Maximum number of retries reached.
 		if count < 0 {
-			err = fmt.Errorf("[acquireSession] retryCount %d exceeds maxRetryCount %d", count, maxRetryCount)
+			err = fmt.Errorf("[acquireSession] retryCount %d exceeds retry budget %d", count, p.slotRetryBudget())
 			return
 		}
-		// Pause time: Add 1 second to each retry interval.
-		time.Sleep(time.Duration(count) * time.Second)
+		// Bound the retry pause even for a large configured pool, and stop
+		// immediately when the caller no longer needs a session.
+		if count > 0 {
+			select {
+			case <-ctx.Done():
+				err = ctx.Err()
+				return
+			case <-time.After(time.Second):
+			}
+		}
+		if ctx.Err() != nil {
+			err = ctx.Err()
+			return
+		}
 		sessionID, err = p.acquireSessionWithOptions(ctx, count-1, envVars)
 	}(retryCount)
 	// 1. Stack allocation strategy: Find the session with the highest load but not full.
@@ -259,8 +277,15 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 
 	// 2. Try to find a slot that can be created.
 	var targetID string
+	// A create can fail after QuerySession returns 404 when an unmanaged Pod
+	// still occupies that deterministic ID. Retry another free slot instead of
+	// selecting the same blocked ID on every attempt.
+	startSlot := p.slotRetryBudget() - retryCount
+	if startSlot < 0 {
+		startSlot = 0
+	}
 	for i := 0; i < p.maxSessions; i++ {
-		id := fmt.Sprintf("%s%d", sessionIDPrefix, i)
+		id := fmt.Sprintf("%s%d", sessionIDPrefix, (startSlot+i)%p.maxSessions)
 		if _, ok := p.getSessionItem(id); !ok {
 			targetID = id
 			break
@@ -281,10 +306,8 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 	p.logger.Infof("Creating new session slot: %s", targetID)
 	if err = p.ensureRemoteSessionWithEnv(ctx, targetID, envVars); err != nil {
 		p.logger.Errorf("Failed to create session %s: %v", targetID, err)
-		// Creation failed, placeholder removed.
-		// Fault-tolerant retries: If the current ID fails to be created, recursively try the next available ID.
-		// Note: You need to clean up the current failed placeholders first.
-		p.removeSession(targetID) // Clean up placeholders (dark bottom)
+		// A failed create never adds a local session. Do not remove this ID:
+		// another concurrent acquire may have created and registered it.
 		// Try again.
 		needRetry = true
 		return
