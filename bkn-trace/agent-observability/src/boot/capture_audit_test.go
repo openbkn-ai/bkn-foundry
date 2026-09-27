@@ -61,7 +61,7 @@ func (s captureAuditTestSender) Send(_ context.Context, record auditpublisher.Re
 	return nil
 }
 
-func TestCaptureRollbackFailureUsesRollbackAction(t *testing.T) {
+func TestCaptureRollbackFailureRespectsFrozenOperationFailedSchema(t *testing.T) {
 	records := make(chan auditpublisher.Record, 1)
 	publisher, err := auditpublisher.New(captureAuditTestSender{records: records}, nil)
 	if err != nil {
@@ -85,8 +85,19 @@ func TestCaptureRollbackFailureUsesRollbackAction(t *testing.T) {
 		if err := json.Unmarshal(record.Value, &event); err != nil {
 			t.Fatal(err)
 		}
-		if event.EventName != "trace_evidence.operation_failed" || event.Facts.Action != "rollback" {
+		if event.EventName != "trace_evidence.operation_failed" || event.Facts.Action != "apply" {
 			t.Fatalf("rollback failure audit shape: %#v", event)
+		}
+		validator, err := auditvalidator.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := validator.Validate(context.Background(), auditconsumer.Record{
+			Topic: record.Topic, Key: record.Key, Value: record.Value,
+			Headers:    []auditconsumer.Header{{Key: record.Headers[0].Key, Value: record.Headers[0].Value}},
+			BrokerTime: time.Now().UTC(),
+		}); err != nil {
+			t.Fatalf("rollback failure record rejected by frozen Audit schema: %v", err)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("rollback failure Audit record not delivered")

@@ -180,7 +180,7 @@ func (s *captureAuditSink) terminal(event capturecontrollersvc.TerminalEvent) {
 	case "failed":
 		name, outcome = "trace_evidence.operation_failed", "failure"
 	case "rollback_failed":
-		name, action, outcome = "trace_evidence.operation_failed", "rollback", "failure"
+		name, outcome = "trace_evidence.operation_failed", "failure"
 	case "rollback_completed":
 		name, action = "trace_evidence.rollback_completed", "rollback"
 	default:
