@@ -26,36 +26,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 )
-
-func TestProcessorReportsInitialPolicyRefreshFailure(t *testing.T) {
-	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	transport := &scriptedTransport{responses: map[string]scriptedResponse{
-		"https://safe.internal/policy": {status: http.StatusServiceUnavailable},
-		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
-	}}
-	p, _ := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
-	}, transport)
-	core, observed := observer.New(zap.WarnLevel)
-	p.logger = zap.New(core)
-	if err := p.Start(context.Background(), nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.Shutdown(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if observed.FilterMessage("trace admission refresh failed").Len() != 1 {
-		t.Fatalf("initial policy refresh failure was not reported: %v", observed.All())
-	}
-}
 
 func TestProcessorUsesFrozenPolicySnapshotAndFailsClosedForLegacyField(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)

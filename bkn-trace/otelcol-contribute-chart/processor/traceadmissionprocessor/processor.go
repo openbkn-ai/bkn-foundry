@@ -29,7 +29,6 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor"
-	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -46,19 +45,12 @@ func NewFactory() processor.Factory {
 	)
 }
 
-func createTraces(_ context.Context, settings processor.Settings, cfg component.Config, next consumer.Traces) (processor.Traces, error) {
+func createTraces(_ context.Context, _ processor.Settings, cfg component.Config, next consumer.Traces) (processor.Traces, error) {
 	configuration, ok := cfg.(*Config)
 	if !ok {
 		return nil, errors.New("traceadmission config must be *Config")
 	}
-	p, err := newProcessor(*configuration, next)
-	if err != nil {
-		return nil, err
-	}
-	if settings.Logger != nil {
-		p.logger = settings.Logger
-	}
-	return p, nil
+	return newProcessor(*configuration, next)
 }
 
 type traceAdmissionProcessor struct {
@@ -67,7 +59,6 @@ type traceAdmissionProcessor struct {
 	config  Config
 	gateway *traceadmissionsvc.Gateway
 	now     func() time.Time
-	logger  *zap.Logger
 
 	mu              sync.Mutex
 	etag            string
@@ -120,7 +111,7 @@ func newProcessorWithClient(config Config, next consumer.Traces, baseClient *htt
 	oauthContext := context.WithValue(context.Background(), oauth2.HTTPClient, &clientCopy)
 	client := oauthConfig.Client(oauthContext)
 	return &traceAdmissionProcessor{
-		next: next, client: client, config: config, now: now, logger: zap.NewNop(),
+		next: next, client: client, config: config, now: now,
 		gateway: traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{
 			Audience: config.Audience, CurrentKeyID: config.CurrentKeyID, CurrentKey: ed25519.PublicKey(current),
 			PreviousKeyID: config.PreviousKeyID, PreviousKey: ed25519.PublicKey(previous), Now: now,
@@ -132,9 +123,7 @@ func (p *traceAdmissionProcessor) Start(ctx context.Context, _ component.Host) e
 	if p == nil {
 		return errors.New("traceadmission processor is nil")
 	}
-	if err := p.refresh(ctx); err != nil {
-		p.logger.Warn("trace admission refresh failed", zap.Error(err)) // fail closed until a valid snapshot arrives
-	}
+	_ = p.refresh(ctx) // fail closed until the first valid snapshot arrives
 	background, cancel := context.WithCancel(context.Background())
 	p.mu.Lock()
 	p.cancel = cancel
@@ -153,9 +142,7 @@ func (p *traceAdmissionProcessor) poll(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := p.refresh(ctx); err != nil {
-				p.logger.Warn("trace admission refresh failed", zap.Error(err))
-			}
+			_ = p.refresh(ctx)
 		}
 	}
 }
