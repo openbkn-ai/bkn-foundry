@@ -25,9 +25,6 @@ func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hy
 	coreOperationID := ""
 	if strings.HasPrefix(c.Request.URL.Path, "/api/ontology-query/in/v1/") {
 		coreOperationID = common.SanitizeBusinessTraceID(c.GetHeader(common.HeaderBKNParentOperationID))
-		if coreOperationID == "" && strings.TrimSpace(c.GetHeader(common.HeaderBKNOperationID)) == traceContext.OperationID {
-			coreOperationID = traceContext.OperationID
-		}
 	}
 	return bkntrace.RequestContext{
 		RequestID:              traceContext.RequestID,
