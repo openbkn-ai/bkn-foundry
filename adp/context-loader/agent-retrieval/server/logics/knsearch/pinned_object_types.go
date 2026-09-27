@@ -106,30 +106,76 @@ func (s *localSearchImpl) fetchExistingObjectTypes(
 
 	out := make([]*interfaces.ObjectType, 0, len(ids))
 	for _, id := range ids {
-		one, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, []string{id}, true)
+		found, err := s.lookupOneObjectType(ctx, knID, id)
+		if err != nil {
+			return nil, err
+		}
+		if found != nil {
+			out = append(out, found)
+		}
+	}
+	return out, nil
+}
+
+// lookupOneObjectType resolves a single pinned id, or reports it as one the
+// caller cannot use by returning nil.
+//
+// It tries the caller's spelling and then the folded one. The scope layer
+// matches ids case-insensitively on purpose — it "forgives a caller who typed
+// the id back in the wrong case" — and resolving by id must forgive the same
+// thing, or a pinned Teams would resolve only while recall happened to surface
+// it, which is the inconsistency this whole change is about.
+func (s *localSearchImpl) lookupOneObjectType(
+	ctx context.Context,
+	knID string,
+	id string,
+) (*interfaces.ObjectType, error) {
+	attempts := []string{id}
+	if folded := normalizeObjectTypeID(id); folded != id {
+		attempts = append(attempts, folded)
+	}
+	for _, attempt := range attempts {
+		found, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, []string{attempt}, true)
 		if err != nil {
 			if objectTypeLookupRefused(err) {
 				continue
 			}
 			return nil, err
 		}
-		out = append(out, one...)
+		if len(found) > 0 {
+			return found[0], nil
+		}
 	}
-	return out, nil
+	return nil, nil
 }
 
-// objectTypeLookupRefused reports whether the lookup failed because the network
-// does not have the object type or will not show it to this caller.
+// objectTypeLookupRefused reports whether the lookup failed over the id itself
+// rather than over the service answering.
 //
-// Both answers land the id in the same place — reported back to the caller as
-// one it cannot use — and they are deliberately not told apart: saying "this
-// exists but is not yours" would answer a question the caller has no right to
-// ask. Every other failure is a dependency problem and must not be mistaken for
-// a caller mistake.
+// Three answers mean that, and all three land the id in the same place —
+// reported back to the caller as one it cannot use. The network does not have
+// it (404); it will not show it to this caller (403); or the id is not a
+// well-formed resource id at all (400, which bkn-backend answers for an id
+// holding * or /, before it looks anything up).
+//
+// They are deliberately not told apart: saying "this exists but is not yours"
+// would answer a question the caller has no right to ask. And 400 has to be in
+// this set, not outside it — an id the caller simply mistyped was reported as
+// unusable before this path existed, and failing the whole search over it would
+// be a worse answer than the one it replaced.
+//
+// Every other failure is the dependency, and must not be dressed up as a caller
+// mistake: an agent told its object type does not exist will rewrite a request
+// that was correct.
 func objectTypeLookupRefused(err error) bool {
 	var httpErr *infraErr.HTTPError
 	if !errors.As(err, &httpErr) {
 		return false
 	}
-	return httpErr.HTTPCode == http.StatusNotFound || httpErr.HTTPCode == http.StatusForbidden
+	switch httpErr.HTTPCode {
+	case http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound:
+		return true
+	default:
+		return false
+	}
 }

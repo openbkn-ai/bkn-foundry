@@ -9,6 +9,7 @@ package knsearch
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -39,6 +40,13 @@ func (b *recallingBackend) GetObjectTypeDetail(
 	b.lookups = append(b.lookups, append([]string(nil), otIDs...))
 	if b.lookupErr != nil {
 		return nil, b.lookupErr
+	}
+	// bkn-backend validates every id before it looks anything up, and an id
+	// holding * or / is refused with 400 for the whole batch.
+	for _, id := range otIDs {
+		if strings.ContainsAny(id, "*/") {
+			return nil, &infraErr.HTTPError{HTTPCode: http.StatusBadRequest, Code: "InvalidParameter.ID"}
+		}
 	}
 	out := make([]*interfaces.ObjectType, 0, len(otIDs))
 	for _, id := range otIDs {
@@ -187,5 +195,41 @@ func TestPartiallyUsableAllowListIsReported(t *testing.T) {
 	}
 	if !containsConcept(res.ObjectTypes, "teams") {
 		t.Fatalf("the usable id was dropped: %v", conceptIDs(res.ObjectTypes))
+	}
+}
+
+// bkn-backend validates ids before it looks anything up, so one holding * or /
+// is refused with 400 for the whole batch. Before this path existed such an id
+// was simply reported as unusable; failing the entire search over it would be a
+// worse answer than the one it replaced.
+func TestMalformedPinnedIDDoesNotFailTheSearch(t *testing.T) {
+	svc, _ := newPinnedScenario(t, nil, []string{"teams"})
+
+	res := retrievePinned(t, svc, "teams", "*")
+
+	if !containsConcept(res.ObjectTypes, "teams") {
+		t.Fatalf("a malformed id took the good one down with it: %v", conceptIDs(res.ObjectTypes))
+	}
+	if !equalStrings(res.UnmatchedObjectTypes, []string{"*"}) {
+		t.Fatalf("unmatched = %v, want only the malformed id", res.UnmatchedObjectTypes)
+	}
+}
+
+// The scope layer matches ids case-insensitively on purpose. Resolving by id
+// has to forgive the same thing, or a pinned id in the wrong case would work
+// only while recall happened to surface it.
+func TestPinnedObjectTypeIsResolvedCaseInsensitively(t *testing.T) {
+	svc, backend := newPinnedScenario(t, nil, []string{"teams"})
+
+	res := retrievePinned(t, svc, "TEAMS")
+
+	if !containsConcept(res.ObjectTypes, "teams") {
+		t.Fatalf("a pinned id in the wrong case was not resolved: %v", conceptIDs(res.ObjectTypes))
+	}
+	if len(res.UnmatchedObjectTypes) != 0 {
+		t.Fatalf("unmatched = %v", res.UnmatchedObjectTypes)
+	}
+	if len(backend.lookups) < 2 {
+		t.Fatalf("expected the caller spelling and then the folded one, got %v", backend.lookups)
 	}
 }
