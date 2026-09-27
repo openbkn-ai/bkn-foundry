@@ -4,6 +4,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permissionproposal"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
 )
@@ -45,6 +47,28 @@ func registerPermissionRequests(g *gin.RouterGroup, service *permissionrequest.S
 			return
 		}
 		c.JSON(http.StatusOK, summary)
+	})
+	group.GET("/proposal-preview", func(c *gin.Context) {
+		resourceType, resourceID := c.Query("resource_type"), c.Query("resource_id")
+		if resourceType != "object_type" || resourceID == "" {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		preview := gin.H{}
+		for _, kind := range []string{"row_filter", "property_grants"} {
+			handler, err := permissionproposal.HandlerFor(kind)
+			if err != nil {
+				replyPublicError(c, http.StatusNotFound)
+				return
+			}
+			value, err := handler.Preview(c.Request.Context(), c.GetString(ctxAccessorID), resourceType, resourceID)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			preview[kind] = value
+		}
+		c.JSON(http.StatusOK, preview)
 	})
 	group.GET("/:id", func(c *gin.Context) {
 		result, err := service.Get(c.Request.Context(), c.Param("id"))
@@ -152,7 +176,11 @@ func registerPublicPermissionRequests(g *gin.RouterGroup, service *permissionreq
 			} `json:"resource" binding:"required"`
 			Operation  string   `json:"operation"`
 			Operations []string `json:"operations"`
-			Reason     string   `json:"reason"`
+			Proposal   struct {
+				Kind    string          `json:"kind"`
+				Payload json.RawMessage `json:"payload"`
+			} `json:"proposal"`
+			Reason string `json:"reason"`
 		}
 		if !bind(c, &body) {
 			return
@@ -161,6 +189,7 @@ func registerPublicPermissionRequests(g *gin.RouterGroup, service *permissionreq
 		result, created, err := service.Create(c.Request.Context(), permissionrequest.CreateInput{
 			RequesterID:  applicant,
 			ResourceType: body.Resource.Type, ResourceID: body.Resource.ID, ResourceName: body.Resource.Name, Operation: body.Operation, Operations: body.Operations,
+			ProposalKind: body.Proposal.Kind, ProposalPayload: body.Proposal.Payload,
 			Reason: body.Reason,
 		})
 		if writePermissionRequestError(c, err) {
@@ -208,6 +237,8 @@ func writePermissionRequestError(c *gin.Context, err error) bool {
 		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "permission_already_granted"})
 	case errors.Is(err, permissionrequest.ErrPrerequisiteMissing):
 		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "missing_prerequisite"})
+	case errors.Is(err, permissionrequest.ErrProposalUnavailable):
+		replyPublicError(c, http.StatusNotFound)
 	case errors.Is(err, permissionrequest.ErrResourceDeleted):
 		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "resource_deleted"})
 	case errors.Is(err, permissionrequest.ErrResourceUnavailable):

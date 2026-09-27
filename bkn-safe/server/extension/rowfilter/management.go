@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/licverify"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permissionproposal"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
@@ -44,12 +45,21 @@ type ManagementServices interface {
 
 type OperatorIDResolver func(*http.Request) (string, bool)
 type ManagementHandlerFactory func(ManagementServices, OperatorIDResolver) http.Handler
+type PermissionProposalHandlerFactory func(ManagementServices) permissionproposal.Handler
 
 var (
 	managementFactory    ManagementHandlerFactory
 	managementMinEdition licverify.Edition
 	managementFrozen     bool
+	proposalFactory      PermissionProposalHandlerFactory
 )
+
+func RegisterPermissionProposalHandler(factory PermissionProposalHandlerFactory) {
+	if factory == nil || proposalFactory != nil {
+		panic("rowfilter: invalid permission proposal handler registration")
+	}
+	proposalFactory = factory
+}
 
 func RegisterManagementHandler(min licverify.Edition, factory ManagementHandlerFactory) {
 	if factory == nil {
@@ -116,6 +126,9 @@ func MountManagement(group *gin.RouterGroup, services ManagementServices, resolv
 	handler := managementFactory(services, operatorIDFromRequest)
 	if handler == nil {
 		panic("rowfilter: management handler factory returned nil")
+	}
+	if proposalFactory != nil {
+		permissionproposal.Register("row_filter", proposalFactory(services))
 	}
 	serve := func(c *gin.Context) {
 		request := c.Request

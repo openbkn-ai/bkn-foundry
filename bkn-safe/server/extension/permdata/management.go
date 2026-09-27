@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/licverify"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permissionproposal"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/propertyaccess"
 )
@@ -41,12 +42,21 @@ type OperatorIDResolver func(*http.Request) (string, bool)
 // Core owns the public path, methods, entitlement gate, authentication and
 // account-state middleware; the factory owns only management behavior.
 type ManagementHandlerFactory func(services ManagementServices, operatorID OperatorIDResolver) http.Handler
+type PermissionProposalHandlerFactory func(services ManagementServices) permissionproposal.Handler
 
 var (
 	managementFactory    ManagementHandlerFactory
 	managementMinEdition licverify.Edition
 	managementFrozen     bool
+	proposalFactory      PermissionProposalHandlerFactory
 )
+
+func RegisterPermissionProposalHandler(factory PermissionProposalHandlerFactory) {
+	if factory == nil || proposalFactory != nil {
+		panic("permdata: invalid permission proposal handler registration")
+	}
+	proposalFactory = factory
+}
 
 // RegisterManagementHandler installs the Enterprise management handler. The
 // property resolver must be registered first and both surfaces must declare the
@@ -122,6 +132,9 @@ func MountManagement(
 	handler := managementFactory(services, operatorIDFromRequest)
 	if handler == nil {
 		panic("permdata: management handler factory returned nil")
+	}
+	if proposalFactory != nil {
+		permissionproposal.Register("property_grants", proposalFactory(services))
 	}
 	serve := func(c *gin.Context) {
 		request := c.Request

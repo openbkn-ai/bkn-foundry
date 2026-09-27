@@ -11,10 +11,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,6 +25,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/finegrained"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permissionproposal"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -52,12 +55,15 @@ var (
 	ErrUnsupportedResourceType  = errors.New("permission request resource type is unsupported")
 	ErrPermissionAlreadyGranted = errors.New("permission request permission is already granted")
 	ErrPrerequisiteMissing      = errors.New("permission request prerequisite is missing")
+	ErrProposalUnavailable      = errors.New("permission request proposal is unavailable")
 )
 
 type CreateInput struct {
 	RequesterID                                       string
 	ResourceType, ResourceID, ResourceName, Operation string // Operation is the legacy single-operation input.
 	Operations                                        []string
+	ProposalKind                                      string
+	ProposalPayload                                   json.RawMessage
 	Reason                                            string
 }
 
@@ -149,9 +155,11 @@ func applyRequestFilters(q *gorm.DB, page PageOptions) *gorm.DB {
 }
 
 type Service struct {
-	db        *gorm.DB
-	enforcer  *authz.Enforcer
-	resources ResourceLivenessResolver
+	db                         *gorm.DB
+	enforcer                   *authz.Enforcer
+	resources                  ResourceLivenessResolver
+	legacyStatusMigrationOnce  sync.Once
+	legacyStatusMigrationError error
 }
 
 func New(db *gorm.DB, enforcer *authz.Enforcer, resources ...ResourceLivenessResolver) *Service {
@@ -160,6 +168,19 @@ func New(db *gorm.DB, enforcer *authz.Enforcer, resources ...ResourceLivenessRes
 		service.resources = resources[0]
 	}
 	return service
+}
+
+// normalizeLegacyConfigurationStatuses closes the short-lived intermediate
+// state used by an earlier row-filter workflow. Approval is now terminal;
+// policy configuration remains a separate administrative action.
+func (s *Service) normalizeLegacyConfigurationStatuses(ctx context.Context) error {
+	s.legacyStatusMigrationOnce.Do(func() {
+		s.legacyStatusMigrationError = s.db.WithContext(ctx).
+			Model(&model.PermissionRequest{}).
+			Where("status = ? AND proposal_kind = ?", "pending_configuration", "row_filter").
+			Update("status", StatusGranted).Error
+	})
+	return s.legacyStatusMigrationError
 }
 
 func clean(v string, max int) (string, bool) {
@@ -243,7 +264,7 @@ func grantIDForOperation(requestID, operation string) string {
 func requestFingerprint(in CreateInput) string {
 	parts := []string{
 		"permission-request-v3", in.RequesterID,
-		in.ResourceType, in.ResourceID, strings.Join(in.Operations, "\x00"),
+		in.ResourceType, in.ResourceID, strings.Join(in.Operations, "\x00"), in.ProposalKind, string(in.ProposalPayload),
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
@@ -265,6 +286,18 @@ func validCreate(in *CreateInput) bool {
 	if len(in.Reason) > 512 || strings.ContainsAny(in.Reason, "\x00\r\n") {
 		return false
 	}
+	in.ProposalKind = strings.TrimSpace(in.ProposalKind)
+	if in.ProposalKind != "" && in.ProposalKind != "grant" {
+		if (in.ProposalKind == "row_filter" && in.Reason == "") || len(in.ProposalKind) > 32 || len(in.ProposalPayload) == 0 || len(in.ProposalPayload) > 32*1024 || !json.Valid(in.ProposalPayload) {
+			return false
+		}
+		if len(in.Operations) != 0 || in.Operation != "" {
+			return false
+		}
+		return true
+	}
+	in.ProposalKind = "grant"
+	in.ProposalPayload = nil
 	operations := in.Operations
 	if len(operations) == 0 && in.Operation != "" {
 		operations = []string{in.Operation}
@@ -312,6 +345,10 @@ func sameOperations(left, right []string) bool {
 }
 
 func (s *Service) requestOperations(ctx context.Context, db *gorm.DB, req *model.PermissionRequest) ([]string, error) {
+	if req.ProposalKind != "" && req.ProposalKind != "grant" {
+		req.Operations = nil
+		return nil, nil
+	}
 	if len(req.Operations) > 0 {
 		return req.Operations, nil
 	}
@@ -328,6 +365,22 @@ func (s *Service) requestOperations(ctx context.Context, db *gorm.DB, req *model
 		req.Operations = append(req.Operations, row.Operation)
 	}
 	return req.Operations, nil
+}
+
+func proposalRequest(id string, in CreateInput, reviewerID string) permissionproposal.Request {
+	return permissionproposal.Request{
+		ID: id, RequesterID: in.RequesterID, ReviewerID: reviewerID,
+		ResourceType: in.ResourceType, ResourceID: in.ResourceID, Reason: in.Reason,
+		Proposal: permissionproposal.Proposal{Kind: in.ProposalKind, Payload: in.ProposalPayload},
+	}
+}
+
+func proposalRequestFor(req *model.PermissionRequest, reviewerID string) permissionproposal.Request {
+	return permissionproposal.Request{
+		ID: req.ID, RequesterID: req.RequesterID, ReviewerID: reviewerID,
+		ResourceType: req.ResourceType, ResourceID: req.ResourceID, Reason: req.Reason,
+		Proposal: permissionproposal.Proposal{Kind: req.ProposalKind, Payload: []byte(req.ProposalPayload)},
+	}
 }
 
 // hydrateRequestOperations fills only the durable operation rows.  Reviewer
@@ -509,20 +562,33 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 	if err := s.requireLiveResource(ctx, in.ResourceType, in.ResourceID); err != nil {
 		return nil, false, err
 	}
-	if err := s.validateRequestOperations(ctx, in.ResourceType, in.Operations); err != nil {
+	if in.ProposalKind != "grant" {
+		handler, err := permissionproposal.HandlerFor(in.ProposalKind)
+		if err != nil {
+			return nil, false, ErrProposalUnavailable
+		}
+		if err := handler.Validate(ctx, proposalRequest("", in, "")); err != nil {
+			if errors.Is(err, permissionproposal.ErrStale) {
+				return nil, false, ErrInvalidRequest
+			}
+			return nil, false, err
+		}
+	} else if err := s.validateRequestOperations(ctx, in.ResourceType, in.Operations); err != nil {
 		return nil, false, err
 	}
-	alreadyGranted, err := s.hasRequestedPermission(ctx, in.RequesterID, in.ResourceType, in.ResourceID, in.Operations)
-	if err != nil {
-		return nil, false, err
-	}
-	if alreadyGranted {
-		return nil, false, ErrPermissionAlreadyGranted
+	if in.ProposalKind == "grant" {
+		alreadyGranted, err := s.hasRequestedPermission(ctx, in.RequesterID, in.ResourceType, in.ResourceID, in.Operations)
+		if err != nil {
+			return nil, false, err
+		}
+		if alreadyGranted {
+			return nil, false, ErrPermissionAlreadyGranted
+		}
 	}
 	// Reject a request that can never produce a usable grant. The decision path
 	// repeats this check because an already-held prerequisite may be revoked
 	// after creation but before a reviewer approves the request.
-	if finegrained.Assembled() {
+	if in.ProposalKind == "grant" && finegrained.Assembled() {
 		err := s.enforcer.Transaction(ctx, func(tx *authz.PolicyTransaction) error {
 			missing, err := missingUnrequestedPrerequisites(ctx, tx, in.RequesterID, in.ResourceType, in.ResourceID, in.Operations)
 			if err != nil {
@@ -545,7 +611,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 	req := model.PermissionRequest{
 		ID: id, RequestKey: requestKey, RequesterID: in.RequesterID,
 		ResourceType: in.ResourceType, ResourceID: in.ResourceID, ResourceName: in.ResourceName,
-		Operation: in.Operation, Reason: in.Reason, Status: StatusPending, GrantID: grantID(id),
+		Operation: in.Operation, ProposalKind: in.ProposalKind, ProposalPayload: string(in.ProposalPayload), Reason: in.Reason, Status: StatusPending, GrantID: grantID(id),
 	}
 	result := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&req)
 	if result.Error != nil {
@@ -560,8 +626,10 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 			}
 			rows = append(rows, model.PermissionRequestOperation{ID: operationID, RequestID: req.ID, Operation: operation})
 		}
-		if err := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error; err != nil {
-			return nil, false, err
+		if len(rows) > 0 {
+			if err := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error; err != nil {
+				return nil, false, err
+			}
 		}
 	}
 	var stored model.PermissionRequest
@@ -572,7 +640,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 		return nil, false, ErrInvalidRequest
 	}
 	storedOperations, err := s.requestOperations(ctx, s.db, &stored)
-	if err != nil || !sameOperations(storedOperations, in.Operations) {
+	if err != nil || !sameOperations(storedOperations, in.Operations) || stored.ProposalKind != in.ProposalKind || stored.ProposalPayload != string(in.ProposalPayload) {
 		return nil, false, ErrInvalidRequest
 	}
 	if err := s.syncAllReviewers(ctx, s.db, &stored); err != nil {
@@ -688,8 +756,11 @@ func (s *Service) authorizationRoot(ctx context.Context, resourceType, resourceI
 		}
 		seen[key] = true
 		var parent model.ResourceParent
-		err := s.db.WithContext(ctx).First(&parent, "resource_type_id = ? AND resource_id = ?", resourceType, resourceID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		lookup := s.db.WithContext(ctx).Where("resource_type_id = ? AND resource_id = ?", resourceType, resourceID).Limit(1).Find(&parent)
+		if lookup.Error != nil {
+			return "", "", lookup.Error
+		}
+		if lookup.RowsAffected == 0 {
 			// Knowledge-network child IDs are canonically stored as
 			// "<knowledge-network-id>/<child-id>". Use that trusted identity
 			// shape as a fallback while lifecycle synchronization catches up,
@@ -698,9 +769,6 @@ func (s *Service) authorizationRoot(ctx context.Context, resourceType, resourceI
 				return "knowledge_network", parentID, nil
 			}
 			return resourceType, resourceID, nil
-		}
-		if err != nil {
-			return "", "", err
 		}
 		resourceType, resourceID = parent.ParentTypeID, parent.ParentID
 	}
@@ -1080,6 +1148,74 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 			if err != nil {
 				return err
 			}
+			if req.ProposalKind != "" && req.ProposalKind != "grant" {
+				handler, err := permissionproposal.HandlerFor(req.ProposalKind)
+				if err != nil {
+					return ErrProposalUnavailable
+				}
+				proposal := proposalRequestFor(&req, in.ReviewerID)
+				if err := handler.Validate(ctx, proposal); err != nil {
+					if !errors.Is(err, permissionproposal.ErrStale) {
+						return err
+					}
+					decisionID, idErr := newUUIDv7()
+					if idErr != nil {
+						return idErr
+					}
+					decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: DecisionInvalidated, Comment: in.Comment}
+					if err := tx.DB().Create(&decision).Error; err != nil {
+						return err
+					}
+					req.Status = StatusInvalidated
+					retireRequestKey(&req)
+					if err := tx.DB().Save(&req).Error; err != nil {
+						return err
+					}
+					result = req
+					return nil
+				}
+				decisionID, err := newUUIDv7()
+				if err != nil {
+					return err
+				}
+				decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
+				if err := tx.DB().Create(&decision).Error; err != nil {
+					return err
+				}
+				if handler.ApprovalMode() == permissionproposal.ApprovalModeApproveOnly {
+					now := time.Now().UTC()
+					req.Status, req.ApprovedBy, req.ApprovedAt = StatusGranted, in.ReviewerID, &now
+					retireRequestKey(&req)
+					if err := tx.DB().Save(&req).Error; err != nil {
+						return err
+					}
+					result = req
+					return nil
+				}
+				if err := handler.Apply(ctx, tx.DB(), proposal); err != nil {
+					if !errors.Is(err, permissionproposal.ErrStale) {
+						return err
+					}
+					if err := tx.DB().Model(&model.PermissionRequestDecision{}).Where("id = ?", decision.ID).Update("decision", DecisionInvalidated).Error; err != nil {
+						return err
+					}
+					req.Status = StatusInvalidated
+					retireRequestKey(&req)
+					if err := tx.DB().Save(&req).Error; err != nil {
+						return err
+					}
+					result = req
+					return nil
+				}
+				now := time.Now().UTC()
+				req.Status, req.ApprovedBy, req.ApprovedAt = StatusGranted, in.ReviewerID, &now
+				retireRequestKey(&req)
+				if err := tx.DB().Save(&req).Error; err != nil {
+					return err
+				}
+				result = req
+				return nil
+			}
 			if finegrained.Assembled() {
 				missing, err := missingUnrequestedPrerequisites(ctx, tx, req.RequesterID, req.ResourceType, req.ResourceID, operations)
 				if err != nil {
@@ -1157,6 +1293,9 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 }
 
 func (s *Service) ListRequested(ctx context.Context, requester string) ([]model.PermissionRequest, error) {
+	if err := s.normalizeLegacyConfigurationStatuses(ctx); err != nil {
+		return nil, err
+	}
 	var rows []model.PermissionRequest
 	err := s.db.WithContext(ctx).Where("requester_id = ?", requester).Order("created_at DESC").Find(&rows).Error
 	if err != nil {
@@ -1174,6 +1313,9 @@ func (s *Service) ListRequested(ctx context.Context, requester string) ([]model.
 }
 
 func (s *Service) ListRequestedPage(ctx context.Context, requester string, page PageOptions) (RequestPage, error) {
+	if err := s.normalizeLegacyConfigurationStatuses(ctx); err != nil {
+		return RequestPage{}, err
+	}
 	page = normalizePage(page)
 	q := applyRequestFilters(s.db.WithContext(ctx).Model(&model.PermissionRequest{}).Where("requester_id = ?", requester), page)
 	var result RequestPage
@@ -1194,6 +1336,9 @@ func (s *Service) ListRequestedPage(ctx context.Context, requester string, page 
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*model.PermissionRequest, error) {
+	if err := s.normalizeLegacyConfigurationStatuses(ctx); err != nil {
+		return nil, err
+	}
 	var request model.PermissionRequest
 	if err := s.db.WithContext(ctx).First(&request, "id = ?", strings.TrimSpace(id)).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
@@ -1277,6 +1422,9 @@ func (s *Service) Cancel(ctx context.Context, id, requester string) (*model.Perm
 }
 
 func (s *Service) ListReviewed(ctx context.Context, reviewer string) ([]model.PermissionRequest, error) {
+	if err := s.normalizeLegacyConfigurationStatuses(ctx); err != nil {
+		return nil, err
+	}
 	var rows []model.PermissionRequest
 	err := s.db.WithContext(ctx).Model(&model.PermissionRequest{}).Joins("JOIN permission_request_decision d ON d.request_id = permission_request.id").Where("d.reviewer_id = ?", reviewer).Order("d.created_at DESC").Find(&rows).Error
 	if err != nil {
@@ -1289,6 +1437,9 @@ func (s *Service) ListReviewed(ctx context.Context, reviewer string) ([]model.Pe
 }
 
 func (s *Service) ListReviewedPage(ctx context.Context, reviewer string, page PageOptions) (RequestPage, error) {
+	if err := s.normalizeLegacyConfigurationStatuses(ctx); err != nil {
+		return RequestPage{}, err
+	}
 	page = normalizePage(page)
 	q := applyRequestFilters(s.db.WithContext(ctx).Model(&model.PermissionRequest{}).Joins("JOIN permission_request_decision d ON d.request_id = permission_request.id").Where("d.reviewer_id = ?", reviewer), page)
 	var result RequestPage

@@ -1,11 +1,14 @@
 package permissionrequest
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/glebarez/sqlite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/finegrained"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permissionproposal"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -13,6 +16,101 @@ import (
 	"github.com/openbkn-ai/licverify"
 	"gorm.io/gorm"
 )
+
+type emptyOperationProposalHandler struct{}
+
+func (emptyOperationProposalHandler) Validate(context.Context, permissionproposal.Request) error {
+	return nil
+}
+func (emptyOperationProposalHandler) Apply(context.Context, *gorm.DB, permissionproposal.Request) error {
+	return nil
+}
+func (emptyOperationProposalHandler) Preview(context.Context, string, string, string) (any, error) {
+	return nil, nil
+}
+func (emptyOperationProposalHandler) ApprovalMode() permissionproposal.ApprovalMode {
+	return permissionproposal.ApprovalModeApply
+}
+func TestCreatePolicyProposalDoesNotInsertEmptyOperationRows(t *testing.T) {
+	permissionproposal.Register("test_empty_operation_rows", emptyOperationProposalHandler{})
+	db, err := gorm.Open(sqlite.Open("file:permission-request-policy-create?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	enforcer, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "requester", Account: "requester", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	created, first, err := New(db, enforcer).Create(t.Context(), CreateInput{
+		RequesterID: "requester", ResourceType: "object_type", ResourceID: "kn-1/object-1",
+		ProposalKind: "test_empty_operation_rows", ProposalPayload: json.RawMessage(`{"current_policy":null}`), Reason: "need more data",
+	})
+	if err != nil || !first {
+		t.Fatalf("Create() = %#v, %v, want policy request without an empty-slice error", created, err)
+	}
+	var count int64
+	if err := db.Model(&model.PermissionRequestOperation{}).Where("request_id = ?", created.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("operation rows = %d, want 0", count)
+	}
+}
+
+func TestOnlyRowFilterProposalRequiresReason(t *testing.T) {
+	rowFilterRequest := CreateInput{
+		RequesterID: "requester", ResourceType: "object_type", ResourceID: "kn-1/object-1",
+		ProposalKind: "row_filter", ProposalPayload: json.RawMessage(`{"current_policy":null}`),
+	}
+	if validCreate(&rowFilterRequest) {
+		t.Fatal("validCreate() accepted a row-filter request without a reason")
+	}
+	propertyRequest := CreateInput{
+		RequesterID: "requester", ResourceType: "object_type", ResourceID: "kn-1/object-1",
+		ProposalKind: "property_grants", ProposalPayload: json.RawMessage(`{"changes":[{"property_name":"name","level":"full"}]}`),
+	}
+	if !validCreate(&propertyRequest) {
+		t.Fatal("validCreate() rejected a property request without a reason")
+	}
+}
+
+func TestGetMigratesLegacyRowFilterPendingConfigurationToGranted(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:permission-request-legacy-row-filter?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	enforcer, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "requester", Account: "requester", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	legacy := model.PermissionRequest{
+		ID: "legacy-row-filter", RequestKey: "legacy-row-filter", RequesterID: "requester",
+		ResourceType: "object_type", ResourceID: "kn-1/object-1", ProposalKind: "row_filter",
+		Status: "pending_configuration",
+	}
+	if err := db.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	request, err := New(db, enforcer).Get(t.Context(), legacy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Status != StatusGranted {
+		t.Fatalf("legacy request status = %q, want %q", request.Status, StatusGranted)
+	}
+}
 
 func TestApprovalCreatesOneIndependentGrant(t *testing.T) {
 	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
