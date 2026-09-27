@@ -24,3 +24,16 @@ func TestRegisteredLogEventsIncludeVoluntaryLogout(t *testing.T) {
 		t.Fatal("registered voluntary logout event was rejected")
 	}
 }
+
+func TestRegisteredLogEventsIncludeUnifiedCaptureControlAudit(t *testing.T) {
+	for _, name := range []string{
+		"trace_evidence.configuration_change_requested",
+		"trace_evidence.operation_succeeded",
+		"trace_evidence.operation_failed",
+		"trace_evidence.rollback_completed",
+	} {
+		if !IsRegisteredLogEvent(CategoryAuditAdmin, name) {
+			t.Fatalf("frozen control Audit event %s is not publicly queryable", name)
+		}
+	}
+}

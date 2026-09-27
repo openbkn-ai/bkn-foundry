@@ -98,6 +98,18 @@ kafkaConsumers:
       usernameKey: username
       passwordKey: password
 
+# Optional fail-open producer for Trace/Evidence control Audit events. Use a
+# dedicated principal in production; the consumer credentials are independent.
+auditPublisher:
+  enabled: false
+  environment: ""
+  brokers: []
+  saslMechanism: ""
+  existingSecret:
+    name: ""
+    usernameKey: username
+    passwordKey: password
+
 bknSafe:
   baseURL: http://bkn-safe:3000
   accessTimeout: 3s

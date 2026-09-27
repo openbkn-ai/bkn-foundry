@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
@@ -65,6 +66,18 @@ type Controller struct {
 	convergence time.Duration
 	now         func() time.Time
 	id          func() (string, error)
+	onTerminal  func(context.Context, TerminalEvent)
+}
+
+// TerminalEvent is emitted only after the durable terminal transition commits.
+type TerminalEvent struct {
+	OperationID    string
+	PolicyRevision uint64
+	DesiredState   string
+	EffectiveState string
+	Phase          string
+	FailureCode    string
+	At             time.Time
 }
 
 type Options struct {
@@ -75,6 +88,7 @@ type Options struct {
 	Convergence time.Duration
 	Now         func() time.Time
 	OperationID func() (string, error)
+	OnTerminal  func(context.Context, TerminalEvent)
 }
 
 func New(options Options) (*Controller, error) {
@@ -98,7 +112,7 @@ func New(options Options) (*Controller, error) {
 	if options.OperationID == nil {
 		options.OperationID = newOperationID
 	}
-	return &Controller{store: options.Store, targets: append([]Target(nil), options.Targets...), workerID: options.WorkerID, lease: options.Lease, convergence: options.Convergence, now: options.Now, id: options.OperationID}, nil
+	return &Controller{store: options.Store, targets: append([]Target(nil), options.Targets...), workerID: options.WorkerID, lease: options.Lease, convergence: options.Convergence, now: options.Now, id: options.OperationID, onTerminal: options.OnTerminal}, nil
 }
 
 // Request is the Commander used by the API. The revision and expected ACK
@@ -183,7 +197,16 @@ func (c *Controller) Reconcile(ctx context.Context) (bool, error) {
 	}
 	if now.After(op.ConvergenceDeadline) {
 		if op.Phase == icapturepolicy.PhaseRollingBack {
-			return true, c.store.CompleteRollbackFailed(ctx, op.ID, op.LeaseToken, now)
+			err := c.store.CompleteRollbackFailed(ctx, op.ID, op.LeaseToken, now)
+			if err == nil {
+				state, readErr := c.store.ReadControlState(ctx)
+				if readErr == nil {
+					c.observeTerminal(ctx, op, icapturepolicy.PhaseRollbackFailed, state.EffectiveState, now)
+				} else if c.onTerminal != nil {
+					log.Printf("audit coverage_gap: rollback failure state unavailable: %v", readErr)
+				}
+			}
+			return true, err
 		}
 		state, stateErr := c.store.ReadControlState(ctx)
 		if stateErr != nil {
@@ -202,7 +225,11 @@ func (c *Controller) Reconcile(ctx context.Context) (bool, error) {
 			})
 		}
 		if len(expected) == 0 {
-			return true, c.store.CompleteFailed(ctx, op.ID, op.LeaseToken, now)
+			err := c.store.CompleteFailed(ctx, op.ID, op.LeaseToken, now)
+			if err == nil {
+				c.observeTerminal(ctx, op, icapturepolicy.PhaseFailed, state.EffectiveState, now)
+			}
+			return true, err
 		}
 		return true, c.store.BeginRollback(ctx, op.ID, op.LeaseToken, compensationRevision, state.EffectiveState, expected, now)
 	}
@@ -214,9 +241,31 @@ func (c *Controller) Reconcile(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	if op.Phase == icapturepolicy.PhaseRollingBack {
-		return true, c.store.CompleteRollback(ctx, op.ID, op.LeaseToken, now)
+		err := c.store.CompleteRollback(ctx, op.ID, op.LeaseToken, now)
+		if err == nil {
+			c.observeTerminal(ctx, op, icapturepolicy.PhaseRollbackCompleted, op.RestoredState, now)
+		}
+		return true, err
 	}
-	return true, c.store.CompleteSucceeded(ctx, op.ID, op.LeaseToken, now)
+	err = c.store.CompleteSucceeded(ctx, op.ID, op.LeaseToken, now)
+	if err == nil {
+		c.observeTerminal(ctx, op, icapturepolicy.PhaseSucceeded, op.RequestedState, now)
+	}
+	return true, err
+}
+
+func (c *Controller) observeTerminal(ctx context.Context, op icapturepolicy.Operation, phase, effectiveState string, at time.Time) {
+	if c.onTerminal != nil {
+		revision, desiredState := op.PolicyRevision, op.RequestedState
+		failureCode := ""
+		if phase == icapturepolicy.PhaseRollbackCompleted || phase == icapturepolicy.PhaseRollbackFailed {
+			revision, desiredState = op.CompensationRevision, op.RestoredState
+		}
+		if phase == icapturepolicy.PhaseRollbackFailed {
+			failureCode = "TRACE_EVIDENCE_ROLLBACK_FAILED"
+		}
+		c.onTerminal(ctx, TerminalEvent{OperationID: op.ID, PolicyRevision: revision, DesiredState: desiredState, EffectiveState: effectiveState, Phase: phase, FailureCode: failureCode, At: at})
+	}
 }
 
 func converged(operationID string, revision uint64, desiredState string, acks []icapturepolicy.ExpectedAcknowledgement) bool {

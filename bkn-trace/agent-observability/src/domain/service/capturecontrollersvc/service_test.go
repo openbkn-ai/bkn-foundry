@@ -78,7 +78,8 @@ func ptr(value time.Time) *time.Time { return &value }
 func TestControllerRequestAndReconcileUsesFrozenExpectedSet(t *testing.T) {
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
 	store := &fakeStore{state: icapturepolicy.ControlState{CurrentRevision: 1, DesiredState: icapturepolicy.StateEnabled, EffectiveState: icapturepolicy.StateEnabled, LastStableRevision: 1, ActiveOperationID: "", CoverageGapUpdatedAt: now, UpdatedAt: now}}
-	controller, err := New(Options{Store: store, WorkerID: "controller-1", Lease: time.Minute, Convergence: time.Minute, Targets: []Target{{EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway-1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1"}}, Now: func() time.Time { return now }, OperationID: func() (string, error) { return "op-1", nil }})
+	var terminal []TerminalEvent
+	controller, err := New(Options{Store: store, WorkerID: "controller-1", Lease: time.Minute, Convergence: time.Minute, Targets: []Target{{EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway-1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1"}}, Now: func() time.Time { return now }, OperationID: func() (string, error) { return "op-1", nil }, OnTerminal: func(_ context.Context, event TerminalEvent) { terminal = append(terminal, event) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +97,12 @@ func TestControllerRequestAndReconcileUsesFrozenExpectedSet(t *testing.T) {
 	}
 	if store.op.Phase != icapturepolicy.PhaseSucceeded || store.state.EffectiveState != icapturepolicy.StateDisabled {
 		t.Fatalf("operation did not converge: op=%+v state=%+v", store.op, store.state)
+	}
+	if len(terminal) != 1 || terminal[0].Phase != icapturepolicy.PhaseSucceeded || terminal[0].OperationID != "op-1" || terminal[0].EffectiveState != icapturepolicy.StateDisabled {
+		t.Fatalf("terminal observer = %+v", terminal)
+	}
+	if claimed, err := controller.Reconcile(context.Background()); err != nil || claimed || len(terminal) != 1 {
+		t.Fatalf("duplicate terminal callback: claimed=%v err=%v events=%+v", claimed, err, terminal)
 	}
 }
 
@@ -136,7 +143,8 @@ func TestControllerReconcilesEnabledGatewayAndPublisherAcks(t *testing.T) {
 func TestControllerDeadlineStartsCompensationRevision(t *testing.T) {
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
 	store := &fakeStore{state: icapturepolicy.ControlState{CurrentRevision: 1, DesiredState: icapturepolicy.StateEnabled, EffectiveState: icapturepolicy.StateEnabled, LastStableRevision: 1, CoverageGapUpdatedAt: now, UpdatedAt: now}}
-	controller, err := New(Options{Store: store, WorkerID: "controller-1", Lease: time.Minute, Convergence: time.Minute, Targets: []Target{{EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway-1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1"}}, Now: func() time.Time { return now }, OperationID: func() (string, error) { return "op-2", nil }})
+	var terminal []TerminalEvent
+	controller, err := New(Options{Store: store, WorkerID: "controller-1", Lease: time.Minute, Convergence: time.Minute, Targets: []Target{{EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: "gateway-1", WorkloadIdentity: "sa/gateway", ProcessBootID: "boot-1"}}, Now: func() time.Time { return now }, OperationID: func() (string, error) { return "op-2", nil }, OnTerminal: func(_ context.Context, event TerminalEvent) { terminal = append(terminal, event) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,5 +157,30 @@ func TestControllerDeadlineStartsCompensationRevision(t *testing.T) {
 	}
 	if store.op.Phase != icapturepolicy.PhaseRollingBack || store.op.CompensationRevision != 3 || store.state.DesiredState != icapturepolicy.StateEnabled {
 		t.Fatalf("compensation was not started: op=%+v state=%+v", store.op, store.state)
+	}
+	ackTime := now.Add(time.Second)
+	store.acks[0].AckState, store.acks[0].Ready, store.acks[0].AcknowledgedAt = icapturepolicy.AckReady, true, &ackTime
+	store.acks[0].TraceDisposition = icapturepolicy.DispositionNotApplicable
+	if _, err := controller.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(terminal) != 1 || terminal[0].Phase != icapturepolicy.PhaseRollbackCompleted || terminal[0].PolicyRevision != 3 || terminal[0].DesiredState != icapturepolicy.StateEnabled || terminal[0].EffectiveState != icapturepolicy.StateEnabled {
+		t.Fatalf("rollback audit must describe the compensation revision and restored state: %+v", terminal)
+	}
+}
+
+func TestControllerRollbackFailureAuditsTerminalFailureWithoutFakingEffectiveState(t *testing.T) {
+	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
+	store := &fakeStore{state: icapturepolicy.ControlState{CurrentRevision: 3, DesiredState: icapturepolicy.StateEnabled, EffectiveState: icapturepolicy.StateDisabled, ActiveOperationID: "op-3"}, op: icapturepolicy.Operation{ID: "op-3", PolicyRevision: 2, CompensationRevision: 3, RequestedState: icapturepolicy.StateDisabled, RestoredState: icapturepolicy.StateEnabled, Phase: icapturepolicy.PhaseRollingBack, ConvergenceDeadline: now.Add(-time.Second)}}
+	var terminal []TerminalEvent
+	controller, err := New(Options{Store: store, WorkerID: "controller-1", Lease: time.Minute, Convergence: time.Minute, Now: func() time.Time { return now }, OnTerminal: func(_ context.Context, event TerminalEvent) { terminal = append(terminal, event) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(terminal) != 1 || terminal[0].Phase != icapturepolicy.PhaseRollbackFailed || terminal[0].PolicyRevision != 3 || terminal[0].DesiredState != icapturepolicy.StateEnabled || terminal[0].EffectiveState != icapturepolicy.StateDisabled || terminal[0].FailureCode != "TRACE_EVIDENCE_ROLLBACK_FAILED" {
+		t.Fatalf("rollback failure audit must retain actual effective state: %+v", terminal)
 	}
 }

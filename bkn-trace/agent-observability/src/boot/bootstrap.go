@@ -94,6 +94,7 @@ type App struct {
 	projection     *projectorsvc.Worker
 	kafkaRuntimes  []*kafkaruntime.Runtime
 	kafkaHealth    *kafkaHealth
+	captureAudit   *captureAuditSink
 }
 
 const APIBasePath = "/api/agent-observability/v1"
@@ -151,6 +152,7 @@ func NewApp() (*App, error) {
 		return nil, err
 	}
 	ledgerService := newEvidenceLedgerService(ledgerStore, metrics)
+	captureAudit := newCaptureAuditSink()
 	var capturePolicyReader capturepolicysvc.Reader
 	var capturePolicyCommander capturepolicysvc.Commander
 	var captureController *capturecontrollersvc.Controller
@@ -162,6 +164,7 @@ func NewApp() (*App, error) {
 			captureController, err = capturecontrollersvc.New(capturecontrollersvc.Options{
 				Store: maria, WorkerID: "agent-observability-control-controller",
 				Lease: 30 * time.Second, Convergence: 10 * time.Minute,
+				OnTerminal: func(_ context.Context, event capturecontrollersvc.TerminalEvent) { captureAudit.terminal(event) },
 			})
 			if err != nil {
 				if closeDatabase != nil {
@@ -199,6 +202,9 @@ func NewApp() (*App, error) {
 			TTL:        coreConfig.CapturePolicySnapshotTTL,
 		}, capturePolicyWriter,
 	)
+	capturePolicyHandler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType string, before, after capturepolicysvc.Snapshot) {
+		captureAudit.requested(actorID, actorType, before, after)
+	})
 	var admissionBudgetSources []capturepolicysvc.AdmissionMeasurementSource
 	admissionBudgetSources = append(admissionBudgetSources,
 		capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
@@ -544,6 +550,7 @@ func NewApp() (*App, error) {
 		sessionHandler, ledgerHandler, metrics, capturePolicyHandler, enterpriseReader,
 	)
 	app.closeDatabase = closeDatabase
+	app.captureAudit = captureAudit
 	app.kafkaRuntimes = kafkaRuntimes
 	if evidenceKafkaRuntime != nil {
 		app.kafkaHealth.set("evidence", evidenceKafkaRuntime)
@@ -1027,6 +1034,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	if a.closeDatabase != nil {
 		shutdownErr = errors.Join(shutdownErr, a.closeDatabase())
 	}
+	shutdownErr = errors.Join(shutdownErr, a.captureAudit.close())
 	return shutdownErr
 }
 

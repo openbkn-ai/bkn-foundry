@@ -991,6 +991,35 @@ func TestCapturePolicyHandlerAcceptsRevisionGuardedChange(t *testing.T) {
 	}
 }
 
+func TestCapturePolicyHandlerAuditsOnlyAcceptedTrustedChange(t *testing.T) {
+	before := capturepolicysvc.Snapshot{Revision: 9, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 9, Operation: capturepolicysvc.Operation{ID: "op-9", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled, ExpectedRevision: 8}}
+	after := capturepolicysvc.Snapshot{Revision: 10, DesiredState: capturepolicysvc.StateDisabled, EffectiveState: capturepolicysvc.StateEnabled, Operation: capturepolicysvc.Operation{ID: "op-10"}}
+	handler := NewCapturePolicyHandler(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return before, nil }), capturePolicyCommanderFunc(func(context.Context, capturepolicysvc.ChangeRequest) (capturepolicysvc.Snapshot, error) {
+		return after, nil
+	}))
+	calls := 0
+	handler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType string, previous, accepted capturepolicysvc.Snapshot) {
+		calls++
+		if actorID != "user-1" || actorType != "user" || previous.Revision != 9 || accepted.Operation.ID != "op-10" {
+			t.Fatalf("wrong audit identity or state: %s %s %+v %+v", actorID, actorType, previous, accepted)
+		}
+	})
+	request := httptest.NewRequest(http.MethodPut, "/api/agent-observability/v1/trace-evidence-configuration", bytes.NewBufferString(`{"desired_state":"disabled","expected_revision":9}`))
+	request = request.WithContext(context.WithValue(request.Context(), trustedQueryScopeContextKey{}, evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}))
+	response := httptest.NewRecorder()
+	handler.HandleTraceEvidenceConfiguration(response, request)
+	if response.Code != http.StatusAccepted || calls != 1 {
+		t.Fatalf("status=%d audit calls=%d", response.Code, calls)
+	}
+
+	request = httptest.NewRequest(http.MethodPut, "/api/agent-observability/v1/trace-evidence-configuration", bytes.NewBufferString(`{"desired_state":"disabled","expected_revision":9}`))
+	response = httptest.NewRecorder()
+	handler.HandleTraceEvidenceConfiguration(response, request)
+	if response.Code != http.StatusAccepted || calls != 1 {
+		t.Fatalf("untrusted identity emitted audit: status=%d calls=%d", response.Code, calls)
+	}
+}
+
 func TestCapturePolicyHandlerRequiresAdmissionBudgetToEnable(t *testing.T) {
 	called := false
 	handler := NewCapturePolicyHandler(

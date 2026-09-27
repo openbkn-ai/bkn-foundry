@@ -42,9 +42,18 @@ type CapturePolicyHandler struct {
 	reconciler interface {
 		Reconcile(context.Context) (bool, error)
 	}
-	signer CapturePolicySigner
-	writer CapturePolicyControlWriter
-	budget AdmissionBudgetReader
+	signer         CapturePolicySigner
+	writer         CapturePolicyControlWriter
+	budget         AdmissionBudgetReader
+	auditRequested func(context.Context, string, string, capturepolicysvc.Snapshot, capturepolicysvc.Snapshot)
+}
+
+// SetAuditRequestedObserver observes only accepted, non-noop commands. Audit
+// delivery is best effort and must not change the control API result.
+func (h *CapturePolicyHandler) SetAuditRequestedObserver(observer func(context.Context, string, string, capturepolicysvc.Snapshot, capturepolicysvc.Snapshot)) {
+	if h != nil {
+		h.auditRequested = observer
+	}
 }
 
 func (h *CapturePolicyHandler) SetAdmissionBudgetReader(reader AdmissionBudgetReader) {
@@ -136,6 +145,10 @@ func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseW
 			return
 		}
 	}
+	var before capturepolicysvc.Snapshot
+	if h.auditRequested != nil && h.service != nil {
+		before, _ = h.service.Read(contextWithRequest(r))
+	}
 	snapshot, err := h.commander.Request(contextWithRequest(r), request)
 	if err != nil {
 		status, code := http.StatusServiceUnavailable, "POLICY_RECONCILER_UNAVAILABLE"
@@ -146,6 +159,12 @@ func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseW
 		}
 		writeJSON(w, r, status, rdto.ErrorResponse{Code: code, Message: "capture policy change was not accepted"})
 		return
+	}
+	if h.auditRequested != nil && snapshot.Operation.ID != "noop" {
+		scope, ok := trustedQueryScopeFromContext(r.Context())
+		if ok && scope.AccountID != "" {
+			h.auditRequested(r.Context(), scope.AccountID, scope.AccountType, before, snapshot)
+		}
 	}
 	writeJSON(w, r, http.StatusAccepted, rdto.TraceEvidenceConfigurationResponse(snapshot))
 }

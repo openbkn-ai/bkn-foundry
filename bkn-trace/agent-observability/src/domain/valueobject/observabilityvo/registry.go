@@ -62,6 +62,11 @@ var registeredEventCategories = map[string]string{
 	"sandbox.dependency.changed":  CategoryRuntimeSystem,
 	"sandbox.policy.denied":       CategoryAuditSecurity,
 	"secret.detected":             CategoryAuditSecurity,
+	// The four control-plane Audit events are frozen in the current Audit v1 registry.
+	"trace_evidence.configuration_change_requested": CategoryAuditAdmin,
+	"trace_evidence.operation_succeeded":            CategoryAuditAdmin,
+	"trace_evidence.operation_failed":               CategoryAuditAdmin,
+	"trace_evidence.rollback_completed":             CategoryAuditAdmin,
 }
 
 func IsRegisteredLogEvent(category, eventName string) bool {

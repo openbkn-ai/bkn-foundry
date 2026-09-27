@@ -187,6 +187,32 @@ spec:
             - name: BKN_TRACE_AUDIT_KAFKA_ENABLED
               value: "false"
             {{- end }}
+            {{- $auditPublisher := .Values.auditPublisher }}
+            {{- if $auditPublisher.enabled }}
+            {{- if ne $auditPublisher.saslMechanism "PLAIN" }}{{ fail "auditPublisher.saslMechanism must be PLAIN" }}{{ end }}
+            {{- if not (has $auditPublisher.environment (list "development" "test" "staging" "production")) }}{{ fail "auditPublisher.environment must be a registered environment" }}{{ end }}
+            - name: BKN_AUDIT_KAFKA_ENABLED
+              value: "true"
+            - name: BKN_AUDIT_ENVIRONMENT
+              value: {{ $auditPublisher.environment | quote }}
+            - name: BKN_AUDIT_KAFKA_BROKERS
+              value: {{ required "auditPublisher.brokers is required when enabled" (join "," $auditPublisher.brokers) | quote }}
+            - name: BKN_AUDIT_KAFKA_SASL_MECHANISM
+              value: {{ $auditPublisher.saslMechanism | quote }}
+            - name: BKN_AUDIT_KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auditPublisher.existingSecret.name is required when enabled" $auditPublisher.existingSecret.name | quote }}
+                  key: {{ required "auditPublisher.existingSecret.usernameKey is required when enabled" $auditPublisher.existingSecret.usernameKey | quote }}
+            - name: BKN_AUDIT_KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auditPublisher.existingSecret.name is required when enabled" $auditPublisher.existingSecret.name | quote }}
+                  key: {{ required "auditPublisher.existingSecret.passwordKey is required when enabled" $auditPublisher.existingSecret.passwordKey | quote }}
+            {{- else }}
+            - name: BKN_AUDIT_KAFKA_ENABLED
+              value: "false"
+            {{- end }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST
               value: {{ ternary "true" "false" .Values.evidence.ingestAuth.allowUnauthenticated | quote }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
