@@ -151,7 +151,8 @@ def run(argv, source_factory=_source_connection, producer_factory=_kafka_produce
     snapshot = commands.add_parser("snapshot", help="create the payload-free frozen source artifact")
     snapshot.add_argument("--manifest-id", required=True)
     snapshot.add_argument("--artifact", required=True)
-    snapshot.add_argument("--core-ownership-gaps", help="exact payload-free archive-only gap list")
+    snapshot.add_argument("--core-ownership-gaps", help="exact payload-free identities of rows with unavailable Core ownership")
+    snapshot.add_argument("--archive-only", action="store_true", help="require every frozen source row to be an ownership gap; publish no Kafka records")
     publish = commands.add_parser("publish", help="reread and publish an activated frozen artifact")
     publish.add_argument("--artifact", required=True)
     publish.add_argument("--receipt", required=True)
@@ -159,6 +160,7 @@ def run(argv, source_factory=_source_connection, producer_factory=_kafka_produce
     publish.add_argument("--producer-instance-id", required=True)
     publish.add_argument("--timeout-seconds", type=float, default=30)
     publish.add_argument("--core-ownership-gaps", help="same exact gap list used for snapshot")
+    publish.add_argument("--archive-only", action="store_true", help="require every frozen source row to be an ownership gap; publish no Kafka records")
     args = parser.parse_args(argv)
     output = sys.stdout if output is None else output
     core_ownership_gaps = _load_core_ownership_gaps(args.core_ownership_gaps)
@@ -168,7 +170,8 @@ def run(argv, source_factory=_source_connection, producer_factory=_kafka_produce
         try:
             source_snapshot_at = _begin_readonly_snapshot(connection)
             rows = read_event_snapshot(connection, source_snapshot_at)
-            artifact, _ = issue_manifest(args.manifest_id, source_snapshot_at, rows, core_ownership_gaps)
+            artifact, _ = issue_manifest(args.manifest_id, source_snapshot_at, rows, core_ownership_gaps,
+                                         archive_only=args.archive_only)
             _write_json(args.artifact, artifact)
             _emit(output, {"manifest_id": artifact["manifest_id"], "entry_count": artifact["entry_count"], "entries_digest": artifact["entries_digest"]})
         finally:
@@ -183,7 +186,8 @@ def run(argv, source_factory=_source_connection, producer_factory=_kafka_produce
     try:
         _begin_readonly_snapshot(connection)
         rows = read_event_snapshot(connection, manifest["source_snapshot_at"])
-        events = verify_frozen_entries(rows, manifest, entries, core_ownership_gaps)
+        events = verify_frozen_entries(rows, manifest, entries, core_ownership_gaps,
+                                       archive_only=args.archive_only)
     finally:
         try:
             connection.rollback()

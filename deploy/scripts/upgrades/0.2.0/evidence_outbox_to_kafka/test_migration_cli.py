@@ -130,7 +130,7 @@ class MigrationCLITest(unittest.TestCase):
             }]), encoding="utf-8")
             artifact_path, receipt_path = root / "manifest.json", root / "active.json"
             run(["snapshot", "--manifest-id", "mig-1", "--artifact", str(artifact_path),
-                 "--core-ownership-gaps", str(gap_path)], lambda: source, lambda: producer,
+                 "--core-ownership-gaps", str(gap_path), "--archive-only"], lambda: source, lambda: producer,
                 output=lambda _value: None)
             artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
             self.assertEqual(artifact["entries"][0]["classification_reason"], "core_ownership_unavailable")
@@ -142,7 +142,7 @@ class MigrationCLITest(unittest.TestCase):
 
             result = run(["publish", "--artifact", str(artifact_path), "--receipt", str(receipt_path),
                           "--checkpoint", str(root / "checkpoint.json"), "--producer-instance-id", "bridge#boot",
-                          "--core-ownership-gaps", str(gap_path)], lambda: source, unexpected_producer,
+                          "--core-ownership-gaps", str(gap_path), "--archive-only"], lambda: source, unexpected_producer,
                          output=lambda _value: None)
             self.assertEqual(result, 0)
             self.assertEqual(producer.sent, [])
@@ -150,7 +150,7 @@ class MigrationCLITest(unittest.TestCase):
             with self.assertRaises(ManifestError):
                 run(["publish", "--artifact", str(artifact_path), "--receipt", str(receipt_path),
                      "--checkpoint", str(root / "checkpoint.json"), "--producer-instance-id", "bridge#boot",
-                     "--core-ownership-gaps", str(gap_path)], lambda: source, lambda: producer,
+                     "--core-ownership-gaps", str(gap_path), "--archive-only"], lambda: source, lambda: producer,
                     output=lambda _value: None)
 
     def test_publish_command_requires_matching_active_receipt_before_creating_producer(self):

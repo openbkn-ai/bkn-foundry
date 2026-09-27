@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 
 from manifest import CONTRACT_SHA, ManifestError, entries_digest
@@ -11,14 +12,20 @@ _EVENT_TABLES = (
     "bkn_backend_trace_outbox",
     "ontology_query_trace_outbox",
 )
+_GAP_SUFFIX = re.compile(r":gap:[0-9a-f]{64}\Z")
 
 
-def _require_exact_archive_gap_rows(rows, core_ownership_gaps):
+def _validate_gap_rows(rows, core_ownership_gaps, archive_only):
+    if archive_only and core_ownership_gaps is None:
+        raise ManifestError("archive-only snapshot requires an explicit core ownership gap list")
     if core_ownership_gaps is None:
         return
     source_keys = {(row["source_table"], str(row["outbox_id"])) for row in rows}
-    if source_keys != set(core_ownership_gaps):
-        raise ManifestError("historical core ownership gap list must match every source row")
+    gap_keys = set(core_ownership_gaps)
+    if not gap_keys.issubset(source_keys):
+        raise ManifestError("historical core ownership gap list names a row outside the source snapshot")
+    if archive_only and source_keys != gap_keys:
+        raise ManifestError("archive-only gap list must match every source row")
 
 
 def _archive_gap_suffix(core_ownership_gaps):
@@ -27,7 +34,7 @@ def _archive_gap_suffix(core_ownership_gaps):
     return ":gap:" + digest
 
 
-def issue_manifest(manifest_id, source_snapshot_at, rows, core_ownership_gaps=None):
+def issue_manifest(manifest_id, source_snapshot_at, rows, core_ownership_gaps=None, archive_only=False):
     """Create the frozen payload-free C1 artifact and an in-memory Event map."""
     if not isinstance(manifest_id, str) or not manifest_id:
         raise ManifestError("manifest ID is required")
@@ -40,7 +47,7 @@ def issue_manifest(manifest_id, source_snapshot_at, rows, core_ownership_gaps=No
     if snapshot.tzinfo is None or snapshot.microsecond % 1000:
         raise ManifestError("source snapshot timestamp must be timezone-aware with millisecond precision")
     snapshot_at = snapshot.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    _require_exact_archive_gap_rows(rows, core_ownership_gaps)
+    _validate_gap_rows(rows, core_ownership_gaps, archive_only)
     if core_ownership_gaps is not None:
         manifest_id += _archive_gap_suffix(core_ownership_gaps)
         if len(manifest_id) > 128:
@@ -48,8 +55,12 @@ def issue_manifest(manifest_id, source_snapshot_at, rows, core_ownership_gaps=No
     entries, events = [], {}
     for row in rows:
         entry, event = classify_row(row, manifest_id, snapshot_at, core_ownership_gaps)
-        if core_ownership_gaps is not None and entry["classification_reason"] != "core_ownership_unavailable":
-            raise ManifestError("historical core ownership gap row cannot be classified as publish")
+        if (core_ownership_gaps is not None and
+                (row["source_table"], str(row["outbox_id"])) in core_ownership_gaps and
+                entry["classification_reason"] != "core_ownership_unavailable"):
+            raise ManifestError("named core ownership gap was not classified as an ownership gap")
+        if archive_only and entry["classification_reason"] != "core_ownership_unavailable":
+            raise ManifestError("archive-only source row cannot be classified as publish")
         entries.append(entry)
         if event is not None:
             events[(entry["source_table"], entry["source_primary_key"])] = event
@@ -95,7 +106,7 @@ def read_event_snapshot(connection, source_snapshot_at):
     return sorted(rows, key=lambda row: (row["source_table"], row["outbox_id"]))
 
 
-def verify_frozen_entries(rows, manifest, entries, core_ownership_gaps=None):
+def verify_frozen_entries(rows, manifest, entries, core_ownership_gaps=None, archive_only=False):
     """Re-classify a bridge source reread against a payload-free artifact.
 
     The artifact contains only immutable C1 entries. Event values remain in
@@ -105,14 +116,20 @@ def verify_frozen_entries(rows, manifest, entries, core_ownership_gaps=None):
     """
     if not isinstance(manifest, dict) or manifest.get("entry_count") != str(len(entries)):
         raise ManifestError("frozen artifact count does not match manifest")
-    _require_exact_archive_gap_rows(rows, core_ownership_gaps)
+    if core_ownership_gaps is None and _GAP_SUFFIX.search(manifest.get("manifest_id", "")):
+        raise ManifestError("historical ownership gap manifest requires the frozen gap list")
+    _validate_gap_rows(rows, core_ownership_gaps, archive_only)
     if core_ownership_gaps is not None and not manifest.get("manifest_id", "").endswith(_archive_gap_suffix(core_ownership_gaps)):
         raise ManifestError("historical core ownership gap list differs from frozen manifest")
     actual_entries, events = [], {}
     for row in rows:
         entry, event = classify_row(row, manifest.get("manifest_id"), manifest.get("source_snapshot_at"), core_ownership_gaps)
-        if core_ownership_gaps is not None and entry["classification_reason"] != "core_ownership_unavailable":
-            raise ManifestError("historical core ownership gap row cannot be classified as publish")
+        if (core_ownership_gaps is not None and
+                (row["source_table"], str(row["outbox_id"])) in core_ownership_gaps and
+                entry["classification_reason"] != "core_ownership_unavailable"):
+            raise ManifestError("named core ownership gap was not classified as an ownership gap")
+        if archive_only and entry["classification_reason"] != "core_ownership_unavailable":
+            raise ManifestError("archive-only source row cannot be classified as publish")
         actual_entries.append(entry)
         if event is not None:
             events[(entry["source_table"], entry["source_primary_key"])] = event
