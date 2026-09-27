@@ -40,7 +40,6 @@ func TestConceptRetrieval_ScopeKeepsObjectTypeBelowTopK(t *testing.T) {
 	}
 	// obj_19 is last by score: outside TopK=5 on every ranking path.
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.TopK = 5
 	cfg.ObjectTypes = []string{"obj_19"}
 
@@ -62,7 +61,6 @@ func TestConceptRetrieval_ScopeKeepsObjectTypeBelowTopK(t *testing.T) {
 func TestConceptRetrieval_ScopeExcludeSurvivesRelationEndpointRefill(t *testing.T) {
 	detail := createMockNetworkDetail(4, 4, 0)
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.TopK = 10
 	cfg.ExcludeObjectTypes = []string{"obj_1"}
 
@@ -82,7 +80,6 @@ func TestConceptRetrieval_ScopeExcludeSurvivesRelationEndpointRefill(t *testing.
 func TestConceptRetrieval_ScopeReportsUnmatchedIDs(t *testing.T) {
 	detail := createMockNetworkDetail(5, 0, 0)
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.ObjectTypes = []string{"物料", "obj_2"}
 
 	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail}}
@@ -139,8 +136,7 @@ func TestSearch_ScopeMatchedNothingExplainsWhy(t *testing.T) {
 		Query: "q",
 		RetrievalConfig: &interfaces.KnSearchRetrievalConfig{
 			ConceptRetrieval: &interfaces.KnSearchConceptRetrievalConfig{
-				EnableCoarseRecall: boolPtr(false),
-				ObjectTypes:        []string{"物料"},
+				ObjectTypes: []string{"物料"},
 			},
 		},
 	}
@@ -213,7 +209,6 @@ func TestConceptRetrievalByGroups_ExcludedEndpointIsNotRefetched(t *testing.T) {
 func TestConceptRetrieval_ScopeDropsDanglingRelationsAndActions(t *testing.T) {
 	detail := createMockNetworkDetail(4, 4, 4)
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.TopK = 10
 	cfg.ObjectTypes = []string{"obj_0"}
 
@@ -242,7 +237,6 @@ func TestConceptRetrieval_ScopeDropsDanglingRelationsAndActions(t *testing.T) {
 func TestConceptRetrieval_NoScopeLeavesConceptsUntouched(t *testing.T) {
 	detail := createMockNetworkDetail(4, 4, 4)
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.TopK = 10
 
 	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail}}

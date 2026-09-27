@@ -222,10 +222,8 @@ type ConceptRetrievalConfig struct {
 	PerObjectPropertyTopK  int      `json:"per_object_property_top_k,omitempty"` // Default8.
 	GlobalPropertyTopK     int      `json:"global_property_top_k,omitempty"`     // Default30.
 	EnablePropertyBrief    bool     `json:"enable_property_brief,omitempty"`     // Default is true.
-	EnableCoarseRecall     bool     `json:"enable_coarse_recall,omitempty"`      // Default is true, enabling coarse recall.
 	CoarseObjectLimit      int      `json:"coarse_object_limit,omitempty"`       // Default2000.
 	CoarseRelationLimit    int      `json:"coarse_relation_limit,omitempty"`     // Default300.
-	CoarseMinRelationCount int      `json:"coarse_min_relation_count,omitempty"` // Default is 5000, the minimum number of relations that triggers rough recall.
 }
 
 // PropertyFilterConfig propertyfilterconfiguration.

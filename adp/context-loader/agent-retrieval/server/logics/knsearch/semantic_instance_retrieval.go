@@ -59,9 +59,16 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 
+	// The two empty pools that reach here mean different things and used to
+	// share one message, which read as a property of the knowledge network in
+	// both cases. Nothing recalled is a fact about this query — concept recall
+	// reads object type names and comments, so a query that is an instance value
+	// matches none of them — while nothing authorized is a fact about this
+	// account. An agent told "there are no searchable object types" looks for
+	// the problem in the network either way.
 	if len(objectTypes) == 0 {
 		return &interfaces.KnSearchSemanticInstanceResult{
-			Message: infraErr.LocalizedDetail(ctx, "NoSearchableObjectTypes"),
+			Message: infraErr.LocalizedDetail(ctx, "NoRecalledObjectTypes"),
 		}, nil
 	}
 
@@ -71,7 +78,7 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	}
 	if len(objectTypes) == 0 {
 		return &interfaces.KnSearchSemanticInstanceResult{
-			Message: infraErr.LocalizedDetail(ctx, "NoSearchableObjectTypes"),
+			Message: infraErr.LocalizedDetail(ctx, "NoAuthorizedObjectTypes"),
 		}, nil
 	}
 

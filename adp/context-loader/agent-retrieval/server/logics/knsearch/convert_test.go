@@ -37,16 +37,14 @@ func TestKnSearchReqToLocal_RetrievalConfigTypedPreservesFalseBools(t *testing.T
 		KnID:  "kn-1",
 		RetrievalConfig: &interfaces.RetrievalConfig{
 			ConceptRetrieval: &interfaces.ConceptRetrievalConfig{
-				TopK:                   5,
-				IncludeSampleData:      false,
-				SchemaBrief:            false,
-				EnablePropertyBrief:    false,
-				EnableCoarseRecall:     false,
-				PerObjectPropertyTopK:  8,
-				GlobalPropertyTopK:     30,
-				CoarseObjectLimit:      2000,
-				CoarseRelationLimit:    300,
-				CoarseMinRelationCount: 5000,
+				TopK:                  5,
+				IncludeSampleData:     false,
+				SchemaBrief:           false,
+				EnablePropertyBrief:   false,
+				PerObjectPropertyTopK: 8,
+				GlobalPropertyTopK:    30,
+				CoarseObjectLimit:     2000,
+				CoarseRelationLimit:   300,
 			},
 			PropertyFilter: &interfaces.PropertyFilterConfig{
 				MaxPropertiesPerInstance: 20,
@@ -66,7 +64,6 @@ func TestKnSearchReqToLocal_RetrievalConfigTypedPreservesFalseBools(t *testing.T
 	assertFalseBoolPtr(t, "IncludeSampleData", cr.IncludeSampleData)
 	assertFalseBoolPtr(t, "SchemaBrief", cr.SchemaBrief)
 	assertFalseBoolPtr(t, "EnablePropertyBrief", cr.EnablePropertyBrief)
-	assertFalseBoolPtr(t, "EnableCoarseRecall", cr.EnableCoarseRecall)
 	pf := local.RetrievalConfig.PropertyFilter
 	if pf == nil {
 		t.Fatal("expected PropertyFilter")

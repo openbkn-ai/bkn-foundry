@@ -29,10 +29,9 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 
 	// 1. Merge configuration.
 	mergedConfig := MergeRetrievalConfig(req.RetrievalConfig)
-	s.logger.WithContext(ctx).Debugf("[KnSearchLocal] Merged config: concept_top_k=%d, schema_brief=%v, enable_coarse_recall=%v",
+	s.logger.WithContext(ctx).Debugf("[KnSearchLocal] Merged config: concept_top_k=%d, schema_brief=%v",
 		mergedConfig.ConceptRetrieval.TopK,
-		boolValue(mergedConfig.ConceptRetrieval.SchemaBrief),
-		boolValue(mergedConfig.ConceptRetrieval.EnableCoarseRecall))
+		boolValue(mergedConfig.ConceptRetrieval.SchemaBrief))
 
 	// 2. Concept Recall (Schema Recall)
 	conceptResult, err := s.conceptRetrieval(ctx, req, mergedConfig.ConceptRetrieval)
@@ -71,9 +70,22 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 		return response, nil
 	}
 
+	// Some of the caller's ids were usable and some were not. The search runs on
+	// the usable ones, and the rest are said out loud: silently narrowing a
+	// caller's own allow list is how a typo becomes a smaller answer that looks
+	// complete.
+	var scopeNotice string
+	if len(conceptResult.UnmatchedObjectTypes) > 0 {
+		scopeNotice = infraErr.LocalizedDetail(ctx, "ScopeObjectTypesIgnored",
+			strings.Join(conceptResult.UnmatchedObjectTypes, ", "))
+		s.logger.WithContext(ctx).Infof("[KnSearchLocal] object_types partially matched, ignored: %v",
+			conceptResult.UnmatchedObjectTypes)
+	}
+
 	// 4. Semantic instance recall: only done when the caller explicitly wants an instance (search_schema is always schema-only)
 	if req.OnlySchema {
 		s.logger.WithContext(ctx).Infof("[KnSearchLocal] only_schema=true, skip semantic instance retrieval")
+		response.Message = joinMessages(response.Message, scopeNotice)
 		slimObjectTypesForModel(response.ObjectTypes, req.IndexOpsOnly)
 		return response, nil
 	}
@@ -85,12 +97,13 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 		}
 		// Instance recall failure does not bring down the entire search: the Schema itself is already a useful result and is returned in a degraded manner.
 		s.logger.WithContext(ctx).Warnf("[KnSearchLocal] Semantic instance retrieval failed, degrade to schema-only: %v", instanceErr)
+		response.Message = joinMessages(response.Message, scopeNotice)
 		slimObjectTypesForModel(response.ObjectTypes, req.IndexOpsOnly)
 		return response, nil
 	}
 
 	response.Nodes = instanceResult.Nodes
-	response.Message = instanceResult.Message
+	response.Message = joinMessages(instanceResult.Message, scopeNotice)
 	s.logger.WithContext(ctx).Infof("[KnSearchLocal] Semantic instance retrieval completed: nodes=%d", len(response.Nodes))
 
 	slimObjectTypesForModel(response.ObjectTypes, req.IndexOpsOnly)

@@ -13,16 +13,14 @@ import "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/ser
 // DefaultConceptRetrievalConfig returns the concept recall default configuration.
 func DefaultConceptRetrievalConfig() *interfaces.KnSearchConceptRetrievalConfig {
 	return &interfaces.KnSearchConceptRetrievalConfig{
-		TopK:                   10,
-		IncludeSampleData:      boolPtr(false),
-		SchemaBrief:            boolPtr(false),
-		EnableCoarseRecall:     boolPtr(true),
-		CoarseObjectLimit:      2000,
-		CoarseRelationLimit:    300,
-		CoarseMinRelationCount: 5000,
-		EnablePropertyBrief:    boolPtr(true),
-		PerObjectPropertyTopK:  8,
-		GlobalPropertyTopK:     30,
+		TopK:                  10,
+		IncludeSampleData:     boolPtr(false),
+		SchemaBrief:           boolPtr(false),
+		CoarseObjectLimit:     2000,
+		CoarseRelationLimit:   300,
+		EnablePropertyBrief:   boolPtr(true),
+		PerObjectPropertyTopK: 8,
+		GlobalPropertyTopK:    30,
 		// 200 is well above any network we have seen (the largest is a few dozen object types), so in
 		// practice every object type is reranked; it exists to keep a pathological network from
 		// sending an unbounded document list to the model.
@@ -114,9 +112,6 @@ func mergeConceptRetrievalConfig(base, user *interfaces.KnSearchConceptRetrieval
 	if user.SchemaBrief != nil {
 		base.SchemaBrief = user.SchemaBrief
 	}
-	if user.EnableCoarseRecall != nil {
-		base.EnableCoarseRecall = user.EnableCoarseRecall
-	}
 	if user.EnablePropertyBrief != nil {
 		base.EnablePropertyBrief = user.EnablePropertyBrief
 	}
@@ -126,9 +121,6 @@ func mergeConceptRetrievalConfig(base, user *interfaces.KnSearchConceptRetrieval
 	}
 	if user.CoarseRelationLimit > 0 {
 		base.CoarseRelationLimit = user.CoarseRelationLimit
-	}
-	if user.CoarseMinRelationCount > 0 {
-		base.CoarseMinRelationCount = user.CoarseMinRelationCount
 	}
 	if user.PerObjectPropertyTopK > 0 {
 		base.PerObjectPropertyTopK = user.PerObjectPropertyTopK

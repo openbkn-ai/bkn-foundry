@@ -22,9 +22,6 @@ func TestDefaultConceptRetrievalConfig(t *testing.T) {
 	if boolValue(config.SchemaBrief) {
 		t.Error("Expected SchemaBrief false")
 	}
-	if !boolValue(config.EnableCoarseRecall) {
-		t.Error("Expected EnableCoarseRecall true")
-	}
 	if config.CoarseObjectLimit != 2000 {
 		t.Errorf("Expected CoarseObjectLimit 2000, got %d", config.CoarseObjectLimit)
 	}
@@ -77,16 +74,12 @@ func TestMergeRetrievalConfig(t *testing.T) {
 			name: "merge concept config",
 			userConfig: &interfaces.KnSearchRetrievalConfig{
 				ConceptRetrieval: &interfaces.KnSearchConceptRetrievalConfig{
-					TopK:               20,
-					EnableCoarseRecall: boolPtr(false),
+					TopK: 20,
 				},
 			},
 			check: func(t *testing.T, result *interfaces.KnSearchRetrievalConfig) {
 				if result.ConceptRetrieval.TopK != 20 {
 					t.Errorf("Expected TopK 20, got %d", result.ConceptRetrieval.TopK)
-				}
-				if boolValue(result.ConceptRetrieval.EnableCoarseRecall) {
-					t.Error("Expected EnableCoarseRecall false")
 				}
 				// Check default preserved
 				if result.ConceptRetrieval.CoarseObjectLimit != 2000 {
@@ -155,16 +148,14 @@ func TestMergeHelpers(t *testing.T) {
 	// Test mergeConceptRetrievalConfig directly
 	baseC := DefaultConceptRetrievalConfig()
 	userC := &interfaces.KnSearchConceptRetrievalConfig{
-		TopK:                   5,
-		IncludeSampleData:      boolPtr(true),
-		SchemaBrief:            boolPtr(false),
-		EnableCoarseRecall:     boolPtr(false),
-		CoarseObjectLimit:      100,
-		CoarseRelationLimit:    50,
-		CoarseMinRelationCount: 1000,
-		EnablePropertyBrief:    boolPtr(false),
-		PerObjectPropertyTopK:  20,
-		GlobalPropertyTopK:     100,
+		TopK:                  5,
+		IncludeSampleData:     boolPtr(true),
+		SchemaBrief:           boolPtr(false),
+		CoarseObjectLimit:     100,
+		CoarseRelationLimit:   50,
+		EnablePropertyBrief:   boolPtr(false),
+		PerObjectPropertyTopK: 20,
+		GlobalPropertyTopK:    100,
 	}
 	mergeConceptRetrievalConfig(baseC, userC)
 

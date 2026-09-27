@@ -214,9 +214,6 @@ func TestNormalizeSearchInstanceReq_DoesNotClobberDefaultSwitches(t *testing.T) 
 	if !boolValue(merged.SemanticInstanceRetrieval.EnableGlobalFinalScoreRatioFilter) {
 		t.Error("global score ratio filter must stay enabled; an unset switch became an explicit false")
 	}
-	if !boolValue(merged.ConceptRetrieval.EnableCoarseRecall) {
-		t.Error("coarse recall must stay enabled; an unset switch became an explicit false")
-	}
 	if merged.SemanticInstanceRetrieval.GlobalFinalScoreRatio != 0.25 {
 		t.Errorf("expected the default ratio 0.25, got %v", merged.SemanticInstanceRetrieval.GlobalFinalScoreRatio)
 	}

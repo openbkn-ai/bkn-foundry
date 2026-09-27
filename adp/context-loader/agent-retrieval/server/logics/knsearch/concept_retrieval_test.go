@@ -29,7 +29,6 @@ func TestConceptRetrievalUsesAuthorizationSafeObjectSchema(t *testing.T) {
 		DataProperties: []*interfaces.DataProperty{{Name: "id"}, {Name: "phone"}, {Name: "secret"}},
 	}}}
 	config := DefaultConceptRetrievalConfig()
-	config.EnableCoarseRecall = boolPtr(false)
 	config.TopK = 1
 	service := &localSearchImpl{
 		logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail},
@@ -63,7 +62,6 @@ func TestConceptRetrievalAuthorizesOnlySelectedObjectTypes(t *testing.T) {
 		})
 	}
 	config := DefaultConceptRetrievalConfig()
-	config.EnableCoarseRecall = boolPtr(false)
 	config.TopK = 1
 	calls := 0
 	service := &localSearchImpl{
@@ -111,7 +109,6 @@ func TestConceptRetrieval_MainFlow(t *testing.T) {
 	// Prepare base test data.
 	mockDetail := createMockNetworkDetail(5, 5, 2)
 	baseConfig := DefaultConceptRetrievalConfig()
-	baseConfig.EnableCoarseRecall = boolPtr(false)
 
 	tests := []struct {
 		name        string
@@ -174,7 +171,6 @@ func TestConceptRetrieval_MainFlow(t *testing.T) {
 			},
 			config: func() *interfaces.KnSearchConceptRetrievalConfig {
 				cfg := DefaultConceptRetrievalConfig()
-				cfg.EnableCoarseRecall = boolPtr(false)
 				return cfg
 			}(),
 			mockSetup: func(m *mockBknBackend, r *mockRerankClient) {
@@ -238,7 +234,6 @@ func TestConceptRetrieval_NoRelations_ObjectTopByScore(t *testing.T) {
 	detail.ObjectTypes[1].Score = 0.7
 
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.TopK = 5
 
 	mockManager := &mockBknBackend{networkDetail: detail}
@@ -280,7 +275,6 @@ func TestConceptRetrieval_ObjectFallback_FillByScore(t *testing.T) {
 	detail.ObjectTypes[13].Score = 0.92
 
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.TopK = 10
 
 	mockManager := &mockBknBackend{networkDetail: detail}
@@ -316,7 +310,6 @@ func TestConceptRetrieval_ObjectFallback_FillByScore(t *testing.T) {
 // Also GetKnowledgeNetworkDetail and local filtering by group should no longer be triggered.
 func TestConceptRetrieval_GroupScopeDelegatesToBkn(t *testing.T) {
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.TopK = 10
 	cfg.ConceptGroups = []string{"supply_chain"}
 
@@ -389,7 +382,6 @@ func TestConceptRetrieval_GroupScopeDelegatesToBkn(t *testing.T) {
 
 func TestConceptRetrieval_GroupScopeCompletesReferencedObjects(t *testing.T) {
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.TopK = 10
 	cfg.ConceptGroups = []string{"supply_chain"}
 
@@ -464,7 +456,6 @@ func TestConceptRetrieval_GroupScopeCompletesReferencedObjects(t *testing.T) {
 // "Group does not exist" and "Group is legal but has no concept" are crucial.
 func TestConceptRetrieval_UnknownConceptGroupPropagatesError(t *testing.T) {
 	cfg := DefaultConceptRetrievalConfig()
-	cfg.EnableCoarseRecall = boolPtr(false)
 	cfg.ConceptGroups = []string{"missing_group"}
 
 	bknErr := errors.New("BknBackend.ObjectType.InternalError: all concept group not found")
@@ -500,7 +491,6 @@ func TestConceptRetrieval_CoarseRecall(t *testing.T) {
 	mockDetail := createMockNetworkDetail(10, 6000, 10)
 
 	config := DefaultConceptRetrievalConfig()
-	config.CoarseMinRelationCount = 5000 // Set threshold.
 
 	mockManager := &mockBknBackend{
 		networkDetail: mockDetail,

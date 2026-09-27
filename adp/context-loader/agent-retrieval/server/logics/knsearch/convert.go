@@ -98,19 +98,17 @@ func retrievalConfigStructToLocal(rc *interfaces.RetrievalConfig) *interfaces.Kn
 	if rc.ConceptRetrieval != nil {
 		cr := rc.ConceptRetrieval
 		out.ConceptRetrieval = &interfaces.KnSearchConceptRetrievalConfig{
-			ConceptGroups:          normalizeConceptGroups(cr.ConceptGroups),
-			ObjectTypes:            normalizeObjectTypeIDs(cr.ObjectTypes),
-			ExcludeObjectTypes:     normalizeObjectTypeIDs(cr.ExcludeObjectTypes),
-			TopK:                   cr.TopK,
-			IncludeSampleData:      boolPtr(cr.IncludeSampleData),
-			SchemaBrief:            boolPtr(cr.SchemaBrief),
-			EnableCoarseRecall:     boolPtr(cr.EnableCoarseRecall),
-			CoarseObjectLimit:      cr.CoarseObjectLimit,
-			CoarseRelationLimit:    cr.CoarseRelationLimit,
-			CoarseMinRelationCount: cr.CoarseMinRelationCount,
-			EnablePropertyBrief:    boolPtr(cr.EnablePropertyBrief),
-			PerObjectPropertyTopK:  cr.PerObjectPropertyTopK,
-			GlobalPropertyTopK:     cr.GlobalPropertyTopK,
+			ConceptGroups:         normalizeConceptGroups(cr.ConceptGroups),
+			ObjectTypes:           normalizeObjectTypeIDs(cr.ObjectTypes),
+			ExcludeObjectTypes:    normalizeObjectTypeIDs(cr.ExcludeObjectTypes),
+			TopK:                  cr.TopK,
+			IncludeSampleData:     boolPtr(cr.IncludeSampleData),
+			SchemaBrief:           boolPtr(cr.SchemaBrief),
+			CoarseObjectLimit:     cr.CoarseObjectLimit,
+			CoarseRelationLimit:   cr.CoarseRelationLimit,
+			EnablePropertyBrief:   boolPtr(cr.EnablePropertyBrief),
+			PerObjectPropertyTopK: cr.PerObjectPropertyTopK,
+			GlobalPropertyTopK:    cr.GlobalPropertyTopK,
 		}
 	}
 	if rc.SemanticInstanceRetrieval != nil {

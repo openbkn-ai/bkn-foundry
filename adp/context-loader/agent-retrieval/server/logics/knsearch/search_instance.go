@@ -78,7 +78,7 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 		// (retrievalConfigStructToLocal) will unconditionally wrap each bool into boolPtr,
 		// So "not filled in" and "filled in false" become the same thing, and unset switches will be explicitly false.
 		// Override the default true——enable_global_final_score_ratio_filter,
-		// The three knobs enable_coarse_recall and enable_property_brief that are turned on by default will be turned off silently.
+		// and enable_property_brief, which are on by default, would be turned off silently.
 		// If the local structure is used, the unset fields will remain nil, and MergeRetrievalConfig will retain the default value as it is.
 		RetrievalConfig: &interfaces.KnSearchRetrievalConfig{
 			ConceptRetrieval: &interfaces.KnSearchConceptRetrievalConfig{
