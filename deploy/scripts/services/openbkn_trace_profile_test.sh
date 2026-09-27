@@ -38,6 +38,12 @@ trap 'rm -f "${CONFIG_REGISTRY_FILE}"' EXIT
 # this test or embedded in the chart. Non-secret names/IDs make the profile
 # wiring assertions deterministic.
 OPENBKN_TRACE_ADMISSION_CLIENT_ID="test-publisher"
+OPENBKN_TRACE_ADMISSION_AGENT_RETRIEVAL_CLIENT_ID="agent-retrieval"
+OPENBKN_TRACE_ADMISSION_AGENT_RETRIEVAL_CLIENT_SECRET_SECRET_NAME="agent-retrieval-trace-admission-oauth"
+OPENBKN_TRACE_ADMISSION_AGENT_OPERATOR_INTEGRATION_CLIENT_ID="agent-operator-integration"
+OPENBKN_TRACE_ADMISSION_AGENT_OPERATOR_INTEGRATION_CLIENT_SECRET_SECRET_NAME="agent-operator-integration-trace-admission-oauth"
+OPENBKN_TRACE_ADMISSION_BKN_AGENT_CLIENT_ID="bkn-agent"
+OPENBKN_TRACE_ADMISSION_BKN_AGENT_CLIENT_SECRET_SECRET_NAME="bkn-agent-trace-admission-oauth"
 OPENBKN_TRACE_ADMISSION_CLIENT_SECRET_SECRET_NAME="trace-admission-client"
 OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID="test-key"
 OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME="trace-admission-public-key"
@@ -281,6 +287,7 @@ agent_observability_deployment="$(<"${SCRIPT_DIR}/../bkn-trace/agent-observabili
 contains "AO Pod template includes timestamp repair revision" "${agent_observability_deployment}" "trace-timestamp-pipeline-revision"
 
 CORE_RELEASE_EXTRA_SETS=()
+CORE_RELEASE_EXTRA_SET_STRINGS=()
 _openbkn_trace_profile_sets agent-retrieval
 ar_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
 contains "retrieval targets internal Trace Core" "${ar_sets}" "observability.lifecycle.core_url=http://agent-observability-internal:8081"
@@ -290,6 +297,9 @@ contains "retrieval keeps independent artifact endpoint" "${ar_sets}" "observabi
 contains "retrieval uses the standard Core token Secret for artifacts" "${ar_sets}" "observability.evidence.artifact_secret_name=bkn-trace-evidence-ingest"
 contains "retrieval enables Kafka evidence publisher" "${ar_sets}" "observability.evidencePublisher.enabled=true"
 contains "retrieval uses Kafka credentials" "${ar_sets}" "observability.evidencePublisher.passwordSecretName=bkn-trace-evidence-kafka"
+contains "retrieval uses scoped OAuth client" "${CORE_RELEASE_EXTRA_SET_STRINGS[*]:-}" "observability.evidencePublisher.traceAdmission.clientID=agent-retrieval"
+contains "retrieval uses its OAuth Secret" "${CORE_RELEASE_EXTRA_SET_STRINGS[*]:-}" "observability.evidencePublisher.traceAdmission.clientSecretSecretName=agent-retrieval-trace-admission-oauth"
+not_contains "retrieval has no static revision" "${ar_sets}" "capturePolicyRevision="
 not_contains "retrieval has no HTTP evidence ingest" "${ar_sets}" "observability.evidence.ingest_url="
 not_contains "retrieval has no query gateway Secret" "${ar_sets}" "gateway_token_secret_name="
 
@@ -375,12 +385,30 @@ OPENBKN_TRACE_ADMISSION_CLIENT_SECRET_SECRET_NAME="${saved_trace_admission_secre
 OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID="${saved_trace_admission_key_id}"
 OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME="${saved_trace_admission_public_key}"
 
+saved_retrieval_client_id="${OPENBKN_TRACE_ADMISSION_AGENT_RETRIEVAL_CLIENT_ID}"
+OPENBKN_TRACE_ADMISSION_AGENT_RETRIEVAL_CLIENT_ID=""
 CORE_RELEASE_EXTRA_SETS=()
+CORE_RELEASE_EXTRA_SET_STRINGS=()
+_openbkn_release_extra_sets agent-retrieval openbkn
+contains "retrieval stays off without its own client" "${CORE_RELEASE_EXTRA_SETS[*]:-}" "observability.evidencePublisher.enabled=false"
+not_contains "retrieval cannot borrow global client" "${CORE_RELEASE_EXTRA_SET_STRINGS[*]:-}" "traceAdmission.clientID=test-publisher"
+LAST_ERROR=""
+if _openbkn_require_trace_admission_profile agent-retrieval; then
+    fail "complete install accepts retrieval without its workload identity"
+else
+    ok
+fi
+OPENBKN_TRACE_ADMISSION_AGENT_RETRIEVAL_CLIENT_ID="${saved_retrieval_client_id}"
+
+CORE_RELEASE_EXTRA_SETS=()
+CORE_RELEASE_EXTRA_SET_STRINGS=()
 _openbkn_release_extra_sets agent-operator-integration openbkn
 operator_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
 contains "operator integration uses Kafka brokers" "${operator_sets}" "observability.evidence.publisher.brokers="
 contains "operator integration uses Kafka credential Secret" "${operator_sets}" "observability.evidence.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
-contains "operator integration has capture policy revision" "${operator_sets}" "observability.evidence.publisher.capture_policy_revision=1"
+not_contains "operator integration has no static policy revision" "${operator_sets}" "capture_policy_revision="
+contains "operator integration uses scoped OAuth client" "${CORE_RELEASE_EXTRA_SET_STRINGS[*]:-}" "observability.evidence.publisher.trace_admission.client_id=agent-operator-integration"
+contains "operator integration uses its OAuth Secret" "${CORE_RELEASE_EXTRA_SET_STRINGS[*]:-}" "observability.evidence.publisher.trace_admission.client_secret_name=agent-operator-integration-trace-admission-oauth"
 contains "operator integration has bounded Evidence queue" "${operator_sets}" "observability.evidence.publisher.queue_max_records=4096"
 contains "operator integration has independently wired Audit Kafka brokers" "${operator_sets}" "observability.audit.publisher.brokers=$(_openbkn_trace_kafka_brokers)"
 contains "operator integration has independently wired Audit credential Secret" "${operator_sets}" "observability.audit.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
@@ -390,14 +418,33 @@ not_contains "operator integration has no legacy HTTP Evidence URL" "${operator_
 not_contains "operator integration has no legacy HTTP Evidence Secret" "${operator_sets}" "observability.evidence.ingest_token_secret_name="
 
 CORE_RELEASE_EXTRA_SETS=()
+CORE_RELEASE_EXTRA_SET_STRINGS=()
 _openbkn_release_extra_sets bkn-agent openbkn
 bkn_agent_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
 contains "bkn-agent posts artifacts to the artifact route" "${bkn_agent_sets}" "observability.bknTraceArtifactIngestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
 contains "bkn-agent uses Kafka brokers" "${bkn_agent_sets}" "observability.evidencePublisher.brokers="
 contains "bkn-agent uses Kafka credential Secret" "${bkn_agent_sets}" "observability.evidencePublisher.credentialsSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
-contains "bkn-agent has capture policy revision" "${bkn_agent_sets}" "observability.evidencePublisher.capturePolicyRevision=1"
+contains "bkn-agent enables policy-controlled Evidence" "${bkn_agent_sets}" "observability.evidencePublisher.enabled=true"
+contains "bkn-agent uses scoped OAuth client" "${CORE_RELEASE_EXTRA_SET_STRINGS[*]:-}" "observability.evidencePublisher.traceAdmission.clientID=bkn-agent"
+contains "bkn-agent uses its OAuth Secret" "${CORE_RELEASE_EXTRA_SET_STRINGS[*]:-}" "observability.evidencePublisher.traceAdmission.clientSecretSecretName=bkn-agent-trace-admission-oauth"
+not_contains "bkn-agent has no static revision" "${bkn_agent_sets}" "capturePolicyRevision="
 contains "bkn-agent has bounded queue settings" "${bkn_agent_sets}" "observability.evidencePublisher.queueMaxRecords=4096"
 not_contains "bkn-agent has no legacy Evidence HTTP route" "${bkn_agent_sets}" "observability.bknTraceEvidenceIngestUrl="
+
+if _openbkn_require_trace_admission_profile bkn-backend ontology-query agent-retrieval agent-operator-integration bkn-agent; then
+    ok
+else
+    fail "complete install rejects fully configured producer profiles"
+fi
+
+saved_operator_client_id="${OPENBKN_TRACE_ADMISSION_AGENT_OPERATOR_INTEGRATION_CLIENT_ID}"
+OPENBKN_TRACE_ADMISSION_AGENT_OPERATOR_INTEGRATION_CLIENT_ID=""
+CORE_RELEASE_EXTRA_SETS=()
+CORE_RELEASE_EXTRA_SET_STRINGS=()
+_openbkn_release_extra_sets agent-operator-integration openbkn
+contains "operator clears old Evidence brokers without its client" "${CORE_RELEASE_EXTRA_SETS[*]:-}" "observability.evidence.publisher.brokers="
+contains "operator keeps Audit independently" "${CORE_RELEASE_EXTRA_SETS[*]:-}" "observability.audit.publisher.brokers="
+OPENBKN_TRACE_ADMISSION_AGENT_OPERATOR_INTEGRATION_CLIENT_ID="${saved_operator_client_id}"
 
 # The full release manifest contains all declared producers. A new producer
 # must either be wired above or make this installer-level assertion fail.

@@ -247,6 +247,24 @@ async def test_control_client_uses_oauth_and_frozen_heartbeat_ack_wires():
 
 
 @pytest.mark.anyio
+async def test_configuration_revision_lag_has_no_ack_candidate():
+    private_key = Ed25519PrivateKey.generate()
+    async def request(method, url, headers, body):
+        if url.endswith("/oauth2/token"):
+            return 200, {"access_token": "test-token", "expires_in": 300}
+        if url.endswith("/trace-evidence-configuration"):
+            return 200, {"kind": "configuration_get", "policy_revision": 10, "active_operation_id": "old-op"}
+        return 200, signed_policy(private_key)
+    client = TraceAdmissionClient(
+        "http://ao/internal/trace-evidence/policy", "http://ao/trace-evidence-configuration",
+        "http://ao/internal/trace-evidence/endpoints:heartbeat", "http://ao/internal/trace-evidence/operations",
+        "http://safe/oauth2/token", "bkn-agent", "client-secret",
+        "cluster-a", "test-key", private_key.public_key().public_bytes_raw(), request=request,
+    )
+    assert await client.operation_for_revision(11) is None
+
+
+@pytest.mark.anyio
 async def test_oauth_transport_sends_form_encoded_client_credentials():
     observed = []
     async def token(request):

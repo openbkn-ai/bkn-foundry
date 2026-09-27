@@ -136,8 +136,10 @@ class TraceAdmissionClient:
 
     async def operation_for_revision(self, revision: int) -> str | None:
         status, body = await self._authorized("GET", self.configuration_url)
-        if status != 200 or body.get("kind") != "configuration_get" or body.get("policy_revision") != revision:
+        if status != 200 or not isinstance(body, dict) or body.get("kind") != "configuration_get" or type(body.get("policy_revision")) is not int or body["policy_revision"] == 0:
             raise RuntimeError(f"Trace Admission configuration status {status}")
+        if body["policy_revision"] != revision:
+            return None
         operation = body.get("active_operation_id")
         return operation if isinstance(operation, str) and operation else None
 

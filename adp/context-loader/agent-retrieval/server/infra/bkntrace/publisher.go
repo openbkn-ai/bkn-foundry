@@ -50,9 +50,3 @@ func FlushEvidencePublisher(ctx context.Context) evidencepublisher.DrainResult {
 	}
 	return evidencepublisher.DrainResult{}
 }
-func CloseEvidencePublisher(ctx context.Context) evidencepublisher.DrainResult {
-	if publisher, ok := currentEvidencePublisher().(*evidencepublisher.Publisher); ok {
-		return publisher.Close(ctx)
-	}
-	return evidencepublisher.DrainResult{}
-}
