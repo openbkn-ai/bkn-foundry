@@ -77,12 +77,12 @@ func (c *MariaDBConnector) BuildPagedSQL(sqlStr string, offset, limit int) strin
 	if limit <= 0 {
 		limit = interfaces.DefaultPageLimit
 	}
-	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_page LIMIT %d OFFSET %d", strings.TrimSpace(sqlStr), limit, offset)
+	return fmt.Sprintf("SELECT * FROM (%s\n) AS _raw_query_page LIMIT %d OFFSET %d", strings.TrimSpace(sqlStr), limit, offset)
 }
 
 // BuildCountSQL applies MariaDB total-count syntax to a validated query.
 func (c *MariaDBConnector) BuildCountSQL(sqlStr string) string {
-	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) AS _raw_query_total", strings.TrimSpace(sqlStr))
+	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s\n) AS _raw_query_total", strings.TrimSpace(sqlStr))
 }
 
 // ExecuteRawSQL executes the original SQL query

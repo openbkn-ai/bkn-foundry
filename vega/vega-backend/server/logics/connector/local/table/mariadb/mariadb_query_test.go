@@ -12,8 +12,20 @@ import (
 func TestMariaDBConnectorBuildPagedSQL(t *testing.T) {
 	connector := &MariaDBConnector{}
 	assert.Equal(t,
-		"SELECT * FROM (SELECT id FROM orders) AS _raw_query_page LIMIT 10 OFFSET 20",
+		"SELECT * FROM (SELECT id FROM orders\n) AS _raw_query_page LIMIT 10 OFFSET 20",
 		connector.BuildPagedSQL("SELECT id FROM orders", 20, 10),
+	)
+	assert.Equal(t,
+		"SELECT * FROM (SELECT id FROM orders -- trailing comment\n) AS _raw_query_page LIMIT 10 OFFSET 20",
+		connector.BuildPagedSQL("SELECT id FROM orders -- trailing comment\n", 20, 10),
+	)
+}
+
+func TestMariaDBConnectorBuildCountSQL(t *testing.T) {
+	connector := &MariaDBConnector{}
+	assert.Equal(t,
+		"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM orders -- trailing comment\n) AS _raw_query_total",
+		connector.BuildCountSQL("SELECT id FROM orders -- trailing comment"),
 	)
 }
 
