@@ -29,8 +29,8 @@ const (
 	SchemaVersion                 = "1.0"
 	SchemaHeader                  = "bkn-audit-schema-version"
 	CanonicalSchemaSHA256         = "4b1db1b116485e1b0432635406bcdffdc111be1b7cc583714a6a2c867efee69b"
-	CanonicalRegistrySHA256       = "a107f8b57a4d34534b855f51d9330326308d374ca44000310ac9f1202270c044"
-	RuntimeRegistrySHA256         = "97f98db6620ae6c113d4d14dab3d2f57c36c80be046928542ff4fd452c1e5fea"
+	CanonicalRegistrySHA256       = "cd30e8e853bed075a9d0ae0171790fe385575f55115326de03614d9f065d7ab3"
+	RuntimeRegistrySHA256         = "fe0a2c5334ff453b1abffaf12fe007632c19ca228397d0f53717f365513dee86"
 	CanonicalValueFixtureSHA256   = "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40"
 	KafkaFixtureSHA256            = "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4"
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
@@ -241,7 +241,7 @@ func validateRegistry(value map[string]any, rules registry) error {
 	if source.CollectionMethod == "not_integrated" {
 		return permanent("source_not_integrated")
 	}
-	if source.CollectionMethod != "source_adapter" {
+	if source.CollectionMethod != "kafka_audit" {
 		return permanent("source_collection_method_rejected")
 	}
 	return nil
