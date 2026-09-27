@@ -22,7 +22,10 @@ def signed_policy(private_key, *, revision=11, mode="enabled", audience="cluster
         "key_id": "test-key",
         "audience_cluster_id": audience,
     }
-    canonical = json.dumps(fields, separators=(",", ":"), ensure_ascii=False).encode()
+    canonical = json.dumps(fields, separators=(",", ":"), ensure_ascii=False)
+    for char, escaped in (("&", "\\u0026"), ("<", "\\u003c"), (">", "\\u003e"), ("\u2028", "\\u2028"), ("\u2029", "\\u2029")):
+        canonical = canonical.replace(char, escaped)
+    canonical = canonical.encode()
     fields["signature"] = "ed25519:" + base64.urlsafe_b64encode(private_key.sign(canonical)).decode().rstrip("=")
     return fields
 
@@ -33,6 +36,16 @@ def test_verified_policy_uses_signed_revision_and_mode():
     snapshot = verify_policy_snapshot(signed_policy(private_key), "cluster-a", "test-key", public_key)
     assert snapshot.revision == 11
     assert snapshot.enabled is True
+
+
+def test_verified_policy_accepts_go_json_escaped_signed_fields():
+    private_key = Ed25519PrivateKey.generate()
+    audience = "cluster<&>\u2028"
+    snapshot = verify_policy_snapshot(
+        signed_policy(private_key, audience=audience), audience,
+        "test-key", private_key.public_key().public_bytes_raw(),
+    )
+    assert snapshot.revision == 11
 
 
 @pytest.mark.parametrize("change", [

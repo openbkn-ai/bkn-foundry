@@ -53,10 +53,11 @@ func NewConfiguredKafkaEmitter(logger interfaces.Logger) *KafkaEmitter {
 	return NewKafkaEmitter(runtimeValue.Runtime)
 }
 
-func CloseEvidencePublisher(ctx context.Context) {
+func CloseEvidencePublisher(ctx context.Context) error {
 	if runtimeValue == nil {
-		return
+		return nil
 	}
+	var closeErr error
 	runtimeClose.Do(func() {
 		if runtimeCancel != nil {
 			runtimeCancel()
@@ -65,11 +66,12 @@ func CloseEvidencePublisher(ctx context.Context) {
 			close(runtimeStop)
 			<-runtimeDone
 		}
-		_, _ = runtimeValue.Runtime.Close(ctx)
+		_, closeErr = runtimeValue.Runtime.Close(ctx)
 		if runtimeValue.Producer != nil {
 			_ = runtimeValue.Producer.Close()
 		}
 	})
+	return closeErr
 }
 
 func runEvidenceFlushLoop(stop <-chan struct{}, done chan<- struct{}, interval time.Duration, flush func(context.Context) evidencepublisher.DrainResult, report EvidenceDropReporter) {

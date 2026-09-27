@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -210,6 +211,28 @@ async def test_queue_acceptance_sets_local_admission_without_claiming_ledger_dur
         assert await evidence.submit_events([event], "user-1", "user") is True
         assert event["event_id"] in current.locally_admitted_event_ids
         assert not hasattr(current, "ledger_durable_event_ids")
+    finally:
+        evidence.end_interaction(interaction_token)
+        observability.reset_context(context_token)
+
+
+@pytest.mark.anyio
+async def test_policy_denied_batch_records_coverage_gap_without_payload(monkeypatch, caplog):
+    from app.evidence_kafka import PublishResult
+
+    class DeniedPublisher:
+        def try_publish(self, event):
+            return PublishResult("dropped", event_id=event["event_id"], reason="publisher_unavailable")
+
+    monkeypatch.setattr(evidence, "_publisher", DeniedPublisher(), raising=False)
+    context_token, interaction_token = _interaction()
+    try:
+        event = evidence._interaction.get().started_event
+        with caplog.at_level(logging.WARNING, logger="bkn-agent.evidence"):
+            assert await evidence.submit_events([event], "user-1", "user") is False
+        assert "bkn_trace_coverage_gap" in caplog.text
+        assert "publisher_unavailable" in caplog.text
+        assert event["event_id"] not in caplog.text
     finally:
         evidence.end_interaction(interaction_token)
         observability.reset_context(context_token)

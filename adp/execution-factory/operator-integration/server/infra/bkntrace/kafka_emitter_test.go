@@ -31,6 +31,15 @@ func TestKafkaEmitterUsesPolicyGatedPublisher(t *testing.T) {
 	}
 }
 
+func TestCloseEvidencePublisherWithoutRuntimeDoesNotReportError(t *testing.T) {
+	if runtimeValue != nil {
+		t.Skip("configured runtime belongs to another test")
+	}
+	if err := CloseEvidencePublisher(context.Background()); err != nil {
+		t.Fatalf("unexpected close error: %v", err)
+	}
+}
+
 func TestKafkaEmitterAdmitsCanonicalActionEvidence(t *testing.T) {
 	publisher, err := evidencepublisher.New(evidencepublisher.Config{
 		ProducerID: "agent-operator-integration", BaseStreamID: "agent-operator-integration",

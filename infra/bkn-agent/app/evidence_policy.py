@@ -195,7 +195,11 @@ def verify_policy_snapshot(
         canonical = json.dumps(
             {field: wire[field] for field in _SIGNED_FIELDS},
             separators=(",", ":"), ensure_ascii=False,
-        ).encode("utf-8")
+        )
+        # Go encoding/json escapes these runes before the AO signs the wire.
+        for char, escaped in (("&", "\\u0026"), ("<", "\\u003c"), (">", "\\u003e"), ("\u2028", "\\u2028"), ("\u2029", "\\u2029")):
+            canonical = canonical.replace(char, escaped)
+        canonical = canonical.encode("utf-8")
         Ed25519PublicKey.from_public_bytes(selected_key).verify(signature, canonical)
     except (TypeError, KeyError, ValueError) as exc:
         raise ValueError("invalid trace evidence policy snapshot") from exc

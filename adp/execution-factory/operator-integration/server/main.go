@@ -124,7 +124,9 @@ func (s *Server) startCapabilityReconciler() {
 func (s *Server) Stop(ctx context.Context) {
 	s.config.Logger.Info("stop agent-operator-integration server")
 	// sandbox.Close() // Close and destroy the sandbox session pool.
-	bkntrace.CloseEvidencePublisher(ctx)
+	if err := bkntrace.CloseEvidencePublisher(ctx); err != nil {
+		s.config.Logger.Errorf("BKN Trace Evidence publisher shutdown acknowledgement failed: %v", err)
+	}
 	bknaudit.ClosePublisher(ctx)
 	if s.capabilityCancel != nil {
 		s.capabilityCancel()

@@ -881,6 +881,7 @@ async def submit_events(
     if not ledger_events:
         return False
     accepted = True
+    dropped_reasons: dict[str, int] = {}
     for ledger_event in ledger_events:
         result = _publisher.try_publish(ledger_event)
         if result.disposition == "accepted":
@@ -888,6 +889,19 @@ async def submit_events(
                 current.locally_admitted_event_ids.add(result.event_id)
         else:
             accepted = False
+            reason = result.reason if result.reason in {
+                "publisher_unavailable", "publisher_closing", "queue_full",
+                "invalid_event", "message_too_large", "serialization_failed",
+            } else "other"
+            dropped_reasons[reason] = dropped_reasons.get(reason, 0) + 1
+    for reason, count in sorted(dropped_reasons.items()):
+        if reason == "publisher_closing":
+            logger.info("bkn_trace_evidence_disabled producer_id=bkn-agent dropped=%d", count)
+        else:
+            logger.warning(
+                "bkn_trace_coverage_gap producer_id=bkn-agent reason=%s dropped=%d",
+                reason, count,
+            )
     return accepted
 
 

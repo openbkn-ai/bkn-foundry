@@ -156,7 +156,7 @@ OpenInference 默认隐藏输入、输出、消息文本、模型参数、工具
 - 模型事实依赖 mf-model-api 实现上述稳定回执合同；依赖未部署时，Agent 有意不生成伪 claim。
 - Action helper 已提供可靠顺序门禁，但 chat/run 生产图缺显式 Action 节点，生产闭环仍阻塞。
 - 跨进程完整重放依赖上游恢复原始 `bkn-event-observed-at`；本模块未提供请求 envelope 持久化仓库。
-- `BKN_TRACE_KAFKA_BROKERS`、Kafka Secret username/password 与 `BKN_TRACE_CAPTURE_POLICY_REVISION` 是 Evidence producer 启动必需配置；静态配置缺失或非法时不 Ready。
+- Chart 默认关闭 Evidence publisher；启用时必须提供 Kafka brokers/Secret 与 `TRACE_ADMISSION_*` 的 BKN Safe 客户端、签名公钥和集群 audience。运行时从签名 policy 获取 revision，完成实例 heartbeat 和队列 ACK 后才采集；不再接受静态 `BKN_TRACE_CAPTURE_POLICY_REVISION`。
 - `BKN_TRACE_ARTIFACT_INGEST_URL` 与 Artifact-only Secret 控制业务内容制品 HTTP 上传。Artifact 未确认时，依赖该必需引用的 2.2 启动事件或 claim 不提交。
 - task status、强制采样、丢弃计数和完整健康指标后续接入治理层；本批只提供失败日志与提交返回状态。
 
