@@ -155,11 +155,11 @@ func applyRequestFilters(q *gorm.DB, page PageOptions) *gorm.DB {
 }
 
 type Service struct {
-	db                         *gorm.DB
-	enforcer                   *authz.Enforcer
-	resources                  ResourceLivenessResolver
-	legacyStatusMigrationOnce  sync.Once
-	legacyStatusMigrationError error
+	db                        *gorm.DB
+	enforcer                  *authz.Enforcer
+	resources                 ResourceLivenessResolver
+	legacyStatusMigrationMu   sync.Mutex
+	legacyStatusMigrationDone bool
 }
 
 func New(db *gorm.DB, enforcer *authz.Enforcer, resources ...ResourceLivenessResolver) *Service {
@@ -174,13 +174,23 @@ func New(db *gorm.DB, enforcer *authz.Enforcer, resources ...ResourceLivenessRes
 // state used by an earlier row-filter workflow. Approval is now terminal;
 // policy configuration remains a separate administrative action.
 func (s *Service) normalizeLegacyConfigurationStatuses(ctx context.Context) error {
-	s.legacyStatusMigrationOnce.Do(func() {
-		s.legacyStatusMigrationError = s.db.WithContext(ctx).
-			Model(&model.PermissionRequest{}).
-			Where("status = ? AND proposal_kind = ?", "pending_configuration", "row_filter").
-			Update("status", StatusGranted).Error
-	})
-	return s.legacyStatusMigrationError
+	// Do not use sync.Once here: a cancelled request or a transient database
+	// failure must not make every later list/detail request fail until restart.
+	// The historic intermediate status only existed for row-filter requests,
+	// before proposal_kind was persisted, so old rows have a NULL/empty kind.
+	s.legacyStatusMigrationMu.Lock()
+	defer s.legacyStatusMigrationMu.Unlock()
+	if s.legacyStatusMigrationDone {
+		return nil
+	}
+	if err := s.db.WithContext(ctx).
+		Model(&model.PermissionRequest{}).
+		Where("status = ?", "pending_configuration").
+		Update("status", StatusGranted).Error; err != nil {
+		return err
+	}
+	s.legacyStatusMigrationDone = true
+	return nil
 }
 
 func clean(v string, max int) (string, bool) {

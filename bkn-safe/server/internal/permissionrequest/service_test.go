@@ -97,7 +97,9 @@ func TestGetMigratesLegacyRowFilterPendingConfigurationToGranted(t *testing.T) {
 	}
 	legacy := model.PermissionRequest{
 		ID: "legacy-row-filter", RequestKey: "legacy-row-filter", RequesterID: "requester",
-		ResourceType: "object_type", ResourceID: "kn-1/object-1", ProposalKind: "row_filter",
+		// proposal_kind was added after this intermediate status existed, so a
+		// stored legacy row has no proposal kind.
+		ResourceType: "object_type", ResourceID: "kn-1/object-1",
 		Status: "pending_configuration",
 	}
 	if err := db.Create(&legacy).Error; err != nil {
@@ -109,6 +111,43 @@ func TestGetMigratesLegacyRowFilterPendingConfigurationToGranted(t *testing.T) {
 	}
 	if request.Status != StatusGranted {
 		t.Fatalf("legacy request status = %q, want %q", request.Status, StatusGranted)
+	}
+}
+
+func TestLegacyConfigurationStatusMigrationRetriesAfterCancelledRequest(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:permission-request-legacy-migration-retry?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	enforcer, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "requester", Account: "requester", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	legacy := model.PermissionRequest{
+		ID: "legacy-row-filter-retry", RequestKey: "legacy-row-filter-retry", RequesterID: "requester",
+		ResourceType: "object_type", ResourceID: "kn-1/object-1", Status: "pending_configuration",
+	}
+	if err := db.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := New(db, enforcer)
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := service.normalizeLegacyConfigurationStatuses(cancelled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled migration error = %v, want context.Canceled", err)
+	}
+	request, err := service.Get(t.Context(), legacy.ID)
+	if err != nil {
+		t.Fatalf("Get() after a cancelled migration = %v, want retry to succeed", err)
+	}
+	if request.Status != StatusGranted {
+		t.Fatalf("retried legacy request status = %q, want %q", request.Status, StatusGranted)
 	}
 }
 
