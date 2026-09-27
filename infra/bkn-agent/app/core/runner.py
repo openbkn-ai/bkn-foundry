@@ -323,7 +323,6 @@ async def _emit_task_evidence(
                 claim_id_value=cid,
                 evidence_refs=evidence_refs,
                 operation_name="bkn.agent.task",
-                operation_id=operation_ids[-1] if operation_ids else None,
                 causation_event_id=claim_event["event_id"] if claim_event else None,
             )
         )
@@ -332,7 +331,6 @@ async def _emit_task_evidence(
             claim_id_value=cid,
             business_refs=business_refs,
             operation_name="bkn.agent.task",
-            operation_id=operation_ids[-1],
             causation_event_id=claim_event["event_id"],
         )
     )

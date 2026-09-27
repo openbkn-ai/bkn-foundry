@@ -18,14 +18,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 )
 
-func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsRejected(t *testing.T) {
+func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t *testing.T) {
 	validator, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for file, expected := range map[string]string{
 		"schema.json":                   "4b1db1b116485e1b0432635406bcdffdc111be1b7cc583714a6a2c867efee69b",
-		"registry-runtime-v1.json":      "8cb47b1dba641af7c8cfac6b5671e87f23779774a0bfee64c7bbaa43a7fb6f79",
+		"registry-runtime-v1.json":      "90830564211164f4cc946dd599edaf7d1642be08aab84b84c1e8342d511dcd92",
 		"audit-record-golden.json":      "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40",
 		"audit-kafka-golden.json":       "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -43,27 +43,13 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsRejected(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	kafkaFixture, err := os.ReadFile("assets/audit-kafka-golden.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var kafkaRecord struct {
-		Key string `json:"key_base64"`
-	}
-	if err := json.Unmarshal(kafkaFixture, &kafkaRecord); err != nil {
-		t.Fatal(err)
-	}
-	key, err := base64.StdEncoding.DecodeString(kafkaRecord.Key)
-	if err != nil {
-		t.Fatal(err)
-	}
 	record := auditconsumer.Record{
-		Topic: auditconsumer.Topic, Key: key, Value: value,
+		Topic: auditconsumer.Topic, Key: []byte("execution-factory\x1foperator\x1foperator-123"), Value: value,
 		Headers:    []auditconsumer.Header{{Key: "bkn-audit-schema-version", Value: []byte("1.0")}},
 		BrokerTime: time.Date(2026, 9, 24, 8, 31, 0, 0, time.UTC),
 	}
-	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "source_not_integrated") {
-		t.Fatalf("canonical registry must permanently reject not_integrated execution-factory source; got %v", err)
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("registered execution-factory Audit source must be admitted; got %v", err)
 	}
 }
 

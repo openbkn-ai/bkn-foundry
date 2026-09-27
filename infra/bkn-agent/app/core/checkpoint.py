@@ -7,6 +7,15 @@ from app.config import config
 _memory_saver = MemorySaver()
 
 
+def _ensure_safe_aiomysql_bytes_escape() -> None:
+    """PyMySQL 1.2.3 exports a non-callable legacy symbol used by aiomysql 0.2."""
+    import aiomysql.connection
+    from pymysql.converters import escape_bytes
+
+    if not callable(aiomysql.connection.escape_bytes_prefixed):
+        aiomysql.connection.escape_bytes_prefixed = escape_bytes
+
+
 @asynccontextmanager
 async def open_checkpointer():
     """Checkpointer backend: mysql (the shared openbkn database) or memory (for
@@ -23,6 +32,8 @@ async def open_checkpointer():
 
     import aiomysql
     from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
+
+    _ensure_safe_aiomysql_bytes_escape()
 
     # Not AIOMySQLSaver.from_conn_string: it drops charset/collation, so the
     # session falls back to the server default (MariaDB 11 =
