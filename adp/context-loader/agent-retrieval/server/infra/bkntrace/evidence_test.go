@@ -408,6 +408,41 @@ func TestBuildRunCypherEventsCarriesCompiledDescriptorAndTypedRefs(t *testing.T)
 	}
 }
 
+// A computed column reads several properties and lists them under
+// property_refs instead of property_ref; each one is still a field the query
+// read.
+func TestBuildRunCypherEventsRefsEveryPropertyAComputedColumnReads(t *testing.T) {
+	descriptor := json.RawMessage(`{
+		"version":"semantic-query-descriptor/v1",
+		"producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5",
+		"network_id":"kn_demo",
+		"objects":[{"alias":"l","object_ref":"object:kn_demo:line"}],
+		"projections":[{"alias":"revenue","aggregate":"sum","expression":"arithmetic",
+			"property_refs":["property:kn_demo:line:price","property:kn_demo:line:quantity"],
+			"output_pointer":"$.entries[*].revenue"}],
+		"ordering":[{"aggregate":"sum","expression":"arithmetic",
+			"property_refs":["property:kn_demo:line:discount"],"descending":true}]
+	}`)
+	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "MATCH ...", 3, descriptor)
+	if len(events) != 1 {
+		t.Fatalf("events = %#v", events)
+	}
+	raw, err := json.Marshal(events[0]["payload"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, ref := range []string{
+		`"ref_id":"property:kn_demo:line:price"`,
+		`"ref_id":"property:kn_demo:line:quantity"`,
+		`"ref_id":"property:kn_demo:line:discount"`,
+	} {
+		if !strings.Contains(text, ref) {
+			t.Fatalf("run_cypher descriptor refs missing %s: %s", ref, text)
+		}
+	}
+}
+
 func TestBuildRunCypherEventsMarksMissingDescriptorForSafeDowngrade(t *testing.T) {
 	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "MATCH ...", 1, nil)
 	payload, _ := events[0]["payload"].(map[string]any)

@@ -96,18 +96,26 @@ type PlanJoinKey struct {
 	RightColumn string
 }
 
-// PlanColumn is one output column: a column of a table, or an aggregate over
-// one. Exactly one of the two is set.
+// PlanColumn is one output column: a column of a table, an aggregate over
+// one, or a value computed from those. Exactly one of the three is set.
 type PlanColumn struct {
-	Table     int
-	Column    string
-	Property  string
-	Alias     string
-	Aggregate *PlanAggregate
+	Table      int
+	Column     string
+	Property   string
+	Alias      string
+	Aggregate  *PlanAggregate
+	Expression PlanExpression
+}
+
+// aggregates reports whether the column collapses rows: it is an aggregate, or
+// it computes something from one.
+func (c PlanColumn) aggregates() bool {
+	return c.Aggregate != nil || (c.Expression != nil && planContainsAggregate(c.Expression))
 }
 
 // PlanAggregate is COUNT, SUM, AVG, MIN or MAX. Star is count(*), which counts
-// rows and names no column.
+// rows and names no column. Argument is set instead of a column when the
+// aggregate is over a computed value.
 type PlanAggregate struct {
 	Function string
 	Distinct bool
@@ -115,6 +123,62 @@ type PlanAggregate struct {
 	Table    int
 	Column   string
 	Property string
+	Argument PlanExpression
+}
+
+func (PlanAggregate) planExpression() {}
+
+// PlanExpression is a computed value with every name resolved and every
+// parameter bound, like PlanPredicate is for conditions.
+type PlanExpression interface {
+	planExpression()
+}
+
+// PlanValueColumn is a column read as a value inside a computation.
+type PlanValueColumn struct {
+	Table    int
+	Column   string
+	Property string
+}
+
+func (PlanValueColumn) planExpression() {}
+
+// PlanValueLiteral is a number written in the query or bound from a parameter.
+// InputPointer says which of the two, the way a condition's does.
+type PlanValueLiteral struct {
+	Value        Literal
+	InputPointer string
+}
+
+func (PlanValueLiteral) planExpression() {}
+
+// PlanArithmetic is +, -, *, / or % over two values.
+type PlanArithmetic struct {
+	Operator string
+	Left     PlanExpression
+	Right    PlanExpression
+}
+
+func (PlanArithmetic) planExpression() {}
+
+// PlanNegative is a leading minus on a value.
+type PlanNegative struct {
+	Operand PlanExpression
+}
+
+func (PlanNegative) planExpression() {}
+
+func planContainsAggregate(value PlanExpression) bool {
+	switch node := value.(type) {
+	case PlanAggregate:
+		return true
+	case PlanArithmetic:
+		return planContainsAggregate(node.Left) || planContainsAggregate(node.Right)
+	case PlanNegative:
+		return planContainsAggregate(node.Operand)
+	default:
+		return false
+	}
 }
 
 // PlanPredicate is the WHERE tree with every name resolved and every parameter
@@ -190,6 +254,16 @@ type PlanStringMatch struct {
 
 func (PlanStringMatch) planPredicate() {}
 
+// PlanExpressionComparison compares two values when at least one of them is
+// computed.
+type PlanExpressionComparison struct {
+	Left     PlanExpression
+	Operator string
+	Right    PlanExpression
+}
+
+func (PlanExpressionComparison) planPredicate() {}
+
 // PlanColumnComparison compares two columns. The analyzer does not produce one
 // -- a query comparing two properties is refused -- but the planner needs it
 // to say that two hops of a pattern did not traverse the same relationship.
@@ -218,6 +292,7 @@ type PlanOrder struct {
 	Column     string
 	Property   string
 	Aggregate  *PlanAggregate
+	Expression PlanExpression
 	Alias      string
 	Descending bool
 }
@@ -669,6 +744,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 			Values: values, InputPointers: inputPointers, Negated: node.Negated,
 		}, nil
 
+	case ExpressionComparison:
+		return p.planExpressionComparison(node)
+
 	case StringMatch:
 		table, column, err := p.resolveProperty(node.Property)
 		if err != nil {
@@ -698,6 +776,26 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 	default:
 		return nil, planErrorf(predicate.predicatePosition(), "unsupported predicate %T", predicate)
 	}
+}
+
+// planExpressionComparison plans a comparison with arithmetic on a side. The
+// arithmetic side is a number, so the other one has to be too: MySQL would
+// compare it against a string by converting the string, which Cypher never
+// does.
+func (p *planner) planExpressionComparison(node ExpressionComparison) (PlanPredicate, error) {
+	sides := [2]Expression{node.Left, node.Right}
+	planned := [2]PlanExpression{}
+	for i, side := range sides {
+		if literal, ok := side.(Literal); ok && literalKind(literal) == kindNotNumber {
+			return nil, planErrorf(literal.Pos, "comparing a computed number with %s", literal.describe())
+		}
+		value, _, err := p.planExpression(side)
+		if err != nil {
+			return nil, err
+		}
+		planned[i] = value
+	}
+	return PlanExpressionComparison{Left: planned[0], Operator: node.Operator, Right: planned[1]}, nil
 }
 
 // stringMatchTypes are the property types STARTS WITH, ENDS WITH and CONTAINS
@@ -798,11 +896,56 @@ func (p *planner) planReturn(projections []Projection) error {
 		seen[projection.Alias] = true
 		p.plan.Select = append(p.plan.Select, *column)
 	}
+	if err := p.refuseUngroupedProperties(projections); err != nil {
+		return err
+	}
 	p.planGrouping()
 	return nil
 }
 
+// refuseUngroupedProperties turns away a column that mixes an aggregate with a
+// property read outside it, as in o.amount - avg(o.amount), unless that
+// property is also returned on its own. Returned, it is a grouping key and has
+// one value per group; otherwise there is no one value for it to take, and
+// databases differ on whether they refuse the statement or pick a row.
+func (p *planner) refuseUngroupedProperties(projections []Projection) error {
+	for i, column := range p.plan.Select {
+		if column.Expression == nil || !planContainsAggregate(column.Expression) {
+			continue
+		}
+		for _, bare := range ungroupedColumns(column.Expression) {
+			if !p.isProjected(bare.Table, bare.Column) {
+				return planErrorf(projectionPosition(projections[i]),
+					"%q reads %s outside an aggregate; return %s as a column of its own so the result is grouped by it",
+					projections[i].Alias, bare.Property, bare.Property)
+			}
+		}
+	}
+	return nil
+}
+
+// ungroupedColumns lists the columns a value reads outside any aggregate.
+func ungroupedColumns(value PlanExpression) []PlanValueColumn {
+	switch node := value.(type) {
+	case PlanValueColumn:
+		return []PlanValueColumn{node}
+	case PlanArithmetic:
+		return append(ungroupedColumns(node.Left), ungroupedColumns(node.Right)...)
+	case PlanNegative:
+		return ungroupedColumns(node.Operand)
+	default:
+		return nil
+	}
+}
+
 func (p *planner) planProjection(projection Projection) (*PlanColumn, error) {
+	if projection.Expression != nil {
+		value, _, err := p.planExpression(projection.Expression)
+		if err != nil {
+			return nil, err
+		}
+		return &PlanColumn{Alias: projection.Alias, Expression: value}, nil
+	}
 	if projection.Aggregate != nil {
 		aggregate, err := p.planAggregate(*projection.Aggregate)
 		if err != nil {
@@ -819,6 +962,30 @@ func (p *planner) planProjection(projection Projection) (*PlanColumn, error) {
 }
 
 func (p *planner) planAggregate(aggregate Aggregate) (*PlanAggregate, error) {
+	planned, _, err := p.planAggregateOver(aggregate)
+	return planned, err
+}
+
+// planAggregateOver plans an aggregate and says what kind of number it is
+// over, which is unknown for count(*) and for a property the model does not
+// type.
+func (p *planner) planAggregateOver(aggregate Aggregate) (*PlanAggregate, numberKind, error) {
+	if aggregate.Argument != nil {
+		argument, kind, err := p.planExpression(aggregate.Argument)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		return &PlanAggregate{Function: aggregate.Function, Distinct: aggregate.Distinct, Argument: argument}, kind, nil
+	}
+	planned, err := p.planAggregateProperty(aggregate)
+	if err != nil || planned.Star {
+		return planned, kindUnknown, err
+	}
+	kind, _ := p.propertyKind(planned.Table, planned.Property)
+	return planned, kind, nil
+}
+
+func (p *planner) planAggregateProperty(aggregate Aggregate) (*PlanAggregate, error) {
 	if aggregate.Property == nil {
 		return &PlanAggregate{Function: aggregate.Function, Star: true}, nil
 	}
@@ -842,7 +1009,7 @@ func (p *planner) planAggregate(aggregate Aggregate) (*PlanAggregate, error) {
 func (p *planner) planGrouping() {
 	aggregates := 0
 	for _, column := range p.plan.Select {
-		if column.Aggregate != nil {
+		if column.aggregates() {
 			aggregates++
 		}
 	}
@@ -852,17 +1019,191 @@ func (p *planner) planGrouping() {
 		return
 	}
 	for _, column := range p.plan.Select {
-		if column.Aggregate == nil {
+		if !column.aggregates() {
 			p.plan.GroupBy = append(p.plan.GroupBy, column)
 		}
 	}
 }
 
 func projectionPosition(projection Projection) Position {
-	if projection.Aggregate != nil {
+	switch {
+	case projection.Expression != nil:
+		return projection.Pos
+	case projection.Aggregate != nil:
 		return projection.Aggregate.Pos
+	default:
+		return projection.Property.Pos
 	}
-	return projection.Property.Pos
+}
+
+// numberKind is what the planner knows about a value's type, which is as much
+// as arithmetic needs: whether it is whole, fractional, not a number at all,
+// or something the model does not say.
+type numberKind int
+
+const (
+	kindUnknown numberKind = iota
+	kindInteger
+	kindFloat
+	kindNotNumber
+)
+
+var integerTypes = map[string]struct{}{
+	dtype.DATATYPE_INTEGER:          {},
+	dtype.DATATYPE_UNSIGNED_INTEGER: {},
+}
+
+// floatTypes includes decimal: Cypher has no decimal type and reads one as a
+// float, while the database computes it exactly, which only ever differs in
+// the digits a float could not hold.
+var floatTypes = map[string]struct{}{
+	dtype.DATATYPE_FLOAT:   {},
+	dtype.DATATYPE_DECIMAL: {},
+}
+
+func (p *planner) propertyKind(table int, property string) (numberKind, string) {
+	declared, known := p.dataPropertyType(table, property)
+	if !known {
+		return kindUnknown, ""
+	}
+	lowered := strings.ToLower(declared)
+	if _, ok := integerTypes[lowered]; ok {
+		return kindInteger, declared
+	}
+	if _, ok := floatTypes[lowered]; ok {
+		return kindFloat, declared
+	}
+	return kindNotNumber, declared
+}
+
+// planExpression resolves a computed value and works out what kind of number
+// it gives, refusing what Cypher and SQL would compute differently.
+func (p *planner) planExpression(value Expression) (PlanExpression, numberKind, error) {
+	switch node := value.(type) {
+	case PropertyRef:
+		table, column, err := p.resolveProperty(node)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		kind, declared := p.propertyKind(table, node.Property)
+		if kind == kindNotNumber {
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"arithmetic takes numbers; %s is %s", node, declared)
+		}
+		return PlanValueColumn{Table: table, Column: column, Property: node.Property}, kind, nil
+
+	case Literal:
+		return PlanValueLiteral{Value: node, InputPointer: "$.query"}, literalKind(node), nil
+
+	case ParameterRef:
+		literal, err := p.resolveValue(Operand{Parameter: &node}, node.Pos)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		kind := literalKind(literal)
+		if kind == kindNotNumber {
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"parameter %q is used in arithmetic, which takes numbers; got %s", node.Name, literal.describe())
+		}
+		return PlanValueLiteral{Value: literal, InputPointer: parameterInputPointer(node.Name)}, kind, nil
+
+	case Aggregate:
+		return p.planAggregateValue(node)
+
+	case Negative:
+		operand, kind, err := p.planExpression(node.Operand)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		return PlanNegative{Operand: operand}, kind, nil
+
+	case Arithmetic:
+		return p.planArithmetic(node)
+
+	default:
+		return nil, kindUnknown, planErrorf(value.expressionPosition(), "unsupported expression %T", value)
+	}
+}
+
+func literalKind(literal Literal) numberKind {
+	switch literal.Kind {
+	case LiteralInteger:
+		return kindInteger
+	case LiteralFloat:
+		return kindFloat
+	default:
+		return kindNotNumber
+	}
+}
+
+// planAggregateValue plans an aggregate used inside a computation, where what
+// it gives has to be a number. count gives a whole number; avg a fraction;
+// sum, min and max give whatever they are over.
+func (p *planner) planAggregateValue(aggregate Aggregate) (PlanExpression, numberKind, error) {
+	planned, over, err := p.planAggregateOver(aggregate)
+	if err != nil {
+		return nil, kindUnknown, err
+	}
+	// count is a number whatever it counts.
+	if aggregate.Function == "COUNT" {
+		return *planned, kindInteger, nil
+	}
+	if over == kindNotNumber {
+		// Only a property the model types as something else gets here: a
+		// computed argument was refused while it was planned.
+		_, declared := p.propertyKind(planned.Table, planned.Property)
+		return nil, kindUnknown, planErrorf(aggregate.Pos, "arithmetic takes numbers; %s is over %s", aggregate, declared)
+	}
+	switch aggregate.Function {
+	case "AVG":
+		return *planned, kindFloat, nil
+	default:
+		return *planned, over, nil
+	}
+}
+
+// planArithmetic plans one operation. + - and * agree between Cypher and SQL
+// on every kind of number. Division and remainder do not, and are refused
+// where they would differ:
+//
+//   - Cypher divides two integers without a remainder, 7 / 2 = 3, while MySQL
+//     gives 3.5 and PostgreSQL gives 3. A division is only accepted when one
+//     side is known to be a fraction, which every database computes the same.
+//   - Cypher takes the remainder of fractions too, and PostgreSQL has no %
+//     over double precision. Remainder is only accepted over whole numbers.
+func (p *planner) planArithmetic(node Arithmetic) (PlanExpression, numberKind, error) {
+	left, leftKind, err := p.planExpression(node.Left)
+	if err != nil {
+		return nil, kindUnknown, err
+	}
+	right, rightKind, err := p.planExpression(node.Right)
+	if err != nil {
+		return nil, kindUnknown, err
+	}
+	planned := PlanArithmetic{Operator: node.Operator, Left: left, Right: right}
+	switch node.Operator {
+	case "/":
+		if leftKind != kindFloat && rightKind != kindFloat {
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"dividing values that may both be integers: Cypher drops the remainder and SQL databases do not agree; "+
+					"multiply one side by 1.0 for a fractional result")
+		}
+		return planned, kindFloat, nil
+	case "%":
+		if leftKind != kindInteger || rightKind != kindInteger {
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"%% takes integers, and both sides here are not known to be integers")
+		}
+		return planned, kindInteger, nil
+	}
+	switch {
+	case leftKind == kindFloat || rightKind == kindFloat:
+		return planned, kindFloat, nil
+	case leftKind == kindInteger && rightKind == kindInteger:
+		return planned, kindInteger, nil
+	default:
+		return planned, kindUnknown, nil
+	}
 }
 
 func (p *planner) planOrderBy(keys []SortKey) error {
@@ -893,6 +1234,9 @@ func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 			return nil, err
 		}
 		return &PlanOrder{Aggregate: aggregate}, nil
+
+	case key.Expression != nil:
+		return p.planSortExpression(key)
 
 	case key.Alias != "":
 		// An empty name never reaches here: the analyzer refuses one.
@@ -937,12 +1281,47 @@ func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 	}
 }
 
+// planSortExpression plans a computed sort key, such as a weighted score
+// count(g.id) * 0.5 + p.rank * 0.3. It follows the rules a property or an
+// aggregate follows as a sort key, applied to each part:
+//
+//   - an aggregate in it needs the query to aggregate;
+//   - once rows are collapsed, a property read outside an aggregate has to be
+//     one the query returns, since it is a grouping key only then;
+//   - under DISTINCT a computed key is refused outright. PostgreSQL requires
+//     the key itself to be in the select list, so sorting by the alias of a
+//     returned column is the portable way to say it.
+func (p *planner) planSortExpression(key SortKey) (*PlanOrder, error) {
+	if containsAggregate(key.Expression) && !p.aggregating() {
+		return nil, planErrorf(key.Pos,
+			"sorting by an aggregate needs the query to return an aggregate too; add it to RETURN")
+	}
+	if p.plan.Distinct && !p.aggregating() {
+		return nil, planErrorf(key.Pos,
+			"a DISTINCT result cannot be sorted by a computed value; return it with an alias and sort by the alias")
+	}
+	value, _, err := p.planExpression(key.Expression)
+	if err != nil {
+		return nil, err
+	}
+	if p.aggregating() {
+		for _, bare := range ungroupedColumns(value) {
+			if !p.isProjected(bare.Table, bare.Column) {
+				return nil, planErrorf(key.Pos,
+					"this sort key reads %s outside an aggregate, and a query with an aggregate can only be sorted by a returned value; add %s to RETURN",
+					bare.Property, bare.Property)
+			}
+		}
+	}
+	return &PlanOrder{Expression: value}, nil
+}
+
 // aggregating reports whether the projection collapses rows. A GROUP BY is not
 // the test: aggregating every column derives no GROUP BY and still collapses
 // the result to a single row.
 func (p *planner) aggregating() bool {
 	for _, column := range p.plan.Select {
-		if column.Aggregate != nil {
+		if column.aggregates() {
 			return true
 		}
 	}
@@ -951,7 +1330,8 @@ func (p *planner) aggregating() bool {
 
 func (p *planner) isProjected(table int, column string) bool {
 	for _, projected := range p.plan.Select {
-		if projected.Aggregate == nil && projected.Table == table && projected.Column == column {
+		if projected.Aggregate == nil && projected.Expression == nil &&
+			projected.Table == table && projected.Column == column {
 			return true
 		}
 	}

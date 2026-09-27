@@ -151,11 +151,6 @@ func TestCompileParameterRejections(t *testing.T) {
 			query: "MATCH (o:Order) WHERE o.region = $0 RETURN o.id",
 			want:  "positional parameters",
 		},
-		{
-			name:  "negated",
-			query: "MATCH (o:Order) WHERE o.amount > -$floor RETURN o.id",
-			want:  "negating a parameter",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := compileWithParameters(t, tc.query, tc.parameters)

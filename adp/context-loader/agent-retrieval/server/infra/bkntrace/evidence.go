@@ -719,6 +719,12 @@ func semanticDescriptorRefs(descriptor map[string]any) ([]map[string]any, []map[
 	for _, collection := range []string{"predicates", "projections", "grouping", "ordering"} {
 		for _, item := range objectArray(descriptor[collection]) {
 			appendRef(&fields, stringValue(item["property_ref"]), "property")
+			// A computed column reads several properties and lists them here.
+			if refs, ok := item["property_refs"].([]any); ok {
+				for _, ref := range refs {
+					appendRef(&fields, stringValue(ref), "property")
+				}
+			}
 		}
 	}
 	if values, ok := descriptor["grouping"].([]any); ok {

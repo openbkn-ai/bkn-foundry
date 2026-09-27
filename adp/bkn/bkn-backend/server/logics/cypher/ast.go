@@ -126,6 +126,18 @@ type Comparison struct {
 
 func (c Comparison) predicatePosition() Position { return c.Pos }
 
+// ExpressionComparison is a comparison where at least one side is computed,
+// as in o.amount * o.rate > $floor. A property against a value stays a
+// Comparison, so every stage that reads those keeps seeing the same shape.
+type ExpressionComparison struct {
+	Left     Expression
+	Operator string
+	Right    Expression
+	Pos      Position
+}
+
+func (c ExpressionComparison) predicatePosition() Position { return c.Pos }
+
 // LogicalOperator is AND, OR or XOR over two or more predicates. It keeps the
 // operands of one operator flat rather than nesting them pairwise, which is
 // how the source reads and how the generated SQL is written.
@@ -245,17 +257,23 @@ type ParameterRef struct {
 	Pos  Position
 }
 
-// Projection is one RETURN item: a property, or an aggregate over one. Alias
-// is what the column is called in the result; it defaults to the source text
-// of what was projected.
+// Projection is one RETURN item: a property, an aggregate over one, or a value
+// computed from those. Exactly one of the three is set. Alias is what the
+// column is called in the result; it defaults to the source text of what was
+// projected.
 type Projection struct {
 	Property  *PropertyRef
 	Aggregate *Aggregate
-	Alias     string
+	// Expression is set only for a computed value. A property or an aggregate
+	// written on its own keeps its own field, so every stage that handled
+	// those before arithmetic existed still sees them the same way.
+	Expression Expression
+	Alias      string
+	Pos        Position
 }
 
-// Aggregate is count, sum, avg, min or max. Property is nil for count(*),
-// which counts rows rather than values.
+// Aggregate is count, sum, avg, min or max. Property and Argument are both nil
+// for count(*), which counts rows rather than values.
 type Aggregate struct {
 	// Function is the SQL spelling, taken from a fixed set. Name is what the
 	// author wrote, which is what an unaliased column is called: a result read
@@ -264,15 +282,23 @@ type Aggregate struct {
 	Name     string
 	Distinct bool
 	Property *PropertyRef
-	Pos      Position
+	// Argument is set instead of Property when the aggregate is over a
+	// computed value, as in sum(o.price * o.quantity). ArgumentText is that
+	// value as it was written, for naming the column.
+	Argument     Expression
+	ArgumentText string
+	Pos          Position
 }
 
 // String renders the aggregate the way it was written, which is what an
 // unaliased column is named after.
 func (a Aggregate) String() string {
 	inner := "*"
-	if a.Property != nil {
+	switch {
+	case a.Property != nil:
 		inner = a.Property.String()
+	case a.Argument != nil:
+		inner = a.ArgumentText
 	}
 	if a.Distinct {
 		inner = "DISTINCT " + inner
@@ -281,11 +307,49 @@ func (a Aggregate) String() string {
 }
 
 // SortKey is one ORDER BY item. It is a property, an aggregate written out
-// again, or the name of something the query returns.
+// again, the name of something the query returns, or a value computed from
+// those.
 type SortKey struct {
 	Property   *PropertyRef
 	Aggregate  *Aggregate
+	Expression Expression
 	Alias      string
 	Descending bool
 	Pos        Position
 }
+
+// Expression is a value RETURN computes: arithmetic over properties,
+// aggregates, numbers and parameters. A property, an aggregate, a literal or a
+// parameter is an expression on its own; Arithmetic and Negative combine them.
+//
+// Only RETURN and the argument of an aggregate take one. A condition still
+// compares a property against a value, because a computed condition would be
+// evaluated per row with nothing the planner can check it against.
+type Expression interface {
+	expressionPosition() Position
+}
+
+func (p PropertyRef) expressionPosition() Position  { return p.Pos }
+func (l Literal) expressionPosition() Position      { return l.Pos }
+func (p ParameterRef) expressionPosition() Position { return p.Pos }
+func (a Aggregate) expressionPosition() Position    { return a.Pos }
+
+// Arithmetic is +, -, *, / or % over two values. Pos is the operator's, which
+// is what a rejection of the operation points at.
+type Arithmetic struct {
+	Operator string
+	Left     Expression
+	Right    Expression
+	Pos      Position
+}
+
+func (a Arithmetic) expressionPosition() Position { return a.Pos }
+
+// Negative is a leading minus on something other than a number written in the
+// query; a minus on a literal is folded into the literal while reading.
+type Negative struct {
+	Operand Expression
+	Pos     Position
+}
+
+func (n Negative) expressionPosition() Position { return n.Pos }

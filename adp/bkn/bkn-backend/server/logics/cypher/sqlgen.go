@@ -8,6 +8,7 @@ package cypher
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -104,10 +105,86 @@ func (g *generator) writeSelect() {
 }
 
 func (g *generator) selectExpression(column PlanColumn) string {
-	if column.Aggregate != nil {
+	switch {
+	case column.Expression != nil:
+		return g.expression(column.Expression)
+	case column.Aggregate != nil:
 		return g.aggregate(*column.Aggregate)
+	default:
+		return g.column(column.Table, column.Column)
 	}
-	return g.column(column.Table, column.Column)
+}
+
+// operatorPrecedence ranks the arithmetic operators the way both Cypher and
+// SQL do, which is what lets the generated text follow the plan's tree with
+// parentheses only where the tree needs them.
+var operatorPrecedence = map[string]int{"+": 1, "-": 1, "*": 2, "/": 2, "%": 2}
+
+// expression writes a computed value. Operators come from a fixed set and
+// values are columns, numbers and aggregates, so nothing the caller wrote
+// reaches the statement as SQL.
+func (g *generator) expression(value PlanExpression) string {
+	switch node := value.(type) {
+	case PlanValueColumn:
+		return g.column(node.Table, node.Column)
+	case PlanValueLiteral:
+		return g.number(node.Value)
+	case PlanAggregate:
+		return g.aggregate(node)
+	case PlanNegative:
+		if column, ok := node.Operand.(PlanValueColumn); ok {
+			return "-" + g.column(column.Table, column.Column)
+		}
+		return "-(" + g.expression(node.Operand) + ")"
+	case PlanArithmetic:
+		precedence, ok := operatorPrecedence[node.Operator]
+		if !ok {
+			g.fail(fmt.Errorf("cannot generate the %q operator", node.Operator))
+			return ""
+		}
+		return g.operand(node.Left, precedence, false) + " " + node.Operator + " " +
+			g.operand(node.Right, precedence, true)
+	default:
+		g.fail(fmt.Errorf("cannot generate a %T value", value))
+		return ""
+	}
+}
+
+// operand writes one side of an operation, in parentheses when the tree binds
+// it tighter than the text would: a looser operator on either side, or an
+// equal one on the right, since a - (b - c) is not a - b - c.
+func (g *generator) operand(value PlanExpression, parent int, right bool) string {
+	written := g.expression(value)
+	if inner, ok := value.(PlanArithmetic); ok {
+		precedence := operatorPrecedence[inner.Operator]
+		if precedence < parent || (right && precedence == parent) {
+			return "(" + written + ")"
+		}
+	}
+	return written
+}
+
+// number writes a number inside a computation. A float keeps a fractional
+// form even when it is whole, and an exponent besides: 1.0 printed as 1 would
+// turn a division the planner accepted as fractional back into an integer
+// one, and MySQL reads a number with an exponent as a double rather than as a
+// decimal rounded to four places.
+func (g *generator) number(value Literal) string {
+	switch value.Kind {
+	case LiteralInteger:
+		return strconv.FormatInt(value.Integer, 10)
+	case LiteralFloat:
+		if math.IsInf(value.Float, 0) || math.IsNaN(value.Float) {
+			g.fail(fmt.Errorf("cannot generate the number %v", value.Float))
+			return ""
+		}
+		return strconv.FormatFloat(value.Float, 'E', -1, 64)
+	default:
+		// The planner accepts numbers only, so reaching here means the stages
+		// disagree rather than that the query was unusual.
+		g.fail(fmt.Errorf("cannot compute with a %s", value.describe()))
+		return ""
+	}
 }
 
 // aggregate writes COUNT, SUM, AVG, MIN or MAX. The function name comes from a
@@ -118,6 +195,9 @@ func (g *generator) aggregate(aggregate PlanAggregate) string {
 		return aggregate.Function + "(*)"
 	}
 	inner := g.column(aggregate.Table, aggregate.Column)
+	if aggregate.Argument != nil {
+		inner = g.expression(aggregate.Argument)
+	}
 	if aggregate.Distinct {
 		inner = "DISTINCT " + inner
 	}
@@ -134,7 +214,7 @@ func (g *generator) writeGroupBy() {
 		if i > 0 {
 			g.out.WriteString(", ")
 		}
-		g.out.WriteString(g.column(column.Table, column.Column))
+		g.out.WriteString(g.selectExpression(column))
 	}
 }
 
@@ -349,6 +429,14 @@ func (g *generator) writePredicate(predicate PlanPredicate, nested bool) error {
 		g.out.WriteString(value)
 		return nil
 
+	case PlanExpressionComparison:
+		g.out.WriteString(g.expression(node.Left))
+		g.out.WriteString(" ")
+		g.out.WriteString(node.Operator)
+		g.out.WriteString(" ")
+		g.out.WriteString(g.expression(node.Right))
+		return nil
+
 	case PlanColumnComparison:
 		g.out.WriteString(g.column(node.LeftTable, node.LeftColumn))
 		g.out.WriteString(" ")
@@ -501,6 +589,8 @@ func (g *generator) writeOrderBy() {
 			g.out.WriteString(", ")
 		}
 		switch {
+		case order.Expression != nil:
+			g.out.WriteString(g.expression(order.Expression))
 		case order.Aggregate != nil:
 			g.out.WriteString(g.aggregate(*order.Aggregate))
 		case order.Alias != "":

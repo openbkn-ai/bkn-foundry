@@ -73,7 +73,11 @@ type SemanticQueryRelation struct {
 }
 
 type SemanticQueryPredicate struct {
-	PropertyRef  string   `json:"property_ref"`
+	PropertyRef string `json:"property_ref"`
+	// Expression and PropertyRefs describe a comparison with arithmetic on a
+	// side, which reads several properties and so has no one property_ref.
+	Expression   string   `json:"expression,omitempty"`
+	PropertyRefs []string `json:"property_refs,omitempty"`
 	Operator     string   `json:"operator"`
 	InputPointer string   `json:"input_pointer"`
 	ValueHashes  []string `json:"value_hashes,omitempty"`
@@ -81,19 +85,32 @@ type SemanticQueryPredicate struct {
 }
 
 type SemanticQueryProjection struct {
-	Alias         string `json:"alias"`
-	PropertyRef   string `json:"property_ref,omitempty"`
-	Aggregate     string `json:"aggregate,omitempty"`
-	Distinct      bool   `json:"distinct,omitempty"`
-	OutputPointer string `json:"output_pointer"`
+	Alias       string `json:"alias"`
+	PropertyRef string `json:"property_ref,omitempty"`
+	Aggregate   string `json:"aggregate,omitempty"`
+	Distinct    bool   `json:"distinct,omitempty"`
+	// Expression is "arithmetic" for a computed column, or for an aggregate
+	// over a computed value, and PropertyRefs lists every property it reads.
+	// The computation itself is not recorded: it can carry numbers from the
+	// query, which the descriptor otherwise only ever holds as hashes. Both
+	// are omitted when unset, which keeps the bytes of every descriptor
+	// written before arithmetic existed unchanged.
+	Expression    string   `json:"expression,omitempty"`
+	PropertyRefs  []string `json:"property_refs,omitempty"`
+	OutputPointer string   `json:"output_pointer"`
 }
 
 type SemanticQueryOrdering struct {
-	Alias       string `json:"alias,omitempty"`
-	PropertyRef string `json:"property_ref,omitempty"`
-	Aggregate   string `json:"aggregate,omitempty"`
-	Descending  bool   `json:"descending"`
+	Alias        string   `json:"alias,omitempty"`
+	PropertyRef  string   `json:"property_ref,omitempty"`
+	Aggregate    string   `json:"aggregate,omitempty"`
+	Expression   string   `json:"expression,omitempty"`
+	PropertyRefs []string `json:"property_refs,omitempty"`
+	Descending   bool     `json:"descending"`
 }
+
+// semanticExpression is what the descriptor records of a computed value.
+const semanticExpression = "arithmetic"
 
 func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescriptor, error) {
 	if plan == nil || strings.TrimSpace(plan.NetworkID) == "" || len(plan.Tables) == 0 || len(plan.Select) == 0 {
@@ -165,21 +182,33 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		projection := SemanticQueryProjection{
 			Alias: column.Alias, OutputPointer: semanticOutputPointer(column.Alias),
 		}
-		if column.Aggregate != nil {
+		switch {
+		case column.Expression != nil:
+			projection.Expression = semanticExpression
+			projection.PropertyRefs = semanticExpressionRefs(plan, column.Expression)
+		case column.Aggregate != nil:
 			projection.Aggregate = strings.ToLower(column.Aggregate.Function)
 			projection.Distinct = column.Aggregate.Distinct
-			if !column.Aggregate.Star {
+			switch {
+			case column.Aggregate.Argument != nil:
+				projection.Expression = semanticExpression
+				projection.PropertyRefs = semanticExpressionRefs(plan, column.Aggregate.Argument)
+			case !column.Aggregate.Star:
 				projection.PropertyRef = semanticPropertyRef(plan, column.Aggregate.Table, column.Aggregate.Property)
 			}
-		} else {
+		default:
 			projection.PropertyRef = semanticPropertyRef(plan, column.Table, column.Property)
 		}
-		if projection.PropertyRef == "" && projection.Aggregate == "" {
+		if projection.PropertyRef == "" && projection.Aggregate == "" && projection.Expression == "" {
 			return nil, fmt.Errorf("semantic query projection %d is incomplete", index)
 		}
 		descriptor.Projections = append(descriptor.Projections, projection)
 	}
 	for _, column := range plan.GroupBy {
+		if column.Expression != nil {
+			descriptor.Grouping = append(descriptor.Grouping, semanticExpressionRefs(plan, column.Expression)...)
+			continue
+		}
 		if ref := semanticPropertyRef(plan, column.Table, column.Property); ref != "" {
 			descriptor.Grouping = append(descriptor.Grouping, ref)
 		}
@@ -189,9 +218,16 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		switch {
 		case order.Aggregate != nil:
 			item.Aggregate = strings.ToLower(order.Aggregate.Function)
-			if !order.Aggregate.Star {
+			switch {
+			case order.Aggregate.Argument != nil:
+				item.Expression = semanticExpression
+				item.PropertyRefs = semanticExpressionRefs(plan, order.Aggregate.Argument)
+			case !order.Aggregate.Star:
 				item.PropertyRef = semanticPropertyRef(plan, order.Aggregate.Table, order.Aggregate.Property)
 			}
+		case order.Expression != nil:
+			item.Expression = semanticExpression
+			item.PropertyRefs = semanticExpressionRefs(plan, order.Expression)
 		case order.Property != "":
 			item.PropertyRef = semanticPropertyRef(plan, order.Table, order.Property)
 		}
@@ -249,6 +285,27 @@ func appendSemanticPredicates(descriptor *SemanticQueryDescriptor, plan *Plan, p
 			PropertyRef: semanticPropertyRef(plan, value.Table, value.Property),
 			Operator:    operator, InputPointer: pointer, ValueHashes: hashes, LogicalPath: path,
 		})
+	case PlanExpressionComparison:
+		refs := append(semanticExpressionRefs(plan, value.Left), semanticExpressionRefs(plan, value.Right)...)
+		hashes, pointers := semanticExpressionValues(value.Left)
+		rightHashes, rightPointers := semanticExpressionValues(value.Right)
+		hashes, pointers = append(hashes, rightHashes...), append(pointers, rightPointers...)
+		pointer := "$.query"
+		for _, candidate := range pointers {
+			if candidate != "$.query" {
+				// One parameter names where the value came from; several do
+				// not fit one pointer, and the query is where they meet.
+				if pointer != "$.query" && pointer != candidate {
+					pointer = "$.query"
+					break
+				}
+				pointer = candidate
+			}
+		}
+		descriptor.Predicates = append(descriptor.Predicates, SemanticQueryPredicate{
+			Operator: value.Operator, Expression: semanticExpression, PropertyRefs: dedupe(refs),
+			InputPointer: pointer, ValueHashes: hashes, LogicalPath: path,
+		})
 	case PlanStringMatch:
 		operator, ok := semanticStringMatchOperators[value.Operator]
 		if !ok {
@@ -279,6 +336,71 @@ func semanticPropertyRef(plan *Plan, table int, property string) string {
 		return ""
 	}
 	return "property:" + plan.NetworkID + ":" + plan.Tables[table].ObjectTypeID + ":" + property
+}
+
+// semanticExpressionRefs lists the properties a computed value reads, each
+// once, in the order it reads them.
+func semanticExpressionRefs(plan *Plan, value PlanExpression) []string {
+	var refs []string
+	seen := map[string]bool{}
+	var walk func(PlanExpression)
+	walk = func(value PlanExpression) {
+		var ref string
+		switch node := value.(type) {
+		case PlanValueColumn:
+			ref = semanticPropertyRef(plan, node.Table, node.Property)
+		case PlanAggregate:
+			if node.Argument != nil {
+				walk(node.Argument)
+			} else if !node.Star {
+				ref = semanticPropertyRef(plan, node.Table, node.Property)
+			}
+		case PlanArithmetic:
+			walk(node.Left)
+			walk(node.Right)
+		case PlanNegative:
+			walk(node.Operand)
+		}
+		if ref != "" && !seen[ref] {
+			seen[ref] = true
+			refs = append(refs, ref)
+		}
+	}
+	walk(value)
+	return refs
+}
+
+// semanticExpressionValues hashes the numbers a computed value carries, in
+// order, and says where each came from. The numbers themselves are not
+// recorded, as they are not for any other condition.
+func semanticExpressionValues(value PlanExpression) ([]string, []string) {
+	switch node := value.(type) {
+	case PlanValueLiteral:
+		return []string{semanticLiteralHash(node.Value)}, []string{node.InputPointer}
+	case PlanAggregate:
+		if node.Argument != nil {
+			return semanticExpressionValues(node.Argument)
+		}
+	case PlanArithmetic:
+		leftHashes, leftPointers := semanticExpressionValues(node.Left)
+		rightHashes, rightPointers := semanticExpressionValues(node.Right)
+		return append(leftHashes, rightHashes...), append(leftPointers, rightPointers...)
+	case PlanNegative:
+		return semanticExpressionValues(node.Operand)
+	}
+	return nil, nil
+}
+
+func dedupe(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := values[:0:0]
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func semanticAlias(table PlanTable, index int) string {

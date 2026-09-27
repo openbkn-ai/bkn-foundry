@@ -68,11 +68,22 @@ paths:
         - **RETURN**：属性、`AS` 别名、`DISTINCT`，以及 `count` / `sum` / `avg` /
           `min` / `max`（含 `count(*)` 与 `DISTINCT` 形式）。有聚合时按 RETURN 中其余
           列自动分组——这是 Cypher 的隐式 GROUP BY，无需也不能自己写 GROUP BY。
+        - **算术**：`+` `-` `*` `/` `%` 与取负，可加括号，可写在 RETURN（含聚合的参数）、
+          `WHERE` 比较的两侧和 `ORDER BY` 里，如 `count(*) * 2`、`sum(o.price * o.qty)`、
+          `count(o.x) * 1.0 / count(*)`、`WHERE o.amount * o.rate > $floor`、
+          `ORDER BY count(g.id) * 0.5 + p.rank * 0.3 DESC`。操作数是数值属性、聚合、数字或
+          取值为数字的参数；字符串、布尔、null 与非数值属性返回 400。与 openCypher 语义不一致的
+          写法一律拒绝而不是照做：两个整数相除（Cypher 丢余数，各 SQL 库不一致），要小数结果把
+          一边乘 `1.0`；`%` 只用于整数；除以字面量 0；`^` 乘方。聚合只能出现在 RETURN 与
+          ORDER BY 里，不能写在 `WHERE` 中。一个列或排序键既有聚合又在聚合外直接读属性（如
+          `o.x - avg(o.x)`）时，该属性须同时作为单独的列返回，结果按它分组；DISTINCT 结果要按
+          算出来的值排序，请在 RETURN 里给它起别名再按别名排序。没有声明类型的属性交给数据源决定。
+          `IN` 列表、内联属性、`SKIP` / `LIMIT` 里仍不能写算术。
         - **ORDER BY / SKIP / LIMIT**：ORDER BY 可用属性、返回列名或聚合。结果被聚合
           或 DISTINCT 折叠后，只能按返回的值排序。
 
         **不支持**（会被拒绝，报错指名是哪个语法与位置）：`WITH`、
-        `UNION`、变长路径 `[:R*1..3]`、`XOR`、返回整个节点、函数调用与算术表达式、写操作（`CREATE` / `MERGE` / `DELETE` /
+        `UNION`、变长路径 `[:R*1..3]`、`XOR`、返回整个节点、函数调用、`^` 乘方、写操作（`CREATE` / `MERGE` / `DELETE` /
         `SET` / `REMOVE`）。
 
         **行数**：不写 `LIMIT` 默认返回 1000 行；`LIMIT` 不得超过 10000。
