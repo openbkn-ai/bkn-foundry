@@ -20,6 +20,8 @@ def _validate_gap_rows(rows, core_ownership_gaps, archive_only):
         raise ManifestError("archive-only snapshot requires an explicit core ownership gap list")
     if core_ownership_gaps is None:
         return
+    if not core_ownership_gaps:
+        raise ManifestError("historical core ownership gap list cannot be empty")
     source_keys = {(row["source_table"], str(row["outbox_id"])) for row in rows}
     gap_keys = set(core_ownership_gaps)
     if not gap_keys.issubset(source_keys):

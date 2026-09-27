@@ -118,6 +118,8 @@ class SnapshotTest(unittest.TestCase):
         gaps = {("bkn_backend_trace_outbox", "1"): ("evt-1", "a" * 64)}
         with self.assertRaises(ManifestError):
             issue_manifest("mig-1", "2026-09-25T10:00:00.000Z", [], core_ownership_gaps=gaps)
+        with self.assertRaisesRegex(ManifestError, "cannot be empty"):
+            issue_manifest("mig-1", "2026-09-25T10:00:00.000Z", [], core_ownership_gaps={})
 
     def test_named_gap_must_reach_ownership_gap_classification(self):
         event = {"event_id": "evt-1", "payload_hash": "a" * 64, "producer_id": "bkn-backend",

@@ -147,7 +147,7 @@ class MigrationCLITest(unittest.TestCase):
             self.assertEqual(result, 0)
             self.assertEqual(producer.sent, [])
             gap_path.write_text("[]", encoding="utf-8")
-            with self.assertRaises(ManifestError):
+            with self.assertRaisesRegex(ManifestError, "cannot be empty"):
                 run(["publish", "--artifact", str(artifact_path), "--receipt", str(receipt_path),
                      "--checkpoint", str(root / "checkpoint.json"), "--producer-instance-id", "bridge#boot",
                      "--core-ownership-gaps", str(gap_path), "--archive-only"], lambda: source, lambda: producer,

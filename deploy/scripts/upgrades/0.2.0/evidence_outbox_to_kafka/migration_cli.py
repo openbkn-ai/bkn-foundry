@@ -25,6 +25,8 @@ def _load_core_ownership_gaps(path):
         raise ManifestError("historical core ownership gap list is unreadable") from error
     if not isinstance(rows, list):
         raise ManifestError("historical core ownership gap list must be an array")
+    if not rows:
+        raise ManifestError("historical core ownership gap list cannot be empty; omit the option when there are no gaps")
     gaps = {}
     required = {"source_table", "source_primary_key", "event_id", "payload_hash"}
     for row in rows:
