@@ -204,6 +204,32 @@ async def test_stable_enabled_refresh_without_active_operation_keeps_admission()
 
 
 @pytest.mark.anyio
+async def test_enabled_revision_retries_ack_when_operation_appears_late():
+    config = EvidenceKafkaConfig("kafka:9092", "agent", "test-password", "1")
+    class Sender:
+        async def send(self, record):
+            pass
+    class LateOperation(FakeControl):
+        operation = None
+
+        async def operation_for_revision(self, revision):
+            return self.operation
+
+    publisher = EvidenceKafkaPublisher(config, Sender(), policy_controlled=True)
+    publisher.start()
+    control = LateOperation(VerifiedPolicy(11, True, datetime.now(timezone.utc) + timedelta(minutes=1)))
+    runtime = EvidencePolicyRuntime(publisher, control)
+    await runtime.refresh()
+    assert publisher._admitting is True
+    assert control.acks == []
+    control.operation = "op-11"
+    await runtime.refresh()
+    assert publisher._admitting is True
+    assert control.acks[-1][0] == "op-11"
+    await publisher.close()
+
+
+@pytest.mark.anyio
 async def test_disabled_revision_without_ack_candidate_keeps_unaccounted_queue_closed():
     config = EvidenceKafkaConfig("kafka:9092", "agent", "test-password", "1")
     class Sender:

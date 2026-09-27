@@ -240,13 +240,20 @@ class EvidencePolicyRuntime:
             if not policy.enabled:
                 self.publisher.apply_policy(policy)
             await self.control.heartbeat("bkn-agent", self.publisher.process_boot_id, policy.revision)
+            operation = None
             if same_enabled:
                 self.publisher.apply_policy(policy)
-                return
+                if self._acked is not None and self._acked[0] == policy.revision or self._not_expected_revision == policy.revision:
+                    return
+                operation = await self.control.operation_for_revision(policy.revision)
+                if not operation:
+                    return
+                self.publisher.suspend_policy()
             summary = await self.publisher.drain_for_revision(policy.revision)
             if not summary.queue_empty:
                 raise RuntimeError("Evidence publisher queue disposition incomplete")
-            operation = await self.control.operation_for_revision(policy.revision)
+            if not same_enabled:
+                operation = await self.control.operation_for_revision(policy.revision)
             if not policy.enabled and not operation and summary.last_accepted_sequence > 0 and self._acked != (policy.revision, summary.last_accepted_sequence):
                 raise RuntimeError("no publisher acknowledgement candidate for queue disposition")
             if operation and self._acked != (policy.revision, summary.last_accepted_sequence) and self._not_expected_revision != policy.revision:
