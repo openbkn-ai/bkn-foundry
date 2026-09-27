@@ -86,7 +86,7 @@ func Boot(opts Options) (*App, error) {
 		if err != nil {
 			return nil, err
 		}
-		bkntrace.SetEvidencePublisher(runtime.Publisher)
+		bkntrace.SetEvidencePublisher(runtime.Runtime)
 		evidence = runtime
 	}
 	// Set error code language
@@ -139,6 +139,9 @@ func (a *App) Run() error {
 	s.Start()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if a.evidence != nil {
+		go func() { _ = a.evidence.Runtime.Run(ctx) }()
+	}
 	var flushStop chan struct{}
 	var flushDone chan struct{}
 	if a.evidence != nil {
@@ -152,7 +155,7 @@ func (a *App) Run() error {
 				select {
 				case <-ticker.C:
 					flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
-					result := bkntrace.FlushEvidencePublisher(flushCtx)
+					result := a.evidence.Runtime.Flush(flushCtx)
 					flushCancel()
 					if result.Dropped > 0 {
 						a.config.Logger.Warnf("BKN Trace Kafka evidence flush dropped %d records", result.Dropped)
@@ -179,10 +182,14 @@ func (a *App) Run() error {
 		}
 		if periodicFlushStopped {
 			flushCtx, flushCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if result := bkntrace.FlushEvidencePublisher(flushCtx); result.Dropped > 0 {
+			if result := a.evidence.Runtime.Flush(flushCtx); result.Dropped > 0 {
 				a.config.Logger.Warnf("BKN Trace Kafka evidence shutdown flush dropped %d records", result.Dropped)
 			}
-			if result := bkntrace.CloseEvidencePublisher(flushCtx); result.Dropped > 0 {
+			result, closeErr := a.evidence.Runtime.Close(flushCtx)
+			if closeErr != nil {
+				a.config.Logger.Warnf("BKN Trace Evidence publisher close: %v", closeErr)
+			}
+			if result.Dropped > 0 {
 				a.config.Logger.Warnf("BKN Trace Kafka evidence shutdown close dropped %d records", result.Dropped)
 			}
 			flushCancel()

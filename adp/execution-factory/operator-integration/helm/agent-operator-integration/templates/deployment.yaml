@@ -78,6 +78,7 @@ spec:
                 value: {{ .Values.depServices.rds.type | quote }}
             {{- end}}
             {{- with .Values.observability.evidence.publisher }}
+            {{- if .brokers }}
               - name: BKN_TRACE_KAFKA_BROKERS
                 value: {{ .brokers | quote }}
               - name: BKN_TRACE_KAFKA_SASL_MECHANISM
@@ -88,8 +89,45 @@ spec:
                 value: {{ .producer_stream_id | quote }}
               - name: BKN_TRACE_WORKLOAD_IDENTITY
                 value: {{ .workload_identity | quote }}
-              - name: BKN_TRACE_CAPTURE_POLICY_REVISION
-                value: {{ .capture_policy_revision | quote }}
+              - name: TRACE_ADMISSION_POLICY_URL
+                value: {{ .trace_admission.policy_url | quote }}
+              - name: TRACE_ADMISSION_CONFIGURATION_URL
+                value: {{ .trace_admission.configuration_url | quote }}
+              - name: TRACE_ADMISSION_HEARTBEAT_URL
+                value: {{ .trace_admission.heartbeat_url | quote }}
+              - name: TRACE_ADMISSION_ACK_URL_BASE
+                value: {{ .trace_admission.ack_url_base | quote }}
+              - name: TRACE_ADMISSION_TOKEN_URL
+                value: {{ .trace_admission.token_url | quote }}
+              - name: TRACE_ADMISSION_CLIENT_ID
+                value: {{ required "observability.evidence.publisher.trace_admission.client_id is required" .trace_admission.client_id | quote }}
+              - name: TRACE_ADMISSION_CLIENT_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ required "observability.evidence.publisher.trace_admission.client_secret_name is required" .trace_admission.client_secret_name | quote }}
+                    key: {{ .trace_admission.client_secret_key | quote }}
+              - name: TRACE_ADMISSION_SCOPE
+                value: {{ .trace_admission.scope | quote }}
+              - name: TRACE_ADMISSION_AUDIENCE
+                value: {{ .trace_admission.audience_cluster_id | quote }}
+              - name: TRACE_ADMISSION_CURRENT_KEY_ID
+                value: {{ required "observability.evidence.publisher.trace_admission.current_key_id is required" .trace_admission.current_key_id | quote }}
+              - name: TRACE_ADMISSION_CURRENT_PUBLIC_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ required "observability.evidence.publisher.trace_admission.current_public_key_secret_name is required" .trace_admission.current_public_key_secret_name | quote }}
+                    key: {{ .trace_admission.current_public_key_secret_key | quote }}
+              - name: TRACE_ADMISSION_PREVIOUS_KEY_ID
+                value: {{ .trace_admission.previous_key_id | quote }}
+              - name: TRACE_ADMISSION_PREVIOUS_PUBLIC_KEY
+                {{- if .trace_admission.previous_public_key_secret_name }}
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .trace_admission.previous_public_key_secret_name | quote }}
+                    key: {{ .trace_admission.previous_public_key_secret_key | quote }}
+                {{- else }}
+                value: ""
+                {{- end }}
               - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS
                 value: {{ .queue_max_records | quote }}
               - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES
@@ -112,6 +150,7 @@ spec:
                     name: {{ .credentials_secret_name | quote }}
                     key: {{ .password_secret_key | quote }}
               {{- end }}
+            {{- end }}
             {{- end }}
             {{- with .Values.observability.audit.publisher }}
               - name: BKN_AUDIT_KAFKA_BROKERS

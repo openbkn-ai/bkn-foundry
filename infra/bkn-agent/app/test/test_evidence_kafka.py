@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from app.evidence_kafka import (
     KafkaRecord,
     build_record,
 )
+from app.evidence_policy import VerifiedPolicy
 
 
 FIXTURE = json.loads(
@@ -52,6 +54,44 @@ def test_build_record_matches_frozen_s1_record_shape_and_bkn_agent_identity():
     assert value["payload_hash"] == "eb4e31fcaad2332ef8f5dd1e4f52f0283c695b070e8ff007a3ffcf216ec04547"
 
 
+@pytest.mark.anyio
+async def test_start_publisher_uses_signed_policy_runtime(monkeypatch):
+    configured = config()
+    calls = []
+    class FakePublisher:
+        def __init__(self, publisher_config, *, policy_controlled):
+            calls.append((publisher_config, policy_controlled))
+    class FakeControl:
+        @classmethod
+        def from_env(cls):
+            calls.append("control")
+            return cls()
+    class FakeRuntime:
+        def __init__(self, publisher, control):
+            calls.append((publisher, control))
+        def start(self):
+            calls.append("start")
+        async def close(self):
+            return type("Summary", (), {"published": 0, "dropped": 0, "queue_empty": True})()
+    monkeypatch.setattr(evidence.EvidenceKafkaConfig, "from_env", lambda: configured)
+    monkeypatch.setattr(evidence, "EvidenceKafkaPublisher", FakePublisher)
+    monkeypatch.setattr(evidence, "TraceAdmissionClient", FakeControl, raising=False)
+    monkeypatch.setattr(evidence, "EvidencePolicyRuntime", FakeRuntime, raising=False)
+    await evidence.start_publisher()
+    assert calls[0] == "control"
+    assert calls[1] == (configured, True)
+    assert calls[3] == "start"
+    assert await evidence.drain_pending() is True
+
+
+@pytest.mark.anyio
+async def test_disabled_chart_does_not_start_evidence_publisher(monkeypatch):
+    monkeypatch.setenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED", "false")
+    monkeypatch.setattr(evidence.EvidenceKafkaConfig, "from_env", lambda: (_ for _ in ()).throw(AssertionError("unexpected Kafka setup")))
+    await evidence.start_publisher()
+    assert evidence._publisher is None
+
+
 class RecordingSender:
     def __init__(self, failures=0):
         self.failures = failures
@@ -62,6 +102,20 @@ class RecordingSender:
             self.failures -= 1
             raise RuntimeError("broker unavailable")
         self.records.append(record)
+
+
+@pytest.mark.anyio
+async def test_policy_controlled_publisher_stamps_verified_revision_and_closes_admission():
+    publisher = EvidenceKafkaPublisher(config(), RecordingSender(), policy_controlled=True)
+    publisher.start()
+    assert publisher.try_publish(FIXTURE["event"]).reason == "publisher_unavailable"
+    publisher.apply_policy(VerifiedPolicy(11, True, datetime.now(timezone.utc) + timedelta(minutes=1)))
+    assert publisher.try_publish(FIXTURE["event"]).disposition == "accepted"
+    queued = publisher._queue[0][0]
+    assert dict(queued.headers)["capture_policy_revision"] == b"11"
+    publisher.apply_policy(VerifiedPolicy(12, False, datetime.now(timezone.utc) + timedelta(minutes=1)))
+    assert publisher.try_publish(FIXTURE["event"]).reason == "publisher_closing"
+    await publisher.close()
 
 
 @pytest.mark.anyio
@@ -197,7 +251,7 @@ def test_invalid_or_missing_kafka_config_is_rejected(overrides):
         config(**overrides).validate()
 
 
-def test_from_env_requires_bootstrap_credentials_and_capture_revision(monkeypatch):
+def test_from_env_requires_bootstrap_credentials_but_not_static_revision(monkeypatch):
     for name in (
         "BKN_TRACE_KAFKA_BROKERS",
         "BKN_TRACE_KAFKA_USERNAME",
@@ -207,6 +261,10 @@ def test_from_env_requires_bootstrap_credentials_and_capture_revision(monkeypatc
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValueError):
         EvidenceKafkaConfig.from_env()
+    monkeypatch.setenv("BKN_TRACE_KAFKA_BROKERS", "kafka:9092")
+    monkeypatch.setenv("BKN_TRACE_KAFKA_USERNAME", "agent")
+    monkeypatch.setenv("BKN_TRACE_KAFKA_PASSWORD", "test-password")
+    assert EvidenceKafkaConfig.from_env().capture_policy_revision == "1"
 
 
 @pytest.mark.anyio

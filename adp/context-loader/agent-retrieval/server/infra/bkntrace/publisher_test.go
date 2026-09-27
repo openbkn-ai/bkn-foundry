@@ -14,6 +14,29 @@ import (
 
 type captureEvidenceSender struct{ records []evidencepublisher.Record }
 
+type deniedByPolicyPublisher struct{ calls int }
+
+func (p *deniedByPolicyPublisher) TryPublish(evidencepublisher.Event) evidencepublisher.PublishResult {
+	p.calls++
+	return evidencepublisher.PublishResult{Disposition: evidencepublisher.Dropped, Reason: "publisher_unavailable"}
+}
+
+func TestSubmitEventsUsesPolicyGatedPublisherWithoutChangingBusinessResult(t *testing.T) {
+	publisher := &deniedByPolicyPublisher{}
+	SetEvidencePublisher(publisher)
+	t.Cleanup(func() { SetEvidencePublisher(nil) })
+	ctx := withEvidenceOutcome(testTraceContext())
+	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_id": "evt-policy-disabled", "event_type": "retrieval.completed"}}); err != nil {
+		t.Fatalf("policy-denied Evidence changed business result: %v", err)
+	}
+	if publisher.calls != 1 {
+		t.Fatalf("publisher calls=%d, want one policy-gated call", publisher.calls)
+	}
+	if outcome := evidenceOutcomeFromContext(ctx); outcome == nil || !outcome.attempted || outcome.accepted {
+		t.Fatalf("policy-denied outcome=%#v, want attempted but not accepted", outcome)
+	}
+}
+
 func (s *captureEvidenceSender) Send(_ context.Context, record evidencepublisher.Record) error {
 	s.records = append(s.records, record)
 	return nil

@@ -10,9 +10,11 @@ import re
 import time
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Protocol
+
+from app.evidence_policy import VerifiedPolicy
 
 logger = logging.getLogger("bkn-agent.evidence.kafka")
 
@@ -95,7 +97,9 @@ class EvidenceKafkaConfig:
             bootstrap_servers=os.getenv("BKN_TRACE_KAFKA_BROKERS", "").strip(),
             username=os.getenv("BKN_TRACE_KAFKA_USERNAME", "").strip(),
             password=os.getenv("BKN_TRACE_KAFKA_PASSWORD", ""),
-            capture_policy_revision=os.getenv("BKN_TRACE_CAPTURE_POLICY_REVISION", "").strip(),
+            # Only a constructor placeholder; policy-controlled records stamp
+            # the verified snapshot revision at queue admission.
+            capture_policy_revision="1",
             queue_max_records=integer("BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS", 4096),
             queue_max_bytes=integer("BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES", 64 << 20),
             max_record_bytes=integer("BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES", 1 << 20),
@@ -254,7 +258,7 @@ class AioKafkaSender:
 
 
 class EvidenceKafkaPublisher:
-    def __init__(self, config: EvidenceKafkaConfig, sender: Sender | None = None):
+    def __init__(self, config: EvidenceKafkaConfig, sender: Sender | None = None, *, policy_controlled: bool = False):
         config.validate()
         self.config = config
         self.sender: Sender = sender or AioKafkaSender(config)
@@ -268,6 +272,16 @@ class EvidenceKafkaPublisher:
         self._published = 0
         self._dropped = 0
         self._closing = False
+        self._policy_controlled = policy_controlled
+        self._policy: VerifiedPolicy | None = None
+        self._admitting = False
+
+    def apply_policy(self, policy: VerifiedPolicy) -> None:
+        self._policy = policy
+        self._admitting = policy.enabled
+
+    def suspend_policy(self) -> None:
+        self._admitting = False
 
     @property
     def next_sequence(self) -> int:
@@ -280,9 +294,16 @@ class EvidenceKafkaPublisher:
     def try_publish(self, event: dict[str, Any]) -> PublishResult:
         if self._closing:
             return PublishResult("dropped", reason="publisher_closing")
+        record_config = self.config
+        if self._policy_controlled:
+            policy = self._policy
+            if policy is None or not self._admitting or datetime.now(timezone.utc) >= policy.expires_at:
+                reason = "publisher_closing" if policy is not None and not policy.enabled else "publisher_unavailable"
+                return PublishResult("dropped", reason=reason)
+            record_config = replace(self.config, capture_policy_revision=str(policy.revision))
         event_id = str(event.get("event_id") or "") if isinstance(event, dict) else ""
         try:
-            candidate = build_record(event, self.config, self.process_boot_id, self._sequence + 1)
+            candidate = build_record(event, record_config, self.process_boot_id, self._sequence + 1)
         except (TypeError, ValueError, UnicodeError) as exc:
             reason = str(exc) if str(exc) in {"invalid_event", "message_too_large"} else "serialization_failed"
             self._dropped += 1
@@ -333,6 +354,20 @@ class EvidenceKafkaPublisher:
                 logger.error("Evidence publish dropped reason=%s", reason)
             self._outstanding_records -= 1
             self._outstanding_bytes -= size
+
+    async def drain_for_revision(self, revision: int) -> DrainSummary:
+        deadline = time.monotonic() + self.config.shutdown_timeout_s
+        while self._outstanding_records and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        return DrainSummary(
+            producer_instance_id=f"{WORKLOAD_IDENTITY}#{self.process_boot_id}",
+            capture_policy_revision=revision,
+            last_accepted_sequence=self._sequence,
+            published=self._published,
+            dropped=max(0, self._sequence - self._published),
+            queue_empty=self._outstanding_records == 0,
+            acknowledged_at=datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        )
 
     async def close(self) -> DrainSummary:
         self._closing = True

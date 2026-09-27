@@ -10,15 +10,19 @@ import (
 
 var (
 	evidencePublisherMu sync.RWMutex
-	evidencePublisher   *evidencepublisher.Publisher
+	evidencePublisher   EvidencePublisher
 )
 
-func SetEvidencePublisher(publisher *evidencepublisher.Publisher) {
+type EvidencePublisher interface {
+	TryPublish(evidencepublisher.Event) evidencepublisher.PublishResult
+}
+
+func SetEvidencePublisher(publisher EvidencePublisher) {
 	evidencePublisherMu.Lock()
 	defer evidencePublisherMu.Unlock()
 	evidencePublisher = publisher
 }
-func currentEvidencePublisher() *evidencepublisher.Publisher {
+func currentEvidencePublisher() EvidencePublisher {
 	evidencePublisherMu.RLock()
 	defer evidencePublisherMu.RUnlock()
 	return evidencePublisher
@@ -39,13 +43,15 @@ func publishEvidenceEvent(event Event) evidencepublisher.PublishResult {
 }
 
 func FlushEvidencePublisher(ctx context.Context) evidencepublisher.DrainResult {
-	if publisher := currentEvidencePublisher(); publisher != nil {
+	if publisher, ok := currentEvidencePublisher().(interface {
+		Flush(context.Context) evidencepublisher.DrainResult
+	}); ok {
 		return publisher.Flush(ctx)
 	}
 	return evidencepublisher.DrainResult{}
 }
 func CloseEvidencePublisher(ctx context.Context) evidencepublisher.DrainResult {
-	if publisher := currentEvidencePublisher(); publisher != nil {
+	if publisher, ok := currentEvidencePublisher().(*evidencepublisher.Publisher); ok {
 		return publisher.Close(ctx)
 	}
 	return evidencepublisher.DrainResult{}

@@ -9,6 +9,28 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
 
+type policyDeniedActionPublisher struct{ calls int }
+
+func (p *policyDeniedActionPublisher) TryPublish(evidencepublisher.Event) evidencepublisher.PublishResult {
+	p.calls++
+	return evidencepublisher.PublishResult{Disposition: evidencepublisher.Dropped, Reason: "publisher_unavailable"}
+}
+
+func TestKafkaEmitterUsesPolicyGatedPublisher(t *testing.T) {
+	publisher := &policyDeniedActionPublisher{}
+	action, ok := parseTestAction()
+	if !ok {
+		t.Fatal("expected action")
+	}
+	events, _ := action.AfterPermission(nil)
+	if err := NewKafkaEmitter(publisher).Emit(context.Background(), action, events); err == nil {
+		t.Fatal("policy-denied Evidence was reported as accepted")
+	}
+	if publisher.calls != len(events) {
+		t.Fatalf("publisher calls=%d, want %d", publisher.calls, len(events))
+	}
+}
+
 func TestKafkaEmitterAdmitsCanonicalActionEvidence(t *testing.T) {
 	publisher, err := evidencepublisher.New(evidencepublisher.Config{
 		ProducerID: "agent-operator-integration", BaseStreamID: "agent-operator-integration",

@@ -1,6 +1,7 @@
 package bkntrace
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -13,52 +14,67 @@ import (
 )
 
 type EvidencePublisherRuntime struct {
-	Publisher *evidencepublisher.Publisher
-	Producer  interface{ Close() error }
+	Runtime  *evidencepublisher.PublisherRuntime
+	Producer interface{ Close() error }
+}
+
+type evidencePublisherConfig struct {
+	Publisher evidencepublisher.Config
+	Brokers   []string
+	Username  string
+	Password  string
 }
 
 func NewEvidencePublisherRuntime() (*EvidencePublisherRuntime, error) {
-	get := func(key string) string { return strings.TrimSpace(os.Getenv(key)) }
-	queueMaxRecords, err := positiveEnvInt("BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS")
+	config, err := loadEvidencePublisherConfig()
 	if err != nil {
 		return nil, err
 	}
-	queueMaxBytes, err := positiveEnvInt("BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES")
+	producer, err := kafkasender.NewProducer(kafkasender.Config{Brokers: config.Brokers, Mechanism: "PLAIN", Username: config.Username, Password: config.Password})
 	if err != nil {
 		return nil, err
 	}
-	maxRecordBytes, err := positiveEnvInt("BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES")
-	if err != nil {
-		return nil, err
-	}
-	maxAttempts, err := positiveEnvInt("BKN_TRACE_EVIDENCE_MAX_ATTEMPTS")
-	if err != nil {
-		return nil, err
-	}
-	retryBackoffMS, err := positiveEnvInt("BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS")
-	if err != nil {
-		return nil, err
-	}
-	brokers := splitBrokers(get("BKN_TRACE_KAFKA_BROKERS"))
-	if len(brokers) == 0 || get("BKN_TRACE_KAFKA_SASL_MECHANISM") != "PLAIN" || get("BKN_TRACE_KAFKA_USERNAME") == "" || os.Getenv("BKN_TRACE_KAFKA_PASSWORD") == "" || get("BKN_TRACE_PRODUCER_ID") == "" || get("BKN_TRACE_WORKLOAD_IDENTITY") == "" || get("BKN_TRACE_PRODUCER_STREAM_ID") == "" || get("BKN_TRACE_CAPTURE_POLICY_REVISION") == "" {
-		return nil, fmt.Errorf("invalid BKN Trace Evidence Kafka configuration")
-	}
-	producer, err := kafkasender.NewProducer(kafkasender.Config{Brokers: brokers, Mechanism: "PLAIN", Username: get("BKN_TRACE_KAFKA_USERNAME"), Password: os.Getenv("BKN_TRACE_KAFKA_PASSWORD")})
-	if err != nil {
-		return nil, err
-	}
-	publisher, err := evidencepublisher.New(evidencepublisher.Config{
-		ProducerID: get("BKN_TRACE_PRODUCER_ID"), BaseStreamID: get("BKN_TRACE_PRODUCER_STREAM_ID"),
-		WorkloadIdentity: get("BKN_TRACE_WORKLOAD_IDENTITY"), ProcessBootID: uuid.NewString(),
-		CapturePolicyRevision: get("BKN_TRACE_CAPTURE_POLICY_REVISION"), QueueMaxRecords: queueMaxRecords,
-		QueueMaxBytes: queueMaxBytes, MaxRecordBytes: maxRecordBytes, MaxAttempts: maxAttempts,
-		RetryBackoff: time.Duration(retryBackoffMS) * time.Millisecond,
-	}, kafkasender.NewEvidence(producer))
+	runtime, err := evidencepublisher.NewPublisherRuntimeFromEnvironment(context.Background(), config.Publisher, kafkasender.NewEvidence(producer))
 	if err != nil {
 		_ = producer.Close()
 		return nil, err
 	}
-	return &EvidencePublisherRuntime{Publisher: publisher, Producer: producer}, nil
+	return &EvidencePublisherRuntime{Runtime: runtime, Producer: producer}, nil
+}
+
+func loadEvidencePublisherConfig() (evidencePublisherConfig, error) {
+	get := func(key string) string { return strings.TrimSpace(os.Getenv(key)) }
+	queueMaxRecords, err := positiveEnvInt("BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS")
+	if err != nil {
+		return evidencePublisherConfig{}, err
+	}
+	queueMaxBytes, err := positiveEnvInt("BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES")
+	if err != nil {
+		return evidencePublisherConfig{}, err
+	}
+	maxRecordBytes, err := positiveEnvInt("BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES")
+	if err != nil {
+		return evidencePublisherConfig{}, err
+	}
+	maxAttempts, err := positiveEnvInt("BKN_TRACE_EVIDENCE_MAX_ATTEMPTS")
+	if err != nil {
+		return evidencePublisherConfig{}, err
+	}
+	retryBackoffMS, err := positiveEnvInt("BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS")
+	if err != nil {
+		return evidencePublisherConfig{}, err
+	}
+	brokers := splitBrokers(get("BKN_TRACE_KAFKA_BROKERS"))
+	if len(brokers) == 0 || get("BKN_TRACE_KAFKA_SASL_MECHANISM") != "PLAIN" || get("BKN_TRACE_KAFKA_USERNAME") == "" || os.Getenv("BKN_TRACE_KAFKA_PASSWORD") == "" || get("BKN_TRACE_PRODUCER_ID") == "" || get("BKN_TRACE_WORKLOAD_IDENTITY") == "" || get("BKN_TRACE_PRODUCER_STREAM_ID") == "" {
+		return evidencePublisherConfig{}, fmt.Errorf("invalid BKN Trace Evidence Kafka configuration")
+	}
+	return evidencePublisherConfig{Publisher: evidencepublisher.Config{
+		ProducerID: get("BKN_TRACE_PRODUCER_ID"), BaseStreamID: get("BKN_TRACE_PRODUCER_STREAM_ID"),
+		WorkloadIdentity: get("BKN_TRACE_WORKLOAD_IDENTITY"), ProcessBootID: uuid.NewString(),
+		QueueMaxRecords: queueMaxRecords,
+		QueueMaxBytes:   queueMaxBytes, MaxRecordBytes: maxRecordBytes, MaxAttempts: maxAttempts,
+		RetryBackoff: time.Duration(retryBackoffMS) * time.Millisecond,
+	}, Brokers: brokers, Username: get("BKN_TRACE_KAFKA_USERNAME"), Password: os.Getenv("BKN_TRACE_KAFKA_PASSWORD")}, nil
 }
 
 func positiveEnvInt(name string) (int, error) {

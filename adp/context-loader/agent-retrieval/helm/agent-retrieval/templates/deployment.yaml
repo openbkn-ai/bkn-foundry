@@ -119,8 +119,45 @@ spec:
                 value: "agent-retrieval"
               - name: BKN_TRACE_PRODUCER_STREAM_ID
                 value: "agent-retrieval"
-              - name: BKN_TRACE_CAPTURE_POLICY_REVISION
-                value: {{ required "observability.evidencePublisher.capturePolicyRevision is required" .Values.observability.evidencePublisher.capturePolicyRevision | quote }}
+              - name: TRACE_ADMISSION_POLICY_URL
+                value: {{ .Values.observability.evidencePublisher.traceAdmission.policyURL | quote }}
+              - name: TRACE_ADMISSION_CONFIGURATION_URL
+                value: {{ .Values.observability.evidencePublisher.traceAdmission.configurationURL | quote }}
+              - name: TRACE_ADMISSION_HEARTBEAT_URL
+                value: {{ .Values.observability.evidencePublisher.traceAdmission.heartbeatURL | quote }}
+              - name: TRACE_ADMISSION_ACK_URL_BASE
+                value: {{ .Values.observability.evidencePublisher.traceAdmission.ackURLBase | quote }}
+              - name: TRACE_ADMISSION_TOKEN_URL
+                value: {{ .Values.observability.evidencePublisher.traceAdmission.tokenURL | quote }}
+              - name: TRACE_ADMISSION_CLIENT_ID
+                value: {{ required "observability.evidencePublisher.traceAdmission.clientID is required" .Values.observability.evidencePublisher.traceAdmission.clientID | quote }}
+              - name: TRACE_ADMISSION_CLIENT_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ required "observability.evidencePublisher.traceAdmission.clientSecretSecretName is required" .Values.observability.evidencePublisher.traceAdmission.clientSecretSecretName | quote }}
+                    key: {{ .Values.observability.evidencePublisher.traceAdmission.clientSecretSecretKey | quote }}
+              - name: TRACE_ADMISSION_SCOPE
+                value: {{ .Values.observability.evidencePublisher.traceAdmission.scope | quote }}
+              - name: TRACE_ADMISSION_AUDIENCE
+                value: {{ .Values.observability.evidencePublisher.traceAdmission.audienceClusterID | quote }}
+              - name: TRACE_ADMISSION_CURRENT_KEY_ID
+                value: {{ required "observability.evidencePublisher.traceAdmission.currentKeyID is required" .Values.observability.evidencePublisher.traceAdmission.currentKeyID | quote }}
+              - name: TRACE_ADMISSION_CURRENT_PUBLIC_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ required "observability.evidencePublisher.traceAdmission.currentPublicKeySecretName is required" .Values.observability.evidencePublisher.traceAdmission.currentPublicKeySecretName | quote }}
+                    key: {{ .Values.observability.evidencePublisher.traceAdmission.currentPublicKeySecretKey | quote }}
+              - name: TRACE_ADMISSION_PREVIOUS_KEY_ID
+                value: {{ .Values.observability.evidencePublisher.traceAdmission.previousKeyID | quote }}
+              - name: TRACE_ADMISSION_PREVIOUS_PUBLIC_KEY
+                {{- if .Values.observability.evidencePublisher.traceAdmission.previousPublicKeySecretName }}
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.observability.evidencePublisher.traceAdmission.previousPublicKeySecretName | quote }}
+                    key: {{ .Values.observability.evidencePublisher.traceAdmission.previousPublicKeySecretKey | quote }}
+                {{- else }}
+                value: ""
+                {{- end }}
               - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS
                 value: {{ .Values.observability.evidencePublisher.queueMaxRecords | quote }}
               - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES
