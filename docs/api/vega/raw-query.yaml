@@ -46,7 +46,8 @@ paths:
       description: |
         **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
 
-        - SQL：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"postgres"}`
+        - SQL（省略方言，按 MySQL 解析）：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql"}`
+        - PostgreSQL SQL：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"postgres"}`
         - SQL Server T-SQL：`{"query":"SELECT TOP (20) * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"tsql"}`
         - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
 
@@ -206,15 +207,20 @@ components:
             - dsl
         input_dialect:
           description: |
-            输入方言。SQL 省略时默认 `postgres`；SQL Server 原生 T-SQL 使用 `tsql`。
-            SQL Server Catalog 的执行目标方言始终是 `tsql`，必要时由服务端转换。DSL 必须是 `opensearch`。
+            输入方言。SQL 省略时默认 `mysql`；`mariadb` 按 `mysql` 解析，`generic` 使用
+            SQLGlot 通用方言。SQL Server 原生 T-SQL 使用 `tsql`。SQL Server Catalog 的
+            执行目标方言始终是 `tsql`，必要时由服务端转换。DSL 必须是 `opensearch`。
+            `hana` 不是可选输入方言；查询 HANA Catalog 时可使用 `generic`。
           type: string
           enum:
             - postgres
             - mysql
+            - mariadb
             - trino
             - duckdb
             - tsql
+            - oracle
+            - generic
             - opensearch
         paging:
           allOf:
