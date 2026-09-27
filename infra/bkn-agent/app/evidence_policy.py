@@ -232,9 +232,7 @@ class EvidencePolicyRuntime:
             policy = await self.control.read_policy()
             same_enabled = (
                 self._policy is not None and self._policy.revision == policy.revision
-                and policy.enabled and self.publisher._admitting
-                and (self._acked is not None and self._acked[0] == policy.revision
-                     or self._not_expected_revision == policy.revision)
+                and self._policy.enabled and policy.enabled and self.publisher._admitting
             )
             if not same_enabled:
                 self.publisher.suspend_policy()

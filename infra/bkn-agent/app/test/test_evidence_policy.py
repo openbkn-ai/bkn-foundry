@@ -172,6 +172,38 @@ async def test_stable_enabled_refresh_keeps_admission_with_inflight_queue():
 
 
 @pytest.mark.anyio
+async def test_stable_enabled_refresh_without_active_operation_keeps_admission():
+    config = EvidenceKafkaConfig("kafka:9092", "agent", "test-password", "1")
+    class Sender:
+        async def send(self, record):
+            pass
+    publisher = EvidenceKafkaPublisher(config, Sender(), policy_controlled=True)
+    publisher.start()
+    class NoOperation(FakeControl):
+        async def operation_for_revision(self, revision):
+            return None
+
+        async def heartbeat(self, identity, boot_id, revision):
+            if self.heartbeats:
+                assert publisher._admitting is True
+            await super().heartbeat(identity, boot_id, revision)
+
+    control = NoOperation(VerifiedPolicy(11, True, datetime.now(timezone.utc) + timedelta(minutes=1)))
+    runtime = EvidencePolicyRuntime(publisher, control)
+    await runtime.refresh()
+    assert publisher._admitting is True
+    async def unexpected_drain(revision):
+        pytest.fail("stable enabled policy must not drain the live queue")
+    publisher.drain_for_revision = unexpected_drain
+    control.policy = VerifiedPolicy(11, True, datetime.now(timezone.utc) + timedelta(minutes=5))
+    await runtime.refresh()
+    assert publisher._admitting is True
+    assert len(control.heartbeats) == 2
+    assert control.acks == []
+    await publisher.close()
+
+
+@pytest.mark.anyio
 async def test_disabled_revision_without_ack_candidate_keeps_unaccounted_queue_closed():
     config = EvidenceKafkaConfig("kafka:9092", "agent", "test-password", "1")
     class Sender:
