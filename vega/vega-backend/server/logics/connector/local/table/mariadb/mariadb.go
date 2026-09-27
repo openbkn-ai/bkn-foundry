@@ -202,7 +202,7 @@ func normalizeOptions(options map[string]any) (map[string]any, error) {
 				return nil, fmt.Errorf("mariadb option %q must be a non-negative duration", name)
 			}
 			value = strings.TrimSpace(duration)
-			parsed, err := time.ParseDuration(duration)
+			parsed, err := time.ParseDuration(value.(string))
 			if err != nil || parsed < 0 {
 				return nil, fmt.Errorf("mariadb option %q must be a non-negative duration", name)
 			}

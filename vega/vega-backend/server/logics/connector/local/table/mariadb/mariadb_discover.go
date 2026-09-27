@@ -33,7 +33,7 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 		return nil, err
 	}
 	if database != "" && !c.databaseAllowed(database) {
-		return nil, fmt.Errorf("mysql database %q is outside the connector scope", database)
+		return nil, fmt.Errorf("database %q is outside the connector scope", database)
 	}
 
 	builder := sq.Select(
@@ -53,9 +53,6 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	// A qualified source identifier selects one database. It must still remain
 	// within the connector's configured database scope.
 	if database != "" {
-		if !c.databaseAllowed(database) {
-			return nil, fmt.Errorf("database %q is outside the connector scope", database)
-		}
 		builder = builder.Where(sq.Eq{"TABLE_SCHEMA": database})
 	} else if len(c.config.Databases) > 0 {
 		builder = builder.Where(sq.Eq{"TABLE_SCHEMA": c.config.Databases})
@@ -148,9 +145,9 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 // mapTableType maps a MariaDB or MySQL table type to a table metadata type.
 func (c *MariaDBConnector) mapTableType(tableType string) string {
 	if strings.ToUpper(tableType) == "VIEW" {
-		return "view"
+		return interfaces.TableTypeView
 	}
-	return "table"
+	return interfaces.TableTypeTable
 }
 
 // databaseAllowed checks whether a database is inside the configured scope.
