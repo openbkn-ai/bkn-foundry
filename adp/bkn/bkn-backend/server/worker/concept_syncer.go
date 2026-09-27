@@ -26,6 +26,8 @@ import (
 	"bkn-backend/logics/vega_backend"
 )
 
+const conceptSyncPageLimit = 1000
+
 var (
 	cSyncerOnce sync.Once
 	cSyncer     *ConceptSyncer
@@ -980,8 +982,6 @@ func (cs *ConceptSyncer) insertDatasetDataForMetrics(ctx context.Context, metric
 	}
 	return nil
 }
-
-const conceptSyncPageLimit = 10000
 
 func (cs *ConceptSyncer) queryAllDatasetEntries(ctx context.Context, filterCondition map[string]any) ([]map[string]any, error) {
 	params := &interfaces.ResourceDataQueryParams{

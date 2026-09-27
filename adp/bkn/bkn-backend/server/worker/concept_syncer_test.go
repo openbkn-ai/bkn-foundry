@@ -71,7 +71,7 @@ func TestConceptSyncerQueryAllDatasetEntriesUsesCursor(t *testing.T) {
 	gomock.InOrder(
 		vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
-				if params.Paging.Mode != "cursor" || params.Paging.Limit != conceptSyncPageLimit || len(params.Sort) != 1 || params.Sort[0].Field != "id" {
+				if params.Paging.Mode != "cursor" || params.Paging.Limit != 1000 || len(params.Sort) != 1 || params.Sort[0].Field != "id" {
 					t.Fatalf("unexpected initial paging request: %#v", params)
 				}
 				return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "1"}}, Paging: &interfaces.ResourceDataPagingResult{NextCursor: &nextCursor}}, nil
