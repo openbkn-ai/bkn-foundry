@@ -41,6 +41,14 @@ spec:
             matchLabels:
               {{- toYaml $podLabels | nindent 14 }}
         {{- end }}
+        # Ontology Query is a 0.2 publisher. Keep it reachable when an upgrade
+        # retains a pre-0.2 explicit allowedClients list via --reuse-values.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: "openbkn"
+          podSelector:
+            matchLabels:
+              module: ontology-query
       ports:
         - protocol: TCP
           port: internal-http

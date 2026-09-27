@@ -131,9 +131,9 @@ spec:
               - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS
                 value: {{ .queue_max_records | quote }}
               - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES
-                value: {{ .queue_max_bytes | quote }}
+                value: {{ .queue_max_bytes | int64 | quote }}
               - name: BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES
-                value: {{ .max_record_bytes | quote }}
+                value: {{ .max_record_bytes | int64 | quote }}
               - name: BKN_TRACE_EVIDENCE_MAX_ATTEMPTS
                 value: {{ .max_attempts | quote }}
               - name: BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS

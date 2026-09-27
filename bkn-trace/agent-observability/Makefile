@@ -63,6 +63,8 @@ docker-build:
 
 helm-lint:
 	helm lint $(CHART_PATH)
+	bash scripts/test_evidence_publisher_numeric_chart_values.sh
+	bash charts/agent-observability/tests/ontology-query-lifecycle-client.sh
 	bash scripts/test_capture_policy_signing.sh $(CHART_PATH)
 	bash scripts/test_business_provenance_bootstrap.sh $(CHART_PATH)
 	bash scripts/test_evidence_index_governance.sh $(CHART_PATH)

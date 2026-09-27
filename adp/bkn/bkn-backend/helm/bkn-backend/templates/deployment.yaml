@@ -166,9 +166,9 @@ spec:
           - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS
             value: {{ .Values.bknTrace.evidencePublisher.queueMaxRecords | quote }}
           - name: BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES
-            value: {{ .Values.bknTrace.evidencePublisher.queueMaxBytes | quote }}
+            value: {{ .Values.bknTrace.evidencePublisher.queueMaxBytes | int64 | quote }}
           - name: BKN_TRACE_EVIDENCE_MAX_RECORD_BYTES
-            value: {{ .Values.bknTrace.evidencePublisher.maxRecordBytes | quote }}
+            value: {{ .Values.bknTrace.evidencePublisher.maxRecordBytes | int64 | quote }}
           - name: BKN_TRACE_EVIDENCE_MAX_ATTEMPTS
             value: {{ .Values.bknTrace.evidencePublisher.maxAttempts | quote }}
           - name: BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS
