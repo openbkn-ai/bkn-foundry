@@ -39,6 +39,13 @@ type capturePolicyInternalWriter struct {
 	recordErr              error
 }
 
+type validatingGatewayWriter struct{ capturePolicyInternalWriter }
+
+func (w *validatingGatewayWriter) RecordAcknowledgement(_ context.Context, ack icapturepolicy.ExpectedAcknowledgement) error {
+	w.ack = ack
+	return ack.Validate()
+}
+
 type capturePolicyBudgetReader struct{}
 
 func (capturePolicyBudgetReader) ReadAdmissionBudget(context.Context) (capturepolicysvc.AdmissionBudget, error) {
@@ -469,6 +476,20 @@ func TestInternalTraceGatewayAckConsumesFrozenContractAndBindsIdentity(t *testin
 	}
 	if writer.ack.OperationID != "op-42" || writer.ack.EndpointKind != icapturepolicy.EndpointTraceGateway || writer.ack.TraceDisposition != icapturepolicy.DispositionComplete || writer.ack.ExportedCount == nil || *writer.ack.ExportedCount != 16 {
 		t.Fatalf("unexpected persisted acknowledgement: %+v", writer.ack)
+	}
+}
+
+func TestInternalTraceGatewayEnabledAckMapsRequiredWireZerosToNotApplicableStoreFields(t *testing.T) {
+	writer := &validatingGatewayWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(traceGatewayAckReader("op-enable", 43, capturepolicysvc.PhaseEnabling), nil, nil, nil, writer)
+	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-enable:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/otelcol","process_boot_id":"boot-1","capture_policy_revision":43,"admission_state":"enabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"not_applicable","exported":0,"dropped":0,"unaccounted":0}}`, capturePolicyWorkloadProfile())
+	response := httptest.NewRecorder()
+	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if writer.ack.AckState != icapturepolicy.AckReady || writer.ack.TraceDisposition != icapturepolicy.DispositionNotApplicable || writer.ack.ExportedCount != nil || writer.ack.DroppedCount != nil || writer.ack.UnaccountedCount != nil {
+		t.Fatalf("enabled ACK persisted with non-applicable queue counters: %+v", writer.ack)
 	}
 }
 

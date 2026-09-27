@@ -511,11 +511,17 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "queue disposition does not satisfy TraceGatewayAcknowledgementV1"})
 		return
 	}
+	// The wire contract requires explicit zero counters for enabled/not_applicable.
+	// The durable ACK model represents those non-applicable counters as NULL.
+	var exportedCount, droppedCount, unaccountedCount *uint64
+	if mode == traceadmissionsvc.ModeDisabled {
+		exportedCount, droppedCount, unaccountedCount = &exported, &dropped, request.QueueDisposition.Unaccounted.Value
+	}
 	if err := h.validateCapturePolicyAckOperation(contextWithRequest(r), path, *request.CapturePolicyRevision); err != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement is stale or the operation is no longer active"})
 		return
 	}
-	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: request.GatewayInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: request.ProcessBootID, PolicyRevision: *request.CapturePolicyRevision, Ready: request.Ready, AckState: string(ackState), AcknowledgedAt: &request.AcknowledgedAt, ExportedCount: &exported, DroppedCount: &dropped, UnaccountedCount: request.QueueDisposition.Unaccounted.Value, TraceDisposition: traceDisposition, GapReason: request.QueueDisposition.GapReason}); err != nil {
+	if err := h.writer.RecordAcknowledgement(contextWithRequest(r), icapturepolicy.ExpectedAcknowledgement{OperationID: path, EndpointKind: icapturepolicy.EndpointTraceGateway, InstanceID: request.GatewayInstanceID, WorkloadIdentity: workloadIdentity, ProcessBootID: request.ProcessBootID, PolicyRevision: *request.CapturePolicyRevision, Ready: request.Ready, AckState: string(ackState), AcknowledgedAt: &request.AcknowledgedAt, ExportedCount: exportedCount, DroppedCount: droppedCount, UnaccountedCount: unaccountedCount, TraceDisposition: traceDisposition, GapReason: request.QueueDisposition.GapReason}); err != nil {
 		writeJSON(w, r, http.StatusConflict, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway acknowledgement was rejected"})
 		return
 	}
