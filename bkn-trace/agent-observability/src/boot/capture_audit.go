@@ -204,9 +204,14 @@ func buildCaptureControlAudit(in captureAuditInput) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unsupported capture Audit event %q", in.EventName)
 	}
-	actorType := "user"
-	if in.ActorType == "service_account" {
+	actorType := ""
+	switch in.ActorType {
+	case "user":
+		actorType = "user"
+	case "app", "service", "service_account":
 		actorType = "service_account"
+	default:
+		return nil, errors.New("unsupported control Audit actor type")
 	}
 	event := map[string]any{
 		"schema_version": "1.0", "event_id": id, "source_id": "agent-observability",

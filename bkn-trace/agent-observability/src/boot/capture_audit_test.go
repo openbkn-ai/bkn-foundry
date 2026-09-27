@@ -56,6 +56,31 @@ func TestCaptureRollbackFailureUsesRollbackAction(t *testing.T) {
 	}
 }
 
+func TestCaptureRequestedAuditMapsOAuthAppToServiceAccount(t *testing.T) {
+	value, err := buildCaptureControlAudit(captureAuditInput{
+		EventName: "trace_evidence.configuration_change_requested", Phase: "disabling",
+		Action: "update", Outcome: "success", OperationID: "trace-op-app", PolicyRevision: 24,
+		DesiredState: "disabled", EffectiveState: "enabled", ActorID: "client-app",
+		ActorType: "app", Environment: "test", OccurredAt: time.Now().UTC(),
+		BeforeHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		AfterHash:  "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event struct {
+		Actor struct {
+			Type string `json:"type"`
+		} `json:"actor"`
+	}
+	if err := json.Unmarshal(value, &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Actor.Type != "service_account" {
+		t.Fatalf("OAuth app audit actor type = %q, want service_account", event.Actor.Type)
+	}
+}
+
 func TestCaptureControlAuditRecordsAdmitAllFrozenEvents(t *testing.T) {
 	validator, err := auditvalidator.New()
 	if err != nil {
