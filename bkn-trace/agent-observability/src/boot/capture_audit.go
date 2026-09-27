@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -26,7 +27,7 @@ import (
 
 type captureAuditSink struct {
 	publisher   *auditpublisher.Publisher
-	producer    interface{ Close() error }
+	sender      *captureAuditSender
 	environment string
 }
 
@@ -57,33 +58,73 @@ func newCaptureAuditSink() *captureAuditSink {
 	config.Producer.Retry.Max = 0
 	config.Producer.Timeout = 3 * time.Second
 	config.Net.MaxOpenRequests = 1
-	producer, err := sarama.NewSyncProducer(brokers, config)
+	sender := &captureAuditSender{brokers: brokers, config: config, newProducer: func(brokers []string, config *sarama.Config) (captureAuditProducer, error) {
+		return sarama.NewSyncProducer(brokers, config)
+	}}
+	publisher, err := auditpublisher.New(sender, captureAuditObserver{})
 	if err != nil {
 		log.Printf("audit coverage_gap: control publisher initialization failed: %v", err)
 		return nil
 	}
-	publisher, err := auditpublisher.New(captureAuditSender{producer: producer}, captureAuditObserver{})
-	if err != nil {
-		_ = producer.Close()
-		log.Printf("audit coverage_gap: control publisher initialization failed: %v", err)
-		return nil
-	}
-	return &captureAuditSink{publisher: publisher, producer: producer, environment: environment}
+	return &captureAuditSink{publisher: publisher, sender: sender, environment: environment}
 }
 
 type captureAuditObserver struct{}
 
-type captureAuditSender struct{ producer sarama.SyncProducer }
+type captureAuditProducer interface {
+	SendMessage(*sarama.ProducerMessage) (int32, int64, error)
+	Close() error
+}
 
-func (s captureAuditSender) Send(_ context.Context, record auditpublisher.Record) error {
+type captureAuditSender struct {
+	mu          sync.Mutex
+	brokers     []string
+	config      *sarama.Config
+	newProducer func([]string, *sarama.Config) (captureAuditProducer, error)
+	producer    captureAuditProducer
+	closed      bool
+}
+
+func (s *captureAuditSender) Send(ctx context.Context, record auditpublisher.Record) error {
 	if record.Topic != auditpublisher.Topic {
 		return errors.New("invalid control Audit topic")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	headers := make([]sarama.RecordHeader, 0, len(record.Headers))
 	for _, header := range record.Headers {
 		headers = append(headers, sarama.RecordHeader{Key: []byte(header.Key), Value: append([]byte(nil), header.Value...)})
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return errors.New("control Audit sender is closed")
+	}
+	if s.producer == nil {
+		producer, err := s.newProducer(s.brokers, s.config)
+		if err != nil {
+			return err
+		}
+		s.producer = producer
+	}
 	_, _, err := s.producer.SendMessage(&sarama.ProducerMessage{Topic: record.Topic, Key: sarama.ByteEncoder(record.Key), Value: sarama.ByteEncoder(record.Value), Headers: headers})
+	if err != nil {
+		_ = s.producer.Close()
+		s.producer = nil
+	}
+	return err
+}
+
+func (s *captureAuditSender) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	if s.producer == nil {
+		return nil
+	}
+	err := s.producer.Close()
+	s.producer = nil
 	return err
 }
 
@@ -98,7 +139,7 @@ func (s *captureAuditSink) close() error {
 		return nil
 	}
 	s.publisher.Close()
-	return s.producer.Close()
+	return s.sender.Close()
 }
 
 func (s *captureAuditSink) emit(in captureAuditInput) {

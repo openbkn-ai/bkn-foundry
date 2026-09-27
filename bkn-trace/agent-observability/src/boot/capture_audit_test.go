@@ -8,14 +8,51 @@ package boot
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/IBM/sarama"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturecontrollersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
+
+type captureAuditFakeProducer struct{}
+
+func (captureAuditFakeProducer) SendMessage(*sarama.ProducerMessage) (int32, int64, error) {
+	return 0, 1, nil
+}
+
+func (captureAuditFakeProducer) Close() error { return nil }
+
+func TestCaptureAuditSenderRetriesInitializationOnNextRecord(t *testing.T) {
+	calls := 0
+	sender := &captureAuditSender{
+		brokers: []string{"broker:9092"}, config: sarama.NewConfig(),
+		newProducer: func([]string, *sarama.Config) (captureAuditProducer, error) {
+			calls++
+			if calls == 1 {
+				return nil, errors.New("broker unavailable")
+			}
+			return captureAuditFakeProducer{}, nil
+		},
+	}
+	record := auditpublisher.Record{Topic: auditpublisher.Topic}
+	if err := sender.Send(context.Background(), record); err == nil {
+		t.Fatal("first send must report broker initialization failure")
+	}
+	if err := sender.Send(context.Background(), record); err != nil {
+		t.Fatalf("send after broker recovery: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("producer initialization attempts = %d, want 2", calls)
+	}
+	if err := sender.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 type captureAuditTestSender struct{ records chan auditpublisher.Record }
 
