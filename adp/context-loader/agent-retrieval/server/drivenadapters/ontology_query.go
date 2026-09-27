@@ -91,8 +91,7 @@ func NewObjectSchemaAccess() interfaces.ObjectSchemaAccess {
 func withVerifiedApplicationPrincipal(ctx context.Context, headers map[string]string) map[string]string {
 	auth, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || auth == nil || auth.TokenInfo == nil ||
-		(auth.AuthMethod != "oauth" && auth.AuthMethod != "api_key") ||
-		headers["x-account-id"] != auth.AccountID {
+		(auth.AuthMethod != "oauth" && auth.AuthMethod != "api_key") {
 		return headers
 	}
 	if clientID := strings.TrimSpace(auth.TokenInfo.ClientID); clientID != "" {

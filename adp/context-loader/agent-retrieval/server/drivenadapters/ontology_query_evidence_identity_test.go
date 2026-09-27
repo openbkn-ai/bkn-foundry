@@ -11,19 +11,18 @@ import (
 
 func TestOntologyQueryForwardsOnlyVerifiedApplicationPrincipal(t *testing.T) {
 	for _, test := range []struct {
-		name, authMethod, headerAccountID, want string
+		name, authMethod, want string
 	}{
-		{name: "oauth", authMethod: "oauth", headerAccountID: "user-1", want: "openbkn-sdk"},
-		{name: "api key", authMethod: "api_key", headerAccountID: "user-1", want: "openbkn-sdk"},
-		{name: "unverified service header", authMethod: "service_header", headerAccountID: "user-1"},
-		{name: "mismatched subject", authMethod: "oauth", headerAccountID: "another-user"},
+		{name: "oauth", authMethod: "oauth", want: "openbkn-sdk"},
+		{name: "api key", authMethod: "api_key", want: "openbkn-sdk"},
+		{name: "unverified service header", authMethod: "service_header"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
 				AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 				AuthMethod: test.authMethod, TokenInfo: &interfaces.TokenInfo{ClientID: "openbkn-sdk"},
 			})
-			headers := withVerifiedApplicationPrincipal(ctx, map[string]string{"x-account-id": test.headerAccountID})
+			headers := withVerifiedApplicationPrincipal(ctx, map[string]string{"x-account-id": "user-1"})
 			if got := headers["X-BKN-Application-Principal-ID"]; got != test.want {
 				t.Fatalf("application principal = %q, want %q", got, test.want)
 			}
