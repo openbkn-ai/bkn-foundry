@@ -103,7 +103,6 @@ func (s *captureAuditSink) close() error {
 
 func (s *captureAuditSink) emit(in captureAuditInput) {
 	if s == nil {
-		log.Print("audit coverage_gap: control publisher is disabled")
 		return
 	}
 	in.Environment = s.environment
@@ -140,7 +139,7 @@ func (s *captureAuditSink) terminal(event capturecontrollersvc.TerminalEvent) {
 	case "failed":
 		name, outcome = "trace_evidence.operation_failed", "failure"
 	case "rollback_failed":
-		name, outcome = "trace_evidence.operation_failed", "failure"
+		name, action, outcome = "trace_evidence.operation_failed", "rollback", "failure"
 	case "rollback_completed":
 		name, action = "trace_evidence.rollback_completed", "rollback"
 	default:
