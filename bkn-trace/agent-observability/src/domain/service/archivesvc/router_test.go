@@ -27,6 +27,18 @@ func TestTraceBundleOverviewCountsCoreWithoutTechnicalEnrichment(t *testing.T) {
 	}
 }
 
+func TestTraceBundleOverviewFallsBackToCoreFreezeWithoutTechnicalEnrichment(t *testing.T) {
+	now := time.Date(2026, time.September, 27, 8, 0, 0, 0, time.UTC)
+	core := &fakeSource{candidates: []Candidate{{ID: "trace-1"}}}
+	technical := &checkingTechnicalStore{}
+	service := New(NewMemoryStore(), Router{Trace: TraceBundleSource{Core: core, Technical: technical}}, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
+
+	overview, err := service.Overview(context.Background(), observabilityvo.ArchiveKindTrace)
+	if err != nil || overview.CandidateCount != 1 || technical.enrichCalls != 0 {
+		t.Fatalf("overview must fall back to core freeze without technical enrichment: overview=%+v err=%v technical=%+v", overview, err, technical)
+	}
+}
+
 type checkingTechnicalStore struct{ enrichCalls int }
 
 func (store *checkingTechnicalStore) Enrich(_ context.Context, candidates []Candidate) ([]Candidate, error) {

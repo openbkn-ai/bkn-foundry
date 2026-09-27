@@ -41,11 +41,11 @@ func (source TraceBundleSource) Freeze(ctx context.Context, kind observabilityvo
 }
 
 func (source TraceBundleSource) Count(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) (int, error) {
-	counter, ok := source.Core.(CandidateCounter)
-	if !ok {
-		return 0, fmt.Errorf("trace archive source does not support candidate count")
+	if counter, ok := source.Core.(CandidateCounter); ok {
+		return counter.Count(ctx, kind, archiveRange)
 	}
-	return counter.Count(ctx, kind, archiveRange)
+	candidates, err := source.Core.Freeze(ctx, kind, archiveRange)
+	return len(candidates), err
 }
 
 func (source TraceBundleSource) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, candidates []Candidate) error {
