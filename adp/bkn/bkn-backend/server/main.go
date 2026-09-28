@@ -226,7 +226,7 @@ func main() {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_ENABLED")), "true") {
 		auditRuntime, err = operationaudit.NewKafkaRuntimeFromEnv(auditTelemetry)
 		if err != nil {
-			logger.Warnf("Audit Kafka publisher unavailable; audit coverage_gap: %v", err)
+			logger.Fatalf("Audit Kafka publisher enabled but invalid: %v", err)
 		}
 	} else {
 		logger.Warn("Audit Kafka publisher is disabled; management Audit coverage_gap")

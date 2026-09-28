@@ -7,6 +7,7 @@ package operationaudit
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -95,5 +96,40 @@ func TestBuildKafkaAuditRecordIncludesControlledFailureCode(t *testing.T) {
 	}
 	if record["failure_code"] != "HTTP_503" || record["http_status"] != float64(503) {
 		t.Fatalf("failure facts are not bounded: %#v", record)
+	}
+}
+
+func TestBuildKafkaAuditRecordNamesInvalidIdentityFieldWithoutValue(t *testing.T) {
+	base := Entry{EventID: "evt-1", EventTime: time.Now().UTC(), ActorID: "user-a",
+		RequestID: "req-1", Method: "POST", HTTPStatus: 201, Action: "create",
+		TargetType: "knowledge_network", TargetID: "kn-1", Outcome: "success",
+		ChangeSummary: map[string]any{"changed_fields": []string{}},
+	}
+	for _, tc := range []struct {
+		name, field string
+		change      func(*Entry)
+	}{
+		{"missing event", "event_id", func(e *Entry) { e.EventID = "" }},
+		{"missing time", "event_time", func(e *Entry) { e.EventTime = time.Time{} }},
+		{"missing actor", "actor_id", func(e *Entry) { e.ActorID = "" }},
+		{"oversized actor", "actor_id", func(e *Entry) { e.ActorID = strings.Repeat("s", 129) }},
+		{"missing target", "target_id", func(e *Entry) { e.TargetID = "" }},
+		{"oversized target", "target_id", func(e *Entry) { e.TargetID = strings.Repeat("s", 257) }},
+		{"missing request", "request_id", func(e *Entry) { e.RequestID = "" }},
+		{"oversized request", "request_id", func(e *Entry) { e.RequestID = strings.Repeat("s", 129) }},
+		{"oversized network", "knowledge_network_id", func(e *Entry) { e.KnowledgeNetworkID = strings.Repeat("s", 129) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entry := base
+			tc.change(&entry)
+			_, err := BuildKafkaAuditRecord(entry, "test")
+			var fieldErr *InvalidAuditFieldError
+			if !errors.As(err, &fieldErr) || fieldErr.Field != tc.field {
+				t.Fatalf("got %v, want field %s", err, tc.field)
+			}
+			if strings.Contains(err.Error(), "ssss") {
+				t.Fatalf("invalid value leaked in error: %v", err)
+			}
+		})
 	}
 }

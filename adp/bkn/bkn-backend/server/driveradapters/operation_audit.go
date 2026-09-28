@@ -313,6 +313,11 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 	if knID == "" && rule.TargetType == "knowledge_network" && c.Writer.Status() < http.StatusBadRequest {
 		knID = observedTargetID
 	}
+	// A rejected request may carry an arbitrary path ID. Keep the bounded target
+	// fact, but do not claim an invalid value as a knowledge-network scope.
+	if len(knID) > 128 {
+		knID = ""
+	}
 	outcome := "success"
 	failureCode, failureMessage := "", ""
 	if c.Writer.Status() < http.StatusOK || c.Writer.Status() >= http.StatusBadRequest {

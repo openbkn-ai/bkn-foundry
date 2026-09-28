@@ -113,6 +113,27 @@ func TestOperationAuditBatchTargetRemainsPublishable(t *testing.T) {
 	}
 }
 
+func TestOperationAuditOversizedNetworkPathStillProducesFailureFact(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/oversized", nil)
+	c.Params = gin.Params{{Key: "kn_id", Value: strings.Repeat("x", 129)}}
+	c.Status(http.StatusNotFound)
+	facts := operationAuditFacts(c, operationAuditRule{Action: "delete", TargetType: "knowledge_network"}, nil, nil, "req-long-kn")
+	if facts.knowledgeNetworkID != "" || facts.targetID != strings.Repeat("x", 129) {
+		t.Fatalf("oversized network scope must be omitted while retaining the bounded target: %#v", facts)
+	}
+	entry := operationaudit.Entry{EventID: "evt-long-kn", EventTime: time.Now().UTC(),
+		ActorID: "user-a", RequestID: "req-long-kn", Method: http.MethodDelete,
+		HTTPStatus: http.StatusNotFound, Action: "delete", TargetType: "knowledge_network",
+		TargetID: facts.targetID, KnowledgeNetworkID: facts.knowledgeNetworkID,
+		Outcome: facts.outcome, ChangeSummary: facts.changeSummary,
+	}
+	if _, err := operationaudit.BuildKafkaAuditRecord(entry, "test"); err != nil {
+		t.Fatalf("failed business attempt must remain auditable: %v", err)
+	}
+}
+
 type recordingOperationAuditStore struct {
 	entries []operationaudit.Entry
 }

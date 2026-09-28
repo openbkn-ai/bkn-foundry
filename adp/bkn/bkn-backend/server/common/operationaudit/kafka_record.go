@@ -18,6 +18,16 @@ import (
 
 const kafkaAuditSourceID = "bkn-backend"
 
+// InvalidAuditFieldError identifies a dropped field without exposing its value.
+type InvalidAuditFieldError struct {
+	Field  string
+	Reason string
+}
+
+func (e *InvalidAuditFieldError) Error() string {
+	return fmt.Sprintf("Audit field=%s %s", e.Field, e.Reason)
+}
+
 // BuildKafkaAuditRecord maps one bounded management fact to the frozen Audit
 // v1 record. It does not publish or mutate the old local audit table.
 func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
@@ -27,11 +37,26 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 	if _, ok := allowedTargetTypes[entry.TargetType]; !ok {
 		return nil, fmt.Errorf("unregistered Audit target type %q", entry.TargetType)
 	}
-	if entry.EventID == "" || entry.EventTime.IsZero() || entry.ActorID == "" ||
-		entry.TargetID == "" || entry.RequestID == "" || len(entry.TargetID) > 256 ||
-		len(entry.RequestID) > 128 || len(entry.ActorID) > 128 ||
-		len(entry.KnowledgeNetworkID) > 128 {
-		return nil, errors.New("Audit fact has missing or oversized identity")
+	for _, field := range []struct {
+		name  string
+		value string
+		limit int
+	}{
+		{"event_id", entry.EventID, 0},
+		{"actor_id", entry.ActorID, 128},
+		{"target_id", entry.TargetID, 256},
+		{"request_id", entry.RequestID, 128},
+		{"knowledge_network_id", entry.KnowledgeNetworkID, 128},
+	} {
+		if field.value == "" && field.name != "knowledge_network_id" {
+			return nil, &InvalidAuditFieldError{Field: field.name, Reason: "missing"}
+		}
+		if field.limit > 0 && len(field.value) > field.limit {
+			return nil, &InvalidAuditFieldError{Field: field.name, Reason: "oversized"}
+		}
+	}
+	if entry.EventTime.IsZero() {
+		return nil, &InvalidAuditFieldError{Field: "event_time", Reason: "missing"}
 	}
 	if _, ok := allowedActions[entry.Action]; !ok {
 		return nil, fmt.Errorf("unregistered Audit action %q", entry.Action)
