@@ -8,10 +8,13 @@ package interfaces
 
 import "context"
 
-// ResourceService defines resource business logic interface.
+// ResourceDataService defines resource data query behavior.
 //
 //go:generate mockgen -source ../interfaces/resource_data_service.go -destination ../interfaces/mock/mock_resource_data_service.go
 type ResourceDataService interface {
 	// QueryWithPaging queries resource data and returns cursor paging state when supported.
 	QueryWithPaging(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
+	// QuerySourcePage executes one physical resource page after the enclosing view has been authorized.
+	// It does not check permissions or manage cursor sessions.
+	QuerySourcePage(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
 }

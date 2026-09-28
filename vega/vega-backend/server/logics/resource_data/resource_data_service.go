@@ -86,6 +86,13 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 	return rdService
 }
 
+// QuerySourcePage runs one physical resource page for an already authorized view.
+// The view service owns its permission check and cursor session.
+func (rds *resourceDataService) QuerySourcePage(ctx context.Context, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	return rds.query(ctx, resource, params)
+}
+
 // query executes the existing structured resource-data path. Public callers
 // use QueryWithPaging so every result has the common paging envelope.
 func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.Resource,
@@ -96,7 +103,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 
 	logger.Debugf("Query, resourceID: %s, params: %v", resource.ID, params)
 
-	// The caller has already passed the Resource query PEP in QueryWithPaging.
+	// The enclosing public query has already passed its Resource query PEP.
 	// Loading the owning Catalog here is only needed to obtain execution
 	// configuration, not to expose the Catalog itself. A public Catalog read
 	// would incorrectly require catalog:view_detail and prevent a direct

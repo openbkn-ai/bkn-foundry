@@ -249,7 +249,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
 			Return(wantRows, int64(1), nil)
 
-		rows, total, err := rds.query(context.Background(), resource, params)
+		rows, total, err := rds.QuerySourcePage(context.Background(), resource, params)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
 		assert.Equal(t, "openbkn", rows[0]["name"])
@@ -312,11 +312,39 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, params).
 			Return(&interfaces.QueryResult{Entries: []map[string]any{{"blob": int64(12)}}, Total: 1}, nil)
 
-		rows, total, err := rds.query(context.Background(), resource, params)
+		rows, total, err := rds.QuerySourcePage(context.Background(), resource, params)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
 		length := int64(12)
 		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeMetadata, ByteLength: &length}, rows[0]["blob"])
+	})
+
+	t.Run("source page returns binary content envelope", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockConn := mock_interfaces.NewMockTableConnector(ctrl)
+		rds := &resourceDataService{cs: mockCS, cf: mockCF}
+		resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1",
+			Category:         interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{{Name: "blob", Type: interfaces.DataType_Binary}}}
+		binaryMode := interfaces.BinaryModeContent
+		params := &interfaces.ResourceDataQueryParams{BinaryMode: &binaryMode, OutputFields: []string{"blob"}}
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
+			Return(&interfaces.Catalog{Enabled: true}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
+		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
+		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, params).
+			Return(&interfaces.QueryResult{Entries: []map[string]any{{"blob": []byte{1, 2, 3}}}, Total: 1}, nil)
+
+		rows, total, err := rds.QuerySourcePage(context.Background(), resource, params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		length := int64(3)
+		data := "AQID"
+		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeContent,
+			ByteLength: &length, Data: &data}, rows[0]["blob"])
 	})
 
 	t.Run("query dataset passes the dataset service HTTP error through", func(t *testing.T) {

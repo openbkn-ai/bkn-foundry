@@ -15,6 +15,16 @@ import (
 // package while sharing CursorSession lifecycle management with Raw Query.
 type ResourceDataPageExecutor func(context.Context, *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error)
 
+// ResourceDataPageRunner executes a page without requiring a function callback.
+type ResourceDataPageRunner interface {
+	ExecutePage(context.Context, *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error)
+}
+
+func (execute ResourceDataPageExecutor) ExecutePage(ctx context.Context,
+	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	return execute(ctx, params)
+}
+
 func ExecuteInitialResourceDataCursor(ctx context.Context, accountID string, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams, execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
 	return ExecuteInitialResourceDataCursorWithCategory(ctx, accountID, resource, resource.Category, params, execute)
@@ -26,6 +36,13 @@ func ExecuteInitialResourceDataCursor(ctx context.Context, accountID string, res
 func ExecuteInitialResourceDataCursorWithCategory(ctx context.Context, accountID string, resource *interfaces.Resource,
 	paginationCategory string, params *interfaces.ResourceDataQueryParams,
 	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
+	return ExecuteInitialResourceDataCursorWithCategoryRunner(ctx, accountID, resource, paginationCategory, params, execute)
+}
+
+// ExecuteInitialResourceDataCursorWithCategoryRunner starts a cursor with a page runner.
+func ExecuteInitialResourceDataCursorWithCategoryRunner(ctx context.Context, accountID string, resource *interfaces.Resource,
+	paginationCategory string, params *interfaces.ResourceDataQueryParams,
+	execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
 	session, err := rawQueryCursorSessions.createResourceData(accountID, resource, params)
 	if err != nil {
 		return nil, cursorSessionLimitError(ctx)
@@ -43,6 +60,12 @@ func ExecuteInitialResourceDataCursorWithCategory(ctx context.Context, accountID
 
 func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID string, resource *interfaces.Resource, cursor string,
 	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
+	return ExecuteResourceDataCursorContinuationWithRunner(ctx, accountID, resource, cursor, execute)
+}
+
+// ExecuteResourceDataCursorContinuationWithRunner continues a cursor with a page runner.
+func ExecuteResourceDataCursorContinuationWithRunner(ctx context.Context, accountID string, resource *interfaces.Resource, cursor string,
+	execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
 	session, ok := rawQueryCursorSessions.acquire(cursor)
 	if !ok || session.ResourceDataParams == nil {
 		if ok {
@@ -66,7 +89,7 @@ func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID string
 }
 
 func executeResourceDataCursorPage(ctx context.Context, session *interfaces.CursorSession,
-	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
+	execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
 	params := cloneResourceDataQueryParams(session.ResourceDataParams)
 	params.NeedTotal = session.ResourceDataParams.NeedTotal && !session.HasTotalCount
 	params.Paging = interfaces.PagingRequest{
@@ -80,7 +103,7 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 		params.Paging.Limit = session.PageLimit
 	}
 	params.SearchAfter = append([]any(nil), session.SearchAfter...)
-	entries, total, err := execute(ctx, params)
+	entries, total, err := execute.ExecutePage(ctx, params)
 	if err != nil {
 		return nil, err
 	}
