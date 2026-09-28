@@ -79,7 +79,9 @@ func TestLogicViewServiceEntryPoints(t *testing.T) {
 		assert.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)
 	}
 
-	service := &prepareViewService{}
+	service := &prepareViewService{sourceMetadata: map[string]any{
+		"source_resource": map[string]any{"original_name": "orders"},
+	}}
 	SetLogicViewService(service)
 	require.NoError(t, ValidateLogicViewRequest(ctx, req))
 	logicType, schema, err := PrepareLogicView(ctx, req)
@@ -93,7 +95,9 @@ func TestLogicViewServiceEntryPoints(t *testing.T) {
 }
 
 func TestResourceServiceCreateLogicViewSourceMetadata(t *testing.T) {
-	viewService := &prepareViewService{}
+	viewService := &prepareViewService{sourceMetadata: map[string]any{
+		"source_resource": map[string]any{"original_name": "orders"},
+	}}
 	previous := GetLogicViewService()
 	SetLogicViewService(viewService)
 	t.Cleanup(func() { SetLogicViewService(previous) })
@@ -102,7 +106,7 @@ func TestResourceServiceCreateLogicViewSourceMetadata(t *testing.T) {
 	expectResourceServiceTransaction(t, rs, true)
 	mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
-			assert.Nil(t, got.SourceMetadata)
+			assert.Equal(t, viewService.sourceMetadata, got.SourceMetadata)
 			return nil
 		})
 
@@ -115,6 +119,53 @@ func TestResourceServiceCreateLogicViewSourceMetadata(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Nil(t, viewService.metadataAtPrepare)
+}
+
+func TestResourceServiceCreateLogicViewRejectsMissingPreparedSourceMetadata(t *testing.T) {
+	viewService := &prepareViewService{}
+	previous := GetLogicViewService()
+	SetLogicViewService(viewService)
+	t.Cleanup(func() { SetLogicViewService(previous) })
+
+	rs, _, _, _, _, _, _ := newTestService(t)
+	_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicView,
+		LogicType:        interfaces.LogicType_Derived,
+		LogicDefinition:  map[string]any{"source_resource_id": "source-1"},
+		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+		SourceMetadata:   map[string]any{"source_resource": map[string]any{"original_name": "forged"}},
+	})
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+	assert.Nil(t, viewService.metadataAtPrepare)
+}
+
+func TestPrepareLogicViewRejectsIncompleteSourceMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		metadata map[string]any
+	}{
+		{name: "missing snapshot", metadata: map[string]any{"properties": map[string]any{}}},
+		{name: "empty snapshot", metadata: map[string]any{"source_resource": map[string]any{}}},
+		{name: "invalid snapshot", metadata: map[string]any{"source_resource": "orders"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			viewService := &prepareViewService{sourceMetadata: tc.metadata}
+			previous := GetLogicViewService()
+			SetLogicViewService(viewService)
+			t.Cleanup(func() { SetLogicViewService(previous) })
+
+			req := &interfaces.ResourceRequest{SourceMetadata: map[string]any{"source_resource": map[string]any{"original_name": "forged"}}}
+			logicType, fields, err := PrepareLogicView(context.Background(), req)
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+			assert.Empty(t, logicType)
+			assert.Nil(t, fields)
+			assert.Nil(t, viewService.metadataAtPrepare)
+		})
+	}
 }
 
 func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
@@ -143,7 +194,7 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 			wantProperties: map[string]any{"row_count": 6},
 		},
 		{
-			name:                    "rejects client metadata when prepare does not provide metadata",
+			name:                    "rejects update when prepare does not provide metadata",
 			definition:              map[string]any{"source_resource_id": "source-1"},
 			wantProperties:          map[string]any{"row_count": 6},
 			withoutPreparedMetadata: true,
@@ -185,9 +236,13 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 			t.Cleanup(func() { SetLogicViewService(previous) })
 
 			rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
-			expectResourceServiceTransaction(t, rs, true)
+			if !tc.withoutPreparedMetadata {
+				expectResourceServiceTransaction(t, rs, true)
+			}
 			mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+			if !tc.withoutPreparedMetadata {
+				mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+			}
 			if tc.wantBuildCheck {
 				mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 			}
@@ -209,13 +264,15 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 					"source_resource": map[string]any{"original_name": "old.orders"},
 				},
 			}
-			mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
-				DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
-					assert.Equal(t, tc.wantProperties, got.SourceMetadata["properties"])
-					assert.Equal(t, viewService.sourceMetadata["source_resource"], got.SourceMetadata["source_resource"])
-					assert.NotContains(t, got.SourceMetadata, "injected")
-					return 1, nil
-				})
+			if !tc.withoutPreparedMetadata {
+				mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
+					DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+						assert.Equal(t, tc.wantProperties, got.SourceMetadata["properties"])
+						assert.Equal(t, viewService.sourceMetadata["source_resource"], got.SourceMetadata["source_resource"])
+						assert.NotContains(t, got.SourceMetadata, "injected")
+						return 1, nil
+					})
+			}
 			requestedSchema := tc.schema
 			if requestedSchema == nil {
 				requestedSchema = []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}}
@@ -230,7 +287,13 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 				SchemaDefinition: requestedSchema,
 				SourceMetadata:   map[string]any{"properties": map[string]any{"row_count": 999}, "injected": true},
 			})
-			require.NoError(t, err)
+			if tc.withoutPreparedMetadata {
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+			} else {
+				require.NoError(t, err)
+			}
 			assert.Nil(t, viewService.metadataAtPrepare)
 		})
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -41,7 +42,20 @@ func ValidateLogicViewRequest(ctx context.Context, req *interfaces.ResourceReque
 // PrepareLogicView prepares a view request with the registered service.
 func PrepareLogicView(ctx context.Context, req *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
 	if lvs := GetLogicViewService(); lvs != nil {
-		return lvs.Prepare(ctx, req)
+		req.SourceMetadata = nil
+		logicType, fields, err := lvs.Prepare(ctx, req)
+		if err != nil {
+			return "", nil, err
+		}
+		if logicType == interfaces.LogicType_Derived {
+			sourceResource, ok := req.SourceMetadata["source_resource"].(map[string]any)
+			if !ok || len(sourceResource) == 0 {
+				return "", nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					verrors.VegaBackend_Resource_InternalError).
+					WithErrorDetails("logic view service did not provide source_resource metadata")
+			}
+		}
+		return logicType, fields, nil
 	}
 	return "", nil, logicViewServiceUnavailable(ctx)
 }
