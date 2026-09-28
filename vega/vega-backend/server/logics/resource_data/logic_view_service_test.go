@@ -21,30 +21,30 @@ import (
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
-type queryViewExtension struct {
+type queryViewService struct {
 	resource *interfaces.Resource
 	params   *interfaces.ResourceDataQueryParams
 }
 
-func (*queryViewExtension) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
+func (*queryViewService) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
 	return nil
 }
 
-func (*queryViewExtension) Prepare(context.Context, *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
+func (*queryViewService) Prepare(context.Context, *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
 	return "", nil, nil
 }
 
-func (extension *queryViewExtension) QueryWithPaging(_ context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-	extension.resource = resource
-	extension.params = params
+func (viewService *queryViewService) QueryWithPaging(_ context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	viewService.resource = resource
+	viewService.params = params
 	return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": "row-1"}}, Paging: &interfaces.PagingResponse{}}, nil
 }
 
-func TestResourceDataServiceQueryWithPagingUsesLogicViewExtension(t *testing.T) {
-	extension := &queryViewExtension{}
-	previous := resourcelogic.GetLogicViewExtension()
-	resourcelogic.SetLogicViewExtension(extension)
-	t.Cleanup(func() { resourcelogic.SetLogicViewExtension(previous) })
+func TestResourceDataServiceQueryWithPagingUsesLogicViewService(t *testing.T) {
+	viewService := &queryViewService{}
+	previous := resourcelogic.GetLogicViewService()
+	resourcelogic.SetLogicViewService(viewService)
+	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
 
 	ctrl := gomock.NewController(t)
 	resources := vmock.NewMockResourceService(ctrl)
@@ -60,15 +60,15 @@ func TestResourceDataServiceQueryWithPagingUsesLogicViewExtension(t *testing.T) 
 	result, err := service.QueryWithPaging(context.Background(), view, params)
 
 	require.NoError(t, err)
-	assert.Same(t, view, extension.resource)
-	assert.Same(t, params, extension.params)
+	assert.Same(t, view, viewService.resource)
+	assert.Same(t, params, viewService.params)
 	assert.Equal(t, []map[string]any{{"id": "row-1"}}, result.Entries)
 }
 
-func TestResourceDataServiceQueryWithPagingWithoutLogicViewExtension(t *testing.T) {
-	previous := resourcelogic.GetLogicViewExtension()
-	resourcelogic.SetLogicViewExtension(nil)
-	t.Cleanup(func() { resourcelogic.SetLogicViewExtension(previous) })
+func TestResourceDataServiceQueryWithPagingWithoutLogicViewService(t *testing.T) {
+	previous := resourcelogic.GetLogicViewService()
+	resourcelogic.SetLogicViewService(nil)
+	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
 
 	ctrl := gomock.NewController(t)
 	resources := vmock.NewMockResourceService(ctrl)

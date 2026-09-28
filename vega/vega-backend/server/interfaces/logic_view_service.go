@@ -290,6 +290,12 @@ type SearchAfterParams struct {
 
 //go:generate mockgen -source ../interfaces/logic_view_service.go -destination ../interfaces/mock/mock_logic_view_service.go
 type LogicViewService interface {
+	// ValidateRequest checks the logic-view definition before persistence.
+	ValidateRequest(ctx context.Context, req *ResourceRequest) error
+
+	// Prepare resolves the source and returns the fields to persist.
+	Prepare(ctx context.Context, req *ResourceRequest) (logicType string, schema []*Property, err error)
+
 	// QueryWithPaging queries logic-view data and returns cursor paging state when supported.
 	QueryWithPaging(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 }

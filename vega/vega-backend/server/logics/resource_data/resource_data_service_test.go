@@ -25,23 +25,11 @@ import (
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
-type mockLogicViewExtension struct {
-	interfaces.LogicViewService
-}
-
-func (*mockLogicViewExtension) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
-	return nil
-}
-
-func (*mockLogicViewExtension) Prepare(context.Context, *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
-	return "", nil, nil
-}
-
-func registerMockLogicViewExtension(t *testing.T, service interfaces.LogicViewService) {
+func registerMockLogicViewService(t *testing.T, service interfaces.LogicViewService) {
 	t.Helper()
-	previous := resourcelogic.GetLogicViewExtension()
-	resourcelogic.SetLogicViewExtension(&mockLogicViewExtension{service})
-	t.Cleanup(func() { resourcelogic.SetLogicViewExtension(previous) })
+	previous := resourcelogic.GetLogicViewService()
+	resourcelogic.SetLogicViewService(service)
+	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
 }
 
 func TestResourceDataServicePrepareOutputFieldsParams(t *testing.T) {
@@ -408,7 +396,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
-		registerMockLogicViewExtension(t, mockLVS)
+		registerMockLogicViewService(t, mockLVS)
 		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID:        "logic-view-1",
@@ -449,7 +437,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
-		registerMockLogicViewExtension(t, mockLVS)
+		registerMockLogicViewService(t, mockLVS)
 		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID: "logic-view-1", Enabled: true, CatalogID: "catalog-1",

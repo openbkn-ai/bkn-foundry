@@ -157,7 +157,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	switch req.Category {
 	case interfaces.ResourceCategoryLogicView:
 		var viewFields []*interfaces.Property
-		logicType, viewFields, err = rs.prepareLogicView(ctx, req)
+		logicType, viewFields, err = PrepareLogicView(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -765,7 +765,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		previousDefinition := resource.LogicDefinition
 		previousSchema := resource.SchemaDefinition
 		previousMetadata := resource.SourceMetadata
-		logicType, viewFields, err := rs.prepareLogicView(ctx, req)
+		logicType, viewFields, err := PrepareLogicView(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -1348,7 +1348,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		err       error
 	)
 	if req.Category == interfaces.ResourceCategoryLogicView {
-		logicType, req.SchemaDefinition, err = rs.prepareLogicView(ctx, req)
+		logicType, req.SchemaDefinition, err = PrepareLogicView(ctx, req)
 		if err != nil {
 			return nil, err
 		}

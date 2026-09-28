@@ -41,6 +41,22 @@ func (m *MockLogicViewService) EXPECT() *MockLogicViewServiceMockRecorder {
 	return m.recorder
 }
 
+// Prepare mocks base method.
+func (m *MockLogicViewService) Prepare(ctx context.Context, req *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Prepare", ctx, req)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].([]*interfaces.Property)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// Prepare indicates an expected call of Prepare.
+func (mr *MockLogicViewServiceMockRecorder) Prepare(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prepare", reflect.TypeOf((*MockLogicViewService)(nil).Prepare), ctx, req)
+}
+
 // QueryWithPaging mocks base method.
 func (m *MockLogicViewService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()
@@ -54,4 +70,18 @@ func (m *MockLogicViewService) QueryWithPaging(ctx context.Context, resource *in
 func (mr *MockLogicViewServiceMockRecorder) QueryWithPaging(ctx, resource, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryWithPaging", reflect.TypeOf((*MockLogicViewService)(nil).QueryWithPaging), ctx, resource, params)
+}
+
+// ValidateRequest mocks base method.
+func (m *MockLogicViewService) ValidateRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateRequest", ctx, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateRequest indicates an expected call of ValidateRequest.
+func (mr *MockLogicViewServiceMockRecorder) ValidateRequest(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateRequest", reflect.TypeOf((*MockLogicViewService)(nil).ValidateRequest), ctx, req)
 }

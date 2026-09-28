@@ -20,63 +20,73 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
-type prepareViewExtension struct {
+type prepareViewService struct {
 	request          *interfaces.ResourceRequest
 	sourceMetadata   map[string]any
 	schemaDefinition []*interfaces.Property
 	decodeDefinition bool
 }
 
-func (*prepareViewExtension) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
+func (*prepareViewService) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
 	return nil
 }
 
-func (extension *prepareViewExtension) Prepare(_ context.Context, req *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
-	extension.request = req
-	if extension.sourceMetadata != nil {
-		req.SourceMetadata = extension.sourceMetadata
+func (viewService *prepareViewService) Prepare(_ context.Context, req *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
+	viewService.request = req
+	if viewService.sourceMetadata != nil {
+		req.SourceMetadata = viewService.sourceMetadata
 	}
-	if extension.decodeDefinition {
+	if viewService.decodeDefinition {
 		definition, err := interfaces.DecodeDerivedLogicDefinition(req.LogicDefinition)
 		if err != nil {
 			return "", nil, err
 		}
 		req.LogicDefinition = definition
 	}
-	if extension.schemaDefinition != nil {
-		return interfaces.LogicType_Derived, extension.schemaDefinition, nil
+	if viewService.schemaDefinition != nil {
+		return interfaces.LogicType_Derived, viewService.schemaDefinition, nil
 	}
 	return interfaces.LogicType_Derived, []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}}, nil
 }
 
-func (*prepareViewExtension) QueryWithPaging(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+func (*prepareViewService) QueryWithPaging(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	return nil, errors.New("query is not expected")
 }
 
-func TestResourceServicePrepareLogicView(t *testing.T) {
-	extension := &prepareViewExtension{}
-	previous := GetLogicViewExtension()
-	SetLogicViewExtension(extension)
-	t.Cleanup(func() { SetLogicViewExtension(previous) })
+func TestLogicViewServiceEntryPoints(t *testing.T) {
+	previous := GetLogicViewService()
+	t.Cleanup(func() { SetLogicViewService(previous) })
+	ctx := context.Background()
+	req := &interfaces.ResourceRequest{}
+	view := &interfaces.Resource{}
+	params := &interfaces.ResourceDataQueryParams{}
 
-	req := &interfaces.ResourceRequest{Category: interfaces.ResourceCategoryLogicView}
-	logicType, schema, err := (&resourceService{}).prepareLogicView(context.Background(), req)
+	SetLogicViewService(nil)
+	for _, err := range []error{
+		ValidateLogicViewRequest(ctx, req),
+		func() error { _, _, err := PrepareLogicView(ctx, req); return err }(),
+		func() error {
+			result, err := QueryLogicViewWithPaging(ctx, view, params)
+			assert.Nil(t, result)
+			return err
+		}(),
+	} {
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)
+	}
 
+	service := &prepareViewService{}
+	SetLogicViewService(service)
+	require.NoError(t, ValidateLogicViewRequest(ctx, req))
+	logicType, schema, err := PrepareLogicView(ctx, req)
 	require.NoError(t, err)
-	assert.Same(t, req, extension.request)
+	assert.Same(t, req, service.request)
 	assert.Equal(t, interfaces.LogicType_Derived, logicType)
 	assert.Equal(t, []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}}, schema)
-}
-
-func TestResourceServicePrepareLogicViewWithoutExtension(t *testing.T) {
-	previous := GetLogicViewExtension()
-	SetLogicViewExtension(nil)
-	t.Cleanup(func() { SetLogicViewExtension(previous) })
-
-	_, _, err := (&resourceService{}).prepareLogicView(context.Background(), &interfaces.ResourceRequest{})
-	var httpErr *rest.HTTPError
-	require.ErrorAs(t, err, &httpErr)
-	assert.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)
+	result, err := QueryLogicViewWithPaging(ctx, view, params)
+	assert.Nil(t, result)
+	assert.EqualError(t, err, "query is not expected")
 }
 
 func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
@@ -104,13 +114,13 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			extension := &prepareViewExtension{decodeDefinition: true, schemaDefinition: tc.schema, sourceMetadata: map[string]any{
+			viewService := &prepareViewService{decodeDefinition: true, schemaDefinition: tc.schema, sourceMetadata: map[string]any{
 				"properties":      map[string]any{},
 				"source_resource": map[string]any{"original_name": "current.orders"},
 			}}
-			previous := GetLogicViewExtension()
-			SetLogicViewExtension(extension)
-			t.Cleanup(func() { SetLogicViewExtension(previous) })
+			previous := GetLogicViewService()
+			SetLogicViewService(viewService)
+			t.Cleanup(func() { SetLogicViewService(previous) })
 
 			rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
 			expectResourceServiceTransaction(t, rs, true)
@@ -132,7 +142,7 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 			mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
 				DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
 					assert.Equal(t, tc.wantProperties, got.SourceMetadata["properties"])
-					assert.Equal(t, extension.sourceMetadata["source_resource"], got.SourceMetadata["source_resource"])
+					assert.Equal(t, viewService.sourceMetadata["source_resource"], got.SourceMetadata["source_resource"])
 					return 1, nil
 				})
 			requestedSchema := tc.schema
