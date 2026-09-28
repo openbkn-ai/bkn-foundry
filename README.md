@@ -14,6 +14,8 @@
 
 [![License](https://img.shields.io/badge/license-multi--licensed-blue.svg)](LICENSE)
 
+<a href="https://trendshift.io/repositories/109706?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-109706" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/109706" alt="openbkn-ai%2Fbkn-foundry | Trendshift" width="250" height="55"/></a>
+
 OpenBKN is an ontology-driven business knowledge network platform. Through ontology modeling, it turns the data and logic scattered across documents, systems, processes, rules, and expert experience into a business knowledge network that agents can understand, execute, and verify — so agents land accurately, safely, and reliably in real business environments, not just generating answers but continuously creating executable, traceable, and verifiable business value.
 
 **BKN Foundry** is the technical foundation of OpenBKN, providing that business knowledge network with unified data access, safe execution, and governance.
