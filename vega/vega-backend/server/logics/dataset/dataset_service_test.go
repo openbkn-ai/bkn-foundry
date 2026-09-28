@@ -116,7 +116,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 	t.Run("list documents answers 400 for a condition the index cannot build", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		cause := fmt.Errorf("failed to build filter query: %w",
-			filter_condition.NewConditionBuildError("text field body has no keyword feature; re-save the resource configuration and rebuild the local index, or use match"))
+			interfaces.NewConditionBuildError("text field body has no keyword feature; re-save the resource configuration and rebuild the local index, or use match"))
 		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, int64(0), cause)
 
 		_, _, err := ds.ListDocuments(ctx, resource, params)

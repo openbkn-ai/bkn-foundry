@@ -24,6 +24,7 @@
 
 - 优先解决根因，避免叠加临时补丁。
 - 遵循 VEGA 既有六边形架构：`interfaces` → `logics` → `driveradapters` / `drivenadapters`。
+- 连接器应将驱动错误归类为可识别的普通错误；跨连接器共用的错误类型定义在 Foundry `interfaces/errors.go`，统一通过构造函数创建，由调用方通过 `errors.As` 转换为 HTTP 错误。连接器不直接构造 HTTP 错误。
 - 保持 diff 聚焦，不做与任务无关的格式化、重命名、文件移动或依赖升级。
 - 新模式必须说明必要性；能复用既有实现、测试 helper 和错误处理模式时优先复用。
 - Go 代码必须通过 `gofmt`；新增日志、错误处理和 tracing 行为应与所在包保持一致。

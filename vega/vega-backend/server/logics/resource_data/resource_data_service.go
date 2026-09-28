@@ -250,11 +250,12 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			documents, total, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 			if err != nil {
 				otellog.LogError(ctx, "Query table data from local index failed", err)
-				if _, stored := filter_condition.AsStoredConditionBuildError(err); stored {
+				var stored *interfaces.StoredConditionBuildError
+				if errors.As(err, &stored) {
 					return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 						WithErrorDetails("stored view filter_condition cannot be built")
 				}
-				if reason, ok := filter_condition.RequestSideQueryError(err); ok {
+				if reason, ok := interfaces.RequestSideQueryError(err); ok {
 					return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 						WithErrorDetails(reason)
 				}
@@ -600,9 +601,13 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
-			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+			var sourceReadForbidden *interfaces.SourceReadForbiddenError
+			if errors.As(err, &sourceReadForbidden) {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+			}
+			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(unsupported.Error())
+					WithErrorDetails(reason)
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
@@ -623,9 +628,13 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := indexConnector.ExecuteQuery(ctx, resource.SourceIdentifier, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
-			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+			var sourceReadForbidden *interfaces.SourceReadForbiddenError
+			if errors.As(err, &sourceReadForbidden) {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+			}
+			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(unsupported.Error())
+					WithErrorDetails(reason)
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
@@ -648,11 +657,15 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := fc.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Fileset query failed", err)
+			var sourceReadForbidden *interfaces.SourceReadForbiddenError
+			if errors.As(err, &sourceReadForbidden) {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+			}
 			// The same typing as the table/index branches: The unimplemented operators of anyshare are problems on the request side
 			// The caller can pass by simply changing the operator. If everything is uniformly packaged as 500, ontology-query will be judged as a dependency fault.
-			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(unsupported.Error())
+					WithErrorDetails(reason)
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(err.Error())

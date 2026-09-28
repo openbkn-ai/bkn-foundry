@@ -136,7 +136,7 @@ func (lim *localIndexManager) GetIndexCapabilities(ctx context.Context) (*interf
 	if lim.capabilityErr != nil && time.Now().Before(lim.capabilityErrorExpires) {
 		err := lim.capabilityErr
 		lim.capabilityMu.RUnlock()
-		return nil, &interfaces.IndexCapabilitiesUnavailableError{Cause: err}
+		return nil, interfaces.NewIndexCapabilitiesUnavailableError(err)
 	}
 	lim.capabilityMu.RUnlock()
 
@@ -146,7 +146,7 @@ func (lim *localIndexManager) GetIndexCapabilities(ctx context.Context) (*interf
 		return cloneIndexCapabilities(lim.capabilities), nil
 	}
 	if lim.capabilityErr != nil && time.Now().Before(lim.capabilityErrorExpires) {
-		return nil, &interfaces.IndexCapabilitiesUnavailableError{Cause: lim.capabilityErr}
+		return nil, interfaces.NewIndexCapabilitiesUnavailableError(lim.capabilityErr)
 	}
 
 	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), capabilityProbeTimeout)
@@ -154,7 +154,7 @@ func (lim *localIndexManager) GetIndexCapabilities(ctx context.Context) (*interf
 	cancel()
 	lim.storeIndexCapabilitiesLocked(capabilities, err)
 	if err != nil {
-		return nil, &interfaces.IndexCapabilitiesUnavailableError{Cause: err}
+		return nil, interfaces.NewIndexCapabilitiesUnavailableError(err)
 	}
 	return cloneIndexCapabilities(capabilities), nil
 }

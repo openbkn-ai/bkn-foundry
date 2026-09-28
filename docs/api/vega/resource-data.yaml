@@ -54,6 +54,8 @@ paths:
         `paging.next_cursor` 续页；`total_count` 仅在 `need_total=true` 时返回。
         逻辑视图查询要求 EE 专业版及以上授权；未安装 EE 扩展返回 501，
         授权版本不足返回 403 `Public.Forbidden`。
+        HANA 源表无 SELECT 权限时返回 403
+        `VegaBackend.Resource.SourceReadForbidden`，不暴露驱动原始错误。
         已保存的复合逻辑视图在首次查询和 cursor 续页时也暂时返回 501。
 
         **`Override: POST` 响应**：201 + `{ id }`。后端生成文档 ID；携带 `_id` 的 body 返回 400。

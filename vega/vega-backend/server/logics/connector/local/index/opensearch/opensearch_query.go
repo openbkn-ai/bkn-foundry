@@ -21,7 +21,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 func openSearchInt64(value any) (int64, bool) {
@@ -738,7 +737,7 @@ func (c *OpenSearchConnector) validateStoredFilterCondition(resource *interfaces
 		return nil
 	}
 	if _, err := c.ConvertFilterCondition(params.FixedActualFilterCond, resource.SchemaDefinition); err != nil {
-		return &filter_condition.StoredConditionBuildError{Cause: err}
+		return interfaces.NewStoredConditionBuildError(err)
 	}
 	return nil
 }

@@ -390,7 +390,7 @@ func (c *AnyShareConnector) convertFilterConditionWithOpr(ctx context.Context, c
 	case filter_condition.OperationBetween:
 		return c.convertFilterConditionBetween(ctx, condition, tracker)
 	default:
-		return nil, filter_condition.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelFileset)
+		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelFileset)
 	}
 }
 
