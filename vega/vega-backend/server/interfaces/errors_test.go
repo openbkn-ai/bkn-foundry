@@ -20,8 +20,11 @@ func TestSourceReadForbiddenError(t *testing.T) {
 	if !errors.As(err, &forbidden) || !errors.Is(err, cause) {
 		t.Fatalf("wrapped source permission error lost its type or cause: %v", err)
 	}
-	if strings.Contains(err.Error(), cause.Error()) {
-		t.Fatalf("source permission error exposed database details: %v", err)
+	if !strings.Contains(err.Error(), cause.Error()) {
+		t.Fatalf("source permission error lost database diagnostics: %v", err)
+	}
+	if got := NewSourceReadForbiddenError(nil).Error(); got != "source read forbidden" {
+		t.Fatalf("source permission error without cause = %q", got)
 	}
 }
 
@@ -74,6 +77,25 @@ func TestConditionBuildErrorCause(t *testing.T) {
 	err.Cause = cause
 	if !errors.Is(fmt.Errorf("build query: %w", err), cause) {
 		t.Fatal("condition build error must preserve its optional cause")
+	}
+}
+
+func TestStoredConditionBuildError(t *testing.T) {
+	cause := NewConditionBuildError("field needs keyword")
+	stored := NewStoredConditionBuildError(cause)
+	err := fmt.Errorf("build filter query: %w", stored)
+	var identified *StoredConditionBuildError
+	if !errors.As(err, &identified) || identified != stored || !errors.Is(err, cause) {
+		t.Fatalf("wrapped stored condition error lost its type or cause: %v", err)
+	}
+	if !strings.Contains(stored.Error(), cause.Error()) {
+		t.Fatalf("stored condition error lost its cause: %v", stored)
+	}
+	if got := NewStoredConditionBuildError(nil).Error(); got != "stored view condition cannot be built" {
+		t.Fatalf("stored condition error without cause = %q", got)
+	}
+	if reason, ok := RequestSideQueryError(err); ok || reason != "" {
+		t.Fatalf("saved condition was classified as a request error: %q, %t", reason, ok)
 	}
 }
 

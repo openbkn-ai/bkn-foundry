@@ -34,7 +34,7 @@ func TestValidateStoredFilterConditionPreservesErrorSource(t *testing.T) {
 	require.NoError(t, err)
 	params := &interfaces.ResourceDataQueryParams{FixedFilterCondCfg: cfg, FixedActualFilterCond: actual}
 	err = (&OpenSearchConnector{}).validateStoredFilterCondition(resource, params)
-	var stored *filter_condition.StoredConditionBuildError
+	var stored *interfaces.StoredConditionBuildError
 	require.ErrorAs(t, err, &stored)
 	assert.Contains(t, stored.Error(), "no keyword feature")
 }

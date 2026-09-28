@@ -250,7 +250,8 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			documents, total, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 			if err != nil {
 				otellog.LogError(ctx, "Query table data from local index failed", err)
-				if _, stored := filter_condition.AsStoredConditionBuildError(err); stored {
+				var stored *interfaces.StoredConditionBuildError
+				if errors.As(err, &stored) {
 					return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 						WithErrorDetails("stored view filter_condition cannot be built")
 				}

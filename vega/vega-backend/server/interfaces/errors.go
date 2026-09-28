@@ -20,7 +20,12 @@ func NewSourceReadForbiddenError(cause error) *SourceReadForbiddenError {
 	return &SourceReadForbiddenError{Cause: cause}
 }
 
-func (e *SourceReadForbiddenError) Error() string { return "source read forbidden" }
+func (e *SourceReadForbiddenError) Error() string {
+	if e.Cause == nil {
+		return "source read forbidden"
+	}
+	return fmt.Sprintf("source read forbidden: %v", e.Cause)
+}
 func (e *SourceReadForbiddenError) Unwrap() error { return e.Cause }
 
 // UnsupportedOperationError reports an operator unsupported by a query channel.
@@ -76,8 +81,29 @@ func NewConditionBuildError(format string, args ...any) *ConditionBuildError {
 func (e *ConditionBuildError) Error() string { return e.Reason }
 func (e *ConditionBuildError) Unwrap() error { return e.Cause }
 
+// StoredConditionBuildError identifies a saved view condition that can no
+// longer be compiled against the current source schema or index configuration.
+type StoredConditionBuildError struct{ Cause error }
+
+// NewStoredConditionBuildError preserves the failed saved condition's cause.
+func NewStoredConditionBuildError(cause error) *StoredConditionBuildError {
+	return &StoredConditionBuildError{Cause: cause}
+}
+
+func (e *StoredConditionBuildError) Error() string {
+	if e.Cause == nil {
+		return "stored view condition cannot be built"
+	}
+	return fmt.Sprintf("stored view condition cannot be built: %v", e.Cause)
+}
+func (e *StoredConditionBuildError) Unwrap() error { return e.Cause }
+
 // RequestSideQueryError returns the client-safe reason for an invalid query shape.
 func RequestSideQueryError(err error) (string, bool) {
+	var stored *StoredConditionBuildError
+	if errors.As(err, &stored) {
+		return "", false
+	}
 	var unsupported *UnsupportedOperationError
 	if errors.As(err, &unsupported) {
 		return unsupported.Error(), true

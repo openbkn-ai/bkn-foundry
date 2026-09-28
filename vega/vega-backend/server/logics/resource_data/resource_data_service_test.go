@@ -358,7 +358,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
 			Return(&interfaces.Catalog{Enabled: true}, nil)
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).Return(nil, int64(0),
-			&filter_condition.StoredConditionBuildError{Cause: interfaces.NewConditionBuildError("text field has no keyword feature")})
+			interfaces.NewStoredConditionBuildError(interfaces.NewConditionBuildError("text field has no keyword feature")))
 		rows, total, err := rds.QuerySourcePage(context.Background(), resource, params)
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
