@@ -26,6 +26,7 @@ spec:
         app: {{ .Release.Name }}
         app.kubernetes.io/name: agent-retrieval
     spec:
+      serviceAccountName: {{ .Release.Name }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
