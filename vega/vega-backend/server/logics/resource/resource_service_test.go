@@ -1051,6 +1051,26 @@ func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, "cannot contain null fields")
 }
 
+func TestLogicViewDefinitionEqual(t *testing.T) {
+	stored := map[string]any{
+		"source_resource_id": "source-1",
+		"filter_condition":   map[string]any{"operation": "eq", "value": float64(1)},
+	}
+	prepared := &interfaces.DerivedLogicDefinition{
+		SourceResourceID: "source-1",
+		FilterCondition:  map[string]any{"operation": "eq", "value": json.Number("1.0")},
+	}
+	assert.True(t, logicViewDefinitionEqual(stored, prepared))
+	assert.False(t, logicViewDefinitionEqual(stored, &interfaces.DerivedLogicDefinition{
+		SourceResourceID: "source-2",
+		FilterCondition:  prepared.FilterCondition,
+	}))
+	assert.False(t, logicViewDefinitionEqual(
+		map[string]any{"filter_condition": map[string]any{"value": json.Number("9007199254740993")}},
+		map[string]any{"filter_condition": map[string]any{"value": json.Number("9007199254740992")}},
+	))
+}
+
 func TestResourceServiceCreate(t *testing.T) {
 	t.Run("create dataset category", func(t *testing.T) {
 		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)

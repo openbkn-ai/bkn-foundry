@@ -69,6 +69,15 @@ func TestDerivedLogicDefinitionJSON(t *testing.T) {
 	if _, err := DecodeDerivedLogicDefinition([]any{map[string]any{"type": "resource"}}); err == nil {
 		t.Fatal("derived conversion must reject composite arrays")
 	}
+	for _, raw := range []any{
+		map[string]any{},
+		map[string]any{"source_resource_id": ""},
+		map[string]any{"source_resource_id": "  "},
+	} {
+		if _, err := DecodeDerivedLogicDefinition(raw); err == nil {
+			t.Fatalf("derived conversion must reject missing source_resource_id: %#v", raw)
+		}
+	}
 	err = json.Unmarshal([]byte(`{"category":"logicview","logic_definition":{"source_resource_id":"source"}}`), &request)
 	definition, decodeErr := DecodeDerivedLogicDefinition(request.LogicDefinition)
 	if err != nil || decodeErr != nil || definition.SourceResourceID != "source" {

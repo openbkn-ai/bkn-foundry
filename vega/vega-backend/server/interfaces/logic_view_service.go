@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/bytedance/sonic"
 )
@@ -108,6 +109,9 @@ func DecodeDerivedLogicDefinition(raw any) (*DerivedLogicDefinition, error) {
 	var definition DerivedLogicDefinition
 	if err := json.Unmarshal(encoded, &definition); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(definition.SourceResourceID) == "" {
+		return nil, fmt.Errorf("source_resource_id is required")
 	}
 	return &definition, nil
 }

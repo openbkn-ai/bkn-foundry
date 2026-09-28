@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"reflect"
 	"slices"
@@ -157,6 +158,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	switch req.Category {
 	case interfaces.ResourceCategoryLogicView:
 		var viewFields []*interfaces.Property
+		req.SourceMetadata = nil
 		logicType, viewFields, err = PrepareLogicView(ctx, req)
 		if err != nil {
 			return nil, err
@@ -928,12 +930,45 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 }
 
 func logicViewDefinitionEqual(current, next any) bool {
-	currentJSON, err := json.Marshal(current)
+	currentValue, err := comparableLogicViewDefinition(current)
 	if err != nil {
 		return false
 	}
-	nextJSON, err := json.Marshal(next)
-	return err == nil && bytes.Equal(currentJSON, nextJSON)
+	nextValue, err := comparableLogicViewDefinition(next)
+	return err == nil && reflect.DeepEqual(currentValue, nextValue)
+}
+
+func comparableLogicViewDefinition(definition any) (any, error) {
+	encoded, err := json.Marshal(definition)
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, err
+	}
+	return normalizeLogicViewNumbers(decoded), nil
+}
+
+func normalizeLogicViewNumbers(value any) any {
+	switch v := value.(type) {
+	case json.Number:
+		if number, ok := new(big.Rat).SetString(string(v)); ok {
+			return struct{ Number string }{number.RatString()}
+		}
+		return v
+	case []any:
+		for i := range v {
+			v[i] = normalizeLogicViewNumbers(v[i])
+		}
+	case map[string]any:
+		for key := range v {
+			v[key] = normalizeLogicViewNumbers(v[key])
+		}
+	}
+	return value
 }
 
 func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
@@ -1469,6 +1504,7 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 		if req.LogicType != resource.LogicType {
 			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
 		}
+		req.SourceMetadata = nil
 		logicType, viewFields, err := PrepareLogicView(ctx, req)
 		if err != nil {
 			return false, err

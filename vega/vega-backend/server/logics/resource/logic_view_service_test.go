@@ -8,6 +8,7 @@ package resource
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -21,10 +22,11 @@ import (
 )
 
 type prepareViewService struct {
-	request          *interfaces.ResourceRequest
-	sourceMetadata   map[string]any
-	schemaDefinition []*interfaces.Property
-	decodeDefinition bool
+	request           *interfaces.ResourceRequest
+	metadataAtPrepare map[string]any
+	sourceMetadata    map[string]any
+	schemaDefinition  []*interfaces.Property
+	decodeDefinition  bool
 }
 
 func (*prepareViewService) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
@@ -33,6 +35,7 @@ func (*prepareViewService) ValidateRequest(context.Context, *interfaces.Resource
 
 func (viewService *prepareViewService) Prepare(_ context.Context, req *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
 	viewService.request = req
+	viewService.metadataAtPrepare = req.SourceMetadata
 	if viewService.sourceMetadata != nil {
 		req.SourceMetadata = viewService.sourceMetadata
 	}
@@ -89,20 +92,61 @@ func TestLogicViewServiceEntryPoints(t *testing.T) {
 	assert.EqualError(t, err, "query is not expected")
 }
 
+func TestResourceServiceCreateLogicViewSourceMetadata(t *testing.T) {
+	viewService := &prepareViewService{}
+	previous := GetLogicViewService()
+	SetLogicViewService(viewService)
+	t.Cleanup(func() { SetLogicViewService(previous) })
+
+	rs, mockRA, _, _, _, _, _ := newTestService(t)
+	expectResourceServiceTransaction(t, rs, true)
+	mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+			assert.Nil(t, got.SourceMetadata)
+			return nil
+		})
+
+	_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicView,
+		LogicType:        interfaces.LogicType_Derived,
+		LogicDefinition:  map[string]any{"source_resource_id": "source-1"},
+		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+		SourceMetadata:   map[string]any{"injected": true},
+	})
+	require.NoError(t, err)
+	assert.Nil(t, viewService.metadataAtPrepare)
+}
+
 func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 	for _, tc := range []struct {
-		name           string
-		definition     map[string]any
-		schema         []*interfaces.Property
-		storedSchema   []*interfaces.Property
-		requestSchema  []*interfaces.Property
-		wantBuildCheck bool
-		wantProperties map[string]any
+		name                    string
+		definition              map[string]any
+		storedDefinition        any
+		schema                  []*interfaces.Property
+		storedSchema            []*interfaces.Property
+		requestSchema           []*interfaces.Property
+		wantBuildCheck          bool
+		wantProperties          map[string]any
+		withoutPreparedMetadata bool
 	}{
 		{
 			name:           "preserves scanned statistics for metadata-only update",
 			definition:     map[string]any{"source_resource_id": "source-1"},
 			wantProperties: map[string]any{"row_count": 6},
+		},
+		{
+			name: "preserves scanned statistics with a fixed filter",
+			definition: map[string]any{"source_resource_id": "source-1",
+				"filter_condition": map[string]any{"operation": "eq", "value": json.Number("1.0")}},
+			storedDefinition: map[string]any{"source_resource_id": "source-1",
+				"filter_condition": map[string]any{"operation": "eq", "value": float64(1)}},
+			wantProperties: map[string]any{"row_count": 6},
+		},
+		{
+			name:                    "rejects client metadata when prepare does not provide metadata",
+			definition:              map[string]any{"source_resource_id": "source-1"},
+			wantProperties:          map[string]any{"row_count": 6},
+			withoutPreparedMetadata: true,
 		},
 		{
 			name:           "clears scanned statistics when definition changes",
@@ -133,6 +177,9 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 				"properties":      map[string]any{},
 				"source_resource": map[string]any{"original_name": "current.orders"},
 			}}
+			if tc.withoutPreparedMetadata {
+				viewService.sourceMetadata = nil
+			}
 			previous := GetLogicViewService()
 			SetLogicViewService(viewService)
 			t.Cleanup(func() { SetLogicViewService(previous) })
@@ -148,10 +195,14 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 			if storedSchema == nil {
 				storedSchema = []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}}
 			}
+			storedDefinition := tc.storedDefinition
+			if storedDefinition == nil {
+				storedDefinition = map[string]any{"source_resource_id": "source-1"}
+			}
 			resource := &interfaces.Resource{
 				ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicView,
 				Name: "orders", LogicType: interfaces.LogicType_Derived,
-				LogicDefinition:  map[string]any{"source_resource_id": "source-1"},
+				LogicDefinition:  storedDefinition,
 				SchemaDefinition: storedSchema,
 				SourceMetadata: map[string]any{
 					"properties":      map[string]any{"row_count": 6},
@@ -162,6 +213,7 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 				DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
 					assert.Equal(t, tc.wantProperties, got.SourceMetadata["properties"])
 					assert.Equal(t, viewService.sourceMetadata["source_resource"], got.SourceMetadata["source_resource"])
+					assert.NotContains(t, got.SourceMetadata, "injected")
 					return 1, nil
 				})
 			requestedSchema := tc.schema
@@ -176,9 +228,10 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 				Name: "renamed orders", LogicType: interfaces.LogicType_Derived,
 				LogicDefinition:  tc.definition,
 				SchemaDefinition: requestedSchema,
-				SourceMetadata:   map[string]any{"properties": map[string]any{"row_count": 999}},
+				SourceMetadata:   map[string]any{"properties": map[string]any{"row_count": 999}, "injected": true},
 			})
 			require.NoError(t, err)
+			assert.Nil(t, viewService.metadataAtPrepare)
 		})
 	}
 }
