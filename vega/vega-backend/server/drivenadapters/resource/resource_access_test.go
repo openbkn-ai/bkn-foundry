@@ -102,6 +102,8 @@ func TestResourceAccessGetByID(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
+		values[5] = interfaces.ResourceCategoryLogicView
+		values[19] = interfaces.LogicType_Derived
 		values[20] = `{"source_resource_id":"source-1"}`
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
@@ -111,6 +113,24 @@ func TestResourceAccessGetByID(t *testing.T) {
 		definition, err := interfaces.DecodeDerivedLogicDefinition(got.LogicDefinition)
 		require.NoError(t, err)
 		assert.Equal(t, "source-1", definition.SourceResourceID)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("keeps legacy composite definition for logic views", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		values := resourceRowValues(sampleResource())
+		values[5] = interfaces.ResourceCategoryLogicView
+		values[19] = interfaces.LogicType_Composite
+		values[20] = `[{"id":"source","type":"resource"}]`
+		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
+			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
+
+		got, err := access.GetByID(context.Background(), nil, "resource-1")
+		require.NoError(t, err)
+		encoded, err := json.Marshal(got)
+		require.NoError(t, err)
+		assert.Contains(t, string(encoded), `"logic_definition":[{"id":"source","type":"resource"}]`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -135,6 +155,10 @@ func TestResourceAccessGetByID(t *testing.T) {
 		assert.Equal(t, `{"mode":"batch","cursor":[10,"a"]}`, got.SyncMark)
 		assert.Nil(t, got.ColumnCount)
 		assert.Nil(t, got.RowCount)
+		assert.Nil(t, got.LogicDefinition)
+		encoded, err := json.Marshal(got)
+		require.NoError(t, err)
+		assert.NotContains(t, string(encoded), `"logic_definition"`)
 		properties := got.SourceMetadata["properties"].(map[string]any)
 		assert.Equal(t, json.Number("42"), properties["row_count"])
 		require.NoError(t, mock.ExpectationsWereMet())

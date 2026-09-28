@@ -975,11 +975,40 @@ func TestResourceServiceValidateIndexConfigModelsRejectsReferencedVectorConfig(t
 		},
 	}
 
-	err := rs.validateIndexConfigModels(context.Background(), schema, nil)
+	err := rs.validateIndexConfigModels(context.Background(), schema, nil, interfaces.ResourceCategoryTable)
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, `vector feature on field "content" that references "embedding" must not define config`)
+}
+
+func TestResourceServiceValidateIndexConfigModelsLogicViewHiddenVectorReference(t *testing.T) {
+	schema := []*interfaces.Property{{
+		Name: "content_alias",
+		Type: interfaces.DataType_Text,
+		Features: []interfaces.PropertyFeature{{
+			FeatureType: interfaces.PropertyFeatureType_Vector,
+			RefProperty: "source_embedding",
+		}},
+	}}
+	rs := &resourceService{}
+
+	// The EE view preparation has already checked the reference against the full
+	// source schema. The target may be omitted from the public view schema.
+	require.NoError(t, rs.validateIndexConfigModels(context.Background(), schema, nil,
+		interfaces.ResourceCategoryLogicView))
+
+	err := rs.validateIndexConfigModels(context.Background(), schema, nil,
+		interfaces.ResourceCategoryTable)
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, "references invalid vector field")
+
+	schema[0].Features[0].Config = map[string]any{"embedding_model": "invalid"}
+	err = rs.validateIndexConfigModels(context.Background(), schema, nil,
+		interfaces.ResourceCategoryLogicView)
+	httpErr = requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, "must not define config")
 }
 
 func TestValidateKeywordConfig(t *testing.T) {

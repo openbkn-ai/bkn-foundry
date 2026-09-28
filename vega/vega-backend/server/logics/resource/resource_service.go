@@ -187,7 +187,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			return nil, err
 		}
 	}
-	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
+	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig, req.Category); err != nil {
 		return nil, err
 	}
 	if err := rs.validateIndexConfigAnalyzers(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
@@ -811,7 +811,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 			return err
 		}
 	}
-	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
+	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig, resource.Category); err != nil {
 		return err
 	}
 	if err := rs.validateIndexConfigAnalyzers(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
@@ -1493,7 +1493,8 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 	return schemaChanged || indexConfigChanged, err
 }
 
-func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property,
+	indexConfig *interfaces.ResourceIndexConfig, category string) error {
 	if err := validateIndexConfigKeyFields(ctx, schema, indexConfig); err != nil {
 		return err
 	}
@@ -1552,9 +1553,14 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 			feature.Config["dimension"] = model.EmbeddingDim
 		}
 	}
-	if err := ValidateVectorFeatureReferences(schema); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+	// A derived view may expose only the field carrying a source Feature while
+	// its referenced vector field remains private. EE preparation validates the
+	// reference against the complete source schema before reaching this point.
+	if category != interfaces.ResourceCategoryLogicView {
+		if err := ValidateVectorFeatureReferences(schema); err != nil {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(err.Error())
+		}
 	}
 	return nil
 }

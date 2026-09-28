@@ -7,7 +7,7 @@ package semantic_understanding_task
 
 import (
 	"context"
-	"encoding/json"
+	// "encoding/json" // Catalog 输入组装测试恢复时启用。
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,6 +25,7 @@ import (
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
 
+/* Catalog 输入组装暂停；保留原测试。
 func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	threshold := 0.75
 	input, _, err := buildCatalogSemanticUnderstandingInput(
@@ -99,6 +100,7 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	assert.Equal(t, "order_summary", logicView["source_identifier"])
 	assert.NotContains(t, logicView, "logic_definition")
 }
+*/
 
 func TestMarshalSemanticUnderstandingInput(t *testing.T) {
 	first := make(map[string]any)

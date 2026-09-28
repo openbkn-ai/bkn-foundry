@@ -158,7 +158,7 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 	if indexConfig.Valid && indexConfig.String != "" {
 		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
 	}
-	if logicDefinition.Valid && logicDefinition.String != "" {
+	if resource.Category == interfaces.ResourceCategoryLogicView && logicDefinition.Valid && logicDefinition.String != "" {
 		_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
 	}
 	return resource, nil

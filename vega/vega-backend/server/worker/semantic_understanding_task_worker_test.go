@@ -886,6 +886,26 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 	})
 }
 
+func TestSemanticUnderstandingTaskWorkerApplyResultRejectsCatalogScope(t *testing.T) {
+	worker := &SemanticUnderstandingTaskWorker{}
+	for _, mode := range []string{
+		interfaces.SemanticUnderstandingApplyModeDryRun,
+		interfaces.SemanticUnderstandingApplyModeForce,
+	} {
+		t.Run(string(mode), func(t *testing.T) {
+			task := &interfaces.SemanticUnderstandingTask{
+				Scope:               interfaces.SemanticUnderstandingTaskScopeCatalog,
+				ApplyMode:           mode,
+				ConfidenceThreshold: 0.75,
+			}
+			got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{}`, 0.1)
+			assert.Nil(t, got)
+			require.ErrorContains(t, err, "catalog semantic understanding tasks are temporarily unavailable")
+		})
+	}
+}
+
+/* Catalog 结果应用暂停；保留原测试。
 func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
@@ -961,6 +981,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResultRejectsInvalidSourceId
 
 	require.ErrorContains(t, err, "source_identifier must be lower snake_case")
 }
+*/
 
 func TestParseBknAgentResult(t *testing.T) {
 	t.Run("parses pure json", func(t *testing.T) {

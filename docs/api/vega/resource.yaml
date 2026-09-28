@@ -742,7 +742,12 @@ components:
             - derived
             - composite
         logic_definition:
-          $ref: "#/components/schemas/DerivedLogicDefinition"
+          description: derived 返回对象；已保存的 composite 视图仍返回旧节点数组
+          oneOf:
+            - $ref: "#/components/schemas/DerivedLogicDefinition"
+            - type: array
+              items:
+                $ref: "#/components/schemas/LogicDefinitionNode"
         creator:
           $ref: "#/components/schemas/AccountInfo"
         create_time:
