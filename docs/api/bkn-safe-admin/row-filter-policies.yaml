@@ -232,12 +232,11 @@ components:
           type: array
           minItems: 1
           maxItems: 100
-          uniqueItems: true
           items:
             $ref: '#/components/schemas/RowFilterValue'
           description: |
             `in` and `not_in` accept 1-100 values. `gt`, `gte`, `lt`, and
-            `lte` accept exactly one integer. `between` accepts two ascending
+            `lte` accept exactly one integer. `between` accepts two non-descending
             integers and includes both boundaries. Boolean properties support
             only `in`. All values in one condition must have the published
             property's exact scalar type.
@@ -317,7 +316,8 @@ components:
           nullable: true
           description: Null for creation or idempotent deletion of an absent policy; otherwise the latest snapshot revision.
         policy:
-          $ref: '#/components/schemas/NullableRowFilterPolicy'
+          allOf:
+            - $ref: '#/components/schemas/NullableRowFilterPolicy'
           description: Null deletes the explicit policy.
         reason:
           type: string
@@ -339,7 +339,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [true, false, in, not_in, gt, gte, lt, lte, between, and, or]
+          enum: ['true', 'false', in, not_in, gt, gte, lt, lte, between, and, or]
         property:
           type: string
         values:
@@ -385,6 +385,13 @@ components:
               enum: [invalid_request, unauthenticated, forbidden, unavailable, revision_conflict, internal_error]
             message:
               type: string
+    ForbiddenError:
+      description: |
+        A token-gate denial uses BKN Safe's common error envelope. A denial from
+        the row-filter handler after authentication uses the management envelope.
+      oneOf:
+        - $ref: '../bkn-safe/authorization.yaml#/components/schemas/BknSafeError'
+        - $ref: '#/components/schemas/ManagementError'
   responses:
     InvalidRequest:
       description: Invalid target, policy shape, field, operator, value type, or request body.
@@ -395,12 +402,12 @@ components:
       description: Missing or invalid bearer token.
       content:
         application/json:
-          schema: {$ref: '#/components/schemas/ManagementError'}
+          schema: {$ref: '../bkn-safe/authorization.yaml#/components/schemas/BknSafeError'}
     Forbidden:
       description: The operator lacks permission to read or manage the selected user or role policy.
       content:
         application/json:
-          schema: {$ref: '#/components/schemas/ManagementError'}
+          schema: {$ref: '#/components/schemas/ForbiddenError'}
     CapabilityUnavailable:
       description: The Enterprise row-filter management capability is not mounted or licensed.
     RevisionConflict:
