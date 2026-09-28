@@ -150,6 +150,7 @@ func validateSchemaProperties(ctx context.Context, props []*interfaces.Property,
 func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, propsMap map[string]*interfaces.Property, allowRefProperty bool) error {
 	enabledMap := make(map[string]bool)
 	featureNameMap := make(map[string]struct{})
+	featureTypeMap := make(map[string]struct{})
 	for i := range prop.Features {
 		f := &prop.Features[i]
 		if f.FeatureName == "" {
@@ -220,6 +221,11 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 			}
 			enabledMap[f.FeatureType] = true
 		}
+		if _, duplicate := featureTypeMap[f.FeatureType]; duplicate {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(fmt.Sprintf("property %q has more than one %q feature", prop.Name, f.FeatureType))
+		}
+		featureTypeMap[f.FeatureType] = struct{}{}
 	}
 	return nil
 }

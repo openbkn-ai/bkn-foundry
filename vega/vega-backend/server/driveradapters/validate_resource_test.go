@@ -15,6 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/require"
 
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
@@ -54,4 +55,29 @@ func TestValidateResourceRequestIgnoresExpectedUpdateTime(t *testing.T) {
 		ExpectedUpdateTime: -1,
 	})
 	require.NoError(t, err)
+}
+
+func TestValidateResourceRequestRejectsDuplicateFeatureTypes(t *testing.T) {
+	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryDataset} {
+		t.Run(category, func(t *testing.T) {
+			req := &interfaces.ResourceRequest{
+				Name:     "resource",
+				Category: category,
+				SchemaDefinition: []*interfaces.Property{{
+					Name: "title",
+					Type: interfaces.DataType_Text,
+					Features: []interfaces.PropertyFeature{
+						{FeatureName: "standard", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+						{FeatureName: "english", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+					},
+				}},
+			}
+
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
+			require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			require.Equal(t, verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+			require.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+		})
+	}
 }
