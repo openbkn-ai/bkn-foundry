@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -231,10 +231,6 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	// Record an audit log after successful creation.
-	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-		interfaces.GenerateKNAuditObject(knID, kn.KNName), "")
 
 	// Capability declarations are resolved after the model is in place, and never fail the
 	// import: a knowledge network whose capabilities are missing is still a knowledge network.

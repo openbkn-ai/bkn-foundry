@@ -32,6 +32,11 @@ const (
 	SourceTypeAdmin          = model.ProxyGrantSourceTypeAdmin
 	StatusActive             = model.ProxyGrantSourceStatusActive
 	StatusRevoked            = model.ProxyGrantSourceStatusRevoked
+
+	// proxyGrantAuditBatchSize keeps a preflight with many sources below the
+	// database prepared-statement placeholder limit. The supplied database
+	// handle preserves the caller's transaction scope when one is active.
+	proxyGrantAuditBatchSize = 500
 )
 
 var (
@@ -517,7 +522,7 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 			}
 		}
 		if len(audits) > 0 {
-			return tx.DB().Create(&audits).Error
+			return createAuditsInBatches(tx.DB(), audits)
 		}
 		return nil
 	})
@@ -650,7 +655,7 @@ func (s *Service) CheckDelta(ctx context.Context, req DeltaCheckRequest) (BatchC
 			}
 			audits = append(audits, audit)
 		}
-		if err := s.db.WithContext(ctx).Create(&audits).Error; err != nil {
+		if err := createAuditsInBatches(s.db.WithContext(ctx), audits); err != nil {
 			return BatchCheckResult{}, err
 		}
 	}
@@ -2022,6 +2027,13 @@ func recordAudit(db *gorm.DB, action, decision, reason, grantorID, proxyID strin
 		return err
 	}
 	return db.Create(&audit).Error
+}
+
+func createAuditsInBatches(db *gorm.DB, audits []model.ProxyGrantAuditLog) error {
+	if len(audits) == 0 {
+		return nil
+	}
+	return db.CreateInBatches(&audits, proxyGrantAuditBatchSize).Error
 }
 
 func newAudit(action, decision, reason, grantorID, proxyID string,

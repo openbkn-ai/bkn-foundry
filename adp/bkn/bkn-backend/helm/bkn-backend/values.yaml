@@ -142,6 +142,16 @@ resources:
     cpu: 2
     memory: 4Gi
 
+auditPublisher:
+  # Required for 0.2.0 release; test/production overlays must enable and supply
+  # an environment-specific Kafka principal. There is no legacy Audit fallback.
+  enabled: false
+  environment: ""
+  brokers: ""
+  credentialsSecretName: ""
+  usernameSecretKey: "username"
+  passwordSecretKey: "password"
+
 bknTrace:
   # Enables the narrow historical-projection reader. Core signs each request;
   # BKN only receives the rotating Ed25519 public-key set from this secret.

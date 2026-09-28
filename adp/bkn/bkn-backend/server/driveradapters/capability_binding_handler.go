@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -122,10 +121,6 @@ func (r *restHandler) AttachCapabilities(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	bindings := result.Bindings
-	for _, binding := range bindings {
-		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(vis),
-			interfaces.GenerateCapabilityBindingAuditObject(binding.ID, binding.CapabilityID), "")
-	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, &interfaces.CapabilityBindingsList{
 		Entries:    bindings,
@@ -166,10 +161,6 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-	for _, id := range bindingIDs {
-		audit.NewInfoLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(vis),
-			interfaces.GenerateCapabilityBindingAuditObject(id, ""), "")
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)

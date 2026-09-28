@@ -106,7 +106,7 @@ paths:
         要具体能力用 `search_capabilities`。
 
         **超过 200 个对象类、或超过 600 个关系类的网络只返回导航壳**，两个 `detail_level` 都是：此时
-        `object_types` / `relation_types` / `action_types` **不返回**，改由
+        `object_types` / `relation_types` / `action_types` **均回 `null`**，改由
         `object_type_count` / `relation_type_count` / `action_type_count` 给出数量，
         `notice` 说明原因与下一步。概念组与 `mounted_capabilities` 照常返回。
 
@@ -498,7 +498,7 @@ components:
           type: string
           description: |
             本次返回被收窄的原因与下一步指引。**出现时 `object_types` /
-            `relation_types` / `action_types` 不返回**，这不表示该网络没有这些概念：
+            `relation_types` / `action_types` 都回 `null`**，这不表示该网络没有这些概念：
             数量见三个 `*_count` 字段。
 
     MountedCapabilityCounts:
@@ -650,6 +650,14 @@ components:
             `data_properties` / `primary_keys` 里的条目一起被剔除，不会出现在响应里。
             对象类没有绑定已发布资源时不下发本字段，同时 `data_properties` 为空——
             对象类仍可被发现，但没有属性可用。
+
+            **`detail_level=summary` 下，整张表全是 `full` 时不下发本字段。** 把调用者
+            自己的权限一条条读回给他并不提供信息，而在一张一千对象类的网上它是响应的
+            六成。有任何 `schema` / `masked` 条目的表整张保留——那张表才有信息。
+            `detail_level=full` 原样下发。
+
+            所以字段缺席只有一个含义：**对你没有受限属性**。两种来源（未绑资源、全 `full`）
+            靠旁边的 `data_properties` 区分——未绑资源的对象类不下发任何属性。
         data_source_metadata_unavailable:
           type: boolean
           description: |

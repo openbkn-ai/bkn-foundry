@@ -212,6 +212,13 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		detailLevel = interfaces.DetailLevelSummary
 	}
 	resp.Slim(detailLevel)
+	// The same trim the MCP tool applies, for the same reason: an all-full map is the
+	// caller's own permissions read back to them one property at a time. Answering the
+	// REST caller differently made two faces of one service disagree about one network
+	// by megabytes (#1891).
+	if detailLevel != interfaces.DetailLevelFull {
+		objectpermission.OmitUnrestrictedPermissions(resp.ObjectTypes)
+	}
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 

@@ -192,6 +192,41 @@ func clonePermissions(source map[string]interfaces.PropertyAccessLevel) map[stri
 	return result
 }
 
+// OmitUnrestrictedPermissions drops an object type's effective_permissions when
+// every property in it is full.
+//
+// The map names every property of every object type a second time, so on a
+// network the caller may read in full it repeats "full" for each one and says
+// nothing: a fifth of a summary on the supply sample, and 64% of one 1000-object
+// network -- 103,464 entries, every one of them full (#1891). A map holding any
+// schema, masked or absent entry is the one that tells the caller something, and
+// it is kept whole.
+//
+// Absence therefore means "nothing here is restricted for you", which is also
+// what an unbound object type's absent map means. The two are told apart by the
+// properties beside it: an unbound object type publishes none.
+//
+// REST and MCP both call this helper, for the same reason they both call
+// TrimObjectTypesToIndexBackedOps: one service answering one question about one
+// network should not answer it two ways.
+func OmitUnrestrictedPermissions(objectTypes []*interfaces.ObjectType) {
+	for _, objectType := range objectTypes {
+		if objectType == nil || len(objectType.EffectivePermissions) == 0 {
+			continue
+		}
+		restricted := false
+		for _, level := range objectType.EffectivePermissions {
+			if level != interfaces.PropertyAccessFull {
+				restricted = true
+				break
+			}
+		}
+		if !restricted {
+			objectType.EffectivePermissions = nil
+		}
+	}
+}
+
 // TrimObjectTypesToIndexBackedOps keeps only operators whose availability
 // cannot be inferred from the property type. REST and MCP both call this helper
 // so their advertised schema stays byte-for-byte equivalent.
