@@ -22,6 +22,12 @@ const (
 	KNProxySyncReady   = "ready"
 	KNProxySyncFailed  = "failed"
 
+	KNProxyOutboxPending    = "pending"
+	KNProxyOutboxProcessing = "processing"
+	KNProxyOutboxRetrying   = "retrying"
+	KNProxyOutboxDone       = "done"
+	KNProxyOutboxDead       = "dead"
+
 	ProxyGrantSourceTypeKNBinding = "kn_proxy_binding"
 	KNProxyBindingTypeCapability  = "capability_binding"
 
@@ -70,6 +76,7 @@ type KNProxyAccount struct {
 	ResolvedBinding     *KNProxyBinding `json:"resolved_binding,omitempty"`
 	PendingModelVersion string          `json:"-"`
 	SyncGeneration      int64           `json:"-"`
+	PublishedGeneration int64           `json:"-"`
 	LastSyncError       string          `json:"last_error,omitempty"`
 	LastGrantorID       string          `json:"-"`
 	LockOwner           string          `json:"-"`
@@ -174,6 +181,32 @@ type ProxyGrantSyncResult struct {
 	Transferred int `json:"transferred"`
 	Revoked     int `json:"revoked"`
 	Unchanged   int `json:"unchanged"`
+}
+
+// KNProxyOutboxEvent is one durable, ordered Safe grant delta. Bindings and
+// sources are persisted in the payload and are never reconstructed from newer
+// business rows while the event is being retried.
+type KNProxyOutboxEvent struct {
+	ID             string                 `json:"id"`
+	KNID           string                 `json:"kn_id"`
+	ProxyAccountID string                 `json:"proxy_account_id"`
+	GrantorID      string                 `json:"grantor_id"`
+	Generation     int64                  `json:"generation"`
+	BaseVersion    string                 `json:"base_version"`
+	TargetVersion  string                 `json:"target_version"`
+	Bindings       []KNProxyBindingRef    `json:"bindings"`
+	DesiredSources []ProxyGrantSourceSpec `json:"desired_sources"`
+	Upserts        []ProxyGrantSourceSpec `json:"upserts"`
+	Removals       []ProxyGrantSourceSpec `json:"removals"`
+	Status         string                 `json:"status"`
+	AttemptCount   int                    `json:"attempt_count"`
+	NextRetryAt    int64                  `json:"next_retry_at"`
+	LeaseOwner     string                 `json:"lease_owner"`
+	LeaseUntil     int64                  `json:"lease_until"`
+	LastError      string                 `json:"last_error"`
+	CreatedAt      int64                  `json:"created_at"`
+	UpdatedAt      int64                  `json:"updated_at"`
+	CompletedAt    int64                  `json:"completed_at"`
 }
 
 type ProxyGrantReconcileResult struct {
@@ -281,6 +314,20 @@ type KNProxyAccess interface {
 	RenewLock(ctx context.Context, knID, owner string, now, lockUntil int64) (bool, error)
 	ReleaseLock(ctx context.Context, knID, owner string, updatedAt int64) error
 	ListProxyConflicts(ctx context.Context) (map[string][]string, error)
+}
+
+// KNProxyOutboxAccess owns the planned authorization snapshot and the durable
+// publication queue. StageDelta must run in the caller's business transaction.
+type KNProxyOutboxAccess interface {
+	ListPlannedSources(ctx context.Context, knID string, bindings []KNProxyBindingRef) ([]ProxyGrantSourceSpec, error)
+	ListPlannedSnapshot(ctx context.Context, knID string) ([]ProxyGrantSourceSpec, error)
+	StageDelta(ctx context.Context, tx *sql.Tx, event *KNProxyOutboxEvent, lockOwner string,
+		bindings []KNProxyBindingRef, planned []ProxyGrantSourceSpec, updatedAt int64) (int64, error)
+	ClaimNext(ctx context.Context, owner string, now, leaseUntil int64) (*KNProxyOutboxEvent, error)
+	RenewLease(ctx context.Context, eventID, owner string, now, leaseUntil int64) (bool, error)
+	Complete(ctx context.Context, event *KNProxyOutboxEvent, owner string, completedAt int64) error
+	Retry(ctx context.Context, eventID, owner, lastError string, nextRetryAt, updatedAt int64, dead bool) error
+	CleanupDone(ctx context.Context, completedBefore int64, limit int) (int64, error)
 }
 
 // KNProxyBindingResolver resolves a knowledge network's managed proxy for

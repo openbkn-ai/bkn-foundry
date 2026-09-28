@@ -35,6 +35,13 @@ type ServerSetting struct {
 	// Schedule worker settings
 	SchedulePollInterval int `mapstructure:"schedulePollInterval"` // in seconds, default 10
 	ScheduleLockTimeout  int `mapstructure:"scheduleLockTimeout"`  // in seconds, default 300 (5 min)
+	// Proxy authorization outbox settings. Missing configuration uses safe defaults.
+	ProxySyncWorkerEnabled     bool `mapstructure:"proxySyncWorkerEnabled"`
+	ProxySyncWorkerCount       int  `mapstructure:"proxySyncWorkerCount"`
+	ProxySyncPollInterval      int  `mapstructure:"proxySyncPollInterval"`
+	ProxySyncLeaseSeconds      int  `mapstructure:"proxySyncLeaseSeconds"`
+	ProxySyncMaxAttempts       int  `mapstructure:"proxySyncMaxAttempts"`
+	ProxyOutboxCleanupInterval int  `mapstructure:"proxyOutboxCleanupInterval"`
 }
 
 // AppSetting contains application configuration.
@@ -103,6 +110,10 @@ func NewSetting() *AppSetting {
 // Initialize configuration.
 func initSetting(vp *viper.Viper) {
 	logger.Infof("Init Setting From File %s%s.%s", configPath, configName, configType)
+	// Keep the worker enabled when an older external configuration file does not
+	// contain the newly introduced switch. An explicit false still disables it
+	// for the stopped upgrade procedure.
+	vp.SetDefault("server.proxySyncWorkerEnabled", true)
 
 	vp.AddConfigPath(configPath)
 	vp.SetConfigName(configName)

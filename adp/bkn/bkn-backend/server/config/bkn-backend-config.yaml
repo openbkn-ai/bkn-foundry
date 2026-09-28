@@ -8,6 +8,12 @@ server:
   # here only when this BKN deployment must explicitly override it.
   defaultSmallModelName: ""
   defaultSmallModelEnabled: false
+  proxySyncWorkerEnabled: true
+  proxySyncWorkerCount: 4
+  proxySyncPollInterval: 1
+  proxySyncLeaseSeconds: 60
+  proxySyncMaxAttempts: 12
+  proxyOutboxCleanupInterval: 3600
 log:
   logLevel: debug
   developMode: false

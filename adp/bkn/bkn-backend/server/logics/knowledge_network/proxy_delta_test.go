@@ -19,6 +19,68 @@ import (
 	bmock "bkn-backend/interfaces/mock"
 )
 
+type proxyOutboxAccessStub struct {
+	planned    []interfaces.ProxyGrantSourceSpec
+	events     []*interfaces.KNProxyOutboxEvent
+	generation int64
+}
+
+func (s *proxyOutboxAccessStub) ListPlannedSources(_ context.Context, knID string,
+	bindings []interfaces.KNProxyBindingRef) ([]interfaces.ProxyGrantSourceSpec, error) {
+	wanted := make(map[string]bool, len(bindings))
+	for _, binding := range bindings {
+		wanted[binding.BindingType+"\x00"+binding.BindingID] = true
+	}
+	result := make([]interfaces.ProxyGrantSourceSpec, 0)
+	for _, source := range s.planned {
+		if source.KNID == knID && wanted[source.BindingType+"\x00"+source.BindingID] {
+			result = append(result, source)
+		}
+	}
+	return result, nil
+}
+
+func (s *proxyOutboxAccessStub) ListPlannedSnapshot(_ context.Context, _ string) ([]interfaces.ProxyGrantSourceSpec, error) {
+	return append([]interfaces.ProxyGrantSourceSpec(nil), s.planned...), nil
+}
+
+func (s *proxyOutboxAccessStub) StageDelta(_ context.Context, _ *sql.Tx,
+	event *interfaces.KNProxyOutboxEvent, _ string, bindings []interfaces.KNProxyBindingRef,
+	planned []interfaces.ProxyGrantSourceSpec, _ int64) (int64, error) {
+	s.generation++
+	event.Generation = s.generation
+	replaced := make(map[string]bool, len(bindings))
+	for _, binding := range bindings {
+		replaced[binding.BindingType+"\x00"+binding.BindingID] = true
+	}
+	next := make([]interfaces.ProxyGrantSourceSpec, 0, len(s.planned)+len(planned))
+	for _, source := range s.planned {
+		if !replaced[source.BindingType+"\x00"+source.BindingID] {
+			next = append(next, source)
+		}
+	}
+	s.planned = append(next, planned...)
+	copy := *event
+	s.events = append(s.events, &copy)
+	return event.Generation, nil
+}
+
+func (s *proxyOutboxAccessStub) ClaimNext(context.Context, string, int64, int64) (*interfaces.KNProxyOutboxEvent, error) {
+	return nil, nil
+}
+func (s *proxyOutboxAccessStub) RenewLease(context.Context, string, string, int64, int64) (bool, error) {
+	return true, nil
+}
+func (s *proxyOutboxAccessStub) Complete(context.Context, *interfaces.KNProxyOutboxEvent, string, int64) error {
+	return nil
+}
+func (s *proxyOutboxAccessStub) Retry(context.Context, string, string, string, int64, int64, bool) error {
+	return nil
+}
+func (s *proxyOutboxAccessStub) CleanupDone(context.Context, int64, int) (int64, error) {
+	return 0, nil
+}
+
 func TestDiffProxyGrantSourcesTouchesRetainedButDoesNotAdvanceVersion(t *testing.T) {
 	retained := interfaces.ProxyGrantSourceSpec{
 		ResourceType: "resource", ResourceID: "resource-1", Operation: "query_data",
@@ -33,6 +95,35 @@ func TestDiffProxyGrantSourcesTouchesRetainedButDoesNotAdvanceVersion(t *testing
 	version, err := proxyGrantTransitionVersion("sha256:base", additions, removals)
 	if err != nil || version != "sha256:base" {
 		t.Fatalf("proxyGrantTransitionVersion() = (%q, %v)", version, err)
+	}
+}
+
+func TestProxyGrantTransitionVersionBootstrapsEmptySnapshot(t *testing.T) {
+	version, err := proxyGrantTransitionVersion("", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version == "" || version != want {
+		t.Fatalf("empty transition version = %q, want %q", version, want)
+	}
+}
+
+func TestRefuseFailedProxyOutboxAppendRequiresExplicitRecovery(t *testing.T) {
+	err := refuseFailedProxyOutboxAppend(t.Context(), &proxyOutboxAccessStub{}, &proxyPublishPlan{
+		mapping: &interfaces.KNProxyAccount{SyncStatus: interfaces.KNProxySyncFailed},
+	})
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusConflict {
+		t.Fatalf("failed mapping append error = %#v, want HTTP 409", err)
+	}
+	if err := refuseFailedProxyOutboxAppend(t.Context(), nil, &proxyPublishPlan{
+		mapping: &interfaces.KNProxyAccount{SyncStatus: interfaces.KNProxySyncFailed},
+	}); err != nil {
+		t.Fatalf("legacy synchronous recovery was refused: %v", err)
 	}
 }
 
@@ -197,7 +288,7 @@ func TestDeniedExistingSkillDeltaRemovesOnlyItsMaterializedGrant(t *testing.T) {
 	}
 }
 
-func TestPublishKNChildMutationUsesIncrementalPathForReadyMapping(t *testing.T) {
+func TestPublishKNChildMutationQueuesIncrementalPathForReadyMapping(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
@@ -242,8 +333,9 @@ func TestPublishKNChildMutationUsesIncrementalPathForReadyMapping(t *testing.T) 
 		},
 		published: append(oldSources, stable),
 	}
+	kpoa := &proxyOutboxAccessStub{planned: append(append([]interfaces.ProxyGrantSourceSpec(nil), oldSources...), stable)}
 	mpa := &managedProxyAccessStub{allowed: true}
-	service := &knowledgeNetworkService{db: db, ota: ota, rta: rta, ma: ma, kpa: kpa, mpa: mpa}
+	service := &knowledgeNetworkService{db: db, ota: ota, rta: rta, ma: ma, kpa: kpa, kpoa: kpoa, mpa: mpa}
 	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "editor-1"})
 	mutationCalled := false
 	err = service.PublishKNChildMutation(ctx, &interfaces.KN{
@@ -264,15 +356,17 @@ func TestPublishKNChildMutationUsesIncrementalPathForReadyMapping(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !mutationCalled || mpa.deltaSyncCalls != 1 || mpa.fullSyncCalls != 0 {
-		t.Fatalf("publication path: mutation=%t delta=%d full=%d", mutationCalled, mpa.deltaSyncCalls, mpa.fullSyncCalls)
+	if !mutationCalled || mpa.deltaSyncCalls != 0 || mpa.fullSyncCalls != 0 || len(kpoa.events) != 1 {
+		t.Fatalf("publication path: mutation=%t delta=%d full=%d events=%d",
+			mutationCalled, mpa.deltaSyncCalls, mpa.fullSyncCalls, len(kpoa.events))
 	}
-	if len(mpa.synced) != 2 || len(mpa.syncedRemovals) != 2 || len(kpa.published) != 3 {
-		t.Fatalf("incremental sources: upserts=%#v removals=%#v published=%#v",
-			mpa.synced, mpa.syncedRemovals, kpa.published)
+	event := kpoa.events[0]
+	if len(event.Upserts) != 2 || len(event.Removals) != 2 || len(kpoa.planned) != 3 || len(kpa.published) != 3 {
+		t.Fatalf("queued sources: upserts=%#v removals=%#v planned=%#v published=%#v",
+			event.Upserts, event.Removals, kpoa.planned, kpa.published)
 	}
 	stableKept := false
-	for _, source := range kpa.published {
+	for _, source := range kpoa.planned {
 		if source.SourceID == stable.SourceID {
 			stableKept = true
 		}

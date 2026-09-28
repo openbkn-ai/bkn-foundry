@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -19,6 +20,7 @@ const (
 	tableName                 = "t_kn_proxy_account"
 	publishedGrantSourceTable = "t_kn_proxy_published_grant_source"
 	maxSnapshotInsertRows     = 500
+	deletedSnapshotVersion    = "deleted"
 )
 
 type access struct {
@@ -74,12 +76,12 @@ func (a *access) Ensure(ctx context.Context, mapping *interfaces.KNProxyAccount)
 	query, args, err := sq.Insert(tableName).Columns(
 		"f_kn_id", "f_proxy_account_id", "f_proxy_account_type", "f_lifecycle_status", "f_version",
 		"f_sync_status", "f_published_model_version", "f_synced_model_version", "f_pending_model_version",
-		"f_sync_generation", "f_last_sync_error", "f_last_grantor_id", "f_lock_owner", "f_lock_until",
+		"f_sync_generation", "f_published_generation", "f_last_sync_error", "f_last_grantor_id", "f_lock_owner", "f_lock_until",
 		"f_last_sync_started_at", "f_last_sync_succeeded_at", "f_created_at", "f_updated_at",
 	).Values(
 		mapping.KNID, mapping.ProxyAccountID, mapping.ProxyAccountType, mapping.LifecycleStatus, mapping.Version,
 		mapping.SyncStatus, mapping.PublishedModelVersion, mapping.SyncedModelVersion, mapping.PendingModelVersion,
-		mapping.SyncGeneration, mapping.LastSyncError, mapping.LastGrantorID, "", int64(0),
+		mapping.SyncGeneration, mapping.PublishedGeneration, mapping.LastSyncError, mapping.LastGrantorID, "", int64(0),
 		mapping.LastSyncStartedAt, mapping.LastSyncSucceededAt, mapping.CreatedAt, mapping.UpdatedAt,
 	).ToSql()
 	if err != nil {
@@ -218,7 +220,7 @@ func (a *access) ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID 
 		)
 		for _, source := range sources[start:end] {
 			insert = insert.Values(
-				source.KNID, source.BindingType, source.BindingID, source.ResourceType, source.ResourceID, source.Operation,
+				knID, source.BindingType, source.BindingID, source.ResourceType, source.ResourceID, source.Operation,
 				source.SourceType, source.SourceID, updatedAt, updatedAt,
 			)
 		}
@@ -230,8 +232,35 @@ func (a *access) ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID 
 			return err
 		}
 	}
+	deleteQuery, deleteArgs, err = sq.Delete(plannedGrantSourceTable).Where(sq.Eq{"f_kn_id": knID}).ToSql()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, deleteQuery, deleteArgs...); err != nil {
+		return err
+	}
+	if err := insertSnapshotSources(ctx, tx, plannedGrantSourceTable, knID, sources, updatedAt); err != nil {
+		return err
+	}
+	coveredQuery, coveredArgs, err := sq.Update(proxyOutboxTable).SetMap(map[string]any{
+		"f_status":       interfaces.KNProxyOutboxDone,
+		"f_lease_owner":  "",
+		"f_lease_until":  int64(0),
+		"f_last_error":   "",
+		"f_updated_at":   updatedAt,
+		"f_completed_at": updatedAt,
+	}).Where(sq.Eq{"f_kn_id": knID, "f_status": []string{
+		interfaces.KNProxyOutboxPending, interfaces.KNProxyOutboxRetrying, interfaces.KNProxyOutboxDead,
+	}}).Where(sq.LtOrEq{"f_generation": generation}).ToSql()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, coveredQuery, coveredArgs...); err != nil {
+		return err
+	}
 	updateQuery, updateArgs, err := sq.Update(tableName).SetMap(map[string]any{
 		"f_sync_status":             interfaces.KNProxySyncReady,
+		"f_published_generation":    generation,
 		"f_published_model_version": snapshotVersion,
 		"f_synced_model_version":    snapshotVersion,
 		"f_pending_model_version":   "",
@@ -336,7 +365,7 @@ func (a *access) ReplacePublishedBindingsAndMarkReady(ctx context.Context, knID 
 			"f_source_type", "f_source_id", "f_created_at", "f_updated_at",
 		)
 		for _, source := range sources[start:end] {
-			insert = insert.Values(source.KNID, source.BindingType, source.BindingID,
+			insert = insert.Values(knID, source.BindingType, source.BindingID,
 				source.ResourceType, source.ResourceID, source.Operation, source.SourceType,
 				source.SourceID, updatedAt, updatedAt)
 		}
@@ -348,8 +377,12 @@ func (a *access) ReplacePublishedBindingsAndMarkReady(ctx context.Context, knID 
 			return err
 		}
 	}
+	if err := replaceBindingSnapshot(ctx, tx, plannedGrantSourceTable, knID, bindings, sources, updatedAt); err != nil {
+		return err
+	}
 	updateQuery, updateArgs, err := sq.Update(tableName).SetMap(map[string]any{
 		"f_sync_status":             interfaces.KNProxySyncReady,
+		"f_published_generation":    generation,
 		"f_published_model_version": snapshotVersion,
 		"f_synced_model_version":    snapshotVersion,
 		"f_pending_model_version":   "",
@@ -374,16 +407,47 @@ func (a *access) ReplacePublishedBindingsAndMarkReady(ctx context.Context, knID 
 	return tx.Commit()
 }
 
-// DeletePublishedSnapshot removes the persisted authorization source snapshot
-// after bkn-safe has successfully revoked a proxy's full grant set. Keeping it
-// would permit a later restore to resolve stale bindings before republishing.
+// DeletePublishedSnapshot removes all durable publication state after bkn-safe
+// has revoked a proxy's full grant set. The deleted version/generation fence is
+// retained on the mapping so a later restore starts from Safe's actual state.
 func (a *access) DeletePublishedSnapshot(ctx context.Context, knID string) error {
-	query, args, err := sq.Delete(publishedGrantSourceTable).Where(sq.Eq{"f_kn_id": knID}).ToSql()
+	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	_, err = a.db.ExecContext(ctx, query, args...)
-	return err
+	defer func() { _ = tx.Rollback() }()
+	for _, table := range []string{publishedGrantSourceTable, plannedGrantSourceTable, proxyOutboxTable} {
+		query, args, err := sq.Delete(table).Where(sq.Eq{"f_kn_id": knID}).ToSql()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return err
+		}
+	}
+	updatedAt := time.Now().UnixMilli()
+	query, args, err := sq.Update(tableName).SetMap(map[string]any{
+		"f_sync_status":             interfaces.KNProxySyncReady,
+		"f_published_generation":    sq.Expr("f_sync_generation"),
+		"f_published_model_version": deletedSnapshotVersion,
+		"f_synced_model_version":    deletedSnapshotVersion,
+		"f_pending_model_version":   "",
+		"f_last_sync_error":         "",
+		"f_last_sync_succeeded_at":  updatedAt,
+		"f_version":                 sq.Expr("f_version + 1"),
+		"f_updated_at":              updatedAt,
+	}).Where(sq.Eq{"f_kn_id": knID}).ToSql()
+	if err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if err := requireOneRow(result, "record deleted proxy publication fence"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *access) ResolvePublishedBinding(ctx context.Context, knID string,
@@ -558,7 +622,7 @@ func proxyColumns() []string {
 	return []string{
 		"f_kn_id", "f_proxy_account_id", "f_proxy_account_type", "f_lifecycle_status", "f_version",
 		"f_sync_status", "f_published_model_version", "f_synced_model_version", "f_pending_model_version",
-		"f_sync_generation", "f_last_sync_error", "f_last_grantor_id", "f_lock_owner", "f_lock_until",
+		"f_sync_generation", "f_published_generation", "f_last_sync_error", "f_last_grantor_id", "f_lock_owner", "f_lock_until",
 		"f_last_sync_started_at", "f_last_sync_succeeded_at", "f_created_at", "f_updated_at",
 	}
 }
@@ -568,7 +632,7 @@ func scanMapping(row rowScanner) (*interfaces.KNProxyAccount, error) {
 	err := row.Scan(
 		&mapping.KNID, &mapping.ProxyAccountID, &mapping.ProxyAccountType, &mapping.LifecycleStatus, &mapping.Version,
 		&mapping.SyncStatus, &mapping.PublishedModelVersion, &mapping.SyncedModelVersion, &mapping.PendingModelVersion,
-		&mapping.SyncGeneration, &mapping.LastSyncError, &mapping.LastGrantorID, &mapping.LockOwner, &mapping.LockUntil,
+		&mapping.SyncGeneration, &mapping.PublishedGeneration, &mapping.LastSyncError, &mapping.LastGrantorID, &mapping.LockOwner, &mapping.LockUntil,
 		&mapping.LastSyncStartedAt, &mapping.LastSyncSucceededAt, &mapping.CreatedAt, &mapping.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {

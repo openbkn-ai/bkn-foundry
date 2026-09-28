@@ -1688,8 +1688,9 @@ func TestProxyDeletionLifecycleIsOrdered(t *testing.T) {
 			return nil
 		})
 	kpa := &proxyAccessStub{
-		mapping: &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive},
-		events:  &events,
+		mapping: &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1",
+			LifecycleStatus: interfaces.KNProxyLifecycleActive, SyncStatus: interfaces.KNProxySyncReady},
+		events: &events,
 	}
 	mpa := &managedProxyAccessStub{events: &events}
 	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa, ps: permissionService}
@@ -1784,6 +1785,7 @@ func TestDeleteKNRollbackDoesNotDisableProxy(t *testing.T) {
 		Return(int64(0), errors.New("delete failed"))
 	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
 		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
+		SyncStatus: interfaces.KNProxySyncReady,
 	}}
 	mpa := &managedProxyAccessStub{}
 	service := &knowledgeNetworkService{db: db, ps: permissionService, kna: kna, kpa: kpa, mpa: mpa}

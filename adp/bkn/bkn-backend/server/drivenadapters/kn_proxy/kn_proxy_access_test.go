@@ -73,6 +73,9 @@ func TestReplacePublishedSnapshotAndMarkReadyIsAtomic(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec("DELETE FROM t_kn_proxy_published_grant_source").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO t_kn_proxy_published_grant_source").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("DELETE FROM t_kn_proxy_planned_grant_source").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO t_kn_proxy_planned_grant_source").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE t_kn_proxy_sync_outbox SET").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("UPDATE t_kn_proxy_account SET").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -127,6 +130,9 @@ func TestReplacePublishedBindingsAndMarkReadyIsAtomic(t *testing.T) {
 	mock.ExpectExec("DELETE FROM t_kn_proxy_published_grant_source").
 		WithArgs("kn-1", "rt-1", "relation_type").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO t_kn_proxy_published_grant_source").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("DELETE FROM t_kn_proxy_planned_grant_source").
+		WithArgs("kn-1", "rt-1", "relation_type").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO t_kn_proxy_planned_grant_source").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("UPDATE t_kn_proxy_account SET").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -148,8 +154,15 @@ func TestDeletePublishedSnapshot(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	access := &access{db: db}
+	mock.ExpectBegin()
 	mock.ExpectExec("DELETE FROM t_kn_proxy_published_grant_source").WithArgs("kn-1").
 		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("DELETE FROM t_kn_proxy_planned_grant_source").WithArgs("kn-1").
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("DELETE FROM t_kn_proxy_sync_outbox").WithArgs("kn-1").
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("UPDATE t_kn_proxy_account SET").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 
 	if err := access.DeletePublishedSnapshot(t.Context(), "kn-1"); err != nil {
 		t.Fatal(err)
@@ -225,7 +238,7 @@ func TestEnsureResolvesConcurrentIdenticalInsert(t *testing.T) {
 	mock.ExpectExec("INSERT INTO t_kn_proxy_account").WillReturnError(errors.New("duplicate key"))
 	mock.ExpectQuery("SELECT .+ FROM t_kn_proxy_account WHERE").WithArgs("kn-1").
 		WillReturnRows(sqlmock.NewRows(columns).AddRow(
-			"kn-1", "proxy-1", "app", "active", int64(1), "pending", "", "", "", int64(0), "", "", "", int64(0), int64(0), int64(0), int64(1), int64(1),
+			"kn-1", "proxy-1", "app", "active", int64(1), "pending", "", "", "", int64(0), int64(0), "", "", "", int64(0), int64(0), int64(0), int64(1), int64(1),
 		))
 
 	mapping, created, err := access.Ensure(t.Context(), &interfaces.KNProxyAccount{
