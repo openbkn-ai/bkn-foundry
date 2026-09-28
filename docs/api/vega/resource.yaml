@@ -837,7 +837,13 @@ components:
           type: object
           additionalProperties: true
         schema_definition:
-          description: derived 逻辑视图必填且非空；字段的 name、original_name、type 必填，type 须与源字段一致
+          description: |
+            derived 逻辑视图必填且非空；字段的 name、original_name、type 必填，type 须与源字段一致。
+            每个字段省略 features 时继承源字段全部 Feature；显式传 [] 时不公开任何 Feature；
+            传部分 Feature 时仅保留源字段中匹配的条目。Feature 元数据由源字段补齐，
+            vector 的只读 config.dimension 无须提交。删除 Feature 后，Index 源视图查询不能使用
+            依赖该 Feature 的搜索、过滤、排序或聚合操作；Table 源的普通 SQL 字段查询不依赖 Feature。
+            定义内固定 filter_condition 仍按完整源字段执行。
           type: array
           items:
             $ref: "#/components/schemas/Property"
