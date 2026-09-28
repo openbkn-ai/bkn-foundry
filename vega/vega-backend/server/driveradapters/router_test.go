@@ -89,6 +89,9 @@ func Test_RestHandler_RegisterPublicHealthRoutes(t *testing.T) {
 			routes[route.Path] = true
 		}
 	}
+	assert.True(t, routes["/metrics"], "Audit producer counters must be scrapeable")
+	assert.False(t, routes["/api/vega-backend/v1/operation-audits"], "legacy local Audit query must retire with Kafka producer")
+	assert.False(t, routes["/api/vega-backend/v1/operation-audits/:event_id"], "legacy local Audit detail must retire with Kafka producer")
 
 	assert.True(t, routes["/api/vega-backend/v1/health"])
 	assert.True(t, routes["/api/vega-backend/v1/readyz"])

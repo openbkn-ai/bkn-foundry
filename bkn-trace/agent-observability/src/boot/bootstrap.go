@@ -887,6 +887,7 @@ func newAppWithArchiveAndCapture(
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs", readAuth(logHandler.ListLogs))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs/", readAuth(logHandler.GetLog))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))
+	mux.HandleFunc(ObservabilityAPIBasePath+"/log-source-inventory", readAuth(logHandler.ListLogSourceInventory))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-policies", readAuth(logHandler.ListLogPolicies))
 	if capturePolicyHandler != nil {
 		capturePolicyRoute := evidenceHandler.RequireTraceEvidenceConfigurationPermission(capturePolicyHandler.HandleTraceEvidenceConfiguration)

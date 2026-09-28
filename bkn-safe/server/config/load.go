@@ -146,11 +146,6 @@ func applyEnv(cfg *Config) error {
 	if v, ok := envBool("SAFE_LICENSE_INSECURE_SKIP_VERIFY"); ok {
 		cfg.License.InsecureSkipVerify = v
 	}
-	if v := os.Getenv("SAFE_AUDIT_CHAIN_HEAD_LOG_INTERVAL"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			cfg.Audit.ChainHeadLogInterval = d
-		}
-	}
 	if v, ok := envBool("SAFE_AUTHZ_DECISION_LOG_ENABLED"); ok {
 		cfg.Audit.DecisionLog.Enabled = v
 	}

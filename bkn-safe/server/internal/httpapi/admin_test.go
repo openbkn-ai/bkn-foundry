@@ -229,17 +229,17 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 		{"admin creates user", adminUser, http.MethodPost, "/api/safe/v1/admin/users", createUser("admin-created"), http.StatusCreated},
 		{"admin cannot create role", adminUser, http.MethodPost, "/api/safe/v1/admin/roles", createRole("admin-role-created"), http.StatusForbidden},
 		{"admin cannot bind role", adminUser, http.MethodPost, "/api/safe/v1/admin/role-bindings", bindTarget, http.StatusForbidden},
-		{"admin reads audit", adminUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusOK},
+		{"old audit query retired for admin", adminUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusNotFound},
 		{"security cannot create user", securityUser, http.MethodPost, "/api/safe/v1/admin/users", createUser("security-created-user"), http.StatusForbidden},
 		{"security toggles user", securityUser, http.MethodPut, "/api/safe/v1/admin/users/target-user", gin.H{"enabled": false}, http.StatusNoContent},
 		{"security cannot edit user profile", securityUser, http.MethodPut, "/api/safe/v1/admin/users/target-user", gin.H{"name": "changed"}, http.StatusForbidden},
 		{"security creates role", securityUser, http.MethodPost, "/api/safe/v1/admin/roles", createRole("security-role-created"), http.StatusCreated},
 		{"security binds role", securityUser, http.MethodPost, "/api/safe/v1/admin/role-bindings", bindTarget, http.StatusNoContent},
-		{"security cannot read audit", securityUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusForbidden},
+		{"old audit query retired for security", securityUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusNotFound},
 		{"audit cannot create user", auditUser, http.MethodPost, "/api/safe/v1/admin/users", createUser("audit-created-user"), http.StatusForbidden},
 		{"audit cannot create role", auditUser, http.MethodPost, "/api/safe/v1/admin/roles", createRole("audit-role-created"), http.StatusForbidden},
 		{"audit cannot bind role", auditUser, http.MethodPost, "/api/safe/v1/admin/role-bindings", bindTarget, http.StatusForbidden},
-		{"audit reads audit", auditUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusOK},
+		{"old audit query retired for auditor", auditUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusNotFound},
 
 		// Authorization management: security owns the writes, audit reviews them,
 		// admin (system operations) holds neither.
@@ -922,37 +922,17 @@ func TestAuditTrail(t *testing.T) {
 		t.Fatalf("audit rows = %d, want 4 (GET excluded)", total)
 	}
 
-	type logRow struct {
-		ID                string `json:"id"`
-		ActorID           string `json:"actor_id"`
-		ActorNameSnapshot string `json:"actor_name_snapshot"`
-		ActorType         string `json:"actor_type"`
-		AuthMethod        string `json:"auth_method"`
-		RequestID         string `json:"request_id"`
-		SourceChannel     string `json:"source_channel"`
-		Method            string `json:"method"`
-		Resource          string `json:"resource"`
-		Action            string `json:"action"`
-		TargetID          string `json:"target_id"`
-		TargetName        string `json:"target_name"`
-		Status            int    `json:"status"`
+	store := audit.New(db)
+	// The retired HTTP adapter stays absent; historical rows remain readable
+	// directly for migration/verification without creating a second query API.
+	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil); w.Code != http.StatusNotFound {
+		t.Fatalf("retired audit query = %d, want 404", w.Code)
 	}
-	type listResp struct {
-		Logs  []logRow `json:"logs"`
-		Total int      `json:"total"`
+	users, count, err := store.List(t.Context(), audit.Filter{Resource: "users"})
+	if err != nil || count != 1 || len(users) != 1 {
+		t.Fatalf("historical users audit: total=%d len=%d err=%v", count, len(users), err)
 	}
-
-	// filter by resource=users -> the single ghost-delete, recorded with its 404
-	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?resource=users", nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("list audit: %d (%s)", w.Code, w.Body.String())
-	}
-	var users listResp
-	_ = json.Unmarshal(w.Body.Bytes(), &users)
-	if users.Total != 1 || len(users.Logs) != 1 {
-		t.Fatalf("resource=users: total=%d len=%d", users.Total, len(users.Logs))
-	}
-	got := users.Logs[0]
+	got := users[0]
 	if got.ActorID != adminSub || got.Method != http.MethodDelete || got.Action != "delete" ||
 		got.TargetID != "ghost" || got.Status != http.StatusNotFound {
 		t.Errorf("ghost-delete entry = %+v", got)
@@ -962,44 +942,28 @@ func TestAuditTrail(t *testing.T) {
 		t.Errorf("ghost-delete identity/correlation facts = %+v", got)
 	}
 
-	// The list API exposes the same request correlation key, so an operator can
-	// recover every audit row from a batch mutation without relying on timing.
-	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?request_id="+got.RequestID, nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("list audit by request id: %d (%s)", w.Code, w.Body.String())
-	}
-	var correlated listResp
-	_ = json.Unmarshal(w.Body.Bytes(), &correlated)
-	if correlated.Total != 1 || len(correlated.Logs) != 1 || correlated.Logs[0].ID != got.ID {
-		t.Fatalf("request_id=%q returned %+v, want only %+v", got.RequestID, correlated, got)
+	correlated, count, err := store.List(t.Context(), audit.Filter{RequestID: got.RequestID})
+	if err != nil || count != 1 || len(correlated) != 1 || correlated[0].ID != got.ID {
+		t.Fatalf("request_id=%q returned %+v (total=%d, err=%v), want only %+v", got.RequestID, correlated, count, err, got)
 	}
 
-	// Detail lookup uses the same audit permission and returns exactly one source row.
-	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs/"+got.ID, nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("get audit detail: %d (%s)", w.Code, w.Body.String())
-	}
-	var detail logRow
-	_ = json.Unmarshal(w.Body.Bytes(), &detail)
-	if detail.ID != got.ID || detail.TargetID != "ghost" {
+	// Historical detail remains available internally, not over the old route.
+	detail, found, err := store.Get(t.Context(), got.ID)
+	if err != nil || !found || detail.ID != got.ID || detail.TargetID != "ghost" {
 		t.Fatalf("unexpected audit detail: %+v", detail)
 	}
-	missing := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs/missing", nil)
-	if missing.Code != http.StatusNotFound {
-		t.Fatalf("missing audit detail: want 404, got %d (%s)", missing.Code, missing.Body.String())
+	if missing := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs/"+got.ID, nil); missing.Code != http.StatusNotFound {
+		t.Fatalf("retired audit detail: want 404, got %d", missing.Code)
 	}
 
-	// filter by resource=departments -> the create + rename + delete
-	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?resource=departments", nil)
-	var depts listResp
-	_ = json.Unmarshal(w.Body.Bytes(), &depts)
-	if depts.Total != 3 {
-		t.Errorf("resource=departments: total=%d, want 3", depts.Total)
+	depts, count, err := store.List(t.Context(), audit.Filter{Resource: "departments"})
+	if err != nil || count != 3 {
+		t.Errorf("resource=departments: total=%d, err=%v, want 3", count, err)
 	}
-	var deleteDept *logRow
-	for i := range depts.Logs {
-		if depts.Logs[i].Method == http.MethodDelete {
-			deleteDept = &depts.Logs[i]
+	var deleteDept *model.AuditLog
+	for i := range depts {
+		if depts[i].Method == http.MethodDelete {
+			deleteDept = &depts[i]
 			break
 		}
 	}
@@ -1007,12 +971,9 @@ func TestAuditTrail(t *testing.T) {
 		t.Errorf("delete department target snapshot = %+v, want target_name Renamed", deleteDept)
 	}
 
-	// Source adapters must filter failures before pagination, not after reading one page.
-	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?failed_only=true", nil)
-	var failed listResp
-	_ = json.Unmarshal(w.Body.Bytes(), &failed)
-	if failed.Total != 1 || len(failed.Logs) != 1 || failed.Logs[0].Status < http.StatusBadRequest {
-		t.Errorf("failed_only: total=%d logs=%+v", failed.Total, failed.Logs)
+	failed, count, err := store.List(t.Context(), audit.Filter{FailedOnly: true})
+	if err != nil || count != 1 || len(failed) != 1 || failed[0].Status < http.StatusBadRequest {
+		t.Errorf("historical failed_only: total=%d logs=%+v err=%v", count, failed, err)
 	}
 }
 
@@ -1281,17 +1242,11 @@ func TestAuditDetailCapture(t *testing.T) {
 		map[string]any{"password": "s3cr3t-should-not-appear"})
 
 	detailFor := func(action string) string {
-		w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?action="+action, nil)
-		var resp struct {
-			Logs []struct {
-				Detail string `json:"detail"`
-			} `json:"logs"`
+		rows, total, err := audit.New(db).List(t.Context(), audit.Filter{Action: action})
+		if err != nil || total != 1 || len(rows) != 1 {
+			t.Fatalf("action=%s: want 1 historical row, got %d (total=%d, err=%v)", action, len(rows), total, err)
 		}
-		_ = json.Unmarshal(w.Body.Bytes(), &resp)
-		if len(resp.Logs) != 1 {
-			t.Fatalf("action=%s: want 1 log, got %d", action, len(resp.Logs))
-		}
-		return resp.Logs[0].Detail
+		return rows[0].Detail
 	}
 
 	if d := detailFor("create"); !strings.Contains(d, "研发部") {

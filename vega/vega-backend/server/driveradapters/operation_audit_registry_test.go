@@ -25,10 +25,20 @@ func TestRegisteredOperationAudit(t *testing.T) {
 			{"POST", "/api/vega-backend/v1/resources", "create", "resource"},
 			{"PUT", "/api/vega-backend/v1/resources/:id", "update", "resource"},
 			{"DELETE", "/api/vega-backend/v1/resources/:id", "delete", "resource"},
+			{"POST", "/api/vega-backend/v1/resources/:id/enable", "enable", "resource"},
+			{"POST", "/api/vega-backend/in/v1/resources/:id/disable", "disable", "resource"},
 			{"POST", "/api/vega-backend/v1/discover-schedules", "create", "discover_schedule"},
 			{"POST", "/api/vega-backend/v1/build-tasks", "create", "index_task"},
 			{"POST", "/api/vega-backend/v1/build-tasks/:id/start", "start", "index_task"},
 			{"POST", "/api/vega-backend/v1/build-tasks/:id/stop", "stop", "index_task"},
+			{"POST", "/api/vega-backend/v1/connector-types", "create", "connector_type"},
+			{"PUT", "/api/vega-backend/v1/connector-types/:type", "update", "connector_type"},
+			{"DELETE", "/api/vega-backend/v1/connector-types/:type", "delete", "connector_type"},
+			{"POST", "/api/vega-backend/v1/connector-types/:type/enable", "enable", "connector_type"},
+			{"POST", "/api/vega-backend/v1/connector-types/:type/disable", "disable", "connector_type"},
+			{"DELETE", "/api/vega-backend/in/v1/discover-tasks/:ids", "delete", "discover_task"},
+			{"POST", "/api/vega-backend/v1/semantic-understanding-tasks", "create", "semantic_understanding_task"},
+			{"DELETE", "/api/vega-backend/v1/semantic-understanding-tasks/:ids", "delete", "semantic_understanding_task"},
 		} {
 			rule, ok := registeredOperationAudit(testCase.method, testCase.path, "")
 			assert.True(t, ok, testCase.path)

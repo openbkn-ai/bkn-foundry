@@ -18,7 +18,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -49,7 +48,11 @@ var sensitiveBodyKeys = []string{"password", "new_password", "old_password"}
 // context (logged) but never fail the request: auditing must not break the
 // operation it audits. Read requests are skipped, so the audit-log read endpoint
 // itself produces no entries (no feedback loop).
-func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gin.HandlerFunc {
+type auditBatchRecorder interface {
+	RecordBatch(context.Context, []audit.Entry) error
+}
+
+func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := strings.TrimSpace(c.GetHeader("x-request-id"))
 		if !validAuditRequestID(requestID) {
@@ -57,7 +60,7 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 		}
 		c.Header("x-request-id", requestID)
 		var raw []byte
-		if isMutating(c.Request.Method) && c.Request.Body != nil {
+		if isAuditedManagementOperation(c.Request.Method, c.FullPath()) && c.Request.Body != nil {
 			// Buffer a bounded prefix for the Detail snapshot, then hand the
 			// handler that prefix followed by whatever is still unread. The
 			// snapshot is capped; the request is not — a resource-parents batch
@@ -87,15 +90,19 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			actorType, authMethod, sourceChannel = "service", "network", "internal"
 			detail = withAuditCallerService(detail, c)
 		}
-		requestOperation := audit.NewRequestOperation(audit.Entry{
+		operationEntry := audit.Entry{
 			ActorID: actorID, ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
 			ActorType: actorType, AuthMethod: authMethod, RequestID: requestID, SourceChannel: sourceChannel,
 			Method: c.Request.Method, Resource: resource, Action: action, TargetID: targetID, TargetName: beforeName,
 			Detail: detail, ClientIP: c.ClientIP(),
-		})
+		}
+		requestOperation := audit.NewRequestOperation(operationEntry)
+		if kafkaRecorder, ok := store.(*audit.KafkaRecorder); ok {
+			requestOperation = audit.NewKafkaRequestOperation(operationEntry, kafkaRecorder.Record)
+		}
 		c.Request = c.Request.WithContext(audit.WithRequestOperation(c.Request.Context(), requestOperation))
 		c.Next()
-		if !isMutating(c.Request.Method) {
+		if !isAuditedManagementOperation(c.Request.Method, c.FullPath()) {
 			return
 		}
 		if requestOperation.Handled() {
@@ -206,6 +213,22 @@ func isMutating(method string) bool {
 		return false
 	}
 	return true
+}
+
+// A few management APIs use POST to evaluate a proposed change without
+// committing one. They are queries, not administration mutations.
+func isAuditedManagementOperation(method, fullPath string) bool {
+	if !isMutating(method) {
+		return false
+	}
+	switch fullPath {
+	case "/api/safe/v1/authz/explain",
+		"/api/safe/v1/admin/object-grants/preview",
+		"/api/safe/v1/admin/row-filter-policies/explain":
+		return false
+	default:
+		return true
+	}
 }
 
 // auditDetail turns a JSON request body into a redacted, truncated snapshot for
@@ -679,59 +702,4 @@ func auditAction(method, fullPath string) string {
 	default:
 		return strings.ToLower(strings.TrimSpace(method))
 	}
-}
-
-// registerAuditReads mounts the audit-log read endpoint under the admin group.
-// It is a GET, so auditMiddleware does not record calls to it.
-func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforcer) {
-	// GET /audit-logs — list audit entries newest-first, filterable. Query:
-	// ?actor_id=&request_id=&resource=&action=&target_id=&from=&to=&offset=&limit=
-	// from/to are RFC3339 timestamps. -> { logs:[...], total }
-	g.GET("/audit-logs", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
-		f := audit.Filter{
-			ActorID:    c.Query("actor_id"),
-			RequestID:  c.Query("request_id"),
-			Resource:   c.Query("resource"),
-			Action:     c.Query("action"),
-			TargetID:   c.Query("target_id"),
-			Offset:     atoiDefault(c.Query("offset"), 0),
-			Limit:      atoiDefault(c.Query("limit"), 0),
-			FailedOnly: strings.EqualFold(c.Query("failed_only"), "true"),
-			BeforeID:   c.Query("before_id"),
-		}
-		if v := c.Query("from"); v != "" {
-			t, err := time.Parse(time.RFC3339Nano, v)
-			if err != nil {
-				replyPublicError(c, http.StatusBadRequest)
-				return
-			}
-			f.From = t
-		}
-		if v := c.Query("to"); v != "" {
-			t, err := time.Parse(time.RFC3339Nano, v)
-			if err != nil {
-				replyPublicError(c, http.StatusBadRequest)
-				return
-			}
-			f.To = t
-		}
-		logs, total, err := store.List(c.Request.Context(), f)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"logs": logs, "total": total})
-	})
-	g.GET("/audit-logs/:id", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
-		entry, found, err := store.Get(c.Request.Context(), c.Param("id"))
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		if !found {
-			replyPublicError(c, http.StatusNotFound)
-			return
-		}
-		c.JSON(http.StatusOK, entry)
-	})
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
@@ -118,6 +119,20 @@ func TestAuditLogBuilderSerializesOnlyControlledAuditFields(t *testing.T) {
 		if _, exists := payload[forbidden]; exists {
 			t.Errorf("forbidden legacy value %q leaked: %#v", forbidden, payload)
 		}
+	}
+}
+
+func TestBusinessAuditSkipsHTTPManagedAttempt(t *testing.T) {
+	publisher := &captureAuditPublisher{disposition: auditpublisher.Accepted}
+	builder := &AuditLogBuilder{logger: auditTestLogger{}, publisher: publisher, env: "test"}
+	builder.Logger(operationaudit.WithManagementAuditOwner(context.Background()), &AuditLogBuilderParams{
+		TokenInfo: &interfaces.TokenInfo{VisitorID: "user-1", VisitorTyp: interfaces.RealName},
+		Accessor:  &interfaces.AuthAccessor{ID: "user-1"},
+		Operation: AuditLogOperationCreate,
+		Object:    &AuditLogObject{Type: AuditLogObjectTool, ID: "box-1"},
+	})
+	if len(publisher.value) != 0 {
+		t.Fatal("business producer duplicated an HTTP-owned management attempt")
 	}
 }
 

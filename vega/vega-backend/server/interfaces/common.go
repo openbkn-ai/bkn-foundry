@@ -8,8 +8,6 @@ package interfaces
 
 import (
 	"context"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 )
 
 type contextKey string // Customize the exclusive key type
@@ -82,28 +80,4 @@ type PaginationQueryParams struct {
 type KeyValue struct {
 	Key   string `json:"key"`
 	Value any    `json:"value"`
-}
-
-func GenerateCatalogAuditObject(id string, name string) audit.AuditObject {
-	return audit.AuditObject{
-		Type: MODULE_TYPE_CATALOG,
-		ID:   id,
-		Name: name,
-	}
-}
-
-func GenerateConnectorTypeAuditObject(typ string, name string) audit.AuditObject {
-	return audit.AuditObject{
-		Type: MODULE_TYPE_CONNECTOR_TYPE,
-		ID:   typ,
-		Name: name,
-	}
-}
-
-func GenerateResourceAuditObject(id string, name string) audit.AuditObject {
-	return audit.AuditObject{
-		Type: MODULE_TYPE_RESOURCE,
-		ID:   id,
-		Name: name,
-	}
 }

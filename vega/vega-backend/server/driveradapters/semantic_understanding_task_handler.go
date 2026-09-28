@@ -93,6 +93,7 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	c.Set(operationAuditTargetIDKey, task.ID)
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, task)

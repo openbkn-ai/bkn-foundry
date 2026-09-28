@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -97,10 +96,8 @@ func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-		interfaces.GenerateCatalogAuditObject(req.CatalogID, ""), "")
-
 	logger.Debug("Handler CreateDiscoverSchedule Success")
+	c.Set(operationAuditTargetIDKey, scheduleID)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, gin.H{"id": scheduleID})
 }
@@ -304,9 +301,6 @@ func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateCatalogAuditObject(current.CatalogID, ""), "")
-
 	logger.Debug("Handler UpdateDiscoverSchedule Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -359,9 +353,6 @@ func (r *restHandler) deleteDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-		interfaces.GenerateCatalogAuditObject(current.CatalogID, ""), audit.SUCCESS, "")
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -431,11 +422,6 @@ func (r *restHandler) setDiscoverScheduleEnabled(c *gin.Context, visitor hydra.V
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	op := audit.UPDATE
-	_ = op
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateCatalogAuditObject(current.CatalogID, ""), "")
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)

@@ -17,7 +17,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -196,11 +195,8 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Record the successful creation in the audit log.
-	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-		interfaces.GenerateResourceAuditObject(resource.ID, req.Name), "")
-
 	result := map[string]any{"id": resource.ID}
+	c.Set(operationAuditTargetIDKey, resource.ID)
 
 	logger.Debug("Handler CreateResource Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
@@ -362,9 +358,6 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateResourceAuditObject(id, req.Name), "")
-
 	logger.Debug("Handler UpdateResource Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -408,7 +401,7 @@ func (r *restHandler) setResourceEnabled(c *gin.Context, visitor hydra.Visitor, 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	id := c.Param("id")
-	resource, err := r.rs.SetEnabled(ctx, id, enabled)
+	_, err := r.rs.SetEnabled(ctx, id, enabled)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -416,8 +409,6 @@ func (r *restHandler) setResourceEnabled(c *gin.Context, visitor hydra.Visitor, 
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateResourceAuditObject(id, resource.Name), "")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
@@ -470,11 +461,6 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	for _, id := range ids {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateResourceAuditObject(id, ""), audit.SUCCESS, "")
 	}
 
 	logger.Debug("Handler DeleteResource Success")

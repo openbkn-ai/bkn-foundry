@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bknaudit"
 	infraCommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
@@ -369,6 +370,9 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if operationaudit.ManagementAuditOwned(ctx) {
+		return
 	}
 	if b == nil || b.publisher == nil {
 		return

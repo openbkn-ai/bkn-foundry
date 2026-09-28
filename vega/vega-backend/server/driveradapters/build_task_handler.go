@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -73,10 +72,8 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, "build", audit.TransforOperator(visitor),
-		interfaces.GenerateResourceAuditObject(req.ResourceID, ""), "")
-
 	logger.Debug("Handler Create Success")
+	c.Set(operationAuditTargetIDKey, taskID)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, map[string]any{"id": taskID})
 }
@@ -264,11 +261,6 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	for _, id := range ids {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateResourceAuditObject(id, ""), audit.SUCCESS, "")
-	}
-
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
@@ -316,9 +308,6 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, "start", audit.TransforOperator(visitor),
-		interfaces.GenerateResourceAuditObject(taskID, ""), "")
-
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, nil)
 }
@@ -356,9 +345,6 @@ func (r *restHandler) stopBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	audit.NewInfoLog(audit.OPERATION, "stop", audit.TransforOperator(visitor),
-		interfaces.GenerateResourceAuditObject(taskID, ""), "")
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, nil)

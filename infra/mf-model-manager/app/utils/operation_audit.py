@@ -1,15 +1,39 @@
 """Bounded model-management audit facts; inference and model tests stay Trace-only."""
-import asyncio
-import hashlib
 import json
+import hashlib
 import logging
+import re
 import secrets
+import uuid
 from datetime import datetime, timezone
 
 from app.commons.get_user_info import get_username_by_ids
-from app.mydb.pymysql_pool import PymysqlPool
 
 logger = logging.getLogger(__name__)
+_audit_publisher = None
+_SECRET_SHAPED_VALUE = re.compile(r"(?i)(?:bearer\s+[a-z0-9._~-]{8,}|bkn_[a-z0-9._~-]{8,}|^bak_[a-z0-9._-]{12,}$)")
+
+
+def _audit_event_id():
+    timestamp_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    random_bits = secrets.randbits(74)
+    value = ((timestamp_ms & ((1 << 48) - 1)) << 80)
+    value |= 0x7 << 76
+    value |= ((random_bits >> 62) & 0xFFF) << 64
+    value |= 0b10 << 62
+    value |= random_bits & ((1 << 62) - 1)
+    return str(uuid.UUID(int=value))
+
+
+def _audit_request_id(request_id):
+    if len(request_id) <= 128 and not _SECRET_SHAPED_VALUE.search(request_id):
+        return request_id
+    return "req_" + hashlib.sha256(request_id.encode("utf-8")).hexdigest()
+
+
+def set_audit_publisher(publisher):
+    global _audit_publisher
+    _audit_publisher = publisher
 
 _RULES = {
     ("POST", "/api/mf-model-manager/v1/llm/add"): ("create", "llm_model"),
@@ -32,8 +56,58 @@ def _rule(request):
         path = "/api/mf-model-manager/v1/model-quota/{conf_id}"
     return _RULES.get((request.method, path))
 
-def _event_id(request_id, method, path):
-    return "evt_" + hashlib.sha256("\n".join((request_id, method, path)).encode()).hexdigest()
+def build_kafka_record(entry, environment):
+    """Map a management attempt to Audit v1 without inventing changed state."""
+    if environment not in {"development", "test", "staging", "production"}:
+        raise ValueError("invalid Audit environment")
+    if entry["target_type"] not in {"llm_model", "small_model", "model_quota", "user_model_quota"}:
+        raise ValueError("unregistered Audit target type")
+    if entry["action"] not in {"create", "update", "delete", "set_default"}:
+        raise ValueError("unregistered Audit action")
+    if entry["outcome"] not in {"success", "failure", "denied"}:
+        raise ValueError("invalid Audit outcome")
+    actor_id = str(entry["actor_id"]).strip()
+    target_id = str(entry["target_id"]).strip()
+    request_id = str(entry["request_id"]).strip()
+    if not actor_id or not target_id or not request_id:
+        raise ValueError("missing Audit identity or target")
+    occurred_at = entry["event_time"].astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    actor = {
+        "id": actor_id,
+        "effective_subject": actor_id,
+        "type": "user" if entry["actor_type"] == "user" else "service_account",
+        "auth_method": entry["auth_method"],
+    }
+    if entry.get("actor_name"):
+        actor["display_name_snapshot"] = str(entry["actor_name"])
+    target = {"type": entry["target_type"], "id": target_id}
+    if entry.get("target_name"):
+        target["name"] = str(entry["target_name"])
+    record = {
+        "schema_version": "1.0",
+        "event_id": _audit_event_id(),
+        "source_id": "model-manager",
+        "category": "audit.admin",
+        "event_name": "model_manager.operation.observed",
+        "occurred_at": occurred_at,
+        "actor": actor,
+        "target": target,
+        "outcome": entry["outcome"],
+        "http_status": entry["http_status"],
+        "scope": {
+            "business_module": "model_management",
+            "environment": environment,
+            "platform_scope": True,
+            "knowledge_network_ids": [],
+        },
+        "request_context": {"source_channel": "api", "transport": "http", "method": entry["method"]},
+        "correlation": {"request_id": _audit_request_id(request_id)},
+        "summary": f"model_manager.operation.observed {entry['action']} {entry['target_type']}",
+        "facts": {"action": entry["action"], "decision": "denied" if entry["outcome"] == "denied" else "allowed"},
+    }
+    if entry["outcome"] != "success":
+        record["failure_code"] = entry.get("failure_code") or f"HTTP_{entry['http_status']}"
+    return record
 
 
 def operation_audit_request_id(headers):
@@ -42,22 +116,6 @@ def operation_audit_request_id(headers):
     if request_id:
         return request_id, False
     return "req_" + secrets.token_hex(16), True
-
-_INSERT = """INSERT INTO t_model_manager_operation_audit
-        (event_id,event_time,recorded_at,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message)
-        VALUES (%(event_id)s,%(event_time)s,%(recorded_at)s,%(actor_id)s,%(actor_name)s,%(actor_type)s,%(auth_method)s,%(request_id)s,%(source_channel)s,%(method)s,%(action)s,%(target_type)s,%(target_id)s,%(target_name)s,%(outcome)s,%(failure_code)s,%(failure_message)s)
-        ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)"""
-
-def _write(entry):
-    pool = PymysqlPool.get_pool()
-    connection = pool.connection()
-    cursor = connection.cursor()
-    try:
-        cursor.execute(_INSERT, entry)
-        connection.commit()
-    finally:
-        cursor.close(); connection.close()
-
 
 async def _actor_name(actor_id, headers):
     """Persist the display-name snapshot when the authenticated source can resolve it.
@@ -102,25 +160,23 @@ async def operation_audit_middleware(request, call_next):
     if not target_id and request.path_params:
         target_id = next(iter(request.path_params.values()), "")
     if not target_id:
-        target_id = f"{rule[1]}:{request_id}"
+        target_id = f"{rule[1]}:{_audit_request_id(request_id)}"
     target_name = next((str(payload[key]) for key in ("model_name", "name", "display_name") if payload.get(key)), target_id)
     outcome = "success" if response.status_code < 400 else ("denied" if response.status_code in (401,403) else "failure")
     now = datetime.now(timezone.utc)
-    entry = {"event_id": _event_id(request_id, request.method, request.url.path), "event_time": now, "recorded_at": now,
+    entry = {"event_time": now,
              "actor_id": actor, "actor_name": await _actor_name(actor, request.headers),
              "actor_type": request.headers.get("x-account-type", "user"), "auth_method": "api_key" if request.headers.get("authorization", "").removeprefix("Bearer ").startswith("bak_") else "oauth",
-             "request_id": request_id, "source_channel": "api", "method": request.method, "action": rule[0], "target_type": rule[1], "target_id": target_id, "target_name": target_name,
-             "outcome": outcome, "failure_code": "" if outcome == "success" else f"http_{response.status_code}", "failure_message": "" if outcome == "success" else "management request failed"}
+             "request_id": request_id, "method": request.method, "action": rule[0], "target_type": rule[1], "target_id": target_id, "target_name": target_name,
+             "outcome": outcome, "http_status": response.status_code,
+             "failure_code": "" if outcome == "success" else f"HTTP_{response.status_code}"}
     try:
-        await asyncio.to_thread(_write, entry)
-    except Exception:
-        # A completed management request remains successful, but audit persistence
-        # failures must be diagnosable from the service logs.
-        logger.error(
-            "operation_audit_write_failed request_id=%s action=%s target_type=%s",
-            request_id,
-            rule[0],
-            rule[1],
-            exc_info=True,
-        )
+        if _audit_publisher is None:
+            logger.error("operation_audit_not_configured action=%s target_type=%s", rule[0], rule[1])
+        else:
+            record = build_kafka_record(entry, _audit_publisher.environment)
+            _audit_publisher.publish(record)
+    except Exception as error:
+        logger.error("operation_audit_publish_failed action=%s target_type=%s error_type=%s",
+                     rule[0], rule[1], type(error).__name__)
     return response

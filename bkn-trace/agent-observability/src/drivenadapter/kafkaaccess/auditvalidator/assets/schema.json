@@ -168,12 +168,21 @@
         "properties": {
           "request_context": {
             "properties": {
-              "source_channel": { "enum": ["api", "cli", "mcp", "sdk", "studio"] },
               "transport": { "enum": ["http", "non_http"] }
             }
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_name": { "not": { "const": "execution_factory.operation.observed" } },
+          "request_context": { "properties": { "transport": { "const": "http" } }, "required": ["transport"] }
+        },
+        "required": ["event_name", "request_context"]
+      },
+      "then": { "properties": { "request_context": { "properties": { "source_channel": { "enum": ["api", "cli", "mcp", "sdk", "studio"] } } } } }
     },
     {
       "if": { "properties": { "category": { "const": "audit.security" } }, "required": ["category"] },

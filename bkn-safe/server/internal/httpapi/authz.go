@@ -14,7 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/decisionlog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
@@ -37,7 +36,7 @@ type resourceRef struct {
 // registerAuthz mounts bkn-safe's clean authorization API under /api/safe/v1/authz.
 // This is a redesign — it deliberately drops ISF's quirks (GET-in-body,
 // array-vs-map responses, policy-delete double form, public/private split).
-func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore *audit.Store, dir *directory.Service) {
+func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, auditStore auditBatchRecorder, dir *directory.Service) {
 	g := r.Group("/api/safe/v1/authz")
 	registerAuthorizationRegistry(g, db)
 	registerPropertyLevels(g, e, db)

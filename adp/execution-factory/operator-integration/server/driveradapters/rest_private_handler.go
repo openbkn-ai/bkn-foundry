@@ -4,9 +4,15 @@
 package driveradapters
 
 import (
+	"context"
+	"os"
+	"strings"
+
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bknaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	proxyexecution "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy_execution"
@@ -25,6 +31,9 @@ type restPrivateHandler struct {
 	CapabilityHandler      CapabilityRestHandler
 	Hydra                  interfaces.Hydra
 	AuthorizationResources *authorizationResourceHandler
+	auditRecorder          interface {
+		Record(context.Context, operationaudit.Entry) error
+	}
 }
 
 // NewRestPrivateHandler creates a restHandler instance.
@@ -41,6 +50,7 @@ func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 		CapabilityHandler:      NewCapabilityRestHandler(),
 		Hydra:                  drivenadapters.NewHydra(),
 		AuthorizationResources: newAuthorizationResourceHandler(),
+		auditRecorder:          operationaudit.NewKafkaRecorder(bknaudit.ConfiguredPublisher(config.NewConfigLoader().GetLogger()), strings.TrimSpace(os.Getenv("BKN_AUDIT_ENVIRONMENT"))),
 	}
 }
 
@@ -54,6 +64,7 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 		sharedrest.LanguageMiddleware(),
 		sharedrest.PrivateNoCacheMiddleware(),
 		managedProxyExecutionBoundary(proxyexecution.NewAuditLogger(r.Logger)),
+		OperationAuditPrivate(r.auditRecorder),
 		middlewareHeaderAuthContext(r.Hydra),
 	)
 	engine.Use(mws...)

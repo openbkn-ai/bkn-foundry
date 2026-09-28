@@ -30,6 +30,22 @@ ingress:
 env:
   devicecode: ""
 
+# Independent management Audit transport. Supply a dedicated write-only Kafka
+# principal in an existing Secret when enabled; never reuse metering KAFKAUSER.
+auditPublisher:
+  enabled: false
+  environment: ""
+  brokers: ""
+  credentialsSecretName: ""
+  usernameSecretKey: username
+  passwordSecretKey: password
+  securityProtocol: SASL_PLAINTEXT
+  saslMechanism: PLAIN
+
+serviceAccount:
+  create: true
+  name: mf-model-manager
+
 # bkn-safe service settings. Authorization always uses this URL.
 bknSafe:
   directoryProvider: "bkn-safe"

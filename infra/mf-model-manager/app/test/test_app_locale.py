@@ -25,7 +25,7 @@ class TestAppLocaleIntegration(unittest.TestCase):
         async def test_http_error():
             raise HTTPException(
                 status_code=404,
-                detail={"code": "ModelFactory.OperationAudit.EventNotFound", "link": ""},
+                detail={"code": "ModelFactory.HTTP.NotFound", "link": ""},
             )
 
         @self.app.get("/api/private/mf-model-manager/v1/test-private")
@@ -58,8 +58,8 @@ class TestAppLocaleIntegration(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.headers["content-language"], "zh-CN")
-        self.assertEqual(response.json()["code"], "ModelFactory.OperationAudit.EventNotFound")
-        self.assertEqual(response.json()["description"], "审计事件不存在。")
+        self.assertEqual(response.json()["code"], "ModelFactory.HTTP.NotFound")
+        self.assertEqual(response.json()["description"], "资源不存在。")
 
     def test_framework_not_found_uses_the_status_code_fallback(self):
         response = self.client.get(

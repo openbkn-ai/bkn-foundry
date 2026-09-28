@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
@@ -174,6 +175,49 @@ func (handler *LogHandler) ListLogSources(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, r, http.StatusOK, rdto.LogSourcesResponse{Data: data})
+}
+
+// ListLogSourceInventory exposes the pinned contract roster separately from
+// queryable sources. A declared Kafka method is never reported as E2E coverage.
+func (handler *LogHandler) ListLogSourceInventory(w http.ResponseWriter, r *http.Request) {
+	profile, ok := handler.authorizedProfile(w, r)
+	if !ok {
+		return
+	}
+	version, registered, err := auditvalidator.RegisteredSources()
+	if err != nil {
+		writeObservabilityError(w, r, http.StatusServiceUnavailable, "source_registry_unavailable", "the source registry is unavailable")
+		return
+	}
+	queryStatus := make(map[string]observabilityvo.SourceStatus)
+	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
+	queryable, queryErr := handler.service.Sources(sourceContext, profile)
+	if queryErr == nil {
+		for _, source := range queryable {
+			queryStatus[source.SourceID] = source
+		}
+	}
+	type inventoryEntry struct {
+		auditvalidator.RegisteredSource
+		QueryStatus    string `json:"query_status"`
+		QueryReason    string `json:"query_reason,omitempty"`
+		CoverageStatus string `json:"coverage_status"`
+	}
+	data := make([]inventoryEntry, 0, len(registered))
+	for _, source := range registered {
+		entry := inventoryEntry{RegisteredSource: source, QueryStatus: "not_listed", CoverageStatus: "unverified"}
+		if queryErr != nil {
+			entry.QueryStatus = "query_unavailable"
+		} else if status, found := queryStatus[source.SourceID]; found {
+			entry.QueryStatus = status.Status
+			entry.QueryReason = status.Reason
+		}
+		data = append(data, entry)
+	}
+	writeJSON(w, r, http.StatusOK, struct {
+		RegistryVersion string           `json:"registry_version"`
+		Data            []inventoryEntry `json:"data"`
+	}{RegistryVersion: version, Data: data})
 }
 
 func (handler *LogHandler) ListLogPolicies(w http.ResponseWriter, r *http.Request) {

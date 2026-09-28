@@ -5,6 +5,7 @@
 package seed
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -13,10 +14,38 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
+
+type countingAuditRecorder struct{ entries []audit.Entry }
+
+func (r *countingAuditRecorder) Record(_ context.Context, entry audit.Entry) error {
+	r.entries = append(r.entries, entry)
+	return nil
+}
+
+func TestApplyWithAuditDoesNotRepeatBackfillOnRestart(t *testing.T) {
+	t.Setenv("BKN_SAFE_INITIAL_PASSWORD", "seed-restart-test-password")
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &countingAuditRecorder{}
+	if err := ApplyWithAudit(db, e, recorder); err != nil {
+		t.Fatal(err)
+	}
+	recorder.entries = nil
+	if err := ApplyWithAudit(db, e, recorder); err != nil {
+		t.Fatal(err)
+	}
+	if len(recorder.entries) != 0 {
+		t.Fatalf("unchanged seed emitted %d backfill audit events on restart", len(recorder.entries))
+	}
+}
 
 func newDB(t *testing.T) *gorm.DB {
 	t.Helper()

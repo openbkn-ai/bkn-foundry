@@ -15,6 +15,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
@@ -111,6 +112,17 @@ func TestHealth(t *testing.T) {
 	w := do(t, r, http.MethodGet, "/health/ready", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("health = %d", w.Code)
+	}
+}
+
+func TestAuditMetricsAreClusterLocalAndPayloadFree(t *testing.T) {
+	telemetry := audit.NewPublishTelemetry()
+	telemetry.Observe("accepted")
+	r := New(Deps{AuditTelemetry: telemetry})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`audit_event_publish_total{source_id="bkn-safe-admin",result="accepted",reason="none"} 1`)) {
+		t.Fatalf("unexpected Safe metrics: %d %s", w.Code, w.Body.String())
 	}
 }
 

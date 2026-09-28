@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -151,6 +152,14 @@ type roleBindingsFile struct {
 // Apply seeds roles + catalog (into GORM) and grants (into Casbin). Idempotent:
 // safe to run on every startup. Returns the first error encountered.
 func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
+	return ApplyWithAudit(db, enforcer, audit.New(db))
+}
+
+// ApplyWithAudit sends startup repairs through the same Audit transport as
+// ordinary administration. The legacy Apply entry point remains for tests.
+func ApplyWithAudit(db *gorm.DB, enforcer *authz.Enforcer, trail interface {
+	Record(context.Context, audit.Entry) error
+}) error {
 	if err := seedRoles(db); err != nil {
 		return fmt.Errorf("seed roles: %w", err)
 	}
@@ -184,7 +193,7 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedDefaultModelAccess(enforcer); err != nil {
 		return fmt.Errorf("seed default model access: %w", err)
 	}
-	if err := backfillRequiredOperations(db, enforcer); err != nil {
+	if err := backfillRequiredOperations(db, enforcer, trail); err != nil {
 		return fmt.Errorf("backfill required operations: %w", err)
 	}
 	if err := seedRoleBindings(enforcer); err != nil {
@@ -680,12 +689,13 @@ func validateRequirements(c catalog) error {
 // Deliberately NOT symmetric with revocation: this only ever adds. A row that
 // an administrator has since narrowed on purpose is repaired back to a usable
 // shape rather than left as a permission that answers 403 everywhere.
-func backfillRequiredOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
+func backfillRequiredOperations(db *gorm.DB, enforcer *authz.Enforcer, trail interface {
+	Record(context.Context, audit.Entry) error
+}) error {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
 		return err
 	}
-	trail := audit.New(db)
 	// Role ids up front: the audit vocabulary for a role's permission differs
 	// from an object grant's, and telling them apart per repaired row would be a
 	// query each.
@@ -705,7 +715,13 @@ func backfillRequiredOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 				}
 				slog.Info("backfilled a direct operation requirement",
 					"resource_type", rt.ID, "operation", op.ID, "required", required, "rows", len(added))
-				recordBackfillAudit(trail, roleNames, rt.ID, op.ID, required, added)
+				// Model policies are deliberately removed and rebuilt on every
+				// startup by reconcileModelAuthorizationPolicies. Their derived
+				// display grants are therefore not new administrative changes;
+				// recording them would create four false Audit events per restart.
+				if !slices.Contains(modelResourceTypes, rt.ID) {
+					recordBackfillAudit(trail, roleNames, rt.ID, op.ID, required, added)
+				}
 			}
 		}
 	}
@@ -720,7 +736,9 @@ func backfillRequiredOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 //
 // Failures are logged and swallowed: auditing must never be the reason a
 // deployment fails to start.
-func recordBackfillAudit(trail *audit.Store, roleNames map[string]string,
+func recordBackfillAudit(trail interface {
+	Record(context.Context, audit.Entry) error
+}, roleNames map[string]string,
 	resourceType, operation, required string, grants []authz.BackfilledGrant) {
 
 	for _, g := range grants {

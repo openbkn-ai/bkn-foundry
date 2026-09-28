@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -343,47 +344,31 @@ func TestDecisionReadEndpointListsAnAccountsDecisionsInAWindow(t *testing.T) {
 	}
 }
 
-func TestAuditChainEndpointsReportHeadAndDetectTampering(t *testing.T) {
+func TestHistoricalAuditChainRemainsVerifiableWithoutHTTPRoutes(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
 	adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments", map[string]any{"id": "d-1", "name": "Root"})
 	adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/departments/d-1", map[string]any{"name": "Renamed"})
 
-	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-chain", nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("chain head: want 200, got %d (%s)", w.Code, w.Body.String())
+	store := audit.New(db)
+	head, err := store.Verify(t.Context(), 0, 0, 1)
+	if err != nil || head.Head == nil || head.Head.Seq != 2 || len(head.Head.RowHash) != 64 || head.UnchainedRows != 0 {
+		t.Fatalf("historical chain head = %+v, %v", head, err)
 	}
-	var head struct {
-		Head *struct {
-			Seq     uint64 `json:"seq"`
-			RowHash string `json:"row_hash"`
-		} `json:"head"`
-		Unchained int64 `json:"unchained_rows"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &head); err != nil {
-		t.Fatal(err)
-	}
-	if head.Head == nil || head.Head.Seq != 2 || len(head.Head.RowHash) != 64 || head.Unchained != 0 {
-		t.Fatalf("chain head = %s", w.Body.String())
-	}
-	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-chain/verify", nil)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"ok":true`) || !strings.Contains(w.Body.String(), `"checked":2`) {
-		t.Fatalf("verify intact: %d %s", w.Code, w.Body.String())
+	intact, err := store.Verify(t.Context(), 0, 0, 0)
+	if err != nil || !intact.OK || intact.Checked != 2 {
+		t.Fatalf("historical chain verification = %+v, %v", intact, err)
 	}
 	if err := db.Model(&model.AuditLog{}).Where("seq = ?", 1).Update("target_name", "Forged").Error; err != nil {
 		t.Fatal(err)
 	}
-	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-chain/verify", nil)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"ok":false`) || !strings.Contains(w.Body.String(), `"broken_seq":1`) || !strings.Contains(w.Body.String(), `"reason":"hash_mismatch"`) {
-		t.Fatalf("verify tampered: %d %s", w.Code, w.Body.String())
+	broken, err := store.Verify(t.Context(), 0, 0, 0)
+	if err != nil || broken.OK || broken.BrokenSeq == nil || *broken.BrokenSeq != 1 || broken.Reason != "hash_mismatch" {
+		t.Fatalf("tampered historical chain = %+v, %v", broken, err)
 	}
-	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-chain/verify?from_seq=x", nil); w.Code != http.StatusBadRequest {
-		t.Fatalf("bad from_seq: want 400, got %d", w.Code)
-	}
-	// Chain reads are GETs: they left no audit rows of their own.
-	var n int64
-	db.Model(&model.AuditLog{}).Where("resource = ?", "audit-chain").Count(&n)
-	if n != 0 {
-		t.Fatalf("chain reads produced %d audit rows", n)
+	for _, path := range []string{"/api/safe/v1/admin/audit-chain", "/api/safe/v1/admin/audit-chain/verify"} {
+		if w := adminReq(t, r, http.MethodGet, path, nil); w.Code != http.StatusNotFound {
+			t.Fatalf("retired audit endpoint %s = %d, want 404", path, w.Code)
+		}
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -63,9 +64,17 @@ type RequestOperation struct {
 	entry   Entry
 	mu      sync.RWMutex
 	handled bool
+	pending *Entry
+	publish func(context.Context, Entry) error
 }
 
 func NewRequestOperation(entry Entry) *RequestOperation { return &RequestOperation{entry: entry} }
+
+// NewKafkaRequestOperation stages the committed target in memory. The caller
+// invokes MarkHandled only after its business transaction commits.
+func NewKafkaRequestOperation(entry Entry, publish func(context.Context, Entry) error) *RequestOperation {
+	return &RequestOperation{entry: entry, publish: publish}
+}
 
 func WithRequestOperation(ctx context.Context, operation *RequestOperation) context.Context {
 	return context.WithValue(ctx, requestOperationContextKey{}, operation)
@@ -79,19 +88,38 @@ func RequestOperationFromContext(ctx context.Context) (*RequestOperation, bool) 
 // Enqueue persists the operation event in tx without marking it handled. The
 // caller must MarkHandled only after its enclosing transaction committed.
 func (o *RequestOperation) Enqueue(tx *gorm.DB, targetID, targetName string, status int) error {
+	if tx == nil {
+		return fmt.Errorf("enqueue audit event: nil transaction")
+	}
 	o.mu.RLock()
 	entry := o.entry
 	o.mu.RUnlock()
 	entry.TargetID = targetID
 	entry.TargetName = targetName
 	entry.Status = status
+	if o.publish != nil {
+		o.mu.Lock()
+		o.pending = &entry
+		o.mu.Unlock()
+		return nil
+	}
 	return New(tx).Enqueue(tx, entry)
 }
 
 func (o *RequestOperation) MarkHandled() {
 	o.mu.Lock()
+	if o.handled {
+		o.mu.Unlock()
+		return
+	}
 	o.handled = true
+	pending, publish := o.pending, o.publish
 	o.mu.Unlock()
+	if pending != nil && publish != nil {
+		if err := publish(context.Background(), *pending); err != nil {
+			slog.Error("safe audit coverage gap after commit", "request_id", pending.RequestID, "error", err)
+		}
+	}
 }
 
 func (o *RequestOperation) Handled() bool {

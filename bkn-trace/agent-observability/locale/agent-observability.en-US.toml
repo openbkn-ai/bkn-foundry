@@ -205,6 +205,7 @@
 "the conversation already has an active interaction" = "the conversation already has an active interaction"
 "the current attempt has not failed retryably" = "the current attempt has not failed retryably"
 "the log time window exceeds the supported range" = "the log time window exceeds the supported range"
+"the source registry is unavailable" = "the source registry is unavailable"
 "the pagination cursor is invalid" = "the pagination cursor is invalid"
 "time_from must be an RFC3339 timestamp" = "time_from must be an RFC3339 timestamp"
 "time_to must be an RFC3339 timestamp" = "time_to must be an RFC3339 timestamp"
