@@ -414,7 +414,7 @@ F1 Bench is based on the BIRD test set with the Formula-1 database mixed with 30
 
 | Channel | Link | What it's for |
 | --- | --- | --- |
-| Discord | [discord.gg/YTxDbrfNf](https://discord.gg/YTxDbrfNf) | Real-time help, showcases, and announcements. |
+| Discord | [discord.gg/n4ur6jZB5](https://discord.gg/n4ur6jZB5) | Real-time help, showcases, and announcements. |
 | X | [@OpenBKN](https://x.com/OpenBKN) | Follow OpenBKN for release news and project updates. |
 
 ## License
