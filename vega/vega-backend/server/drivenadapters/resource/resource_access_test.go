@@ -12,6 +12,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -23,6 +24,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
+
+type jsonArgument struct{ expected string }
+
+func (arg jsonArgument) Match(value driver.Value) bool {
+	actual, ok := value.(string)
+	if !ok {
+		return false
+	}
+	var expectedJSON, actualJSON any
+	return json.Unmarshal([]byte(arg.expected), &expectedJSON) == nil &&
+		json.Unmarshal([]byte(actual), &actualJSON) == nil &&
+		reflect.DeepEqual(expectedJSON, actualJSON)
+}
 
 func TestResourceAccessCreate(t *testing.T) {
 	t.Run("creates resource", func(t *testing.T) {
@@ -404,7 +418,7 @@ func TestResourceAccessUpdate(t *testing.T) {
 				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 				interfaces.LogicType_Derived, `{"source_resource_id":"source-1"}`,
 				res.Updater.ID, res.Updater.Type, res.UpdateTime,
-				`{"properties":{},"source_resource":{"catalog_id":"catalog-1"}}`, res.ID, res.UpdateTime).
+				jsonArgument{expected: `{"properties":{},"source_resource":{"catalog_id":"catalog-1"}}`}, res.ID, res.UpdateTime).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 		rows, err := access.Update(context.Background(), nil, res, res.UpdateTime)
 		require.NoError(t, err)

@@ -94,6 +94,9 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 		name           string
 		definition     map[string]any
 		schema         []*interfaces.Property
+		storedSchema   []*interfaces.Property
+		requestSchema  []*interfaces.Property
+		wantBuildCheck bool
 		wantProperties map[string]any
 	}{
 		{
@@ -104,13 +107,25 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 		{
 			name:           "clears scanned statistics when definition changes",
 			definition:     map[string]any{"source_resource_id": "source-2"},
+			wantBuildCheck: true,
 			wantProperties: map[string]any{},
 		},
 		{
 			name:           "clears scanned statistics when public schema changes",
 			definition:     map[string]any{"source_resource_id": "source-1"},
 			schema:         []*interfaces.Property{{Name: "alias", Type: interfaces.DataType_String}},
+			wantBuildCheck: true,
 			wantProperties: map[string]any{},
+		},
+		{
+			name:       "inherited features do not turn a name edit into a build change",
+			definition: map[string]any{"source_resource_id": "source-1"},
+			schema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}},
+			storedSchema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}},
+			requestSchema:  []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+			wantProperties: map[string]any{"row_count": 6},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,14 +141,18 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 			expectResourceServiceTransaction(t, rs, true)
 			mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-			if tc.definition["source_resource_id"] != "source-1" || tc.schema != nil {
+			if tc.wantBuildCheck {
 				mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+			}
+			storedSchema := tc.storedSchema
+			if storedSchema == nil {
+				storedSchema = []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}}
 			}
 			resource := &interfaces.Resource{
 				ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicView,
 				Name: "orders", LogicType: interfaces.LogicType_Derived,
 				LogicDefinition:  map[string]any{"source_resource_id": "source-1"},
-				SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+				SchemaDefinition: storedSchema,
 				SourceMetadata: map[string]any{
 					"properties":      map[string]any{"row_count": 6},
 					"source_resource": map[string]any{"original_name": "old.orders"},
@@ -148,6 +167,9 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 			requestedSchema := tc.schema
 			if requestedSchema == nil {
 				requestedSchema = []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}}
+			}
+			if tc.requestSchema != nil {
+				requestedSchema = tc.requestSchema
 			}
 			err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
 				CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicView,

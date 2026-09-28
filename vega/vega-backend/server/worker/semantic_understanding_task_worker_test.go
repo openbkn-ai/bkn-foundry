@@ -9,11 +9,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	// "net/http" // Catalog 父目录测试恢复时启用。
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/bytedance/sonic"
+	// "github.com/openbkn-ai/bkn-foundry/comm-go/rest" // Catalog 父目录测试恢复时启用。
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -442,6 +444,29 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 
 		require.NoError(t, worker.Run(context.Background(), "semantic-task-1"))
 	})
+
+	/* Catalog 任务暂不支持；保留旧用例供后续恢复。
+	t.Run("cancels active catalog task when catalog was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		catalogService := vmock.NewMockCatalogService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{suts: taskService, cs: catalogService}
+		taskInfo := &interfaces.SemanticUnderstandingTask{
+			ID: "semantic-task-1", Scope: interfaces.SemanticUnderstandingTaskScopeCatalog,
+			CatalogID: "catalog-1", Status: interfaces.SemanticUnderstandingTaskStatusPending,
+		}
+		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
+		taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").Return(true, nil)
+		catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
+			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+		taskService.EXPECT().InternalMarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
+			Return(true, nil)
+
+		require.NoError(t, worker.Run(context.Background(), "semantic-task-1"))
+	})
+	*/
 
 	t.Run("skips completed task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

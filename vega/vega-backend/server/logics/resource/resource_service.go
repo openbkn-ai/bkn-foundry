@@ -765,12 +765,8 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		previousDefinition := resource.LogicDefinition
 		previousSchema := resource.SchemaDefinition
 		previousMetadata := resource.SourceMetadata
-		logicType, viewFields, err := PrepareLogicView(ctx, req)
-		if err != nil {
-			return err
-		}
 		if logicViewDefinitionEqual(previousDefinition, req.LogicDefinition) &&
-			reflect.DeepEqual(previousSchema, viewFields) {
+			reflect.DeepEqual(previousSchema, req.SchemaDefinition) {
 			if properties, ok := previousMetadata["properties"]; ok {
 				if req.SourceMetadata == nil {
 					req.SourceMetadata = make(map[string]any)
@@ -778,8 +774,8 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 				req.SourceMetadata["properties"] = properties
 			}
 		}
-		resource.SchemaDefinition = viewFields
-		resource.LogicType = logicType
+		resource.SchemaDefinition = req.SchemaDefinition
+		resource.LogicType = req.LogicType
 		resource.LogicDefinition = req.LogicDefinition
 		resource.SourceMetadata = req.SourceMetadata
 	default:
@@ -1473,8 +1469,16 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 		if req.LogicType != resource.LogicType {
 			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
 		}
-		return !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition) ||
-			!reflect.DeepEqual(resource.SchemaDefinition, req.SchemaDefinition), nil
+		logicType, viewFields, err := PrepareLogicView(ctx, req)
+		if err != nil {
+			return false, err
+		}
+		if logicType != resource.LogicType {
+			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
+		}
+		req.SchemaDefinition = viewFields
+		return !logicViewDefinitionEqual(resource.LogicDefinition, req.LogicDefinition) ||
+			!reflect.DeepEqual(resource.SchemaDefinition, viewFields), nil
 	}
 	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {

@@ -173,6 +173,40 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 
 	})
 
+	/* Catalog 任务暂不支持；保留旧用例供后续恢复。
+	t.Run("reuses active task with same input hash", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		active := &interfaces.SemanticUnderstandingTask{ID: "semantic-task-1"}
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Name: "sales"}, nil)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		// 任务的授权判在它所属的目录上（bkn-studio#342）；这些用例验的是别的东西。
+		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService, rs: resourceService}
+		var findScope string
+
+		resourceService.EXPECT().InternalGetByCatalogID(gomock.Any(), "catalog-1").Return([]*interfaces.Resource{sampleSemanticResource()}, nil)
+		taskAccess.EXPECT().
+			FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeCatalog, gomock.Any()).
+			DoAndReturn(func(_ context.Context, scope string, _ string) (*interfaces.SemanticUnderstandingTask, error) {
+				findScope = scope
+				return active, nil
+			})
+
+		got, err := service.CreateCatalogTask(context.Background(), "catalog-1", &interfaces.CreateSemanticUnderstandingTaskRequest{
+			ApplyMode: interfaces.SemanticUnderstandingApplyModeDryRun,
+		})
+
+		require.NoError(t, err)
+		assert.Same(t, active, got)
+		assert.Equal(t, interfaces.SemanticUnderstandingTaskScopeCatalog, findScope)
+	})
+	*/
+
 	t.Run("catalog task creation is unavailable", func(t *testing.T) {
 		service := &semanticUnderstandingTaskService{}
 		got, err := service.CreateCatalogTask(context.Background(), "catalog-1", &interfaces.CreateSemanticUnderstandingTaskRequest{})
