@@ -95,6 +95,7 @@ func Test_SemanticUnderstandingTaskRestHandler_CreateTask(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"result_json":"{\"result\":\"ok\"}"`)
 	})
 
+	/* Catalog 任务暂不支持；保留旧用例供后续恢复。
 	t.Run("creates catalog task", func(t *testing.T) {
 		engine, suts := setupSemanticUnderstandingTaskHandlerTest(t)
 		suts.EXPECT().CreateCatalogTask(gomock.Any(), "catalog-1", gomock.Any()).
@@ -118,6 +119,20 @@ func Test_SemanticUnderstandingTaskRestHandler_CreateTask(t *testing.T) {
 		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"scope":"catalog"`)
 		assert.Contains(t, w.Body.String(), `"catalog_id":"catalog-1"`)
+	})
+	*/
+
+	t.Run("rejects catalog task", func(t *testing.T) {
+		engine, _ := setupSemanticUnderstandingTaskHandlerTest(t)
+
+		req := httptest.NewRequest(http.MethodPost, semanticUnderstandingTaskURL, strings.NewReader(`{"scope":"catalog","catalog_id":"catalog-1"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "catalog semantic understanding tasks are temporarily unavailable")
 	})
 
 	t.Run("creates resource task by external api", func(t *testing.T) {

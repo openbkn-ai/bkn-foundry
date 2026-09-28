@@ -7,7 +7,7 @@ package semantic_understanding_task
 
 import (
 	"context"
-	"encoding/json"
+	// "encoding/json" // Catalog 输入组装测试恢复时启用。
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,6 +25,7 @@ import (
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
 
+/* Catalog 输入组装暂停；保留原测试。
 func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	threshold := 0.75
 	input, _, err := buildCatalogSemanticUnderstandingInput(
@@ -99,6 +100,7 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	assert.Equal(t, "order_summary", logicView["source_identifier"])
 	assert.NotContains(t, logicView, "logic_definition")
 }
+*/
 
 func TestMarshalSemanticUnderstandingInput(t *testing.T) {
 	first := make(map[string]any)
@@ -171,6 +173,7 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 
 	})
 
+	/* Catalog 任务暂不支持；保留旧用例供后续恢复。
 	t.Run("reuses active task with same input hash", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -201,6 +204,14 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 		assert.Same(t, active, got)
 		assert.Equal(t, interfaces.SemanticUnderstandingTaskScopeCatalog, findScope)
+	})
+	*/
+
+	t.Run("catalog task creation is unavailable", func(t *testing.T) {
+		service := &semanticUnderstandingTaskService{}
+		got, err := service.CreateCatalogTask(context.Background(), "catalog-1", &interfaces.CreateSemanticUnderstandingTaskRequest{})
+		require.Nil(t, got)
+		require.ErrorContains(t, err, "catalog semantic understanding tasks are temporarily unavailable")
 	})
 }
 

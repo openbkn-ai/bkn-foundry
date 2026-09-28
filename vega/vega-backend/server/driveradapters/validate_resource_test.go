@@ -19,29 +19,29 @@ import (
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
-type validatingViewExtension struct{ err error }
+type validatingViewService struct{ err error }
 
-func (extension *validatingViewExtension) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
-	return extension.err
+func (service *validatingViewService) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
+	return service.err
 }
 
-func (*validatingViewExtension) Prepare(context.Context, *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
+func (*validatingViewService) Prepare(context.Context, *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
 	return "", nil, nil
 }
 
-func (*validatingViewExtension) QueryWithPaging(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+func (*validatingViewService) QueryWithPaging(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	return nil, errors.New("query is not expected")
 }
 
-func TestValidateResourceRequestLogicViewExtension(t *testing.T) {
-	previous := resourcelogic.GetLogicViewExtension()
-	t.Cleanup(func() { resourcelogic.SetLogicViewExtension(previous) })
+func TestValidateResourceRequestLogicViewService(t *testing.T) {
+	previous := resourcelogic.GetLogicViewService()
+	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
 	req := &interfaces.ResourceRequest{Name: "view", Category: interfaces.ResourceCategoryLogicView}
 	want := errors.New("invalid view")
-	resourcelogic.SetLogicViewExtension(&validatingViewExtension{err: want})
+	resourcelogic.SetLogicViewService(&validatingViewService{err: want})
 	require.ErrorIs(t, ValidateResourceRequest(context.Background(), req), want)
 
-	resourcelogic.SetLogicViewExtension(nil)
+	resourcelogic.SetLogicViewService(nil)
 	var httpErr *rest.HTTPError
 	require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
 	require.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)

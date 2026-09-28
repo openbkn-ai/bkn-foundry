@@ -45,10 +45,6 @@ type resourceDataService struct {
 	cl         rate.ConcurrencyLimiter
 }
 
-func (rds *resourceDataService) logicViewService() interfaces.LogicViewExtension {
-	return resourcelogic.GetLogicViewExtension()
-}
-
 func connectorCreationError(ctx context.Context, err error) error {
 	if errors.Is(err, factory.ErrConnectorEntitlementDenied) {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
@@ -290,12 +286,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		params = rds.prepareOutputFieldsParams(resource, params)
 
 		// Query data in a logical view
-		service := rds.logicViewService()
-		if service == nil {
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
-				WithErrorDetails("logic views require the Enterprise extension")
-		}
-		result, err := service.QueryWithPaging(ctx, resource, params)
+		result, err := resourcelogic.QueryLogicViewWithPaging(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query logic view data failed", err)
 			var httpErr *rest.HTTPError
@@ -430,16 +421,15 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return nil, err
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
-		service := rds.logicViewService()
-		if service == nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
-				WithErrorDetails("logic views require the Enterprise extension")
+		result, err := resourcelogic.QueryLogicViewWithPaging(ctx, resource, params)
+		if err != nil {
+			return nil, err
 		}
-		result, err := service.QueryWithPaging(ctx, resource, params)
+
 		if result != nil {
 			result.QuerySource = resourceQuerySource(resource, params)
 		}
-		return result, err
+		return result, nil
 	}
 	paginationCategory := resourceDataPaginationCategory(resource, params)
 	if params.Paging.Cursor != "" {

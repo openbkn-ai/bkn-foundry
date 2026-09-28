@@ -28,15 +28,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/bkn_agent"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
+	// "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog" // Catalog 任务恢复时启用。
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/semantic_understanding_task"
 )
 
-var (
-	semanticUnderstandingSourceIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-)
+// Catalog 任务恢复时启用。
+// var semanticUnderstandingSourceIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 const (
 	semanticTaskPollInterval   = 30 * time.Second
@@ -50,9 +49,9 @@ type SemanticUnderstandingTaskWorker struct {
 	appSetting *common.AppSetting
 	suts       interfaces.SemanticUnderstandingTaskService
 	bas        interfaces.BknAgentService
-	cs         interfaces.CatalogService
-	rs         interfaces.ResourceService
-	db         *sql.DB
+	// cs interfaces.CatalogService // Catalog 任务恢复时启用。
+	rs interfaces.ResourceService
+	db *sql.DB
 
 	workerCount int
 	queueSize   int
@@ -76,9 +75,9 @@ func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *Semantic
 		appSetting: appSetting,
 		suts:       semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting),
 		bas:        bkn_agent.NewBknAgentService(appSetting),
-		cs:         catalog.NewCatalogService(appSetting),
-		rs:         resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
-		db:         logics.DB,
+		// cs: catalog.NewCatalogService(appSetting), // Catalog 任务恢复时启用。
+		rs: resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
+		db: logics.DB,
 
 		workerCount: workerCount,
 		queueSize:   queueSize,
@@ -282,6 +281,14 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 		logger.Infof("Semantic understanding task was not claimed for running: id=%s", taskInfo.ID)
 		return nil
 	}
+	if taskInfo.Scope == interfaces.SemanticUnderstandingTaskScopeCatalog {
+		// 遗留的待执行 Catalog 任务不能继续走旧 Logic View 创建路径。
+		const reason = "catalog semantic understanding tasks are temporarily unavailable"
+		if _, err := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, reason); err != nil {
+			return fmt.Errorf("mark unsupported catalog semantic understanding task failed: %w", err)
+		}
+		return errors.New(reason)
+	}
 	parentExists, err := sutw.taskParentExists(ctx, taskInfo)
 	if err != nil {
 		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
@@ -428,6 +435,7 @@ func (sutw *SemanticUnderstandingTaskWorker) taskParentExists(ctx context.Contex
 		}
 		return resourceInfo != nil, nil
 	}
+	/* Catalog 任务在 Run 中会被拒绝，旧的父目录检查暂不执行。
 	if task.Scope != interfaces.SemanticUnderstandingTaskScopeCatalog {
 		return true, nil
 	}
@@ -440,6 +448,8 @@ func (sutw *SemanticUnderstandingTaskWorker) taskParentExists(ctx context.Contex
 		return false, nil
 	}
 	return false, fmt.Errorf("get semantic understanding task catalog: %w", err)
+	*/
+	return true, nil
 }
 
 func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, task *interfaces.SemanticUnderstandingTask, confidenceDetailJSON string) error {
@@ -943,6 +953,9 @@ func extractBknAgentResultJSON(result []byte) ([]byte, error) {
 
 func (sutw *SemanticUnderstandingTaskWorker) applyResult(ctx context.Context, tx *sql.Tx, task *interfaces.SemanticUnderstandingTask,
 	resultJSON string, confidence float64) (*interfaces.SemanticUnderstandingApplyResult, error) {
+	if task.Scope == interfaces.SemanticUnderstandingTaskScopeCatalog {
+		return nil, errors.New("catalog semantic understanding tasks are temporarily unavailable")
+	}
 
 	if confidence < task.ConfidenceThreshold {
 		return skippedApplyResult(interfaces.SemanticUnderstandingSkippedApplyDetail{
@@ -963,8 +976,9 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResult(ctx context.Context, tx
 	switch task.Scope {
 	case interfaces.SemanticUnderstandingTaskScopeResource:
 		return sutw.applyResourceResult(ctx, tx, task, resultJSON)
-	case interfaces.SemanticUnderstandingTaskScopeCatalog:
-		return sutw.applyCatalogResult(ctx, tx, task, resultJSON)
+	// Catalog 任务暂不支持，旧结果应用路径保留在下方注释中。
+	// case interfaces.SemanticUnderstandingTaskScopeCatalog:
+	// 	return sutw.applyCatalogResult(ctx, tx, task, resultJSON)
 	default:
 		return nil, fmt.Errorf("unsupported semantic understanding task scope: %s", task.Scope)
 	}
@@ -1198,6 +1212,7 @@ func validateConfidence(confidence *float64, path string) error {
 	return nil
 }
 
+/* Catalog 任务暂不支持；保留旧 Logic View 写入和校验实现。
 func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Context, tx *sql.Tx,
 	task *interfaces.SemanticUnderstandingTask, resultJSON string) (*interfaces.SemanticUnderstandingApplyResult, error) {
 
@@ -1348,7 +1363,7 @@ func validateCatalogLogicViewOutput(view interfaces.SemanticUnderstandingCatalog
 	default:
 		return fmt.Errorf("unsupported logic view action: %s", view.Action)
 	}
-	if len(view.LogicDefinition) == 0 {
+	if len(interfaces.LegacyLogicDefinitionNodes(view.LogicDefinition)) == 0 {
 		return fmt.Errorf("logic_definition is required for logic view action %s", view.Action)
 	}
 	for _, sourceResourceID := range view.SourceResources {
@@ -1358,3 +1373,4 @@ func validateCatalogLogicViewOutput(view interfaces.SemanticUnderstandingCatalog
 	}
 	return nil
 }
+*/

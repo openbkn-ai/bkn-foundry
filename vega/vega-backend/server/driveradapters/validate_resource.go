@@ -46,11 +46,7 @@ func validateResourceRequestBase(ctx context.Context, req *interfaces.ResourceRe
 func validateResourceRequestSchema(ctx context.Context, req *interfaces.ResourceRequest) error {
 	switch req.Category {
 	case interfaces.ResourceCategoryLogicView:
-		if extension := resourcelogic.GetLogicViewExtension(); extension != nil {
-			return extension.ValidateRequest(ctx, req)
-		}
-		return rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
-			WithErrorDetails("logic views require the Enterprise extension")
+		return resourcelogic.ValidateLogicViewRequest(ctx, req)
 	case interfaces.ResourceCategoryDataset:
 		if req.IndexConfig != nil {
 			if len(req.IndexConfig.PrimaryKeyFields) > 0 {

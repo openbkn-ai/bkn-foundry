@@ -8,10 +8,13 @@
 package resource
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"reflect"
 	"slices"
@@ -155,14 +158,14 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	switch req.Category {
 	case interfaces.ResourceCategoryLogicView:
 		var viewFields []*interfaces.Property
-		logicType, viewFields, err = rs.prepareLogicView(ctx, req)
+		req.SourceMetadata = nil
+		logicType, viewFields, err = PrepareLogicView(ctx, req)
 		if err != nil {
 			return nil, err
 		}
 		req.SchemaDefinition = viewFields
-		if req.SourceIdentifier == "" {
-			req.SourceIdentifier = fmt.Sprintf("%s.%s", req.CatalogID, id)
-		}
+		req.SourceIdentifier = id
+		req.Schema = ""
 	}
 	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
 		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
@@ -186,7 +189,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			return nil, err
 		}
 	}
-	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
+	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig, req.Category); err != nil {
 		return nil, err
 	}
 	if err := rs.validateIndexConfigAnalyzers(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
@@ -761,13 +764,22 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryLogicView:
-		logicType, viewFields, err := rs.prepareLogicView(ctx, req)
-		if err != nil {
-			return err
+		previousDefinition := resource.LogicDefinition
+		previousSchema := resource.SchemaDefinition
+		previousMetadata := resource.SourceMetadata
+		if logicViewDefinitionEqual(previousDefinition, req.LogicDefinition) &&
+			reflect.DeepEqual(previousSchema, req.SchemaDefinition) {
+			if properties, ok := previousMetadata["properties"]; ok {
+				if req.SourceMetadata == nil {
+					req.SourceMetadata = make(map[string]any)
+				}
+				req.SourceMetadata["properties"] = properties
+			}
 		}
-		resource.SchemaDefinition = viewFields
-		resource.LogicType = logicType
+		resource.SchemaDefinition = req.SchemaDefinition
+		resource.LogicType = req.LogicType
 		resource.LogicDefinition = req.LogicDefinition
+		resource.SourceMetadata = req.SourceMetadata
 	default:
 		resource.SchemaDefinition = applyMutableSchemaFields(
 			resource.SchemaDefinition,
@@ -797,7 +809,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 			return err
 		}
 	}
-	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
+	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig, resource.Category); err != nil {
 		return err
 	}
 	if err := rs.validateIndexConfigAnalyzers(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
@@ -915,6 +927,48 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func logicViewDefinitionEqual(current, next any) bool {
+	currentValue, err := comparableLogicViewDefinition(current)
+	if err != nil {
+		return false
+	}
+	nextValue, err := comparableLogicViewDefinition(next)
+	return err == nil && reflect.DeepEqual(currentValue, nextValue)
+}
+
+func comparableLogicViewDefinition(definition any) (any, error) {
+	encoded, err := json.Marshal(definition)
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, err
+	}
+	return normalizeLogicViewNumbers(decoded), nil
+}
+
+func normalizeLogicViewNumbers(value any) any {
+	switch v := value.(type) {
+	case json.Number:
+		if number, ok := new(big.Rat).SetString(string(v)); ok {
+			return struct{ Number string }{number.RatString()}
+		}
+		return v
+	case []any:
+		for i := range v {
+			v[i] = normalizeLogicViewNumbers(v[i])
+		}
+	case map[string]any:
+		for key := range v {
+			v[key] = normalizeLogicViewNumbers(v[key])
+		}
+	}
+	return value
 }
 
 func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
@@ -1325,10 +1379,12 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		err       error
 	)
 	if req.Category == interfaces.ResourceCategoryLogicView {
-		logicType, req.SchemaDefinition, err = rs.prepareLogicView(ctx, req)
+		logicType, req.SchemaDefinition, err = PrepareLogicView(ctx, req)
 		if err != nil {
 			return nil, err
 		}
+		req.SourceIdentifier = id
+		req.Schema = ""
 	}
 	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
 		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
@@ -1445,7 +1501,20 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 		return false, unsupportedResourceUpdateError(ctx, "category cannot be updated")
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
-		return req.LogicDefinition != nil && !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition), nil
+		if req.LogicType != resource.LogicType {
+			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
+		}
+		req.SourceMetadata = nil
+		logicType, viewFields, err := PrepareLogicView(ctx, req)
+		if err != nil {
+			return false, err
+		}
+		if logicType != resource.LogicType {
+			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
+		}
+		req.SchemaDefinition = viewFields
+		return !logicViewDefinitionEqual(resource.LogicDefinition, req.LogicDefinition) ||
+			!reflect.DeepEqual(resource.SchemaDefinition, viewFields), nil
 	}
 	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {
@@ -1464,7 +1533,8 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 	return schemaChanged || indexConfigChanged, err
 }
 
-func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property,
+	indexConfig *interfaces.ResourceIndexConfig, category string) error {
 	if err := validateIndexConfigKeyFields(ctx, schema, indexConfig); err != nil {
 		return err
 	}
@@ -1523,9 +1593,14 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 			feature.Config["dimension"] = model.EmbeddingDim
 		}
 	}
-	if err := ValidateVectorFeatureReferences(schema); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+	// A derived view may expose only the field carrying a source Feature while
+	// its referenced vector field remains private. EE preparation validates the
+	// reference against the complete source schema before reaching this point.
+	if category != interfaces.ResourceCategoryLogicView {
+		if err := ValidateVectorFeatureReferences(schema); err != nil {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(err.Error())
+		}
 	}
 	return nil
 }

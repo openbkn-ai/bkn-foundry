@@ -9,13 +9,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net/http"
+	// "net/http" // Catalog 父目录测试恢复时启用。
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	// "github.com/openbkn-ai/bkn-foundry/comm-go/rest" // Catalog 父目录测试恢复时启用。
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -150,6 +150,26 @@ func TestSemanticUnderstandingTaskWorkerKeepsPendingTaskWhenClaimFails(t *testin
 	err := worker.Run(context.Background(), "semantic-task-1")
 
 	require.ErrorContains(t, err, "temporary database error")
+}
+
+func TestSemanticUnderstandingTaskWorkerRejectsPendingCatalogTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{suts: taskService}
+	taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(
+		&interfaces.SemanticUnderstandingTask{
+			ID:     "semantic-task-1",
+			Scope:  interfaces.SemanticUnderstandingTaskScopeCatalog,
+			Status: interfaces.SemanticUnderstandingTaskStatusPending,
+		}, nil,
+	)
+	taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").Return(true, nil)
+	taskService.EXPECT().InternalMarkFailed(gomock.Any(), "semantic-task-1",
+		"catalog semantic understanding tasks are temporarily unavailable").Return(true, nil)
+
+	err := worker.Run(context.Background(), "semantic-task-1")
+	require.ErrorContains(t, err, "catalog semantic understanding tasks are temporarily unavailable")
 }
 
 func TestSemanticUnderstandingTaskWorkerRecoversTaskPanic(t *testing.T) {
@@ -425,6 +445,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		require.NoError(t, worker.Run(context.Background(), "semantic-task-1"))
 	})
 
+	/* Catalog 任务暂不支持；保留旧用例供后续恢复。
 	t.Run("cancels active catalog task when catalog was deleted", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -445,6 +466,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 
 		require.NoError(t, worker.Run(context.Background(), "semantic-task-1"))
 	})
+	*/
 
 	t.Run("skips completed task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -889,6 +911,26 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 	})
 }
 
+func TestSemanticUnderstandingTaskWorkerApplyResultRejectsCatalogScope(t *testing.T) {
+	worker := &SemanticUnderstandingTaskWorker{}
+	for _, mode := range []string{
+		interfaces.SemanticUnderstandingApplyModeDryRun,
+		interfaces.SemanticUnderstandingApplyModeForce,
+	} {
+		t.Run(string(mode), func(t *testing.T) {
+			task := &interfaces.SemanticUnderstandingTask{
+				Scope:               interfaces.SemanticUnderstandingTaskScopeCatalog,
+				ApplyMode:           mode,
+				ConfidenceThreshold: 0.75,
+			}
+			got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{}`, 0.1)
+			assert.Nil(t, got)
+			require.ErrorContains(t, err, "catalog semantic understanding tasks are temporarily unavailable")
+		})
+	}
+}
+
+/* Catalog 结果应用暂停；保留原测试。
 func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
@@ -964,6 +1006,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResultRejectsInvalidSourceId
 
 	require.ErrorContains(t, err, "source_identifier must be lower snake_case")
 }
+*/
 
 func TestParseBknAgentResult(t *testing.T) {
 	t.Run("parses pure json", func(t *testing.T) {

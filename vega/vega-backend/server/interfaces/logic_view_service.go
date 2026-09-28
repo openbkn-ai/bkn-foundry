@@ -7,8 +7,11 @@
 package interfaces
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/bytedance/sonic"
 )
@@ -73,6 +76,52 @@ type LogicView struct {
 	Resource
 	IsSingleSource bool                 `json:"is_single_source,omitempty" mapstructure:"-"`
 	RefResources   map[string]*Resource `json:"ref_resources,omitempty" mapstructure:"-"`
+}
+
+// DerivedLogicDefinition binds a view to one source and an optional fixed filter.
+type DerivedLogicDefinition struct {
+	SourceResourceID string `json:"source_resource_id"`
+	FilterCondition  any    `json:"filter_condition,omitempty"`
+}
+
+func (d *DerivedLogicDefinition) UnmarshalJSON(data []byte) error {
+	type definition DerivedLogicDefinition
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	var parsed definition
+	if err := decoder.Decode(&parsed); err != nil {
+		return err
+	}
+	*d = DerivedLogicDefinition(parsed)
+	return nil
+}
+
+// DecodeDerivedLogicDefinition validates and decodes the derived shape carried by Resource.
+func DecodeDerivedLogicDefinition(raw any) (*DerivedLogicDefinition, error) {
+	if raw == nil {
+		return nil, fmt.Errorf("logic_definition is required")
+	}
+	encoded, err := sonic.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var definition DerivedLogicDefinition
+	if err := json.Unmarshal(encoded, &definition); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(definition.SourceResourceID) == "" {
+		return nil, fmt.Errorf("source_resource_id is required")
+	}
+	return &definition, nil
+}
+
+// LegacyLogicDefinitionNodes isolates the inactive node model from the Resource JSON field.
+func LegacyLogicDefinitionNodes(raw any) []*LogicDefinitionNode {
+	if nodes, ok := raw.([]*LogicDefinitionNode); ok {
+		return nodes
+	}
+	return nil
 }
 
 // LogicDefinitionNode represents the nodes in the graph
@@ -245,6 +294,15 @@ type SearchAfterParams struct {
 
 //go:generate mockgen -source ../interfaces/logic_view_service.go -destination ../interfaces/mock/mock_logic_view_service.go
 type LogicViewService interface {
+	// ValidateRequest checks the logic-view definition before persistence.
+	ValidateRequest(ctx context.Context, req *ResourceRequest) error
+
+	// Prepare resolves the source and returns the fields to persist. For a derived
+	// view, it must replace req.SourceMetadata with a map containing a non-empty
+	// "source_resource" map[string]any snapshot; the shared service rejects a
+	// successful preparation that omits this server-generated metadata.
+	Prepare(ctx context.Context, req *ResourceRequest) (logicType string, schema []*Property, err error)
+
 	// QueryWithPaging queries logic-view data and returns cursor paging state when supported.
 	QueryWithPaging(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 }

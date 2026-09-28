@@ -4,9 +4,11 @@ info:
   title: Semantic Understanding Task
   version: 0.1.0
   description: |
-    Vega Backend asynchronous semantic-understanding task API. A task can target
-    one Resource or an entire Catalog. The worker submits the task to bkn-agent
-    and writes back results and application status asynchronously.
+    Vega Backend asynchronous semantic-understanding task API. New tasks can
+    target one Resource. Catalog task creation and execution are temporarily
+    unavailable; existing Catalog tasks remain readable and deletable.
+    The worker submits Resource tasks to bkn-agent and writes back results and
+    application status asynchronously.
 servers:
   - url: /api/vega-backend/v1
 security:
@@ -169,8 +171,7 @@ components:
       type: object
       required: [scope]
       properties:
-        scope: { type: string, enum: [resource, catalog] }
-        catalog_id: { type: string }
+        scope: { type: string, enum: [resource] }
         resource_id: { type: string }
         apply_mode: { type: string, enum: [dry_run, fill_empty, force], default: fill_empty }
         confidence_threshold: { type: number, format: double, default: 0.75 }
@@ -183,10 +184,6 @@ components:
             properties: { scope: { const: resource } }
           then:
             required: [resource_id]
-        - if:
-            properties: { scope: { const: catalog } }
-          then:
-            required: [catalog_id]
     SemanticUnderstandingTask:
       type: object
       required: [id, scope, catalog_id, agent_id, input, input_hash, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time]

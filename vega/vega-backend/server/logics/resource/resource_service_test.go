@@ -657,6 +657,22 @@ func TestResourceUpdateUsesFeatureSemanticsForEverySupportedCategory(t *testing.
 	}
 }
 
+func TestValidateResourceUpdateScopeRejectsLogicTypeChange(t *testing.T) {
+	resource := &interfaces.Resource{
+		CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicView,
+		LogicType: interfaces.LogicType_Derived,
+	}
+	for _, logicType := range []string{"", interfaces.LogicType_Composite} {
+		changed, err := (&resourceService{}).validateResourceUpdateScope(context.Background(), resource,
+			&interfaces.ResourceRequest{
+				CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicView, LogicType: logicType,
+			})
+		assert.False(t, changed)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "logic_type cannot be changed")
+	}
+}
+
 func TestSourceMetadataRowCountHandlesMissingMetadata(t *testing.T) {
 	for _, metadata := range []map[string]any{
 		nil,
@@ -959,11 +975,40 @@ func TestResourceServiceValidateIndexConfigModelsRejectsReferencedVectorConfig(t
 		},
 	}
 
-	err := rs.validateIndexConfigModels(context.Background(), schema, nil)
+	err := rs.validateIndexConfigModels(context.Background(), schema, nil, interfaces.ResourceCategoryTable)
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, `vector feature on field "content" that references "embedding" must not define config`)
+}
+
+func TestResourceServiceValidateIndexConfigModelsLogicViewHiddenVectorReference(t *testing.T) {
+	schema := []*interfaces.Property{{
+		Name: "content_alias",
+		Type: interfaces.DataType_Text,
+		Features: []interfaces.PropertyFeature{{
+			FeatureType: interfaces.PropertyFeatureType_Vector,
+			RefProperty: "source_embedding",
+		}},
+	}}
+	rs := &resourceService{}
+
+	// The EE view preparation has already checked the reference against the full
+	// source schema. The target may be omitted from the public view schema.
+	require.NoError(t, rs.validateIndexConfigModels(context.Background(), schema, nil,
+		interfaces.ResourceCategoryLogicView))
+
+	err := rs.validateIndexConfigModels(context.Background(), schema, nil,
+		interfaces.ResourceCategoryTable)
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, "references invalid vector field")
+
+	schema[0].Features[0].Config = map[string]any{"embedding_model": "invalid"}
+	err = rs.validateIndexConfigModels(context.Background(), schema, nil,
+		interfaces.ResourceCategoryLogicView)
+	httpErr = requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, "must not define config")
 }
 
 func TestValidateKeywordConfig(t *testing.T) {
@@ -1004,6 +1049,26 @@ func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, "cannot contain null fields")
+}
+
+func TestLogicViewDefinitionEqual(t *testing.T) {
+	stored := map[string]any{
+		"source_resource_id": "source-1",
+		"filter_condition":   map[string]any{"operation": "eq", "value": float64(1)},
+	}
+	prepared := &interfaces.DerivedLogicDefinition{
+		SourceResourceID: "source-1",
+		FilterCondition:  map[string]any{"operation": "eq", "value": json.Number("1.0")},
+	}
+	assert.True(t, logicViewDefinitionEqual(stored, prepared))
+	assert.False(t, logicViewDefinitionEqual(stored, &interfaces.DerivedLogicDefinition{
+		SourceResourceID: "source-2",
+		FilterCondition:  prepared.FilterCondition,
+	}))
+	assert.False(t, logicViewDefinitionEqual(
+		map[string]any{"filter_condition": map[string]any{"value": json.Number("9007199254740993")}},
+		map[string]any{"filter_condition": map[string]any{"value": json.Number("9007199254740992")}},
+	))
 }
 
 func TestResourceServiceCreate(t *testing.T) {

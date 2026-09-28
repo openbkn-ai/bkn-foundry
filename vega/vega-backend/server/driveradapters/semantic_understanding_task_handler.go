@@ -74,17 +74,15 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 		}
 		task, err = r.suts.CreateResourceTask(ctx, req.ResourceID, &req)
 	case interfaces.SemanticUnderstandingTaskScopeCatalog:
-		if req.CatalogID == "" {
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
-				WithErrorDetails("catalog_id is required")
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		task, err = r.suts.CreateCatalogTask(ctx, req.CatalogID, &req)
+		// Catalog 任务生成的 Logic View 尚未适配 derived 契约，暂时拒绝创建。
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+			WithErrorDetails("catalog semantic understanding tasks are temporarily unavailable")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
 	default:
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
-			WithErrorDetails("scope must be resource or catalog")
+			WithErrorDetails("scope must be resource")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

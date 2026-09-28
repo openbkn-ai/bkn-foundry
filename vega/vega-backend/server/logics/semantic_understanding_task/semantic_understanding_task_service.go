@@ -14,7 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
+	// "sort" // Catalog 任务恢复时启用。
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -144,6 +144,14 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 }
 
 func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Context, catalogID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
+	// Catalog 任务生成的 Logic View 尚未适配 derived 契约，暂时拒绝创建。
+	return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+		WithErrorDetails("catalog semantic understanding tasks are temporarily unavailable")
+}
+
+/* Catalog 任务暂不支持；保留旧创建实现供后续适配。
+//nolint:unused // Catalog task creation is paused until the catalog-level contract is restored.
+func (suts *semanticUnderstandingTaskService) createCatalogTask(ctx context.Context, catalogID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.CreateCatalogTask")
 	defer span.End()
 
@@ -181,6 +189,7 @@ func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Cont
 	}
 	return suts.createTask(ctx, task)
 }
+*/
 
 func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, task *interfaces.SemanticUnderstandingTask) (*interfaces.SemanticUnderstandingTask, error) {
 	activeTask, err := suts.suta.FindActiveByInputHash(ctx, task.Scope, task.InputHash)
@@ -731,6 +740,8 @@ func truncateSemanticUnderstandingSampleString(value string) string {
 	return value
 }
 
+/* Catalog 任务暂不支持；保留旧请求转换。
+//nolint:unused // Catalog task creation is paused until the catalog-level contract is restored.
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 	normalized := defaultSemanticUnderstandingRequest()
 	if req != nil {
@@ -763,6 +774,7 @@ func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, r
 		ConfidenceThreshold: *normalized.ConfidenceThreshold,
 	}, nil
 }
+*/
 
 func validateSemanticUnderstandingRequest(req *interfaces.CreateSemanticUnderstandingTaskRequest) error {
 	switch req.ApplyMode {
@@ -834,6 +846,7 @@ func buildSemanticUnderstandingSampleContext(resource *interfaces.Resource, incl
 	return context
 }
 
+/* Catalog 任务暂不支持；保留旧 Agent 输入组装。
 func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (string, string, error) {
 	sort.SliceStable(resources, func(i, j int) bool {
 		return resources[i].ID < resources[j].ID
@@ -865,6 +878,7 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 	}
 	return marshalSemanticUnderstandingInput(input)
 }
+*/
 
 func buildResourceAgentInputResource(resource *interfaces.Resource) interfaces.SemanticUnderstandingResourceAgentInputResource {
 	return interfaces.SemanticUnderstandingResourceAgentInputResource{
@@ -878,6 +892,7 @@ func buildResourceAgentInputResource(resource *interfaces.Resource) interfaces.S
 	}
 }
 
+/* Catalog 任务暂不支持；保留旧资源字段映射。
 func buildCatalogAgentInputResource(resource *interfaces.Resource) interfaces.SemanticUnderstandingCatalogAgentInputResource {
 	return interfaces.SemanticUnderstandingCatalogAgentInputResource{
 		ID:               resource.ID,
@@ -970,6 +985,7 @@ func buildCatalogAgentInputProperties(properties []*interfaces.Property) []inter
 	}
 	return result
 }
+*/
 
 func buildResourceAgentInputProperties(properties []*interfaces.Property) []interfaces.SemanticUnderstandingResourceAgentInputProperty {
 	result := make([]interfaces.SemanticUnderstandingResourceAgentInputProperty, 0, len(properties))
