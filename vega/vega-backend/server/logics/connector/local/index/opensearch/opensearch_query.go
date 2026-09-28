@@ -21,6 +21,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 func openSearchInt64(value any) (int64, bool) {
@@ -339,6 +340,9 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 	if indexName == "" {
 		return nil, fmt.Errorf("index name is empty in resource")
+	}
+	if err := c.validateStoredFilterCondition(resource, params); err != nil {
+		return nil, err
 	}
 
 	// Aggregation query: Executed when any of the parameters Aggregation, GroupBy, or Having exists
@@ -724,6 +728,19 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		Total:       int64(total),
 		SearchAfter: searchAfter,
 	}, nil
+}
+
+// Compile the saved condition independently before building the merged query.
+// This preserves error provenance when both saved and caller conditions exist.
+func (c *OpenSearchConnector) validateStoredFilterCondition(resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) error {
+	if params == nil || params.FixedActualFilterCond == nil {
+		return nil
+	}
+	if _, err := c.ConvertFilterCondition(params.FixedActualFilterCond, resource.SchemaDefinition); err != nil {
+		return &filter_condition.StoredConditionBuildError{Cause: err}
+	}
+	return nil
 }
 
 // nestedTermsSize sets the size for each layer of terms in the nested group_by: the innermost layer uses limit to control the number of rows "under each parent bucket", and the outer layer uses a larger upper limit to expand the combination.

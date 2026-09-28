@@ -25,6 +25,22 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
+func TestValidateStoredFilterConditionPreservesErrorSource(t *testing.T) {
+	field := &interfaces.Property{Name: "body", OriginalName: "BODY", Type: interfaces.DataType_Text}
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{field}}
+	cfg := &interfaces.FilterCondCfg{Name: "body", Operation: filter_condition.OperationEqual,
+		ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: "example"}}
+	actual, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"body": field})
+	require.NoError(t, err)
+	params := &interfaces.ResourceDataQueryParams{FixedFilterCondCfg: cfg, FixedActualFilterCond: actual}
+	err = (&OpenSearchConnector{}).validateStoredFilterCondition(resource, params)
+	var stored *filter_condition.StoredConditionBuildError
+	require.ErrorAs(t, err, &stored)
+	assert.Contains(t, stored.Error(), "no keyword feature")
+	_, requestSide := filter_condition.RequestSideQueryError(err)
+	assert.False(t, requestSide)
+}
+
 func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	queries := make(chan map[string]any, 3)
 	requestCount := 0

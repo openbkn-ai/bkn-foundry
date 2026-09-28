@@ -191,6 +191,25 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			WithErrorDetails(err.Error())
 	}
 
+	// Resolve the stored view condition first. It is part of server configuration,
+	// so a model that becomes unavailable after saving the view is a server error.
+	// The fixed subtree is shared with FilterCondCfg; a successful resolution is
+	// reused when the complete condition is resolved below.
+	if params.FixedFilterCondCfg != nil {
+		if err := rds.resolveVectorConditions(ctx, resource, params.FixedFilterCondCfg, ignoreLocalIndex); err != nil {
+			otellog.LogError(ctx, "Resolve stored view vector condition failed", err)
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+				WithErrorDetails("stored view filter_condition cannot be resolved")
+		}
+		fixedActual, err := filter_condition.NewFilterCondition(ctx, params.FixedFilterCondCfg, fieldMap)
+		if err != nil {
+			otellog.LogError(ctx, "Build stored view condition failed", err)
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+				WithErrorDetails("stored view filter_condition cannot be built")
+		}
+		params.FixedActualFilterCond = fixedActual
+	}
+
 	// The conditions for vector retrieval include the query text and the source field name. Here, they are changed to vector and physical vector fields.
 	if err := rds.resolveVectorConditions(ctx, resource, params.FilterCondCfg, ignoreLocalIndex); err != nil {
 		otellog.LogError(ctx, "Resolve vector condition failed", err)
@@ -231,6 +250,10 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			documents, total, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 			if err != nil {
 				otellog.LogError(ctx, "Query table data from local index failed", err)
+				if _, stored := filter_condition.AsStoredConditionBuildError(err); stored {
+					return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+						WithErrorDetails("stored view filter_condition cannot be built")
+				}
 				if reason, ok := filter_condition.RequestSideQueryError(err); ok {
 					return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 						WithErrorDetails(reason)
@@ -433,7 +456,7 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 			return nil, err
 		}
 
-		if result != nil {
+		if result != nil && result.QuerySource == "" {
 			result.QuerySource = resourceQuerySource(resource, params)
 		}
 		return result, nil

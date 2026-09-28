@@ -82,8 +82,12 @@ type ResourceDataQueryParams struct {
 
 	QueryType string `json:"-"`
 
-	FilterCondCfg    *FilterCondCfg  `json:"-"`
-	ActualFilterCond FilterCondition `json:"-"`
+	FilterCondCfg *FilterCondCfg `json:"-"`
+	// FixedFilterCondCfg identifies the stored view condition within FilterCondCfg.
+	// It is internal query provenance and must never be accepted from the API.
+	FixedFilterCondCfg    *FilterCondCfg  `json:"-"`
+	FixedActualFilterCond FilterCondition `json:"-"`
+	ActualFilterCond      FilterCondition `json:"-"`
 
 	// CursorEncoded keyset cursor values are injected by the query session; When not empty, use WHERE (sort_cols) > cursor instead of OFFSET
 	CursorEncoded string `json:"-"`

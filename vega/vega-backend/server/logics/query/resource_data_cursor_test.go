@@ -217,6 +217,50 @@ func TestExecuteInitialResourceDataCursorWithCategory(t *testing.T) {
 	})
 }
 
+func TestExecuteResourceDataCursorContinuationWithRunnerRejectsChangedSource(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*interfaces.Resource)
+	}{
+		{name: "source revision", change: func(source *interfaces.Resource) { source.UpdateTime++ }},
+		{name: "local index availability", change: func(source *interfaces.Resource) {
+			source.LocalIndexStatus = interfaces.ResourceLocalIndexStatusUnavailable
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previousManager := rawQueryCursorSessions
+			rawQueryCursorSessions = newCursorSessionManager(10)
+			t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+			view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView, UpdateTime: 10}
+			source := &interfaces.Resource{ID: "source-1", Category: interfaces.ResourceCategoryTable,
+				UpdateTime: 20, LocalIndexName: "source-index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable}
+			calls := 0
+			executor := ResourceDataPageExecutor(func(_ context.Context, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				calls++
+				params.SearchAfter = []any{"next"}
+				return []map[string]any{{"id": calls}}, 2, nil
+			})
+			first, err := ExecuteInitialResourceDataCursorWithCategoryRunner(context.Background(), "account-1", view,
+				source, interfaces.ResourceCategoryIndex,
+				&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
+			require.NoError(t, err)
+			require.NotNil(t, first.Paging.NextCursor)
+			second, err := ExecuteResourceDataCursorContinuationWithRunner(context.Background(), "account-1", view,
+				source, *first.Paging.NextCursor, executor)
+			require.NoError(t, err)
+			require.NotNil(t, second.Paging.NextCursor)
+
+			changed := *source
+			tc.change(&changed)
+			_, err = ExecuteResourceDataCursorContinuationWithRunner(context.Background(), "account-1", view,
+				&changed, *second.Paging.NextCursor, executor)
+			assertHTTPError(t, err, http.StatusNotFound)
+			assert.Equal(t, 2, calls)
+		})
+	}
+}
+
 func TestExecuteInitialResourceDataCursor(t *testing.T) {
 	t.Run("active initial page is not reclaimed", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
