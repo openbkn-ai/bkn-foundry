@@ -135,7 +135,7 @@
           },
           "additionalProperties": true
         },
-        "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细。logic_properties 只给名称与类型，要看取数来源与参数定义（谁来填）用 get_object_types 或 search_schema"
+        "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细。logic_properties 只给名称与类型，要看取数来源与参数定义（谁来填）用 get_object_types 或 search_schema 知识网络超过 200 个对象类或 600 个关系类时，本次不返回该数组（notice 会说明），请按 concept_groups 下钻。"
       },
       "relation_types": {
         "type": "array",
@@ -165,7 +165,7 @@
           },
           "additionalProperties": true
         },
-        "description": "关系类型"
+        "description": "关系类型 知识网络超过 200 个对象类或 600 个关系类时，本次不返回该数组（notice 会说明），请按 concept_groups 下钻。"
       },
       "action_types": {
         "type": "array",
@@ -191,7 +191,7 @@
           },
           "additionalProperties": true
         },
-        "description": "行动类型"
+        "description": "行动类型 知识网络超过 200 个对象类或 600 个关系类时，本次不返回该数组（notice 会说明），请按 concept_groups 下钻。"
       },
       "mounted_capabilities": {
         "type": "object",
@@ -214,6 +214,22 @@
             "description": "MCP 工具数量，同样用 execute_tool 调用"
           }
         }
+      },
+      "object_type_count": {
+        "type": "integer",
+        "description": "该网络的对象类总数。仅当网络超过单次返回上限、本次只给导航壳时出现；其余情况下 object_types 数组本身就是数量。"
+      },
+      "relation_type_count": {
+        "type": "integer",
+        "description": "该网络的关系类总数。出现条件同 object_type_count。"
+      },
+      "action_type_count": {
+        "type": "integer",
+        "description": "该网络的行动类总数。出现条件同 object_type_count。"
+      },
+      "notice": {
+        "type": "string",
+        "description": "本次返回被收窄的原因与下一步指引。出现时 object_types/relation_types/action_types 为空数组，这不表示该网络没有这些概念——数量见三个 *_count 字段，具体概念按 concept_groups 选簇后用 search_schema 取。 该网络若没划概念组，notice 会改为指向 search_schema。"
       }
     }
   }

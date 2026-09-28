@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -12,12 +13,14 @@ import (
 
 type knSearchSchemaAccessStub struct {
 	permissions map[string]interfaces.PropertyAccessLevel
-	calls       *int
+	// Atomic because the reads fan out: FilterObjectTypes stopped asking one object
+	// type at a time when a network's worth of them stopped fitting in a timeout.
+	calls *atomic.Int64
 }
 
 func (s knSearchSchemaAccessStub) GetObjectTypeSchema(context.Context, string, string) (*interfaces.ObjectTypeSchemaResp, error) {
 	if s.calls != nil {
-		(*s.calls)++
+		s.calls.Add(1)
 	}
 	return &interfaces.ObjectTypeSchemaResp{EffectivePermissions: s.permissions}, nil
 }
@@ -63,12 +66,12 @@ func TestConceptRetrievalAuthorizesOnlySelectedObjectTypes(t *testing.T) {
 	}
 	config := DefaultConceptRetrievalConfig()
 	config.TopK = 1
-	calls := 0
+	calls := &atomic.Int64{}
 	service := &localSearchImpl{
 		logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: &interfaces.KnowledgeNetworkDetail{ObjectTypes: objects}},
 		schemaAccess: knSearchSchemaAccessStub{
 			permissions: map[string]interfaces.PropertyAccessLevel{"visible": interfaces.PropertyAccessFull},
-			calls:       &calls,
+			calls:       calls,
 		},
 	}
 
@@ -78,8 +81,8 @@ func TestConceptRetrievalAuthorizesOnlySelectedObjectTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != len(result.ObjectTypes) || calls >= candidateCount {
-		t.Fatalf("schema calls=%d result objects=%d candidates=%d", calls, len(result.ObjectTypes), candidateCount)
+	if got := int(calls.Load()); got != len(result.ObjectTypes) || got >= candidateCount {
+		t.Fatalf("schema calls=%d result objects=%d candidates=%d", got, len(result.ObjectTypes), candidateCount)
 	}
 	for _, objectType := range result.ObjectTypes {
 		if len(objectType.DataProperties) != 1 || objectType.DataProperties[0].Name != "visible" {

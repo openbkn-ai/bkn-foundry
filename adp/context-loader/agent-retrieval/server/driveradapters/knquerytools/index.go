@@ -173,17 +173,27 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, req.KnID, resp.ObjectTypes)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] object property authorization failed: %v", err)
-		rest.ReplyError(c, err)
-		return
-	}
-	// Only the count is attached but not the details: it is enough for the Agent to judge which object type is worthy of drill-down metrics.
-	if err := h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes); err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] metric authorization failed: %v", err)
-		rest.ReplyError(c, err)
-		return
+	// A network too large to answer with its concept model narrows to its navigation
+	// shell, and does so here -- before the two steps below, which each cost a
+	// downstream call per object type of a list this answer will not carry (#1877).
+	if resp.NeedsNavigationShell() {
+		resp.ReduceToNavigationShell()
+		resp.Notice = errors.LocalizedDetail(ctx, resp.NavigationShellNoticeKey(),
+			resp.ObjectTypeCount, resp.RelationTypeCount,
+			interfaces.MaxSummaryObjectTypes, interfaces.MaxSummaryRelationTypes)
+	} else {
+		resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, req.KnID, resp.ObjectTypes)
+		if err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] object property authorization failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
+		// Only the count is attached but not the details: it is enough for the Agent to judge which object type is worthy of drill-down metrics.
+		if err := h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes); err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] metric authorization failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
 	}
 	// The mounted Skills and tools, counted like the metrics above — but gated first. Those
 	// counts inherit their scope from object types that already survived FilterObjectTypes; the

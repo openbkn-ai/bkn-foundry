@@ -307,6 +307,14 @@ type KnowledgeNetworkDetail struct {
 	// layer is there and worth a call to search_capabilities, without carrying an input schema per
 	// tool into every "describe this network" answer.
 	MountedCapabilities *MountedCapabilityCounts `json:"mounted_capabilities,omitempty"`
+
+	// The three counts and the notice below appear together, and only when the network
+	// was too large to answer with its concept model -- see ReduceToNavigationShell.
+	// On every other answer the arrays are the count, so repeating it would be noise.
+	ObjectTypeCount   int    `json:"object_type_count,omitempty"`
+	RelationTypeCount int    `json:"relation_type_count,omitempty"`
+	ActionTypeCount   int    `json:"action_type_count,omitempty"`
+	Notice            string `json:"notice,omitempty"`
 }
 
 // MountedCapabilityCounts is how many capabilities of each kind a network has mounted.
@@ -356,6 +364,74 @@ func CountMountedCapabilities(refs []*CapabilityRef) *MountedCapabilityCounts {
 		counts.Total++
 	}
 	return counts
+}
+
+// MaxSummaryObjectTypes is the size past which get_kn_detail answers with the
+// network's navigation shell instead of its concept arrays.
+//
+// A summary object type costs about 1.1KB rendered, so the 1000-object network of
+// #1877 came to 1.09MB -- past any caller's context, and a thousand authorization
+// reads to produce something nobody could read. Two hundred is where the answer
+// stops being one: it is already 218KB, and every network that works today is well
+// under it.
+const MaxSummaryObjectTypes = 200
+
+// MaxSummaryRelationTypes is the same limit for the relation types.
+//
+// A relation entry is smaller than an object type and costs no downstream call, so
+// it is not what made #1877 time out -- but it is a quarter of that network's 4.5MB
+// and would carry a network past what a caller can read on its own. The reported
+// network holds 2925 relation types over 1000 object types, so three per object type
+// is what this model shape produces: 600 is the relation-side equivalent of the 200
+// above, and at roughly 430 bytes an entry it lands in the same quarter-megabyte.
+const MaxSummaryRelationTypes = 600
+
+// NeedsNavigationShell reports whether this network is too large to answer with its
+// concept arrays at any detail level. full is strictly larger than summary, so the
+// size that rules out one rules out the other.
+func (d *KnowledgeNetworkDetail) NeedsNavigationShell() bool {
+	if d == nil {
+		return false
+	}
+	return len(d.ObjectTypes) > MaxSummaryObjectTypes || len(d.RelationTypes) > MaxSummaryRelationTypes
+}
+
+// ReduceToNavigationShell keeps what a caller navigates by -- the network's own
+// record and its concept groups -- and replaces the three concept arrays with their
+// counts.
+//
+// This is the drill-down the tool description already prescribes at any size: pick
+// concept groups here, then call search_schema with them as its scope. Callers who
+// paged such a list would be scanning a knowledge model in name order, which is why
+// the answer narrows instead of paginating.
+//
+// It runs before the per-object-type authorization reads and the metric counts, not
+// after: those cost one downstream call per object type of a list this answer is not
+// going to carry.
+func (d *KnowledgeNetworkDetail) ReduceToNavigationShell() {
+	if d == nil {
+		return
+	}
+	d.ObjectTypeCount = len(d.ObjectTypes)
+	d.RelationTypeCount = len(d.RelationTypes)
+	d.ActionTypeCount = len(d.ActionTypes)
+	d.ObjectTypes = nil
+	d.RelationTypes = nil
+	d.ActionTypes = nil
+}
+
+// NavigationShellNoticeKey names the localized notice that fits this shell.
+//
+// The shell tells a caller to narrow by concept groups, because that is the
+// drill-down the tool prescribes. A network that defines none -- the 1000-object
+// network of #1877 is one -- would be told to pick from an empty field, so it is
+// pointed straight at search_schema instead, which recalls by meaning and needs
+// no scope.
+func (d *KnowledgeNetworkDetail) NavigationShellNoticeKey() string {
+	if d != nil && len(d.ConceptGroups) > 0 {
+		return "KnDetailNavigationShell"
+	}
+	return "KnDetailNavigationShellNoGroups"
 }
 
 // Detail levels for get_kn_detail progressive disclosure.

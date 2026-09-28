@@ -16,6 +16,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
@@ -612,14 +613,24 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, resp.ObjectTypes)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		// Counts only: which object types have metrics worth drilling into, without
-		// carrying the metric list itself at this level.
-		if err := metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		// A network too large to answer with its concept model narrows to its navigation
+		// shell, and does so here -- before the two steps below, which each cost a
+		// downstream call per object type of a list this answer will not carry (#1877).
+		if resp.NeedsNavigationShell() {
+			resp.ReduceToNavigationShell()
+			resp.Notice = infraErr.LocalizedDetail(ctx, resp.NavigationShellNoticeKey(),
+				resp.ObjectTypeCount, resp.RelationTypeCount,
+				interfaces.MaxSummaryObjectTypes, interfaces.MaxSummaryRelationTypes)
+		} else {
+			resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, resp.ObjectTypes)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			// Counts only: which object types have metrics worth drilling into, without
+			// carrying the metric list itself at this level.
+			if err := metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
 		}
 		// The mounted Skills and tools, counted the same way — but gated first.
 		//

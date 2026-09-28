@@ -104,6 +104,23 @@ paths:
         顶层带 `mounted_capabilities`：该网络已挂载的 Skill 与工具按类型计数。两个
         `detail_level` 都会返回——它是网络的形状，不是可以剥掉的细节。同样只给计数：
         要具体能力用 `search_capabilities`。
+
+        **超过 200 个对象类、或超过 600 个关系类的网络只返回导航壳**，两个 `detail_level` 都是：此时
+        `object_types` / `relation_types` / `action_types` **不返回**，改由
+        `object_type_count` / `relation_type_count` / `action_type_count` 给出数量，
+        `notice` 说明原因与下一步。概念组与 `mounted_capabilities` 照常返回。
+
+        **该网络没划概念组时**（存在这种网：一千个对象类、零个概念组），`concept_groups`
+        为空，`notice` 改为让调用方直接调 `search_schema` 按语义召回——把人指向一个空字段
+        等于没给出路。
+
+        这不是分页。一张一千对象类的网，summary 也有一兆多，翻页只是把同样的体积分几次
+        搬运；而按名称序翻页等于对知识模型做线性扫描。该规模下的路径是：从 `concept_groups`
+        选出 1-3 个相关分组，用 [schema-search.yaml](schema-search.yaml) 的 `search_schema`
+        配合 `search_scope.concept_groups` 收敛，再用 `get_object_types` 按 ID 取细节。
+
+        收窄发生在逐对象类的属性授权读取之前：那一步每个对象类一次下游调用，为一份
+        不会返回的列表付这个代价没有意义。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
         - $ref: '#/components/parameters/XKnID'
@@ -416,6 +433,23 @@ components:
             $ref: '#/components/schemas/ActionType'
         mounted_capabilities:
           $ref: '#/components/schemas/MountedCapabilityCounts'
+        object_type_count:
+          type: integer
+          description: |
+            该网络的对象类总数。**仅在导航壳返回时出现**——其余情况下 `object_types`
+            数组本身就是数量，再给一个数只会多一个可能对不上的地方。
+        relation_type_count:
+          type: integer
+          description: 该网络的关系类总数。出现条件同 `object_type_count`。
+        action_type_count:
+          type: integer
+          description: 该网络的行动类总数。出现条件同 `object_type_count`。
+        notice:
+          type: string
+          description: |
+            本次返回被收窄的原因与下一步指引。**出现时 `object_types` /
+            `relation_types` / `action_types` 不返回**，这不表示该网络没有这些概念：
+            数量见三个 `*_count` 字段。
 
     MountedCapabilityCounts:
       type: object
