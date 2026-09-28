@@ -582,6 +582,14 @@ components:
             `data_properties` / `primary_keys` 里的条目一起被剔除，不会出现在响应里。
             对象类没有绑定已发布资源时不下发本字段，同时 `data_properties` 为空——
             对象类仍可被发现，但没有属性可用。
+
+            **`detail_level=summary` 下，整张表全是 `full` 时不下发本字段。** 把调用者
+            自己的权限一条条读回给他并不提供信息，而在一张一千对象类的网上它是响应的
+            六成。有任何 `schema` / `masked` 条目的表整张保留——那张表才有信息。
+            `detail_level=full` 原样下发。
+
+            所以字段缺席只有一个含义：**对你没有受限属性**。两种来源（未绑资源、全 `full`）
+            靠旁边的 `data_properties` 区分——未绑资源的对象类不下发任何属性。
         data_source_metadata_unavailable:
           type: boolean
           description: |
