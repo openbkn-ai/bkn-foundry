@@ -14,7 +14,7 @@
 
 🌐 **官网：**[openbkn.ai](https://openbkn.ai)
 
-[![License](https://img.shields.io/badge/license-multi--licensed-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-multi--licensed-blue.svg)](LICENSE) [![Release](https://img.shields.io/github/v/release/openbkn-ai/bkn-foundry)](https://github.com/openbkn-ai/bkn-foundry/releases/latest)
 
 <a href="https://trendshift.io/repositories/109706?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-109706" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/109706" alt="openbkn-ai%2Fbkn-foundry | Trendshift" width="250" height="55"/></a>
 
