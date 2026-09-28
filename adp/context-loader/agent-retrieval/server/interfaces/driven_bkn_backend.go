@@ -553,6 +553,81 @@ type ObjectTypesResp struct {
 	KnID        string        `json:"kn_id"`
 	ObjectTypes []*ObjectType `json:"object_types"`
 	Missing     []string      `json:"missing,omitempty"`
+
+	// The two below appear only when the caller listed instead of naming ids.
+	// TotalCount is how many object types the caller may see in this network, so a
+	// page can be read as "20 of 1000" rather than "20, and who knows".
+	TotalCount int64 `json:"total_count,omitempty"`
+	// NextOffset is the offset that continues the walk, absent on the last page.
+	// The caller should not compute it: what it means is this service's business,
+	// and a caller that derives it will be wrong the day the walk changes.
+	NextOffset *int `json:"next_offset,omitempty"`
+	// Notice says when the request was not honoured as asked -- today, only when a
+	// limit past the maximum was answered with the maximum. Quietly returning fewer
+	// rows than were asked for is how a caller concludes the network is small.
+	Notice string `json:"notice,omitempty"`
+}
+
+// Object type index bounds for get_object_types without ids.
+//
+// A listed entry is an index entry -- id, name, comment, tags, data source -- at
+// a few hundred bytes, because what a caller without ids needs is something to
+// choose by and then name. Two hundred of those is about the size of a small
+// network's whole summary, and fifty walks a 1000-object network in twenty
+// calls. Definitions come from naming the ids, which is the same progressive
+// disclosure get_kn_detail's summary and this tool's by-id path already are.
+const (
+	DefaultObjectTypePageSize = 50
+	MaxObjectTypePageSize     = 200
+)
+
+// ResolveObjectTypePage clamps a caller's paging inputs to the bounds above.
+// A negative offset is a typo, not a request to walk backwards; a limit past the
+// maximum is answered with the maximum rather than refused, because the caller
+// asked for more of a thing they can simply ask for again.
+// It reports whether the limit was cut down, because a page shorter than the one
+// asked for, with nothing said about it, reads as a network that ran out.
+func ResolveObjectTypePage(offset, limit int) (resolvedOffset, resolvedLimit int, clamped bool) {
+	if offset < 0 {
+		offset = 0
+	}
+	switch {
+	case limit <= 0:
+		limit = DefaultObjectTypePageSize
+	case limit > MaxObjectTypePageSize:
+		limit, clamped = MaxObjectTypePageSize, true
+	}
+	return offset, limit, clamped
+}
+
+// NextObjectTypeOffset is the offset that continues a walk, or nil on the last
+// page. It takes what the listing scanned, not what the page carries.
+//
+// A window that scanned nothing ends the walk even when the total says otherwise:
+// the total can move under a walk, and trusting it over what was actually read is
+// how a caller ends up looping on an empty page.
+func NextObjectTypeOffset(offset, scanned int, total int64) *int {
+	if scanned == 0 {
+		return nil
+	}
+	next := offset + scanned
+	if int64(next) >= total {
+		return nil
+	}
+	return &next
+}
+
+// ObjectTypePage is one page of a knowledge network's object types, with the
+// total the caller may see. bkn-backend applies the caller's authorization
+// before paging, so the total and the offsets are over what they can read.
+type ObjectTypePage struct {
+	Entries    []*ObjectType
+	TotalCount int64
+	// Scanned is how many object types the listing covered for this window, which
+	// is what a walk advances by. Entries can be shorter -- reading one of them in
+	// full can turn up nothing the caller may see -- and advancing by the entries
+	// would then re-read the window it just consumed, or stop while rows remain.
+	Scanned int
 }
 
 // RelationTypesResp is the get_relation_types response: the requested relation
@@ -715,6 +790,11 @@ type BknBackendAccess interface {
 	SearchObjectTypes(ctx context.Context, query *QueryConceptsReq) (objectTypes *ObjectTypeConcepts, err error)
 	// GetObjectTypeDetail Get object type details
 	GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*ObjectType, error)
+	// ListObjectTypes reads one page of the network's object types in name order,
+	// for a caller that has no ids yet. Name order because a walk has to be
+	// repeatable: the export read had no order at all, and a page of an unordered
+	// list is not a page of anything.
+	ListObjectTypes(ctx context.Context, knID string, offset, limit int) (*ObjectTypePage, error)
 
 	// SearchRelationTypes Search relation types
 	SearchRelationTypes(ctx context.Context, query *QueryConceptsReq) (releationTypes *RelationTypeConcepts, err error)

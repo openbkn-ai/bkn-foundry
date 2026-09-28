@@ -25,6 +25,11 @@ type stubSearchSchemaBknBackend struct {
 	searchMetricCalls     int
 }
 
+// Present so the stub still satisfies the interface; search_schema never lists.
+func (s *stubSearchSchemaBknBackend) ListObjectTypes(context.Context, string, int, int) (*interfaces.ObjectTypePage, error) {
+	return &interfaces.ObjectTypePage{}, nil
+}
+
 func (s *stubSearchSchemaBknBackend) GetKnowledgeNetworkDetail(_ context.Context, _ string) (*interfaces.KnowledgeNetworkDetail, error) {
 	return nil, nil
 }

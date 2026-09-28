@@ -372,6 +372,44 @@ func pathIDList(ids []string) string {
 	return strings.Join(escaped, ",")
 }
 
+// knPagedEnvelope is the list wrapper above, plus the total bkn-backend reports
+// when the read is paged.
+type knPagedEnvelope[T any] struct {
+	Entries    []T   `json:"entries"`
+	TotalCount int64 `json:"total_count"`
+}
+
+// ListObjectTypes reads one page of a knowledge network's object type index.
+//
+// An index entry, not a definition: bkn-backend's list endpoint selects
+// f_id / f_name / f_tags / f_comment / f_data_source and the audit columns, with
+// no property columns and no include_detail to ask for them. That is the right
+// shape for this call. What a caller without ids needs is ids -- something to
+// choose by, and then to name in a by-id read. Answering with full definitions
+// would hand back roughly 60KB an object type on the network of #1877, so a page
+// of twenty would be over a megabyte: the answer #1877 exists to prevent, and it
+// would cost one property-plan read per object type to build.
+//
+// bkn-backend filters by the caller's authorization before it pages, so the total
+// and the offsets are over what this caller may see, not over what the network
+// holds.
+func (b *bknBackendAccess) ListObjectTypes(ctx context.Context, knID string, offset, limit int) (*interfaces.ObjectTypePage, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types", b.baseURL, url.PathEscape(knID))
+	query := url.Values{}
+	query.Set("offset", strconv.Itoa(offset))
+	query.Set("limit", strconv.Itoa(limit))
+	query.Set("sort", "name")
+	query.Set("direction", "asc")
+
+	page := &knPagedEnvelope[*interfaces.ObjectType]{}
+	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.object_type.list", query, page); err != nil {
+		return nil, err
+	}
+	return &interfaces.ObjectTypePage{
+		Entries: page.Entries, TotalCount: page.TotalCount, Scanned: len(page.Entries),
+	}, nil
+}
+
 // GetObjectTypeDetail gets object type details.
 func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types/%s", b.baseURL, url.PathEscape(knID), pathIDList(otIds))

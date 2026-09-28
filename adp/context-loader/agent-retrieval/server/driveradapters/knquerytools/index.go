@@ -267,6 +267,11 @@ func (h *knQueryToolsHandler) DescribeResource(c *gin.Context) {
 type knDrillReq struct {
 	KnID string   `json:"kn_id" form:"kn_id"`
 	IDs  []string `json:"ids"`
+	// Offset and Limit are the window get_object_types walks with when no ids are
+	// given; they are ignored when ids are, and get_relation_types ignores them
+	// outright -- it has never had a caller without ids.
+	Offset int `json:"offset" form:"offset"`
+	Limit  int `json:"limit" form:"limit"`
 }
 
 func (r *knDrillReq) resolveKnID(c *gin.Context) string {
@@ -287,32 +292,64 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "kn_id is required"))
 		return
 	}
+	// No ids means the caller has none to give -- which is the state get_kn_detail
+	// leaves them in on a network past its caps, where the concept arrays are
+	// withheld and nothing else here enumerates them (#1889). Read a page instead
+	// of refusing. Named ids stay the primary path and ignore the paging inputs.
+	var (
+		matched    []*interfaces.ObjectType
+		err        error
+		totalCount int64
+		nextOffset *int
+		offset     int
+		notice     string
+	)
 	if len(req.IDs) == 0 {
-		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "ids is required (object type ids from get_kn_detail)"))
-		return
-	}
-
-	matched, err := h.bknBackend.GetObjectTypeDetail(ctx, knID, req.IDs, true)
-	if err != nil {
+		var (
+			limit   int
+			clamped bool
+		)
+		offset, limit, clamped = interfaces.ResolveObjectTypePage(req.Offset, req.Limit)
+		page, listErr := h.bknBackend.ListObjectTypes(ctx, knID, offset, limit)
+		if listErr != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] list failed: %v", listErr)
+			rest.ReplyError(c, listErr)
+			return
+		}
+		matched, totalCount = page.Entries, page.TotalCount
+		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+		if clamped {
+			notice = errors.LocalizedDetail(ctx, "ObjectTypePageLimitClamped",
+				req.Limit, interfaces.MaxObjectTypePageSize, limit)
+		}
+	} else if matched, err = h.bknBackend.GetObjectTypeDetail(ctx, knID, req.IDs, true); err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] failed: %v", err)
 		rest.ReplyError(c, err)
 		return
 	}
-	matched, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, knID, matched)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] object property authorization failed: %v", err)
-		rest.ReplyError(c, err)
-		return
+	// The index carries no properties, so there is no property plan to apply to it
+	// and no operator to trim; and it is an index, so it does not carry the metrics
+	// a caller drills for. Running either over it would be a downstream call per
+	// object type for a field the answer does not have.
+	if len(req.IDs) > 0 {
+		matched, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, knID, matched)
+		if err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] object property authorization failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
+		objectpermission.TrimObjectTypesToIndexBackedOps(matched)
+		// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
+		if err := h.metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] metric authorization failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
 	}
-	objectpermission.TrimObjectTypesToIndexBackedOps(matched)
-	// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
-	if err := h.metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] metric authorization failed: %v", err)
-		rest.ReplyError(c, err)
-		return
-	}
+
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "object", knID, req.IDs, len(matched))
-	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched})
+	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched,
+		TotalCount: totalCount, NextOffset: nextOffset, Notice: notice})
 }
 
 // GetRelationTypes retrieves complete definitions of relation types (including mapping_rules) in batches by id.

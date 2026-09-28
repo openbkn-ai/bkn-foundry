@@ -115,6 +115,12 @@ func (m *mockBknBackend) SearchRelationTypes(ctx context.Context, req *interface
 }
 
 // The following is an empty implementation of other methods in the interface, which satisfies the interface definition.
+// knsearch never lists object types; it is here so the mock still satisfies the
+// interface that get_object_types grew a listing on.
+func (m *mockBknBackend) ListObjectTypes(context.Context, string, int, int) (*interfaces.ObjectTypePage, error) {
+	return &interfaces.ObjectTypePage{}, nil
+}
+
 func (m *mockBknBackend) GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
 	m.objectDetailCalls++
 	m.objectDetailKnID = knID

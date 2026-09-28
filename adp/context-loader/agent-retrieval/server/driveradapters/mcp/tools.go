@@ -676,6 +676,15 @@ type knDrillArgs struct {
 	IDs  []string `json:"ids"`
 }
 
+// knObjectTypesArgs is knDrillArgs plus the window a caller walks with when it
+// has no ids. The two paging fields are meaningless with ids and are ignored
+// there rather than refused: naming ids is already the precise request.
+type knObjectTypesArgs struct {
+	knDrillArgs
+	Offset int `json:"offset"`
+	Limit  int `json:"limit"`
+}
+
 func (a *knDrillArgs) resolveKnID(req mcp.CallToolRequest) string {
 	if a.KnID != "" {
 		return a.KnID
@@ -693,7 +702,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		args := &knDrillArgs{}
+		args := &knObjectTypesArgs{}
 		if err := bindArguments(req, args); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -701,34 +710,71 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		if knID == "" {
 			return mcp.NewToolResultError("kn_id is required"), nil
 		}
+
+		// No ids means the caller has none to give. That happens on a network past
+		// get_kn_detail's caps, where the concept arrays are withheld and nothing
+		// else on this surface enumerates them (#1889), so this reads a page instead
+		// of refusing. Named ids stay the primary path and ignore the paging inputs.
+		var (
+			matched    []*interfaces.ObjectType
+			totalCount int64
+			nextOffset *int
+			offset     int
+			notice     string
+		)
 		if len(args.IDs) == 0 {
-			return mcp.NewToolResultError("ids is required (object type ids from get_kn_detail)"), nil
+			var (
+				limit   int
+				clamped bool
+			)
+			offset, limit, clamped = interfaces.ResolveObjectTypePage(args.Offset, args.Limit)
+			page, err := bkn.ListObjectTypes(ctx, knID, offset, limit)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			matched, totalCount = page.Entries, page.TotalCount
+			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+			if clamped {
+				notice = infraErr.LocalizedDetail(ctx, "ObjectTypePageLimitClamped",
+					args.Limit, interfaces.MaxObjectTypePageSize, limit)
+			}
+		} else {
+			// Prioritize the endpoint that retrieves details by id: the export view only lists object types, does not enrich the data source, and does not enrich the data source.
+			// condition_operations is always empty, and the caller uses this to determine whether the field can match / knn.
+			//
+			// Omitted IDs are not reported as missing because an omission may be an
+			// authorization filter.
+			matched, err = bkn.GetObjectTypeDetail(ctx, knID, args.IDs, true)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
 		}
+		// The index carries no properties, so there is no property plan to apply to
+		// it and no operator to trim; and it is an index, so it does not carry the
+		// metrics a caller drills for. Running either over it would be a downstream
+		// call per object type for a field the answer does not have -- which is what
+		// made a page of this cost a second an object type.
+		if len(args.IDs) > 0 {
+			matched, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, matched)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			// The same rule as search_schema: only emit underivable operators. Comparison operators (==/in/like/range…)
+			// Determined by the attribute type, repeating each attribute for more than ten times is pure noise - the object type is small and it still occupies the context.
+			objectpermission.TrimObjectTypesToIndexBackedOps(matched)
 
-		// Prioritize the endpoint that retrieves details by id: the export view only lists object types, does not enrich the data source, and does not enrich the data source.
-		// condition_operations is always empty, and the caller uses this to determine whether the field can match / knn.
-		//
-		// Omitted IDs are not reported as missing because an omission may be an
-		// authorization filter.
-		matched, err := bkn.GetObjectTypeDetail(ctx, knID, args.IDs, true)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			// Step 2 of the OT-first metric path: a metric that is not bound to a logic
+			// property is unreachable from the object type without this.
+			if err := metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
 		}
-		matched, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, matched)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		// The same rule as search_schema: only emit underivable operators. Comparison operators (==/in/like/range…)
-		// Determined by the attribute type, repeating each attribute for more than ten times is pure noise - the object type is small and it still occupies the context.
-		objectpermission.TrimObjectTypesToIndexBackedOps(matched)
-
-		// Step 2 of the OT-first metric path: a metric that is not bound to a logic
-		// property is unreachable from the object type without this.
-		if err := metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", knID, schemaObjectTypeIDs(matched), matched, len(matched) == len(args.IDs))
-		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched}
+		// A listed page is complete for what it asked: nothing was requested by name,
+		// so nothing can be missing from it.
+		complete := len(args.IDs) == 0 || len(matched) == len(args.IDs)
+		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", knID, schemaObjectTypeIDs(matched), matched, complete)
+		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched,
+			TotalCount: totalCount, NextOffset: nextOffset, Notice: notice}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

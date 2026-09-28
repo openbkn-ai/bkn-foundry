@@ -124,11 +124,21 @@ func TestSearchHonoursTheLimit(t *testing.T) {
 
 // Search returns short cards, never schemas: five candidates must stay well
 // below what one schema costs.
+//
+// The cards are weighed without the ready call, which is a schema by design and
+// is bounded on its own by maxReadySchemaBytes. Weighing the whole envelope made
+// this a test of whether the top hit happened to tie for first -- change a
+// keyword and an unrelated budget turns red, which says nothing about the cards.
 func TestSearchResultStaysSmall(t *testing.T) {
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		catalog := catalogForLocale(t, locale)
 		result := catalog.search(context.Background(), "对象类 关系类 子图 行动 逻辑属性 执行结果 执行历史 探索", searchMaxLimit)
-		raw, err := json.Marshal(result)
+		if result.Ready != nil && len(result.Ready.ArgumentsSchema) > maxReadySchemaBytes {
+			t.Errorf("%s: the ready schema takes %d bytes", locale, len(result.Ready.ArgumentsSchema))
+		}
+		cards := result
+		cards.Ready = nil
+		raw, err := json.Marshal(cards)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +147,9 @@ func TestSearchResultStaysSmall(t *testing.T) {
 		}
 		// The no-match listing names every target with its summary: the whole
 		// catalogue in one short answer.
-		noMatch, _ := json.Marshal(catalog.search(context.Background(), "hello", searchDefaultLimit))
+		listing := catalog.search(context.Background(), "hello", searchDefaultLimit)
+		listing.Ready = nil
+		noMatch, _ := json.Marshal(listing)
 		if len(noMatch) > 3500 {
 			t.Errorf("%s: the no-match listing takes %d bytes", locale, len(noMatch))
 		}

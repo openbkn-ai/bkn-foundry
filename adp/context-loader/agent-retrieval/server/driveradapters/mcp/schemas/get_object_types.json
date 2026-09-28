@@ -20,12 +20,24 @@
         "items": {
           "type": "string"
         },
-        "description": "要展开的对象类 id（取自 get_kn_detail summary 的 object_types[].id，也接受 name）。支持多个，一次批量取回。"
+        "description": "要展开的对象类 id（取自 get_kn_detail summary 的 object_types[].id、search_schema，或本工具的列举模式）。支持多个，一次批量取回完整定义。**不传 ids 就是按 offset/limit 列举该网络的对象类索引**——只给 id/name/comment/tags/data_source，不含字段与指标；网络超过 get_kn_detail 的上限时它只回导航壳，那条路拿不到 id，这里是唯一的枚举入口。挑好之后再把 id 传回本工具取完整定义。传了 ids 则 offset/limit 无效。"
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0,
+        "description": "列举时的起始位置。只在不传 ids 时有效；续页用响应里的 next_offset，别自己算。"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 50,
+        "description": "列举时单页条数，默认 50，上限 200。只在不传 ids 时有效。索引条目只有几百字节，所以这一页比按 id 取定义时能装得多。超过上限不报错，按上限返回并在 notice 里说明。"
       }
     },
     "required": [
-      "kn_id",
-      "ids"
+      "kn_id"
     ]
   },
   "output_schema": {
@@ -120,7 +132,7 @@
           },
           "additionalProperties": true
         },
-        "description": "对象类完整定义（含 data_properties 的 mapped_field / condition_operations、logic_properties 的 data_source / parameters）。其中 condition_operations 只列索引带来的算子（match / multi_match / knn），比较算子按属性 type 自行判断；text 字段的精确比较依赖资源保存时自动补齐的 keyword，旧配置若报缺失需重新保存并新建构建任务，详见 query_object_instance 的 condition 说明。related_metrics 为该对象类 scope 下的全部指标（id/name/comment/unit/metric_type/analysis_dimensions/time_dimension），含未绑逻辑属性的：实例级且已绑逻辑属性用 get_logic_properties_values 算，其余把 id 传给 query_metric 算。"
+        "description": "对象类完整定义（含 data_properties 的 mapped_field / condition_operations、logic_properties 的 data_source / parameters）。其中 condition_operations 只列索引带来的算子（match / multi_match / knn），比较算子按属性 type 自行判断；text 字段的精确比较依赖资源保存时自动补齐的 keyword，旧配置若报缺失需重新保存并新建构建任务，详见 query_object_instance 的 condition 说明。related_metrics 为该对象类 scope 下的全部指标（id/name/comment/unit/metric_type/analysis_dimensions/time_dimension），含未绑逻辑属性的：实例级且已绑逻辑属性用 get_logic_properties_values 算，其余把 id 传给 query_metric 算。 **列举模式下这里是索引条目**：只有 id/name/comment/tags/data_source，没有 data_properties / logic_properties / related_metrics——要它们把 id 传回本工具。"
       },
       "missing": {
         "type": "array",
@@ -128,6 +140,18 @@
           "type": "string"
         },
         "description": "请求了但未匹配到的 id"
+      },
+      "total_count": {
+        "type": "integer",
+        "description": "该网络中当前账号可见的对象类总数。仅列举时出现。可据此判断「50 / 1000」走到哪了。"
+      },
+      "next_offset": {
+        "type": "integer",
+        "description": "续走这次列举的下一个 offset。仅列举时出现，**走完最后一页就不再出现**——别自己用 offset+len 推算。"
+      },
+      "notice": {
+        "type": "string",
+        "description": "本次请求没有被原样兑现时的说明——目前只有一种：limit 超过上限，按上限返回了。它出现时这一页比你要的短，但**不代表网络到头了**，是否还有看 next_offset。"
       }
     }
   }
