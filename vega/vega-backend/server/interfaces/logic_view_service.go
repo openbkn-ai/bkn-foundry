@@ -7,7 +7,9 @@
 package interfaces
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/bytedance/sonic"
@@ -73,6 +75,49 @@ type LogicView struct {
 	Resource
 	IsSingleSource bool                 `json:"is_single_source,omitempty" mapstructure:"-"`
 	RefResources   map[string]*Resource `json:"ref_resources,omitempty" mapstructure:"-"`
+}
+
+// DerivedLogicDefinition binds a view to one source and an optional fixed filter.
+type DerivedLogicDefinition struct {
+	SourceResourceID string `json:"source_resource_id"`
+	FilterCondition  any    `json:"filter_condition,omitempty"`
+}
+
+func (d *DerivedLogicDefinition) UnmarshalJSON(data []byte) error {
+	type definition DerivedLogicDefinition
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	var parsed definition
+	if err := decoder.Decode(&parsed); err != nil {
+		return err
+	}
+	*d = DerivedLogicDefinition(parsed)
+	return nil
+}
+
+// DecodeDerivedLogicDefinition validates and decodes the derived shape carried by Resource.
+func DecodeDerivedLogicDefinition(raw any) (*DerivedLogicDefinition, error) {
+	if raw == nil {
+		return nil, fmt.Errorf("logic_definition is required")
+	}
+	encoded, err := sonic.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var definition DerivedLogicDefinition
+	if err := json.Unmarshal(encoded, &definition); err != nil {
+		return nil, err
+	}
+	return &definition, nil
+}
+
+// LegacyLogicDefinitionNodes isolates the inactive node model from the Resource JSON field.
+func LegacyLogicDefinitionNodes(raw any) []*LogicDefinitionNode {
+	if nodes, ok := raw.([]*LogicDefinitionNode); ok {
+		return nodes
+	}
+	return nil
 }
 
 // LogicDefinitionNode represents the nodes in the graph

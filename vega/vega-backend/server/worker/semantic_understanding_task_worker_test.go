@@ -9,13 +9,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net/http"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -150,6 +148,26 @@ func TestSemanticUnderstandingTaskWorkerKeepsPendingTaskWhenClaimFails(t *testin
 	err := worker.Run(context.Background(), "semantic-task-1")
 
 	require.ErrorContains(t, err, "temporary database error")
+}
+
+func TestSemanticUnderstandingTaskWorkerRejectsPendingCatalogTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{suts: taskService}
+	taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(
+		&interfaces.SemanticUnderstandingTask{
+			ID:     "semantic-task-1",
+			Scope:  interfaces.SemanticUnderstandingTaskScopeCatalog,
+			Status: interfaces.SemanticUnderstandingTaskStatusPending,
+		}, nil,
+	)
+	taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").Return(true, nil)
+	taskService.EXPECT().InternalMarkFailed(gomock.Any(), "semantic-task-1",
+		"catalog semantic understanding tasks are temporarily unavailable").Return(true, nil)
+
+	err := worker.Run(context.Background(), "semantic-task-1")
+	require.ErrorContains(t, err, "catalog semantic understanding tasks are temporarily unavailable")
 }
 
 func TestSemanticUnderstandingTaskWorkerRecoversTaskPanic(t *testing.T) {
@@ -419,27 +437,6 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
 		taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").Return(true, nil)
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(nil, nil)
-		taskService.EXPECT().InternalMarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
-			Return(true, nil)
-
-		require.NoError(t, worker.Run(context.Background(), "semantic-task-1"))
-	})
-
-	t.Run("cancels active catalog task when catalog was deleted", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
-
-		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
-		catalogService := vmock.NewMockCatalogService(ctrl)
-		worker := &SemanticUnderstandingTaskWorker{suts: taskService, cs: catalogService}
-		taskInfo := &interfaces.SemanticUnderstandingTask{
-			ID: "semantic-task-1", Scope: interfaces.SemanticUnderstandingTaskScopeCatalog,
-			CatalogID: "catalog-1", Status: interfaces.SemanticUnderstandingTaskStatusPending,
-		}
-		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
-		taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").Return(true, nil)
-		catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
-			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
 		taskService.EXPECT().InternalMarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
 			Return(true, nil)
 

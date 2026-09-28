@@ -144,6 +144,13 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 }
 
 func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Context, catalogID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
+	// Catalog 任务生成的 Logic View 尚未适配 derived 契约，暂时拒绝创建。
+	return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+		WithErrorDetails("catalog semantic understanding tasks are temporarily unavailable")
+}
+
+//nolint:unused // Catalog task creation is paused until the catalog-level contract is restored.
+func (suts *semanticUnderstandingTaskService) createCatalogTask(ctx context.Context, catalogID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.CreateCatalogTask")
 	defer span.End()
 
@@ -731,6 +738,7 @@ func truncateSemanticUnderstandingSampleString(value string) string {
 	return value
 }
 
+//nolint:unused // Catalog task creation is paused until the catalog-level contract is restored.
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 	normalized := defaultSemanticUnderstandingRequest()
 	if req != nil {

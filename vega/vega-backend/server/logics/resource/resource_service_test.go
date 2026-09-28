@@ -657,6 +657,22 @@ func TestResourceUpdateUsesFeatureSemanticsForEverySupportedCategory(t *testing.
 	}
 }
 
+func TestValidateResourceUpdateScopeRejectsLogicTypeChange(t *testing.T) {
+	resource := &interfaces.Resource{
+		CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicView,
+		LogicType: interfaces.LogicType_Derived,
+	}
+	for _, logicType := range []string{"", interfaces.LogicType_Composite} {
+		changed, err := (&resourceService{}).validateResourceUpdateScope(context.Background(), resource,
+			&interfaces.ResourceRequest{
+				CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicView, LogicType: logicType,
+			})
+		assert.False(t, changed)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "logic_type cannot be changed")
+	}
+}
+
 func TestSourceMetadataRowCountHandlesMissingMetadata(t *testing.T) {
 	for _, metadata := range []map[string]any{
 		nil,

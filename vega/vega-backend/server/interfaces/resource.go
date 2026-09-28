@@ -97,8 +97,8 @@ type Resource struct {
 	EstimatedRowCount *int64 `json:"estimated_row_count,omitempty"` // Source metadata estimate when an exact count is unavailable
 
 	// Fields specific to the logical view
-	LogicType       string                 `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite
-	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // Logical definition
+	LogicType       string `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite)
+	LogicDefinition any    `json:"logic_definition,omitempty"` // Definition shape depends on logic_type
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
@@ -213,7 +213,8 @@ type ResourceRequest struct {
 
 	IndexConfig *ResourceIndexConfig `json:"index_config,omitempty"` // Local index configuration
 
-	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // Logical definition
+	LogicType       string `json:"logic_type,omitempty"`       // Required for logic views; selects the definition shape
+	LogicDefinition any    `json:"logic_definition,omitempty"` // Definition shape depends on logic_type
 
 	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
 }

@@ -9,7 +9,10 @@ package interfaces
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestResourceLocalStateJSON(t *testing.T) {
@@ -45,6 +48,35 @@ func TestResourceLocalStateJSON(t *testing.T) {
 	}
 	if got, exists := payload["estimated_row_count"]; !exists || got != float64(0) {
 		t.Fatalf("estimated_row_count = %v, exists = %v, want an explicit zero", got, exists)
+	}
+}
+
+func TestDerivedLogicDefinitionJSON(t *testing.T) {
+	var request ResourceRequest
+	err := json.Unmarshal([]byte(`{"category":"logicview","logic_definition":{"source_resource_id":"source","distinct":false}}`), &request)
+	if err != nil {
+		t.Fatalf("decode generic definition: %v", err)
+	}
+	if _, err := DecodeDerivedLogicDefinition(request.LogicDefinition); err == nil {
+		t.Fatal("derived definition must reject unsupported fields")
+	}
+	if err := sonic.Unmarshal([]byte(`{"logic_definition":{"source_resource_id":"source","distinct":false}}`), &request); err != nil {
+		t.Fatalf("sonic decode generic definition: %v", err)
+	}
+	if _, err := DecodeDerivedLogicDefinition(request.LogicDefinition); err == nil {
+		t.Fatal("derived conversion must reject unsupported fields from sonic")
+	}
+	if _, err := DecodeDerivedLogicDefinition([]any{map[string]any{"type": "resource"}}); err == nil {
+		t.Fatal("derived conversion must reject composite arrays")
+	}
+	err = json.Unmarshal([]byte(`{"category":"logicview","logic_definition":{"source_resource_id":"source"}}`), &request)
+	definition, decodeErr := DecodeDerivedLogicDefinition(request.LogicDefinition)
+	if err != nil || decodeErr != nil || definition.SourceResourceID != "source" {
+		t.Fatalf("decode derived definition: definition=%+v, err=%v", request.LogicDefinition, err)
+	}
+	encoded, err := json.Marshal(&Resource{LogicDefinition: request.LogicDefinition})
+	if err != nil || !strings.Contains(string(encoded), `"logic_definition":{"source_resource_id":"source"}`) {
+		t.Fatalf("encode derived definition: %s, err=%v", encoded, err)
 	}
 }
 

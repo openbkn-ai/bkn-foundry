@@ -8,8 +8,10 @@
 package resource
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -160,9 +162,8 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			return nil, err
 		}
 		req.SchemaDefinition = viewFields
-		if req.SourceIdentifier == "" {
-			req.SourceIdentifier = fmt.Sprintf("%s.%s", req.CatalogID, id)
-		}
+		req.SourceIdentifier = id
+		req.Schema = ""
 	}
 	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
 		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
@@ -761,13 +762,26 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryLogicView:
+		previousDefinition := resource.LogicDefinition
+		previousSchema := resource.SchemaDefinition
+		previousMetadata := resource.SourceMetadata
 		logicType, viewFields, err := rs.prepareLogicView(ctx, req)
 		if err != nil {
 			return err
 		}
+		if logicViewDefinitionEqual(previousDefinition, req.LogicDefinition) &&
+			reflect.DeepEqual(previousSchema, viewFields) {
+			if properties, ok := previousMetadata["properties"]; ok {
+				if req.SourceMetadata == nil {
+					req.SourceMetadata = make(map[string]any)
+				}
+				req.SourceMetadata["properties"] = properties
+			}
+		}
 		resource.SchemaDefinition = viewFields
 		resource.LogicType = logicType
 		resource.LogicDefinition = req.LogicDefinition
+		resource.SourceMetadata = req.SourceMetadata
 	default:
 		resource.SchemaDefinition = applyMutableSchemaFields(
 			resource.SchemaDefinition,
@@ -915,6 +929,15 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func logicViewDefinitionEqual(current, next any) bool {
+	currentJSON, err := json.Marshal(current)
+	if err != nil {
+		return false
+	}
+	nextJSON, err := json.Marshal(next)
+	return err == nil && bytes.Equal(currentJSON, nextJSON)
 }
 
 func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
@@ -1329,6 +1352,8 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		if err != nil {
 			return nil, err
 		}
+		req.SourceIdentifier = id
+		req.Schema = ""
 	}
 	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
 		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
@@ -1445,7 +1470,11 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 		return false, unsupportedResourceUpdateError(ctx, "category cannot be updated")
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
-		return req.LogicDefinition != nil && !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition), nil
+		if req.LogicType != resource.LogicType {
+			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
+		}
+		return !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition) ||
+			!reflect.DeepEqual(resource.SchemaDefinition, req.SchemaDefinition), nil
 	}
 	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {

@@ -282,6 +282,14 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 		logger.Infof("Semantic understanding task was not claimed for running: id=%s", taskInfo.ID)
 		return nil
 	}
+	if taskInfo.Scope == interfaces.SemanticUnderstandingTaskScopeCatalog {
+		// 遗留的待执行 Catalog 任务不能继续走旧 Logic View 创建路径。
+		const reason = "catalog semantic understanding tasks are temporarily unavailable"
+		if _, err := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, reason); err != nil {
+			return fmt.Errorf("mark unsupported catalog semantic understanding task failed: %w", err)
+		}
+		return errors.New(reason)
+	}
 	parentExists, err := sutw.taskParentExists(ctx, taskInfo)
 	if err != nil {
 		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
@@ -1348,7 +1356,7 @@ func validateCatalogLogicViewOutput(view interfaces.SemanticUnderstandingCatalog
 	default:
 		return fmt.Errorf("unsupported logic view action: %s", view.Action)
 	}
-	if len(view.LogicDefinition) == 0 {
+	if len(interfaces.LegacyLogicDefinitionNodes(view.LogicDefinition)) == 0 {
 		return fmt.Errorf("logic_definition is required for logic view action %s", view.Action)
 	}
 	for _, sourceResourceID := range view.SourceResources {

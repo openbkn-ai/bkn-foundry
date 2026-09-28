@@ -43,6 +43,14 @@ type resourceAccess struct {
 	db         *sql.DB
 }
 
+func marshalResourceLogicDefinition(resource *interfaces.Resource) []byte {
+	if resource.LogicDefinition != nil {
+		encoded, _ := sonic.Marshal(resource.LogicDefinition)
+		return encoded
+	}
+	return []byte("[]")
+}
+
 var resourceColumns = []string{
 	"f_id",
 	"f_catalog_id",
@@ -226,10 +234,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 	if resource.IndexConfig == nil {
 		indexConfigBytes = []byte("{}")
 	}
-	logicDefinitionBytes, _ := sonic.Marshal(resource.LogicDefinition)
-	if resource.LogicDefinition == nil {
-		logicDefinitionBytes = []byte("[]")
-	}
+	logicDefinitionBytes := marshalResourceLogicDefinition(resource)
 	if resource.LocalIndexStatus == "" {
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusUnavailable
 	}
@@ -615,9 +620,10 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 	if resource.IndexConfig == nil {
 		indexConfigBytes = []byte("{}")
 	}
-	logicDefinitionBytes, _ := sonic.Marshal(resource.LogicDefinition)
-	if resource.LogicDefinition == nil {
-		logicDefinitionBytes = []byte("[]")
+	logicDefinitionBytes := marshalResourceLogicDefinition(resource)
+	sourceMetadataBytes, _ := sonic.Marshal(resource.SourceMetadata)
+	if resource.SourceMetadata == nil {
+		sourceMetadataBytes = []byte("{}")
 	}
 
 	builder := sq.Update(RESOURCE_TABLE_NAME).
@@ -633,6 +639,9 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 		Set("f_update_time", resource.UpdateTime).
 		Where(sq.Eq{"f_id": resource.ID}).
 		Where(sq.Eq{"f_update_time": expectedUpdateTime})
+	if resource.Category == interfaces.ResourceCategoryLogicView {
+		builder = builder.Set("f_source_metadata", string(sourceMetadataBytes))
+	}
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {

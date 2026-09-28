@@ -98,6 +98,22 @@ func TestResourceAccessCreate(t *testing.T) {
 }
 
 func TestResourceAccessGetByID(t *testing.T) {
+	t.Run("reads derived object definition", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		values := resourceRowValues(sampleResource())
+		values[20] = `{"source_resource_id":"source-1"}`
+		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
+			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
+		got, err := access.GetByID(context.Background(), nil, "resource-1")
+		require.NoError(t, err)
+		require.NotNil(t, got.LogicDefinition)
+		definition, err := interfaces.DecodeDerivedLogicDefinition(got.LogicDefinition)
+		require.NoError(t, err)
+		assert.Equal(t, "source-1", definition.SourceResourceID)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("returns resource", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
@@ -347,6 +363,31 @@ func TestResourceAccessList(t *testing.T) {
 }
 
 func TestResourceAccessUpdate(t *testing.T) {
+	t.Run("persists derived definition and generated source metadata", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		res := sampleResource()
+		res.Category = interfaces.ResourceCategoryLogicView
+		res.LogicType = interfaces.LogicType_Derived
+		res.LogicDefinition = &interfaces.DerivedLogicDefinition{SourceResourceID: "source-1"}
+		res.SourceMetadata = map[string]any{
+			"properties":      map[string]any{},
+			"source_resource": map[string]any{"catalog_id": "catalog-1"},
+		}
+		mock.ExpectExec("UPDATE t_resource SET .*f_source_metadata = \\? WHERE f_id = \\? AND f_update_time = \\?").
+			WithArgs(res.Name, `"pii","core"`, res.Description,
+				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
+				interfaces.LogicType_Derived, `{"source_resource_id":"source-1"}`,
+				res.Updater.ID, res.Updater.Type, res.UpdateTime,
+				`{"properties":{},"source_resource":{"catalog_id":"catalog-1"}}`, res.ID, res.UpdateTime).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		rows, err := access.Update(context.Background(), nil, res, res.UpdateTime)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rows)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("updates resource", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()

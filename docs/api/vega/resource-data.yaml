@@ -52,6 +52,9 @@ paths:
 
         **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
         `paging.next_cursor` 续页；`total_count` 仅在 `need_total=true` 时返回。
+        逻辑视图查询要求 EE 专业版及以上授权；未安装 EE 扩展返回 501，
+        授权版本不足返回 403 `Public.Forbidden`。
+        已保存的复合逻辑视图在首次查询和 cursor 续页时也暂时返回 501。
 
         **`Override: POST` 响应**：201 + `{ id }`。后端生成文档 ID；携带 `_id` 的 body 返回 400。
 
@@ -97,6 +100,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "406":
@@ -105,6 +110,8 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
   /resources/{id}/data/{docid}:
     parameters:
       - name: id
@@ -235,6 +242,12 @@ components:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: 当前 EE 授权版本不包含逻辑视图功能（`Public.Forbidden`）
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotFound:
       description: |
         Resource 或文档不存在。errcode `VegaBackend.Resource.NotFound`；
@@ -267,6 +280,12 @@ components:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     InternalServerError:
       description: 服务内部错误（如底层 OpenSearch / 索引故障）
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    NotImplemented:
+      description: 未安装 EE 逻辑视图扩展，或复合视图查询暂时不支持
       content:
         application/json:
           schema:

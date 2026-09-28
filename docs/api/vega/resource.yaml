@@ -16,7 +16,7 @@ info:
     | `fileset` | 物理 | 文件集（计划中） |
     | `metric` | 物理 | 指标（计划中） |
     | `api` | 物理 | API 数据源（计划中） |
-    | `logicview` | 逻辑 | 衍生 / 复合视图，由 `logic_definition` 定义 |
+    | `logicview` | 逻辑 | 专业版及以上可用；由 `logic_definition` 定义，目前仅支持衍生视图 |
     | `dataset` | 逻辑 | 文档集合（RAG 索引），documents 子资源走 [resource-data.yaml] |
 
     `enabled` 和 `status` 相互独立：`enabled=false` 表示该资源不可用于查询或构建；
@@ -159,7 +159,13 @@ paths:
           其他类别（`table` / `file` / `fileset` / `api` / `metric` / `topic` / `index`）由 discover 任务产出，
           直接调用本接口创建会返回 400 `VegaBackend.Resource.CategoryNotCreatable`。
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
-        - `category=logicview` 必须给 `logic_definition`。
+        - `category=logicview` 仅在 EE 专业版及以上授权可创建，且必须提交
+          `logic_type=derived` 与对应的
+          `logic_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`
+          与 `type` 必填，`type` 必须等于绑定的源 Resource 字段类型。源资源仅支持 table/index。
+          `source_metadata` 由服务端从源资源生成，请求值不参与写入；
+          未安装 EE 扩展返回 501；授权版本不足返回 403 `Public.Forbidden`。
+          通过字段校验的复合视图定义暂时返回 501。
         - `category=dataset` 必须给非空 `schema_definition`；字段名/长度/重复/类型/特征均会校验，
           违反返回 400 `VegaBackend.Dataset.*`（详见错误码族）。Dataset 索引在 Resource
           入库前创建，成功响应中的 `index_name` 是服务端分配的 `vega-dataset-<uuidv7>`。
@@ -180,6 +186,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "406":
@@ -188,6 +196,8 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
   /resources/{id}:
     parameters:
       - name: id
@@ -270,6 +280,9 @@ paths:
           `update_time`；若资源已被其他请求更新，返回 409 `VegaBackend.Resource.UpdateConflict`。
         - Dataset 已有文档时，不允许通过普通更新改变字段、Feature、embedding 模型或其他索引
           结构；请求返回 409，需通过显式重建流程处理历史数据。
+        - 逻辑视图更新要求 EE 专业版及以上授权；未安装 EE 扩展返回 501，
+          授权版本不足返回 403 `Public.Forbidden`。
+          若提交复合视图定义，也暂时返回 501；已保存的复合视图仍可读取。
       requestBody:
         required: true
         content:
@@ -287,6 +300,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "406":
@@ -295,6 +310,8 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
   /resources/{id}/discover:
     parameters:
       - name: id
@@ -400,6 +417,12 @@ components:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: 当前 EE 授权版本不包含逻辑视图功能（`Public.Forbidden`）
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotFound:
       description: |
         Resource 或 Catalog 不存在。errcode：
@@ -426,6 +449,12 @@ components:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     InternalServerError:
       description: 服务内部错误
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    NotImplemented:
+      description: 未安装 EE 逻辑视图扩展，或复合视图定义暂时不支持
       content:
         application/json:
           schema:
@@ -593,8 +622,8 @@ components:
           请求中不接受）。
         - `index_name` 是服务端管理的物理索引名：Dataset 创建时分配，BuildTask 也会使用其
           自己快照的目标索引名；外部请求不应设置。
-        - `schema_definition` / `logic_definition` 互斥使用：物理资源用前者，逻辑视图
-          用后者。
+        - derived 逻辑视图同时使用 `schema_definition`（公开字段）与
+          `logic_definition`（单一源及固定过滤）；物理资源只使用前者。
       type: object
       required:
         - id
@@ -679,7 +708,7 @@ components:
           type: object
           additionalProperties: true
         schema_definition:
-          description: Schema 定义（物理资源使用）
+          description: Schema 定义；derived 逻辑视图在此提交公开字段，每项须有 name、original_name、type
           type: array
           items:
             $ref: "#/components/schemas/Property"
@@ -713,10 +742,7 @@ components:
             - derived
             - composite
         logic_definition:
-          description: 逻辑视图定义（仅 category=logicview 有意义）
-          type: array
-          items:
-            $ref: "#/components/schemas/LogicDefinitionNode"
+          $ref: "#/components/schemas/DerivedLogicDefinition"
         creator:
           $ref: "#/components/schemas/AccountInfo"
         create_time:
@@ -811,15 +837,32 @@ components:
           type: object
           additionalProperties: true
         schema_definition:
+          description: derived 逻辑视图必填且非空；字段的 name、original_name、type 必填，type 须与源字段一致
           type: array
           items:
             $ref: "#/components/schemas/Property"
         index_config:
           $ref: "#/components/schemas/ResourceIndexConfig"
+        logic_type:
+          description: 创建和完整 PUT 更新逻辑视图时必填；须与当前定义结构一致，PUT 不可改变既有类型
+          type: string
+          enum: [derived, composite]
         logic_definition:
-          type: array
-          items:
-            $ref: "#/components/schemas/LogicDefinitionNode"
+          $ref: "#/components/schemas/DerivedLogicDefinition"
+    DerivedLogicDefinition:
+      description: derived 逻辑视图的单一源和固定过滤配置；不接受旧节点数组、distinct 或未知字段
+      type: object
+      additionalProperties: false
+      required:
+        - source_resource_id
+      properties:
+        source_resource_id:
+          type: string
+          minLength: 1
+        filter_condition:
+          description: 固定过滤条件，可引用源资源的全部字段；与查询请求条件按 AND 合并
+          type: object
+          additionalProperties: true
     ResourceIndexConfig:
       description: 本地索引构建配置
       type: object
