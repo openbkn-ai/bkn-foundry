@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -151,11 +150,6 @@ func (r *restHandler) CreateMetrics(c *gin.Context, vis hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	for _, id := range ids {
-		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(vis),
-			interfaces.GenerateMetricAuditObject(id, ""), "")
 	}
 
 	result := []any{}
@@ -629,8 +623,6 @@ func (r *restHandler) UpdateMetric(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(vis),
-		interfaces.GenerateMetricAuditObject(metricID, ""), "")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
@@ -678,10 +670,6 @@ func (r *restHandler) DeleteMetricsByIDs(c *gin.Context, vis hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-	for _, id := range ids {
-		audit.NewInfoLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(vis),
-			interfaces.GenerateMetricAuditObject(id, ""), "")
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)

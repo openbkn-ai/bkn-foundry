@@ -14,9 +14,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 )
+
+func TestPublicLogEventAllowlistMatchesEmbeddedAuditRegistry(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range validator.registry.Events {
+		if !observabilityvo.IsRegisteredLogEvent(rule.Category, rule.Name) {
+			t.Errorf("Audit event %s is admitted by Kafka but hidden from public logs", rule.Name)
+		}
+	}
+}
 
 func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t *testing.T) {
 	validator, err := New()
@@ -25,7 +38,7 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 	}
 	for file, expected := range map[string]string{
 		"schema.json":                   "4b1db1b116485e1b0432635406bcdffdc111be1b7cc583714a6a2c867efee69b",
-		"registry-runtime-v1.json":      "ad7a5f194c9f6444efa8841791cb69208b3172ed9a8a7b7703cfca0f12778b9c",
+		"registry-runtime-v1.json":      "0a07a364556ec51dcec6cc98c793a728a52fb4e9b8f3b228f2a54f6c6521ab65",
 		"audit-record-golden.json":      "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40",
 		"audit-kafka-golden.json":       "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -99,8 +112,8 @@ func TestValidatorRejectsNonKafkaAuditCollectionMethods(t *testing.T) {
 	if err := json.Unmarshal(content, &value); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateRegistry(value, validator.registry); !IsPermanentReason(err, "source_collection_method_rejected") {
-		t.Fatalf("unmigrated bkn-backend fixture must be rejected, got %v", err)
+	if err := validateRegistry(value, validator.registry); err != nil {
+		t.Fatalf("registered Backend Kafka source must be accepted, got %v", err)
 	}
 
 	for _, tc := range []struct {
@@ -124,6 +137,50 @@ func TestValidatorRejectsNonKafkaAuditCollectionMethods(t *testing.T) {
 				t.Fatalf("collection method %q must be rejected as %s, got %v", tc.method, tc.want, err)
 			}
 		})
+	}
+}
+
+func TestBackendObservedOperationIsAdmittedOnlyAfterSourceCutover(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+	value["event_name"] = "backend.operation.observed"
+	value["occurred_at"] = time.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
+	value["target"] = map[string]any{"type": "kn_capability_binding", "id": "binding-1"}
+	value["facts"] = map[string]any{"action": "attach", "decision": "allowed", "changed_fields": []string{"entries"}}
+	content, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{
+		Topic: auditconsumer.Topic, Key: []byte("bkn-backend\x1fkn_capability_binding\x1fbinding-1"),
+		Value: content, BrokerTime: time.Now().UTC(),
+		Headers: []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}},
+	}
+	for i := range validator.registry.Sources {
+		if validator.registry.Sources[i].ID == "bkn-backend" {
+			validator.registry.Sources[i].CollectionMethod = "source_adapter"
+		}
+	}
+	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "source_collection_method_rejected") {
+		t.Fatalf("unmigrated Backend source must remain blocked: %v", err)
+	}
+	for i := range validator.registry.Sources {
+		if validator.registry.Sources[i].ID == "bkn-backend" {
+			validator.registry.Sources[i].CollectionMethod = "kafka_audit"
+		}
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("registered Backend operation must pass Writer validation after cutover: %v", err)
 	}
 }
 

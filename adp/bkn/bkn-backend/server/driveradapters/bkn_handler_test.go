@@ -132,11 +132,15 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 		as := bmock.NewMockAuthService(mockCtrl)
 		kns := bmock.NewMockKNService(mockCtrl)
 		bs := bmock.NewMockBKNService(mockCtrl)
+		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
 
 		handler := MockNewBKNRestHandler(appSetting, as, kns, bs)
+		handler.cbs = cbs
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
+		cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn1", gomock.Any(), gomock.Any()).AnyTimes().
+			Return(&interfaces.CapabilityImportReport{}, nil, nil)
 
 		url := "/api/bkn-backend/v1/bkns"
 
@@ -357,10 +361,14 @@ func Test_BKNRestHandler_UploadBKN_ExtensionCheck(t *testing.T) {
 
 		as := bmock.NewMockAuthService(mockCtrl)
 		kns := bmock.NewMockKNService(mockCtrl)
+		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
 		handler := MockNewBKNRestHandler(&common.AppSetting{}, as, kns, nil)
+		handler.cbs = cbs
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
+		cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn1", gomock.Any(), gomock.Any()).AnyTimes().
+			Return(&interfaces.CapabilityImportReport{}, nil, nil)
 
 		url := "/api/bkn-backend/v1/bkns"
 

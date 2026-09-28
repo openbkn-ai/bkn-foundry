@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -210,10 +209,6 @@ func (r *restHandler) CreateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	// Record an audit log after successful creation.
-	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-		interfaces.GenerateConceptGroupAuditObject(knID, cg.CGName), "")
 
 	logger.Debug("Handler CreateConceptGroup Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
@@ -502,9 +497,6 @@ func (r *restHandler) UpdateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateConceptGroupAuditObject(knID, cg.CGName), "")
-
 	logger.Debug("Handler UpdateConceptGroup Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -564,7 +556,7 @@ func (r *restHandler) DeleteConceptGroup(c *gin.Context) {
 	span.SetAttributes(attr.Key("cg_id").String(cgID))
 
 	// Check that all action type IDs exist.
-	cgName, exist, err := r.cgs.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
+	_, exist, err = r.cgs.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -592,10 +584,6 @@ func (r *restHandler) DeleteConceptGroup(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	// Record audit logs for each item.
-	audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-		interfaces.GenerateConceptGroupAuditObject(knID, cgName), audit.SUCCESS, "")
 
 	logger.Debug("Handler DeleteConceptGroup Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
@@ -974,11 +962,8 @@ func (r *restHandler) AddObjectTypesToConceptGroup(c *gin.Context, visitor hydra
 
 	// Return the created resources.
 	result := []any{}
-	for i, id := range otCGIDs {
+	for _, id := range otCGIDs {
 		result = append(result, map[string]any{"id": id})
-		// Record an audit log after successful creation.
-		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-			interfaces.GenerateConceptGroupRelationAuditObject(id, fmt.Sprintf("%s-%s-%s-%s", knID, branch, cgID, requestData.Entries[i].ID)), "")
 	}
 
 	logger.Debug("Handler AddObjectTypeToGroup Success")
@@ -1117,13 +1102,6 @@ func (r *restHandler) DeleteObjectTypesFromGroup(c *gin.Context, visitor hydra.V
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// Record audit logs for each item.
-	for _, cgr := range cgRelations {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateObjectTypeAuditObject(cgr.ID,
-				fmt.Sprintf("%s-%s-%s-%s-%s", cgr.KNID, cgr.Branch, cgr.CGID, cgr.ConceptType, cgr.ConceptID)), audit.SUCCESS, "")
 	}
 
 	logger.Debug("Handler DeleteObjectTypes Success")

@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -194,13 +193,6 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// Return the created resources.
-	for _, relationType := range relationTypes {
-		// Record an audit log after each successful creation.
-		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-			interfaces.GenerateRelationTypeAuditObject(relationType.RTID, relationType.RTName), "")
 	}
 
 	result := []any{}
@@ -465,9 +457,6 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateRelationTypeAuditObject(rtID, relationType.RTName), "")
-
 	logger.Debug("Handler UpdateRelationType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -530,9 +519,8 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 	rtIDs := common.StringToStringSlice(otIDsStr)
 
 	// Check that all relation type IDs exist.
-	var relationTypes []*interfaces.RelationTypeWithKeyField
 	for _, rtID := range rtIDs {
-		rtName, exist, err := r.rts.CheckRelationTypeExistByID(ctx, knID, branch, rtID)
+		_, exist, err := r.rts.CheckRelationTypeExistByID(ctx, knID, branch, rtID)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 
@@ -551,7 +539,6 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 			return
 		}
 
-		relationTypes = append(relationTypes, &interfaces.RelationTypeWithKeyField{RTID: rtID, RTName: rtName})
 	}
 
 	// Delete relation types in batch.
@@ -562,12 +549,6 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// Record audit logs for each item.
-	for _, relationType := range relationTypes {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateRelationTypeAuditObject(relationType.RTID, relationType.RTName), audit.SUCCESS, "")
 	}
 
 	logger.Debug("Handler DeleteRelationTypes Success")

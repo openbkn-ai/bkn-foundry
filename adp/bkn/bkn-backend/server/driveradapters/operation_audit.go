@@ -51,11 +51,6 @@ type operationAuditRecorder interface {
 	Record(context.Context, operationaudit.Entry) error
 }
 
-type operationAuditQueryStore interface {
-	List(context.Context, operationaudit.Filter) (operationaudit.Page, error)
-	Get(context.Context, string, operationaudit.Scope) (operationaudit.Entry, bool, error)
-}
-
 var operationAuditRoutes = map[string]operationAuditRule{
 	"POST /knowledge-networks":                                                           {Action: "create", TargetType: "knowledge_network"},
 	"PUT /knowledge-networks/:kn_id":                                                     {Action: "update", TargetType: "knowledge_network"},
@@ -137,7 +132,7 @@ func basicOperationAuditActor(authorization string, visitor hydra.Visitor) opera
 
 // OperationAudit records exactly one bounded management fact after a registered
 // request attempt. It never changes the business response when audit persistence
-// fails; the loss is explicit in the service log instead of being silently hidden.
+// fails; the Kafka recorder counts and rate-limits the resulting coverage gap.
 func (r *restHandler) OperationAudit() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rule, registered := registeredOperationAudit(c.Request.Method, c.FullPath(), c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
@@ -149,7 +144,6 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		responseBody := &boundedResponseWriter{ResponseWriter: c.Writer, limit: maximumOperationAuditBody}
 		c.Writer = responseBody
 		c.Next()
-		responseBody.FlushResponse()
 
 		if r == nil || r.auditRecorder == nil {
 			return
@@ -157,6 +151,11 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		requestID, err := operationAuditRequestID(c)
 		if err != nil {
 			logger.Errorf("operation audit request ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
+			return
+		}
+		attemptID, err := uuid.NewV7()
+		if err != nil {
+			logger.Errorf("operation audit attempt ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
 			return
 		}
 		visitor, _ := operationAuditVisitor(c)
@@ -167,7 +166,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		facts := operationAuditFacts(c, rule, requestBody, responseBody.body.Bytes(), requestID)
 		now := time.Now().UTC()
 		entry := operationaudit.Entry{
-			EventID:            operationAuditEventID(requestID, c.Request.Method, c.Request.URL.Path),
+			EventID:            attemptID.String(),
 			EventTime:          now,
 			RecordedAt:         now,
 			KnowledgeNetworkID: facts.knowledgeNetworkID,
@@ -179,6 +178,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			RequestID:          requestID,
 			SourceChannel:      operationAuditSourceChannel(c.FullPath()),
 			Method:             c.Request.Method,
+			HTTPStatus:         c.Writer.Status(),
 			Action:             rule.Action,
 			TargetType:         rule.TargetType,
 			TargetID:           facts.targetID,
@@ -188,81 +188,49 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			FailureMessage:     facts.failureMessage,
 			ChangeSummary:      facts.changeSummary,
 		}
-		if entry.KnowledgeNetworkID == "" {
-			entry.KnowledgeNetworkID = entry.TargetID
-		}
-		if err := r.auditRecorder.Record(c.Request.Context(), entry); err != nil {
-			logger.Errorf("operation audit persistence failed: request_id=%s action=%s target_type=%s error=%v", entry.RequestID, entry.Action, entry.TargetType, err)
-		}
+		_ = r.auditRecorder.Record(c.Request.Context(), entry)
 	}
-}
-
-func operationAuditEventID(requestID, method, path string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{requestID, strings.ToUpper(method), path}, "\n")))
-	return fmt.Sprintf("evt_%x", sum[:])
 }
 
 type boundedResponseWriter struct {
 	gin.ResponseWriter
-	body        bytes.Buffer
-	limit       int
-	status      int
-	wroteHeader bool
-}
-
-func (w *boundedResponseWriter) WriteHeader(code int) {
-	if w.wroteHeader {
-		return
-	}
-	w.status = code
-	w.wroteHeader = true
+	body  bytes.Buffer
+	limit int
 }
 
 func (w *boundedResponseWriter) WriteHeaderNow() {
-	if !w.wroteHeader {
-		w.WriteHeader(http.StatusOK)
-	}
+	w.setSafeContentHeaders()
+	w.ResponseWriter.WriteHeaderNow()
 }
 
 func (w *boundedResponseWriter) Write(data []byte) (int, error) {
-	w.WriteHeaderNow()
-	_, err := w.body.Write(data)
-	return len(data), err
+	w.setSafeContentHeaders()
+	n, err := w.ResponseWriter.Write(data)
+	w.capture(data[:n])
+	return n, err
 }
 
 func (w *boundedResponseWriter) WriteString(value string) (int, error) {
-	return w.Write([]byte(value))
+	w.setSafeContentHeaders()
+	n, err := w.ResponseWriter.WriteString(value)
+	w.capture([]byte(value[:n]))
+	return n, err
 }
 
-func (w *boundedResponseWriter) FlushResponse() {
-	if w.wroteHeader && w.Written() {
-		return
+func (w *boundedResponseWriter) setSafeContentHeaders() {
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
-	status := w.status
-	if status == 0 {
-		status = http.StatusOK
-	}
-	payload, ok := marshalJSONResponse(w.body.Bytes())
-	if !ok {
-		status = http.StatusInternalServerError
-		payload = []byte(`{"error":"invalid JSON response"}`)
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.ResponseWriter.WriteHeader(status)
-	_, _ = w.ResponseWriter.Write(payload)
 }
 
-func marshalJSONResponse(data []byte) ([]byte, bool) {
-	if len(data) == 0 {
-		return nil, true
+func (w *boundedResponseWriter) capture(data []byte) {
+	if remaining := w.limit - w.body.Len(); remaining > 0 {
+		if len(data) > remaining {
+			data = data[:remaining]
+		}
+		_, _ = w.body.Write(data)
 	}
-	var value any
-	if err := json.Unmarshal(data, &value); err != nil {
-		return nil, false
-	}
-	encoded, err := json.Marshal(value)
-	return encoded, err == nil
 }
 
 func captureRequestBody(request *http.Request) []byte {
@@ -331,14 +299,24 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 	} else if len(requestNames) > 0 {
 		targetName = strings.Join(requestNames, "、")
 	}
+	observedTargetID := targetID
 	if targetID == "" {
 		targetID = rule.TargetType + ":" + requestID
+	}
+	if len(targetID) > 256 {
+		digest := sha256.Sum256([]byte(targetID))
+		targetID = fmt.Sprintf("%s:sha256:%x", rule.TargetType, digest)
 	}
 	if targetName == "" {
 		targetName = targetID
 	}
-	if knID == "" && rule.TargetType == "knowledge_network" {
-		knID = targetID
+	if knID == "" && rule.TargetType == "knowledge_network" && c.Writer.Status() < http.StatusBadRequest {
+		knID = observedTargetID
+	}
+	// A rejected request may carry an arbitrary path ID. Keep the bounded target
+	// fact, but do not claim an invalid value as a knowledge-network scope.
+	if len(knID) > 128 {
+		knID = ""
 	}
 	outcome := "success"
 	failureCode, failureMessage := "", ""

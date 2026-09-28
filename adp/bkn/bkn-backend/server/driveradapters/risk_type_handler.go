@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -140,11 +139,6 @@ func (r *restHandler) CreateRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	for _, rt := range riskTypes {
-		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-			interfaces.GenerateRiskTypeAuditObject(rt.RTID, rt.RTName), "")
-	}
-
 	result := []any{}
 	for _, id := range rtIDs {
 		result = append(result, map[string]any{"id": id})
@@ -251,8 +245,6 @@ func (r *restHandler) UpdateRiskType(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateRiskTypeAuditObject(rtID, riskType.RTName), "")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
@@ -289,9 +281,8 @@ func (r *restHandler) DeleteRiskTypes(c *gin.Context) {
 	}
 
 	rtIDs := common.StringToStringSlice(rtIDsStr)
-	var riskTypes []*interfaces.RiskType
 	for _, rtID := range rtIDs {
-		rtName, exist, e := r.rtsRisk.CheckRiskTypeExistByID(ctx, knID, branch, rtID)
+		_, exist, e := r.rtsRisk.CheckRiskTypeExistByID(ctx, knID, branch, rtID)
 		if e != nil {
 			httpErr := e.(*rest.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -304,7 +295,6 @@ func (r *restHandler) DeleteRiskTypes(c *gin.Context) {
 			rest.ReplyError(c, httpErr)
 			return
 		}
-		riskTypes = append(riskTypes, &interfaces.RiskType{RTID: rtID, RTName: rtName})
 	}
 
 	if err = r.rtsRisk.DeleteRiskTypesByIDs(ctx, nil, knID, branch, rtIDs); err != nil {
@@ -314,10 +304,6 @@ func (r *restHandler) DeleteRiskTypes(c *gin.Context) {
 		return
 	}
 
-	for _, rt := range riskTypes {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateRiskTypeAuditObject(rt.RTID, rt.RTName), audit.SUCCESS, "")
-	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }

@@ -12,7 +12,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -120,9 +119,6 @@ func (r *restHandler) CreateActionSchedule(c *gin.Context, visitor hydra.Visitor
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-		interfaces.GenerateScheduleAuditObject(scheduleID, reqBody.Name), "")
-
 	result := map[string]any{"id": scheduleID}
 	logger.Debug("Handler CreateActionSchedule Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
@@ -210,9 +206,6 @@ func (r *restHandler) UpdateActionSchedule(c *gin.Context, visitor hydra.Visitor
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateScheduleAuditObject(scheduleID, schedule.Name), "")
-
 	logger.Debug("Handler UpdateActionSchedule Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, nil)
@@ -289,9 +282,6 @@ func (r *restHandler) UpdateActionScheduleStatus(c *gin.Context, visitor hydra.V
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateScheduleAuditObject(scheduleID, schedule.Name), fmt.Sprintf("status: %s", reqBody.Status))
-
 	logger.Debug("Handler UpdateActionScheduleStatus Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, nil)
@@ -338,8 +328,8 @@ func (r *restHandler) DeleteActionSchedules(c *gin.Context, visitor hydra.Visito
 
 	scheduleIDs := common.StringToStringSlice(scheduleIDsStr)
 
-	// Get schedules for audit log
-	schedules, err := r.ass.GetSchedules(ctx, scheduleIDs)
+	// Preserve the existing not-found validation before deletion.
+	_, err := r.ass.GetSchedules(ctx, scheduleIDs)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -352,11 +342,6 @@ func (r *restHandler) DeleteActionSchedules(c *gin.Context, visitor hydra.Visito
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	for _, schedule := range schedules {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateScheduleAuditObject(schedule.ID, schedule.Name), audit.SUCCESS, "")
 	}
 
 	logger.Debug("Handler DeleteActionSchedules Success")

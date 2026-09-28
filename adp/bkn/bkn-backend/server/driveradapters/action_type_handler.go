@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -191,13 +190,6 @@ func (r *restHandler) CreateActionTypes(c *gin.Context, visitor hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// Return the created resources.
-	for _, actionType := range actionTypes {
-		// Record an audit log after each successful creation.
-		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-			interfaces.GenerateActionTypeAuditObject(actionType.ATID, actionType.ATName), "")
 	}
 
 	result := []any{}
@@ -482,9 +474,6 @@ func (r *restHandler) UpdateActionType(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateActionTypeAuditObject(atID, actionType.ATName), "")
-
 	logger.Debug("Handler UpdateActionType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -547,9 +536,8 @@ func (r *restHandler) DeleteActionTypes(c *gin.Context) {
 	atIDs := common.StringToStringSlice(atIDsStr)
 
 	// Check that all action type IDs exist.
-	var actionTypes []*interfaces.ActionTypeWithKeyField
 	for _, atID := range atIDs {
-		atName, exist, err := r.ats.CheckActionTypeExistByID(ctx, knID, branch, atID)
+		_, exist, err := r.ats.CheckActionTypeExistByID(ctx, knID, branch, atID)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 
@@ -568,7 +556,6 @@ func (r *restHandler) DeleteActionTypes(c *gin.Context) {
 			return
 		}
 
-		actionTypes = append(actionTypes, &interfaces.ActionTypeWithKeyField{ATID: atID, ATName: atName})
 	}
 
 	// Delete action types in batch.
@@ -579,12 +566,6 @@ func (r *restHandler) DeleteActionTypes(c *gin.Context) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// Record audit logs for each item.
-	for _, actionType := range actionTypes {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateActionTypeAuditObject(actionType.ATID, actionType.ATName), audit.SUCCESS, "")
 	}
 
 	logger.Debug("Handler DeleteActionTypes Success")

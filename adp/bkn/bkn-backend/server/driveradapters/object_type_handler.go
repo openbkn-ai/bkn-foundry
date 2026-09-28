@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -193,13 +192,6 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// Return the created resources.
-	for _, objectType := range objectTypes {
-		// Record an audit log after each successful creation.
-		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-			interfaces.GenerateObjectTypeAuditObject(objectType.OTID, objectType.OTName), "")
 	}
 
 	result := []any{}
@@ -485,9 +477,6 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateObjectTypeAuditObject(otID, objectType.OTName), "")
-
 	logger.Debug("Handler UpdateObjectType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -615,9 +604,6 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateObjectTypeAuditObject(otID, objectType.OTName), "")
-
 	logger.Debug("Handler UpdateObjectType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -693,10 +679,9 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 	span.SetAttributes(attr.Key("force_delete").Bool(forceDelete))
 
 	// Check that all object type IDs exist.
-	var objectTypes []*interfaces.ObjectTypeWithKeyField
 	for _, otID := range otIDs {
 		// Validate the object type ID in the specified knowledge network.
-		otName, exist, err := r.ots.CheckObjectTypeExistByID(ctx, knID, branch, otID)
+		_, exist, err := r.ots.CheckObjectTypeExistByID(ctx, knID, branch, otID)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 
@@ -715,7 +700,6 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			return
 		}
 
-		objectTypes = append(objectTypes, &interfaces.ObjectTypeWithKeyField{OTID: otID, OTName: otName})
 	}
 
 	// When force_delete is false, verify that no relation type references the object type.
@@ -800,12 +784,6 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// Record audit logs for each item.
-	for _, objectType := range objectTypes {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateObjectTypeAuditObject(objectType.OTID, objectType.OTName), audit.SUCCESS, "")
 	}
 
 	logger.Debug("Handler DeleteObjectTypes Success")

@@ -23,7 +23,6 @@ import (
 
 	"bkn-backend/common"
 	"bkn-backend/common/bkntrace"
-	"bkn-backend/common/operationaudit"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics/action_schedule"
@@ -49,7 +48,6 @@ type RestHandler interface {
 type restHandler struct {
 	appSetting              *common.AppSetting
 	auditRecorder           operationAuditRecorder
-	auditQueryStore         operationAuditQueryStore
 	auditIdentityResolver   func(context.Context, string, hydra.Visitor) operationAuditActor
 	auditAccessResolver     func(context.Context, string, string) (bkntrace.OperationAuditProfile, error)
 	as                      interfaces.AuthService
@@ -69,7 +67,7 @@ type restHandler struct {
 	odss                    interfaces.ObjectDataStatsService
 }
 
-func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.Store) RestHandler {
+func NewRestHandler(appSetting *common.AppSetting, recorder operationAuditRecorder) RestHandler {
 	var projectionVerifier *bkntrace.ProjectionGrantVerifier
 	if projectionGrantVerifierEnabled() {
 		verifier, err := bkntrace.NewProjectionGrantVerifierFromEnv()
@@ -81,8 +79,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.St
 	knService := knowledge_network.NewKNService(appSetting)
 	r := &restHandler{
 		appSetting:          appSetting,
-		auditRecorder:       auditStore,
-		auditQueryStore:     auditStore,
+		auditRecorder:       recorder,
 		auditAccessResolver: bkntrace.ResolveOperationAuditProfile,
 		auditIdentityResolver: func(ctx context.Context, authorization string, visitor hydra.Visitor) operationAuditActor {
 			actor := basicOperationAuditActor(authorization, visitor)
@@ -127,8 +124,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	otlApiV1 := c.Group("/api/ontology-manager/v1")
 	bknApiV1.Use(rest.PrivateNoCacheMiddleware())
 	otlApiV1.Use(rest.PrivateNoCacheMiddleware())
-	bknApiV1.GET("/operation-audits", r.ListOperationAudits)
-	bknApiV1.GET("/operation-audits/:event_id", r.GetOperationAudit)
 	bknApiV1.GET("/proxy-accounts", r.ListKNProxiesByEx)
 	bknApiV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxyByEx)
 	bknApiV1.GET("/knowledge-networks/:kn_id/proxy-account/plan", r.PlanKNProxySyncByEx)
