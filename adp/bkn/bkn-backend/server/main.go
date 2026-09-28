@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -226,7 +227,10 @@ func main() {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_ENABLED")), "true") {
 		auditRuntime, err = operationaudit.NewKafkaRuntimeFromEnv(auditTelemetry)
 		if err != nil {
-			logger.Fatalf("Audit Kafka publisher enabled but invalid: %v", err)
+			if errors.Is(err, operationaudit.ErrInvalidKafkaConfiguration) {
+				logger.Fatalf("Audit Kafka publisher enabled but invalid: %v", err)
+			}
+			logger.Warnf("Audit Kafka publisher unavailable; audit coverage_gap: %v", err)
 		}
 	} else {
 		logger.Warn("Audit Kafka publisher is disabled; management Audit coverage_gap")

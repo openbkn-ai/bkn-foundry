@@ -24,6 +24,9 @@ type KafkaRuntime struct {
 	Producer  interface{ Close() error }
 }
 
+// ErrInvalidKafkaConfiguration means a deployment setting is missing or invalid.
+var ErrInvalidKafkaConfiguration = errors.New("Audit Kafka brokers and SASL PLAIN credentials are required")
+
 func NewKafkaRuntimeFromEnv(telemetry *PublishTelemetry) (*KafkaRuntime, error) {
 	brokers := strings.Split(strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_BROKERS")), ",")
 	clean := brokers[:0]
@@ -35,7 +38,7 @@ func NewKafkaRuntimeFromEnv(telemetry *PublishTelemetry) (*KafkaRuntime, error) 
 	username := strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_USERNAME"))
 	password := os.Getenv("BKN_AUDIT_KAFKA_PASSWORD")
 	if len(clean) == 0 || os.Getenv("BKN_AUDIT_KAFKA_SASL_MECHANISM") != "PLAIN" || username == "" || password == "" {
-		return nil, errors.New("Audit Kafka brokers and SASL PLAIN credentials are required")
+		return nil, ErrInvalidKafkaConfiguration
 	}
 	producer, err := kafkasender.NewProducer(kafkasender.Config{
 		Brokers: clean, Mechanism: "PLAIN", Username: username, Password: password,
