@@ -839,10 +839,7 @@ components:
           maxItems: 100
           uniqueItems: true
           items:
-            type: string
-            minLength: 3
-            maxLength: 81
-            pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+            $ref: '#/components/schemas/RowFilterObjectTypeRef'
     RowFilterResolutionResponse:
       type: object
       additionalProperties: false
@@ -850,6 +847,8 @@ components:
       properties:
         entries:
           type: array
+          minItems: 1
+          maxItems: 100
           items:
             $ref: '#/components/schemas/EffectiveRowFilterEntry'
     EffectiveRowFilterEntry:
@@ -858,46 +857,137 @@ components:
       required: [object_type_ref, predicate, effective_row_filter_digest]
       properties:
         object_type_ref:
-          type: string
+          $ref: '#/components/schemas/RowFilterObjectTypeRef'
         predicate:
           $ref: '#/components/schemas/RowFilterPredicate'
         effective_row_filter_digest:
           type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
           description: SHA-256 digest of the normalized predicate used to bind pagination cursors to the authorization decision.
+    RowFilterObjectTypeRef:
+      type: string
+      minLength: 3
+      maxLength: 81
+      pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+    RowFilterPropertyName:
+      type: string
+      pattern: '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$'
     RowFilterPredicate:
+      description: Normalized predicate; its remaining fields are determined by `kind`.
+      oneOf:
+        - $ref: '#/components/schemas/RowFilterConstantPredicate'
+        - $ref: '#/components/schemas/RowFilterSetPredicate'
+        - $ref: '#/components/schemas/RowFilterComparisonPredicate'
+        - $ref: '#/components/schemas/RowFilterBetweenPredicate'
+        - $ref: '#/components/schemas/RowFilterGroupPredicate'
+    RowFilterConstantPredicate:
       type: object
       additionalProperties: false
       required: [kind]
       properties:
         kind:
           type: string
-          enum: [true, false, in, not_in, gt, gte, lt, lte, between, and, or]
-        property:
+          enum: ['true', 'false']
+    RowFilterSetPredicate:
+      type: object
+      additionalProperties: false
+      required: [kind, property, values]
+      properties:
+        kind:
           type: string
+          enum: [in, not_in]
+        property:
+          $ref: '#/components/schemas/RowFilterPropertyName'
         values:
           type: array
+          minItems: 1
+          uniqueItems: true
           items:
             $ref: '#/components/schemas/TypedRowFilterValue'
+    RowFilterComparisonPredicate:
+      type: object
+      additionalProperties: false
+      required: [kind, property, values]
+      properties:
+        kind:
+          type: string
+          enum: [gt, gte, lt, lte]
+        property:
+          $ref: '#/components/schemas/RowFilterPropertyName'
+        values:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            $ref: '#/components/schemas/TypedIntegerRowFilterValue'
+    RowFilterBetweenPredicate:
+      type: object
+      additionalProperties: false
+      required: [kind, property, values]
+      properties:
+        kind:
+          type: string
+          enum: [between]
+        property:
+          $ref: '#/components/schemas/RowFilterPropertyName'
+        values:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: Inclusive integer bounds in non-descending order; equal bounds are valid.
+          items:
+            $ref: '#/components/schemas/TypedIntegerRowFilterValue'
+    RowFilterGroupPredicate:
+      type: object
+      additionalProperties: false
+      required: [kind, predicates]
+      properties:
+        kind:
+          type: string
+          enum: [and, or]
         predicates:
           type: array
+          minItems: 2
+          uniqueItems: true
           items:
             $ref: '#/components/schemas/RowFilterPredicate'
     TypedRowFilterValue:
+      description: Exactly one scalar member matching `type` is present.
+      oneOf:
+        - $ref: '#/components/schemas/TypedStringRowFilterValue'
+        - $ref: '#/components/schemas/TypedIntegerRowFilterValue'
+        - $ref: '#/components/schemas/TypedBooleanRowFilterValue'
+    TypedStringRowFilterValue:
       type: object
       additionalProperties: false
-      required: [type]
+      required: [type, string]
       properties:
         type:
           type: string
-          enum: [string, integer, boolean]
+          enum: [string]
         string:
           type: string
+    TypedIntegerRowFilterValue:
+      type: object
+      additionalProperties: false
+      required: [type, integer]
+      properties:
+        type:
+          type: string
+          enum: [integer]
         integer:
           type: integer
           format: int64
+    TypedBooleanRowFilterValue:
+      type: object
+      additionalProperties: false
+      required: [type, boolean]
+      properties:
+        type:
+          type: string
+          enum: [boolean]
         boolean:
           type: boolean
-      description: Exactly one scalar member matching `type` is present.
     PolicyWriteRequest:
       type: object
       required: [accessor_id, resource, operations]
