@@ -30,7 +30,7 @@ type KafkaRecorder struct {
 }
 
 func NewKafkaRecorder(publisher KafkaPublisher, environment string, telemetry *PublishTelemetry) *KafkaRecorder {
-	return &KafkaRecorder{publisher: publisher, environment: environment, telemetry: telemetry}
+	return &KafkaRecorder{publisher: publisher, environment: strings.TrimSpace(environment), telemetry: telemetry}
 }
 
 // SetPublisher restores or drains the active producer without changing the

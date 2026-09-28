@@ -68,3 +68,10 @@ func TestKafkaRecorderRecoversAfterPublisherBecomesAvailable(t *testing.T) {
 	require.NoError(t, recorder.Record(context.Background(), validVegaAuditEntry()))
 	require.Len(t, publisher.values, 1)
 }
+
+func TestKafkaRecorderNormalizesConfiguredEnvironment(t *testing.T) {
+	publisher := &captureKafkaAuditPublisher{disposition: auditpublisher.Accepted}
+	recorder := NewKafkaRecorder(publisher, " test ", NewPublishTelemetry())
+	require.NoError(t, recorder.Record(context.Background(), validVegaAuditEntry()))
+	require.Len(t, publisher.values, 1)
+}

@@ -21,6 +21,9 @@ type KafkaRecorder struct {
 }
 
 func NewKafkaRecorder(publisher KafkaPublisher, environment string) *KafkaRecorder {
+	if concrete, ok := publisher.(*auditpublisher.Publisher); ok && concrete == nil {
+		publisher = nil
+	}
 	return &KafkaRecorder{publisher: publisher, environment: environment}
 }
 

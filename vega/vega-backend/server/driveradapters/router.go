@@ -72,6 +72,7 @@ type restHandler struct {
 
 // NewRestHandler creates a new RestHandler.
 func NewRestHandler(appSetting *common.AppSetting, auditRecorder operationAuditRecorder, auditTelemetry *operationaudit.PublishTelemetry) RestHandler {
+	auditRecorder = normalizeOperationAuditRecorder(auditRecorder)
 	as := auth.NewAuthService(appSetting)
 	cs := catalog.NewCatalogService(appSetting)
 	cts := connector_type.NewConnectorTypeService(appSetting)
@@ -106,6 +107,13 @@ func NewRestHandler(appSetting *common.AppSetting, auditRecorder operationAuditR
 	}
 	handler.SetReady(true)
 	return handler
+}
+
+func normalizeOperationAuditRecorder(recorder operationAuditRecorder) operationAuditRecorder {
+	if concrete, ok := recorder.(*operationaudit.KafkaRecorder); ok && concrete == nil {
+		return nil
+	}
+	return recorder
 }
 
 // RegisterPublic registers public API routes.

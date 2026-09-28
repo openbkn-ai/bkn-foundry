@@ -14,8 +14,8 @@ spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
     rollingUpdate:
-      maxSurge: {{ .Values.rollout.maxSurge }}
-      maxUnavailable: {{ .Values.rollout.maxUnavailable }}
+      maxSurge: 0
+      maxUnavailable: 25%
     type: RollingUpdate
   template:
     metadata:
@@ -33,16 +33,14 @@ spec:
       {{- end }}
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - {{ .Release.Name }}
-              topologyKey: "kubernetes.io/hostname"
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - {{ .Release.Name }}
+            topologyKey: "kubernetes.io/hostname"
       {{- if ne .Values.runMode "dev" }}
       {{- if eq .Values.enableSecurityContext true }}
       {{- with .Values.securityContext }}

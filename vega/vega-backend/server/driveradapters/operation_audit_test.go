@@ -43,6 +43,13 @@ func TestCaptureOperationAuditRequestRestoresOversizedBody(t *testing.T) {
 
 type capturedOperationAuditRecorder struct{ entries []operationaudit.Entry }
 
+func TestNormalizeDisabledOperationAuditRecorder(t *testing.T) {
+	var disabled *operationaudit.KafkaRecorder
+	if normalized := normalizeOperationAuditRecorder(disabled); normalized != nil {
+		t.Fatalf("disabled recorder remains a non-nil interface: %T", normalized)
+	}
+}
+
 func (r *capturedOperationAuditRecorder) Record(_ context.Context, entry operationaudit.Entry) error {
 	r.entries = append(r.entries, entry)
 	return nil
