@@ -867,6 +867,32 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
 	})
 
+	t.Run("index condition build error becomes HTTP 400", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockConn := mock_interfaces.NewMockIndexConnector(ctrl)
+		rds := &resourceDataService{cs: mockCS, cf: mockCF}
+		resource := newResource(interfaces.ResourceCategoryIndex)
+		cause := fmt.Errorf("failed to build filter query: %w", interfaces.NewConditionBuildError("text field body has no keyword feature"))
+
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
+		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
+		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource.SourceIdentifier, resource, gomock.Any()).Return(nil, cause)
+
+		rows, total, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		assert.Nil(t, rows)
+		assert.Zero(t, total)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.Error(), "text field body has no keyword feature")
+	})
+
 	t.Run("fileset connector source permission error becomes HTTP 403", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)

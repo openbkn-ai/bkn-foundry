@@ -604,10 +604,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			if errors.As(err, &sourceReadForbidden) {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
 			}
-			var unsupported *interfaces.UnsupportedOperationError
-			if errors.As(err, &unsupported) {
+			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(unsupported.Error())
+					WithErrorDetails(reason)
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
@@ -632,10 +631,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			if errors.As(err, &sourceReadForbidden) {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
 			}
-			var unsupported *interfaces.UnsupportedOperationError
-			if errors.As(err, &unsupported) {
+			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(unsupported.Error())
+					WithErrorDetails(reason)
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
@@ -664,10 +662,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			}
 			// The same typing as the table/index branches: The unimplemented operators of anyshare are problems on the request side
 			// The caller can pass by simply changing the operator. If everything is uniformly packaged as 500, ontology-query will be judged as a dependency fault.
-			var unsupported *interfaces.UnsupportedOperationError
-			if errors.As(err, &unsupported) {
+			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(unsupported.Error())
+					WithErrorDetails(reason)
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(err.Error())
