@@ -568,17 +568,17 @@ type ObjectTypesResp struct {
 	Notice string `json:"notice,omitempty"`
 }
 
-// Object type listing bounds for get_object_types without ids.
+// Object type index bounds for get_object_types without ids.
 //
-// A listed entry carries the same full detail a named one does -- mappings,
-// operators, the metrics scoped to it -- because that is what the tool is for.
-// On the 1000-object network of #1877 that runs about 3.5KB an entry, so twenty
-// is a page a caller can actually read and a hundred is where one stops being
-// one. Each page also costs one bounded property-plan fan-out, which is the
-// other reason not to let it grow without limit.
+// A listed entry is an index entry -- id, name, comment, tags, data source -- at
+// a few hundred bytes, because what a caller without ids needs is something to
+// choose by and then name. Two hundred of those is about the size of a small
+// network's whole summary, and fifty walks a 1000-object network in twenty
+// calls. Definitions come from naming the ids, which is the same progressive
+// disclosure get_kn_detail's summary and this tool's by-id path already are.
 const (
-	DefaultObjectTypePageSize = 20
-	MaxObjectTypePageSize     = 100
+	DefaultObjectTypePageSize = 50
+	MaxObjectTypePageSize     = 200
 )
 
 // ResolveObjectTypePage clamps a caller's paging inputs to the bounds above.
@@ -601,14 +601,16 @@ func ResolveObjectTypePage(offset, limit int) (resolvedOffset, resolvedLimit int
 }
 
 // NextObjectTypeOffset is the offset that continues a walk, or nil on the last
-// page. A short page ends the walk even when the total says otherwise: the total
-// can move under a walk, and trusting it over what was actually returned is how
-// a caller ends up looping on an empty page.
-func NextObjectTypeOffset(offset, returned int, total int64) *int {
-	if returned == 0 {
+// page. It takes what the listing scanned, not what the page carries.
+//
+// A window that scanned nothing ends the walk even when the total says otherwise:
+// the total can move under a walk, and trusting it over what was actually read is
+// how a caller ends up looping on an empty page.
+func NextObjectTypeOffset(offset, scanned int, total int64) *int {
+	if scanned == 0 {
 		return nil
 	}
-	next := offset + returned
+	next := offset + scanned
 	if int64(next) >= total {
 		return nil
 	}
@@ -621,6 +623,11 @@ func NextObjectTypeOffset(offset, returned int, total int64) *int {
 type ObjectTypePage struct {
 	Entries    []*ObjectType
 	TotalCount int64
+	// Scanned is how many object types the listing covered for this window, which
+	// is what a walk advances by. Entries can be shorter -- reading one of them in
+	// full can turn up nothing the caller may see -- and advancing by the entries
+	// would then re-read the window it just consumed, or stop while rows remain.
+	Scanned int
 }
 
 // RelationTypesResp is the get_relation_types response: the requested relation

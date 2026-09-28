@@ -317,7 +317,7 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 			return
 		}
 		matched, totalCount = page.Entries, page.TotalCount
-		nextOffset = interfaces.NextObjectTypeOffset(offset, len(matched), totalCount)
+		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
 		if clamped {
 			notice = errors.LocalizedDetail(ctx, "ObjectTypePageLimitClamped",
 				req.Limit, interfaces.MaxObjectTypePageSize, limit)
@@ -327,19 +327,26 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	matched, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, knID, matched)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] object property authorization failed: %v", err)
-		rest.ReplyError(c, err)
-		return
+	// The index carries no properties, so there is no property plan to apply to it
+	// and no operator to trim; and it is an index, so it does not carry the metrics
+	// a caller drills for. Running either over it would be a downstream call per
+	// object type for a field the answer does not have.
+	if len(req.IDs) > 0 {
+		matched, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, knID, matched)
+		if err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] object property authorization failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
+		objectpermission.TrimObjectTypesToIndexBackedOps(matched)
+		// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
+		if err := h.metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] metric authorization failed: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
 	}
-	objectpermission.TrimObjectTypesToIndexBackedOps(matched)
-	// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
-	if err := h.metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] metric authorization failed: %v", err)
-		rest.ReplyError(c, err)
-		return
-	}
+
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "object", knID, req.IDs, len(matched))
 	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched,
 		TotalCount: totalCount, NextOffset: nextOffset, Notice: notice})

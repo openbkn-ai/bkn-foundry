@@ -132,7 +132,7 @@
   "get_object_types": {
     "title": "Object Type Detail",
     "group_title": "Networks & Schema",
-    "description": "Fetch full object type definitions by id (data_properties carry mapped_field/condition_operations, logic_properties carry data_source/parameters). For progressive drill-down: call get_kn_detail (summary) for the object ids first, then expand only the ones you need. ids takes several at once; ids that match nothing come back under missing. **Leave ids out to list the network's object types** by offset/limit (20 per page, 100 at most; the response carries total_count and next_offset). A network past get_kn_detail's caps answers with its navigation shell, and this is the only way to the ids from there.",
+    "description": "Fetch full object type definitions by id (data_properties carry mapped_field/condition_operations, logic_properties carry data_source/parameters). For progressive drill-down: call get_kn_detail (summary) for the object ids first, then expand only the ones you need. ids takes several at once; ids that match nothing come back under missing. **Leave ids out to list the network's object type index** by offset/limit: id, name, comment, tags and data source, without fields or metrics (50 per page, 200 at most; the response carries total_count and next_offset). A network past get_kn_detail's caps answers with its navigation shell, and this is the only way to the ids from there -- name them back here for the definitions.",
     "gateway": {
       "summary": "Full definition of object types by ID, or one page of them when given no ID.",
       "use_when": "You need an object type's fields and filters, or want to walk the network's object types.",

@@ -733,7 +733,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			matched, totalCount = page.Entries, page.TotalCount
-			nextOffset = interfaces.NextObjectTypeOffset(offset, len(matched), totalCount)
+			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
 			if clamped {
 				notice = infraErr.LocalizedDetail(ctx, "ObjectTypePageLimitClamped",
 					args.Limit, interfaces.MaxObjectTypePageSize, limit)
@@ -749,18 +749,25 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 		}
-		matched, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, matched)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		// The same rule as search_schema: only emit underivable operators. Comparison operators (==/in/like/range…)
-		// Determined by the attribute type, repeating each attribute for more than ten times is pure noise - the object type is small and it still occupies the context.
-		objectpermission.TrimObjectTypesToIndexBackedOps(matched)
+		// The index carries no properties, so there is no property plan to apply to
+		// it and no operator to trim; and it is an index, so it does not carry the
+		// metrics a caller drills for. Running either over it would be a downstream
+		// call per object type for a field the answer does not have -- which is what
+		// made a page of this cost a second an object type.
+		if len(args.IDs) > 0 {
+			matched, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, matched)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			// The same rule as search_schema: only emit underivable operators. Comparison operators (==/in/like/range…)
+			// Determined by the attribute type, repeating each attribute for more than ten times is pure noise - the object type is small and it still occupies the context.
+			objectpermission.TrimObjectTypesToIndexBackedOps(matched)
 
-		// Step 2 of the OT-first metric path: a metric that is not bound to a logic
-		// property is unreachable from the object type without this.
-		if err := metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			// Step 2 of the OT-first metric path: a metric that is not bound to a logic
+			// property is unreachable from the object type without this.
+			if err := metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
 		}
 		// A listed page is complete for what it asked: nothing was requested by name,
 		// so nothing can be missing from it.

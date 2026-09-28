@@ -379,12 +379,20 @@ type knPagedEnvelope[T any] struct {
 	TotalCount int64 `json:"total_count"`
 }
 
-// ListObjectTypes reads one page of a knowledge network's object types.
+// ListObjectTypes reads one page of a knowledge network's object type index.
 //
-// The same endpoint GetKnowledgeNetworkDetail reads whole, asked for a window
-// instead: bkn-backend filters by the caller's authorization before it pages, so
-// the offsets and the total are over what this caller may see, not over what the
-// network holds.
+// An index entry, not a definition: bkn-backend's list endpoint selects
+// f_id / f_name / f_tags / f_comment / f_data_source and the audit columns, with
+// no property columns and no include_detail to ask for them. That is the right
+// shape for this call. What a caller without ids needs is ids -- something to
+// choose by, and then to name in a by-id read. Answering with full definitions
+// would hand back roughly 60KB an object type on the network of #1877, so a page
+// of twenty would be over a megabyte: the answer #1877 exists to prevent, and it
+// would cost one property-plan read per object type to build.
+//
+// bkn-backend filters by the caller's authorization before it pages, so the total
+// and the offsets are over what this caller may see, not over what the network
+// holds.
 func (b *bknBackendAccess) ListObjectTypes(ctx context.Context, knID string, offset, limit int) (*interfaces.ObjectTypePage, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types", b.baseURL, url.PathEscape(knID))
 	query := url.Values{}
@@ -397,7 +405,9 @@ func (b *bknBackendAccess) ListObjectTypes(ctx context.Context, knID string, off
 	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.object_type.list", query, page); err != nil {
 		return nil, err
 	}
-	return &interfaces.ObjectTypePage{Entries: page.Entries, TotalCount: page.TotalCount}, nil
+	return &interfaces.ObjectTypePage{
+		Entries: page.Entries, TotalCount: page.TotalCount, Scanned: len(page.Entries),
+	}, nil
 }
 
 // GetObjectTypeDetail gets object type details.

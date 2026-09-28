@@ -31,10 +31,13 @@ func (s *listingBknBackend) ListObjectTypes(_ context.Context, _ string, offset,
 	s.gotOffset, s.gotLimit = offset, limit
 	entries := make([]*interfaces.ObjectType, 0, limit)
 	for i := offset; i < offset+limit && int64(i) < s.total; i++ {
+		// With fields, because a listed entry carries what naming its id would
+		// have carried -- the adapter reads the window and then reads it in full.
 		entries = append(entries, &interfaces.ObjectType{ID: fmt.Sprintf("ot-%04d", i),
-			DataSource: &interfaces.ResourceInfo{Type: "resource", ID: "res"}})
+			DataSource:     &interfaces.ResourceInfo{Type: "resource", ID: "res"},
+			DataProperties: []*interfaces.DataProperty{{Name: "id", Type: "string"}}})
 	}
-	return &interfaces.ObjectTypePage{Entries: entries, TotalCount: s.total}, nil
+	return &interfaces.ObjectTypePage{Entries: entries, TotalCount: s.total, Scanned: len(entries)}, nil
 }
 
 func (s *listingBknBackend) GetObjectTypeDetail(_ context.Context, _ string, ids []string, _ bool) ([]*interfaces.ObjectType, error) {
@@ -49,7 +52,12 @@ func (s *listingBknBackend) GetObjectTypeDetail(_ context.Context, _ string, ids
 
 func callGetObjectTypes(t *testing.T, bkn *listingBknBackend, args map[string]any) map[string]any {
 	t.Helper()
-	handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), &mcpObjectSchemaAccessStub{})
+	// With a permission plan that admits the stub's property, so what the filter
+	// drops is the caller's authorization and not the harness's silence.
+	schemaAccess := &mcpObjectSchemaAccessStub{permissions: map[string]interfaces.PropertyAccessLevel{
+		"id": interfaces.PropertyAccessFull,
+	}}
+	handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), schemaAccess)
 	args["response_format"] = "json"
 	result, err := handler(context.Background(), mcpReq(args))
 	if err != nil {
@@ -156,5 +164,32 @@ func TestGetObjectTypesWithIDsIgnoresPaging(t *testing.T) {
 		if got, present := m[field]; present {
 			t.Fatalf("%s belongs to a listing, not a by-id read, got %v", field, got)
 		}
+	}
+}
+
+// A listed page is an index and costs nothing per object type. It used to cost a
+// property-plan read each -- for properties the index does not carry -- which is
+// what made a page of twenty take about twenty seconds on a large network.
+func TestListedPageCostsNothingPerObjectType(t *testing.T) {
+	bkn := &listingBknBackend{total: 1000}
+	access := &countingSchemaAccess{}
+	handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), access)
+	result, err := handler(context.Background(), mcpReq(map[string]any{
+		"kn_id": "kn-001", "response_format": "json", "limit": 50,
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: %v %+v", err, result)
+	}
+	if access.calls.Load() != 0 {
+		t.Fatalf("read %d object type schemas for an index that carries no properties", access.calls.Load())
+	}
+	got, _ := resultToMap(t, result)["object_types"].([]any)
+	if len(got) != 50 {
+		t.Fatalf("got %d index entries, want 50", len(got))
+	}
+	// An index entry is something to choose by and then name.
+	first, _ := got[0].(map[string]any)
+	if first["id"] == nil {
+		t.Fatalf("an index entry without an id is not one: %v", first)
 	}
 }
