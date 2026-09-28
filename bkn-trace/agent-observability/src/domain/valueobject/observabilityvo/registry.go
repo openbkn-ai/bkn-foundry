@@ -52,7 +52,6 @@ var registeredEventCategories = map[string]string{
 	"log.export.completed":                 CategoryAuditSecurity,
 	"log.record.quarantined":               CategoryAuditSecurity,
 	"collection.records_dropped":           CategoryRuntimeSystem,
-	"agent.config.changed":                 CategoryAuditAdmin,
 	"tool.config.changed":                  CategoryAuditAdmin,
 	"skill.config.changed":                 CategoryAuditAdmin,
 	"toolbox.config.changed":               CategoryAuditAdmin,

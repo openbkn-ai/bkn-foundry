@@ -31,14 +31,29 @@ func TestPublicLogEventAllowlistMatchesEmbeddedAuditRegistry(t *testing.T) {
 	}
 }
 
+func TestUnshippedAgentManagementAuditIsNotAdmitted(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range validator.registry.Events {
+		if rule.Name == "agent.config.changed" {
+			t.Fatal("unshipped Agent management event must not be admitted")
+		}
+	}
+	if observabilityvo.IsRegisteredLogEvent(observabilityvo.CategoryAuditAdmin, "agent.config.changed") {
+		t.Fatal("unshipped Agent management event must not appear in public logs")
+	}
+}
+
 func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t *testing.T) {
 	validator, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for file, expected := range map[string]string{
-		"schema.json":                   "530c532e52472186fafbd8dae282c8e5fcaa067909c42518fa06be72d150d953",
-		"registry-runtime-v1.json":      "0687650868cd5140c6d25bea3b5e9e1cbf3c2e9bcb21206e128e3f295d723fae",
+		"schema.json":                   "93b87947145883e7fc65fbae40b5a93088069886ca459679bdbd892b7028954b",
+		"registry-runtime-v1.json":      "265229dd5eefdd1dadbdf1db34c7f501668fa042b9b3f8884565a85d807d3cee",
 		"audit-record-golden.json":      "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40",
 		"audit-kafka-golden.json":       "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
