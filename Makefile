@@ -11,7 +11,7 @@ TPL_DIR      := $(API_DIR)/_templates
 # 发布的模块及其展示顺序。手写列表而非目录通配：通配按目录名排序，出来的是
 # "bkn-agent 排在 bkn 前面" 这种字典序巧合，且无法把某个模块暂时撤下发布面。
 # 顺序即站点首页的卡片分组顺序，改这里就改了线上顺序。
-MODULES      := bkn context-loader ontology-query vega execution-factory mf-model-manager \
+MODULES      := bkn bkn-safe-admin context-loader ontology-query vega execution-factory mf-model-manager \
                 agent-observability bkn-agent
 # 暂不发布的模块目录（YAML 保留在仓库，只是不进站点、不参与 lint）：
 #   bkn-safe      Self-service reads and cluster-internal authz / managed-proxy contracts are not published as general integration APIs
@@ -95,6 +95,7 @@ api-docs:
 
 ## 模块显示标题（index 分区标题用）。未列出的模块回落为目录名。
 MODTITLE_bkn               := BKN
+MODTITLE_bkn-safe-admin    := BKN Safe 管理
 MODTITLE_bkn-agent         := BKN 专属 Agent
 MODTITLE_execution-factory := 执行工厂
 MODTITLE_agent-observability := BKN Trace
@@ -105,6 +106,7 @@ MODTITLE_vega              := VEGA 引擎
 
 ## 模块中文描述（index 卡片副标题用）。未列出的模块回落为空。
 MODDESC_bkn               := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
+MODDESC_bkn-safe-admin    := 企业版安全策略：行过滤策略配置与生效说明
 MODDESC_bkn-agent         := Agent 运行时：Agent 增删改查 / 对话与调用 / 任务 / 提示词版本 / 会话 / 导入导出
 MODDESC_execution-factory := 执行工厂：函数与沙箱执行 / 算子 / 工具箱 / MCP / Skill / 导入导出
 MODDESC_agent-observability := BKN Trace：受管会话生命周期 / 业务证据 / 技术链路 / 快照
@@ -115,6 +117,7 @@ MODDESC_vega              := 数据可观测：目录 / 资源 / 连接器 / 构
 
 # 资源中文名（侧栏显示用；未列出的回落为文件名）
 RESNAME_bkn-agent                 := Agent 运行时
+RESNAME_row-filter-policies       := 行过滤策略
 RESNAME_agent-observability       := BKN Trace
 RESNAME_large-model               := 大模型
 RESNAME_semantic-understanding-task := 语义理解任务
