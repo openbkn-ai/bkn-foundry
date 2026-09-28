@@ -132,12 +132,12 @@
   "get_object_types": {
     "title": "Object Type Detail",
     "group_title": "Networks & Schema",
-    "description": "Fetch full object type definitions by id (data_properties carry mapped_field/condition_operations, logic_properties carry data_source/parameters). For progressive drill-down: call get_kn_detail (summary) for the object ids first, then expand only the ones you need. ids takes several at once; ids that match nothing come back under missing.",
+    "description": "Fetch full object type definitions by id (data_properties carry mapped_field/condition_operations, logic_properties carry data_source/parameters). For progressive drill-down: call get_kn_detail (summary) for the object ids first, then expand only the ones you need. ids takes several at once; ids that match nothing come back under missing. **Leave ids out to list the network's object types** by offset/limit (20 per page, 100 at most; the response carries total_count and next_offset). A network past get_kn_detail's caps answers with its navigation shell, and this is the only way to the ids from there.",
     "gateway": {
-      "summary": "Get the full definition of object types by ID: fields, the query operators each field supports, logic properties and related metrics.",
-      "use_when": "You need an object type's fields and how they can be filtered, or its metrics and logic properties.",
-      "not_for": "Without the object type ID, use search_schema or get_kn_detail first.",
-      "next_step": "Query instances with query_object_instance; query related metrics with query_metric."
+      "summary": "Full definition of object types by ID, or one page of them when given no ID.",
+      "use_when": "You need an object type's fields and filters, or want to walk the network's object types.",
+      "not_for": "To find which object type is relevant, use search_schema.",
+      "next_step": "Instances: query_object_instance. Metrics: query_metric."
     }
   },
   "get_relation_types": {

@@ -553,6 +553,74 @@ type ObjectTypesResp struct {
 	KnID        string        `json:"kn_id"`
 	ObjectTypes []*ObjectType `json:"object_types"`
 	Missing     []string      `json:"missing,omitempty"`
+
+	// The two below appear only when the caller listed instead of naming ids.
+	// TotalCount is how many object types the caller may see in this network, so a
+	// page can be read as "20 of 1000" rather than "20, and who knows".
+	TotalCount int64 `json:"total_count,omitempty"`
+	// NextOffset is the offset that continues the walk, absent on the last page.
+	// The caller should not compute it: what it means is this service's business,
+	// and a caller that derives it will be wrong the day the walk changes.
+	NextOffset *int `json:"next_offset,omitempty"`
+	// Notice says when the request was not honoured as asked -- today, only when a
+	// limit past the maximum was answered with the maximum. Quietly returning fewer
+	// rows than were asked for is how a caller concludes the network is small.
+	Notice string `json:"notice,omitempty"`
+}
+
+// Object type listing bounds for get_object_types without ids.
+//
+// A listed entry carries the same full detail a named one does -- mappings,
+// operators, the metrics scoped to it -- because that is what the tool is for.
+// On the 1000-object network of #1877 that runs about 3.5KB an entry, so twenty
+// is a page a caller can actually read and a hundred is where one stops being
+// one. Each page also costs one bounded property-plan fan-out, which is the
+// other reason not to let it grow without limit.
+const (
+	DefaultObjectTypePageSize = 20
+	MaxObjectTypePageSize     = 100
+)
+
+// ResolveObjectTypePage clamps a caller's paging inputs to the bounds above.
+// A negative offset is a typo, not a request to walk backwards; a limit past the
+// maximum is answered with the maximum rather than refused, because the caller
+// asked for more of a thing they can simply ask for again.
+// It reports whether the limit was cut down, because a page shorter than the one
+// asked for, with nothing said about it, reads as a network that ran out.
+func ResolveObjectTypePage(offset, limit int) (resolvedOffset, resolvedLimit int, clamped bool) {
+	if offset < 0 {
+		offset = 0
+	}
+	switch {
+	case limit <= 0:
+		limit = DefaultObjectTypePageSize
+	case limit > MaxObjectTypePageSize:
+		limit, clamped = MaxObjectTypePageSize, true
+	}
+	return offset, limit, clamped
+}
+
+// NextObjectTypeOffset is the offset that continues a walk, or nil on the last
+// page. A short page ends the walk even when the total says otherwise: the total
+// can move under a walk, and trusting it over what was actually returned is how
+// a caller ends up looping on an empty page.
+func NextObjectTypeOffset(offset, returned int, total int64) *int {
+	if returned == 0 {
+		return nil
+	}
+	next := offset + returned
+	if int64(next) >= total {
+		return nil
+	}
+	return &next
+}
+
+// ObjectTypePage is one page of a knowledge network's object types, with the
+// total the caller may see. bkn-backend applies the caller's authorization
+// before paging, so the total and the offsets are over what they can read.
+type ObjectTypePage struct {
+	Entries    []*ObjectType
+	TotalCount int64
 }
 
 // RelationTypesResp is the get_relation_types response: the requested relation
@@ -715,6 +783,11 @@ type BknBackendAccess interface {
 	SearchObjectTypes(ctx context.Context, query *QueryConceptsReq) (objectTypes *ObjectTypeConcepts, err error)
 	// GetObjectTypeDetail Get object type details
 	GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*ObjectType, error)
+	// ListObjectTypes reads one page of the network's object types in name order,
+	// for a caller that has no ids yet. Name order because a walk has to be
+	// repeatable: the export read had no order at all, and a page of an unordered
+	// list is not a page of anything.
+	ListObjectTypes(ctx context.Context, knID string, offset, limit int) (*ObjectTypePage, error)
 
 	// SearchRelationTypes Search relation types
 	SearchRelationTypes(ctx context.Context, query *QueryConceptsReq) (releationTypes *RelationTypeConcepts, err error)

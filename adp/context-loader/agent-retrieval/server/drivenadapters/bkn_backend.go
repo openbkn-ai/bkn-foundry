@@ -372,6 +372,34 @@ func pathIDList(ids []string) string {
 	return strings.Join(escaped, ",")
 }
 
+// knPagedEnvelope is the list wrapper above, plus the total bkn-backend reports
+// when the read is paged.
+type knPagedEnvelope[T any] struct {
+	Entries    []T   `json:"entries"`
+	TotalCount int64 `json:"total_count"`
+}
+
+// ListObjectTypes reads one page of a knowledge network's object types.
+//
+// The same endpoint GetKnowledgeNetworkDetail reads whole, asked for a window
+// instead: bkn-backend filters by the caller's authorization before it pages, so
+// the offsets and the total are over what this caller may see, not over what the
+// network holds.
+func (b *bknBackendAccess) ListObjectTypes(ctx context.Context, knID string, offset, limit int) (*interfaces.ObjectTypePage, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types", b.baseURL, url.PathEscape(knID))
+	query := url.Values{}
+	query.Set("offset", strconv.Itoa(offset))
+	query.Set("limit", strconv.Itoa(limit))
+	query.Set("sort", "name")
+	query.Set("direction", "asc")
+
+	page := &knPagedEnvelope[*interfaces.ObjectType]{}
+	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.object_type.list", query, page); err != nil {
+		return nil, err
+	}
+	return &interfaces.ObjectTypePage{Entries: page.Entries, TotalCount: page.TotalCount}, nil
+}
+
 // GetObjectTypeDetail gets object type details.
 func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types/%s", b.baseURL, url.PathEscape(knID), pathIDList(otIds))

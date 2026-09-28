@@ -70,7 +70,7 @@ Once configured, MCP clients can discover and call these tools (your deployment 
 |------|---------|
 | `search_schema` | Search object / relation / action / metric schemas |
 | `get_kn_detail` | Fetch a KN's schema — `summary` skeleton, then drill down |
-| `get_object_types` / `get_relation_types` | Full definitions for given ids |
+| `get_object_types` / `get_relation_types` | Full definitions for given ids; `get_object_types` lists object types by page when given none |
 | `query_object_instance` | Query object instances with conditions |
 | `query_instance_subgraph` | Query the relation subgraph around instances |
 | `get_logic_properties_values` | Compute derived property values |
@@ -86,7 +86,7 @@ with physical columns under the caller's own data-resource grants, outside the p
 rules the knowledge network applies, so only their REST routes remain (`POST /kn/run_sql` and
 the other two). Aggregate with `run_cypher`; read a modelled figure with `query_metric`.
 
-On a knowledge network of more than 200 object types or more than 600 relation types, `get_kn_detail` answers with its navigation shell: the concept groups, a count per concept kind and a `notice`, without the concept arrays (`detail_level=full` included). The full schema of such a network runs past a megabyte, which no model can read; at that size narrow to 1-3 concept groups first, then fetch concepts with `search_schema`. When the network defines no concept groups, the notice points straight at `search_schema`.
+On a knowledge network of more than 200 object types or more than 600 relation types, `get_kn_detail` answers with its navigation shell: the concept groups, a count per concept kind and a `notice`, without the concept arrays (`detail_level=full` included). The full schema of such a network runs past a megabyte, which no model can read; at that size narrow to 1-3 concept groups first, then fetch concepts with `search_schema`. When the network defines no concept groups, the notice points straight at `search_schema`. To walk every object type of such a network instead, call `get_object_types` with no `ids` (20 per page; the response carries `total_count` and `next_offset`).
 
 Every tool call requires `kn_id` (knowledge network ID). Use `openbkn bkn list` to find it.
 

@@ -20,12 +20,24 @@
         "items": {
           "type": "string"
         },
-        "description": "要展开的对象类 id（取自 get_kn_detail summary 的 object_types[].id，也接受 name）。支持多个，一次批量取回。"
+        "description": "要展开的对象类 id（取自 get_kn_detail summary 的 object_types[].id，也接受 name）。支持多个，一次批量取回。**不传 ids 就是按 offset/limit 列举该网络的对象类**——网络超过 get_kn_detail 的上限时它只回导航壳，那条路拿不到 id，这里是唯一的枚举入口。传了 ids 则 offset/limit 无效。"
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0,
+        "description": "列举时的起始位置。只在不传 ids 时有效；续页用响应里的 next_offset，别自己算。"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20,
+        "description": "列举时单页条数，默认 20，上限 100。只在不传 ids 时有效。每条都是完整定义（字段映射、算子、指标），一页 20 条已经不小。 超过上限不报错，按上限返回并在 notice 里说明。"
       }
     },
     "required": [
-      "kn_id",
-      "ids"
+      "kn_id"
     ]
   },
   "output_schema": {
@@ -128,6 +140,18 @@
           "type": "string"
         },
         "description": "请求了但未匹配到的 id"
+      },
+      "total_count": {
+        "type": "integer",
+        "description": "该网络中当前账号可见的对象类总数。仅列举时出现。可据此判断「20 / 1000」走到哪了。"
+      },
+      "next_offset": {
+        "type": "integer",
+        "description": "续走这次列举的下一个 offset。仅列举时出现，**走完最后一页就不再出现**——别自己用 offset+len 推算。"
+      },
+      "notice": {
+        "type": "string",
+        "description": "本次请求没有被原样兑现时的说明——目前只有一种：limit 超过上限，按上限返回了。它出现时这一页比你要的短，但**不代表网络到头了**，是否还有看 next_offset。"
       }
     }
   }
