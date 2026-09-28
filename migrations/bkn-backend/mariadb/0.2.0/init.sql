@@ -351,7 +351,7 @@ CREATE TABLE IF NOT EXISTS t_kn_proxy_sync_outbox (
   PRIMARY KEY (f_id),
   UNIQUE KEY uk_kn_proxy_outbox_generation (f_kn_id, f_generation),
   INDEX idx_kn_proxy_outbox_ready (f_status, f_next_retry_at, f_created_at),
-  INDEX idx_kn_proxy_outbox_cleanup (f_status, f_completed_at, f_id),
+  INDEX idx_kn_proxy_outbox_cleanup (f_status, f_updated_at, f_id),
   INDEX idx_kn_proxy_outbox_proxy_status (f_proxy_account_id, f_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Durable managed proxy grant publication queue';
 

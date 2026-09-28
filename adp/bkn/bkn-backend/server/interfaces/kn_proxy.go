@@ -25,6 +25,7 @@ const (
 	KNProxyOutboxPending    = "pending"
 	KNProxyOutboxProcessing = "processing"
 	KNProxyOutboxRetrying   = "retrying"
+	KNProxyOutboxCompleting = "completing"
 	KNProxyOutboxDone       = "done"
 	KNProxyOutboxDead       = "dead"
 
@@ -43,11 +44,21 @@ type ManagedProxyStatusError struct {
 	Method     string
 	Path       string
 	StatusCode int
+	ErrorCode  string
 }
 
 func (e *ManagedProxyStatusError) Error() string {
+	if e.ErrorCode != "" {
+		return fmt.Sprintf("bkn-safe %s %s returned status %d (%s)",
+			e.Method, e.Path, e.StatusCode, e.ErrorCode)
+	}
 	return fmt.Sprintf("bkn-safe %s %s returned status %d", e.Method, e.Path, e.StatusCode)
 }
+
+const (
+	ManagedProxyErrorStaleSync        = "BknSafe.ProxyGrant.StaleSync"
+	ManagedProxyErrorSnapshotConflict = "BknSafe.ProxyGrant.SnapshotConflict"
+)
 
 // IsBestEffortProxyGrantSource reports whether a grant source may be left
 // unmaterialized without failing the network's proxy synchronization.
@@ -207,6 +218,7 @@ type KNProxyOutboxEvent struct {
 	CreatedAt      int64                  `json:"created_at"`
 	UpdatedAt      int64                  `json:"updated_at"`
 	CompletedAt    int64                  `json:"completed_at"`
+	SafeApplied    bool                   `json:"-"`
 }
 
 type ProxyGrantReconcileResult struct {
@@ -326,8 +338,9 @@ type KNProxyOutboxAccess interface {
 	ClaimNext(ctx context.Context, owner string, now, leaseUntil int64) (*KNProxyOutboxEvent, error)
 	RenewLease(ctx context.Context, eventID, owner string, now, leaseUntil int64) (bool, error)
 	Complete(ctx context.Context, event *KNProxyOutboxEvent, owner string, completedAt int64) error
-	Retry(ctx context.Context, eventID, owner, lastError string, nextRetryAt, updatedAt int64, dead bool) error
-	CleanupDone(ctx context.Context, completedBefore int64, limit int) (int64, error)
+	Retry(ctx context.Context, eventID, owner, lastError string, nextRetryAt, updatedAt int64,
+		dead, safeApplied bool) error
+	CleanupTerminal(ctx context.Context, updatedBefore int64, limit int) (int64, error)
 }
 
 // KNProxyBindingResolver resolves a knowledge network's managed proxy for

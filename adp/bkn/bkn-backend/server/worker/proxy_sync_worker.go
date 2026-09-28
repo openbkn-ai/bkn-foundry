@@ -99,12 +99,15 @@ func (w *ProxySyncWorker) Start() {
 }
 
 func (w *ProxySyncWorker) start() {
-	if w == nil || w.outbox == nil || w.proxy == nil {
-		logger.Warn("ProxySyncWorker is disabled because a dependency is unavailable")
+	if w == nil {
 		return
 	}
 	if !w.enabled {
 		logger.Info("ProxySyncWorker is disabled by configuration")
+		return
+	}
+	if w.outbox == nil || w.proxy == nil {
+		logger.Warn("ProxySyncWorker is disabled because a dependency is unavailable")
 		return
 	}
 	logger.Infof("ProxySyncWorker starting with owner %s and %d slots", w.owner, w.workers)
@@ -166,8 +169,11 @@ func (w *ProxySyncWorker) process(owner string, event *interfaces.KNProxyOutboxE
 	renewDone := make(chan struct{})
 	leaseLost := make(chan error, 1)
 	go w.renewLease(ctx, cancel, renewDone, leaseLost, owner, event.ID)
-	_, syncErr := w.proxy.SyncGrantDelta(ctx, event.ProxyAccountID, event.GrantorID, event.Generation,
-		event.BaseVersion, event.TargetVersion, event.Upserts, event.Removals)
+	var syncErr error
+	if !event.SafeApplied {
+		_, syncErr = w.proxy.SyncGrantDelta(ctx, event.ProxyAccountID, event.GrantorID, event.Generation,
+			event.BaseVersion, event.TargetVersion, event.Upserts, event.Removals)
+	}
 	cancel()
 	<-renewDone
 	select {
@@ -179,12 +185,27 @@ func (w *ProxySyncWorker) process(owner string, event *interfaces.KNProxyOutboxE
 	}
 	if syncErr == nil {
 		persistCtx, persistCancel := w.persistenceContext()
-		syncErr = w.outbox.Complete(persistCtx, event, owner, time.Now().UnixMilli())
+		completeErr := w.outbox.Complete(persistCtx, event, owner, time.Now().UnixMilli())
 		persistCancel()
-	}
-	if syncErr == nil {
-		logger.Infof("ProxySyncWorker completed event %s for kn %s proxy %s generation %d",
-			event.ID, event.KNID, event.ProxyAccountID, event.Generation)
+		if completeErr == nil {
+			logger.Infof("ProxySyncWorker completed event %s for kn %s proxy %s generation %d",
+				event.ID, event.KNID, event.ProxyAccountID, event.Generation)
+			return
+		}
+		// Safe already accepted this exact fenced delta. Persist a separate
+		// completing state so later claims skip Safe and local database failures
+		// cannot consume the downstream delivery budget or mark an actually
+		// synchronized mapping failed.
+		now := time.Now()
+		persistCtx, persistCancel = w.persistenceContext()
+		defer persistCancel()
+		if err := w.outbox.Retry(persistCtx, event.ID, owner, proxySyncErrorSummary(completeErr),
+			now.Add(proxySyncRetryDelay(0)).UnixMilli(), now.UnixMilli(), false, true); err != nil {
+			logger.Errorf("ProxySyncWorker failed to persist event %s completion retry: %v", event.ID, err)
+			return
+		}
+		logger.Warnf("ProxySyncWorker will retry local completion for event %s after Safe accepted generation %d: %v",
+			event.ID, event.Generation, completeErr)
 		return
 	}
 	dead := event.AttemptCount >= w.maxAttempts || !retryableProxySyncError(syncErr)
@@ -196,7 +217,7 @@ func (w *ProxySyncWorker) process(owner string, event *interfaces.KNProxyOutboxE
 	persistCtx, persistCancel := w.persistenceContext()
 	defer persistCancel()
 	if err := w.outbox.Retry(persistCtx, event.ID, owner, proxySyncErrorSummary(syncErr),
-		next.UnixMilli(), now.UnixMilli(), dead); err != nil {
+		next.UnixMilli(), now.UnixMilli(), dead, false); err != nil {
 		logger.Errorf("ProxySyncWorker failed to persist event %s failure: %v", event.ID, err)
 		return
 	}
@@ -282,7 +303,7 @@ func (w *ProxySyncWorker) cleanup() {
 	deleted := int64(0)
 	for remaining > 0 {
 		batch := min(proxyOutboxCleanupBatch, remaining)
-		count, err := w.outbox.CleanupDone(ctx, time.Now().Add(-w.retention).UnixMilli(), batch)
+		count, err := w.outbox.CleanupTerminal(ctx, time.Now().Add(-w.retention).UnixMilli(), batch)
 		if err != nil {
 			logger.Errorf("ProxySyncWorker outbox cleanup failed after deleting %d rows: %v", deleted, err)
 			return
@@ -294,7 +315,7 @@ func (w *ProxySyncWorker) cleanup() {
 		}
 	}
 	if deleted > 0 {
-		logger.Infof("ProxySyncWorker outbox cleanup deleted %d completed events in %s",
+		logger.Infof("ProxySyncWorker outbox cleanup deleted %d retained terminal events in %s",
 			deleted, time.Since(startedAt))
 	}
 }
@@ -302,6 +323,10 @@ func (w *ProxySyncWorker) cleanup() {
 func retryableProxySyncError(err error) bool {
 	var statusErr *interfaces.ManagedProxyStatusError
 	if errors.As(err, &statusErr) {
+		if statusErr.ErrorCode == interfaces.ManagedProxyErrorStaleSync ||
+			statusErr.ErrorCode == interfaces.ManagedProxyErrorSnapshotConflict {
+			return false
+		}
 		return statusErr.StatusCode == 408 || statusErr.StatusCode == 409 ||
 			statusErr.StatusCode == 429 || statusErr.StatusCode >= 500
 	}

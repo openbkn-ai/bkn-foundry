@@ -6,6 +6,7 @@ package kn_proxy
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -204,6 +205,25 @@ func TestSafeClientDoesNotExposeErrorResponseBody(t *testing.T) {
 	_, _, err := client.Create(t.Context(), "kn-1", "proxy")
 	if err == nil || contains(err.Error(), "must-not-escape") {
 		t.Fatalf("Create() error = %v", err)
+	}
+}
+
+func TestSafeClientPreservesStableErrorCodeWithoutExposingBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error_code":"BknSafe.ProxyGrant.StaleSync","error":"secret detail"}`))
+	}))
+	defer server.Close()
+
+	client := NewManagedProxyAccess(server.URL)
+	_, err := client.SyncGrantDelta(t.Context(), "proxy-1", "grantor-1", 2, "v1", "v2", nil, nil)
+	var statusErr *interfaces.ManagedProxyStatusError
+	if !errors.As(err, &statusErr) {
+		t.Fatalf("SyncGrantDelta() error = %v, want ManagedProxyStatusError", err)
+	}
+	if statusErr.ErrorCode != interfaces.ManagedProxyErrorStaleSync || contains(err.Error(), "secret detail") {
+		t.Fatalf("SyncGrantDelta() status error = %#v", statusErr)
 	}
 }
 

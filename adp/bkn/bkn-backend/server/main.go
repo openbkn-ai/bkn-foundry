@@ -259,7 +259,14 @@ func main() {
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
 	logics.SetKNProxyAccess(kn_proxy.NewAccess(db))
 	proxyOutboxAccess := kn_proxy.NewOutboxAccess(db)
-	logics.SetKNProxyOutboxAccess(proxyOutboxAccess)
+	if appSetting.ServerSetting.ProxySyncWorkerEnabled {
+		logics.SetKNProxyOutboxAccess(proxyOutboxAccess)
+	} else {
+		// A disabled consumer must not leave producers accepting writes into an
+		// undrained queue. A nil outbox keeps the existing synchronous publication
+		// path active during a stopped upgrade or an operator kill switch.
+		logics.SetKNProxyOutboxAccess(nil)
+	}
 	logics.SetCapabilityBindingAccess(capability_binding.NewCapabilityBindingAccess(appSetting))
 	logics.SetMetricAccess(metric.NewMetricAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))

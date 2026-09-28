@@ -27,6 +27,16 @@ Description = "The request conflicts with the current resource state."
 Solution = "Refresh the resource state and try again."
 ErrorLink = ""
 
+[BknSafe.ProxyGrant.StaleSync]
+Description = "The proxy grant synchronization generation is stale."
+Solution = "Reconcile the latest proxy grant snapshot before retrying."
+ErrorLink = ""
+
+[BknSafe.ProxyGrant.SnapshotConflict]
+Description = "The proxy grant snapshot conflicts with the current state."
+Solution = "Reconcile the latest proxy grant snapshot before retrying."
+ErrorLink = ""
+
 [RESOURCE_EXISTED]
 Description = "The role identifier already exists."
 Solution = "Use a different role identifier."

@@ -21,10 +21,12 @@ import (
 )
 
 type proxySyncOutboxStub struct {
-	completed *interfaces.KNProxyOutboxEvent
-	retriedID string
-	retryDead bool
-	renew     func(context.Context) (bool, error)
+	completed   *interfaces.KNProxyOutboxEvent
+	completeErr error
+	retriedID   string
+	retryDead   bool
+	safeApplied bool
+	renew       func(context.Context) (bool, error)
 }
 
 func (s *proxySyncOutboxStub) ListPlannedSources(context.Context, string,
@@ -51,14 +53,14 @@ func (s *proxySyncOutboxStub) RenewLease(ctx context.Context, _ string, _ string
 func (s *proxySyncOutboxStub) Complete(_ context.Context, event *interfaces.KNProxyOutboxEvent,
 	_ string, _ int64) error {
 	s.completed = event
-	return nil
+	return s.completeErr
 }
 func (s *proxySyncOutboxStub) Retry(_ context.Context, eventID, _ string, _ string,
-	_, _ int64, dead bool) error {
-	s.retriedID, s.retryDead = eventID, dead
+	_, _ int64, dead, safeApplied bool) error {
+	s.retriedID, s.retryDead, s.safeApplied = eventID, dead, safeApplied
 	return nil
 }
-func (s *proxySyncOutboxStub) CleanupDone(context.Context, int64, int) (int64, error) {
+func (s *proxySyncOutboxStub) CleanupTerminal(context.Context, int64, int) (int64, error) {
 	return 0, nil
 }
 
@@ -116,6 +118,44 @@ func TestProxySyncWorkerMarksNonRetryableSafeFailureDead(t *testing.T) {
 	}
 }
 
+func TestProxySyncWorkerCompletionFailureDoesNotConsumeSafeAttemptBudget(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	proxy := bmock.NewMockManagedProxyAccess(ctrl)
+	event := &interfaces.KNProxyOutboxEvent{
+		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", GrantorID: "editor-1",
+		Generation: 2, BaseVersion: "v1", TargetVersion: "v2", AttemptCount: 12,
+	}
+	proxy.EXPECT().SyncGrantDelta(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(interfaces.ProxyGrantSyncResult{}, nil)
+	outbox := &proxySyncOutboxStub{completeErr: errors.New("database temporarily unavailable")}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	w := &ProxySyncWorker{outbox: outbox, proxy: proxy, lease: time.Minute, maxAttempts: 12, ctx: ctx}
+	w.process("pod-1", event)
+	if outbox.retriedID != event.ID || outbox.retryDead || !outbox.safeApplied {
+		t.Fatalf("completion retry = id %q, dead %t, Safe applied %t",
+			outbox.retriedID, outbox.retryDead, outbox.safeApplied)
+	}
+}
+
+func TestProxySyncWorkerCompletingEventSkipsSafeReplay(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	proxy := bmock.NewMockManagedProxyAccess(ctrl)
+	event := &interfaces.KNProxyOutboxEvent{
+		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", Generation: 2,
+		BaseVersion: "v1", TargetVersion: "v2", SafeApplied: true,
+	}
+	outbox := &proxySyncOutboxStub{}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	w := &ProxySyncWorker{outbox: outbox, proxy: proxy, lease: time.Minute, maxAttempts: 12, ctx: ctx}
+	w.process("pod-1", event)
+	if outbox.completed != event || outbox.retriedID != "" {
+		t.Fatalf("completing event = completed %#v, retried %q", outbox.completed, outbox.retriedID)
+	}
+}
+
 func TestLeaseRenewalCanceledAfterSafeCompletionIsNotReportedAsLeaseLoss(t *testing.T) {
 	started := make(chan struct{})
 	outbox := &proxySyncOutboxStub{renew: func(ctx context.Context) (bool, error) {
@@ -156,7 +196,11 @@ func TestRetryableProxySyncErrorClassifiesSafeResponses(t *testing.T) {
 	}{
 		{name: "network", err: errors.New("timeout"), retryable: true},
 		{name: "request timeout", err: &interfaces.ManagedProxyStatusError{StatusCode: http.StatusRequestTimeout}, retryable: true},
-		{name: "conflict", err: &interfaces.ManagedProxyStatusError{StatusCode: http.StatusConflict}, retryable: true},
+		{name: "unspecified conflict", err: &interfaces.ManagedProxyStatusError{StatusCode: http.StatusConflict}, retryable: true},
+		{name: "stale generation", err: &interfaces.ManagedProxyStatusError{StatusCode: http.StatusConflict,
+			ErrorCode: interfaces.ManagedProxyErrorStaleSync}, retryable: false},
+		{name: "snapshot conflict", err: &interfaces.ManagedProxyStatusError{StatusCode: http.StatusConflict,
+			ErrorCode: interfaces.ManagedProxyErrorSnapshotConflict}, retryable: false},
 		{name: "rate limited", err: &interfaces.ManagedProxyStatusError{StatusCode: http.StatusTooManyRequests}, retryable: true},
 		{name: "safe unavailable", err: &interfaces.ManagedProxyStatusError{StatusCode: http.StatusServiceUnavailable}, retryable: true},
 		{name: "invalid payload", err: &interfaces.ManagedProxyStatusError{StatusCode: http.StatusBadRequest}, retryable: false},

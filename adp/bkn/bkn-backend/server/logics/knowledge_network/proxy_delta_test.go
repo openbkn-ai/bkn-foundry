@@ -74,10 +74,10 @@ func (s *proxyOutboxAccessStub) RenewLease(context.Context, string, string, int6
 func (s *proxyOutboxAccessStub) Complete(context.Context, *interfaces.KNProxyOutboxEvent, string, int64) error {
 	return nil
 }
-func (s *proxyOutboxAccessStub) Retry(context.Context, string, string, string, int64, int64, bool) error {
+func (s *proxyOutboxAccessStub) Retry(context.Context, string, string, string, int64, int64, bool, bool) error {
 	return nil
 }
-func (s *proxyOutboxAccessStub) CleanupDone(context.Context, int64, int) (int64, error) {
+func (s *proxyOutboxAccessStub) CleanupTerminal(context.Context, int64, int) (int64, error) {
 	return 0, nil
 }
 

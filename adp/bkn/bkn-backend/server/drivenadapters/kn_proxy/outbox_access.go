@@ -190,24 +190,24 @@ func (a *outboxAccess) ClaimNext(ctx context.Context, owner string, now, leaseUn
 	}
 	defer func() { _ = tx.Rollback() }()
 	const selectEvent = `SELECT e.f_id, e.f_kn_id, e.f_proxy_account_id, e.f_generation,
-       e.f_base_version, e.f_target_version, e.f_payload, e.f_attempt_count, e.f_created_at
+       e.f_base_version, e.f_target_version, e.f_payload, e.f_attempt_count, e.f_created_at, e.f_status
 FROM t_kn_proxy_sync_outbox e
 JOIN t_kn_proxy_account m ON m.f_kn_id = e.f_kn_id
 WHERE e.f_generation = m.f_published_generation + 1
   AND e.f_proxy_account_id = m.f_proxy_account_id
   AND m.f_lifecycle_status = 'active'
-  AND ((e.f_status IN ('pending', 'retrying') AND e.f_next_retry_at <= ?)
+  AND ((e.f_status IN ('pending', 'retrying', 'completing') AND e.f_next_retry_at <= ? AND e.f_lease_until <= ?)
        OR (e.f_status = 'processing' AND e.f_lease_until <= ?))
 ORDER BY m.f_last_sync_succeeded_at, e.f_created_at, e.f_id
 LIMIT 1 FOR UPDATE SKIP LOCKED`
-	var eventID string
+	var eventID, claimedStatus string
 	var knID, proxyAccountID, baseVersion, targetVersion string
 	var generation int64
 	var payload []byte
 	var attempts int
 	var createdAt int64
-	err = tx.QueryRowContext(ctx, selectEvent, now, now).Scan(&eventID, &knID, &proxyAccountID,
-		&generation, &baseVersion, &targetVersion, &payload, &attempts, &createdAt)
+	err = tx.QueryRowContext(ctx, selectEvent, now, now, now).Scan(&eventID, &knID, &proxyAccountID,
+		&generation, &baseVersion, &targetVersion, &payload, &attempts, &createdAt, &claimedStatus)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -261,13 +261,21 @@ LIMIT 1 FOR UPDATE SKIP LOCKED`
 		}
 		return nil, errors.New(lastError)
 	}
-	query, args, err := sq.Update(proxyOutboxTable).SetMap(map[string]any{
-		"f_status":        interfaces.KNProxyOutboxProcessing,
-		"f_attempt_count": sq.Expr("f_attempt_count + 1"),
-		"f_lease_owner":   owner,
-		"f_lease_until":   leaseUntil,
-		"f_updated_at":    now,
-	}).Where(sq.Eq{"f_id": eventID}).ToSql()
+	processingStatus := interfaces.KNProxyOutboxProcessing
+	if claimedStatus == interfaces.KNProxyOutboxCompleting {
+		processingStatus = interfaces.KNProxyOutboxCompleting
+	}
+	claimUpdates := map[string]any{
+		"f_status":      processingStatus,
+		"f_lease_owner": owner,
+		"f_lease_until": leaseUntil,
+		"f_updated_at":  now,
+	}
+	if claimedStatus != interfaces.KNProxyOutboxCompleting {
+		claimUpdates["f_attempt_count"] = sq.Expr("f_attempt_count + 1")
+	}
+	query, args, err := sq.Update(proxyOutboxTable).SetMap(claimUpdates).
+		Where(sq.Eq{"f_id": eventID}).ToSql()
 	if err != nil {
 		return nil, err
 	}
@@ -287,8 +295,12 @@ LIMIT 1 FOR UPDATE SKIP LOCKED`
 	event.Generation = generation
 	event.BaseVersion = baseVersion
 	event.TargetVersion = targetVersion
-	event.Status = interfaces.KNProxyOutboxProcessing
-	event.AttemptCount = attempts + 1
+	event.Status = processingStatus
+	event.SafeApplied = claimedStatus == interfaces.KNProxyOutboxCompleting
+	event.AttemptCount = attempts
+	if !event.SafeApplied {
+		event.AttemptCount++
+	}
 	event.LeaseOwner = owner
 	event.LeaseUntil = leaseUntil
 	event.CreatedAt = createdAt
@@ -366,7 +378,8 @@ func (a *outboxAccess) RenewLease(ctx context.Context, eventID, owner string, no
 		"f_lease_until": leaseUntil,
 		"f_updated_at":  now,
 	}).Where(sq.Eq{
-		"f_id": eventID, "f_status": interfaces.KNProxyOutboxProcessing, "f_lease_owner": owner,
+		"f_id": eventID, "f_status": []string{interfaces.KNProxyOutboxProcessing, interfaces.KNProxyOutboxCompleting},
+		"f_lease_owner": owner,
 	}).Where(sq.Gt{"f_lease_until": now}).ToSql()
 	if err != nil {
 		return false, err
@@ -424,7 +437,8 @@ FROM t_kn_proxy_account WHERE f_kn_id = ? FOR UPDATE`, event.KNID).
 		"f_updated_at":   completedAt,
 		"f_completed_at": completedAt,
 	}).Where(sq.Eq{
-		"f_id": event.ID, "f_status": interfaces.KNProxyOutboxProcessing, "f_lease_owner": owner,
+		"f_id": event.ID, "f_status": []string{interfaces.KNProxyOutboxProcessing, interfaces.KNProxyOutboxCompleting},
+		"f_lease_owner": owner,
 	}).ToSql()
 	if err != nil {
 		return err
@@ -468,7 +482,7 @@ FROM t_kn_proxy_account WHERE f_kn_id = ? FOR UPDATE`, event.KNID).
 }
 
 func (a *outboxAccess) Retry(ctx context.Context, eventID, owner, lastError string,
-	nextRetryAt, updatedAt int64, dead bool) error {
+	nextRetryAt, updatedAt int64, dead, safeApplied bool) error {
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -477,7 +491,7 @@ func (a *outboxAccess) Retry(ctx context.Context, eventID, owner, lastError stri
 	var knID, proxyAccountID string
 	var generation int64
 	err = tx.QueryRowContext(ctx, `SELECT f_kn_id, f_proxy_account_id, f_generation FROM t_kn_proxy_sync_outbox
-WHERE f_id = ? AND f_status = 'processing' AND f_lease_owner = ? FOR UPDATE`, eventID, owner).
+WHERE f_id = ? AND f_status IN ('processing', 'completing') AND f_lease_owner = ? FOR UPDATE`, eventID, owner).
 		Scan(&knID, &proxyAccountID, &generation)
 	if err != nil {
 		return err
@@ -485,15 +499,19 @@ WHERE f_id = ? AND f_status = 'processing' AND f_lease_owner = ? FOR UPDATE`, ev
 	status := interfaces.KNProxyOutboxRetrying
 	if dead {
 		status = interfaces.KNProxyOutboxDead
+	} else if safeApplied {
+		status = interfaces.KNProxyOutboxCompleting
 	}
-	query, args, err := sq.Update(proxyOutboxTable).SetMap(map[string]any{
+	updates := map[string]any{
 		"f_status":        status,
 		"f_next_retry_at": nextRetryAt,
 		"f_lease_owner":   "",
 		"f_lease_until":   int64(0),
 		"f_last_error":    lastError,
 		"f_updated_at":    updatedAt,
-	}).Where(sq.Eq{"f_id": eventID, "f_lease_owner": owner}).ToSql()
+	}
+	query, args, err := sq.Update(proxyOutboxTable).SetMap(updates).
+		Where(sq.Eq{"f_id": eventID, "f_lease_owner": owner}).ToSql()
 	if err != nil {
 		return err
 	}
@@ -527,7 +545,7 @@ WHERE f_id = ? AND f_status = 'processing' AND f_lease_owner = ? FOR UPDATE`, ev
 	return tx.Commit()
 }
 
-func (a *outboxAccess) CleanupDone(ctx context.Context, completedBefore int64, limit int) (int64, error) {
+func (a *outboxAccess) CleanupTerminal(ctx context.Context, updatedBefore int64, limit int) (int64, error) {
 	if limit <= 0 {
 		return 0, nil
 	}
@@ -553,9 +571,10 @@ func (a *outboxAccess) CleanupDone(ctx context.Context, completedBefore int64, l
 	result, err := conn.ExecContext(ctx, `DELETE FROM t_kn_proxy_sync_outbox
 WHERE f_id IN (SELECT f_id FROM (SELECT e.f_id FROM t_kn_proxy_sync_outbox e
 JOIN t_kn_proxy_account m ON m.f_kn_id = e.f_kn_id
-WHERE e.f_status = 'done' AND e.f_completed_at > 0 AND e.f_completed_at < ?
-  AND e.f_generation <= m.f_published_generation AND e.f_lease_owner = '' AND e.f_lease_until = 0
-ORDER BY e.f_completed_at, e.f_id LIMIT ?) AS expired)`, completedBefore, limit)
+WHERE e.f_updated_at < ? AND e.f_lease_owner = '' AND e.f_lease_until = 0
+  AND ((e.f_status = 'done' AND e.f_completed_at > 0 AND e.f_generation <= m.f_published_generation)
+       OR (e.f_status = 'dead' AND m.f_sync_status = 'failed'))
+ORDER BY e.f_updated_at, e.f_id LIMIT ?) AS expired)`, updatedBefore, limit)
 	if err != nil {
 		return 0, err
 	}

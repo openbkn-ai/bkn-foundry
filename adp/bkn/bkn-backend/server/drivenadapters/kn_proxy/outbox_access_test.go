@@ -61,7 +61,7 @@ func TestStageDeltaPersistsPlanAndEventInCallerTransaction(t *testing.T) {
 	}
 }
 
-func TestCleanupDoneDeletesOnlyPublishedUnleasedEvents(t *testing.T) {
+func TestCleanupTerminalDeletesOnlySafeRetainedEvents(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -70,17 +70,45 @@ func TestCleanupDoneDeletesOnlyPublishedUnleasedEvents(t *testing.T) {
 	access := &outboxAccess{db: db}
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT GET_LOCK(CONCAT(DATABASE(), ':', ?), 0)")).
 		WithArgs(cleanupLockName).WillReturnRows(sqlmock.NewRows([]string{"acquired"}).AddRow(1))
-	mock.ExpectExec("DELETE FROM t_kn_proxy_sync_outbox").WithArgs(int64(100), 500).
+	mock.ExpectExec("(?s)DELETE FROM t_kn_proxy_sync_outbox.*e\\.f_status = 'dead'.*m\\.f_sync_status = 'failed'").
+		WithArgs(int64(100), 500).
 		WillReturnResult(sqlmock.NewResult(0, 3))
 	mock.ExpectExec(regexp.QuoteMeta("SELECT RELEASE_LOCK(CONCAT(DATABASE(), ':', ?))")).WithArgs(cleanupLockName).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	deleted, err := access.CleanupDone(t.Context(), 100, 500)
+	deleted, err := access.CleanupTerminal(t.Context(), 100, 500)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if deleted != 3 {
-		t.Fatalf("CleanupDone() = %d, want 3", deleted)
+		t.Fatalf("CleanupTerminal() = %d, want 3", deleted)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRetryPersistsCompletingStateAfterSafeAlreadyApplied(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	access := &outboxAccess{db: db}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT f_kn_id, f_proxy_account_id, f_generation FROM t_kn_proxy_sync_outbox").
+		WithArgs("event-1", "pod-1").
+		WillReturnRows(sqlmock.NewRows([]string{"f_kn_id", "f_proxy_account_id", "f_generation"}).
+			AddRow("kn-1", "proxy-1", int64(3)))
+	mock.ExpectExec("UPDATE t_kn_proxy_sync_outbox SET .*f_status = \\?").
+		WithArgs("completion failed", "", int64(0), int64(200), interfaces.KNProxyOutboxCompleting,
+			int64(100), "event-1", "pod-1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = access.Retry(t.Context(), "event-1", "pod-1", "completion failed", 200, 100, false, true)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -103,11 +131,12 @@ func TestClaimNextClaimsOnlyDatabaseSelectedQueueHead(t *testing.T) {
 	}
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT e.f_id, e.f_kn_id, e.f_proxy_account_id, e.f_generation").
-		WithArgs(int64(100), int64(100)).
+		WithArgs(int64(100), int64(100), int64(100)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"f_id", "f_kn_id", "f_proxy_account_id", "f_generation", "f_base_version", "f_target_version",
-			"f_payload", "f_attempt_count", "f_created_at",
-		}).AddRow("event-1", "kn-1", "proxy-1", int64(3), "v2", "v3", payload, 1, int64(10)))
+			"f_payload", "f_attempt_count", "f_created_at", "f_status",
+		}).AddRow("event-1", "kn-1", "proxy-1", int64(3), "v2", "v3", payload, 1, int64(10),
+			interfaces.KNProxyOutboxPending))
 	mock.ExpectExec("UPDATE t_kn_proxy_sync_outbox SET").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -118,6 +147,45 @@ func TestClaimNextClaimsOnlyDatabaseSelectedQueueHead(t *testing.T) {
 	if event == nil || event.ID != "event-1" || event.AttemptCount != 2 ||
 		event.Status != interfaces.KNProxyOutboxProcessing || event.LeaseUntil != 160 {
 		t.Fatalf("claimed event = %#v", event)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClaimNextKeepsCompletingFenceAndAttemptBudget(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	access := &outboxAccess{db: db}
+	payload, err := json.Marshal(&interfaces.KNProxyOutboxEvent{
+		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", Generation: 3,
+		GrantorID: "editor-1", BaseVersion: "v2", TargetVersion: "v3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT e.f_id, e.f_kn_id, e.f_proxy_account_id, e.f_generation").
+		WithArgs(int64(100), int64(100), int64(100)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"f_id", "f_kn_id", "f_proxy_account_id", "f_generation", "f_base_version", "f_target_version",
+			"f_payload", "f_attempt_count", "f_created_at", "f_status",
+		}).AddRow("event-1", "kn-1", "proxy-1", int64(3), "v2", "v3", payload, 12, int64(10),
+			interfaces.KNProxyOutboxCompleting))
+	mock.ExpectExec("UPDATE t_kn_proxy_sync_outbox SET").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	event, err := access.ClaimNext(t.Context(), "pod-1", 100, 160)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event == nil || !event.SafeApplied || event.AttemptCount != 12 ||
+		event.Status != interfaces.KNProxyOutboxCompleting {
+		t.Fatalf("claimed completing event = %#v", event)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

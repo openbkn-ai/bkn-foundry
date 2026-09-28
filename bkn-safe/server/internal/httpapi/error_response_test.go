@@ -12,6 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/proxygrant"
 )
 
 func TestRequireUserLocalizesAuthenticationFailure(t *testing.T) {
@@ -139,5 +142,35 @@ func TestLocalizedErrorPreservesMachineDetails(t *testing.T) {
 	}
 	if body.ErrorDetails["field"] != "limit" || body.ErrorDetails["max"] != float64(1000) {
 		t.Errorf("error_details = %#v, want stable machine fields", body.ErrorDetails)
+	}
+}
+
+func TestProxyGrantFenceConflictsExposeStableCodes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name string
+		err  error
+		code string
+	}{
+		{name: "stale generation", err: proxygrant.ErrStaleSync, code: httperrors.ProxyGrantStaleSync},
+		{name: "snapshot conflict", err: proxygrant.ErrSnapshotConflict, code: httperrors.ProxyGrantSnapshotConflict},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			router := gin.New()
+			router.Use(sharedrest.LanguageMiddleware())
+			router.GET("/proxy-error", func(c *gin.Context) { writeProxyGrantError(c, test.err) })
+			request := httptest.NewRequest(http.MethodGet, "/proxy-error", nil)
+			request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if response.Code != http.StatusConflict || body["error_code"] != test.code {
+				t.Fatalf("response = %d %#v, want 409 %s", response.Code, body, test.code)
+			}
+		})
 	}
 }
