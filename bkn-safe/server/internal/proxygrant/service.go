@@ -494,7 +494,12 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 			}
 		}
 		if len(audits) > 0 {
-			return tx.DB().Create(&audits).Error
+			// A large knowledge network can contribute thousands of explicit
+			// sources. Persisting all audit rows in one INSERT exceeds the
+			// prepared-statement placeholder limit of MySQL-compatible backends.
+			// Keep the writes inside this transaction so a failed preflight leaves
+			// neither a partial audit trail nor a partial result.
+			return tx.DB().CreateInBatches(&audits, 500).Error
 		}
 		return nil
 	})

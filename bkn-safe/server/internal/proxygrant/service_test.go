@@ -7,6 +7,7 @@ package proxygrant_test
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -726,6 +727,57 @@ func TestCheckManyPreservesValidDelegatorAndReturnsAllDeniedSources(t *testing.T
 	if resolvedBySource[newSource.SourceID] != editor {
 		t.Fatalf("new source delegator = %q, want current editor %q",
 			resolvedBySource[newSource.SourceID], editor)
+	}
+}
+
+func TestCheckManyBatchesLargePreflightAuditWrites(t *testing.T) {
+	f := newFixture(t)
+	const sourceCount = 1_001
+
+	var (
+		mu       sync.Mutex
+		batchLen []int
+	)
+	if err := f.db.Callback().Create().Before("gorm:create").Register("record_proxy_grant_audit_batches", func(tx *gorm.DB) {
+		if tx.Statement.Table != (model.ProxyGrantAuditLog{}).TableName() {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		batchLen = append(batchLen, tx.Statement.ReflectValue.Len())
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sources := make([]proxygrant.SourceSpec, 0, sourceCount)
+	for i := 0; i < sourceCount; i++ {
+		resourceID := fmt.Sprintf("r-large-preflight-%d", i)
+		f.grantOperations(t, f.grantor, resourceID, "query_data")
+		sources = append(sources, f.request(
+			fmt.Sprintf("source-large-preflight-%d", i),
+			fmt.Sprintf("ot-large-preflight-%d", i),
+			resourceID,
+		).Source)
+	}
+
+	result, err := f.service.CheckMany(t.Context(), proxygrant.BatchCheckRequest{
+		ProxyAccountID: f.proxyID,
+		GrantorID:      f.grantor,
+		Sources:        sources,
+	})
+	if err != nil || len(result.DeniedSources) != 0 || len(result.ResolvedSources) != sourceCount {
+		t.Fatalf("CheckMany() = (%+v, %v), want every source allowed", result, err)
+	}
+	if got, want := batchLen, []int{500, 500, 1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("audit insert batches = %v, want %v", got, want)
+	}
+
+	var audits int64
+	if err := f.db.Model(&model.ProxyGrantAuditLog{}).Count(&audits).Error; err != nil {
+		t.Fatal(err)
+	}
+	if audits != sourceCount {
+		t.Fatalf("audit rows = %d, want %d", audits, sourceCount)
 	}
 }
 
