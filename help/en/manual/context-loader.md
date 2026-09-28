@@ -86,7 +86,7 @@ with physical columns under the caller's own data-resource grants, outside the p
 rules the knowledge network applies, so only their REST routes remain (`POST /kn/run_sql` and
 the other two). Aggregate with `run_cypher`; read a modelled figure with `query_metric`.
 
-On a knowledge network of more than 200 object types or more than 600 relation types, `get_kn_detail` answers with its navigation shell: the concept groups, a count per concept kind and a `notice`, without the concept arrays (`detail_level=full` included). The full schema of such a network runs past a megabyte, which no model can read; at that size narrow to 1-3 concept groups first, then fetch concepts with `search_schema`. When the network defines no concept groups, the notice points straight at `search_schema`.
+On a knowledge network of more than 200 object types or more than 600 relation types, `get_kn_detail` answers with its navigation shell: the concept groups, a count per concept kind and a `notice`, with the three concept arrays null (`detail_level=full` included). The full schema of such a network runs past a megabyte, which no model can read; at that size narrow to 1-3 concept groups first, then fetch concepts with `search_schema`. When the network defines no concept groups, the notice points straight at `search_schema`.
 
 Every tool call requires `kn_id` (knowledge network ID). Use `openbkn bkn list` to find it.
 
