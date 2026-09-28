@@ -14,6 +14,7 @@ Concrete paths, methods, fields, status codes, and error envelopes are defined
 by the service OpenAPI files:
 
 - [bkn-safe authorization](bkn-safe/authorization.yaml)
+- [bkn-safe row-filter policy management](bkn-safe-admin/row-filter-policies.yaml)
 - [BKN](bkn/)
 - [ontology-query](ontology-query/ontology-query.yaml)
 - [execution-factory](execution-factory/)
@@ -77,6 +78,16 @@ rechecks that same subject immediately before the external call. Automatic
 retries retain the original subject; a manual rerun creates a new execution
 for the current caller. Caller-supplied body fields do not replace the
 authenticated subject.
+
+For an object-instance query, a successful base `query_data` decision is
+necessary but not sufficient when row-filter policies apply. The querying
+service resolves the authenticated caller's effective fixed-condition predicate
+through bkn-safe's cluster-internal row-filter decision endpoint and pushes that
+predicate into the data query before total calculation and pagination. The
+management API may create, replace, delete, or explain policies for a concrete
+user or role; public callers must not invoke or emulate the internal decision
+endpoint. A missing policy means no additional row restriction, never an
+additional `query_data` grant.
 
 ## Collection and batch consistency
 

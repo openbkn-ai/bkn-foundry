@@ -215,6 +215,57 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/AuthorizationUnavailable'
+  /row-filters:
+    post:
+      operationId: resolveEffectiveRowFilters
+      summary: Resolve effective row filters for trusted object-query workloads
+      description: |
+        Resolves the authenticated user's direct policy and current role
+        policies into one normalized, backend-neutral predicate per requested
+        object type. Complete subject policies are ORed; conditions inside each
+        policy retain their configured AND or OR relation. When no policy
+        applies, the predicate is `true`; this never replaces the separate
+        object-type `query_data` authorization check.
+
+        This is a tokenless, ClusterIP-only service-to-service endpoint. A
+        trusted workload derives `accessor_id` from its already-authenticated
+        request and must never copy a caller-controlled body field. The endpoint
+        must not be exposed through an Ingress or included in a public SDK.
+
+        Requests contain 1-100 unique canonical object-type references. Invalid
+        identities, unavailable Enterprise resolution, incomplete decisions,
+        or invalid predicates fail closed; callers must not silently substitute
+        a `true` predicate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RowFilterResolutionRequest'
+            examples:
+              objectQuery:
+                value:
+                  accessor_id: user-1
+                  object_type_refs:
+                    - supply_chain/order
+                    - supply_chain/customer
+      responses:
+        '200':
+          description: One effective row-filter decision for every requested object type, preserving request order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RowFilterResolutionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: The accessor is unknown, disabled, or otherwise invalid; no query may proceed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BknSafeError'
+        '503':
+          $ref: '#/components/responses/AuthorizationUnavailable'
   /resources:
     get:
       operationId: listAuthorizedResourceIds
@@ -773,6 +824,80 @@ components:
           type: string
           enum: [object_type, property]
           description: The layer that constrained the effective level; `property` is emitted only for an explicit property grant.
+    RowFilterResolutionRequest:
+      type: object
+      additionalProperties: false
+      required: [accessor_id, object_type_refs]
+      properties:
+        accessor_id:
+          type: string
+          minLength: 1
+          description: Concrete user identity derived by the trusted workload from its authentication context.
+        object_type_refs:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 3
+            maxLength: 81
+            pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+    RowFilterResolutionResponse:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/EffectiveRowFilterEntry'
+    EffectiveRowFilterEntry:
+      type: object
+      additionalProperties: false
+      required: [object_type_ref, predicate, effective_row_filter_digest]
+      properties:
+        object_type_ref:
+          type: string
+        predicate:
+          $ref: '#/components/schemas/RowFilterPredicate'
+        effective_row_filter_digest:
+          type: string
+          description: SHA-256 digest of the normalized predicate used to bind pagination cursors to the authorization decision.
+    RowFilterPredicate:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [true, false, in, not_in, gt, gte, lt, lte, between, and, or]
+        property:
+          type: string
+        values:
+          type: array
+          items:
+            $ref: '#/components/schemas/TypedRowFilterValue'
+        predicates:
+          type: array
+          items:
+            $ref: '#/components/schemas/RowFilterPredicate'
+    TypedRowFilterValue:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [string, integer, boolean]
+        string:
+          type: string
+        integer:
+          type: integer
+          format: int64
+        boolean:
+          type: boolean
+      description: Exactly one scalar member matching `type` is present.
     PolicyWriteRequest:
       type: object
       required: [accessor_id, resource, operations]
