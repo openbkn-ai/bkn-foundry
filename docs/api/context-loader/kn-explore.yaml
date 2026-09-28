@@ -106,7 +106,7 @@ paths:
         要具体能力用 `search_capabilities`。
 
         **超过 200 个对象类、或超过 600 个关系类的网络只返回导航壳**，两个 `detail_level` 都是：此时
-        `object_types` / `relation_types` / `action_types` **不返回**，改由
+        `object_types` / `relation_types` / `action_types` **均回 `null`**，改由
         `object_type_count` / `relation_type_count` / `action_type_count` 给出数量，
         `notice` 说明原因与下一步。概念组与 `mounted_capabilities` 照常返回。
 
@@ -448,7 +448,7 @@ components:
           type: string
           description: |
             本次返回被收窄的原因与下一步指引。**出现时 `object_types` /
-            `relation_types` / `action_types` 不返回**，这不表示该网络没有这些概念：
+            `relation_types` / `action_types` 都回 `null`**，这不表示该网络没有这些概念：
             数量见三个 `*_count` 字段。
 
     MountedCapabilityCounts:
