@@ -41,6 +41,22 @@ func (m *MockResourceDataService) EXPECT() *MockResourceDataServiceMockRecorder 
 	return m.recorder
 }
 
+// QuerySourcePage mocks base method.
+func (m *MockResourceDataService) QuerySourcePage(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QuerySourcePage", ctx, resource, params)
+	ret0, _ := ret[0].([]map[string]any)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// QuerySourcePage indicates an expected call of QuerySourcePage.
+func (mr *MockResourceDataServiceMockRecorder) QuerySourcePage(ctx, resource, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QuerySourcePage", reflect.TypeOf((*MockResourceDataService)(nil).QuerySourcePage), ctx, resource, params)
+}
+
 // QueryWithPaging mocks base method.
 func (m *MockResourceDataService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()

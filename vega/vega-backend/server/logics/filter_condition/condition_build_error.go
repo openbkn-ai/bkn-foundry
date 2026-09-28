@@ -18,6 +18,23 @@ type ConditionBuildError struct {
 	Reason string
 }
 
+// StoredConditionBuildError identifies a saved view condition that can no
+// longer be compiled against the current source schema or index configuration.
+type StoredConditionBuildError struct{ Cause error }
+
+func (e *StoredConditionBuildError) Error() string {
+	return "stored view condition cannot be built: " + e.Cause.Error()
+}
+func (e *StoredConditionBuildError) Unwrap() error { return e.Cause }
+
+func AsStoredConditionBuildError(err error) (*StoredConditionBuildError, bool) {
+	var target *StoredConditionBuildError
+	if errors.As(err, &target) {
+		return target, true
+	}
+	return nil, false
+}
+
 func NewConditionBuildError(format string, args ...any) *ConditionBuildError {
 	return &ConditionBuildError{Reason: fmt.Sprintf(format, args...)}
 }
@@ -36,6 +53,9 @@ func AsConditionBuildError(err error) (*ConditionBuildError, bool) {
 
 // RequestSideQueryError returns the client-safe reason for errors caused by the query shape.
 func RequestSideQueryError(err error) (string, bool) {
+	if _, stored := AsStoredConditionBuildError(err); stored {
+		return "", false
+	}
 	if unsupported, ok := AsUnsupportedOperationError(err); ok {
 		return unsupported.Error(), true
 	}

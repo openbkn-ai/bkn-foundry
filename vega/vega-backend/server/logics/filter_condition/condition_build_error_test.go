@@ -36,4 +36,13 @@ func TestRequestSideQueryError(t *testing.T) {
 		_, ok := RequestSideQueryError(errors.New("opensearch unavailable"))
 		assert.False(t, ok)
 	})
+
+	t.Run("does not classify stored view conditions as request errors", func(t *testing.T) {
+		stored := &StoredConditionBuildError{Cause: NewConditionBuildError("field needs keyword")}
+		err := fmt.Errorf("build filter query: %w", stored)
+		_, ok := RequestSideQueryError(err)
+		assert.False(t, ok)
+		_, identified := AsStoredConditionBuildError(err)
+		assert.True(t, identified)
+	})
 }
