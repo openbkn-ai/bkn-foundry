@@ -25,6 +25,25 @@ import (
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
+type mockLogicViewExtension struct {
+	interfaces.LogicViewService
+}
+
+func (*mockLogicViewExtension) ValidateRequest(context.Context, *interfaces.ResourceRequest) error {
+	return nil
+}
+
+func (*mockLogicViewExtension) Prepare(context.Context, *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
+	return "", nil, nil
+}
+
+func registerMockLogicViewExtension(t *testing.T, service interfaces.LogicViewService) {
+	t.Helper()
+	previous := resourcelogic.GetLogicViewExtension()
+	resourcelogic.SetLogicViewExtension(&mockLogicViewExtension{service})
+	t.Cleanup(func() { resourcelogic.SetLogicViewExtension(previous) })
+}
+
 func TestResourceDataServicePrepareOutputFieldsParams(t *testing.T) {
 	t.Run("prepare output fields params filters undefined fields", func(t *testing.T) {
 		rds := &resourceDataService{}
@@ -389,7 +408,8 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
-		rds := &resourceDataService{cs: mockCS, lvs: mockLVS}
+		registerMockLogicViewExtension(t, mockLVS)
+		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID:        "logic-view-1",
 			Enabled:   true,
@@ -429,7 +449,8 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
-		rds := &resourceDataService{cs: mockCS, lvs: mockLVS}
+		registerMockLogicViewExtension(t, mockLVS)
+		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID: "logic-view-1", Enabled: true, CatalogID: "catalog-1",
 			Category:         interfaces.ResourceCategoryLogicView,

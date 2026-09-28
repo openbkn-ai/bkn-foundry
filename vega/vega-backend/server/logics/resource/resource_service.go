@@ -154,11 +154,8 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	var logicType string
 	switch req.Category {
 	case interfaces.ResourceCategoryLogicView:
-		logicType, err = rs.validateLogicDefinition(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		viewFields, err := rs.parseLogicDefinition(ctx, req.LogicDefinition)
+		var viewFields []*interfaces.Property
+		logicType, viewFields, err = rs.prepareLogicView(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -764,11 +761,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryLogicView:
-		logicType, err := rs.validateLogicDefinition(ctx, req)
-		if err != nil {
-			return err
-		}
-		viewFields, err := rs.parseLogicDefinition(ctx, req.LogicDefinition)
+		logicType, viewFields, err := rs.prepareLogicView(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -1332,11 +1325,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		err       error
 	)
 	if req.Category == interfaces.ResourceCategoryLogicView {
-		logicType, err = rs.validateLogicDefinition(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		req.SchemaDefinition, err = rs.parseLogicDefinition(ctx, req.LogicDefinition)
+		logicType, req.SchemaDefinition, err = rs.prepareLogicView(ctx, req)
 		if err != nil {
 			return nil, err
 		}

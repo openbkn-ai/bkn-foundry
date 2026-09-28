@@ -27,7 +27,6 @@ import (
 	querylogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/rate"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource_data/logic_view"
 )
 
 var (
@@ -42,9 +41,12 @@ type resourceDataService struct {
 	lim        interfaces.LocalIndexManager
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
-	lvs        interfaces.LogicViewService
 	mfs        interfaces.ModelFactoryService
 	cl         rate.ConcurrencyLimiter
+}
+
+func (rds *resourceDataService) logicViewService() interfaces.LogicViewExtension {
+	return resourcelogic.GetLogicViewExtension()
 }
 
 func connectorCreationError(ctx context.Context, err error) error {
@@ -70,7 +72,6 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 			lim:        localIndexManager,
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         resourcelogic.NewResourceService(appSetting, datasetService),
-			lvs:        logic_view.NewLogicViewService(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting),
 		}
 
@@ -289,7 +290,12 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		params = rds.prepareOutputFieldsParams(resource, params)
 
 		// Query data in a logical view
-		result, err := rds.lvs.QueryWithPaging(ctx, resource, params)
+		service := rds.logicViewService()
+		if service == nil {
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
+				WithErrorDetails("logic views require the Enterprise extension")
+		}
+		result, err := service.QueryWithPaging(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query logic view data failed", err)
 			var httpErr *rest.HTTPError
@@ -424,7 +430,12 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return nil, err
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
-		result, err := rds.lvs.QueryWithPaging(ctx, resource, params)
+		service := rds.logicViewService()
+		if service == nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
+				WithErrorDetails("logic views require the Enterprise extension")
+		}
+		result, err := service.QueryWithPaging(ctx, resource, params)
 		if result != nil {
 			result.QuerySource = resourceQuerySource(resource, params)
 		}
