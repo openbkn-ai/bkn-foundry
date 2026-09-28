@@ -124,7 +124,7 @@ func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Res
 	documents, total, err := ds.lim.ListDocuments(ctx, res.LocalIndexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List dataset documents failed")
-		if reason, ok := filter_condition.RequestSideQueryError(err); ok {
+		if reason, ok := interfaces.RequestSideQueryError(err); ok {
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(reason)
 		}
@@ -326,7 +326,7 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	// Call the local index store to batch delete documents
 	if err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
-		if reason, ok := filter_condition.RequestSideQueryError(err); ok {
+		if reason, ok := interfaces.RequestSideQueryError(err); ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(reason)
 		}

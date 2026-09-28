@@ -8,7 +8,6 @@ package interfaces
 
 import (
 	"context"
-	"fmt"
 )
 
 type AnalyzerCapability struct {
@@ -18,12 +17,6 @@ type IndexCapabilities struct {
 	FulltextAnalyzers []AnalyzerCapability `json:"fulltext_analyzers"`
 	CheckedAt         int64                `json:"checked_at"`
 }
-type IndexCapabilitiesUnavailableError struct{ Cause error }
-
-func (e *IndexCapabilitiesUnavailableError) Error() string {
-	return fmt.Sprintf("index capabilities unavailable: %v", e.Cause)
-}
-func (e *IndexCapabilitiesUnavailableError) Unwrap() error { return e.Cause }
 
 // LocalIndexManager manages local index storage backed by the local search engine.
 //

@@ -329,7 +329,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		}
 		params := &interfaces.ResourceDataQueryParams{}
 		cause := fmt.Errorf("failed to build filter query: %w",
-			filter_condition.NewConditionBuildError("text field title has no keyword feature; re-save the resource configuration and rebuild the local index, or use match"))
+			interfaces.NewConditionBuildError("text field title has no keyword feature; re-save the resource configuration and rebuild the local index, or use match"))
 
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
@@ -358,7 +358,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
 			Return(&interfaces.Catalog{Enabled: true}, nil)
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).Return(nil, int64(0),
-			&filter_condition.StoredConditionBuildError{Cause: filter_condition.NewConditionBuildError("text field has no keyword feature")})
+			&filter_condition.StoredConditionBuildError{Cause: interfaces.NewConditionBuildError("text field has no keyword feature")})
 		rows, total, err := rds.QuerySourcePage(context.Background(), resource, params)
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
@@ -804,6 +804,11 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 // 分支根本没做判断——两处加起来，anyshare / mariadb 那几个连接器返回
 // UnsupportedOperationError 的改动一点行为变化都没有，调用方拿到的仍是
 // 「数据资源内部错误」，ontology-query 继续判成依赖故障。
+type codedQueryError struct{ code int }
+
+func (e codedQueryError) Error() string { return "source database error" }
+func (e codedQueryError) Code() int     { return e.code }
+
 func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 	newResource := func(category string) *interfaces.Resource {
 		return &interfaces.Resource{
@@ -811,7 +816,100 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "name", Type: interfaces.DataType_String}},
 		}
 	}
-	unsupported := filter_condition.NewUnsupportedOperationError("regex", filter_condition.QueryChannelSQL)
+	unsupported := interfaces.NewUnsupportedOperationError("regex", filter_condition.QueryChannelSQL)
+
+	t.Run("connector source permission error becomes HTTP 403", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockConn := mock_interfaces.NewMockTableConnector(ctrl)
+		rds := &resourceDataService{cs: mockCS, cf: mockCF}
+		resource := newResource(interfaces.ResourceCategoryTable)
+
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMariaDB, gomock.Any()).Return(mockConn, nil)
+		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
+		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
+			Return(nil, fmt.Errorf("execute source query: %w", interfaces.NewSourceReadForbiddenError(errors.New("source database error"))))
+
+		rows, total, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		assert.Nil(t, rows)
+		assert.Zero(t, total)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, httpErr.Error(), "source database error")
+	})
+
+	t.Run("index connector source permission error becomes HTTP 403", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockConn := mock_interfaces.NewMockIndexConnector(ctrl)
+		rds := &resourceDataService{cs: mockCS, cf: mockCF}
+		resource := newResource(interfaces.ResourceCategoryIndex)
+
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
+		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
+		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource.SourceIdentifier, resource, gomock.Any()).
+			Return(nil, interfaces.NewSourceReadForbiddenError(errors.New("source database error")))
+
+		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
+	})
+
+	t.Run("fileset connector source permission error becomes HTTP 403", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockConn := mock_interfaces.NewMockFilesetConnector(ctrl)
+		rds := &resourceDataService{cs: mockCS, cf: mockCF}
+		resource := newResource(interfaces.ResourceCategoryFileset)
+
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
+		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
+		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
+			Return(nil, interfaces.NewSourceReadForbiddenError(errors.New("source database error")))
+
+		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
+	})
+
+	t.Run("raw driver code is not classified by the service", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockConn := mock_interfaces.NewMockTableConnector(ctrl)
+		rds := &resourceDataService{cs: mockCS, cf: mockCF}
+		resource := newResource(interfaces.ResourceCategoryTable)
+
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeHANA}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeHANA, gomock.Any()).Return(mockConn, nil)
+		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
+		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, codedQueryError{258})
+
+		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+	})
 
 	t.Run("表分支的 400 不再被上层压成 500", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -846,7 +944,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
-			Return(nil, filter_condition.NewUnsupportedOperationError("regex", filter_condition.QueryChannelFileset))
+			Return(nil, interfaces.NewUnsupportedOperationError("regex", filter_condition.QueryChannelFileset))
 
 		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
 		assertUnsupportedOperationHTTPError(t, err)

@@ -10,6 +10,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +24,7 @@ func TestExecuteRawQueryRejectsInvalidAggregationBeforeConnect(t *testing.T) {
 		},
 	})
 
-	var validationErr *RawAggregationValidationError
+	var validationErr *interfaces.RawAggregationValidationError
 	require.ErrorAs(t, err, &validationErr)
 }
 
@@ -92,7 +93,7 @@ func TestCompileRawAggregationPlanRejectsNonTabularDSL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := compileRawAggregationPlan(map[string]any{"aggs": tt.aggs})
 			require.Error(t, err)
-			var validationErr *RawAggregationValidationError
+			var validationErr *interfaces.RawAggregationValidationError
 			require.ErrorAs(t, err, &validationErr)
 			assert.Contains(t, err.Error(), tt.match)
 		})

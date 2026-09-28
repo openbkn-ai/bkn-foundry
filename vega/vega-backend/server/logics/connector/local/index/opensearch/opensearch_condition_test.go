@@ -402,8 +402,8 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "no keyword feature")
-		_, ok := filter_condition.AsConditionBuildError(err)
-		assert.True(t, ok)
+		var buildErr *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &buildErr)
 	})
 
 	t.Run("rejects exact text values above keyword ignore_above", func(t *testing.T) {
@@ -417,8 +417,8 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "exceeds keyword ignore_above 256")
-		_, ok := filter_condition.AsConditionBuildError(err)
-		assert.True(t, ok)
+		var buildErr *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &buildErr)
 	})
 
 	t.Run("rejects exact string values above keyword ignore_above", func(t *testing.T) {
@@ -436,8 +436,8 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "exceeds keyword ignore_above 5")
-		_, ok := filter_condition.AsConditionBuildError(err)
-		assert.True(t, ok)
+		var buildErr *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &buildErr)
 	})
 
 	t.Run("rejects oversized exact text value when original name is empty", func(t *testing.T) {
@@ -452,8 +452,8 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "exceeds keyword ignore_above 256")
-		_, ok := filter_condition.AsConditionBuildError(err)
-		assert.True(t, ok)
+		var buildErr *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &buildErr)
 	})
 
 	t.Run("counts supplementary characters as UTF-16 code units", func(t *testing.T) {

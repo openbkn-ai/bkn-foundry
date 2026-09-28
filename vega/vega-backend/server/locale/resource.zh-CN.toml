@@ -53,6 +53,11 @@ Description = "数据资源不存在"
 Solution = "请检查数据资源ID"
 ErrorLink = ""
 
+[VegaBackend.Resource.SourceReadForbidden]
+Description = "数据源账号无权读取该资源"
+Solution = "请检查连接的 Schema 范围，或为源表授予 SELECT 权限"
+ErrorLink = ""
+
 [VegaBackend.Resource.NameExists]
 Description = "数据资源名称已存在于该目录"
 Solution = "请使用其他名称"

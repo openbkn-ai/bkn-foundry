@@ -9,6 +9,12 @@ package filter_condition
 import "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 
 const (
+	QueryChannelSQL        = "sql"
+	QueryChannelOpenSearch = "opensearch"
+	QueryChannelFileset    = "fileset"
+)
+
+const (
 	OperationAnd = "and"
 	OperationOr  = "or"
 
@@ -51,6 +57,15 @@ const (
 	OperationKnnVector   = "knn_vector"
 	OperationMultiMatch  = "multi_match"
 )
+
+// IsFulltextOperation reports whether an operator requires full-text support.
+func IsFulltextOperation(operation string) bool {
+	switch operation {
+	case OperationMatch, OperationMatchPhrase, OperationMultiMatch:
+		return true
+	}
+	return false
+}
 
 var (
 	OperationMap map[string]interfaces.FilterCondition

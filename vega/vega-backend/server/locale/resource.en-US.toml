@@ -53,6 +53,11 @@ Description = "Resource not found"
 Solution = "Please check the resource ID"
 ErrorLink = ""
 
+[VegaBackend.Resource.SourceReadForbidden]
+Description = "The data source account cannot read this resource"
+Solution = "Check the connection's schema scope or grant SELECT on the source table"
+ErrorLink = ""
+
 [VegaBackend.Resource.NameExists]
 Description = "Resource name already exists in catalog"
 Solution = "Please use a different name"

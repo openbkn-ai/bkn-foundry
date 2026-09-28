@@ -137,7 +137,7 @@ func (c *MariaDBConnector) ConvertFilterConditionWithOpr(condition interfaces.Fi
 	case filter_condition.OperationCurrent:
 		return c.ConvertFilterConditionCurrent(condition)
 	default:
-		return nil, filter_condition.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelSQL)
+		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelSQL)
 	}
 }
 

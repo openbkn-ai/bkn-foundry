@@ -150,7 +150,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionWithOpr(condition interfaces
 	case filter_condition.OperationKnnVector:
 		return c.ConvertFilterConditionKnnVector(condition, schemaDefinition)
 	default:
-		return nil, filter_condition.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelOpenSearch)
+		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelOpenSearch)
 	}
 }
 
@@ -255,7 +255,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 		}
 		return fieldComparisonScript(fieldName+keyword, "==", rightFieldName+rightKeyword), nil
 	default:
-		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -297,7 +297,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 		}
 		return fieldComparisonScript(fieldName+keyword, "!=", rightFieldName+rightKeyword), nil
 	default:
-		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -322,7 +322,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionGt(condition interfaces.Filt
 		return fieldComparisonScript(
 			propertyPhysicalFieldName(cond.Lfield), ">", propertyPhysicalFieldName(cond.Rfield)), nil
 	default:
-		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -347,7 +347,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionGte(condition interfaces.Fil
 		return fieldComparisonScript(
 			propertyPhysicalFieldName(cond.Lfield), ">=", propertyPhysicalFieldName(cond.Rfield)), nil
 	default:
-		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -372,7 +372,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionLt(condition interfaces.Filt
 		return fieldComparisonScript(
 			propertyPhysicalFieldName(cond.Lfield), "<", propertyPhysicalFieldName(cond.Rfield)), nil
 	default:
-		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -397,7 +397,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionLte(condition interfaces.Fil
 		return fieldComparisonScript(
 			propertyPhysicalFieldName(cond.Lfield), "<=", propertyPhysicalFieldName(cond.Rfield)), nil
 	default:
-		return nil, filter_condition.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
+		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
@@ -623,7 +623,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionRange(condition interfaces.F
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, filter_condition.NewConditionBuildError("range condition requires exactly 2 values")
+		return nil, interfaces.NewConditionBuildError("range condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -650,7 +650,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionOutRange(condition interface
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, filter_condition.NewConditionBuildError("out_range condition requires exactly 2 values")
+		return nil, interfaces.NewConditionBuildError("out_range condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -903,7 +903,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionBetween(condition interfaces
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, filter_condition.NewConditionBuildError("between condition requires exactly 2 values")
+		return nil, interfaces.NewConditionBuildError("between condition requires exactly 2 values")
 	}
 
 	return map[string]any{
@@ -1019,7 +1019,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionBefore(condition interfaces.
 
 	values := cond.Value
 	if len(values) != 2 {
-		return nil, filter_condition.NewConditionBuildError("before condition requires exactly 2 values")
+		return nil, interfaces.NewConditionBuildError("before condition requires exactly 2 values")
 	}
 
 	interval, ok := common.NumberAsFloat64(values[0])
@@ -1225,7 +1225,7 @@ func (c *OpenSearchConnector) getKeywordSuffix(fieldName string, schemaDefinitio
 					return strings.TrimPrefix(physicalName, fieldName), nil
 				}
 			}
-			return "", filter_condition.NewConditionBuildError("text field %s has no keyword feature; re-save the resource configuration and rebuild the local index, or use match", fieldName)
+			return "", interfaces.NewConditionBuildError("text field %s has no keyword feature; re-save the resource configuration and rebuild the local index, or use match", fieldName)
 		}
 	}
 	return "", nil
@@ -1254,7 +1254,7 @@ func validateKeywordValues(fieldName string, value any, schemaDefinition []*inte
 				// OpenSearch compares ignore_above with Java String.length(), whose
 				// unit is UTF-16 code units rather than Unicode code points.
 				if ok && len(utf16.Encode([]rune(text))) > limit {
-					return filter_condition.NewConditionBuildError(
+					return interfaces.NewConditionBuildError(
 						"value for %s field %s exceeds keyword ignore_above %d and cannot be compared exactly", prop.Type, fieldName, limit)
 				}
 			}

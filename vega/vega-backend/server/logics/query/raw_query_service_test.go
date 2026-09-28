@@ -29,7 +29,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
-	opensearchconnector "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/index/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/querypolicy"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/sqlglot"
 )
@@ -817,7 +816,7 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 					return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": 1}, {"id": 2}, {"id": 3}}}, nil
 				}
 				if callCount == 4 {
-					return nil, &opensearchconnector.RawAggregationValidationError{Path: "aggs", Reason: "exactly one aggregation is required"}
+					return nil, interfaces.NewRawAggregationValidationError("aggs", "exactly one aggregation is required")
 				}
 				return &interfaces.RawQueryResponse{}, nil
 			}).Times(4)

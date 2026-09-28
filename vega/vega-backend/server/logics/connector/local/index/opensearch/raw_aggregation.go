@@ -9,6 +9,8 @@ package opensearch
 import (
 	"fmt"
 	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 var rawBucketAggregationTypes = map[string]struct{}{
@@ -23,17 +25,6 @@ var rawMetricAggregationTypes = map[string]struct{}{
 	"avg":         {},
 	"max":         {},
 	"min":         {},
-}
-
-// RawAggregationValidationError identifies DSL that cannot be represented as
-// the row-oriented aggregation result used by Resource Data queries.
-type RawAggregationValidationError struct {
-	Path   string
-	Reason string
-}
-
-func (e *RawAggregationValidationError) Error() string {
-	return fmt.Sprintf("invalid OpenSearch aggregation at %s: %s", e.Path, e.Reason)
 }
 
 type rawAggregationNode struct {
@@ -65,7 +56,7 @@ func compileRawAggregationPlan(query map[string]any) (*rawAggregationPlan, error
 
 func compileRawAggregationNode(container map[string]any, path string, outputNames map[string]struct{}) (*rawAggregationNode, error) {
 	if len(container) != 1 {
-		return nil, rawAggregationError(path, "exactly one aggregation is required")
+		return nil, interfaces.NewRawAggregationValidationError(path, "exactly one aggregation is required")
 	}
 
 	var name string
@@ -74,7 +65,7 @@ func compileRawAggregationNode(container map[string]any, path string, outputName
 	}
 	definition, ok := rawDefinition.(map[string]any)
 	if !ok {
-		return nil, rawAggregationError(path+"."+name, "aggregation definition must be an object")
+		return nil, interfaces.NewRawAggregationValidationError(path+"."+name, "aggregation definition must be an object")
 	}
 	nodePath := path + "." + name
 
@@ -83,7 +74,7 @@ func compileRawAggregationNode(container map[string]any, path string, outputName
 	for key := range definition {
 		if _, ok := rawBucketAggregationTypes[key]; ok {
 			if operator != "" {
-				return nil, rawAggregationError(nodePath, "exactly one aggregation type is required")
+				return nil, interfaces.NewRawAggregationValidationError(nodePath, "exactly one aggregation type is required")
 			}
 			operator = key
 			bucket = true
@@ -91,32 +82,32 @@ func compileRawAggregationNode(container map[string]any, path string, outputName
 		}
 		if _, ok := rawMetricAggregationTypes[key]; ok {
 			if operator != "" {
-				return nil, rawAggregationError(nodePath, "exactly one aggregation type is required")
+				return nil, interfaces.NewRawAggregationValidationError(nodePath, "exactly one aggregation type is required")
 			}
 			operator = key
 			continue
 		}
 		if key != "aggs" && key != "aggregations" && key != "meta" {
-			return nil, rawAggregationError(nodePath, fmt.Sprintf("unsupported aggregation type %q", key))
+			return nil, interfaces.NewRawAggregationValidationError(nodePath, fmt.Sprintf("unsupported aggregation type %q", key))
 		}
 	}
 	if operator == "" {
-		return nil, rawAggregationError(nodePath, "a supported aggregation type is required")
+		return nil, interfaces.NewRawAggregationValidationError(nodePath, "a supported aggregation type is required")
 	}
 	config, ok := definition[operator].(map[string]any)
 	if !ok {
-		return nil, rawAggregationError(nodePath+"."+operator, "aggregation configuration must be an object")
+		return nil, interfaces.NewRawAggregationValidationError(nodePath+"."+operator, "aggregation configuration must be an object")
 	}
 	if _, scripted := config["script"]; scripted {
-		return nil, rawAggregationError(nodePath+"."+operator, "script is not supported")
+		return nil, interfaces.NewRawAggregationValidationError(nodePath+"."+operator, "script is not supported")
 	}
 	field, ok := config["field"].(string)
 	if !ok || strings.TrimSpace(field) == "" {
-		return nil, rawAggregationError(nodePath+"."+operator, "a non-empty field is required")
+		return nil, interfaces.NewRawAggregationValidationError(nodePath+"."+operator, "a non-empty field is required")
 	}
 	if bucket {
 		if keyed, ok := config["keyed"].(bool); ok && keyed {
-			return nil, rawAggregationError(nodePath+"."+operator, "keyed bucket responses are not supported")
+			return nil, interfaces.NewRawAggregationValidationError(nodePath+"."+operator, "keyed bucket responses are not supported")
 		}
 	}
 
@@ -126,7 +117,7 @@ func compileRawAggregationNode(container map[string]any, path string, outputName
 		outputName = field
 	}
 	if _, exists := outputNames[outputName]; exists {
-		return nil, rawAggregationError(nodePath, fmt.Sprintf("duplicate output field %q", outputName))
+		return nil, interfaces.NewRawAggregationValidationError(nodePath, fmt.Sprintf("duplicate output field %q", outputName))
 	}
 	outputNames[outputName] = struct{}{}
 
@@ -136,7 +127,7 @@ func compileRawAggregationNode(container map[string]any, path string, outputName
 	}
 	if hasChildren {
 		if !bucket {
-			return nil, rawAggregationError(nodePath, "metric aggregations cannot contain child aggregations")
+			return nil, interfaces.NewRawAggregationValidationError(nodePath, "metric aggregations cannot contain child aggregations")
 		}
 		node.child, err = compileRawAggregationNode(children, nodePath+"."+childKey, outputNames)
 		if err != nil {
@@ -144,7 +135,7 @@ func compileRawAggregationNode(container map[string]any, path string, outputName
 		}
 	} else if bucket {
 		if _, exists := outputNames["__value"]; exists {
-			return nil, rawAggregationError(nodePath, "output field __value conflicts with a group field")
+			return nil, interfaces.NewRawAggregationValidationError(nodePath, "output field __value conflicts with a group field")
 		}
 		outputNames["__value"] = struct{}{}
 	}
@@ -156,7 +147,7 @@ func rawAggregationContainer(source map[string]any, path string) (map[string]any
 	aggs, hasAggs := source["aggs"]
 	aggregations, hasAggregations := source["aggregations"]
 	if hasAggs && hasAggregations {
-		return nil, "", false, rawAggregationError(path, "aggs and aggregations cannot both be present")
+		return nil, "", false, interfaces.NewRawAggregationValidationError(path, "aggs and aggregations cannot both be present")
 	}
 	if !hasAggs && !hasAggregations {
 		return nil, "", false, nil
@@ -169,13 +160,9 @@ func rawAggregationContainer(source map[string]any, path string) (map[string]any
 	}
 	container, ok := raw.(map[string]any)
 	if !ok || len(container) == 0 {
-		return nil, "", false, rawAggregationError(path+"."+key, "must be a non-empty object")
+		return nil, "", false, interfaces.NewRawAggregationValidationError(path+"."+key, "must be a non-empty object")
 	}
 	return container, key, true, nil
-}
-
-func rawAggregationError(path, reason string) error {
-	return &RawAggregationValidationError{Path: path, Reason: reason}
 }
 
 func (p *rawAggregationPlan) flatten(aggregations map[string]any) ([]map[string]any, error) {

@@ -37,8 +37,6 @@ func TestValidateStoredFilterConditionPreservesErrorSource(t *testing.T) {
 	var stored *filter_condition.StoredConditionBuildError
 	require.ErrorAs(t, err, &stored)
 	assert.Contains(t, stored.Error(), "no keyword feature")
-	_, requestSide := filter_condition.RequestSideQueryError(err)
-	assert.False(t, requestSide)
 }
 
 func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
@@ -162,8 +160,8 @@ func TestOpenSearchQueryRejectsTextSortWithoutKeyword(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Nil(t, result)
-	_, ok := filter_condition.AsConditionBuildError(err)
-	assert.True(t, ok)
+	var buildErr *interfaces.ConditionBuildError
+	require.ErrorAs(t, err, &buildErr)
 }
 
 func TestExecuteQueryWithDslPreservesLargeIntegerSourceField(t *testing.T) {

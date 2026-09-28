@@ -26,6 +26,9 @@ const (
 	VegaBackend_InvalidParameter_Having                     = "VegaBackend.InvalidParameter.Having"
 	VegaBackend_InvalidParameter_CalendarInterval           = "VegaBackend.InvalidParameter.CalendarInterval"
 
+	// 403 Forbidden (source database privilege)
+	VegaBackend_Resource_SourceReadForbidden = "VegaBackend.Resource.SourceReadForbidden"
+
 	// 404 Not Found
 	VegaBackend_Resource_NotFound        = "VegaBackend.Resource.NotFound"
 	VegaBackend_Resource_CatalogNotFound = "VegaBackend.Resource.CatalogNotFound"
@@ -69,6 +72,9 @@ var ResourceErrCodeList = []string{
 	VegaBackend_InvalidParameter_OrderBy,
 	VegaBackend_InvalidParameter_Having,
 	VegaBackend_InvalidParameter_CalendarInterval,
+
+	// 403 Forbidden (source database privilege)
+	VegaBackend_Resource_SourceReadForbidden,
 
 	// 404 Not Found
 	VegaBackend_Resource_NotFound,
