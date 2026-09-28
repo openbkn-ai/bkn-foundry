@@ -86,8 +86,17 @@ func TestKnDetailNarrowsAnOversizedNetworkToItsNavigationShell(t *testing.T) {
 		if reads != 0 {
 			t.Fatalf("%s: read %d object type schemas for an answer that carries none", level, reads)
 		}
-		if got := m["object_types"]; got != nil {
-			t.Fatalf("%s: object_types should be withheld, got %v", level, got)
+		// null, not absent: the field has no omitempty, and an empty network under the
+		// cap already answers with null, so the shell says "none here" the same way.
+		// The documented contract states null, and this is what pins it.
+		for _, field := range []string{"object_types", "relation_types", "action_types"} {
+			got, present := m[field]
+			if !present {
+				t.Fatalf("%s: %s must be present as null, not dropped", level, field)
+			}
+			if got != nil {
+				t.Fatalf("%s: %s should be null, got %v", level, field, got)
+			}
 		}
 		if got := m["object_type_count"]; got != float64(reportedNetwork) {
 			t.Fatalf("%s: object_type_count = %v, want %d", level, got, reportedNetwork)
@@ -178,8 +187,9 @@ func TestKnDetailNarrowsARelationHeavyNetwork(t *testing.T) {
 	if got := m["relation_type_count"]; got != float64(relations) {
 		t.Fatalf("relation_type_count = %v, want %d", got, relations)
 	}
-	if got := m["relation_types"]; got != nil {
-		t.Fatalf("relation_types should be withheld, got %v", got)
+	got, present := m["relation_types"]
+	if !present || got != nil {
+		t.Fatalf("relation_types should be present and null, got %v (present=%v)", got, present)
 	}
 	if got := m["object_type_count"]; got != float64(20) {
 		t.Fatalf("object_type_count = %v, want 20 -- the object types are under their own cap", got)
