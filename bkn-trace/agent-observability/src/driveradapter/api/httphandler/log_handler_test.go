@@ -216,6 +216,41 @@ func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 	}
 }
 
+func TestLogSourceInventorySeparatesRegisteredTargetsFromQueryableSources(t *testing.T) {
+	profile := evidencevo.AccessProfile{EffectiveSubjectID: "admin-a", Roles: []string{"admin"}, AccountActive: true}
+	handler := newTestLogHandler(profile, nil)
+	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/log-source-inventory", nil)
+	setLogTestIdentity(request, "admin-a")
+	response := httptest.NewRecorder()
+	handler.ListLogSourceInventory(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected response %d: %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		RegistryVersion string `json:"registry_version"`
+		Data            []struct {
+			SourceID                 string `json:"source_id"`
+			DeclaredCollectionMethod string `json:"declared_collection_method"`
+			QueryStatus              string `json:"query_status"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.RegistryVersion != "0.3.18" || len(body.Data) != 19 {
+		t.Fatalf("expected complete 0.3.18 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
+	}
+	for _, source := range body.Data {
+		if source.SourceID == "model-manager" {
+			if source.DeclaredCollectionMethod != "kafka_audit" || source.QueryStatus != "not_listed" {
+				t.Fatalf("registry declaration must not imply live producer coverage: %+v", source)
+			}
+			return
+		}
+	}
+	t.Fatal("model-manager is missing from the source inventory")
+}
+
 func TestParseLogQueryAcceptsRFC3339TimeRangeAndRejectsReverseRange(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs?time_from=2026-08-01T10:00:00Z&time_to=2026-08-01T11:00:00Z", nil)
 	query, err := parseLogQuery(request)

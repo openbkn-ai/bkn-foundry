@@ -37,8 +37,8 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 		t.Fatal(err)
 	}
 	for file, expected := range map[string]string{
-		"schema.json":                   "4b1db1b116485e1b0432635406bcdffdc111be1b7cc583714a6a2c867efee69b",
-		"registry-runtime-v1.json":      "0a07a364556ec51dcec6cc98c793a728a52fb4e9b8f3b228f2a54f6c6521ab65",
+		"schema.json":                   "530c532e52472186fafbd8dae282c8e5fcaa067909c42518fa06be72d150d953",
+		"registry-runtime-v1.json":      "0687650868cd5140c6d25bea3b5e9e1cbf3c2e9bcb21206e128e3f295d723fae",
 		"audit-record-golden.json":      "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40",
 		"audit-kafka-golden.json":       "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -66,12 +66,122 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 	}
 }
 
+func TestExecutionFactoryManagementSkillDenialIsAdmitted(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile("assets/execution-factory-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(value, &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["target"] = map[string]any{"type": "skill", "id": "skill-1", "name": "Skill One"}
+	payload["outcome"] = "denied"
+	payload["http_status"] = 403
+	payload["failure_code"] = "HTTP_403"
+	payload["facts"] = map[string]any{"action": "create"}
+	payload["summary"] = "execution_factory.operation.observed create skill"
+	value, err = json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{
+		Topic: auditconsumer.Topic, Key: []byte("execution-factory\x1fskill\x1fskill-1"), Value: value,
+		Headers:    []auditconsumer.Header{{Key: "bkn-audit-schema-version", Value: []byte("1.0")}},
+		BrokerTime: time.Date(2026, 9, 24, 8, 31, 0, 0, time.UTC),
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("execution factory management denial rejected: %v", err)
+	}
+}
+
+func TestExecutionFactoryCompoundManagementAttemptsAreAdmitted(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile("assets/execution-factory-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []struct {
+		targetType, action, outcome string
+		status                      int
+	}{
+		{"import_batch", "import", "success", 201},
+		{"capability_bundle", "create", "unknown", 200},
+	} {
+		t.Run(scenario.targetType, func(t *testing.T) {
+			var payload map[string]any
+			if err := json.Unmarshal(value, &payload); err != nil {
+				t.Fatal(err)
+			}
+			id := scenario.targetType + ":req-1"
+			payload["target"] = map[string]any{"type": scenario.targetType, "id": id}
+			payload["facts"] = map[string]any{"action": scenario.action}
+			payload["summary"] = "execution_factory.operation.observed " + scenario.action + " " + scenario.targetType
+			payload["outcome"] = scenario.outcome
+			payload["http_status"] = scenario.status
+			encoded, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			record := auditconsumer.Record{
+				Topic: auditconsumer.Topic, Key: []byte("execution-factory\x1f" + scenario.targetType + "\x1f" + id),
+				Value: encoded, Headers: []auditconsumer.Header{{Key: "bkn-audit-schema-version", Value: []byte("1.0")}},
+				BrokerTime: time.Date(2026, 9, 24, 8, 31, 0, 0, time.UTC),
+			}
+			if _, err := validator.Validate(context.Background(), record); err != nil {
+				t.Fatalf("compound management attempt rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestExecutionFactoryPrivateCategoryAttemptIsAdmittedWithoutClaimedIdentity(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile("assets/execution-factory-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(value, &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["actor"] = map[string]any{"id": "anonymous", "type": "anonymous", "auth_method": "unknown", "effective_subject": "anonymous"}
+	payload["target"] = map[string]any{"type": "operator_category", "id": "operator_category:req-private-1"}
+	payload["facts"] = map[string]any{"action": "update"}
+	payload["summary"] = "execution_factory.operation.observed update operator_category"
+	payload["request_context"].(map[string]any)["source_channel"] = "unknown"
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{
+		Topic:      auditconsumer.Topic,
+		Key:        []byte("execution-factory\x1foperator_category\x1foperator_category:req-private-1"),
+		Value:      encoded,
+		Headers:    []auditconsumer.Header{{Key: "bkn-audit-schema-version", Value: []byte("1.0")}},
+		BrokerTime: time.Date(2026, 9, 28, 15, 0, 0, 0, time.UTC),
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("private category attempt rejected: %v", err)
+	}
+}
+
 func TestValidatorAcceptsRegisteredKafkaAuditSource(t *testing.T) {
 	validator, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"execution-factory", "agent-observability"} {
+	for _, id := range []string{"execution-factory", "agent-observability", "vega"} {
 		source, found := findSource(validator.registry.Sources, id)
 		if !found || source.CollectionMethod != "kafka_audit" {
 			t.Fatalf("%s must be registered as kafka_audit, got %+v, found=%v", id, source, found)
@@ -96,6 +206,102 @@ func TestValidatorAcceptsRegisteredKafkaAuditSource(t *testing.T) {
 	record.BrokerTime = record.BrokerTime.Add(time.Nanosecond)
 	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "retention_expired") {
 		t.Fatalf("event older than the maximum accepted age must be rejected: %v", err)
+	}
+}
+
+func TestModelManagerManagementAttemptIsAdmitted(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+	value["source_id"] = "model-manager"
+	value["event_name"] = "model_manager.operation.observed"
+	value["occurred_at"] = time.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
+	value["target"] = map[string]any{"type": "llm_model", "id": "model-audit-e2e"}
+	value["scope"] = map[string]any{
+		"business_module": "model_management", "environment": "test",
+		"platform_scope": true, "knowledge_network_ids": []string{},
+	}
+	value["request_context"] = map[string]any{"source_channel": "api", "transport": "http", "method": "POST"}
+	value["facts"] = map[string]any{"action": "update", "decision": "allowed"}
+	content, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{
+		Topic: auditconsumer.Topic, Key: []byte("model-manager\x1fllm_model\x1fmodel-audit-e2e"),
+		Value: content, BrokerTime: time.Now().UTC(),
+		Headers: []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}},
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("registered Model Manager Audit must pass Writer validation: %v", err)
+	}
+}
+
+func TestVegaManagementAuditRecordIsAdmittedAfterCutover(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+	value["source_id"] = "vega"
+	value["event_name"] = "vega.operation.observed"
+	value["occurred_at"] = time.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
+	value["target"] = map[string]any{"type": "catalog", "id": "catalog-audit-e2e"}
+	value["scope"] = map[string]any{
+		"business_module": "data_resource_knowledge_network", "environment": "test",
+		"platform_scope": true, "knowledge_network_ids": []string{},
+	}
+	value["request_context"] = map[string]any{"source_channel": "api", "transport": "http", "method": "PUT"}
+	value["facts"] = map[string]any{"action": "create", "decision": "allowed", "changed_fields": []string{"name"}}
+	content, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{
+		Topic: auditconsumer.Topic, Key: []byte("vega\x1fcatalog\x1fcatalog-audit-e2e"),
+		Value: content, BrokerTime: time.Now().UTC(),
+		Headers: []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}},
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("registered Vega management Audit must pass Writer validation: %v", err)
+	}
+	value["target"] = map[string]any{"type": "catalog", "id": "bak_abcdefghijkl", "name": "bak_abcdefghijkl"}
+	value["facts"] = map[string]any{"action": "create", "decision": "allowed", "changed_fields": []string{"bak_abcdefghijkl"}}
+	record.Value, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Key = []byte("vega\x1fcatalog\x1fbak_abcdefghijkl")
+	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "secret_detected") {
+		t.Fatalf("Writer must reject a secret-like input before Ledger insert: %v", err)
+	}
+	digest := sha256.Sum256([]byte("bak_abcdefghijkl"))
+	alias := "sha256:" + hex.EncodeToString(digest[:])
+	value["target"] = map[string]any{"type": "catalog", "id": alias, "name": alias}
+	value["facts"] = map[string]any{"action": "create", "decision": "allowed", "changed_fields": []string{}}
+	record.Value, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Key = []byte("vega\x1fcatalog\x1f" + alias)
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("sanitized Vega target must pass Writer validation: %v", err)
 	}
 }
 
@@ -181,6 +387,85 @@ func TestBackendObservedOperationIsAdmittedOnlyAfterSourceCutover(t *testing.T) 
 	}
 	if _, err := validator.Validate(context.Background(), record); err != nil {
 		t.Fatalf("registered Backend operation must pass Writer validation after cutover: %v", err)
+	}
+}
+
+func TestSafeAdminObservedOperationRequiresKafkaSource(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+	value["source_id"] = "bkn-safe-admin"
+	value["event_name"] = "safe.admin.operation.observed"
+	value["target"] = map[string]any{"type": "role", "id": "role-safe-e2e"}
+	value["scope"] = map[string]any{"business_module": "system_management", "environment": "test", "platform_scope": true, "knowledge_network_ids": []string{}}
+	value["facts"] = map[string]any{"action": "create", "decision": "allowed"}
+	value["summary"] = "safe.admin.operation.observed create role"
+	value["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+	content, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{Topic: auditconsumer.Topic, Key: []byte("bkn-safe-admin\x1frole\x1frole-safe-e2e"), Value: content, BrokerTime: time.Now().UTC(), Headers: []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}}}
+	for i := range validator.registry.Sources {
+		if validator.registry.Sources[i].ID == "bkn-safe-admin" {
+			validator.registry.Sources[i].CollectionMethod = "source_adapter"
+		}
+	}
+	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "source_collection_method_rejected") {
+		t.Fatalf("unmigrated Safe source must be rejected: %v", err)
+	}
+	for i := range validator.registry.Sources {
+		if validator.registry.Sources[i].ID == "bkn-safe-admin" {
+			validator.registry.Sources[i].CollectionMethod = "kafka_audit"
+		}
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("Safe admin event should be admitted after truthful cutover: %v", err)
+	}
+}
+
+func TestSafeNonHTTPLicenseFailureIsAdmittedWithoutInventedRequest(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+	value["source_id"] = "bkn-safe-admin"
+	value["event_name"] = "safe.admin.operation.observed"
+	value["actor"] = map[string]any{"id": "system:license", "effective_subject": "system:license", "type": "service_account", "auth_method": "unknown"}
+	value["target"] = map[string]any{"type": "license", "id": "license:cluster"}
+	value["scope"] = map[string]any{"business_module": "system_management", "environment": "test", "platform_scope": true, "knowledge_network_ids": []string{}}
+	value["outcome"] = "failure"
+	value["failure_code"] = "LICENSE_RENEW_FAILED"
+	delete(value, "http_status")
+	value["request_context"] = map[string]any{"source_channel": "unknown", "transport": "non_http", "method": "SYSTEM"}
+	value["correlation"] = map[string]any{}
+	value["facts"] = map[string]any{"action": "license_renew_failed", "decision": "failed"}
+	value["summary"] = "safe.admin.operation.observed license.renew-failed license"
+	value["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+	content, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{Topic: auditconsumer.Topic, Key: []byte("bkn-safe-admin\x1flicense\x1flicense:cluster"), Value: content, BrokerTime: time.Now().UTC(), Headers: []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}}}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("truthful Safe system failure should reach Ledger: %v", err)
 	}
 }
 

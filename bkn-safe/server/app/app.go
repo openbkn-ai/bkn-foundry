@@ -60,11 +60,12 @@ type Options struct {
 
 // App is a booted, not-yet-serving bkn-safe.
 type App struct {
-	cfg      *config.Config
-	db       *gorm.DB
-	enforcer *authz.Enforcer
-	deps     httpapi.Deps
-	licSvc   *license.Service
+	cfg          *config.Config
+	db           *gorm.DB
+	enforcer     *authz.Enforcer
+	deps         httpapi.Deps
+	licSvc       *license.Service
+	auditRuntime *audit.KafkaRuntime
 	// decisions is the authorization decision log; its retention purge runs
 	// alongside the listener.
 	decisions *decisionlog.Store
@@ -105,6 +106,7 @@ func Boot(opts Options) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init authz: %w", err)
 	}
+	auditRuntime := audit.NewKafkaRuntimeFromEnv(os.Getenv)
 	// Run the normal_user withdrawal independently of seed_on_start. This is an
 	// upgrade migration for bkn-safe-owned data, whereas seed_on_start only
 	// controls whether the current catalog and role matrix are reconciled.
@@ -113,7 +115,7 @@ func Boot(opts Options) (*App, error) {
 	}
 
 	if cfg.SeedOnStart {
-		if err := seed.Apply(db, enforcer); err != nil {
+		if err := seed.ApplyWithAudit(db, enforcer, auditRuntime.Recorder); err != nil {
 			return nil, fmt.Errorf("seed: %w", err)
 		}
 		slog.Info("seed applied (roles + catalog + grants)")
@@ -135,7 +137,6 @@ func Boot(opts Options) (*App, error) {
 	}
 	provider := auth.NewProvider(authenticator, hydraAdmin, userStore)
 	dir := directory.New(db)
-	auditStore := audit.New(db)
 	accessLogStore := accesslog.New(db)
 	decisionStore := decisionlog.New(db, decisionlog.Options{
 		Enabled:         cfg.Audit.DecisionLog.Enabled,
@@ -162,7 +163,7 @@ func Boot(opts Options) (*App, error) {
 
 	// Cluster license hub: hold the one .lic, be the only egress to the
 	// license-server, distribute to modules.
-	licSvc, err := license.New(db, cfg.License, auditStore)
+	licSvc, err := license.New(db, cfg.License, auditRuntime.Recorder)
 	if err != nil {
 		slog.Error("license hub disabled", "err", err)
 		licSvc = nil
@@ -189,6 +190,7 @@ func Boot(opts Options) (*App, error) {
 		db:                      db,
 		enforcer:                enforcer,
 		licSvc:                  licSvc,
+		auditRuntime:            auditRuntime,
 		freshAuthorizationStore: freshAuthorizationStore,
 		decisions:               decisionStore,
 		deps: httpapi.Deps{
@@ -199,7 +201,8 @@ func Boot(opts Options) (*App, error) {
 			HydraBrowserPublicURL:         cfg.Hydra.BrowserPublicURL,
 			Directory:                     dir,
 			Users:                         userStore,
-			Audit:                         auditStore,
+			Audit:                         auditRuntime.Recorder,
+			AuditTelemetry:                auditRuntime.Telemetry,
 			AccessLog:                     accessLogStore,
 			Decisions:                     decisionStore,
 			OAuthAccessOrigins:            oauthAccessOrigins,
@@ -238,8 +241,7 @@ func (a *App) Run() error {
 	// and decision logs are retained.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go a.deps.Audit.RunPendingAppender(ctx, time.Second)
-	go a.deps.Audit.LogHead(ctx, a.cfg.Audit.ChainHeadLogInterval)
+	defer a.auditRuntime.Close()
 	go a.decisions.RunRetention(ctx, a.cfg.Audit.DecisionLog.RetentionDays, 24*time.Hour)
 	go a.enforcer.RunPolicyRefresh(ctx, a.cfg.Authz.PolicyRefreshInterval)
 	go a.deps.OAuthAccessOrigins.Run(ctx, a.cfg.OAuth.ReconcileInterval)

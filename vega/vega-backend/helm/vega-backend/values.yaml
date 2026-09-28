@@ -21,6 +21,19 @@ image:
   tag: "__VERSION__"
   pullPolicy: IfNotPresent
 
+# Management Audit is independent of the Trace/Evidence capture switch.
+auditPublisher:
+  enabled: false
+  environment: ""
+  brokers: ""
+  credentialsSecretName: ""
+  usernameSecretKey: username
+  passwordSecretKey: password
+
+serviceAccount:
+  create: true
+  name: vega
+
 service:
   vegaBackend:
     type: ClusterIP

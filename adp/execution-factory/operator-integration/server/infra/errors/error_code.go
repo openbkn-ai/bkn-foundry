@@ -223,10 +223,4 @@ const (
 
 // Operation audit query error codes.
 const (
-	ErrExtOperationAuditAuthenticationRequired ErrorCode = "OperationAuditAuthenticationRequired"
-	ErrExtOperationAuditAccessDenied           ErrorCode = "OperationAuditAccessDenied"
-	ErrExtOperationAuditInvalidRange           ErrorCode = "OperationAuditInvalidRange"
-	ErrExtOperationAuditInvalidBeforeTime      ErrorCode = "OperationAuditInvalidBeforeTime"
-	ErrExtOperationAuditQueryFailed            ErrorCode = "OperationAuditQueryFailed"
-	ErrExtOperationAuditNotFound               ErrorCode = "OperationAuditNotFound"
 )

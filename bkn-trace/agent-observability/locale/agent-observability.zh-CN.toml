@@ -205,6 +205,7 @@
 "the conversation already has an active interaction" = "会话已有正在进行的交互"
 "the current attempt has not failed retryably" = "当前尝试并非可重试失败"
 "the log time window exceeds the supported range" = "日志时间范围超出支持范围"
+"the source registry is unavailable" = "来源注册表不可用"
 "the pagination cursor is invalid" = "分页 cursor 无效"
 "time_from must be an RFC3339 timestamp" = "time_from 必须是 RFC3339 时间戳"
 "time_to must be an RFC3339 timestamp" = "time_to 必须是 RFC3339 时间戳"

@@ -5,9 +5,78 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
+
+type safeAuditPublisherStub struct{ values [][]byte }
+
+func (p *safeAuditPublisherStub) TryPublish(value []byte) auditpublisher.Disposition {
+	p.values = append(p.values, append([]byte(nil), value...))
+	return auditpublisher.Accepted
+}
+
+func TestSafeAdminMiddlewarePublishesKafkaWithoutLegacyStore(t *testing.T) {
+	publisher := &safeAuditPublisherStub{}
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set(ctxAccessorID, "verified-admin"); c.Next() })
+	router.Use(auditMiddleware(audit.NewKafkaRecorder(publisher, "test"), nil, nil))
+	router.POST("/api/safe/v1/admin/users", func(c *gin.Context) { c.Status(http.StatusCreated) })
+	request := httptest.NewRequest(http.MethodPost, "/api/safe/v1/admin/users", nil)
+	request.Header.Set("x-request-id", "req-safe-kafka-user")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || len(publisher.values) != 1 {
+		t.Fatalf("business status=%d, Kafka records=%d", response.Code, len(publisher.values))
+	}
+	var record map[string]any
+	if err := json.Unmarshal(publisher.values[0], &record); err != nil {
+		t.Fatal(err)
+	}
+	if record["source_id"] != "bkn-safe-admin" || record["event_name"] != "safe.admin.operation.observed" {
+		t.Fatalf("wrong Safe event: %+v", record)
+	}
+}
+
+func TestSafeAdminGateRefusalPublishesAnonymousKafkaAudit(t *testing.T) {
+	publisher := &safeAuditPublisherStub{}
+	router := gin.New()
+	router.Use(auditAuthFailures(audit.NewKafkaRecorder(publisher, "test"), nil, nil))
+	router.POST("/api/safe/v1/admin/users", func(c *gin.Context) { abortGate(c, http.StatusUnauthorized, gateAuthn) })
+	request := httptest.NewRequest(http.MethodPost, "/api/safe/v1/admin/users", nil)
+	request.Header.Set("x-request-id", "req-safe-denied")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized || len(publisher.values) != 1 {
+		t.Fatalf("business status=%d, Kafka records=%d", response.Code, len(publisher.values))
+	}
+	var record map[string]any
+	if err := json.Unmarshal(publisher.values[0], &record); err != nil {
+		t.Fatal(err)
+	}
+	actor := record["actor"].(map[string]any)
+	if record["outcome"] != "denied" || actor["type"] != "anonymous" {
+		t.Fatalf("wrong denied Safe event: %+v", record)
+	}
+}
+
+func TestSafeAuditRuntimeDoesNotMountHistoricalQueryRoute(t *testing.T) {
+	publisher := &safeAuditPublisherStub{}
+	kafka := audit.NewKafkaRecorder(publisher, "test")
+	router := New(Deps{Audit: kafka})
+	request := httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/audit-logs", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("retired query returned %d, want 404", response.Code)
+	}
+}
 
 func TestAuditActionUsesStableBusinessSemantics(t *testing.T) {
 	tests := []struct {
@@ -43,6 +112,27 @@ func TestAuditActionUsesStableBusinessSemantics(t *testing.T) {
 	for _, test := range tests {
 		if got := auditAction(test.method, test.path); got != test.want {
 			t.Errorf("%s %s: action=%q, want %q", test.method, test.path, got, test.want)
+		}
+	}
+}
+
+func TestAuditedManagementOperationExcludesPostQueries(t *testing.T) {
+	for _, path := range []string{
+		"/api/safe/v1/authz/explain",
+		"/api/safe/v1/admin/object-grants/preview",
+		"/api/safe/v1/admin/row-filter-policies/explain",
+	} {
+		if isAuditedManagementOperation(http.MethodPost, path) {
+			t.Fatalf("POST query classified as management mutation: %s", path)
+		}
+	}
+	for _, path := range []string{
+		"/api/safe/v1/admin/users",
+		"/api/safe/v1/admin/object-grants",
+		"/api/safe/v1/admin/roles/:id/permissions",
+	} {
+		if !isAuditedManagementOperation(http.MethodPost, path) {
+			t.Fatalf("management mutation was omitted: %s", path)
 		}
 	}
 }

@@ -17,6 +17,7 @@ spec:
       labels:
         module: {{ .Values.moduleName }}
     spec:
+      serviceAccountName: {{ .Values.serviceAccount.name | quote }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
 {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -85,6 +86,26 @@ spec:
             value: {{ .Values.env.language }}
           - name: BKN_SAFE_URL
             value: {{ .Values.bknSafe.url | quote }}
+          {{- if .Values.auditPublisher.enabled }}
+          - name: VEGA_AUDIT_KAFKA_ENABLED
+            value: "true"
+          - name: VEGA_AUDIT_ENVIRONMENT
+            value: {{ required "auditPublisher.environment is required" .Values.auditPublisher.environment | quote }}
+          - name: VEGA_AUDIT_KAFKA_BROKERS
+            value: {{ required "auditPublisher.brokers is required" .Values.auditPublisher.brokers | quote }}
+          - name: VEGA_AUDIT_KAFKA_SASL_MECHANISM
+            value: "PLAIN"
+          - name: VEGA_AUDIT_KAFKA_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "auditPublisher.credentialsSecretName is required" .Values.auditPublisher.credentialsSecretName | quote }}
+                key: {{ .Values.auditPublisher.usernameSecretKey | quote }}
+          - name: VEGA_AUDIT_KAFKA_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "auditPublisher.credentialsSecretName is required" .Values.auditPublisher.credentialsSecretName | quote }}
+                key: {{ .Values.auditPublisher.passwordSecretKey | quote }}
+          {{- end }}
           {{- if .Values.bknTrace.evidence.ingestUrl }}
           - name: BKN_TRACE_EVIDENCE_INGEST_URL
             value: {{ .Values.bknTrace.evidence.ingestUrl | quote }}

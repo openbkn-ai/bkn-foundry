@@ -28,9 +28,9 @@ import (
 const (
 	SchemaVersion                 = "1.0"
 	SchemaHeader                  = "bkn-audit-schema-version"
-	CanonicalSchemaSHA256         = "4b1db1b116485e1b0432635406bcdffdc111be1b7cc583714a6a2c867efee69b"
-	CanonicalRegistrySHA256       = "58d0812bb445a90066cdc15d27332c9896272ad6993d68b832b2d0559f322243"
-	RuntimeRegistrySHA256         = "0a07a364556ec51dcec6cc98c793a728a52fb4e9b8f3b228f2a54f6c6521ab65"
+	CanonicalSchemaSHA256         = "530c532e52472186fafbd8dae282c8e5fcaa067909c42518fa06be72d150d953"
+	CanonicalRegistrySHA256       = "b0a7ebc3146804f1b6e89e7dded4392335d84546566e691a344e2bc3cca021d5"
+	RuntimeRegistrySHA256         = "0687650868cd5140c6d25bea3b5e9e1cbf3c2e9bcb21206e128e3f295d723fae"
 	CanonicalValueFixtureSHA256   = "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40"
 	KafkaFixtureSHA256            = "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4"
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
@@ -57,9 +57,49 @@ type registry struct {
 
 type sourceRule struct {
 	ID                  string   `json:"source_id"`
+	Owner               string   `json:"owner"`
+	Modules             []string `json:"modules"`
 	CollectionMethod    string   `json:"collection_method"`
+	Reliability         string   `json:"reliability"`
 	SchemaVersion       string   `json:"schema_version"`
 	AllowedEnvironments []string `json:"allowed_environments"`
+}
+
+// RegisteredSource describes a declared source, not an observed producer or
+// proof of end-to-end collection. Query availability is reported separately.
+type RegisteredSource struct {
+	SourceID                 string   `json:"source_id"`
+	Owner                    string   `json:"owner"`
+	Modules                  []string `json:"modules"`
+	DeclaredCollectionMethod string   `json:"declared_collection_method"`
+	DeclaredReliability      string   `json:"declared_reliability"`
+}
+
+func RegisteredSources() (string, []RegisteredSource, error) {
+	registryBytes, err := assets.ReadFile("assets/registry-runtime-v1.json")
+	if err != nil {
+		return "", nil, err
+	}
+	if digest(registryBytes) != RuntimeRegistrySHA256 {
+		return "", nil, errors.New("embedded Audit registry runtime artifact digest mismatch")
+	}
+	var rules registry
+	if err := json.Unmarshal(registryBytes, &rules); err != nil {
+		return "", nil, err
+	}
+	if rules.SourceRegistrySHA256 != CanonicalRegistrySHA256 || rules.RegistryVersion == "" {
+		return "", nil, errors.New("embedded Audit registry source digest mismatch")
+	}
+	sources := make([]RegisteredSource, 0, len(rules.Sources))
+	for _, source := range rules.Sources {
+		sources = append(sources, RegisteredSource{
+			SourceID: source.ID, Owner: source.Owner,
+			Modules:                  append([]string(nil), source.Modules...),
+			DeclaredCollectionMethod: source.CollectionMethod,
+			DeclaredReliability:      source.Reliability,
+		})
+	}
+	return rules.RegistryVersion, sources, nil
 }
 
 type eventRule struct {

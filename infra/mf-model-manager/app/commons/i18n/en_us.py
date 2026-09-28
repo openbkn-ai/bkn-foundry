@@ -28,34 +28,6 @@ error_messages = {
         "solution": "Please read the API documentation and pass the correct parameters",
         "link": ""
     },
-    "ModelFactory.OperationAudit.AccessDenied": {
-        "code": "ModelFactory.OperationAudit.AccessDenied",
-        "description": "Access denied.",
-        "detail": "The current identity is not allowed to access operation audit records.",
-        "solution": "Contact an administrator to request access.",
-        "link": ""
-    },
-    "ModelFactory.OperationAudit.InvalidTimestamp": {
-        "code": "ModelFactory.OperationAudit.InvalidTimestamp",
-        "description": "Timestamp format is invalid.",
-        "detail": "from or to must use the RFC3339 timestamp format.",
-        "solution": "Use the RFC3339 timestamp format and retry the request.",
-        "link": ""
-    },
-    "ModelFactory.OperationAudit.InvalidTimeRange": {
-        "code": "ModelFactory.OperationAudit.InvalidTimeRange",
-        "description": "Time range is invalid.",
-        "detail": "The end time must be after the start time and the range cannot exceed 30 days.",
-        "solution": "Adjust the time range and retry the request.",
-        "link": ""
-    },
-    "ModelFactory.OperationAudit.EventNotFound": {
-        "code": "ModelFactory.OperationAudit.EventNotFound",
-        "description": "Operation audit event was not found.",
-        "detail": "The requested operation audit event does not exist.",
-        "solution": "Check the event identifier and retry the request.",
-        "link": ""
-    },
     "ModelFactory.Router.ParamError.FormatError": {"description": "Request parameter is invalid.", "detail": "The request parameter format is invalid.", "solution": "Check that the input matches the API documentation."},
     "ModelFactory.Router.ParamError.TypeError": {"description": "Parameter type is invalid.", "detail": "The request parameter type is invalid.", "detail_template": "Parameter type error: {parameters}", "solution": "Check that the parameter type matches the API documentation."},
     "ModelFactory.InternalError": {"description": "Request failed.", "detail": "The request could not be completed.", "solution": "Retry later or contact an administrator."},

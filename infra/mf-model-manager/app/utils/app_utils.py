@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import aiohttp
 from fastapi import FastAPI, Request
 from fastapi.openapi.utils import get_openapi
@@ -25,10 +26,13 @@ from app.routers import router_init
 from app.utils.comment_utils import write_log
 from app.utils.model_monitor import vllm_monitor_task, delete_monitor_data_task, delete_model_quota_data_task
 from app.utils.observability.observability import init_observability, shutdown_observability
-from app.utils.operation_audit import operation_audit_middleware
+from app.utils.operation_audit import operation_audit_middleware, set_audit_publisher
+from app.utils.kafka_audit_publisher import publisher_from_environment
 
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
+
+audit_publisher = None
 
 
 def conf_init(app):
@@ -50,6 +54,9 @@ def start_scheduler():
 
 
 async def start_event():
+    global audit_publisher
+    audit_publisher = publisher_from_environment(os.environ)
+    set_audit_publisher(audit_publisher)
     await write_log(msg='系统启动')
     # Initialize required infrastructure when the application starts.
     try:
@@ -62,6 +69,11 @@ async def start_event():
 
 
 async def shutdown_event():
+    global audit_publisher
+    set_audit_publisher(None)
+    if audit_publisher is not None:
+        audit_publisher.close()
+        audit_publisher = None
     await write_log(msg='系统关闭')
     await close_directory_session()
     PymysqlPool.close_pool()

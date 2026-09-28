@@ -52,9 +52,9 @@ test-cover: $(GOCOVER_COBERTURA)
 	$(call run-unit-tests,-gcflags=all=-l -coverprofile=../test-result/coverage.raw.out -covermode=atomic -count=1)
 	@awk 'NR == 1 { print; next } \
 		$$1 !~ /(^|\/)(test|tests|mock|mocks)\// && \
-		$$1 !~ /\/mock_[^/]*\.go:/ && \
-		$$1 !~ /\/[^/]*_mock\.go:/ && \
-		$$1 !~ /\/[^/]*_test\.go:/' \
+		$$1 !~ /\/mock_[^\/]*\.go:/ && \
+		$$1 !~ /\/[^\/]*_mock\.go:/ && \
+		$$1 !~ /\/[^\/]*_test\.go:/' \
 		test-result/coverage.raw.out > test-result/coverage.out
 	@rm -f test-result/coverage.raw.out
 	cd server && go tool cover -func=../test-result/coverage.out

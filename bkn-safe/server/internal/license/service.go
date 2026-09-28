@@ -64,7 +64,9 @@ type Service struct {
 	fp        string
 	serverURL string
 	hc        *http.Client
-	audit     *audit.Store
+	audit     interface {
+		Record(context.Context, audit.Entry) error
+	}
 
 	// mu serializes mutations (import/activate/remove). Reads go through the
 	// guard snapshot and need no lock.
@@ -81,7 +83,9 @@ type Service struct {
 // fingerprint comes from licverify (OPENBKN_INSTANCE_ID in K8s); failing to
 // resolve one is an error — the caller decides whether to run without a
 // license hub, bkn-safe itself must not be blocked by licensing.
-func New(db *gorm.DB, cfg config.LicenseConfig, aud *audit.Store) (*Service, error) {
+func New(db *gorm.DB, cfg config.LicenseConfig, aud interface {
+	Record(context.Context, audit.Entry) error
+}) (*Service, error) {
 	return NewWithKeyTable(db, cfg, aud, keys.Official())
 }
 
@@ -89,7 +93,9 @@ func New(db *gorm.DB, cfg config.LicenseConfig, aud *audit.Store) (*Service, err
 // Production code has exactly one caller: New with keys.Official(). Keys are
 // compiled in, never read from config, env, or any endpoint (hard rule — a
 // configurable key is a self-signing hole).
-func NewWithKeyTable(db *gorm.DB, cfg config.LicenseConfig, aud *audit.Store, keyTable map[string]ed25519.PublicKey) (*Service, error) {
+func NewWithKeyTable(db *gorm.DB, cfg config.LicenseConfig, aud interface {
+	Record(context.Context, audit.Entry) error
+}, keyTable map[string]ed25519.PublicKey) (*Service, error) {
 	fp, err := licverify.Fingerprint()
 	if err != nil {
 		return nil, fmt.Errorf("license: resolve instance fingerprint: %w", err)

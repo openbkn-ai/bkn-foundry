@@ -18,7 +18,10 @@ import sys
 from pathlib import Path
 
 
-SOURCE_FIELDS = ("source_id", "collection_method", "schema_version", "allowed_environments")
+SOURCE_FIELDS = (
+    "source_id", "owner", "modules", "collection_method", "reliability",
+    "schema_version", "allowed_environments",
+)
 EVENT_FIELDS = (
     "event_name", "log_category", "allowed_source_ids", "resource_types",
     "required_attributes", "allowed_attributes", "sensitive_attributes",

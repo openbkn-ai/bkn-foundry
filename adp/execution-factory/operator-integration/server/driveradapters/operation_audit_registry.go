@@ -11,11 +11,11 @@ func registeredOperationAudit(method, path string) (operationAuditRule, bool) {
 		method, path string
 		rule         operationAuditRule
 	}{
-		{http.MethodPost, "/operator/register", operationAuditRule{"create", "agent"}},
-		{http.MethodDelete, "/operator/delete", operationAuditRule{"delete", "agent"}},
-		{http.MethodPost, "/operator/status", operationAuditRule{"status_change", "agent"}},
-		{http.MethodPost, "/operator/info", operationAuditRule{"update", "agent"}},
-		{http.MethodPost, "/operator/info/update", operationAuditRule{"update", "agent"}},
+		{http.MethodPost, "/operator/register", operationAuditRule{"create", "operator"}},
+		{http.MethodDelete, "/operator/delete", operationAuditRule{"delete", "operator"}},
+		{http.MethodPost, "/operator/status", operationAuditRule{"status_change", "operator"}},
+		{http.MethodPost, "/operator/info", operationAuditRule{"update", "operator"}},
+		{http.MethodPost, "/operator/info/update", operationAuditRule{"update", "operator"}},
 		{http.MethodPost, "/tool-box", operationAuditRule{"create", "toolbox"}},
 		{http.MethodPost, "/tool-box/:box_id", operationAuditRule{"update", "toolbox"}},
 		{http.MethodDelete, "/tool-box/:box_id", operationAuditRule{"delete", "toolbox"}},
@@ -24,6 +24,9 @@ func registeredOperationAudit(method, path string) (operationAuditRule, bool) {
 		{http.MethodPost, "/tool-box/:box_id/tool/:tool_id", operationAuditRule{"update", "tool"}},
 		{http.MethodPost, "/tool-box/:box_id/tools/batch-delete", operationAuditRule{"delete", "tool"}},
 		{http.MethodPost, "/tool-box/:box_id/tools/status", operationAuditRule{"status_change", "tool"}},
+		{http.MethodPost, "/operator/convert/tool", operationAuditRule{"create", "tool"}},
+		{http.MethodPost, "/capabilities/openapi-bundle", operationAuditRule{"create", "capability_bundle"}},
+		{http.MethodPost, "/impex/import/:type", operationAuditRule{"import", "import_batch"}},
 		{http.MethodPost, "/mcp/", operationAuditRule{"create", "mcp"}},
 		{http.MethodPut, "/mcp/:mcp_id", operationAuditRule{"update", "mcp"}},
 		{http.MethodDelete, "/mcp/:mcp_id", operationAuditRule{"delete", "mcp"}},
@@ -41,4 +44,24 @@ func registeredOperationAudit(method, path string) (operationAuditRule, bool) {
 		}
 	}
 	return operationAuditRule{}, false
+}
+
+// Private management calls currently trust caller-supplied X-Account-ID for
+// business authorization. Their Audit observes the request, but must never
+// represent that claimed ID as an independently verified actor.
+func registeredPrivateOperationAudit(method, path string) (operationAuditRule, bool) {
+	switch {
+	case method == http.MethodPost && path == "/operator/register":
+		return operationAuditRule{"create", "operator"}, true
+	case method == http.MethodPost && path == "/operator/info/update":
+		return operationAuditRule{"update", "operator"}, true
+	case method == http.MethodPost && path == "/operator/category":
+		return operationAuditRule{"create", "operator_category"}, true
+	case method == http.MethodPut && path == "/operator/category/:category_type":
+		return operationAuditRule{"update", "operator_category"}, true
+	case method == http.MethodDelete && path == "/operator/category/:category_type":
+		return operationAuditRule{"delete", "operator_category"}, true
+	default:
+		return operationAuditRule{}, false
+	}
 }

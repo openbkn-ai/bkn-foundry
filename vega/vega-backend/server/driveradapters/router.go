@@ -52,7 +52,7 @@ type RestHandler interface {
 type restHandler struct {
 	appSetting         *common.AppSetting
 	auditRecorder      operationAuditRecorder
-	auditQueryStore    operationAuditQueryStore
+	auditTelemetry     *operationaudit.PublishTelemetry
 	proxyAuditRecorder proxyReadAuditRecorder
 	as                 interfaces.AuthService
 	bts                interfaces.BuildTaskService
@@ -71,8 +71,8 @@ type restHandler struct {
 }
 
 // NewRestHandler creates a new RestHandler.
-func NewRestHandler(appSetting *common.AppSetting) RestHandler {
-	auditStore := operationaudit.NewStore(appSetting)
+func NewRestHandler(appSetting *common.AppSetting, auditRecorder operationAuditRecorder, auditTelemetry *operationaudit.PublishTelemetry) RestHandler {
+	auditRecorder = normalizeOperationAuditRecorder(auditRecorder)
 	as := auth.NewAuthService(appSetting)
 	cs := catalog.NewCatalogService(appSetting)
 	cts := connector_type.NewConnectorTypeService(appSetting)
@@ -88,25 +88,32 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
 
 	handler := &restHandler{
-		appSetting:      appSetting,
-		auditRecorder:   auditStore,
-		auditQueryStore: auditStore,
-		as:              as,
-		bts:             bts,
-		cs:              cs,
-		cts:             cts,
-		ds:              ds,
-		dss:             dss,
-		dts:             dts,
-		hcss:            hcss,
-		lim:             lim,
-		rds:             rds,
-		rs:              rs,
-		pas:             pas,
-		suts:            suts,
+		appSetting:     appSetting,
+		auditRecorder:  auditRecorder,
+		auditTelemetry: auditTelemetry,
+		as:             as,
+		bts:            bts,
+		cs:             cs,
+		cts:            cts,
+		ds:             ds,
+		dss:            dss,
+		dts:            dts,
+		hcss:           hcss,
+		lim:            lim,
+		rds:            rds,
+		rs:             rs,
+		pas:            pas,
+		suts:           suts,
 	}
 	handler.SetReady(true)
 	return handler
+}
+
+func normalizeOperationAuditRecorder(recorder operationAuditRecorder) operationAuditRecorder {
+	if concrete, ok := recorder.(*operationaudit.KafkaRecorder); ok && concrete == nil {
+		return nil
+	}
+	return recorder
 }
 
 // RegisterPublic registers public API routes.
@@ -119,14 +126,12 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	c.GET("/api/vega-backend/v1/health", r.HealthCheck)
 	c.GET("/api/vega-backend/v1/readyz", r.ReadinessCheck)
+	c.GET("/metrics", gin.WrapH(r.auditTelemetry))
 
 	// External API (External
 	apiV1 := c.Group("/api/vega-backend/v1")
 	apiV1.Use(rest.PrivateNoCacheMiddleware(), r.stripProxyInternalHeaders())
 	{
-		apiV1.GET("/operation-audits", r.ListOperationAudits)
-		apiV1.GET("/operation-audits/:event_id", r.GetOperationAudit)
-
 		// Catalog APIs - External
 		catalogs := apiV1.Group("/catalogs")
 		{

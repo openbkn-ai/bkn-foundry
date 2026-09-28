@@ -7,12 +7,10 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/decisionlog"
 )
@@ -145,51 +143,4 @@ func registerDecisionReads(g *gin.RouterGroup, store *decisionlog.Store, e *auth
 		}
 		c.JSON(http.StatusOK, gin.H{"decisions": rows, "total": total, "dropped": store.Dropped()})
 	})
-}
-
-// registerAuditChainReads mounts the chain anchor and verification endpoints
-// under the admin group. They are reads and produce no audit rows themselves.
-func registerAuditChainReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforcer) {
-	// GET /audit-chain — the current chain head, for export to an external
-	// append-only store. -> { head:{seq,row_hash,created_at}|null, unchained_rows }
-	g.GET("/audit-chain", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
-		res, err := store.Verify(c.Request.Context(), 0, 0, 1)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"head": res.Head, "unchained_rows": res.UnchainedRows})
-	})
-	// GET /audit-chain/verify?from_seq=&to_seq=&limit= — re-hash the chain
-	// and report the first break. -> audit.VerifyResult
-	g.GET("/audit-chain/verify", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
-		from, ok := parseSeq(c.Query("from_seq"))
-		if !ok {
-			replyPublicError(c, http.StatusBadRequest)
-			return
-		}
-		to, ok := parseSeq(c.Query("to_seq"))
-		if !ok {
-			replyPublicError(c, http.StatusBadRequest)
-			return
-		}
-		res, err := store.Verify(c.Request.Context(), from, to, atoiDefault(c.Query("limit"), 0))
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		c.JSON(http.StatusOK, res)
-	})
-}
-
-func parseSeq(v string) (uint64, bool) {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return 0, true
-	}
-	n, err := strconv.ParseUint(v, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return n, true
 }

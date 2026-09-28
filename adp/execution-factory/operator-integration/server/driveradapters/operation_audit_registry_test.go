@@ -18,3 +18,22 @@ func TestRegisteredOperationAuditCoversSkillLifecycle(t *testing.T) {
 		t.Fatalf("skill status audit rule = %+v, %v", rule, ok)
 	}
 }
+
+func TestRegisteredOperationAuditCoversConvertOperatorToTool(t *testing.T) {
+	rule, ok := registeredOperationAudit(http.MethodPost, "/operator/convert/tool")
+	if !ok || rule.Action != "create" || rule.TargetType != "tool" {
+		t.Fatalf("convert-to-tool audit rule = %+v, %v", rule, ok)
+	}
+}
+
+func TestRegisteredOperationAuditCoversCompoundManagementRequests(t *testing.T) {
+	for _, test := range []struct{ path, action, targetType string }{
+		{"/impex/import/:type", "import", "import_batch"},
+		{"/capabilities/openapi-bundle", "create", "capability_bundle"},
+	} {
+		rule, ok := registeredOperationAudit(http.MethodPost, test.path)
+		if !ok || rule.Action != test.action || rule.TargetType != test.targetType {
+			t.Fatalf("compound route %s = %+v, %v", test.path, rule, ok)
+		}
+	}
+}

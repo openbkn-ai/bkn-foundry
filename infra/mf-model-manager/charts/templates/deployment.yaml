@@ -19,6 +19,7 @@ spec:
         app: {{ .Values.image.name }}
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
+      serviceAccountName: {{ .Values.serviceAccount.name | quote }}
       # Lower ndots from the ClusterFirst default of 5 to 1: sentinel returns
       # redis-redis-announce-0.resource.svc.cluster.local, which is an
       # FQDN with 4 dots. ndots=5 makes libc try every search-domain suffix first
@@ -252,6 +253,28 @@ spec:
                 configMapKeyRef:
                   name: {{ .Release.Name }}-yaml
                   key: KAFKAPASS
+            {{- if .Values.auditPublisher.enabled }}
+            - name: MODEL_MANAGER_AUDIT_KAFKA_ENABLED
+              value: "true"
+            - name: MODEL_MANAGER_AUDIT_ENVIRONMENT
+              value: {{ required "auditPublisher.environment is required" .Values.auditPublisher.environment | quote }}
+            - name: MODEL_MANAGER_AUDIT_KAFKA_BROKERS
+              value: {{ required "auditPublisher.brokers is required" .Values.auditPublisher.brokers | quote }}
+            - name: MODEL_MANAGER_AUDIT_KAFKA_SECURITY_PROTOCOL
+              value: {{ .Values.auditPublisher.securityProtocol | quote }}
+            - name: MODEL_MANAGER_AUDIT_KAFKA_SASL_MECHANISM
+              value: {{ .Values.auditPublisher.saslMechanism | quote }}
+            - name: MODEL_MANAGER_AUDIT_KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auditPublisher.credentialsSecretName is required" .Values.auditPublisher.credentialsSecretName | quote }}
+                  key: {{ .Values.auditPublisher.usernameSecretKey | quote }}
+            - name: MODEL_MANAGER_AUDIT_KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auditPublisher.credentialsSecretName is required" .Values.auditPublisher.credentialsSecretName | quote }}
+                  key: {{ .Values.auditPublisher.passwordSecretKey | quote }}
+            {{- end }}
             - name: METERING_BACKEND
               valueFrom:
                 configMapKeyRef:

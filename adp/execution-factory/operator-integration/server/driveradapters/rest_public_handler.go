@@ -4,15 +4,18 @@
 package driveradapters
 
 import (
+	"context"
+	"os"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/common"
 	sandboxdriver "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/sandbox"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bknaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -29,14 +32,14 @@ type restPublicHandler struct {
 	TemplateHandler     common.TemplateHandler
 	AIGenerationHandler common.AIGenerationHandler
 	Logger              interfaces.Logger
-	auditStore          *operationaudit.Store
-	auditQueryStore     operationAuditQueryStore
-	auditAuthorization  interfaces.IAuthorizationService
+	auditRecorder       interface {
+		Record(context.Context, operationaudit.Entry) error
+	}
 }
 
 // NewRestPublicHandler creates a restHandler instance.
 func NewRestPublicHandler() interfaces.HTTPRouterInterface {
-	auditStore := operationaudit.NewStore(db.NewDBPool())
+	logger := config.NewConfigLoader().GetLogger()
 	return &restPublicHandler{
 		Hydra:               drivenadapters.NewHydra(),
 		AppKeys:             drivenadapters.NewAppKeyVerifier(),
@@ -49,10 +52,8 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 		UnifiedProxyHandler: common.NewUnifiedProxyHandler(),
 		TemplateHandler:     common.NewTemplateHandler(),
 		AIGenerationHandler: common.NewAIGenerationHandler(),
-		Logger:              config.NewConfigLoader().GetLogger(),
-		auditStore:          auditStore,
-		auditQueryStore:     auditStore,
-		auditAuthorization:  auth.NewAuthServiceImpl(),
+		Logger:              logger,
+		auditRecorder:       operationaudit.NewKafkaRecorder(bknaudit.ConfiguredPublisher(logger), strings.TrimSpace(os.Getenv("BKN_AUDIT_ENVIRONMENT"))),
 	}
 }
 
@@ -66,8 +67,8 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 		sharedrest.LanguageMiddleware(),
 		sharedrest.PrivateNoCacheMiddleware(),
 		stripProxyExecutionHeaders(),
+		OperationAudit(r.auditRecorder),
 		middlewareIntrospectVerify(r.Hydra, r.AppKeys),
-		OperationAudit(r.auditStore),
 	)
 	engine.Use(mws...)
 	// Operator registration related interfaces.
@@ -78,8 +79,6 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	r.MCPRestHandler.RegisterPublic(engine)
 	// Skill related interfaces.
 	r.SkillRestHandler.RegisterPublic(engine)
-	engine.GET("/operation-audits", r.ListOperationAudits)
-	engine.GET("/operation-audits/:event_id", r.GetOperationAudit)
 	// Read-only observation interface when running in the sandbox (visible to super pipe, see #326)
 	r.SandboxHandler.RegisterPublic(engine)
 	// Import and export.

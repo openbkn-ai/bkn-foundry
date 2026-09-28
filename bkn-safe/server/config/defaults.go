@@ -37,7 +37,6 @@ func defaultConfig() *Config {
 			ServerURL: "https://license.openbkn.ai",
 		},
 		Audit: AuditConfig{
-			ChainHeadLogInterval: 15 * time.Minute,
 			DecisionLog: DecisionLogConfig{
 				Enabled:         true,
 				AllowSampleRate: 1,

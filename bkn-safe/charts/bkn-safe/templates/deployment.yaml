@@ -30,6 +30,7 @@ spec:
                replaced for it to take effect. */}}
         checksum/instance-id: {{ include (print $.Template.BasePath "/instance-id.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
+      serviceAccountName: {{ .Values.image.name }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -45,6 +46,25 @@ spec:
                 name: {{ .Release.Name }}-instance-id
             - secretRef:
                 name: {{ .Release.Name }}-secrets
+          {{- if .Values.auditPublisher.enabled }}
+          env:
+            - name: BKN_AUDIT_ENVIRONMENT
+              value: {{ required "auditPublisher.environment is required" .Values.auditPublisher.environment | quote }}
+            - name: BKN_AUDIT_KAFKA_BROKERS
+              value: {{ required "auditPublisher.brokers is required" .Values.auditPublisher.brokers | quote }}
+            - name: BKN_AUDIT_KAFKA_SASL_MECHANISM
+              value: PLAIN
+            - name: BKN_AUDIT_KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auditPublisher.credentialsSecretName is required" .Values.auditPublisher.credentialsSecretName | quote }}
+                  key: {{ required "auditPublisher.usernameSecretKey is required" .Values.auditPublisher.usernameSecretKey | quote }}
+            - name: BKN_AUDIT_KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auditPublisher.credentialsSecretName is required" .Values.auditPublisher.credentialsSecretName | quote }}
+                  key: {{ required "auditPublisher.passwordSecretKey is required" .Values.auditPublisher.passwordSecretKey | quote }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.ports.port }}

@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -105,7 +106,11 @@ func (l *failureLimiter) allow(key string) bool {
 // path target and the verified subject when the token was good. The body is
 // not read — a refused request's payload is untrusted and the gate never saw
 // it either.
-func auditAuthFailures(store *audit.Store, dir *directory.Service, limiter *failureLimiter) gin.HandlerFunc {
+type auditEntryRecorder interface {
+	Record(context.Context, audit.Entry) error
+}
+
+func auditAuthFailures(store auditEntryRecorder, dir *directory.Service, limiter *failureLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Settle the request id before the gates run: a refused request has
 		// its response written by the gate, so a header set afterwards would

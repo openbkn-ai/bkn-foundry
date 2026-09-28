@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	infra "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -20,6 +21,7 @@ import (
 )
 
 const executionAuditRoutePrefix = "/api/agent-operator-integration/v1"
+const executionPrivateAuditRoutePrefix = "/api/agent-operator-integration/internal-v1"
 const maximumExecutionAuditRequestBody = 64 << 10
 
 // OperationAudit records one minimal user-management fact only after the
@@ -27,20 +29,47 @@ const maximumExecutionAuditRequestBody = 64 << 10
 func OperationAudit(recorder interface {
 	Record(context.Context, operationaudit.Entry) error
 }) gin.HandlerFunc {
+	return operationAuditForSurface(recorder, false)
+}
+
+// OperationAuditPrivate records only internal management mutations. The
+// private middleware's X-Account-ID is caller-supplied, so these records use
+// anonymous/unknown attribution until a verifiable service identity exists.
+func OperationAuditPrivate(recorder interface {
+	Record(context.Context, operationaudit.Entry) error
+}) gin.HandlerFunc {
+	return operationAuditForSurface(recorder, true)
+}
+
+func operationAuditForSurface(recorder interface {
+	Record(context.Context, operationaudit.Entry) error
+}, private bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		path := strings.TrimPrefix(c.FullPath(), executionAuditRoutePrefix)
-		rule, ok := registeredOperationAudit(c.Request.Method, path)
+		prefix := executionAuditRoutePrefix
+		if private {
+			prefix = executionPrivateAuditRoutePrefix
+		}
+		path := strings.TrimPrefix(c.FullPath(), prefix)
+		var rule operationAuditRule
+		var ok bool
+		if private {
+			rule, ok = registeredPrivateOperationAudit(c.Request.Method, path)
+		} else {
+			rule, ok = registeredOperationAudit(c.Request.Method, path)
+		}
 		if !ok {
 			c.Next()
 			return
 		}
+		c.Request = c.Request.WithContext(operationaudit.WithManagementAuditOwner(c.Request.Context()))
 		body := captureExecutionAuditRequest(c.Request)
 		c.Next()
 		if recorder == nil {
 			return
 		}
 		auth, ok := infra.GetAccountAuthContextFromCtx(c.Request.Context())
-		if !ok || auth == nil || strings.TrimSpace(auth.AccountID) == "" {
+		verifiedActor := !private && ok && auth != nil && strings.TrimSpace(auth.AccountID) != ""
+		if !private && !verifiedActor && c.Writer.Status() != http.StatusUnauthorized && c.Writer.Status() != http.StatusForbidden {
 			return
 		}
 		requestID := strings.TrimSpace(c.GetHeader(infra.HeaderBKNRequestID))
@@ -49,21 +78,56 @@ func OperationAudit(recorder interface {
 			c.Request.Header.Set(infra.HeaderBKNRequestID, requestID)
 			c.Header(infra.HeaderBKNRequestID, requestID)
 		}
-		actorName := executionAuditActorName(c.Request.Context(), auth)
-		targetID, targetName := executionAuditTarget(c, rule.TargetType, body, requestID)
+		actorID, actorName, actorType, authMethod := "anonymous", "", "anonymous", "unknown"
+		if verifiedActor {
+			actorID = auth.AccountID
+			actorName = executionAuditActorName(c.Request.Context(), auth)
+			actorType = executionAuditActorType(auth)
+			authMethod = executionAuditAuthMethod(c.GetHeader("Authorization"))
+		}
+		targetID, targetName := rule.TargetType+":"+requestID, ""
+		if verifiedActor {
+			targetID, targetName = executionAuditTarget(c, rule.TargetType, body, requestID)
+		}
+		if rule.TargetType == "import_batch" || rule.TargetType == "capability_bundle" {
+			// These requests may touch multiple child resources; no single child ID
+			// represents the entire attempt, including partial bundle success.
+			targetID, targetName = rule.TargetType+":"+requestID, ""
+		}
+		if path == "/operator/convert/tool" {
+			// This route creates a Tool from an existing Operator. A request's
+			// operator_id is not the new Tool ID; failed attempts have no Tool ID.
+			targetID = "tool:" + requestID
+			if createdID := c.GetString(operationaudit.ToolIDContextKey); createdID != "" {
+				targetID = createdID
+			}
+			targetName = targetID
+		}
 		outcome, failureCode, failureMessage := executionAuditOutcome(c.Writer.Status())
+		if path == "/capabilities/openapi-bundle" && outcome == "success" && c.GetBool(operationaudit.PartialBundleContextKey) {
+			outcome, failureCode, failureMessage = "unknown", "", ""
+		}
+		attemptID, err := uuid.NewV7()
+		if err != nil {
+			return
+		}
 		now := time.Now().UTC()
+		sourceChannel := "api"
+		if private {
+			sourceChannel = "unknown"
+		}
 		entry := operationaudit.Entry{
-			EventID:        operationaudit.EventID(requestID, c.Request.Method, c.FullPath()),
+			EventID:        attemptID.String(),
 			EventTime:      now,
 			RecordedAt:     now,
-			ActorID:        auth.AccountID,
+			ActorID:        actorID,
 			ActorName:      actorName,
-			ActorType:      executionAuditActorType(auth),
-			AuthMethod:     executionAuditAuthMethod(c.GetHeader("Authorization")),
+			ActorType:      actorType,
+			AuthMethod:     authMethod,
 			RequestID:      requestID,
-			SourceChannel:  "api",
+			SourceChannel:  sourceChannel,
 			Method:         c.Request.Method,
+			HTTPStatus:     c.Writer.Status(),
 			Action:         rule.Action,
 			TargetType:     rule.TargetType,
 			TargetID:       targetID,
@@ -155,7 +219,7 @@ func executionAuditTarget(c *gin.Context, targetType string, request map[string]
 	}
 	name := ""
 	if request != nil {
-		for _, key := range []string{"name", "display_name", "operator_name", "tool_name", "skill_name"} {
+		for _, key := range []string{"name", "display_name", "operator_name", "box_name", "tool_name", "skill_name"} {
 			if value, ok := request[key].(string); ok && strings.TrimSpace(value) != "" {
 				name = strings.TrimSpace(value)
 				break

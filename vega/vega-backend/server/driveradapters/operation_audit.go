@@ -8,14 +8,16 @@ package driveradapters
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -23,12 +25,17 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/operationaudit"
+	visitor2 "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 const operationAuditVisitorKey = "vega.operation_audit.visitor"
 const operationAuditRequestKey = "vega.operation_audit.request_id"
+const operationAuditTargetIDKey = "vega.operation_audit.target_id"
 const maximumOperationAuditRequestBody = 64 << 10
+
+var operationAuditFieldName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,127}$`)
+var operationAuditSecretValue = regexp.MustCompile(`(?i)(?:bearer\s+[a-z0-9._~-]{8,}|bkn_[a-z0-9._~-]{8,}|^bak_[a-z0-9._-]{12,}$)`)
 
 type operationAuditRecorder interface {
 	Record(context.Context, operationaudit.Entry) error
@@ -51,6 +58,12 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 
 		visitor, _ := c.Get(operationAuditVisitorKey)
 		actor, ok := visitor.(hydra.Visitor)
+		if !ok && operationAuditSourceChannel(c.FullPath()) == "internal_api" {
+			// Internal handlers authorize against the forwarded account headers.
+			// Use that same identity for Audit, never a client-provided body field.
+			actor = visitor2.GenerateVisitor(c)
+			ok = true
+		}
 		if !ok || strings.TrimSpace(actor.ID) == "" {
 			logger.Errorf("operation audit fact rejected: action=%s target_type=%s missing verified actor", rule.Action, rule.TargetType)
 			return
@@ -60,24 +73,26 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			logger.Errorf("operation audit request ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
 			return
 		}
-		actorName := operationAuditActorName(c.Request.Context(), c.GetHeader("Authorization"), actor.ID)
-		if actorName == "" {
-			actorName = actor.ID
+		attemptID, err := uuid.NewV7()
+		if err != nil {
+			logger.Errorf("operation audit event ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
+			return
 		}
 		now := time.Now().UTC()
 		targetID, targetName := operationAuditTarget(c, rule.TargetType, request, requestID)
 		outcome, failureCode, failureMessage := operationAuditOutcome(c)
 		entry := operationaudit.Entry{
-			EventID:        operationaudit.EventID(requestID, c.Request.Method, c.FullPath()),
+			EventID:        attemptID.String(),
 			EventTime:      now,
 			RecordedAt:     now,
 			ActorID:        actor.ID,
-			ActorName:      actorName,
+			ActorName:      actor.ID,
 			ActorType:      firstNonEmpty(string(actor.Type), "user"),
-			AuthMethod:     operationAuditAuthMethod(c.GetHeader("Authorization")),
-			RequestID:      requestID,
-			SourceChannel:  operationAuditSourceChannel(c.FullPath()),
+			AuthMethod:     operationAuditAuthMethod(c.FullPath(), c.GetHeader("Authorization")),
+			RequestID:      operationAuditCorrelationID(requestID),
+			SourceChannel:  "api",
 			Method:         c.Request.Method,
+			HTTPStatus:     c.Writer.Status(),
 			Action:         rule.Action,
 			TargetType:     rule.TargetType,
 			TargetID:       targetID,
@@ -85,11 +100,41 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			Outcome:        outcome,
 			FailureCode:    failureCode,
 			FailureMessage: failureMessage,
+			ChangedFields:  operationAuditChangedFields(request),
 		}
 		if err := r.auditRecorder.Record(c.Request.Context(), entry); err != nil {
 			logger.Errorf("operation audit persistence failed: request_id=%s action=%s target_type=%s error=%v", requestID, rule.Action, rule.TargetType, err)
 		}
 	}
+}
+
+func operationAuditChangedFields(request map[string]any) []string {
+	fields := make([]string, 0, len(request))
+	for name := range request {
+		lower := strings.ToLower(name)
+		if !operationAuditFieldName.MatchString(name) || operationAuditSecretValue.MatchString(name) ||
+			strings.Contains(lower, "password") ||
+			strings.Contains(lower, "secret") || strings.Contains(lower, "token") ||
+			strings.Contains(lower, "credential") {
+			continue
+		}
+		fields = append(fields, name)
+	}
+	sort.Strings(fields)
+	if len(fields) > 100 {
+		fields = fields[:100]
+	}
+	return fields
+}
+
+func operationAuditCorrelationID(requestID string) string {
+	if len(requestID) <= 128 && !operationAuditSecretValue.MatchString(requestID) {
+		return requestID
+	}
+	// Trace permits longer or token-shaped client IDs than the frozen Audit
+	// record. A deterministic alias keeps the event admissible.
+	digest := sha256.Sum256([]byte(requestID))
+	return "req_" + hex.EncodeToString(digest[:])
 }
 
 func captureOperationAuditRequest(request *http.Request) map[string]any {
@@ -121,9 +166,22 @@ func captureOperationAuditRequest(request *http.Request) map[string]any {
 }
 
 func operationAuditTarget(c *gin.Context, targetType string, request map[string]any, requestID string) (string, string) {
-	targetID := strings.TrimSpace(firstNonEmpty(c.Param("id"), c.Param("ids")))
+	targetID := strings.TrimSpace(firstNonEmpty(c.Param("id"), c.Param("ids"), c.Param("type")))
+	if createdID, exists := c.Get(operationAuditTargetIDKey); exists {
+		if id, ok := createdID.(string); ok && strings.TrimSpace(id) != "" {
+			targetID = strings.TrimSpace(id)
+		}
+	}
 	if targetID == "" {
 		targetID = targetType + ":" + requestID
+	}
+	if strings.Contains(targetID, ",") {
+		digest := sha256.Sum256([]byte(targetID))
+		return "batch:" + hex.EncodeToString(digest[:]), fmt.Sprintf("%d targets", strings.Count(targetID, ",")+1)
+	}
+	if len(targetID) > 256 || operationAuditSecretValue.MatchString(targetID) {
+		digest := sha256.Sum256([]byte(targetID))
+		targetID = "sha256:" + hex.EncodeToString(digest[:])
 	}
 	name := ""
 	if request != nil {
@@ -135,6 +193,9 @@ func operationAuditTarget(c *gin.Context, targetType string, request map[string]
 		}
 	}
 	if name == "" {
+		name = targetID
+	}
+	if operationAuditSecretValue.MatchString(name) {
 		name = targetID
 	}
 	return targetID, name
@@ -184,7 +245,10 @@ func operationAuditSourceChannel(path string) string {
 	return "api"
 }
 
-func operationAuditAuthMethod(authorization string) string {
+func operationAuditAuthMethod(path, authorization string) string {
+	if operationAuditSourceChannel(path) == "internal_api" {
+		return "internal_forwarded_header"
+	}
 	if strings.Contains(strings.ToLower(authorization), "bak_") {
 		return "api_key"
 	}
@@ -192,34 +256,6 @@ func operationAuditAuthMethod(authorization string) string {
 		return "oauth"
 	}
 	return "unknown"
-}
-
-func operationAuditActorName(ctx context.Context, authorization, expectedActorID string) string {
-	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("BKN_SAFE_URL")), "/")
-	if baseURL == "" || strings.TrimSpace(authorization) == "" {
-		return ""
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/safe/v1/me", nil) //nolint:gosec // baseURL is deployment configuration, not request input.
-	if err != nil {
-		return ""
-	}
-	request.Header.Set("Authorization", authorization)
-	response, err := (&http.Client{Timeout: 3 * time.Second}).Do(request) //nolint:gosec // Request URL is built from deployment configuration.
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		return ""
-	}
-	var me struct {
-		ID, Account, Name string
-		Enabled           bool
-	}
-	if sonic.ConfigDefault.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&me) != nil || !me.Enabled || me.ID != expectedActorID {
-		return ""
-	}
-	return firstNonEmpty(strings.TrimSpace(me.Name), strings.TrimSpace(me.Account))
 }
 
 func firstNonEmpty(values ...string) string {

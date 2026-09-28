@@ -9,8 +9,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -26,6 +28,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/auth"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/bkn_agent"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/build_task"
@@ -190,6 +193,23 @@ func Boot(_ Options) (*App, error) {
 // Run finalizes connector assembly, then starts workers and the HTTP service.
 func (app *App) Run() error {
 	app.connectorFactory.Finalize()
+	auditTelemetry := operationaudit.NewPublishTelemetry()
+	var auditRecorder *operationaudit.KafkaRecorder
+	retryAuditConnection := false
+	if os.Getenv("VEGA_AUDIT_KAFKA_ENABLED") == "true" {
+		auditRecorder = operationaudit.NewKafkaRecorder(nil, os.Getenv("VEGA_AUDIT_ENVIRONMENT"), auditTelemetry)
+		auditRuntime, err := operationaudit.NewKafkaRuntimeFromEnv(auditTelemetry)
+		if err != nil {
+			if errors.Is(err, operationaudit.ErrInvalidKafkaConfiguration) {
+				return fmt.Errorf("initialize Vega Audit Kafka publisher: %w", err)
+			}
+			logger.Warnf("Vega Audit Kafka publisher unavailable at startup; management requests remain fail-open: %v", err)
+			retryAuditConnection = true
+		} else {
+			defer func() { _ = auditRuntime.Close() }()
+			auditRecorder.SetPublisher(auditRuntime.Publisher)
+		}
+	}
 
 	if app.refresh != nil {
 		go app.refresh(app.stop)
@@ -201,7 +221,27 @@ func (app *App) Run() error {
 		return fmt.Errorf("start background workers: %w", err)
 	}
 	logger.Info("VEGA Manager Init Background Workers Success")
+	var recoveryDone chan struct{}
+	if retryAuditConnection {
+		recoveryDone = make(chan struct{})
+		go func() {
+			defer close(recoveryDone)
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			operationaudit.ReconnectPublisher(app.stop, ticker.C, auditRecorder, func() (operationaudit.KafkaPublisher, func(), error) {
+				runtime, err := operationaudit.NewKafkaRuntimeFromEnv(auditTelemetry)
+				if err != nil {
+					return nil, nil, err
+				}
+				return runtime.Publisher, func() { _ = runtime.Close() }, nil
+			})
+		}()
+	}
 
-	app.restHandler = driveradapters.NewRestHandler(app.appSetting)
-	return app.start()
+	app.restHandler = driveradapters.NewRestHandler(app.appSetting, auditRecorder, auditTelemetry)
+	err := app.start()
+	if recoveryDone != nil {
+		<-recoveryDone
+	}
+	return err
 }

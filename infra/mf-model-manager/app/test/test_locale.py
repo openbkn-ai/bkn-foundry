@@ -391,7 +391,7 @@ class TestLocaleResponseMiddleware(unittest.IsolatedAsyncioTestCase):
                 "type": "http.response.body",
                 "body": json.dumps({
                     "detail": {
-                        "code": "ModelFactory.OperationAudit.InvalidTimestamp",
+                        "code": "ModelFactory.Router.ParamError.FormatError",
                         "link": "",
                     },
                     "trace_id": "trace-1",
@@ -405,7 +405,7 @@ class TestLocaleResponseMiddleware(unittest.IsolatedAsyncioTestCase):
         await LocaleResponseMiddleware(app)(
             {
                 "type": "http",
-                "path": "/api/mf-model-manager/v1/operation-audits",
+                "path": "/api/mf-model-manager/v1/llm/add",
                 "headers": [(b"accept-language", b"en-US")],
             },
             None,
@@ -413,8 +413,8 @@ class TestLocaleResponseMiddleware(unittest.IsolatedAsyncioTestCase):
         )
 
         payload = json.loads(messages[1]["body"])
-        self.assertEqual(payload["code"], "ModelFactory.OperationAudit.InvalidTimestamp")
-        self.assertEqual(payload["detail"], "from or to must use the RFC3339 timestamp format.")
+        self.assertEqual(payload["code"], "ModelFactory.Router.ParamError.FormatError")
+        self.assertEqual(payload["detail"], "The request parameter format is invalid.")
         self.assertEqual(payload["trace_id"], "trace-1")
 
     async def test_does_not_localize_health_json_errors(self):

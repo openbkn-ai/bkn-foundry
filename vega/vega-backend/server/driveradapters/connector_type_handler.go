@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -188,11 +187,8 @@ func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 		return
 	}
 
-	// Record the successful creation in the audit log.
-	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-		interfaces.GenerateConnectorTypeAuditObject(req.Type, req.Name), "")
-
 	result := map[string]any{"type": req.Type}
+	c.Set(operationAuditTargetIDKey, req.Type)
 
 	logger.Debug("Handler RegisterConnectorType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
@@ -319,9 +315,6 @@ func (r *restHandler) UpdateConnectorType(c *gin.Context) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateConnectorTypeAuditObject(tp, req.Name), "")
-
 	logger.Debug("Handler UpdateConnectorType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -368,9 +361,6 @@ func (r *restHandler) DeleteConnectorType(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-		interfaces.GenerateConnectorTypeAuditObject(tp, ""), audit.SUCCESS, "")
 
 	logger.Debug("Handler DeleteConnectorType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
@@ -426,9 +416,6 @@ func (r *restHandler) setConnectorTypeEnabled(c *gin.Context, value bool, spanNa
 		rest.ReplyError(c, err)
 		return
 	}
-
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateConnectorTypeAuditObject(tp, ""), "")
 
 	logger.Debugf("Handler %s Success", spanName)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
