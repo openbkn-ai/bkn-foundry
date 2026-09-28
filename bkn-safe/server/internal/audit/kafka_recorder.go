@@ -39,7 +39,7 @@ func (r *KafkaRecorder) RecordBatch(_ context.Context, entries []Entry) error {
 			r.telemetry.Observe("dropped_unavailable")
 		}
 		slog.Error("safe audit coverage gap", "reason", "publisher_unavailable")
-		return errors.New("Safe Audit publisher is unavailable")
+		return errors.New("safe audit publisher is unavailable")
 	}
 	var first error
 	for _, entry := range entries {
@@ -47,7 +47,7 @@ func (r *KafkaRecorder) RecordBatch(_ context.Context, entries []Entry) error {
 		if err == nil {
 			if disposition := r.publisher.TryPublish(value); disposition != auditpublisher.Accepted {
 				r.telemetry.Observe(string(disposition))
-				err = fmt.Errorf("Safe Audit disposition: %s", disposition)
+				err = fmt.Errorf("safe audit disposition: %s", disposition)
 			} else {
 				r.telemetry.Observe("accepted")
 			}

@@ -55,7 +55,7 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 		} else if entry.RequestID != "" {
 			targetID = targetType + ":" + entry.RequestID
 		} else {
-			return nil, errors.New("Safe Audit target is missing")
+			return nil, errors.New("safe audit target is missing")
 		}
 	}
 	actorID, actorType := strings.TrimSpace(entry.ActorID), "user"
