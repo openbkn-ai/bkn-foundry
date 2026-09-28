@@ -729,6 +729,54 @@ func TestCheckManyPreservesValidDelegatorAndReturnsAllDeniedSources(t *testing.T
 	}
 }
 
+func TestCheckManyBatchesLargePreflightAudits(t *testing.T) {
+	f := newFixture(t)
+
+	var auditInsertBatches atomic.Int32
+	if err := f.db.Callback().Create().Before("gorm:create").Register("test:count-preflight-audit-batches",
+		func(tx *gorm.DB) {
+			if tx.Statement.Table == (model.ProxyGrantAuditLog{}).TableName() {
+				auditInsertBatches.Add(1)
+			}
+		}); err != nil {
+		t.Fatal(err)
+	}
+
+	const sourceCount = 501
+	sources := make([]proxygrant.SourceSpec, 0, sourceCount)
+	for i := 0; i < sourceCount; i++ {
+		source := f.request(
+			fmt.Sprintf("source-batched-%d", i),
+			fmt.Sprintf("binding-batched-%d", i),
+			"resource-not-granted",
+		).Source
+		sources = append(sources, source)
+	}
+
+	result, err := f.service.CheckMany(t.Context(), proxygrant.BatchCheckRequest{
+		ProxyAccountID: f.proxyID,
+		GrantorID:      f.grantor,
+		Sources:        sources,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.DeniedSources) != sourceCount {
+		t.Fatalf("denied source count = %d, want %d", len(result.DeniedSources), sourceCount)
+	}
+	if got := auditInsertBatches.Load(); got != 2 {
+		t.Fatalf("preflight audit insert batches = %d, want 2", got)
+	}
+	var auditCount int64
+	if err := f.db.Model(&model.ProxyGrantAuditLog{}).
+		Where("action = ?", "check").Count(&auditCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != sourceCount {
+		t.Fatalf("persisted preflight audits = %d, want %d", auditCount, sourceCount)
+	}
+}
+
 func TestCheckManyAndSyncReuseDelegatorForSameConcretePermission(t *testing.T) {
 	f := newFixture(t)
 	f.grantOperations(t, f.grantor, "r-shared", "query_data")
