@@ -77,12 +77,39 @@ func TestOperationAuditIdentityUsesVerifiedVisitor(t *testing.T) {
 	}
 }
 
-func TestOperationAuditEventIDIsStableForOneRequestAttempt(t *testing.T) {
-	first := operationAuditEventID("req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a")
-	second := operationAuditEventID("req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a")
-	differentTarget := operationAuditEventID("req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-b")
-	if first != second || first == differentTarget {
-		t.Fatalf("stable IDs = %q, %q, %q", first, second, differentTarget)
+func TestOperationAuditRepeatedRequestIDProducesDistinctAttempts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &recordingOperationAuditStore{}
+	handler := &restHandler{auditRecorder: store}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
+		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-a", Type: hydra.VisitorType("user")})
+		c.Status(http.StatusNoContent)
+	})
+	for range 2 {
+		request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
+		request.Header.Set("bkn-request-id", "reused-correlation-id")
+		engine.ServeHTTP(httptest.NewRecorder(), request)
+	}
+	if len(store.entries) != 2 || store.entries[0].RequestID != store.entries[1].RequestID || store.entries[0].EventID == store.entries[1].EventID {
+		t.Fatalf("request attempts share an event identity: %#v", store.entries)
+	}
+}
+
+func TestOperationAuditBatchTargetRemainsPublishable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-types", nil)
+	c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}}
+	entries := make([]map[string]string, 20)
+	for i := range entries {
+		entries[i] = map[string]string{"id": strings.Repeat("x", 20) + string(rune('a'+i))}
+	}
+	body, _ := json.Marshal(map[string]any{"entries": entries})
+	facts := operationAuditFacts(c, operationAuditRule{Action: "create", TargetType: "object_type"}, body, nil, "req-batch")
+	if len(facts.targetID) > 256 || facts.targetID == "" {
+		t.Fatalf("batch target is not publishable: %q", facts.targetID)
 	}
 }
 
@@ -148,7 +175,7 @@ func TestOperationAuditMiddlewareRecordsOneReadableSuccessFact(t *testing.T) {
 	}
 	entry := store.entries[0]
 	if entry.Action != "create" || entry.TargetType != "object_type" || entry.TargetID != "material" || entry.TargetName != "物料" ||
-		entry.KnowledgeNetworkID != "kn-a" || entry.ActorName != "Alice" || entry.Outcome != "success" || entry.RequestID != "req-a" {
+		entry.KnowledgeNetworkID != "kn-a" || entry.ActorName != "Alice" || entry.Outcome != "success" || entry.HTTPStatus != http.StatusCreated || entry.RequestID != "req-a" {
 		t.Fatalf("audit entry = %#v", entry)
 	}
 	if changed, _ := entry.ChangeSummary["changed_fields"].([]string); len(changed) == 0 {
@@ -192,7 +219,7 @@ func TestOperationAuditMiddlewareRecordsBoundedFailureAndReplacesInvalidRequestI
 		t.Fatalf("audit entries = %d", len(store.entries))
 	}
 	entry := store.entries[0]
-	if entry.Outcome != "failure" || entry.FailureCode != "name_conflict" || entry.FailureMessage != "名称已存在" || len(entry.RequestID) > 128 || entry.RequestID == string(make([]byte, 129)) {
+	if entry.Outcome != "failure" || entry.HTTPStatus != http.StatusConflict || entry.FailureCode != "name_conflict" || entry.FailureMessage != "名称已存在" || len(entry.RequestID) > 128 || entry.RequestID == string(make([]byte, 129)) {
 		t.Fatalf("failure entry = %#v", entry)
 	}
 	encoded, _ := json.Marshal(entry.ChangeSummary)
@@ -201,6 +228,28 @@ func TestOperationAuditMiddlewareRecordsBoundedFailureAndReplacesInvalidRequestI
 	}
 	if _, err := time.Parse(time.RFC3339Nano, entry.EventTime.Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("event time invalid: %v", err)
+	}
+}
+
+func TestOperationAuditFailedCreateDoesNotInventKnowledgeNetworkScope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &recordingOperationAuditStore{}
+	handler := &restHandler{auditRecorder: store}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.POST("/api/bkn-backend/v1/knowledge-networks", func(c *gin.Context) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing name"})
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks", bytes.NewReader([]byte(`{}`)))
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+
+	if len(store.entries) != 1 {
+		t.Fatalf("audit entries = %d, want 1", len(store.entries))
+	}
+	entry := store.entries[0]
+	if entry.TargetID == "" || entry.KnowledgeNetworkID != "" {
+		t.Fatalf("failed create invented network scope: target=%q network=%q", entry.TargetID, entry.KnowledgeNetworkID)
 	}
 }
 
@@ -218,7 +267,7 @@ func TestOperationAuditMiddlewareRecordsDeniedAttempt(t *testing.T) {
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 
-	if len(store.entries) != 1 || store.entries[0].Outcome != "denied" || store.entries[0].FailureCode != "permission_denied" {
+	if len(store.entries) != 1 || store.entries[0].Outcome != "denied" || store.entries[0].HTTPStatus != http.StatusForbidden || store.entries[0].FailureCode != "permission_denied" {
 		t.Fatalf("denied entry = %#v", store.entries)
 	}
 }
@@ -313,8 +362,8 @@ func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
 	if response.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q", response.Header().Get("X-Content-Type-Options"))
 	}
-	if strings.Contains(response.Body.String(), "<script>") {
-		t.Fatalf("response contains executable markup: %s", response.Body.String())
+	if response.Body.String() != `{"message":"<script>alert(\"reflected\")</script>"}` {
+		t.Fatalf("business response bytes changed: %s", response.Body.String())
 	}
 	var responseJSON map[string]string
 	if err := json.Unmarshal(response.Body.Bytes(), &responseJSON); err != nil {
@@ -322,6 +371,38 @@ func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
 	}
 	if responseJSON["message"] != `<script>alert("reflected")</script>` {
 		t.Fatalf("response semantics changed: %#v", responseJSON)
+	}
+}
+
+func TestOperationAuditDoesNotRewriteNonJSONBusinessResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &recordingOperationAuditStore{}
+	handler := &restHandler{auditRecorder: store}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
+		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-a", Type: hydra.VisitorType("user")})
+		c.Data(http.StatusAccepted, "application/octet-stream", []byte("opaque-response"))
+	})
+	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || response.Body.String() != "opaque-response" || response.Header().Get("Content-Type") != "application/octet-stream" {
+		t.Fatalf("audit middleware rewrote business response: status=%d body=%q type=%q", response.Code, response.Body.String(), response.Header().Get("Content-Type"))
+	}
+}
+
+func TestOperationAuditResponseCaptureIsBoundedAndLossless(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	writer := &boundedResponseWriter{ResponseWriter: context.Writer, limit: maximumOperationAuditBody}
+	body := bytes.Repeat([]byte("x"), maximumOperationAuditBody*3)
+	if written, err := writer.Write(body); err != nil || written != len(body) {
+		t.Fatalf("business write = %d, %v", written, err)
+	}
+	if writer.body.Len() != maximumOperationAuditBody || !bytes.Equal(recorder.Body.Bytes(), body) {
+		t.Fatalf("response capture=%d business bytes=%d", writer.body.Len(), recorder.Body.Len())
 	}
 }
 

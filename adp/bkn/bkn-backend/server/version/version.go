@@ -6,11 +6,7 @@
 
 package version
 
-import (
-	"runtime"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
-)
+import "runtime"
 
 var (
 	ServerName    string = "bkn-backend"
@@ -19,12 +15,3 @@ var (
 	GoVersion     string = runtime.Version()
 	GoArch        string = runtime.GOARCH
 )
-
-func init() {
-	audit.DEFAULT_AUDIT_LOG_FROM = audit.AuditLogFrom{
-		Package: "BKN",
-		Service: audit.AuditLogFromService{
-			Name: "bkn-backend",
-		},
-	}
-}

@@ -20,7 +20,6 @@ import (
 	_ "unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -63,6 +62,8 @@ type mgrService struct {
 	scheduleWorker   *worker.ScheduleWorker
 	evidenceRuntime  *evidencepublisher.PublisherRuntime
 	evidenceProducer interface{ Close() error }
+	auditRuntime     *operationaudit.KafkaRuntime
+	auditTelemetry   *operationaudit.PublishTelemetry
 }
 
 func (server *mgrService) start() {
@@ -76,6 +77,7 @@ func (server *mgrService) start() {
 
 	// Create the Gin engine and register APIs.
 	engine := gin.New()
+	engine.GET("/metrics", gin.WrapH(server.auditTelemetry))
 
 	server.restHandler.RegisterPublic(engine)
 	logger.Info("Server Register API Success")
@@ -140,6 +142,9 @@ func (server *mgrService) start() {
 		if err := bkntrace.CloseEvidenceProducer(server.evidenceProducer); err != nil {
 			logger.Warnf("Evidence Kafka producer close failed: %v", err)
 		}
+	}
+	if err := server.auditRuntime.Close(); err != nil {
+		logger.Warnf("Audit Kafka producer close failed: %v", err)
 	}
 
 	server.otelProviders.Shutdown(ctx)
@@ -216,7 +221,16 @@ func main() {
 		logger.Warn("BKN Trace Evidence Kafka publisher is disabled; workload is not 0.2-ready and evidence events will be dropped")
 	}
 
-	audit.Init(&appSetting.MQSetting)
+	auditTelemetry := operationaudit.NewPublishTelemetry()
+	var auditRuntime *operationaudit.KafkaRuntime
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_ENABLED")), "true") {
+		auditRuntime, err = operationaudit.NewKafkaRuntimeFromEnv(auditTelemetry)
+		if err != nil {
+			logger.Warnf("Audit Kafka publisher unavailable; audit coverage_gap: %v", err)
+		}
+	} else {
+		logger.Warn("Audit Kafka publisher is disabled; management Audit coverage_gap")
+	}
 
 	// Authentication, authorization, and managed-proxy enforcement are mandatory.
 	bknSafeURL, err := common.NormalizeBknSafeURL(os.Getenv("BKN_SAFE_URL"))
@@ -244,10 +258,18 @@ func main() {
 	logics.SetVegaBackendAccess(vega_backend.NewVegaBackendAccess(appSetting))
 
 	// Create and start the service.
+	var auditRecorder interface {
+		Record(context.Context, operationaudit.Entry) error
+	} = operationaudit.NewKafkaRecorder(nil, os.Getenv("BKN_AUDIT_ENVIRONMENT"), auditTelemetry)
+	if auditRuntime != nil {
+		auditRecorder = operationaudit.NewKafkaRecorder(auditRuntime.Publisher, os.Getenv("BKN_AUDIT_ENVIRONMENT"), auditTelemetry)
+	}
 	server := &mgrService{
 		appSetting:     appSetting,
 		otelProviders:  otelProviders,
-		restHandler:    driveradapters.NewRestHandler(appSetting, operationaudit.NewStore(db, "")),
+		restHandler:    driveradapters.NewRestHandler(appSetting, auditRecorder),
+		auditRuntime:   auditRuntime,
+		auditTelemetry: auditTelemetry,
 		conceptSyncer:  worker.NewConceptSyncer(appSetting),
 		scheduleWorker: worker.NewScheduleWorker(appSetting),
 	}

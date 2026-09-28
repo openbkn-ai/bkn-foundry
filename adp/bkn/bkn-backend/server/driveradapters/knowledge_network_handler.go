@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -320,10 +319,6 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Record an audit log after successful creation.
-	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
-		interfaces.GenerateKNAuditObject(knID, kn.KNName), "")
-
 	logger.Debug("Handler CreateKN Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusCreated, map[string]any{"id": knID})
@@ -596,9 +591,6 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
-		interfaces.GenerateKNAuditObject(knID, kn.KNName), "")
-
 	logger.Debug("Handler UpdateKN Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -663,10 +655,6 @@ func (r *restHandler) DeleteKN(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	// Record the audit log.
-	audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-		interfaces.GenerateKNAuditObject(knID, kn.KNName), audit.SUCCESS, "")
 
 	logger.Debug("Handler DeleteKN Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
