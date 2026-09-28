@@ -60,16 +60,16 @@ func (kns *knowledgeNetworkService) proxyOrchestrationEnabled(branch string) boo
 }
 
 func (kns *knowledgeNetworkService) prepareProxyPublish(ctx context.Context, kn *interfaces.KN) (*proxyPublishPlan, error) {
-	return kns.prepareProxyPublishWithBaseline(ctx, kn, false, "")
+	return kns.prepareProxyPublishWithBaseline(ctx, kn, false, "", false)
 }
 
 func (kns *knowledgeNetworkService) prepareProxyImport(ctx context.Context, kn *interfaces.KN,
 	mergeCurrent bool, mergeMode string) (*proxyPublishPlan, error) {
-	return kns.prepareProxyPublishWithBaseline(ctx, kn, mergeCurrent, mergeMode)
+	return kns.prepareProxyPublishWithBaseline(ctx, kn, mergeCurrent, mergeMode, true)
 }
 
 func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.Context, kn *interfaces.KN,
-	mergeCurrent bool, mergeMode string) (*proxyPublishPlan, error) {
+	mergeCurrent bool, mergeMode string, requireDrainedOutbox bool) (*proxyPublishPlan, error) {
 	if !kns.proxyOrchestrationEnabled(kn.Branch) {
 		return nil, nil
 	}
@@ -84,6 +84,12 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 			kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
 		}
 	}()
+	if requireDrainedOutbox && kns.kpoa != nil && !plan.createdMapping &&
+		(plan.mapping.SyncStatus != interfaces.KNProxySyncReady ||
+			plan.mapping.PublishedGeneration != plan.mapping.SyncGeneration) {
+		return nil, proxyHTTPError(ctx, http.StatusConflict,
+			"knowledge network proxy synchronization must finish before whole-network publication")
+	}
 
 	candidate := kn
 	if mergeCurrent {
@@ -376,6 +382,9 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		}
 		kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
 	}()
+	if err := refuseFailedProxyOutboxAppend(ctx, kns.kpoa, plan); err != nil {
+		return err
+	}
 
 	delta, err := kns.prepareProxyChildDelta(ctx, plan, changes, mergeMode)
 	if err != nil {
@@ -395,7 +404,7 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		plan.resolvedSources = selection.resolved
 		plan.modelVersion = delta.targetVersion
 	} else {
-		// Full projection remains the recovery path for new/failed mappings and
+		// Full projection remains the recovery path for new mappings and
 		// mutations whose cascade closure cannot be proven from the request.
 		current, err := kns.ExportKNForProjection(ctx, changes.KNID)
 		if err != nil {
@@ -406,15 +415,34 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		if err != nil {
 			return invalidProxyTargetError(ctx, err)
 		}
-		grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
-		if err != nil {
-			return err
-		}
-		plan.grants = grants
-		plan.resolvedSources = grants.resolved
-		plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
-		if err != nil {
-			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
+		if kns.kpoa != nil {
+			delta, err = kns.buildFullProxyDelta(ctx, plan, sources)
+			if err != nil {
+				return err
+			}
+			selection, preflightErr := kns.preflightProxyDelta(ctx, plan.mapping.ProxyAccountID,
+				plan.delegatorID, delta)
+			if preflightErr != nil {
+				return preflightErr
+			}
+			if err := finalizeProxyGrantDelta(delta, selection); err != nil {
+				return proxyHTTPError(ctx, http.StatusServiceUnavailable, "finalize full proxy grant delta")
+			}
+			plan.delta = delta
+			plan.grants = selection
+			plan.resolvedSources = selection.resolved
+			plan.modelVersion = delta.targetVersion
+		} else {
+			grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+			if err != nil {
+				return err
+			}
+			plan.grants = grants
+			plan.resolvedSources = grants.resolved
+			plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
+			if err != nil {
+				return proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
+			}
 		}
 	}
 
@@ -440,9 +468,16 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		}
 	}
 
-	if err := kns.markProxyPending(mutationCtx, tx, plan); err != nil {
+	staged, err := kns.stageProxyDelta(mutationCtx, tx, plan)
+	if err != nil {
 		rollback()
 		return err
+	}
+	if !staged {
+		if err := kns.markProxyPending(mutationCtx, tx, plan); err != nil {
+			rollback()
+			return err
+		}
 	}
 	if err := mutate(mutationCtx, tx); err != nil {
 		rollback()
@@ -457,6 +492,12 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	committed = true
 	if cleanupTrackerOwner {
 		_ = cleanupTracker.Cleanup(mutationCtx, kns.ps)
+	}
+	if staged {
+		plan.grants.logSkipped(ctx, plan.mapping.KNID)
+		otellog.LogInfo(ctx, fmt.Sprintf("Queued proxy publication generation %d with %d affected bindings",
+			plan.syncGeneration, len(plan.delta.bindings)))
+		return nil
 	}
 	return kns.finishProxyDeltaPublish(ctx, plan)
 }
@@ -489,6 +530,9 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 		}
 		kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
 	}()
+	if err := refuseFailedProxyOutboxAppend(ctx, kns.kpoa, plan); err != nil {
+		return nil, err
+	}
 
 	var latest *interfaces.KN
 	currentBindings, err := kns.loadProxyCapabilityBindings(ctx, knID)
@@ -551,39 +595,91 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 			rollback()
 			return nil, invalidProxyTargetError(ctx, err)
 		}
-		grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
-		if err != nil {
-			rollback()
-			return nil, err
-		}
-		// Mounting a Skill is where its grant is vouched for, so the mounter must
-		// hold execute on it, as for a tool. Everywhere else a Skill grant is best
-		// effort; this is the one write that asks for it by name.
-		if err := refuseNewlyMountedSkillsWithoutGrant(ctx, grants, currentBindings, result.Bindings); err != nil {
-			rollback()
-			return nil, err
-		}
-		plan.grants = grants
-		plan.resolvedSources = grants.resolved
-		plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
-		if err != nil {
-			rollback()
-			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
+		if kns.kpoa != nil {
+			delta, err = kns.buildFullProxyDelta(ctx, plan, sources)
+			if err != nil {
+				rollback()
+				return nil, err
+			}
+			selection, preflightErr := kns.preflightProxyDelta(ctx, plan.mapping.ProxyAccountID,
+				plan.delegatorID, delta)
+			if preflightErr != nil {
+				rollback()
+				return nil, preflightErr
+			}
+			if err := refuseNewlyMountedSkillsWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
+				rollback()
+				return nil, err
+			}
+			if err := finalizeProxyGrantDelta(delta, selection); err != nil {
+				rollback()
+				return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "finalize full capability proxy delta")
+			}
+			plan.delta = delta
+			plan.grants = selection
+			plan.resolvedSources = selection.resolved
+			plan.modelVersion = delta.targetVersion
+		} else {
+			grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
+			if err != nil {
+				rollback()
+				return nil, err
+			}
+			// Mounting a Skill is where its grant is vouched for, so the mounter must
+			// hold execute on it, as for a tool. Everywhere else a Skill grant is best
+			// effort; this is the one write that asks for it by name.
+			if err := refuseNewlyMountedSkillsWithoutGrant(ctx, grants, currentBindings, result.Bindings); err != nil {
+				rollback()
+				return nil, err
+			}
+			plan.grants = grants
+			plan.resolvedSources = grants.resolved
+			plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
+			if err != nil {
+				rollback()
+				return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
+			}
 		}
 	}
-	if err := kns.markProxyPending(ctx, tx, plan); err != nil {
+	staged, err := kns.stageProxyDelta(ctx, tx, plan)
+	if err != nil {
 		rollback()
 		return nil, err
+	}
+	if !staged {
+		if err := kns.markProxyPending(ctx, tx, plan); err != nil {
+			rollback()
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		rollback()
 		return nil, proxyHTTPError(ctx, http.StatusInternalServerError, "commit capability publication")
 	}
 	committed = true
+	if staged {
+		plan.grants.logSkipped(ctx, plan.mapping.KNID)
+		otellog.LogInfo(ctx, fmt.Sprintf("Queued capability proxy publication generation %d", plan.syncGeneration))
+		return result, nil
+	}
 	if err := kns.finishProxyDeltaPublish(ctx, plan); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+// refuseFailedProxyOutboxAppend prevents a new event from being based on a
+// failed synchronous publication that has no durable queue head. The explicit
+// proxy retry endpoint first reconciles that state; after it succeeds, normal
+// child and capability writes can safely resume.
+func refuseFailedProxyOutboxAppend(ctx context.Context, outbox interfaces.KNProxyOutboxAccess,
+	plan *proxyPublishPlan) error {
+	if outbox != nil && plan != nil && plan.mapping != nil &&
+		plan.mapping.SyncStatus == interfaces.KNProxySyncFailed {
+		return proxyHTTPError(ctx, http.StatusConflict,
+			"knowledge network proxy synchronization must be retried before another mutation")
+	}
+	return nil
 }
 
 func mergeProxyCapabilityBindings(current, added []*interfaces.CapabilityBinding,
@@ -933,6 +1029,19 @@ func (kns *knowledgeNetworkService) prepareProxyDelete(ctx context.Context, knID
 	if err := kns.acquireProxyLock(ctx, knID, plan.lockOwner); err != nil {
 		return nil, err
 	}
+	lockedMapping, err := kns.kpa.Get(ctx, knID)
+	if err != nil || lockedMapping == nil {
+		kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "refresh knowledge network proxy deletion state")
+	}
+	plan.mapping = lockedMapping
+	plan.modelVersion = lockedMapping.PublishedModelVersion
+	if lockedMapping.LifecycleStatus != interfaces.KNProxyLifecycleArchived &&
+		(lockedMapping.SyncStatus != interfaces.KNProxySyncReady ||
+			lockedMapping.PublishedGeneration != lockedMapping.SyncGeneration) {
+		kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+		return nil, proxyHTTPError(ctx, http.StatusConflict, "knowledge network proxy synchronization is pending")
+	}
 	return plan, nil
 }
 
@@ -1035,6 +1144,10 @@ func (kns *knowledgeNetworkService) RetryKNProxySync(ctx context.Context, knID s
 		return nil, err
 	}
 	defer kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+	if kns.kpoa != nil && plan.mapping.SyncStatus != interfaces.KNProxySyncFailed {
+		return nil, proxyHTTPError(ctx, http.StatusConflict,
+			"proxy synchronization retry is only available for a failed mapping")
+	}
 	if err := kns.markProxyPendingInNewTransaction(ctx, plan, plan.modelVersion); err != nil {
 		return nil, err
 	}

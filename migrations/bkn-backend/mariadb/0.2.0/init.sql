@@ -1,0 +1,378 @@
+-- Copyright 2026 openbkn.ai
+--
+-- Licensed under the Apache License, Version 2.0.
+-- See the LICENSE file in the project root for details.
+
+USE openbkn;
+
+
+-- 业务知识网络
+CREATE TABLE IF NOT EXISTS t_knowledge_network (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络名称',
+  f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
+  f_comment TEXT NOT NULL COMMENT '备注',
+  f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
+  f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
+  f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
+  f_skill_content MEDIUMTEXT NOT NULL COMMENT 'SkillContent',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_id,f_branch),
+  UNIQUE KEY uk_kn_name (f_name,f_branch)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '业务知识网络';
+
+
+-- 对象类
+CREATE TABLE IF NOT EXISTS t_object_type (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类id',
+  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类名称',
+  f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
+  f_comment TEXT NOT NULL COMMENT '备注',
+  f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
+  f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
+  f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_data_source VARCHAR(255) NOT NULL COMMENT '数据来源，当前只有视图',
+  f_data_properties LONGTEXT DEFAULT NULL COMMENT '数据属性',
+  f_logic_properties MEDIUMTEXT DEFAULT NULL COMMENT '逻辑属性',
+  f_primary_keys VARCHAR(8192) DEFAULT NULL COMMENT '对象类主键',
+  f_display_key VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象实例的显示属性',
+  f_incremental_key VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类增量键',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id,f_branch,f_id),
+  UNIQUE KEY uk_object_type_name (f_kn_id,f_branch,f_name)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '对象类';
+
+
+-- 对象类状态
+CREATE TABLE IF NOT EXISTS t_object_type_status (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类id',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_incremental_key VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类增量键',
+  f_incremental_value VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类当前增量值',
+  f_index VARCHAR(255) NOT NULL DEFAULT '' COMMENT '索引名称',
+  f_index_available BOOLEAN NOT NULL DEFAULT 0 COMMENT '索引是否可用',
+  f_doc_count BIGINT(20) NOT NULL DEFAULT 0 COMMENT '文档数量',
+  f_storage_size BIGINT(20) NOT NULL DEFAULT 0 COMMENT '存储大小',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id,f_branch,f_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '对象类状态';
+
+
+-- 关系类
+CREATE TABLE IF NOT EXISTS t_relation_type (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关系类id',
+  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关系类名称',
+  f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
+  f_comment TEXT NOT NULL COMMENT '备注',
+  f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
+  f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
+  f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_source_object_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '起点对象类',
+  f_target_object_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '终点对象类',
+  f_type VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关联类型',
+  f_mapping_rules TEXT DEFAULT NULL COMMENT '关联规则',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id,f_branch,f_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '关系类';
+
+
+-- 行动类
+CREATE TABLE IF NOT EXISTS t_action_type (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '行动类id',
+  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '行动类名称',
+  f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
+  f_comment TEXT NOT NULL COMMENT '备注',
+  f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
+  f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
+  f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_action_type VARCHAR(40) NOT NULL DEFAULT '' COMMENT '行动类型',
+  f_action_intent VARCHAR(40) NOT NULL DEFAULT '' COMMENT '行动意图',
+  f_object_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类',
+  f_condition TEXT DEFAULT NULL COMMENT '行动条件',
+  f_affect TEXT DEFAULT NULL COMMENT '行动影响',
+  f_impact_contracts TEXT DEFAULT NULL COMMENT '行动影响契约',
+  f_action_source VARCHAR(255) NOT NULL COMMENT '行动资源',
+  f_parameters TEXT DEFAULT NULL COMMENT '行动参数',
+  f_schedule VARCHAR(255) DEFAULT NULL COMMENT '行动监听',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id,f_branch,f_id),
+  UNIQUE KEY uk_action_type_name (f_kn_id,f_branch,f_name)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '行动类';
+
+
+-- 概念分组
+CREATE TABLE IF NOT EXISTS t_concept_group (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念分组id',
+  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念分组名称',
+  f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
+  f_comment TEXT NOT NULL COMMENT '备注',
+  f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
+  f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
+  f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id,f_branch,f_id),
+  UNIQUE KEY uk_concept_group_name (f_kn_id,f_branch,f_name)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '概念分组';
+
+
+-- 分组与概念对应表
+CREATE TABLE IF NOT EXISTS t_concept_group_relation (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '主键id',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_group_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念分组id',
+  f_concept_type VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念类型',
+  f_concept_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念id',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  PRIMARY KEY (f_id),
+  UNIQUE KEY uk_concept_group_relation (f_kn_id,f_branch,f_group_id,f_concept_type,f_concept_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '分组与概念对应表';
+
+
+-- Action Schedule Management
+-- Supports cron-based scheduled action execution with distributed locking
+CREATE TABLE IF NOT EXISTS t_action_schedule (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Schedule ID',
+  f_name VARCHAR(100) NOT NULL DEFAULT '' COMMENT 'Schedule name',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Branch',
+  f_action_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Action type ID to execute',
+  f_cron_expression VARCHAR(100) NOT NULL DEFAULT '' COMMENT 'Standard 5-field cron expression (min hour dom mon dow)',
+  f_instance_identities MEDIUMTEXT DEFAULT NULL COMMENT 'JSON array of target object instance identities',
+  f_dynamic_params MEDIUMTEXT DEFAULT NULL COMMENT 'JSON object of dynamic parameters',
+  f_status VARCHAR(20) NOT NULL DEFAULT 'inactive' COMMENT 'Schedule status: active or inactive',
+  f_last_run_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Last execution timestamp (ms)',
+  f_next_run_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Next scheduled run timestamp (ms)',
+  f_lock_holder VARCHAR(64) DEFAULT NULL COMMENT 'Pod ID holding execution lock (NULL = unlocked)',
+  f_lock_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Lock acquisition timestamp (ms) for timeout detection',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Creator ID',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Creator type',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Create timestamp (ms)',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Updater ID',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Updater type',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Update timestamp (ms)',
+  f_execution_subject VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Current execution subject ID',
+  f_execution_subject_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Current execution subject type',
+  PRIMARY KEY (f_id),
+  KEY idx_kn_branch (f_kn_id, f_branch),
+  KEY idx_status_next_run (f_status, f_next_run_time),
+  KEY idx_action_type (f_action_type_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'Action schedule for cron-based execution';
+
+
+-- Risk Type
+CREATE TABLE IF NOT EXISTS t_risk_type (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '风险类ID',
+  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '风险类名称',
+  f_comment TEXT NOT NULL COMMENT '描述',
+  f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
+  f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
+  f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
+  f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id, f_branch, f_id),
+  UNIQUE KEY uk_risk_type_name (f_kn_id, f_branch, f_name)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '风险类';
+
+CREATE TABLE IF NOT EXISTS t_metric_definition (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '指标ID',
+  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '指标技术名',
+  f_comment TEXT NOT NULL COMMENT '描述',
+  f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
+  f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
+  f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
+  f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_unit_type VARCHAR(64) NOT NULL DEFAULT '' COMMENT '单位类型',
+  f_unit VARCHAR(64) NOT NULL DEFAULT '' COMMENT '单位',
+  f_metric_type VARCHAR(32) NOT NULL DEFAULT 'atomic' COMMENT '指标类型 atomic|derived|composite',
+  f_scope_type VARCHAR(32) NOT NULL DEFAULT 'object_type' COMMENT '统计主体类型',
+  f_scope_ref VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类或子图ID',
+  f_time_dimension LONGTEXT DEFAULT NULL COMMENT '时间维度 JSON',
+  f_calculation_formula LONGTEXT NOT NULL COMMENT '计算公式 JSON',
+  f_analysis_dimensions LONGTEXT DEFAULT NULL COMMENT '分析维度 JSON',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id, f_branch, f_id),
+  UNIQUE KEY uk_metric_name (f_kn_id, f_branch, f_name)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'BKN 指标定义';
+
+-- BKN Backend source-owned management audit facts.
+-- This table stores bounded facts only; request/response bodies and credentials are excluded.
+CREATE TABLE IF NOT EXISTS t_operation_audit (
+  event_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  event_time DATETIME(6) NOT NULL,
+  recorded_at DATETIME(6) NOT NULL,
+  knowledge_network_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  actor_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  actor_name VARCHAR(255) NOT NULL,
+  actor_type VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  auth_method VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  credential_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  request_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  source_channel VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  method VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  action VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  target_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  target_id VARCHAR(1024) NOT NULL,
+  target_name VARCHAR(1024) NOT NULL,
+  outcome VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  failure_code VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  failure_message VARCHAR(512) NOT NULL DEFAULT '',
+  change_summary TEXT NOT NULL,
+  schema_version VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  PRIMARY KEY (event_id),
+  INDEX idx_bkn_audit_network_time (knowledge_network_id, event_time, event_id),
+  INDEX idx_bkn_audit_actor_time (actor_id, event_time, event_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='BKN Backend management operation audit facts';
+
+-- Environment-local one-to-one mapping and publication synchronization state.
+CREATE TABLE IF NOT EXISTS t_kn_proxy_account (
+  f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_proxy_account_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_proxy_account_type VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'app',
+  f_lifecycle_status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'active',
+  f_version BIGINT NOT NULL DEFAULT 1,
+  f_sync_status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'pending',
+  f_published_model_version VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  f_synced_model_version VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  f_pending_model_version VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  f_sync_generation BIGINT NOT NULL DEFAULT 0,
+  f_published_generation BIGINT NOT NULL DEFAULT 0,
+  f_last_sync_error VARCHAR(1024) NOT NULL DEFAULT '',
+  f_last_grantor_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  f_lock_owner VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  f_lock_until BIGINT NOT NULL DEFAULT 0,
+  f_last_sync_started_at BIGINT NOT NULL DEFAULT 0,
+  f_last_sync_succeeded_at BIGINT NOT NULL DEFAULT 0,
+  f_created_at BIGINT NOT NULL DEFAULT 0,
+  f_updated_at BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (f_kn_id),
+  UNIQUE KEY uk_kn_proxy_account_proxy (f_proxy_account_id),
+  INDEX idx_kn_proxy_sync (f_sync_status, f_updated_at),
+  INDEX idx_kn_proxy_lifecycle (f_lifecycle_status, f_updated_at),
+  INDEX idx_kn_proxy_lock (f_lock_until)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Knowledge network managed proxy mapping';
+
+CREATE TABLE IF NOT EXISTS t_kn_proxy_published_grant_source (
+  f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_binding_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_binding_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_resource_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_resource_id VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_operation VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_source_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_source_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_created_at BIGINT NOT NULL DEFAULT 0,
+  f_updated_at BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (f_kn_id, f_binding_type, f_binding_id, f_resource_type, f_resource_id, f_operation),
+  INDEX idx_kn_proxy_published_grant_source_kn (f_kn_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Published managed proxy grant snapshot';
+
+CREATE TABLE IF NOT EXISTS t_kn_proxy_planned_grant_source (
+  f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_binding_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_binding_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_resource_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_resource_id VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_operation VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_source_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_source_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_created_at BIGINT NOT NULL DEFAULT 0,
+  f_updated_at BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (f_kn_id, f_binding_type, f_binding_id, f_resource_type, f_resource_id, f_operation),
+  INDEX idx_kn_proxy_planned_grant_source_kn (f_kn_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Planned managed proxy grant snapshot';
+
+CREATE TABLE IF NOT EXISTS t_kn_proxy_sync_outbox (
+  f_id VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_proxy_account_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_generation BIGINT NOT NULL,
+  f_base_version VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  f_target_version VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  f_status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'pending',
+  f_attempt_count INT NOT NULL DEFAULT 0,
+  f_next_retry_at BIGINT NOT NULL DEFAULT 0,
+  f_lease_owner VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+  f_lease_until BIGINT NOT NULL DEFAULT 0,
+  f_last_error VARCHAR(1024) NOT NULL DEFAULT '',
+  f_payload LONGTEXT NOT NULL,
+  f_created_at BIGINT NOT NULL DEFAULT 0,
+  f_updated_at BIGINT NOT NULL DEFAULT 0,
+  f_completed_at BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (f_id),
+  UNIQUE KEY uk_kn_proxy_outbox_generation (f_kn_id, f_generation),
+  INDEX idx_kn_proxy_outbox_ready (f_status, f_next_retry_at, f_created_at),
+  INDEX idx_kn_proxy_outbox_cleanup (f_status, f_updated_at, f_id),
+  INDEX idx_kn_proxy_outbox_proxy_status (f_proxy_account_id, f_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Durable managed proxy grant publication queue';
+
+-- 知识网络能力绑定：登记 Skill / Function 对知识网络的归属，主数据留在执行工厂。
+CREATE TABLE IF NOT EXISTS t_kn_capability_binding (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '绑定id',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_capability_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '能力类型：skill / function',
+  f_owner_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT '所属容器id：function 时为 box_id，skill 时为空',
+  f_capability_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT '执行工厂侧标识：skill_id 或 tool_id',
+  f_bound_as_box TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否由整箱挂载展开而来',
+  f_comment VARCHAR(255) NOT NULL DEFAULT '' COMMENT '备注',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_id),
+  UNIQUE KEY uk_kn_capability (f_kn_id, f_branch, f_capability_type, f_owner_id, f_capability_id),
+  KEY idx_capability (f_capability_type, f_owner_id, f_capability_id),
+  KEY idx_kn_branch (f_kn_id, f_branch)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络能力绑定';

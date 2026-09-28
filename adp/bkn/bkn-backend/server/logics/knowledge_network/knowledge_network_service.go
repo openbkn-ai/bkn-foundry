@@ -59,6 +59,7 @@ type knowledgeNetworkService struct {
 	cgs        interfaces.ConceptGroupService
 	kna        interfaces.KNAccess
 	kpa        interfaces.KNProxyAccess
+	kpoa       interfaces.KNProxyOutboxAccess
 	ma         interfaces.MetricAccess
 	mpa        interfaces.ManagedProxyAccess
 	ms         interfaces.MetricService
@@ -88,6 +89,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 			db:         logics.DB,
 			kna:        logics.KNA,
 			kpa:        logics.KPA,
+			kpoa:       logics.KPOA,
 			ma:         logics.MA,
 			mpa:        logics.MPA,
 			ms:         metric.NewMetricService(appSetting),

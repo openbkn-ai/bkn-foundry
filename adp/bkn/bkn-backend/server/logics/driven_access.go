@@ -23,6 +23,7 @@ var (
 	CGA            interfaces.ConceptGroupAccess
 	KNA            interfaces.KNAccess
 	KPA            interfaces.KNProxyAccess
+	KPOA           interfaces.KNProxyOutboxAccess
 	MA             interfaces.MetricAccess
 	MPA            interfaces.ManagedProxyAccess
 	MFA            interfaces.ModelFactoryAccess
@@ -69,6 +70,10 @@ func SetKNAccess(kna interfaces.KNAccess) {
 
 func SetKNProxyAccess(kpa interfaces.KNProxyAccess) {
 	KPA = kpa
+}
+
+func SetKNProxyOutboxAccess(kpoa interfaces.KNProxyOutboxAccess) {
+	KPOA = kpoa
 }
 
 func SetManagedProxyAccess(mpa interfaces.ManagedProxyAccess) {

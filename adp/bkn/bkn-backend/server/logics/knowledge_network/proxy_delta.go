@@ -7,6 +7,7 @@ package knowledge_network
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -55,26 +57,54 @@ func (kns *knowledgeNetworkService) prepareProxyChildDelta(ctx context.Context,
 	if err != nil {
 		return nil, invalidProxyTargetError(ctx, err)
 	}
-	old, err := kns.kpa.ListPublishedSources(ctx, changes.KNID, bindings)
+	old, err := kns.listPlannedProxySources(ctx, changes.KNID, bindings)
 	if err != nil {
 		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load affected proxy grant snapshot")
 	}
 	upserts, additions, removals := diffProxyGrantSources(old, desired)
-	targetVersion, err := proxyGrantTransitionVersion(plan.mapping.PublishedModelVersion, additions, removals)
+	baseVersion := proxyPlannedModelVersion(plan.mapping)
+	targetVersion, err := proxyGrantTransitionVersion(baseVersion, additions, removals)
 	if err != nil {
 		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant transition")
 	}
 	return &proxyGrantDelta{
 		bindings: bindings, old: old, desired: desired, upserts: upserts, removals: removals,
-		baseVersion: plan.mapping.PublishedModelVersion, targetVersion: targetVersion,
+		baseVersion: baseVersion, targetVersion: targetVersion,
 	}, nil
 }
 
 func proxyMappingSupportsDelta(plan *proxyPublishPlan) bool {
-	return plan != nil && plan.mapping != nil &&
-		plan.mapping.SyncStatus == interfaces.KNProxySyncReady &&
-		plan.mapping.PublishedModelVersion != "" &&
-		plan.mapping.PublishedModelVersion == plan.mapping.SyncedModelVersion
+	if plan == nil || plan.mapping == nil || plan.mapping.PublishedModelVersion == "" {
+		return false
+	}
+	switch plan.mapping.SyncStatus {
+	case interfaces.KNProxySyncReady:
+		return plan.mapping.PublishedModelVersion == plan.mapping.SyncedModelVersion
+	case interfaces.KNProxySyncPending:
+		return plan.mapping.PendingModelVersion != ""
+	default:
+		return false
+	}
+}
+
+func proxyPlannedModelVersion(mapping *interfaces.KNProxyAccount) string {
+	if mapping != nil && mapping.PendingModelVersion != "" {
+		return mapping.PendingModelVersion
+	}
+	if mapping == nil {
+		return ""
+	}
+	return mapping.PublishedModelVersion
+}
+
+func (kns *knowledgeNetworkService) listPlannedProxySources(ctx context.Context, knID string,
+	bindings []interfaces.KNProxyBindingRef) ([]interfaces.ProxyGrantSourceSpec, error) {
+	if kns.kpoa != nil {
+		return kns.kpoa.ListPlannedSources(ctx, knID, bindings)
+	}
+	// This fallback keeps rolling upgrades and isolated unit tests compatible.
+	// Production enables asynchronous staging only when the outbox access is wired.
+	return kns.kpa.ListPublishedSources(ctx, knID, bindings)
 }
 
 func (kns *knowledgeNetworkService) prepareProxyCapabilityDelta(ctx context.Context,
@@ -102,9 +132,10 @@ func (kns *knowledgeNetworkService) prepareProxyCapabilityDelta(ctx context.Cont
 		}
 	}
 	if len(ids) == 0 {
+		baseVersion := proxyPlannedModelVersion(plan.mapping)
 		return &proxyGrantDelta{
-			baseVersion:   plan.mapping.PublishedModelVersion,
-			targetVersion: plan.mapping.PublishedModelVersion,
+			baseVersion:   baseVersion,
+			targetVersion: baseVersion,
 		}, nil
 	}
 	bindings := make([]interfaces.KNProxyBindingRef, 0, len(ids))
@@ -119,18 +150,19 @@ func (kns *knowledgeNetworkService) prepareProxyCapabilityDelta(ctx context.Cont
 	if err != nil {
 		return nil, invalidProxyTargetError(ctx, err)
 	}
-	old, err := kns.kpa.ListPublishedSources(ctx, plan.mapping.KNID, bindings)
+	old, err := kns.listPlannedProxySources(ctx, plan.mapping.KNID, bindings)
 	if err != nil {
 		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load affected capability proxy snapshot")
 	}
 	upserts, additions, removals := diffProxyGrantSources(old, desired)
-	targetVersion, err := proxyGrantTransitionVersion(plan.mapping.PublishedModelVersion, additions, removals)
+	baseVersion := proxyPlannedModelVersion(plan.mapping)
+	targetVersion, err := proxyGrantTransitionVersion(baseVersion, additions, removals)
 	if err != nil {
 		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash capability proxy transition")
 	}
 	return &proxyGrantDelta{
 		bindings: bindings, old: old, desired: desired, upserts: upserts, removals: removals,
-		baseVersion: plan.mapping.PublishedModelVersion, targetVersion: targetVersion,
+		baseVersion: baseVersion, targetVersion: targetVersion,
 	}, nil
 }
 
@@ -380,10 +412,57 @@ func sortProxyGrantSources(sources []interfaces.ProxyGrantSourceSpec) {
 	})
 }
 
+func (kns *knowledgeNetworkService) buildFullProxyDelta(ctx context.Context, plan *proxyPublishPlan,
+	desired []interfaces.ProxyGrantSourceSpec) (*proxyGrantDelta, error) {
+	if kns.kpoa == nil {
+		return nil, nil
+	}
+	old, err := kns.kpoa.ListPlannedSnapshot(ctx, plan.mapping.KNID)
+	if err != nil {
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load planned proxy grant snapshot")
+	}
+	upserts, additions, removals := diffProxyGrantSources(old, desired)
+	baseVersion := proxyPlannedModelVersion(plan.mapping)
+	targetVersion, err := proxyGrantTransitionVersion(baseVersion, additions, removals)
+	if err != nil {
+		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant transition")
+	}
+	return &proxyGrantDelta{
+		bindings: proxyGrantBindingUnion(old, desired), old: old, desired: desired,
+		upserts: upserts, removals: removals, baseVersion: baseVersion, targetVersion: targetVersion,
+	}, nil
+}
+
+func proxyGrantBindingUnion(sourceSets ...[]interfaces.ProxyGrantSourceSpec) []interfaces.KNProxyBindingRef {
+	byKey := make(map[string]interfaces.KNProxyBindingRef)
+	for _, sources := range sourceSets {
+		for _, source := range sources {
+			key := source.BindingType + "\x00" + source.BindingID
+			byKey[key] = interfaces.KNProxyBindingRef{BindingType: source.BindingType, BindingID: source.BindingID}
+		}
+	}
+	keys := make([]string, 0, len(byKey))
+	for key := range byKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]interfaces.KNProxyBindingRef, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, byKey[key])
+	}
+	return result
+}
+
 func proxyGrantTransitionVersion(base string, additions,
 	removals []interfaces.ProxyGrantSourceSpec) (string, error) {
 	if len(additions) == 0 && len(removals) == 0 {
-		return base, nil
+		if base != "" {
+			return base, nil
+		}
+		// A newly created empty network still needs a concrete Safe snapshot
+		// version. Leaving both versions empty makes the first outbox event
+		// impossible to fence or replay idempotently.
+		return proxyGrantSnapshotVersion([]interfaces.ProxyGrantSourceSpec{})
 	}
 	added := append([]interfaces.ProxyGrantSourceSpec(nil), additions...)
 	removed := append([]interfaces.ProxyGrantSourceSpec(nil), removals...)
@@ -407,7 +486,7 @@ func (kns *knowledgeNetworkService) preflightProxyDelta(ctx context.Context, pro
 		return newProxyGrantSelection(nil), nil
 	}
 	selection := newProxyGrantSelection(delta.upserts)
-	if len(delta.upserts) == 0 {
+	if len(delta.upserts) == 0 && len(delta.removals) == 0 {
 		return selection, nil
 	}
 	checked := delta.upserts
@@ -482,6 +561,29 @@ func finalizeProxyGrantDelta(delta *proxyGrantDelta, selection *proxyGrantSelect
 	}
 	delta.targetVersion = targetVersion
 	return nil
+}
+
+func (kns *knowledgeNetworkService) stageProxyDelta(ctx context.Context, tx *sql.Tx,
+	plan *proxyPublishPlan) (bool, error) {
+	if kns.kpoa == nil || plan == nil || plan.delta == nil {
+		return false, nil
+	}
+	delta := plan.delta
+	event := &interfaces.KNProxyOutboxEvent{
+		ID: uuid.NewString(), KNID: plan.mapping.KNID, ProxyAccountID: plan.mapping.ProxyAccountID,
+		GrantorID: plan.delegatorID, BaseVersion: delta.baseVersion, TargetVersion: delta.targetVersion,
+		Bindings: delta.bindings, DesiredSources: delta.desired, Upserts: delta.upserts, Removals: delta.removals,
+	}
+	generation, err := kns.kpoa.StageDelta(ctx, tx, event, plan.lockOwner,
+		delta.bindings, delta.desired, time.Now().UnixMilli())
+	if err != nil {
+		return false, proxyHTTPError(ctx, http.StatusServiceUnavailable, "stage proxy permission delta")
+	}
+	plan.syncGeneration = generation
+	plan.mapping.SyncGeneration = generation
+	plan.mapping.PendingModelVersion = delta.targetVersion
+	plan.mapping.SyncStatus = interfaces.KNProxySyncPending
+	return true, nil
 }
 
 func (kns *knowledgeNetworkService) finishProxyDeltaPublish(ctx context.Context,

@@ -187,8 +187,14 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
-		return resp.StatusCode, &interfaces.ManagedProxyStatusError{Method: method, Path: path, StatusCode: resp.StatusCode}
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		var envelope struct {
+			ErrorCode string `json:"error_code"`
+		}
+		_ = json.Unmarshal(data, &envelope)
+		return resp.StatusCode, &interfaces.ManagedProxyStatusError{
+			Method: method, Path: path, StatusCode: resp.StatusCode, ErrorCode: envelope.ErrorCode,
+		}
 	}
 	if out == nil {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/proxygrant"
 )
 
@@ -136,9 +137,9 @@ func writeProxyGrantError(c *gin.Context, err error) bool {
 	case errors.Is(err, proxygrant.ErrSourceRequired):
 		replyPublicError(c, http.StatusConflict)
 	case errors.Is(err, proxygrant.ErrStaleSync):
-		replyPublicError(c, http.StatusConflict)
+		httperrors.WriteCode(c, http.StatusConflict, httperrors.ProxyGrantStaleSync, nil)
 	case errors.Is(err, proxygrant.ErrSnapshotConflict):
-		replyPublicError(c, http.StatusConflict)
+		httperrors.WriteCode(c, http.StatusConflict, httperrors.ProxyGrantSnapshotConflict, nil)
 	default:
 		serverError(c, err)
 	}

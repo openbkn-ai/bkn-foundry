@@ -61,6 +61,7 @@ type mgrService struct {
 	restHandler      driveradapters.RestHandler
 	conceptSyncer    *worker.ConceptSyncer
 	scheduleWorker   *worker.ScheduleWorker
+	proxySyncWorker  *worker.ProxySyncWorker
 	evidenceRuntime  *evidencepublisher.PublisherRuntime
 	evidenceProducer interface{ Close() error }
 	auditRuntime     *operationaudit.KafkaRuntime
@@ -85,6 +86,7 @@ func (server *mgrService) start() {
 
 	go server.conceptSyncer.Start()
 	go server.scheduleWorker.Start()
+	server.proxySyncWorker.Start()
 
 	// Listen for interrupt signals (SIGINT and SIGTERM).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -134,6 +136,10 @@ func (server *mgrService) start() {
 	if err := s.Shutdown(ctx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
 	}
+	// Stop accepting mutations and let in-flight handlers finish before the
+	// outbox workers are canceled. Otherwise a request can enqueue work after
+	// every local worker has already exited.
+	server.proxySyncWorker.Stop()
 	if server.evidenceRuntime != nil {
 		if _, err := server.evidenceRuntime.Close(ctx); err != nil {
 			logger.Warnf("Evidence publisher runtime close failed: %v", err)
@@ -252,6 +258,15 @@ func main() {
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
 	logics.SetKNProxyAccess(kn_proxy.NewAccess(db))
+	proxyOutboxAccess := kn_proxy.NewOutboxAccess(db)
+	if appSetting.ServerSetting.ProxySyncWorkerEnabled {
+		logics.SetKNProxyOutboxAccess(proxyOutboxAccess)
+	} else {
+		// A disabled consumer must not leave producers accepting writes into an
+		// undrained queue. A nil outbox keeps the existing synchronous publication
+		// path active during a stopped upgrade or an operator kill switch.
+		logics.SetKNProxyOutboxAccess(nil)
+	}
 	logics.SetCapabilityBindingAccess(capability_binding.NewCapabilityBindingAccess(appSetting))
 	logics.SetMetricAccess(metric.NewMetricAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
@@ -269,13 +284,14 @@ func main() {
 		auditRecorder = operationaudit.NewKafkaRecorder(auditRuntime.Publisher, os.Getenv("BKN_AUDIT_ENVIRONMENT"), auditTelemetry)
 	}
 	server := &mgrService{
-		appSetting:     appSetting,
-		otelProviders:  otelProviders,
-		restHandler:    driveradapters.NewRestHandler(appSetting, auditRecorder),
-		auditRuntime:   auditRuntime,
-		auditTelemetry: auditTelemetry,
-		conceptSyncer:  worker.NewConceptSyncer(appSetting),
-		scheduleWorker: worker.NewScheduleWorker(appSetting),
+		appSetting:      appSetting,
+		otelProviders:   otelProviders,
+		restHandler:     driveradapters.NewRestHandler(appSetting, auditRecorder),
+		auditRuntime:    auditRuntime,
+		auditTelemetry:  auditTelemetry,
+		conceptSyncer:   worker.NewConceptSyncer(appSetting),
+		scheduleWorker:  worker.NewScheduleWorker(appSetting),
+		proxySyncWorker: worker.NewProxySyncWorker(appSetting, proxyOutboxAccess, logics.MPA),
 	}
 	if publisherRuntime != nil {
 		server.evidenceRuntime = publisherRuntime.Runtime

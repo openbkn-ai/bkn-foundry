@@ -14,14 +14,16 @@ import (
 )
 
 const (
-	InvalidRequest     = "BknSafe.InvalidRequest"
-	Unauthorized       = "BknSafe.Unauthorized"
-	Forbidden          = "BknSafe.Forbidden"
-	NotFound           = "BknSafe.NotFound"
-	Conflict           = "BknSafe.Conflict"
-	MethodNotAllowed   = "BknSafe.MethodNotAllowed"
-	ServiceUnavailable = "BknSafe.ServiceUnavailable"
-	InternalError      = "BknSafe.InternalError"
+	InvalidRequest             = "BknSafe.InvalidRequest"
+	Unauthorized               = "BknSafe.Unauthorized"
+	Forbidden                  = "BknSafe.Forbidden"
+	NotFound                   = "BknSafe.NotFound"
+	Conflict                   = "BknSafe.Conflict"
+	MethodNotAllowed           = "BknSafe.MethodNotAllowed"
+	ServiceUnavailable         = "BknSafe.ServiceUnavailable"
+	InternalError              = "BknSafe.InternalError"
+	ProxyGrantStaleSync        = "BknSafe.ProxyGrant.StaleSync"
+	ProxyGrantSnapshotConflict = "BknSafe.ProxyGrant.SnapshotConflict"
 	// UnsupportedGrantShape is intentionally edition-neutral. The shared
 	// object-grant route returns this exact code for paid request shapes when
 	// they are not assembled or not currently licensed; it must not disclose a
@@ -47,6 +49,8 @@ var (
 		MethodNotAllowed,
 		ServiceUnavailable,
 		InternalError,
+		ProxyGrantStaleSync,
+		ProxyGrantSnapshotConflict,
 		UnsupportedGrantShape,
 		AdminWriteInvalid,
 		AdminWriteImmutable,
