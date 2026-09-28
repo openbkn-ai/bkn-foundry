@@ -212,14 +212,19 @@ type PermissionRequest struct {
 	// permission_request_operation.
 	Operation  string   `json:"operation" gorm:"size:64"`
 	Operations []string `json:"operations" gorm:"-"`
-	Reason     string   `json:"reason" gorm:"size:512"`
-	Status     string   `json:"status" gorm:"size:32;index"`
-	GrantID    string   `gorm:"size:64;uniqueIndex"`
-	ApprovedBy string   `gorm:"size:64;index"`
-	ApprovedAt *time.Time
-	RejectedAt *time.Time
-	CreatedAt  time.Time `json:"created_at" gorm:"index"`
-	UpdatedAt  time.Time
+	// ProposalKind/Payload distinguish policy proposals from normal operation
+	// grants. Payload is immutable so reviewers approve exactly what applicants
+	// saw; its schema is owned by the registered Enterprise proposal handler.
+	ProposalKind    string `json:"proposal_kind,omitempty" gorm:"size:32;index"`
+	ProposalPayload string `json:"proposal_payload,omitempty" gorm:"type:text"`
+	Reason          string `json:"reason" gorm:"size:512"`
+	Status          string `json:"status" gorm:"size:32;index"`
+	GrantID         string `gorm:"size:64;uniqueIndex"`
+	ApprovedBy      string `gorm:"size:64;index"`
+	ApprovedAt      *time.Time
+	RejectedAt      *time.Time
+	CreatedAt       time.Time `json:"created_at" gorm:"index"`
+	UpdatedAt       time.Time
 }
 
 func (PermissionRequest) TableName() string { return "permission_request" }

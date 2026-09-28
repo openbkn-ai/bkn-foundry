@@ -59,6 +59,10 @@ ingress:
     # in-service by RequireUser (introspect); the accessor id comes from the
     # token, so a caller can only read its own grants.
     - /api/safe/v1/me
+    # Permission request submission, review and personal request lists. Every
+    # endpoint is token-gated in-service; bkn-safe evaluates request and review
+    # authorization from the current user's actual permissions.
+    - /api/safe/v1/permission-requests
     # Deployment capability discovery, read on every login to lay out the menu.
     # Token-gated in-service by RequireUser (introspect only — it describes the
     # deployment, not the caller) and it decides nothing: enforcement stays at
