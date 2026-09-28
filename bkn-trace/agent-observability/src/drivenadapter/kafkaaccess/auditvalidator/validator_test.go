@@ -25,7 +25,7 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 	}
 	for file, expected := range map[string]string{
 		"schema.json":                   "4b1db1b116485e1b0432635406bcdffdc111be1b7cc583714a6a2c867efee69b",
-		"registry-runtime-v1.json":      "fe0a2c5334ff453b1abffaf12fe007632c19ca228397d0f53717f365513dee86",
+		"registry-runtime-v1.json":      "ad7a5f194c9f6444efa8841791cb69208b3172ed9a8a7b7703cfca0f12778b9c",
 		"audit-record-golden.json":      "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40",
 		"audit-kafka-golden.json":       "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -58,38 +58,24 @@ func TestValidatorAcceptsRegisteredKafkaAuditSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"bkn-backend", "execution-factory", "agent-observability"} {
+	for _, id := range []string{"execution-factory", "agent-observability"} {
 		source, found := findSource(validator.registry.Sources, id)
 		if !found || source.CollectionMethod != "kafka_audit" {
 			t.Fatalf("%s must be registered as kafka_audit, got %+v, found=%v", id, source, found)
 		}
 	}
-	value, err := os.ReadFile("assets/audit-record-golden.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	kafkaFixture, err := os.ReadFile("assets/audit-kafka-golden.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var fixture struct {
-		Key string `json:"key_base64"`
-	}
-	if err := json.Unmarshal(kafkaFixture, &fixture); err != nil {
-		t.Fatal(err)
-	}
-	key, err := base64.StdEncoding.DecodeString(fixture.Key)
+	value, err := os.ReadFile("assets/execution-factory-golden.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	record := auditconsumer.Record{
 		Topic: auditconsumer.Topic,
-		Key:   key,
+		Key:   []byte("execution-factory\x1foperator\x1foperator-123"),
 		Value: value,
 		Headers: []auditconsumer.Header{{
 			Key: "bkn-audit-schema-version", Value: []byte("1.0"),
 		}},
-		BrokerTime: time.Date(2026, 9, 22, 8, 30, 0, 0, time.UTC).Add(auditstore.MaxAcceptedOccurredAtAge),
+		BrokerTime: time.Date(2026, 9, 24, 8, 30, 0, 0, time.UTC).Add(auditstore.MaxAcceptedOccurredAtAge),
 	}
 	if _, err := validator.Validate(context.Background(), record); err != nil {
 		t.Fatalf("registered kafka_audit event at the maximum accepted age must be accepted: %v", err)
@@ -112,6 +98,9 @@ func TestValidatorRejectsNonKafkaAuditCollectionMethods(t *testing.T) {
 	var value map[string]any
 	if err := json.Unmarshal(content, &value); err != nil {
 		t.Fatal(err)
+	}
+	if err := validateRegistry(value, validator.registry); !IsPermanentReason(err, "source_collection_method_rejected") {
+		t.Fatalf("unmigrated bkn-backend fixture must be rejected, got %v", err)
 	}
 
 	for _, tc := range []struct {
