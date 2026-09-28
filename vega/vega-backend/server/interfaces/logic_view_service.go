@@ -297,7 +297,10 @@ type LogicViewService interface {
 	// ValidateRequest checks the logic-view definition before persistence.
 	ValidateRequest(ctx context.Context, req *ResourceRequest) error
 
-	// Prepare resolves the source and returns the fields to persist.
+	// Prepare resolves the source and returns the fields to persist. For a derived
+	// view, it must replace req.SourceMetadata with a map containing a non-empty
+	// "source_resource" map[string]any snapshot; the shared service rejects a
+	// successful preparation that omits this server-generated metadata.
 	Prepare(ctx context.Context, req *ResourceRequest) (logicType string, schema []*Property, err error)
 
 	// QueryWithPaging queries logic-view data and returns cursor paging state when supported.

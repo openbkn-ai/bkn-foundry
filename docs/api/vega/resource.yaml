@@ -704,7 +704,11 @@ components:
           description: 源端标识（原始表名 / 路径 / topic 名等）
           type: string
         source_metadata:
-          description: 源端配置（JSON），由 connector 实现解释
+          description: |
+            源端配置（JSON）。物理资源由 connector 提供；derived 逻辑视图由服务端生成，
+            其中 `source_resource` 是源资源快照对象，包含 `catalog_id`、`category`
+            （`table` 或 `index`）、`original_name`，表源可包含 `table_type`；
+            `properties` 保存视图自身的扫描统计等信息。
           type: object
           additionalProperties: true
         schema_definition:
@@ -839,6 +843,7 @@ components:
         source_identifier:
           type: string
         source_metadata:
+          description: 服务端维护；请求中的值不参与 derived 逻辑视图写入
           type: object
           additionalProperties: true
         schema_definition:
