@@ -22,18 +22,17 @@ func (namedLogSource) Search(context.Context, observabilityvo.LogQuery) (observa
 	return observabilityvo.SourcePage{}, nil
 }
 
-func TestAssembleLogSourcesUsesCenterLedgerInsteadOfLegacyAuditSources(t *testing.T) {
+func TestAssembleLogSourcesNeverFallsBackToLegacyAuditSources(t *testing.T) {
 	runtimeSources := []logsvc.Source{namedLogSource("runtime"), namedLogSource("access-user")}
-	legacyAuditSources := []logsvc.Source{namedLogSource("legacy-audit"), namedLogSource("legacy-security")}
 	central := namedLogSource("audit-ledger")
 
-	enabled := assembleLogSources(runtimeSources, legacyAuditSources, central, true)
+	enabled := assembleLogSources(runtimeSources, central)
 	if got := logSourceIDs(enabled); !reflect.DeepEqual(got, []string{"audit-ledger", "runtime", "access-user"}) {
-		t.Fatalf("Kafka Audit enabled sources=%v", got)
+		t.Fatalf("Kafka Audit sources=%v", got)
 	}
-	disabled := assembleLogSources(runtimeSources, legacyAuditSources, central, false)
-	if got := logSourceIDs(disabled); !reflect.DeepEqual(got, []string{"runtime", "access-user", "legacy-audit", "legacy-security"}) {
-		t.Fatalf("Kafka Audit disabled sources=%v", got)
+	disabled := assembleLogSources(runtimeSources, nil)
+	if got := logSourceIDs(disabled); !reflect.DeepEqual(got, []string{"runtime", "access-user"}) {
+		t.Fatalf("sources without Audit ledger=%v", got)
 	}
 }
 

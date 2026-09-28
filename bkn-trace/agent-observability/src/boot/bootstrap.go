@@ -39,13 +39,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
 	mariadbevidencemigration "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/evidencemigration"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknbackendaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeuseraccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/executionfactoryaudit"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/modelmanageraudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchconversationaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchcoreprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchevidencestore"
@@ -55,7 +51,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/ossgatewayarchive"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/otelcolmetrics"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/vegaaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/evidenceconsumer"
@@ -422,16 +417,6 @@ func NewApp() (*App, error) {
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
 		bknsafeuseraccess.New(accessScopeConfig.BKNBaseURL, localizedHTTPClient(accessScopeConfig.Timeout)),
 	}
-	legacyAuditSources := []logsvc.Source{
-		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, localizedHTTPClient(accessScopeConfig.Timeout)),
-		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
-			observabilityvo.CategoryAuditSecurity,
-		}, []string{"BKN Safe Authorization"}),
-		bknbackendaudit.New(resolverConfig.BKNBaseURL, localizedHTTPClient(resolverConfig.Timeout)),
-		vegaaudit.New(resolverConfig.VegaBaseURL, localizedHTTPClient(resolverConfig.Timeout)),
-		executionfactoryaudit.New(resolverConfig.ExecutionFactoryURL, localizedHTTPClient(resolverConfig.Timeout)),
-		modelmanageraudit.New(resolverConfig.ModelManagerURL, localizedHTTPClient(resolverConfig.Timeout)),
-	}
 	if coreConfig.ProjectionEnabled {
 		runtimeLogSources = append(runtimeLogSources, opensearchconversationaudit.New(openSearchClient, coreConfig.ProjectionIndex))
 		runtimeLogSources = append(runtimeLogSources, opensearchruntimeaudit.New(openSearchClient, coreConfig.ProjectionIndex))
@@ -467,7 +452,7 @@ func NewApp() (*App, error) {
 		}
 		return nil, errors.New("audit Kafka query source requires the MariaDB ledger")
 	}
-	logSources := assembleLogSources(runtimeLogSources, legacyAuditSources, auditSource, kafkaConfig.Audit.Enabled)
+	logSources := assembleLogSources(runtimeLogSources, auditSource)
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
 	provenanceHandler := enterpriseroute.HistoricalProvenanceHandler()
 	if coreConfig.HistoricalProvenanceEnabled && provenanceHandler == nil {
@@ -652,21 +637,12 @@ func NewApp() (*App, error) {
 	return app, nil
 }
 
-func assembleLogSources(runtimeSources, legacyAuditSources []logsvc.Source, centerAuditSource logsvc.Source, kafkaAuditEnabled bool) []logsvc.Source {
-	capacity := len(runtimeSources) + len(legacyAuditSources)
-	if kafkaAuditEnabled {
-		capacity = len(runtimeSources) + 1
-	}
-	sources := make([]logsvc.Source, 0, capacity)
-	if kafkaAuditEnabled {
-		if centerAuditSource != nil {
-			sources = append(sources, centerAuditSource)
-		}
-		sources = append(sources, runtimeSources...)
-		return sources
+func assembleLogSources(runtimeSources []logsvc.Source, centerAuditSource logsvc.Source) []logsvc.Source {
+	sources := make([]logsvc.Source, 0, len(runtimeSources)+1)
+	if centerAuditSource != nil {
+		sources = append(sources, centerAuditSource)
 	}
 	sources = append(sources, runtimeSources...)
-	sources = append(sources, legacyAuditSources...)
 	return sources
 }
 
