@@ -88,3 +88,44 @@ func activate(ctx context.Context, hc *http.Client, serverURL, licText, fp strin
 	}
 	return out.License, nil
 }
+
+// Issuer binding answers. Anything else the issuer might say is not one of
+// these and is treated as "no answer".
+const (
+	BindingBound   = "bound"
+	BindingUnbound = "unbound"
+	BindingRevoked = "revoked"
+)
+
+// checkBinding asks the issuer whether licText is still bound to fp. It
+// returns an error for every reply that is not a definitive 200 — transport
+// failures, rate limits, an older issuer without the endpoint (404) — so the
+// caller can leave its state alone: an issuer outage must never read as an
+// unbind.
+func checkBinding(ctx context.Context, hc *http.Client, serverURL, licText, fp string) (string, error) {
+	body, _ := json.Marshal(map[string]string{"license": licText, "instance_fp": fp})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, serverURL+"/api/licenses/status", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("license: binding status request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("license: binding status http %d", resp.StatusCode)
+	}
+	var out struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", fmt.Errorf("license: binding status response: %w", err)
+	}
+	switch out.Status {
+	case BindingBound, BindingUnbound, BindingRevoked:
+		return out.Status, nil
+	}
+	return "", fmt.Errorf("license: binding status %q not understood", out.Status)
+}

@@ -223,6 +223,19 @@ resolver 只能在此基础上收窄；core 会再次取最小档，不能通过
 写在这里是因为它必然被踩：设了 `OPENBKN_EDITION=enterprise` 而档位纹丝不动，
 不知道这条的人会先去查环境变量有没有传进容器、再查 gate 有没有装，半天过去了。
 
+### 签发服务解绑 / 吊销的传播
+
+签发服务上的解绑、吊销不改变集群里那张证书的签名，集群要自己去问。在线部署
+（配了 `license.server_url`）调 `POST /api/licenses/status`：
+
+- 每小时循环里，距上次询问满 6 小时就问一次（常量，不开放配置）
+- 管理员打开授权管理页（`GET /api/safe/v1/admin/license`）时也问一次，1 分钟内节流、5 秒超时
+
+只有明确的 `unbound` / `revoked` 才生效：写入 `licenses.binding`，档位按社区版
+（`state=unlicensed`，详情多一个 `binding` 字段），`/internal/license/current` 回 404
+让各模块同步降级。网络错误、超时、4xx/5xx、旧版签发服务没有该接口，一律保持
+原状。重新激活或导入新证书即清除；离线部署收不到解绑，仍按证书到期失效。
+
 设计：bkn-docs `docs/shared/licensing/ee-design.md`、
 `docs/foundry/bkn-safe/design/issue-unknown-bkn-safe-edition-gating.md`。
 

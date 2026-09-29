@@ -12,13 +12,16 @@
 //	LICENSE_E2E_ISSUER       http://127.0.0.1:18341
 //	LICENSE_E2E_COMMUNITY    path to an UNBOUND community .lic
 //	LICENSE_E2E_PRO          path to an UNBOUND professional .lic
+//	LICENSE_E2E_REVIEWER_EMAIL / _PASSWORD  a reviewer account (unbind, revoke)
 package license
 
 import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"testing"
 
@@ -217,5 +220,94 @@ func TestE2ERenewChecksBinding(t *testing.T) {
 	}
 	if p.LicID == "" {
 		t.Fatal("renewed cert missing lic_id")
+	}
+}
+
+// e2eReviewer logs a reviewer in and returns a client carrying the session.
+func e2eReviewer(t *testing.T, issuer string) *http.Client {
+	t.Helper()
+	email, password := os.Getenv("LICENSE_E2E_REVIEWER_EMAIL"), os.Getenv("LICENSE_E2E_REVIEWER_PASSWORD")
+	if email == "" || password == "" {
+		t.Skip("LICENSE_E2E_REVIEWER_EMAIL/PASSWORD not set")
+	}
+	jar, _ := cookiejar.New(nil)
+	hc := &http.Client{Jar: jar}
+	body, _ := json.Marshal(map[string]string{"email": email, "password": password})
+	resp, err := hc.Post(issuer+"/api/auth/login", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reviewer login = %d", resp.StatusCode)
+	}
+	return hc
+}
+
+func e2eAdminPost(t *testing.T, hc *http.Client, url string, body any) {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	resp, err := hc.Post(url, "application/json", bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST %s = %d", url, resp.StatusCode)
+	}
+}
+
+// #1782 end to end: an admin unbinds the professional license on the issuer;
+// the cluster still holding it must stop granting the paid tier on its next
+// binding check, even though its certificate has months left.
+func TestE2EUnbindReachesCluster(t *testing.T) {
+	issuer := e2eIssuer(t)
+	keys := e2eKeys(t, issuer)
+	lic := e2eLic(t, "LICENSE_E2E_PRO")
+	rev := e2eReviewer(t, issuer)
+
+	svcA := e2eService(t, issuer, e2eClusterA, keys)
+	if _, actErr, err := svcA.Import(t.Context(), lic); err != nil || actErr != nil {
+		t.Fatalf("cluster A import: err=%v actErr=%v", err, actErr)
+	}
+	if err := svcA.CheckBinding(t.Context()); err != nil {
+		t.Fatalf("check while bound: %v", err)
+	}
+	if !svcA.InForce() || svcA.Binding() != "" {
+		t.Fatalf("bound cluster: inForce=%v binding=%q", svcA.InForce(), svcA.Binding())
+	}
+	licID := svcA.State().Payload.LicID
+
+	e2eAdminPost(t, rev, issuer+"/api/admin/licenses/"+licID+"/unbind", nil)
+	if err := svcA.CheckBinding(t.Context()); err != nil {
+		t.Fatalf("check after unbind: %v", err)
+	}
+	if svcA.InForce() || svcA.Binding() != BindingUnbound || svcA.State().State != licverify.StateUnlicensed {
+		t.Fatalf("after unbind: inForce=%v binding=%q state=%s",
+			svcA.InForce(), svcA.Binding(), svcA.State().State)
+	}
+	if _, _, err := svcA.Current(); !errors.Is(err, ErrNoLicense) {
+		t.Fatalf("modules must stop receiving the certificate: Current() err=%v", err)
+	}
+
+	// Migrated: cluster B activates, cluster A stays unbound.
+	svcB := e2eService(t, issuer, e2eClusterB, keys)
+	if _, actErr, err := svcB.Import(t.Context(), lic); err != nil || actErr != nil {
+		t.Fatalf("cluster B import: err=%v actErr=%v", err, actErr)
+	}
+	if err := svcB.CheckBinding(t.Context()); err != nil || !svcB.InForce() {
+		t.Fatalf("new cluster: err=%v inForce=%v", err, svcB.InForce())
+	}
+	if err := svcA.CheckBinding(t.Context()); err != nil || svcA.Binding() != BindingUnbound {
+		t.Fatalf("old cluster after migration: err=%v binding=%q", err, svcA.Binding())
+	}
+
+	// Revoke reaches the new cluster the same way.
+	e2eAdminPost(t, rev, issuer+"/api/admin/licenses/"+licID+"/revoke", map[string]string{"reason": "e2e"})
+	if err := svcB.CheckBinding(t.Context()); err != nil {
+		t.Fatalf("check after revoke: %v", err)
+	}
+	if svcB.InForce() || svcB.Binding() != BindingRevoked {
+		t.Fatalf("after revoke: inForce=%v binding=%q", svcB.InForce(), svcB.Binding())
 	}
 }

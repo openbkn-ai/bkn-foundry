@@ -7,7 +7,8 @@
 # community (auto-issued) + professional (dual approval) → hand the unbound
 # .lic files to `go test -tags e2e`, which drives internal/license.Service
 # through true activation, first-wins conflicts, copied-cert rejection and
-# renewal binding checks.
+# renewal binding checks, plus an issuer-side unbind/revoke reaching the
+# cluster through the binding-status check (#1782).
 #
 # Usage:
 #   dev/license-e2e.sh                 # LS_SRC defaults to ../../license-server (sibling checkout)
@@ -121,6 +122,8 @@ say "run go test -tags e2e"
   LICENSE_E2E_ISSUER="$ISSUER" \
   LICENSE_E2E_COMMUNITY="$WORK/community.lic" \
   LICENSE_E2E_PRO="$WORK/pro.lic" \
+  LICENSE_E2E_REVIEWER_EMAIL="rev1@e2e.local" \
+  LICENSE_E2E_REVIEWER_PASSWORD='E2e-pass-1!' \
   go test -tags e2e -count=1 -v ./internal/license/ -run 'TestE2E')
 
 say "e2e OK"
