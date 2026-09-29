@@ -9,6 +9,8 @@ env:
 # bkn-safe authorization endpoint. The service requires this URL at startup.
 bknSafe:
   url: "http://bkn-safe:3000"
+  # Idle connections kept to bkn-safe (BKN_SAFE_MAX_IDLE_CONNS). Empty uses the built-in 128.
+  maxIdleConns: ""
 
 # 节点选择器
 nodeSelector: {}
