@@ -578,3 +578,90 @@ func Test_rewriteOrCondition(t *testing.T) {
 		})
 	})
 }
+
+func Test_EmptyConditionSetSemantics(t *testing.T) {
+	Convey("Test empty AND / OR semantics across index DSL, rewrite and SQL", t, func() {
+		ctx := context.Background()
+		fieldsMap := map[string]*DataProperty{
+			"name": {
+				Name: "name",
+				Type: dtype.DATATYPE_STRING,
+				MappedField: Field{
+					Name: "mapped_name",
+				},
+			},
+		}
+		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
+			return []VectorResp{}, nil
+		}
+		leaf := func() *CondCfg {
+			return &CondCfg{
+				Name:        "name",
+				Operation:   OperationEq,
+				ValueOptCfg: ValueOptCfg{Value: "test"},
+			}
+		}
+		emptyAnd := func() *CondCfg { return &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{}} }
+		emptyOr := func() *CondCfg { return &CondCfg{Operation: OperationOr, SubConds: []*CondCfg{}} }
+
+		Convey("empty AND matches all in index DSL and SQL", func() {
+			c, err := NewCondition(ctx, emptyAnd(), CUSTOM, fieldsMap)
+			So(err, ShouldBeNil)
+			dsl, err := c.Convert(ctx, vectorizer)
+			So(err, ShouldBeNil)
+			So(dsl, ShouldContainSubstring, `"must": [`)
+			sql, err := c.Convert2SQL(ctx)
+			So(err, ShouldBeNil)
+			So(sql, ShouldEqual, `1 = 1`)
+
+			viewCfg, err := RewriteCondition(ctx, emptyAnd(), fieldsMap, vectorizer)
+			So(err, ShouldBeNil)
+			So(viewCfg, ShouldBeNil)
+		})
+
+		Convey("empty AND nested in OR yields valid SQL", func() {
+			cfg := &CondCfg{Operation: OperationOr, SubConds: []*CondCfg{emptyAnd(), leaf()}}
+			c, err := NewCondition(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldBeNil)
+			sql, err := c.Convert2SQL(ctx)
+			So(err, ShouldBeNil)
+			So(sql, ShouldEqual, `((1 = 1) OR ("name" = 'test'))`)
+
+			viewCfg, err := RewriteCondition(ctx, cfg, fieldsMap, vectorizer)
+			So(err, ShouldBeNil)
+			So(viewCfg, ShouldBeNil)
+		})
+
+		Convey("empty AND nested in AND yields valid SQL", func() {
+			cfg := &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{emptyAnd(), leaf()}}
+			c, err := NewCondition(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldBeNil)
+			sql, err := c.Convert2SQL(ctx)
+			So(err, ShouldBeNil)
+			So(sql, ShouldEqual, `1 = 1 AND "name" = 'test'`)
+		})
+
+		Convey("empty OR fails closed in index DSL and rewrite", func() {
+			_, err := NewCondition(ctx, emptyOr(), CUSTOM, fieldsMap)
+			So(err, ShouldNotBeNil)
+			_, err = RewriteCondition(ctx, emptyOr(), fieldsMap, vectorizer)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("empty OR nested in AND fails closed in index DSL and rewrite", func() {
+			cfg := &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{emptyOr(), leaf()}}
+			_, err := NewCondition(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldNotBeNil)
+			_, err = RewriteCondition(ctx, cfg, fieldsMap, vectorizer)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("OR with only nil children fails closed in index DSL and rewrite", func() {
+			cfg := &CondCfg{Operation: OperationOr, SubConds: []*CondCfg{nil}}
+			_, err := NewCondition(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldNotBeNil)
+			_, err = RewriteCondition(ctx, cfg, fieldsMap, vectorizer)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}

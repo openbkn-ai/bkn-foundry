@@ -81,6 +81,12 @@ func (cond *AndCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 }
 
 func (cond *AndCond) Convert2SQL(ctx context.Context) (string, error) {
+	// An empty AND matches everything; emit a tautology so it stays valid SQL
+	// when nested inside OR/AND.
+	if len(cond.mSubConds) == 0 {
+		return "1 = 1", nil
+	}
+
 	sql := ""
 	for i, subCond := range cond.mSubConds {
 		where, err := subCond.Convert2SQL(ctx)
