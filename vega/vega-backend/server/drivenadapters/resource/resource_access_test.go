@@ -31,7 +31,7 @@ func TestMarshalResourceLogicDefinitionPreservesLargeInteger(t *testing.T) {
 	resource := &interfaces.Resource{LogicDefinition: map[string]any{
 		"filter_condition": map[string]any{"value": json.Number("9007199254740993")},
 	}}
-	assert.JSONEq(t, `{"filter_condition":{"value":9007199254740993}}`, string(marshalResourceLogicDefinition(resource)))
+	assert.Equal(t, `{"filter_condition":{"value":9007199254740993}}`, string(marshalResourceLogicDefinition(resource)))
 }
 
 func (arg jsonArgument) Match(value driver.Value) bool {
