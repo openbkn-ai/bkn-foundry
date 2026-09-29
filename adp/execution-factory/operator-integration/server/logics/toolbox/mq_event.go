@@ -47,6 +47,13 @@ func (s *ToolServiceImpl) HandleOperatorDeleteEvent(ctx context.Context, message
 		return nil
 	}
 	// 2. Delete tools based on tool information.
+	touchedBoxes := map[string]bool{}
+	defer func() {
+		// Boxes whose tools were disabled before a failure changed too, so touch them either way.
+		for boxID := range touchedBoxes {
+			_ = s.touchToolBox(ctx, nil, boxID, operatorDeleteEvent.UpdateUser)
+		}
+	}()
 	for _, toolDB := range toolDBs {
 		// If the tool status is disabled, skip it directly.
 		if toolDB.Status == interfaces.ToolStatusTypeDisabled.String() {
@@ -59,6 +66,7 @@ func (s *ToolServiceImpl) HandleOperatorDeleteEvent(ctx context.Context, message
 			err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 			return err
 		}
+		touchedBoxes[toolDB.BoxID] = true
 	}
 	return nil
 }

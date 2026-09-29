@@ -91,6 +91,7 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 			err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.touchToolBox(ctx, nil, tool.BoxID, req.UserID)
 		s.syncToolsIndex(ctx, tool.BoxID, []string{resp.ToolID})
 	default:
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolConvertOnlySupportAPI,

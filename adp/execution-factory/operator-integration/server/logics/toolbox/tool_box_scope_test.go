@@ -37,6 +37,7 @@ type boxScopeFixture struct {
 	svc          *ToolServiceImpl
 	proxied      []*interfaces.HTTPRequest
 	updatedTools []string
+	touchedBoxes []string
 }
 
 func newBoxScopeFixture(t *testing.T) *boxScopeFixture {
@@ -93,6 +94,11 @@ func newBoxScopeFixture(t *testing.T) *boxScopeFixture {
 	toolDB.EXPECT().UpdateTool(gomock.Any(), gomock.Nil(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ any, tool *model.ToolDB) error {
 			fixture.updatedTools = append(fixture.updatedTools, tool.ToolID)
+			return nil
+		}).AnyTimes()
+	toolBoxDB.EXPECT().TouchToolBox(gomock.Any(), gomock.Nil(), gomock.Any(), scopeUserID).
+		DoAndReturn(func(_ context.Context, _ any, boxID, _ string) error {
+			fixture.touchedBoxes = append(fixture.touchedBoxes, boxID)
 			return nil
 		}).AnyTimes()
 
@@ -168,6 +174,9 @@ func boxScopedToolPaths() []boxScopedToolPath {
 				t.Helper()
 				if len(fixture.updatedTools) != 1 || fixture.updatedTools[0] != scopeToolID {
 					t.Fatalf("updated tools %v, want [%s]", fixture.updatedTools, scopeToolID)
+				}
+				if len(fixture.touchedBoxes) != 1 || fixture.touchedBoxes[0] != scopeBoxID {
+					t.Fatalf("touched toolboxes %v, want [%s]", fixture.touchedBoxes, scopeBoxID)
 				}
 			},
 		},
@@ -245,6 +254,9 @@ func TestBoxScopedToolPathsTreatToolOfAnotherBoxAsMissing(t *testing.T) {
 			}
 			if len(fixture.updatedTools) != 0 {
 				t.Fatalf("a tool of another toolbox was changed: %v", fixture.updatedTools)
+			}
+			if len(fixture.touchedBoxes) != 0 {
+				t.Fatalf("a toolbox was touched for a tool it does not hold: %v", fixture.touchedBoxes)
 			}
 		})
 	}

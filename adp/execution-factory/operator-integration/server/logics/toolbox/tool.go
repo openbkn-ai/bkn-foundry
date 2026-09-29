@@ -2,6 +2,7 @@ package toolbox
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 
@@ -210,6 +211,11 @@ func (s *ToolServiceImpl) saveToolToBox(ctx context.Context, tool *model.ToolDB,
 			_ = tx.Commit()
 		}
 	}()
+	// Lock the toolbox row before any tool row, in the same order the importer does.
+	err = s.touchToolBox(ctx, tx, tool.BoxID, tool.UpdateUser)
+	if err != nil {
+		return
+	}
 	var sourceID string
 	sourceID, err = s.MetadataService.RegisterMetadata(ctx, tx, metadata)
 	if err != nil {
@@ -224,4 +230,23 @@ func (s *ToolServiceImpl) saveToolToBox(ctx context.Context, tool *model.ToolDB,
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return
+}
+
+// touchToolBox marks the toolbox changed whenever one of its tools is created, edited,
+// enabled, disabled or removed, so the toolbox's update time follows its newest tool change.
+// Inside a transaction it is the first write, so the toolbox row is locked before any tool
+// row, the same order the importer takes them in, and a failure aborts the tool change. Without
+// a transaction the tool change has already committed, so a failure is only logged: the
+// requested write succeeded.
+func (s *ToolServiceImpl) touchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) error {
+	err := s.ToolBoxDB.TouchToolBox(ctx, tx, boxID, userID)
+	if err == nil {
+		return nil
+	}
+	if tx == nil {
+		s.Logger.WithContext(ctx).Warnf("touch toolbox %s failed, err: %v", boxID, err)
+		return nil
+	}
+	s.Logger.WithContext(ctx).Errorf("touch toolbox %s failed, err: %v", boxID, err)
+	return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 }

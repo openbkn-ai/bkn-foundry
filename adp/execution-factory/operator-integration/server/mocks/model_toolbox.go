@@ -189,6 +189,20 @@ func (mr *MockIToolboxDBMockRecorder) SelectToolBoxList(ctx, filter, sort, curso
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectToolBoxList", reflect.TypeOf((*MockIToolboxDB)(nil).SelectToolBoxList), ctx, filter, sort, cursor)
 }
 
+// TouchToolBox mocks base method.
+func (m *MockIToolboxDB) TouchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TouchToolBox", ctx, tx, boxID, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// TouchToolBox indicates an expected call of TouchToolBox.
+func (mr *MockIToolboxDBMockRecorder) TouchToolBox(ctx, tx, boxID, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TouchToolBox", reflect.TypeOf((*MockIToolboxDB)(nil).TouchToolBox), ctx, tx, boxID, userID)
+}
+
 // UpdateToolBox mocks base method.
 func (m *MockIToolboxDB) UpdateToolBox(ctx context.Context, tx *sql.Tx, toolbox *model.ToolboxDB) error {
 	m.ctrl.T.Helper()

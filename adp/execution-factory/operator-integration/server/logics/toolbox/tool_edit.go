@@ -229,7 +229,9 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		if err != nil {
 			s.Logger.WithContext(ctx).Errorf("update tool failed, err: %v", err)
 			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			return
 		}
+		_ = s.touchToolBox(ctx, nil, toolDB.BoxID, toolDB.UpdateUser)
 		return
 	}
 	tx, err := s.DBTx.GetTx(ctx)
@@ -244,6 +246,11 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 			_ = tx.Commit()
 		}
 	}()
+	// Lock the toolbox row before any tool row, in the same order the importer does.
+	err = s.touchToolBox(ctx, tx, toolDB.BoxID, toolDB.UpdateUser)
+	if err != nil {
+		return
+	}
 	// Get current metadata information.
 	has, currentMetadataDB, err := s.MetadataService.GetMetadataBySource(ctx, toolDB.SourceID, toolDB.SourceType)
 	if err != nil {
