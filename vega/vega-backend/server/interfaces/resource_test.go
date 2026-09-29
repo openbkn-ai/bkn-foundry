@@ -52,8 +52,19 @@ func TestResourceLocalStateJSON(t *testing.T) {
 }
 
 func TestDerivedLogicDefinitionJSON(t *testing.T) {
+	precise, err := DecodeDerivedLogicDefinition(map[string]any{
+		"source_resource_id": "source",
+		"filter_condition":   map[string]any{"value": json.Number("9007199254740993")},
+	})
+	if err != nil {
+		t.Fatalf("decode precise filter: %v", err)
+	}
+	condition := precise.FilterCondition.(map[string]any)
+	if condition["value"] != json.Number("9007199254740993") {
+		t.Fatalf("filter value lost precision: %v", condition["value"])
+	}
 	var request ResourceRequest
-	err := json.Unmarshal([]byte(`{"category":"logicview","logic_definition":{"source_resource_id":"source","distinct":false}}`), &request)
+	err = json.Unmarshal([]byte(`{"category":"logicview","logic_definition":{"source_resource_id":"source","distinct":false}}`), &request)
 	if err != nil {
 		t.Fatalf("decode generic definition: %v", err)
 	}

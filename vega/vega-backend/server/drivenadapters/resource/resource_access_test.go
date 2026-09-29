@@ -27,6 +27,13 @@ import (
 
 type jsonArgument struct{ expected string }
 
+func TestMarshalResourceLogicDefinitionPreservesLargeInteger(t *testing.T) {
+	resource := &interfaces.Resource{LogicDefinition: map[string]any{
+		"filter_condition": map[string]any{"value": json.Number("9007199254740993")},
+	}}
+	assert.JSONEq(t, `{"filter_condition":{"value":9007199254740993}}`, string(marshalResourceLogicDefinition(resource)))
+}
+
 func (arg jsonArgument) Match(value driver.Value) bool {
 	actual, ok := value.(string)
 	if !ok {
@@ -118,7 +125,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 		values := resourceRowValues(sampleResource())
 		values[5] = interfaces.ResourceCategoryLogicView
 		values[19] = interfaces.LogicType_Derived
-		values[20] = `{"source_resource_id":"source-1"}`
+		values[20] = `{"source_resource_id":"source-1","filter_condition":{"field":"amount","operation":">","value":9007199254740993}}`
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
 		got, err := access.GetByID(context.Background(), nil, "resource-1")
@@ -127,6 +134,9 @@ func TestResourceAccessGetByID(t *testing.T) {
 		definition, err := interfaces.DecodeDerivedLogicDefinition(got.LogicDefinition)
 		require.NoError(t, err)
 		assert.Equal(t, "source-1", definition.SourceResourceID)
+		stored := got.LogicDefinition.(map[string]any)
+		condition := stored["filter_condition"].(map[string]any)
+		assert.Equal(t, json.Number("9007199254740993"), condition["value"])
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

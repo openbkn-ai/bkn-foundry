@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -218,6 +219,22 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 	const url = "/api/vega-backend/in/v1/resources"
 	body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset","category":"dataset","schema_definition":[{"name":"title","type":"string"}]}`
 
+	t.Run("preserves precise numbers in dynamic definitions", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+				definition := req.LogicDefinition.(map[string]any)
+				assert.Equal(t, json.Number("9007199254740993"), definition["value"])
+				return &interfaces.Resource{ID: "res-1", Name: req.Name}, nil
+			})
+		preciseBody := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"logic_definition":{"value":9007199254740993}}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(preciseBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusCreated, w.Code)
+	})
+
 	t.Run("creates dataset resource", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Create(gomock.Any(), gomock.Any()).
@@ -402,6 +419,22 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 
 	const url = "/api/vega-backend/in/v1/resources/res-1"
 	body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`
+
+	t.Run("preserves precise numbers in updated dynamic definitions", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, req *interfaces.ResourceRequest) error {
+				definition := req.LogicDefinition.(map[string]any)
+				assert.Equal(t, json.Number("9007199254740993"), definition["value"])
+				return nil
+			})
+		preciseBody := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1,"logic_definition":{"value":9007199254740993}}`
+		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(preciseBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNoContent, w.Code)
+	})
 
 	t.Run("uses path id when body id is omitted", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)

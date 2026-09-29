@@ -164,7 +164,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.ResourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -319,7 +319,7 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 	id := c.Param("id")
 
 	var req interfaces.ResourceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
