@@ -602,16 +602,21 @@ func (c *MariaDBConnector) GetMetadata(ctx context.Context) (map[string]any, err
 	return metadata, nil
 }
 
-// listSchemas lists databases within the connector scope.
+// listSchemas lists configured databases or databases with discoverable tables.
 func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
-	builder := sq.Select("SCHEMA_NAME").
-		From("information_schema.SCHEMATA")
+	var builder sq.SelectBuilder
 	if len(c.config.Databases) > 0 {
-		builder = builder.Where(sq.Eq{"SCHEMA_NAME": c.config.Databases})
+		builder = sq.Select("SCHEMA_NAME").
+			From("information_schema.SCHEMATA").
+			Where(sq.Eq{"SCHEMA_NAME": c.config.Databases}).
+			OrderBy("SCHEMA_NAME")
 	} else {
-		builder = builder.Where(sq.NotEq{"SCHEMA_NAME": SYSTEM_DBS})
+		builder = sq.Select("DISTINCT TABLE_SCHEMA").
+			From("information_schema.TABLES").
+			Where(sq.NotEq{"TABLE_SCHEMA": SYSTEM_DBS}).
+			OrderBy("TABLE_SCHEMA")
 	}
-	sqlStr, args, err := builder.OrderBy("SCHEMA_NAME").ToSql()
+	sqlStr, args, err := builder.ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build list schemas query: %w", err)
 	}

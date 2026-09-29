@@ -142,7 +142,7 @@ func TestPostgresqlConnectorGetMetadata(t *testing.T) {
 					WillReturnRows(sqlmock.NewRows([]string{"name", "setting"}).
 						AddRow("server_version", "16").
 						AddRow("TimeZone", "UTC"))
-				mock.ExpectQuery(`FROM pg_catalog\.pg_namespace`).
+				mock.ExpectQuery(`FROM pg_catalog\.pg_class c JOIN pg_catalog\.pg_namespace n`).
 					WillReturnRows(sqlmock.NewRows([]string{"nspname"}).AddRow("public"))
 			}
 
@@ -161,6 +161,53 @@ func TestPostgresqlConnectorGetMetadata(t *testing.T) {
 			assert.Equal(t, tt.want, metadata)
 		})
 	}
+}
+
+func TestPostgresqlConnectorListSchemas(t *testing.T) {
+	t.Run("default scope includes only schemas with discoverable tables", func(t *testing.T) {
+		connector, mock, cleanup := newPostgresqlConnectorMock(t, nil)
+		defer cleanup()
+		connector.connected = true
+		mock.ExpectQuery(`(?s)SELECT DISTINCT n\.nspname FROM pg_catalog\.pg_class c JOIN pg_catalog\.pg_namespace n.*c\.relkind IN.*has_table_privilege.*NOT pg_is_other_temp_schema.*NOT EXISTS.*pg_catalog\.pg_inherits.*ORDER BY n\.nspname`).
+			WithArgs("r", "v", "f", "m", "p", "t", "SELECT", "information_schema", "pg_catalog", "pg_toast").
+			WillReturnRows(sqlmock.NewRows([]string{"nspname"}).AddRow("analytics").AddRow("public"))
+
+		schemas, err := connector.listSchemas(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"analytics", "public"}, schemas)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("configured scope retains existing empty schemas", func(t *testing.T) {
+		connector, mock, cleanup := newPostgresqlConnectorMock(t, []string{"public", "empty"})
+		defer cleanup()
+		connector.connected = true
+		mock.ExpectQuery(`SELECT n\.nspname FROM pg_catalog\.pg_namespace n.*n\.nspname IN.*ORDER BY n\.nspname`).
+			WithArgs("information_schema", "pg_catalog", "pg_toast", "public", "empty").
+			WillReturnRows(sqlmock.NewRows([]string{"nspname"}).AddRow("empty").AddRow("public"))
+
+		schemas, err := connector.listSchemas(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"empty", "public"}, schemas)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("configured scope omits missing schemas", func(t *testing.T) {
+		connector, mock, cleanup := newPostgresqlConnectorMock(t, []string{"public", "missing"})
+		defer cleanup()
+		connector.connected = true
+		mock.ExpectQuery(`SELECT n\.nspname FROM pg_catalog\.pg_namespace n.*n\.nspname IN.*ORDER BY n\.nspname`).
+			WithArgs("information_schema", "pg_catalog", "pg_toast", "public", "missing").
+			WillReturnRows(sqlmock.NewRows([]string{"nspname"}).AddRow("public"))
+
+		schemas, err := connector.listSchemas(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"public"}, schemas)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestPostgresqlConnectorFetchColumns(t *testing.T) {
