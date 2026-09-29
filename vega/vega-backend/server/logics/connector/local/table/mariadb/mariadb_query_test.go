@@ -29,6 +29,45 @@ func TestMariaDBConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestMariaDBConnectorExecuteQueryInvalidParameter(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		needTotal bool
+		rowError  bool
+	}{
+		{name: "select references removed column"},
+		{name: "row iteration returns unknown column", rowError: true},
+		{name: "count query returns unknown column", needTotal: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &MariaDBConnector{db: db, connected: true}
+			resource := &interfaces.Resource{SourceIdentifier: "shop.orders", SchemaDefinition: []*interfaces.Property{{Name: "missing"}}}
+			params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, NeedTotal: tc.needTotal}
+			driverErr := &mysql.MySQLError{Number: 1054, Message: "private source column details"}
+			if tc.needTotal {
+				mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"missing"}).AddRow("value"))
+				mock.ExpectQuery("SELECT COUNT").WillReturnError(driverErr)
+			} else if tc.rowError {
+				mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"missing"}).AddRow("value").RowError(0, driverErr))
+			} else {
+				mock.ExpectQuery("SELECT").WillReturnError(driverErr)
+			}
+
+			result, err := connector.ExecuteQuery(context.Background(), resource, params)
+
+			assert.Nil(t, result)
+			var invalid *interfaces.SourceQueryInvalidParameterError
+			require.ErrorAs(t, err, &invalid)
+			assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
+			assert.ErrorIs(t, err, driverErr)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 func TestMariaDBConnectorBuildPagedSQL(t *testing.T) {
 	connector := &MariaDBConnector{}
 	assert.Equal(t,

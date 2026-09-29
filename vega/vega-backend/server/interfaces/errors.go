@@ -129,6 +129,13 @@ func RequestSideQueryError(err error) (string, bool) {
 	if errors.As(err, &stored) {
 		return "", false
 	}
+	var invalidParameter *SourceQueryInvalidParameterError
+	if errors.As(err, &invalidParameter) {
+		if invalidParameter.Reason == SourceQueryInvalidParameterUnknownColumn {
+			return "query references an unknown column", true
+		}
+		return "invalid source query parameter", true
+	}
 	var unsupported *UnsupportedOperationError
 	if errors.As(err, &unsupported) {
 		return unsupported.Error(), true
