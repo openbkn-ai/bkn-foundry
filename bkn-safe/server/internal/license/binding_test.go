@@ -345,7 +345,7 @@ func TestReimportAfterRevokeIsRecheckedAtOnce(t *testing.T) {
 		t.Fatalf("re-import: err=%v actErr=%v", err, actErr)
 	}
 	if got := checkedAt(t, db); got != 0 {
-		t.Fatalf("binding_checked_at = %d after storing a new text, want reset to 0", got)
+		t.Fatalf("binding_checked_at = %d after clearing a verdict, want reset to 0", got)
 	}
 	// Both triggers consider it due; the periodic one is the slower of the two.
 	svc.checkBindingOlderThan(t.Context(), bindingCheckInterval, time.Second, true)
@@ -389,5 +389,29 @@ func TestCheckBindingOfflineAndUnactivated(t *testing.T) {
 	}
 	if f.calls.Load() != 0 || svc.Binding() != "" {
 		t.Fatal("an unactivated certificate must not be checked or flagged")
+	}
+}
+
+// An ordinary store (renewal, re-activation of a bound certificate) must not
+// reset the schedule: near the contract end the guard renews every hour, and
+// resetting on each renewal would make the 6-hour check hourly.
+func TestRenewalKeepsBindingSchedule(t *testing.T) {
+	svc, _, db, _ := boundService(t)
+	if err := svc.CheckBinding(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	before := checkedAt(t, db)
+	if before == 0 {
+		t.Fatal("precondition: a successful check stamps binding_checked_at")
+	}
+	text, _, err := svc.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.storeText(text); err != nil { // what a renewal does
+		t.Fatal(err)
+	}
+	if got := checkedAt(t, db); got != before {
+		t.Fatalf("binding_checked_at = %d after a plain store, want %d kept", got, before)
 	}
 }

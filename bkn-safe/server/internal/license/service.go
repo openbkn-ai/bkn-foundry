@@ -586,10 +586,7 @@ func (s *Service) storeText(text string) error {
 		Where("id = ? AND version = ?", rowID, row.Version).
 		// A new text is a new answer from the issuer (activation, renewal) or a
 		// deliberate admin import; either way the old verdict no longer applies.
-		// It is not a fresh verdict either: re-importing the very certificate
-		// the issuer revoked stores it without contacting the issuer, so the
-		// schedule is reset and the next tick or page open asks straight away.
-		Updates(map[string]any{"text": text, "version": row.Version + 1, "binding": "", "binding_checked_at": 0})
+		Updates(storeUpdates(row, text))
 	if res.Error != nil {
 		return res.Error
 	}
@@ -597,6 +594,23 @@ func (s *Service) storeText(text string) error {
 		return errors.New("license: lost concurrent update, keeping the other writer's text")
 	}
 	return nil
+}
+
+// storeUpdates is the row change for storing text over row.
+//
+// Clearing a verdict is not a fresh one: re-importing the very certificate the
+// issuer revoked stores it without contacting the issuer. So when a verdict is
+// cleared the schedule is reset too, and the next tick or page open asks
+// straight away. Only then, though: near the contract end the guard renews on
+// every hourly tick (the window is measured from the original issue date), and
+// resetting on each of those renewals would turn the 6-hour check hourly.
+func storeUpdates(row model.License, text string) map[string]any {
+	u := map[string]any{"text": text, "version": row.Version + 1}
+	if row.Binding != "" {
+		u["binding"] = ""
+		u["binding_checked_at"] = 0
+	}
+	return u
 }
 
 // checkClock persists the max timestamp ever seen and flags large rollbacks —
