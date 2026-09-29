@@ -10,9 +10,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
@@ -55,6 +57,66 @@ func TestValidateResourceRequestIgnoresExpectedUpdateTime(t *testing.T) {
 		ExpectedUpdateTime: -1,
 	})
 	require.NoError(t, err)
+}
+
+func TestValidateResourceRequestDatasetDisplayName(t *testing.T) {
+	newRequest := func(props ...*interfaces.Property) *interfaces.ResourceRequest {
+		return &interfaces.ResourceRequest{
+			Name: "dataset", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: props,
+		}
+	}
+
+	t.Run("trims display name before saving", func(t *testing.T) {
+		req := newRequest(&interfaces.Property{Name: "field", Type: interfaces.DataType_String, DisplayName: "  Title \t"})
+		require.NoError(t, ValidateResourceRequest(context.Background(), req))
+		assert.Equal(t, "Title", req.SchemaDefinition[0].DisplayName)
+	})
+
+	t.Run("blank display name falls back to field name", func(t *testing.T) {
+		req := newRequest(&interfaces.Property{Name: "field", Type: interfaces.DataType_String, DisplayName: " \t "})
+		require.NoError(t, ValidateResourceRequest(context.Background(), req))
+		assert.Equal(t, "field", req.SchemaDefinition[0].DisplayName)
+	})
+
+	t.Run("checks length after trimming", func(t *testing.T) {
+		req := newRequest(&interfaces.Property{
+			Name: "field", Type: interfaces.DataType_String,
+			DisplayName: " " + strings.Repeat("a", interfaces.MaxLength_PropertyDisplayName) + " ",
+		})
+		require.NoError(t, ValidateResourceRequest(context.Background(), req))
+		assert.Equal(t, strings.Repeat("a", interfaces.MaxLength_PropertyDisplayName), req.SchemaDefinition[0].DisplayName)
+	})
+
+	t.Run("rejects duplicates after trimming", func(t *testing.T) {
+		req := newRequest(
+			&interfaces.Property{Name: "first", Type: interfaces.DataType_String, DisplayName: "Title"},
+			&interfaces.Property{Name: "second", Type: interfaces.DataType_String, DisplayName: " Title "},
+		)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, "Title", req.SchemaDefinition[1].DisplayName)
+	})
+
+	t.Run("rejects blank fallback duplicate", func(t *testing.T) {
+		req := newRequest(
+			&interfaces.Property{Name: "first", Type: interfaces.DataType_String, DisplayName: "second"},
+			&interfaces.Property{Name: "second", Type: interfaces.DataType_String, DisplayName: "  "},
+		)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
+		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.BaseError.ErrorCode)
+	})
+}
+
+func TestValidateResourceRequestRawDisplayNameUnchanged(t *testing.T) {
+	req := &interfaces.ResourceRequest{
+		Name: "table", Category: interfaces.ResourceCategoryTable,
+		SchemaDefinition: []*interfaces.Property{{Name: "field", Type: interfaces.DataType_String, DisplayName: " Title "}},
+	}
+	require.NoError(t, ValidateResourceRequest(context.Background(), req))
+	assert.Equal(t, " Title ", req.SchemaDefinition[0].DisplayName)
 }
 
 func TestValidateResourceRequestRejectsDuplicateFeatureTypes(t *testing.T) {
