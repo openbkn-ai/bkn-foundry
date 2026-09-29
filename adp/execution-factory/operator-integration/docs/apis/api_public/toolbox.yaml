@@ -1572,11 +1572,10 @@ paths:
         - name: "pypi_repo_url"
           in: "query"
           required: false
-          description: "Pypi源/镜像根地址,https://pypi.org/simple"
+          description: "PyPI index root URL. Must match an entry of the service setting pypi.trusted_index_urls (default https://pypi.org/simple), otherwise 400. When omitted, the first trusted index is used."
           schema:
             type: string
-            default: "https://pypi.org/simple"
-            example: "https://pypi.tuna.tsinghua.edu.cn/simple"
+            example: "https://pypi.org/simple"
         - name: "python_version"
           in: "query"
           required: false

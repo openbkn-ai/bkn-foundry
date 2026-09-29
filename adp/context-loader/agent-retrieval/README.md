@@ -145,6 +145,9 @@ Key sections:
 
 Secrets and sensitive values: `server/infra/config/agent-retrieval-secret.yaml` (excluded from version control as needed).
 
+`options.max_concurrency` of the logic-property resolver is limited to 64; larger values are
+rejected with 400 (0 or negative still means the default of 4).
+
 ## Monitoring and Operations
 
 - **Ready**: `GET /health/ready`

@@ -5,6 +5,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
@@ -61,11 +62,17 @@ func NewDBPool() *sqlx.DB {
 				dbPool, err = sqlx.NewDB(&connInfo)
 			}
 			if err != nil {
-				logger.Errorf("new db operator failed; error:%s, connInfo:%+v, configLoader.DB:%+v",
-					err.Error(), connInfo, conf.DB)
+				logger.Errorf("new db operator failed; error:%s, %s", err.Error(), describeDBConn(&connInfo))
 				panic(err)
 			}
 		}
 	})
 	return dbPool
+}
+
+// describeDBConn renders the non-secret connection coordinates for logs. The connection info and
+// the DB config both carry the password, so they must never be logged whole.
+func describeDBConn(connInfo *sqlx.DBConfig) string {
+	return fmt.Sprintf("host:%s, port:%d, database:%s, driver:%s",
+		connInfo.Host, connInfo.Port, connInfo.Database, connInfo.CustomDriver)
 }

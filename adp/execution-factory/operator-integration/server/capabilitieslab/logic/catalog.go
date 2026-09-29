@@ -108,10 +108,7 @@ func (s *Service) listAllCatalogPaged(
 	page, pageSize int,
 	installed *installedCatalogIDs,
 ) (*model.CatalogListResponse, error) {
-	windowSize := page * pageSize
-	if windowSize > maxAllKindWindow {
-		windowSize = maxAllKindWindow
-	}
+	windowSize := allKindWindow(page, pageSize)
 
 	httpItems, httpTotal, err := s.collectHttpCatalog(ctx, keyword, windowSize, installed.boxes)
 	if err != nil {

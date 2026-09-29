@@ -89,6 +89,11 @@ service:
     periodicFullScanInterval: 168h # 7 days.
     enableTaskCleanup: false
     taskRetention: 720h # 30 days.
+  # PyPI indexes that dependency version lookups may query (trusted-mirror allowlist).
+  # A request's pypi_repo_url must match one entry; the first entry is used when none is given.
+  pypi:
+    trustedIndexURLs:
+      - "https://pypi.org/simple"
 
 depServices:
   class-443:

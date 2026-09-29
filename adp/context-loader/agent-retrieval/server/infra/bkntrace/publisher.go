@@ -35,7 +35,9 @@ func publishEvidenceEvent(event Event, ec eventContext) evidencepublisher.Publis
 	}
 	// The Kafka Ledger requires the owner inside the envelope. Derive it from
 	// trusted request context rather than accepting identity from event payload.
-	envelopeEvent := make(Event, len(event)+1)
+	// Size the copy by len(event) only: the "+1" for owner is not worth an overflowing size hint,
+	// and the map grows for the extra key on its own.
+	envelopeEvent := make(Event, len(event))
 	for key, value := range event {
 		envelopeEvent[key] = value
 	}

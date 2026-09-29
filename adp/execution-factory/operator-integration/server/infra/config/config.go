@@ -52,6 +52,15 @@ type Config struct {
 	OSSGatewayBackendConfig OSSGatewayBackendConfig   `yaml:"oss-gateway-backend"`
 	SkillIndexBuildConfig   SkillIndexBuildConfig     `yaml:"skill_index_build"`
 	CapabilityIndexConfig   CapabilityIndexConfig     `yaml:"capability_index"`
+	Pypi                    PypiConfig                `yaml:"pypi"`
+}
+
+// PypiConfig configures the PyPI metadata lookups used by function dependency management.
+type PypiConfig struct {
+	// TrustedIndexURLs is the allowlist of PyPI indexes the service may query. A caller's
+	// pypi_repo_url must match one of them; the first entry is used when the caller gives none.
+	// Empty falls back to https://pypi.org/simple.
+	TrustedIndexURLs []string `yaml:"trusted_index_urls"`
 }
 
 // CapabilityIndexConfig governs the reconciler that keeps Function tools and MCP tools in the

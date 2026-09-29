@@ -436,7 +436,8 @@ components:
         max_concurrency:
           type: integer
           default: 4
-          description: 多属性并发求值的并发上限。
+          maximum: 64
+          description: 多属性并发求值的并发上限。Values above 64 are rejected with 400 INVALID_PARAMETER; 0 or a negative value means the default (4).
 
     ResolveLogicPropertiesResponse:
       type: object
