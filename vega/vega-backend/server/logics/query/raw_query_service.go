@@ -1052,12 +1052,7 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 		if errors.As(err, &sourceReadForbidden) {
 			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
 		}
-		var invalidParameter *interfaces.SourceQueryInvalidParameterError
-		if errors.As(err, &invalidParameter) {
-			detail := "invalid source query parameter"
-			if invalidParameter.Reason == interfaces.SourceQueryInvalidParameterUnknownColumn {
-				detail = "query references an unknown column"
-			}
+		if detail, ok := interfaces.RequestSideQueryError(err); ok {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(detail)
 		}

@@ -94,11 +94,7 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*i
 
 	rows, err := c.db.QueryContext(ctx, sqlStr)
 	if err != nil {
-		var driverErr *mysql.MySQLError
-		if errors.As(err, &driverErr) && driverErr.Number == 1054 {
-			err = interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
-		}
-		return nil, fmt.Errorf("execute query failed: %w", err)
+		return nil, fmt.Errorf("execute query failed: %w", classifyQueryError(err))
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -144,7 +140,7 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*i
 		response.Entries = append(response.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows failed: %w", err)
+		return nil, fmt.Errorf("iterate rows failed: %w", classifyQueryError(err))
 	}
 
 	totalCount := int64(len(response.Entries))
@@ -374,7 +370,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
+		return nil, fmt.Errorf("failed to execute query: %w", classifyQueryError(err))
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -410,7 +406,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		result.Entries = append(result.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, classifyQueryError(err)
 	}
 
 	// Total processing (detail query only) : Independent COUNT query, aligned with the postgresql connector.
@@ -429,12 +425,20 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		var total int64
 		row := c.db.QueryRowContext(ctx, countQuery, countArgs...)
 		if err := row.Scan(&total); err != nil {
-			return nil, fmt.Errorf("failed to scan total: %w", err)
+			return nil, fmt.Errorf("failed to scan total: %w", classifyQueryError(err))
 		}
 		result.Total = total
 	}
 
 	return result, nil
+}
+
+func classifyQueryError(err error) error {
+	var driverErr *mysql.MySQLError
+	if errors.As(err, &driverErr) && driverErr.Number == 1054 {
+		return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
+	}
+	return err
 }
 
 // buildHavingCondition builds the HAVING condition

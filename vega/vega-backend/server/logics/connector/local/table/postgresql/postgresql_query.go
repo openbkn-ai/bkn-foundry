@@ -84,11 +84,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 
 	rows, err := c.db.QueryContext(ctx, sql)
 	if err != nil {
-		var driverErr *pq.Error
-		if errors.As(err, &driverErr) && string(driverErr.Code) == "42703" {
-			err = interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
-		}
-		return nil, fmt.Errorf("execute query failed: %w", err)
+		return nil, fmt.Errorf("execute query failed: %w", classifyQueryError(err))
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -134,7 +130,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 		response.Entries = append(response.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows failed: %w", err)
+		return nil, fmt.Errorf("iterate rows failed: %w", classifyQueryError(err))
 	}
 
 	totalCount := int64(len(response.Entries))
@@ -334,7 +330,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
+		return nil, fmt.Errorf("failed to execute query: %w", classifyQueryError(err))
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -370,7 +366,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		result.Entries = append(result.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, classifyQueryError(err)
 	}
 
 	// Total number of processed items (for detailed inquiries only)
@@ -388,12 +384,20 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		var total int64
 		row := c.db.QueryRowContext(ctx, countQuery, countArgs...)
 		if err := row.Scan(&total); err != nil {
-			return nil, fmt.Errorf("failed to scan total: %w", err)
+			return nil, fmt.Errorf("failed to scan total: %w", classifyQueryError(err))
 		}
 		result.Total = total
 	}
 
 	return result, nil
+}
+
+func classifyQueryError(err error) error {
+	var driverErr *pq.Error
+	if errors.As(err, &driverErr) && string(driverErr.Code) == "42703" {
+		return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
+	}
+	return err
 }
 
 // buildDateFormat formats a date field for the requested calendar grouping.
