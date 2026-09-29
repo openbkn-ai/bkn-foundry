@@ -460,39 +460,43 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 		return actionTypes, total, nil
 	}
 
-	objectTypeIDs := make([]string, 0, len(actionTypes))
-	for _, actionType := range actionTypes {
-		objectTypeIDs = append(objectTypeIDs, actionType.ObjectTypeID)
-	}
+	if !interfaces.IsObjectReferenceEnrichmentDeferred(ctx) {
+		objectTypeIDs := make([]string, 0, len(actionTypes))
+		for _, actionType := range actionTypes {
+			objectTypeIDs = append(objectTypeIDs, actionType.ObjectTypeID)
+		}
 
-	objectTypeMap, err := ats.ots.GetObjectTypesMapByIDs(ctx, query.KNID,
-		query.Branch, common.DuplicateSlice(objectTypeIDs), false)
-	if err != nil {
-		return []*interfaces.ActionType{}, 0, err
-	}
+		objectTypeMap, err := ats.ots.GetObjectTypesMapByIDs(ctx, query.KNID,
+			query.Branch, common.DuplicateSlice(objectTypeIDs), false)
+		if err != nil {
+			return []*interfaces.ActionType{}, 0, err
+		}
 
-	// Populate bound object type names for the current action type page.
-	for _, actionType := range actionTypes {
-		if objectTypeMap[actionType.ObjectTypeID] != nil {
-			actionType.ObjectType = interfaces.SimpleObjectType{
-				OTID:   objectTypeMap[actionType.ObjectTypeID].OTID,
-				OTName: objectTypeMap[actionType.ObjectTypeID].OTName,
-				Icon:   objectTypeMap[actionType.ObjectTypeID].Icon,
-				Color:  objectTypeMap[actionType.ObjectTypeID].Color,
+		// Populate bound object type names for the current action type page.
+		for _, actionType := range actionTypes {
+			if objectTypeMap[actionType.ObjectTypeID] != nil {
+				actionType.ObjectType = interfaces.SimpleObjectType{
+					OTID:   objectTypeMap[actionType.ObjectTypeID].OTID,
+					OTName: objectTypeMap[actionType.ObjectTypeID].OTName,
+					Icon:   objectTypeMap[actionType.ObjectTypeID].Icon,
+					Color:  objectTypeMap[actionType.ObjectTypeID].Color,
+				}
 			}
 		}
 	}
 
-	accountInfos := make([]*interfaces.AccountInfo, 0, len(actionTypes)*2)
-	for _, at := range actionTypes {
-		accountInfos = append(accountInfos, &at.Creator, &at.Updater)
-	}
+	if !interfaces.IsAccountNameEnrichmentDeferred(ctx) {
+		accountInfos := make([]*interfaces.AccountInfo, 0, len(actionTypes)*2)
+		for _, at := range actionTypes {
+			accountInfos = append(accountInfos, &at.Creator, &at.Updater)
+		}
 
-	err = ats.ums.GetAccountNames(ctx, accountInfos)
-	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-		return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
+		err = ats.ums.GetAccountNames(ctx, accountInfos)
+		if err != nil {
+			span.SetStatus(codes.Error, "GetAccountNames error")
+			return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")

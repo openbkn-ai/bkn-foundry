@@ -451,8 +451,10 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询对象类列表")
 	defer span.End()
-	// 0. Begin the transaction.
+	// Keep the read transaction scoped to the database operation. Permission and account
+	// lookups are remote calls and must not hold a database connection while they run.
 	var err error
+	ownedTx := tx == nil
 	if tx == nil {
 		tx, err = ots.db.Begin()
 		if err != nil {
@@ -461,24 +463,6 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 On failure.
-		defer func() {
-			switch err {
-			case nil:
-				// Commit the transaction.
-				err = tx.Commit()
-				if err != nil {
-					otellog.LogError(ctx, "ListObjectTypes Transaction Commit Failed", err)
-					return
-				}
-				otellog.LogDebug(ctx, "ListObjectTypes Transaction Commit Success")
-			default:
-				rollbackErr := tx.Rollback()
-				if rollbackErr != nil {
-					otellog.LogError(ctx, "ListObjectTypes Transaction Rollback Error", err)
-				}
-			}
-		}()
 	}
 
 	listQuery := query
@@ -486,11 +470,24 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	listQuery.Limit = -1
 	objectTypes, err := ots.ota.ListObjectTypes(ctx, tx, listQuery)
 	if err != nil {
+		if ownedTx {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				otellog.LogError(ctx, "ListObjectTypes Transaction Rollback Error", rollbackErr)
+			}
+		}
 		logger.Errorf("ListObjectTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "List object types error")
 
 		return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	}
+	if ownedTx {
+		if err := tx.Commit(); err != nil {
+			otellog.LogError(ctx, "ListObjectTypes Transaction Commit Failed", err)
+			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+		}
+		otellog.LogDebug(ctx, "ListObjectTypes Transaction Commit Success")
 	}
 	if interfaces.IsAuthorizationResourceCatalog(ctx) {
 		total := len(objectTypes)
@@ -512,17 +509,19 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		return objectTypes, total, nil
 	}
 
-	accountInfos := make([]*interfaces.AccountInfo, 0, len(objectTypes)*2)
-	for _, objectType := range objectTypes {
-		accountInfos = append(accountInfos, &objectType.Creator, &objectType.Updater)
-	}
+	if !interfaces.IsAccountNameEnrichmentDeferred(ctx) {
+		accountInfos := make([]*interfaces.AccountInfo, 0, len(objectTypes)*2)
+		for _, objectType := range objectTypes {
+			accountInfos = append(accountInfos, &objectType.Creator, &objectType.Updater)
+		}
 
-	err = ots.ums.GetAccountNames(ctx, accountInfos)
-	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
+		err = ots.ums.GetAccountNames(ctx, accountInfos)
+		if err != nil {
+			span.SetStatus(codes.Error, "GetAccountNames error")
 
-		return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 
 	// The object-type workspace needs the current resource index projection. Keep the lightweight

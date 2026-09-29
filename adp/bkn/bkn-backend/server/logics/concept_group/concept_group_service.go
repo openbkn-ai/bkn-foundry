@@ -460,44 +460,56 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 		return []*interfaces.ConceptGroup{}, total, nil
 	}
 
-	accountInfos := make([]*interfaces.AccountInfo, 0, len(conceptGroups)*2)
-	for _, cg := range conceptGroups {
-		accountInfos = append(accountInfos, &cg.Creator, &cg.Updater)
-	}
+	if !interfaces.IsAccountNameEnrichmentDeferred(ctx) {
+		accountInfos := make([]*interfaces.AccountInfo, 0, len(conceptGroups)*2)
+		for _, cg := range conceptGroups {
+			accountInfos = append(accountInfos, &cg.Creator, &cg.Updater)
+		}
 
-	err = cgs.ums.GetAccountNames(ctx, accountInfos)
-	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-
-		return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
-	}
-
-	// Members and statistics for every group on the page, resolved against one member scope so the
-	// authorization cost does not grow with the number of groups.
-	membersByGroup := make([][]string, len(conceptGroups))
-	allMembers := make([]string, 0)
-	for i, conceptGroup := range conceptGroups {
-		otIDs, err := cgs.cga.GetConceptIDsByConceptGroupIDs(ctx, conceptGroup.KNID,
-			conceptGroup.Branch, []string{conceptGroup.CGID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
+		err = cgs.ums.GetAccountNames(ctx, accountInfos)
 		if err != nil {
-			errStr := fmt.Sprintf("GetConceptIDsByConceptGroupIDs failed, kn_id:[%s],branch:[%s],cg_ids:[%s], error: %v",
-				conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID, err)
-			logger.Errorf(errStr)
-			span.SetStatus(codes.Error, errStr)
+			span.SetStatus(codes.Error, "GetAccountNames error")
 
 			return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 		}
-		membersByGroup[i] = otIDs
-		allMembers = append(allMembers, otIDs...)
 	}
-	scope, err := cgs.loadMemberScope(ctx, query.KNID, conceptGroups[0].Branch, allMembers)
+
+	// Members and statistics for every group on the page, resolved against one member scope so the
+	// authorization cost does not grow with the number of groups.
+	groupIDs := make([]string, 0, len(conceptGroups))
+	for _, conceptGroup := range conceptGroups {
+		groupIDs = append(groupIDs, conceptGroup.CGID)
+	}
+	membersByGroup, err := cgs.cga.GetConceptIDsGroupedByConceptGroupIDs(ctx, query.KNID,
+		query.Branch, groupIDs, interfaces.MODULE_TYPE_OBJECT_TYPE)
+	if err != nil {
+		errStr := fmt.Sprintf("GetConceptIDsGroupedByConceptGroupIDs failed, kn_id:[%s],branch:[%s], error: %v",
+			query.KNID, query.Branch, err)
+		logger.Errorf(errStr)
+		span.SetStatus(codes.Error, errStr)
+
+		return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
+	}
+	if interfaces.IsConceptGroupMemberScopeDeferred(ctx) {
+		for _, conceptGroup := range conceptGroups {
+			conceptGroup.ObjectTypeIDs = membersByGroup[conceptGroup.CGID]
+		}
+		span.SetStatus(codes.Ok, "")
+		return conceptGroups, total, nil
+	}
+
+	allMembers := make([]string, 0)
+	for _, conceptGroup := range conceptGroups {
+		allMembers = append(allMembers, membersByGroup[conceptGroup.CGID]...)
+	}
+	scope, err := cgs.loadMemberScope(ctx, query.KNID, query.Branch, allMembers)
 	if err != nil {
 		return []*interfaces.ConceptGroup{}, 0, err
 	}
-	for i, conceptGroup := range conceptGroups {
-		conceptGroup.ObjectTypeIDs, conceptGroup.Statistics = scope.apply(membersByGroup[i])
+	for _, conceptGroup := range conceptGroups {
+		conceptGroup.ObjectTypeIDs, conceptGroup.Statistics = scope.apply(membersByGroup[conceptGroup.CGID])
 	}
 
 	span.SetStatus(codes.Ok, "")

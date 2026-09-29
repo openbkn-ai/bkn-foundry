@@ -98,8 +98,10 @@ func TestListConceptGroups_MembersAndStatisticsCountOnlyWhatTheCallerSees(t *tes
 	m.cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{
 		{CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
 	}, nil)
-	m.cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"cg-1"},
-		interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{"ot-a", "ot-hidden", "ot-query"}, nil)
+	m.cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"cg-1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{
+		"cg-1": {"ot-a", "ot-hidden", "ot-query"},
+	}, nil)
 	m.rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
 			if want := []string{"ot-a", "ot-query"}; !reflect.DeepEqual(query.SourceObjectTypeIDs, want) ||
@@ -135,10 +137,11 @@ func TestListConceptGroups_ResolvesMembersOnceForEveryGroup(t *testing.T) {
 		{CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
 		{CGID: "cg-2", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
 	}, nil)
-	m.cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"cg-1"},
-		interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{"ot-a", "ot-hidden"}, nil)
-	m.cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"cg-2"},
-		interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{"ot-query", "ot-a"}, nil)
+	m.cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"cg-1", "cg-2"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{
+		"cg-1": {"ot-a", "ot-hidden"},
+		"cg-2": {"ot-query", "ot-a"},
+	}, nil).Times(1)
 	m.rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{
 		memberRelation("rt-in", "ot-a", "ot-query"),
 	}, nil).Times(1)
@@ -162,6 +165,33 @@ func TestListConceptGroups_ResolvesMembersOnceForEveryGroup(t *testing.T) {
 	}
 }
 
+func TestListConceptGroups_DefersMemberScopeForExportAssembly(t *testing.T) {
+	service, m := newMemberTestService(t, nil)
+	m.cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{
+		{CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
+	}, nil)
+	m.cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"cg-1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{
+		"cg-1": {"ot-a", "ot-hidden"},
+	}, nil)
+
+	ctx := interfaces.WithDeferredExportEnrichment(context.Background())
+	groups, _, err := service.ListConceptGroups(ctx, interfaces.ConceptGroupsQueryParams{
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+		KNID:                      "kn-1",
+		Branch:                    interfaces.MAIN_BRANCH,
+	})
+	if err != nil {
+		t.Fatalf("ListConceptGroups() error = %v", err)
+	}
+	if got, want := groups[0].ObjectTypeIDs, []string{"ot-a", "ot-hidden"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("deferred object_type_ids = %v, want %v", got, want)
+	}
+	if groups[0].Statistics != nil {
+		t.Fatalf("deferred statistics = %+v, want nil", groups[0].Statistics)
+	}
+}
+
 // TestListConceptGroups_MemberAuthorizationFailureIsAnError refuses to read an authorization
 // outage as an empty group.
 func TestListConceptGroups_MemberAuthorizationFailureIsAnError(t *testing.T) {
@@ -170,8 +200,10 @@ func TestListConceptGroups_MemberAuthorizationFailureIsAnError(t *testing.T) {
 	m.cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return([]*interfaces.ConceptGroup{
 		{CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
 	}, nil)
-	m.cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return([]string{"ot-a"}, nil)
+	m.cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"cg-1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{
+		"cg-1": {"ot-a"},
+	}, nil)
 
 	_, _, err := service.ListConceptGroups(context.Background(), interfaces.ConceptGroupsQueryParams{
 		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},

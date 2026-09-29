@@ -253,7 +253,8 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 		})
 
 		Convey("Success with empty object types\n", func() {
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return([]string{}, nil)
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
 			So(err, ShouldBeNil)
@@ -264,7 +265,8 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 		})
 
 		Convey("Failed when getting concept IDs returns error\n", func() {
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
@@ -343,7 +345,8 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 			listQuery.Limit = -1
 			cga.EXPECT().ListConceptGroups(gomock.Any(), listQuery).Return(cgArr, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
+			cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{}, nil)
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldBeNil)
@@ -437,7 +440,9 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(nil,
+				rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -463,7 +468,8 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return([]string{}, nil)
+			cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{}, nil)
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldBeNil)
@@ -505,7 +511,8 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil).AnyTimes()
+			cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"cg2", "cg3"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{}, nil)
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldBeNil)

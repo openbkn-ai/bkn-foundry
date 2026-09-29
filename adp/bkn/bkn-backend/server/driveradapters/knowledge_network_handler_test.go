@@ -514,6 +514,20 @@ func Test_KnowledgeNetworkRestHandler_GetKN(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
 
+		Convey("Export returns JSON with a download filename\n", func() {
+			kns.EXPECT().GetKNByID(gomock.Any(), knID, interfaces.MAIN_BRANCH, interfaces.Mode_Export).
+				Return(&interfaces.KN{KNID: knID, KNName: "orders-network"}, nil)
+
+			req := httptest.NewRequest(http.MethodGet, url+"?mode=export", nil)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Header().Get("Content-Type"), ShouldEqual, "application/json")
+			So(w.Header().Get("Content-Disposition"), ShouldContainSubstring, "orders-network.json")
+			So(w.Body.String(), ShouldContainSubstring, `"name":"orders-network"`)
+		})
+
 		Convey("KN not found\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusNotFound,
