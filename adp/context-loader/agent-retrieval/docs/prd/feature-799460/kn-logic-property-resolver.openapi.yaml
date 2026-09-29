@@ -232,6 +232,7 @@ components:
 
             **注意**: 过大的并发数可能导致 Agent 服务过载
           default: 4
+          maximum: 64
           example: 4
     ResolveLogicPropertiesResponse:
       description: 成功返回 datas 数组；缺参时返回 error_code 和 missing 清单

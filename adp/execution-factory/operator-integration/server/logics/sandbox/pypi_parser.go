@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -21,6 +22,14 @@ const (
 	DefaultPypiRepo = "https://pypi.org/simple" // Default PyPI source.
 )
 
+// DefaultTrustedPypiIndexes is the trusted-mirror allowlist used when the deployment configures none.
+//
+// Trusted-mirror policy: metadata requests only ever go to an index listed in configuration
+// (pypi.trusted_index_urls). A caller may pick one of those indexes through pypi_repo_url, but the
+// request URL is always built from the configured entry, never from the caller's string, so a
+// caller cannot point the service at an arbitrary (for example internal) host.
+var DefaultTrustedPypiIndexes = []string{DefaultPypiRepo}
+
 // Legal Python package name (PEP 508): starts and ends with alphanumeric characters, and can contain -_. separator in the middle.
 // The package name will be spelled into the upstream URL. If there is no verification, input such as spaces will be escaped and sent as it is.
 // Neither the result can be obtained nor the illegal input is sent to the external address.
@@ -28,7 +37,8 @@ var pypiPackageNamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-
 
 // ParsePyPIReq parses PyPI source request parameters.
 type ParsePypiReq struct {
-	PypiRepoURL   string `form:"pypi_repo_url" default:"https://pypi.org/simple" validate:"required,url"`
+	// PypiRepoURL selects one of the trusted indexes; empty selects the first trusted index.
+	PypiRepoURL   string `form:"pypi_repo_url" validate:"omitempty,url"`
 	PackageName   string `uri:"package_name" validate:"required"`
 	PythonVersion string `form:"python_version" default:"3.10"`
 }
@@ -56,7 +66,9 @@ type PypiRelease struct {
 	YankedReason   string `json:"yanked_reason"`
 }
 
-func ParsePypi(ctx context.Context, req *ParsePypiReq) (resp *ParsePypiResp, err error) {
+// ParsePypi lists the versions of a package that support the requested Python version.
+// trustedIndexes is the configured mirror allowlist; empty falls back to DefaultTrustedPypiIndexes.
+func ParsePypi(ctx context.Context, req *ParsePypiReq, trustedIndexes []string) (resp *ParsePypiResp, err error) {
 	packageName := strings.TrimSpace(req.PackageName)
 	pythonVersion := strings.TrimSpace(req.PythonVersion)
 	if packageName == "" {
@@ -75,12 +87,14 @@ func ParsePypi(ctx context.Context, req *ParsePypiReq) (resp *ParsePypiResp, err
 		return nil, errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("invalid python_version: %s", err.Error()))
 	}
 
-	baseURL := normalizeRepoURL(req.PypiRepoURL)
-	url := fmt.Sprintf("%s/pypi/%s/json", baseURL, packageName)
+	baseURL, err := resolveTrustedPypiIndex(req.PypiRepoURL, trustedIndexes)
+	if err != nil {
+		return nil, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
+	}
+	// JoinPath escapes each segment; the package name has already been checked against PEP 508.
+	url := baseURL.JoinPath("pypi", packageName, "json").String()
 
-	fmt.Printf("Fetching from Pypi: %s\n", url)
-
-	httpClient := &http.Client{Timeout: 25 * time.Second}
+	httpClient := pypiHTTPClient
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, errors.NewHTTPError(ctx, http.StatusInternalServerError, errors.ErrExtPypiParserFailed, fmt.Sprintf("create request failed: %s", err.Error()))
@@ -137,16 +151,59 @@ func ParsePypi(ctx context.Context, req *ParsePypiReq) (resp *ParsePypiResp, err
 	}, nil
 }
 
-func normalizeRepoURL(repoURL string) string {
-	repoURL = strings.TrimSpace(repoURL)
-	if repoURL == "" {
-		repoURL = DefaultPypiRepo
+// pypiHTTPClient is shared across lookups so connections to the index are reused.
+var pypiHTTPClient = &http.Client{Timeout: 25 * time.Second}
+
+// parsePypiIndexURL parses an index URL into its JSON API root: trailing slashes and the "/simple"
+// suffix are dropped, so "https://pypi.org/simple/" and "https://pypi.org" name the same index.
+func parsePypiIndexURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return nil, fmt.Errorf("invalid pypi_repo_url: %w", err)
 	}
-	repoURL = strings.TrimRight(repoURL, "/")
-	if before, ok := strings.CutSuffix(repoURL, "/simple"); ok {
-		repoURL = before
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return nil, fmt.Errorf("invalid pypi_repo_url: scheme must be http or https")
 	}
-	return repoURL
+	if u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("invalid pypi_repo_url: expected scheme://host[/path] without credentials, query or fragment")
+	}
+	path := strings.TrimRight(u.Path, "/")
+	path = strings.TrimSuffix(path, "/simple")
+	return &url.URL{Scheme: u.Scheme, Host: strings.ToLower(u.Host), Path: path}, nil
+}
+
+// resolveTrustedPypiIndex maps the caller's pypi_repo_url onto a configured trusted index and
+// returns the configured entry, so the request host always comes from configuration. An empty
+// repoURL selects the first trusted index.
+func resolveTrustedPypiIndex(repoURL string, trustedIndexes []string) (*url.URL, error) {
+	if len(trustedIndexes) == 0 {
+		trustedIndexes = DefaultTrustedPypiIndexes
+	}
+	trusted := make([]*url.URL, 0, len(trustedIndexes))
+	for _, raw := range trustedIndexes {
+		u, err := parsePypiIndexURL(raw)
+		if err != nil {
+			// A malformed allowlist entry can never match; skipping it keeps the others usable.
+			continue
+		}
+		trusted = append(trusted, u)
+	}
+	if len(trusted) == 0 {
+		return nil, fmt.Errorf("no valid trusted PyPI index is configured")
+	}
+	if strings.TrimSpace(repoURL) == "" {
+		return trusted[0], nil
+	}
+	want, err := parsePypiIndexURL(repoURL)
+	if err != nil {
+		return nil, err
+	}
+	for _, u := range trusted {
+		if u.Scheme == want.Scheme && u.Host == want.Host && u.Path == want.Path {
+			return u, nil
+		}
+	}
+	return nil, fmt.Errorf("pypi_repo_url %q is not a trusted PyPI index; an administrator can add it to pypi.trusted_index_urls", repoURL)
 }
 
 func collectCompatibleVersions(pypiData PypiResponse, targetPy pythonVer) []*semver.Version {

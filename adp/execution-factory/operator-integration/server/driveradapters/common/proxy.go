@@ -42,6 +42,8 @@ type unifiedProxyHandler struct {
 	MetadataService interfaces.IMetadataService
 	SessionPool     sandbox.SessionPool
 	AuthService     interfaces.IAuthorizationService
+	// TrustedPypiIndexes is the PyPI mirror allowlist for dependency version lookups.
+	TrustedPypiIndexes []string
 }
 
 var (
@@ -53,10 +55,11 @@ func NewUnifiedProxyHandler() UnifiedProxyHandler {
 	pOnce.Do(func() {
 		conf := config.NewConfigLoader()
 		proxyHandler = &unifiedProxyHandler{
-			Logger:          conf.Logger,
-			MetadataService: metadata.NewMetadataService(),
-			SessionPool:     sandbox.GetSessionPool(),
-			AuthService:     auth.NewAuthServiceImpl(),
+			Logger:             conf.Logger,
+			MetadataService:    metadata.NewMetadataService(),
+			SessionPool:        sandbox.GetSessionPool(),
+			AuthService:        auth.NewAuthServiceImpl(),
+			TrustedPypiIndexes: conf.Pypi.TrustedIndexURLs,
 		}
 	})
 	return proxyHandler
@@ -462,7 +465,7 @@ func (h *unifiedProxyHandler) QueryPypiVersions(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	resp, err := sandbox.ParsePypi(c.Request.Context(), req)
+	resp, err := sandbox.ParsePypi(c.Request.Context(), req, h.TrustedPypiIndexes)
 	if err != nil {
 		rest.ReplyError(c, err)
 		return

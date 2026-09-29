@@ -105,3 +105,8 @@ oss-gateway-backend:
   storage_id: ""
   internal_request: false
   expires: 3600
+
+# PyPI indexes that dependency version lookups may query (trusted-mirror allowlist).
+pypi:
+  trusted_index_urls:
+    - "https://pypi.org/simple"

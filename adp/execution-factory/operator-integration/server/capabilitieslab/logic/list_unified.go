@@ -13,7 +13,35 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
 )
 
-const maxAllKindWindow = 300
+const (
+	maxAllKindWindow = 300
+	// maxListPageSize caps page_size on the capability list endpoints; larger values are clamped.
+	maxListPageSize = 100
+)
+
+// pageCapacity is the preallocation hint for one page of results. pageSize comes from the
+// request, so the hint is bounded here rather than trusted.
+func pageCapacity(pageSize int) int {
+	if pageSize < 0 {
+		return 0
+	}
+	if pageSize > maxListPageSize {
+		return maxListPageSize
+	}
+	return pageSize
+}
+
+// allKindWindow returns page*pageSize capped at maxAllKindWindow without overflowing for a huge
+// page number.
+func allKindWindow(page, pageSize int) int {
+	if pageSize < 1 {
+		return maxAllKindWindow
+	}
+	if page > maxAllKindWindow/pageSize {
+		return maxAllKindWindow
+	}
+	return page * pageSize
+}
 
 func (s *Service) ListCapabilities(
 	ctx context.Context,
@@ -26,8 +54,8 @@ func (s *Service) ListCapabilities(
 	if pageSize < 1 {
 		pageSize = 20
 	}
-	if pageSize > 100 {
-		pageSize = 100
+	if pageSize > maxListPageSize {
+		pageSize = maxListPageSize
 	}
 
 	kind = strings.ToLower(strings.TrimSpace(kind))
@@ -56,10 +84,7 @@ func (s *Service) listAllCapabilitiesPaged(
 	keyword, groupID, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
-	windowSize := page * pageSize
-	if windowSize > maxAllKindWindow {
-		windowSize = maxAllKindWindow
-	}
+	windowSize := allKindWindow(page, pageSize)
 
 	httpItems, _, err := s.collectHttpCapabilities(ctx, keyword, groupID, windowSize)
 	if err != nil {
@@ -123,7 +148,7 @@ func (s *Service) listHttpCapabilitiesPaged(
 	}
 
 	offset := (page - 1) * pageSize
-	items := make([]model.Capability, 0, pageSize)
+	items := make([]model.Capability, 0, pageCapacity(pageSize))
 	skipped := 0
 
 	for _, box := range boxes {
@@ -538,7 +563,7 @@ func (s *Service) listFunctionCapabilitiesPaged(
 	}
 
 	offset := (page - 1) * pageSize
-	items := make([]model.Capability, 0, pageSize)
+	items := make([]model.Capability, 0, pageCapacity(pageSize))
 	skipped := 0
 
 	for _, box := range boxes {

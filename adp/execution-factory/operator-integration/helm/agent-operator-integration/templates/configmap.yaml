@@ -35,6 +35,12 @@ data:
       periodic_full_scan_interval: {{ .Values.service.skillIndexBuild.periodicFullScanInterval | quote }}
       enable_task_cleanup: {{ .Values.service.skillIndexBuild.enableTaskCleanup }}
       task_retention: {{ .Values.service.skillIndexBuild.taskRetention | quote }}
+    {{- $pypiIndexes := dig "pypi" "trustedIndexURLs" (list) .Values.service }}
+    {{- if $pypiIndexes }}
+    pypi:
+      trusted_index_urls:
+        {{- toYaml $pypiIndexes | nindent 8 }}
+    {{- end }}
     oauth:
       public_host: {{ .Values.depServices.hydra.publicHost | quote }}
       public_port: {{ .Values.depServices.hydra.publicPort }}

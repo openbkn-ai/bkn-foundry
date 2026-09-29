@@ -1,4 +1,7 @@
 """Unit tests for dependencies."""
+import re
+from urllib.parse import urlparse
+
 import pytest
 
 from src.shared.utils.dependencies import (
@@ -118,7 +121,11 @@ class TestBuildDependencyInstallScript:
 
         assert "pip3 install" in script
         assert "/opt/sandbox-venv" in script
-        assert "pypi.org" in script
+        # Parse the --index-url argument and compare its hostname exactly; a substring check on
+        # the whole script would also accept hosts such as "pypi.org.evil.example".
+        match = re.search(r"--index-url\s+(\S+)", script)
+        assert match is not None
+        assert urlparse(match.group(1)).hostname == "pypi.org"
 
 
 class TestFormatDependencyInstallScriptForShell:

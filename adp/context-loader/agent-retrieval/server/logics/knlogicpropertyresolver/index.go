@@ -26,7 +26,23 @@ import (
 const (
 	// defaultMaxConcurrency default maximum number of concurrencies.
 	defaultMaxConcurrency = 4
+	// maxAllowedConcurrency bounds options.max_concurrency. The value sizes a channel buffer and the
+	// number of concurrent model calls, so it must not be taken from the request unchecked.
+	maxAllowedConcurrency = 64
 )
+
+// effectiveMaxConcurrency validates options.max_concurrency: a non-positive value means the default,
+// and a value above maxAllowedConcurrency is rejected as INVALID_PARAMETER.
+func effectiveMaxConcurrency(ctx context.Context, requested int) (int, error) {
+	if requested > maxAllowedConcurrency {
+		return 0, errors.DefaultHTTPError(ctx, http.StatusBadRequest,
+			fmt.Sprintf("options.max_concurrency must not exceed %d, got %d", maxAllowedConcurrency, requested))
+	}
+	if requested <= 0 {
+		return defaultMaxConcurrency, nil
+	}
+	return requested, nil
+}
 
 // KnLogicPropertyResolverService logical propertyparseserviceimplements.
 type knLogicPropertyResolverService struct {
@@ -86,6 +102,10 @@ func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 
 	// Step 1: parametervalidate.
 	if err := s.validateRequest(req); err != nil {
+		return nil, err
+	}
+	// Reject an abusive max_concurrency before any upstream call is made.
+	if _, err := effectiveMaxConcurrency(ctx, req.Options.MaxConcurrency); err != nil {
 		return nil, err
 	}
 
@@ -305,8 +325,6 @@ func (s *knLogicPropertyResolverService) extractLogicProperties(
 }
 
 // generateDynamicParams generates dynamic_params (concurrency by property)
-//
-//nolint:unparam // Keep the interface consistent; the error return is for future extension.
 func (s *knLogicPropertyResolverService) generateDynamicParams(
 	ctx context.Context,
 	req *interfaces.ResolveLogicPropertiesRequest,
@@ -319,9 +337,9 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generating dynamic params for %d properties", len(logicPropertiesDef))
 
 	// Get concurrent configuration.
-	maxConcurrency := req.Options.MaxConcurrency
-	if maxConcurrency <= 0 {
-		maxConcurrency = 4 // Default number of concurrencies.
+	maxConcurrency, err := effectiveMaxConcurrency(ctx, req.Options.MaxConcurrency)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
 	}
 
 	// Step 1: Preparation phase - build property list.

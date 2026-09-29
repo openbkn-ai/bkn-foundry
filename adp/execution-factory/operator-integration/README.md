@@ -59,6 +59,12 @@ docker build -t agent-operator-integration:latest .
 helm install agent-operator-integration ./helm/agent-operator-integration
 ```
 
+### 3.4 PyPI mirror policy (upgrade note).
+`GET /function/dependency-versions/{package_name}` only queries PyPI indexes listed in
+`pypi.trusted_index_urls` (Helm: `service.pypi.trustedIndexURLs`, default
+`["https://pypi.org/simple"]`). A `pypi_repo_url` outside the list is rejected with 400; when it is
+omitted, the first listed index is used. Add internal mirrors to the list before callers use them.
+
 ## 4. Project testing.
 - [Registration query related](./server/tests/http/register interface related test data.md)
 - [Update and delete related](./server/tests/http/operator.http)
