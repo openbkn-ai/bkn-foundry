@@ -1,4 +1,11 @@
-# vega-backend BKN Trace 接入合同
+# vega-backend observability contract
+
+> **0.2.0 status:** The 2.1 HTTP Evidence producer described below is retired.
+> The live registry defines `vega` only as a `kafka_audit` source. Vega keeps
+> its registered Kafka Audit path and existing technical observability, but
+> emits no Evidence event or Evidence receipt. The retained sections are
+> historical 2.1 reference material for archived data only, not a runtime
+> contract.
 
 > 状态：BKN Trace 2.1 生产者实施基线
 > 更新时间：2026-07-25

@@ -71,7 +71,14 @@ attempt（默认 1）
 - bkn-agent 不从自然语言猜测对象、属性、关系、数据或 Action 引用。
 - 下游返回的全限定 `ref_id` 必须原样进入采用后的 claim binding，不截断、不缩写、不重哈希。当前不生成兼容短 ref；未来若需要短 ref，必须与同一 `source_event_id` 和知识网络 ref 同时保留，禁止根据文本或工具名反推。
 
-### 5.1 mf-model-api 事实回执合同
+### 5.1 已归档的 mf-model-api 事实回执合同
+
+> **0.2.0 status:** `model-api` is registered only for direct OTLP, not
+> Evidence. It no longer returns a Model Evidence receipt. Agent must not
+> create a claim from an invented or non-durable model event ID; until a
+> separately registered Kafka Evidence producer is approved and deployed, a
+> model-only response has no Evidence claim. The remainder of this subsection
+> documents the retired 2.2 contract solely for archived historical records.
 
 每次真实模型调用独立创建 operation，并传播 interaction、operation、causation、attempt。仅当下游事实回执对应的工具结果确实以 `ToolMessage` 进入本次模型上下文时，请求才使用 `bkn-candidate-source-event-ids` 发送候选 event ID；通过本地内容哈希做精确关联，不解析文本语义。数量受 `BKN_TRACE_MODEL_SOURCE_LIMIT` 限制且硬上限为 100，单个 ID 只接受受控字符集和 128 字符上限；不发送工具原文或引用内容。
 

@@ -1,4 +1,12 @@
-# mf-model-api BKN Trace Integration Contract
+# mf-model-api observability contract
+
+> **0.2.0 status:** The 2.1 HTTP Evidence producer described below is retired.
+> The live registry defines `model-api` only as a `direct_otlp` source. Model
+> API therefore keeps its existing OTLP traces and ordinary logs, and emits no
+> Evidence event or `bkn-evidence-event-id` receipt. It must not invent a
+> receipt for an event that was not durably submitted. The retained sections
+> are historical 2.1 reference material for archived data only, not a runtime
+> contract.
 
 > Status: BKN Trace 2.1 producer implementation baseline
 > Updated: 2026-07-25

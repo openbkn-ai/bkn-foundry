@@ -61,8 +61,6 @@ func (r *restHandler) GetResourceSchemaForDependency(c *gin.Context) {
 	if schema == nil {
 		schema = []*interfaces.Property{}
 	}
-	emitResourceReadEvidence(c, ctx, "data.resource.schema", []*interfaces.Resource{resource}, 1,
-		map[string]string{"resource_id": resource.ID, "operation": operation})
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, map[string]any{
 		"id": resource.ID, "name": resource.Name, "schema_definition": schema,
