@@ -72,14 +72,20 @@ func (e *VegaDownstreamError) ClientMessage() string {
 	return e.Description
 }
 
-// CanExposeQueryClientMessage reports whether this is a known Vega query validation response.
-// Other proxy response bodies may contain resource or catalog identifiers and stay redacted.
+// CanExposeQueryClientMessage reports whether this is a known Vega query validation or
+// capacity response. Other proxy response bodies may contain resource or catalog identifiers
+// and stay redacted.
 func (e *VegaDownstreamError) CanExposeQueryClientMessage() bool {
-	if e.StatusCode != http.StatusBadRequest {
+	switch e.StatusCode {
+	case http.StatusBadRequest:
+		return e.ErrorCode == "VegaBackend.Resource.InvalidParameter" ||
+			e.ErrorCode == "VegaBackend.Query.InvalidParameter"
+	case http.StatusTooManyRequests:
+		// A fixed message that tells the caller to retry rather than change the query.
+		return e.ErrorCode == "VegaBackend.Query.CursorSessionLimitExceeded"
+	default:
 		return false
 	}
-	return e.ErrorCode == "VegaBackend.Resource.InvalidParameter" ||
-		e.ErrorCode == "VegaBackend.Query.InvalidParameter"
 }
 
 // IsClientError reports whether the caller can fix the failure by changing the request.

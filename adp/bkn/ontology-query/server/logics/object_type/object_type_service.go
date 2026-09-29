@@ -312,11 +312,11 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 			return resps, invalidQueryCursorError(ctx)
 		}
 		if dataSourceType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
-			resourceCursor, err := ots.cursor.decodeResource(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
+			resourceCursor, resourceOffset, err := ots.cursor.decodeResource(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
 			if err != nil {
 				return resps, invalidQueryCursorError(ctx)
 			}
-			query.ResourceCursor = resourceCursor
+			query.ResourceCursor, query.ResourceOffset = resourceCursor, resourceOffset
 		} else {
 			searchAfter, err := ots.cursor.decode(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
 			if err != nil {
@@ -347,6 +347,14 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		}
 		resps.Cursor, err = ots.cursor.encodeResource(ctx, query, proxyContext.PublishedModelVersion,
 			resps.ResourceCursor, resps.ResourceCursorExpiry)
+		if err != nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
+		}
+	} else if resps.ResourceNextOffset > 0 {
+		if ots.cursor == nil {
+			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
+		}
+		resps.Cursor, err = ots.cursor.encodeResourceOffset(ctx, query, proxyContext.PublishedModelVersion, resps.ResourceNextOffset)
 		if err != nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
 		}
@@ -501,10 +509,12 @@ func downstreamErrorCode(statusCode int) string {
 		return rest.PublicError_NotFound
 	case http.StatusConflict:
 		return rest.PublicError_Conflict
+	case http.StatusTooManyRequests:
+		return oerrors.OntologyQuery_ObjectType_TooManyRequests
 	default:
-		// Other 4xx statuses (405/413/422/429, etc.) do not have semantically corresponding public error codes. Do not fall back here to
+		// Other 4xx statuses (405/413/422, etc.) do not have semantically corresponding public error codes. Do not fall back here to
 		// rest.PublicError_BadRequest: its en-US message is "Internal Server Error",
-		// English callers would read "Internal Server Error" for a 429, which is exactly the misleading behavior this change avoids.
+		// English callers would read "Internal Server Error" for a 413, which is exactly the misleading behavior this change avoids.
 		// Fall back to this service's parameter error code: messages in both languages are correct and behavior stays consistent with before. The real
 		// semantics are carried by the faithfully passed-through status code and the reason returned by downstream.
 		return oerrors.OntologyQuery_ObjectType_InvalidParameter
@@ -530,16 +540,12 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
-	pagingMode := interfaces.ResourceDataPagingModeCursor
+	// A legacy object type may expose a schema-only primary key without a
+	// physical resource mapping. Its sort cannot be made total, so it keeps the
+	// historical single-page behavior and never returns a continuation.
+	stable := true
 	if query.ResourceCursor == "" {
-		var stable bool
 		resourceSort, stable = appendResourceSortTieBreakers(resourceSort, objectType)
-		if !stable {
-			// A legacy object type may expose a schema-only primary key without a
-			// physical resource mapping. Its sort cannot be made total for
-			// search_after, so retain the historical single-page query behavior.
-			pagingMode = interfaces.ResourceDataPagingModeSingle
-		}
 	}
 
 	viewQuery := interfaces.ViewQuery{
@@ -574,37 +580,13 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	}
 	sort.Strings(outputFields)
 	params := &interfaces.ResourceDataQueryParams{
-		NeedTotal: query.NeedTotal,
-		Paging: interfaces.ResourceDataPagingRequest{
-			Mode:   pagingMode,
-			Limit:  query.Limit,
-			Offset: query.Offset,
-		},
+		NeedTotal:       query.NeedTotal,
 		Sort:            resourceSort,
 		SearchAfter:     query.SearchAfter,
 		FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),
 		OutputFields:    outputFields,
 	}
-	if query.ResourceCursor != "" {
-		params = &interfaces.ResourceDataQueryParams{
-			Paging: interfaces.ResourceDataPagingRequest{Cursor: query.ResourceCursor},
-		}
-	}
-	resp, err := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
-	// Object-type bindings identify a Vega resource by ID but do not carry its
-	// category. Cursor paging is unavailable for some categories. Retry only an
-	// initial cursor request rejected as unsupported, retaining the historical
-	// single-page behavior for those resources. A continuation is never retried:
-	// it can only exist for a category that already accepted cursor paging.
-	if err != nil && query.ResourceCursor == "" && isCursorPagingUnsupported(err) {
-		singlePageParams := *params
-		singlePageParams.Paging = interfaces.ResourceDataPagingRequest{
-			Mode:   interfaces.ResourceDataPagingModeSingle,
-			Limit:  query.Limit,
-			Offset: query.Offset,
-		}
-		resp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, &singlePageParams)
-	}
+	resp, nextOffset, err := ots.queryResourcePage(ctx, objectType.DataSource.ID, query, params, stable)
 	if err != nil {
 		// When downstream identifies a caller-side issue (4xx), pass through the original status code and carry its reason upward.
 		// Upgrading everything to 500 makes self-correctable problems such as unsupported operators or resources without built indexes look
@@ -642,6 +624,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		}
 	}
 	resps.TotalCount = resp.TotalCount
+	resps.ResourceNextOffset = nextOffset
 	if resp.Paging != nil {
 		if resp.Paging.NextCursor != nil {
 			resps.ResourceCursor = *resp.Paging.NextCursor
@@ -652,6 +635,97 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	}
 	resps.Datas = objects
 	return nil
+}
+
+// vegaIndexResultWindow is Vega's bound on offset+limit for index-backed reads.
+const vegaIndexResultWindow = 10000
+
+// queryResourcePage reads one page and returns the stateless next-row offset,
+// if any.
+//
+// A first page never opens a Vega cursor session. Sessions are held until the
+// final page or expiry and share one global limit, so one-shot callers (such as
+// MCP tool calls) that never continue would exhaust it and every later cursor
+// request would be rejected with 429. The session is opened only when a caller
+// actually asks for the next page, where search_after keeps deep index paging
+// beyond the offset window working.
+func (ots *objectTypeService) queryResourcePage(ctx context.Context, resourceID string,
+	query *interfaces.ObjectQueryBaseOnObjectType, params *interfaces.ResourceDataQueryParams,
+	stable bool) (*interfaces.DatasetQueryResponse, int, error) {
+	if query.ResourceCursor != "" {
+		resp, err := ots.vba.QueryResourceData(ctx, resourceID, &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.ResourceDataPagingRequest{Cursor: query.ResourceCursor},
+		})
+		return resp, 0, err
+	}
+	if query.ResourceOffset <= 0 {
+		return ots.querySingleResourcePage(ctx, resourceID, query, params, query.Offset, stable)
+	}
+
+	// Past Vega's index window the page cannot be addressed by offset. Reopen
+	// the cursor at the first page's offset and continue past it, which yields
+	// the same rows the first page's session would have.
+	replay := query.ResourceOffset+query.Limit > vegaIndexResultWindow
+	start := query.ResourceOffset
+	if replay {
+		start = query.Offset
+	}
+	cursorParams := *params
+	cursorParams.Paging = interfaces.ResourceDataPagingRequest{
+		Mode:         interfaces.ResourceDataPagingModeCursor,
+		Limit:        query.Limit,
+		Offset:       start,
+		KeepAliveSec: int(queryCursorTTL / time.Second),
+	}
+	resp, err := ots.vba.QueryResourceData(ctx, resourceID, &cursorParams)
+	// Object-type bindings identify a Vega resource by ID but do not carry its
+	// category, and cursor paging is unavailable for some categories. Those
+	// keep paging by offset without any Vega state.
+	if err != nil && isCursorPagingUnsupported(err) {
+		return ots.querySingleResourcePage(ctx, resourceID, query, params, query.ResourceOffset, stable)
+	}
+	if err != nil || !replay || resp == nil {
+		return resp, 0, err
+	}
+	if resp.Paging == nil || resp.Paging.NextCursor == nil {
+		// The data shrank below the requested offset since the first page.
+		return &interfaces.DatasetQueryResponse{TotalCount: resp.TotalCount,
+			Paging: &interfaces.ResourceDataPagingResponse{}}, 0, nil
+	}
+	resp, err = ots.vba.QueryResourceData(ctx, resourceID, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.ResourceDataPagingRequest{Cursor: *resp.Paging.NextCursor},
+	})
+	return resp, 0, err
+}
+
+func (ots *objectTypeService) querySingleResourcePage(ctx context.Context, resourceID string,
+	query *interfaces.ObjectQueryBaseOnObjectType, params *interfaces.ResourceDataQueryParams,
+	offset int, stable bool) (*interfaces.DatasetQueryResponse, int, error) {
+	singleParams := *params
+	singleParams.Paging = interfaces.ResourceDataPagingRequest{
+		Mode:   interfaces.ResourceDataPagingModeSingle,
+		Limit:  query.Limit,
+		Offset: offset,
+	}
+	resp, err := ots.vba.QueryResourceData(ctx, resourceID, &singleParams)
+	if err != nil || resp == nil || !stable {
+		return resp, 0, err
+	}
+	return resp, nextResourceOffset(offset, query.Limit, query.NeedTotal, resp), nil
+}
+
+// nextResourceOffset reports whether a single page may have a successor. A full
+// page is treated as having one unless the total proves otherwise, so the last
+// continuation can be empty; that costs one read and holds no state.
+func nextResourceOffset(offset, limit int, needTotal bool, resp *interfaces.DatasetQueryResponse) int {
+	if limit <= 0 || len(resp.Entries) < limit {
+		return 0
+	}
+	next := offset + len(resp.Entries)
+	if needTotal && int64(next) >= resp.TotalCount {
+		return 0
+	}
+	return next
 }
 
 func isCursorPagingUnsupported(err error) bool {

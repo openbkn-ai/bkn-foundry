@@ -20,6 +20,9 @@ const (
 	OntologyQuery_ObjectType_ObjectTypeNotFound = "OntologyQuery.ObjectType.ObjectTypeNotFound"
 	OntologyQuery_ObjectType_SmallModelNotFound = "OntologyQuery.ObjectType.SmallModelNotFound"
 
+	// 429
+	OntologyQuery_ObjectType_TooManyRequests = "OntologyQuery.ObjectType.TooManyRequests"
+
 	// 500
 	OntologyQuery_ObjectType_InternalError_ExecuteToolFailed            = "OntologyQuery.ObjectType.InternalError.ExecuteToolFailed"
 	OntologyQuery_ObjectType_InternalError_GetMetricDataByIDFailed      = "OntologyQuery.ObjectType.InternalError.GetMetricDataByIDFailed"
@@ -43,6 +46,9 @@ var (
 		// 404
 		OntologyQuery_ObjectType_ObjectTypeNotFound,
 		OntologyQuery_ObjectType_SmallModelNotFound,
+
+		// 429
+		OntologyQuery_ObjectType_TooManyRequests,
 
 		// 500
 		OntologyQuery_ObjectType_InternalError_ExecuteToolFailed,

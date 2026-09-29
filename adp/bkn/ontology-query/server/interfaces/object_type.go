@@ -66,6 +66,7 @@ type Objects struct {
 	SearchAfter          []any                          `json:"-"`
 	ResourceCursor       string                         `json:"-"`
 	ResourceCursorExpiry *int64                         `json:"-"`
+	ResourceNextOffset   int                            `json:"-"`
 	Paging               *ObjectPagingResponse          `json:"paging"`
 	Cursor               string                         `json:"cursor,omitempty"`
 	OverallMs            int64                          `json:"overall_ms"`

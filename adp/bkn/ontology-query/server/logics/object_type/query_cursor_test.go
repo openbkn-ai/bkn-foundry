@@ -113,15 +113,46 @@ func TestResourceQueryCursorIsEncryptedAndCannotBeUsedAsSearchAfter(t *testing.T
 	if err != nil || strings.Contains(string(decodedToken), "vega-secret-cursor") {
 		t.Fatalf("cursor exposes plaintext Vega cursor: %q", decodedToken)
 	}
-	got, err := codec.decodeResource(ctx, query, "model-v1", token)
-	if err != nil || got != "vega-secret-cursor" {
-		t.Fatalf("decodeResource() = %q, %v", got, err)
+	got, offset, err := codec.decodeResource(ctx, query, "model-v1", token)
+	if err != nil || got != "vega-secret-cursor" || offset != 0 {
+		t.Fatalf("decodeResource() = %q, %d, %v", got, offset, err)
 	}
 	if _, err := codec.decode(ctx, query, "model-v1", token); err == nil {
 		t.Fatal("resource cursor must not be accepted as a search-after cursor")
 	}
 	codec.now = func() time.Time { return now.Add(5 * time.Minute) }
-	if _, err := codec.decodeResource(ctx, query, "model-v1", token); err == nil {
+	if _, _, err := codec.decodeResource(ctx, query, "model-v1", token); err == nil {
 		t.Fatal("resource cursor must expire when the Vega cursor expires")
+	}
+}
+
+func TestResourceOffsetCursorIsBoundToRequestAndExpires(t *testing.T) {
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	codec := testQueryCursorCodec(t, now)
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "user-1", Type: "user"})
+	query := &interfaces.ObjectQueryBaseOnObjectType{KNID: "kn-1", Branch: "main", ObjectTypeID: "orders", EffectiveRowFilterDigest: "sha256:row-filter-a"}
+	if token, err := codec.encodeResourceOffset(ctx, query, "model-v1", 0); err != nil || token != "" {
+		t.Fatalf("a zero offset must not produce a cursor: %q, %v", token, err)
+	}
+	token, err := codec.encodeResourceOffset(ctx, query, "model-v1", 20)
+	if err != nil || token == "" {
+		t.Fatalf("encodeResourceOffset() = %q, %v", token, err)
+	}
+	resourceCursor, offset, err := codec.decodeResource(ctx, query, "model-v1", token)
+	if err != nil || resourceCursor != "" || offset != 20 {
+		t.Fatalf("decodeResource() = %q, %d, %v", resourceCursor, offset, err)
+	}
+	if _, err := codec.decode(ctx, query, "model-v1", token); err == nil {
+		t.Fatal("offset cursor must not be accepted as a search-after cursor")
+	}
+	otherQuery := *query
+	otherQuery.ObjectTypeID = "customers"
+	if _, _, err := codec.decodeResource(ctx, &otherQuery, "model-v1", token); err == nil {
+		t.Fatal("offset cursor must be bound to the original query")
+	}
+	codec.now = func() time.Time { return now.Add(queryCursorTTL) }
+	if _, _, err := codec.decodeResource(ctx, query, "model-v1", token); err == nil {
+		t.Fatal("offset cursor must expire after the query cursor TTL")
 	}
 }
