@@ -161,8 +161,10 @@ paths:
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
         - `category=logicview` 仅在 EE 专业版及以上授权可创建，且必须提交
           `logic_type=derived` 与对应的
-          `logic_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`
-          与 `type` 必填，`type` 必须等于绑定的源 Resource 字段类型。源资源仅支持 table/index。
+          `logic_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`、
+          `type` 与非空 `display_name` 必填，`type` 必须等于绑定的源 Resource 字段类型。
+          `display_name` 是 View 自身的显示名，可与源字段不同，最多 255 个字符；
+          不提供自动继承。源资源仅支持 table/index。
           `source_metadata` 由服务端从源资源生成，请求值不参与写入；
           未安装 EE 扩展返回 501；授权版本不足返回 403 `Public.Forbidden`。
           通过字段校验的复合视图定义暂时返回 501。
@@ -283,6 +285,8 @@ paths:
         - 逻辑视图更新要求 EE 专业版及以上授权；未安装 EE 扩展返回 501，
           授权版本不足返回 403 `Public.Forbidden`。
           若提交复合视图定义，也暂时返回 501；已保存的复合视图仍可读取。
+          derived 完整 PUT 的每个输出字段均须提交非空 `display_name`；保留原显示名时
+          应从最近一次 GET 的 `schema_definition` 回填，不会从源字段自动继承。
       requestBody:
         required: true
         content:
@@ -849,7 +853,10 @@ components:
           additionalProperties: true
         schema_definition:
           description: |
-            derived 逻辑视图必填且非空；字段的 name、original_name、type 必填，type 须与源字段一致。
+            derived 逻辑视图必填且非空；每个字段的 name、original_name、type、display_name
+            均必填，display_name 不得为空且最多 255 个字符，可与源字段显示名不同。
+            GET 返回已保存的 View 显示名；完整 PUT 须显式传入希望保留或更新的值。
+            type 须与源字段一致。
             每个字段省略 features 时继承源字段全部 Feature；显式传 [] 时不公开任何 Feature；
             传部分 Feature 时仅保留源字段中匹配的条目。Feature 元数据由源字段补齐，
             vector 的只读 config.dimension 无须提交。删除 Feature 后，Index 源视图查询不能使用
