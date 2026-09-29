@@ -62,6 +62,11 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_SchemaDefinition).
 				WithErrorDetails("schema_definition is required and must contain at least one field")
 		}
+		for _, prop := range req.SchemaDefinition {
+			if prop != nil {
+				prop.DisplayName = strings.TrimSpace(prop.DisplayName)
+			}
+		}
 		if err := validateSchemaProperties(ctx, req.SchemaDefinition, false); err != nil {
 			return err
 		}

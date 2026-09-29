@@ -172,7 +172,9 @@ paths:
           未安装 EE 扩展返回 501；授权版本不足返回 403 `Public.Forbidden`。
           通过字段校验的复合视图定义暂时返回 501。
         - `category=dataset` 必须给非空 `schema_definition`；字段名/长度/重复/类型/特征均会校验，
-          违反返回 400 `VegaBackend.Dataset.*`（详见错误码族）。Dataset 索引在 Resource
+          `display_name` 在校验与保存前去除首尾空白；省略或去空白后为空时使用字段 `name`，
+          去空白后重复则返回 400 `VegaBackend.Dataset.Duplicated.FieldDisplayName`。
+          其他违反规则的请求返回 400 `VegaBackend.Dataset.*`（详见错误码族）。Dataset 索引在 Resource
           入库前创建，成功响应中的 `index_name` 是服务端分配的 `vega-dataset-<uuidv7>`。
       requestBody:
         required: true
@@ -506,7 +508,9 @@ components:
             date / datetime / time / boolean / binary / json / vector
           type: string
         display_name:
-          description: 显示名
+          description: |
+            显示名。Dataset 创建或更新时去除首尾空白后校验并保存；省略或去空白后为空时
+            使用字段 `name`，同一 Dataset 内去空白后的显示名不得重复。
           type: string
         description:
           type: string
