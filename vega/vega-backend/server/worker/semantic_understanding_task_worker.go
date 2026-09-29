@@ -1021,9 +1021,11 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	}
 
 	fieldByName := make(map[string]*interfaces.Property, len(resourceInfo.SchemaDefinition))
+	displayNameCounts := make(map[string]int, len(resourceInfo.SchemaDefinition))
 	for _, property := range resourceInfo.SchemaDefinition {
 		if property != nil {
 			fieldByName[property.Name] = property
+			displayNameCounts[strings.TrimSpace(property.DisplayName)]++
 		}
 	}
 
@@ -1050,7 +1052,8 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"not found"}})
 			continue
 		}
-		if utf8.RuneCountInString(field.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
+		displayName := strings.TrimSpace(field.DisplayName)
+		if utf8.RuneCountInString(displayName) > interfaces.MaxLength_PropertyDisplayName {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name exceeds max length", field.Name))
 			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"display_name exceeds max length"}})
 			continue
@@ -1083,8 +1086,23 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		}
 
 		updated := make([]string, 0, 2)
-		if !invalidDisplayName && applyStringByMode(task.ApplyMode, &property.DisplayName, field.DisplayName, property.DisplayName == property.Name) {
-			updated = append(updated, "display_name")
+		candidateDisplayName := property.DisplayName
+		if !invalidDisplayName && applyStringByMode(task.ApplyMode, &candidateDisplayName, displayName, property.DisplayName == property.Name) {
+			currentKey := strings.TrimSpace(property.DisplayName)
+			candidateKey := strings.TrimSpace(candidateDisplayName)
+			otherFieldsWithName := displayNameCounts[candidateKey]
+			if candidateKey == currentKey {
+				otherFieldsWithName--
+			}
+			if otherFieldsWithName > 0 {
+				skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name duplicates another field", field.Name))
+				reasons = append(reasons, "display_name duplicates another field")
+			} else {
+				property.DisplayName = candidateDisplayName
+				displayNameCounts[currentKey]--
+				displayNameCounts[candidateKey]++
+				updated = append(updated, "display_name")
+			}
 		}
 		if applyStringByMode(task.ApplyMode, &property.Description, field.Description, property.Description == property.OriginalDescription) {
 			updated = append(updated, "description")

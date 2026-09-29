@@ -632,6 +632,94 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 }
 
 func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
+	for _, category := range []string{
+		interfaces.ResourceCategoryTable,
+		interfaces.ResourceCategoryDataset,
+		interfaces.ResourceCategoryLogicView,
+	} {
+		t.Run("trims field display name for "+category, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			resourceService := vmock.NewMockResourceService(ctrl)
+			worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+			resource := &interfaces.Resource{
+				ID: "resource-1", Category: category,
+				SchemaDefinition: []*interfaces.Property{{Name: "first", DisplayName: "Old", Type: interfaces.DataType_String}},
+			}
+			resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+			resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+					assert.Equal(t, "New Name", got.SchemaDefinition[0].DisplayName)
+					return nil
+				})
+
+			got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+				Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1",
+				ApplyMode: interfaces.SemanticUnderstandingApplyModeForce,
+			}, `{"fields":[{"name":"first","display_name":" New Name "}]}`, 0.9)
+
+			require.NoError(t, err)
+			assert.True(t, got.Applied)
+		})
+
+		t.Run("skips duplicate field display name for "+category, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			resourceService := vmock.NewMockResourceService(ctrl)
+			worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+			resource := &interfaces.Resource{
+				ID: "resource-1", Category: category,
+				SchemaDefinition: []*interfaces.Property{
+					{Name: "first", DisplayName: "Old", Type: interfaces.DataType_String},
+					{Name: "second", DisplayName: " Taken ", Type: interfaces.DataType_String},
+				},
+			}
+			resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+			resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+					assert.Equal(t, "Old", got.SchemaDefinition[0].DisplayName)
+					assert.Equal(t, "new description", got.SchemaDefinition[0].Description)
+					return nil
+				})
+
+			got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+				Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1",
+				ApplyMode: interfaces.SemanticUnderstandingApplyModeForce,
+			}, `{"fields":[{"name":"first","display_name":" Taken ","description":"new description"}]}`, 0.9)
+
+			require.NoError(t, err)
+			assert.True(t, got.Applied)
+			assert.JSONEq(t, `{"resource_updated":false,"updated_fields":["first"],"skipped_fields":["first: display_name duplicates another field"],"field_details":[{"name":"first","status":"partial","updated":["description"],"reasons":["display_name duplicates another field"]}]}`, got.DetailJSON)
+		})
+	}
+
+	t.Run("prevents duplicates between accepted suggestions", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		resource := &interfaces.Resource{
+			ID: "resource-1", Category: interfaces.ResourceCategoryDataset,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "first", DisplayName: "Old First", Type: interfaces.DataType_String},
+				{Name: "second", DisplayName: "Old Second", Type: interfaces.DataType_String},
+			},
+		}
+		resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+		resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+				assert.Equal(t, "New Name", got.SchemaDefinition[0].DisplayName)
+				assert.Equal(t, "Old Second", got.SchemaDefinition[1].DisplayName)
+				return nil
+			})
+
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+			Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1",
+			ApplyMode: interfaces.SemanticUnderstandingApplyModeForce,
+		}, `{"fields":[{"name":"first","display_name":" New Name "},{"name":"second","display_name":"New Name"}]}`, 0.9)
+
+		require.NoError(t, err)
+		assert.True(t, got.Applied)
+		assert.JSONEq(t, `{"resource_updated":false,"updated_fields":["first"],"skipped_fields":["second: display_name duplicates another field"],"field_details":[{"name":"first","status":"updated","updated":["display_name"]},{"name":"second","status":"unchanged","reasons":["display_name duplicates another field"]}]}`, got.DetailJSON)
+	})
+
 	t.Run("fails when applied marker is not updated", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
