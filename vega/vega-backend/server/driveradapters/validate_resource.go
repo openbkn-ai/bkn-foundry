@@ -222,7 +222,8 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 			enabledMap[f.FeatureType] = true
 		}
 		if _, duplicate := featureTypeMap[f.FeatureType]; duplicate {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType).
+				WithDescription(map[string]any{"FieldName": prop.Name, "FieldFeatureType": f.FeatureType}).
 				WithErrorDetails(fmt.Sprintf("property %q has more than one %q feature", prop.Name, f.FeatureType))
 		}
 		featureTypeMap[f.FeatureType] = struct{}{}

@@ -74,9 +74,11 @@ func TestValidateResourceRequestRejectsDuplicateFeatureTypes(t *testing.T) {
 			}
 
 			var httpErr *rest.HTTPError
-			require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
+			require.ErrorAs(t, ValidateResourceRequest(rest.WithLanguage(context.Background(), rest.AmericanEnglish), req), &httpErr)
 			require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			require.Equal(t, verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+			require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.BaseError.ErrorCode)
+			require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.BaseError.DescriptionTemplateData)
+			require.Equal(t, "Field title already has a fulltext feature", httpErr.BaseError.Description)
 			require.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
 		})
 	}
