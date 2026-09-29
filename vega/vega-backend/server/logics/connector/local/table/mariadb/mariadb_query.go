@@ -9,11 +9,12 @@ package mariadb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -93,6 +94,10 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*i
 
 	rows, err := c.db.QueryContext(ctx, sqlStr)
 	if err != nil {
+		var driverErr *mysql.MySQLError
+		if errors.As(err, &driverErr) && driverErr.Number == 1054 {
+			err = interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
+		}
 		return nil, fmt.Errorf("execute query failed: %w", err)
 	}
 	defer func() { _ = rows.Close() }()

@@ -28,6 +28,31 @@ func (e *SourceReadForbiddenError) Error() string {
 }
 func (e *SourceReadForbiddenError) Unwrap() error { return e.Cause }
 
+// SourceQueryInvalidParameterReason identifies a client-safe source query failure category.
+type SourceQueryInvalidParameterReason string
+
+const SourceQueryInvalidParameterUnknownColumn SourceQueryInvalidParameterReason = "unknown_column"
+
+// SourceQueryInvalidParameterError reports a source query rejected for invalid input.
+// Connectors preserve the driver failure for diagnostics; callers decide the HTTP response.
+type SourceQueryInvalidParameterError struct {
+	Reason SourceQueryInvalidParameterReason
+	Cause  error
+}
+
+// NewSourceQueryInvalidParameterError preserves the failure and its reason.
+func NewSourceQueryInvalidParameterError(reason SourceQueryInvalidParameterReason, cause error) *SourceQueryInvalidParameterError {
+	return &SourceQueryInvalidParameterError{Reason: reason, Cause: cause}
+}
+
+func (e *SourceQueryInvalidParameterError) Error() string {
+	if e.Cause == nil {
+		return "source query invalid parameter"
+	}
+	return fmt.Sprintf("source query invalid parameter: %v", e.Cause)
+}
+func (e *SourceQueryInvalidParameterError) Unwrap() error { return e.Cause }
+
 // UnsupportedOperationError reports an operator unsupported by a query channel.
 type UnsupportedOperationError struct {
 	Operation string
