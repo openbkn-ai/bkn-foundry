@@ -151,6 +151,7 @@ func TestOperationAuditUsesCreatedResourceID(t *testing.T) {
 }
 
 func TestOperationAuditChangedFieldsUsesStructureAndSourceOwnedSensitiveFields(t *testing.T) {
+	// #nosec G101 -- these are field names, not credential values.
 	fields := operationAuditChangedFields(map[string]any{
 		"name": "safe", "Bearer abcdefghi": "invalid structure", "bkn_abcdefgh": "kept", "bak_abcdefghijkl": "kept", "password_hint": "kept",
 	})

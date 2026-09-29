@@ -256,7 +256,7 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
-	otellog.LogInfo(ctx, fmt.Sprintf("行动日志查询请求参数: [%s]", observabilityRoute(c)))
+	otellog.LogInfo(ctx, fmt.Sprintf("Action log query parameters: [%s]", observabilityRoute(c)))
 
 	// Get path parameters
 	knID := c.Param("kn_id")
