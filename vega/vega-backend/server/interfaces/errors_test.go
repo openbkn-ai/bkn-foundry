@@ -112,6 +112,14 @@ func TestStoredConditionBuildError(t *testing.T) {
 }
 
 func TestRequestSideQueryError(t *testing.T) {
+	unknownColumn := fmt.Errorf("execute query: %w", NewSourceQueryInvalidParameterError(SourceQueryInvalidParameterUnknownColumn, errors.New("private driver column details")))
+	if reason, ok := RequestSideQueryError(unknownColumn); !ok || reason != "query references an unknown column" {
+		t.Errorf("unknown source column was not classified safely: %q, %t", reason, ok)
+	}
+	otherSourceFailure := NewSourceQueryInvalidParameterError("type_mismatch", errors.New("private driver type details"))
+	if reason, ok := RequestSideQueryError(otherSourceFailure); !ok || reason != "invalid source query parameter" {
+		t.Errorf("source query parameter failure was not classified safely: %q, %t", reason, ok)
+	}
 	build := fmt.Errorf("build filter query: %w", NewConditionBuildError("text field %s needs keyword", "body"))
 	if reason, ok := RequestSideQueryError(build); !ok || reason != "text field body needs keyword" {
 		t.Errorf("wrapped condition build error was not classified: %q, %t", reason, ok)

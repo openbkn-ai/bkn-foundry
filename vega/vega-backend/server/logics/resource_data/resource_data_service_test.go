@@ -818,6 +818,33 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 	}
 	unsupported := interfaces.NewUnsupportedOperationError("regex", filter_condition.QueryChannelSQL)
 
+	t.Run("table connector unknown column becomes HTTP 400 without driver details", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockConn := mock_interfaces.NewMockTableConnector(ctrl)
+		rds := &resourceDataService{cs: mockCS, cf: mockCF}
+		resource := newResource(interfaces.ResourceCategoryTable)
+
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMariaDB, gomock.Any()).Return(mockConn, nil)
+		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
+		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
+			Return(nil, fmt.Errorf("execute source query: %w", interfaces.NewSourceQueryInvalidParameterError(
+				interfaces.SourceQueryInvalidParameterUnknownColumn, errors.New("private driver column details"))))
+
+		rows, total, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		assert.Nil(t, rows)
+		assert.Zero(t, total)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, httpErr.Error(), "private driver column details")
+	})
+
 	t.Run("connector source permission error becomes HTTP 403", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
