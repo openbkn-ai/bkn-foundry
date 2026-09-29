@@ -18,6 +18,8 @@ import (
 
 // A toolbox's update time is what the toolbox list shows, so every write to one of its tools
 // must move it too (#1217): creating, editing, enabling, disabling and deleting a tool.
+// Inside a transaction the toolbox row is touched before any tool row, the order the importer
+// locks them in, so the two cannot deadlock on the same toolbox.
 const (
 	touchUserID = "user-1"
 	touchBoxID  = "box-a"
@@ -85,9 +87,11 @@ func TestToolWritesTouchTheirToolBox(t *testing.T) {
 		{
 			name: "create",
 			run: func(t *testing.T, f *touchFixture) error {
-				f.metadata.EXPECT().RegisterMetadata(gomock.Any(), f.tx, gomock.Any()).Return("source-a", nil)
-				f.toolDB.EXPECT().InsertTool(gomock.Any(), f.tx, gomock.Any()).Return(touchToolID, nil)
-				f.expectTouchInTx(nil)
+				gomock.InOrder(
+					f.expectTouchInTx(nil),
+					f.metadata.EXPECT().RegisterMetadata(gomock.Any(), f.tx, gomock.Any()).Return("source-a", nil),
+					f.toolDB.EXPECT().InsertTool(gomock.Any(), f.tx, gomock.Any()).Return(touchToolID, nil),
+				)
 				_, err := f.svc.saveToolToBox(context.Background(),
 					&model.ToolDB{BoxID: touchBoxID, UpdateUser: touchUserID}, &model.APIMetadataDB{})
 				return err
@@ -98,9 +102,11 @@ func TestToolWritesTouchTheirToolBox(t *testing.T) {
 			run: func(t *testing.T, f *touchFixture) error {
 				f.toolDB.EXPECT().SelectToolBoxByID(gomock.Any(), touchBoxID, []string{touchToolID}).
 					Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOpenAPI}}, nil)
-				f.toolDB.EXPECT().UpdateToolStatus(gomock.Any(), f.tx, touchToolID,
-					string(interfaces.ToolStatusTypeDisabled), touchUserID).Return(nil)
-				f.expectTouchInTx(nil)
+				gomock.InOrder(
+					f.expectTouchInTx(nil),
+					f.toolDB.EXPECT().UpdateToolStatus(gomock.Any(), f.tx, touchToolID,
+						string(interfaces.ToolStatusTypeDisabled), touchUserID).Return(nil),
+				)
 				_, err := f.svc.UpdateToolStatus(context.Background(), &interfaces.UpdateToolStatusReq{
 					UserID: touchUserID, BoxID: touchBoxID,
 					ToolStatusList: []*interfaces.ToolStatus{{ToolID: touchToolID, Status: interfaces.ToolStatusTypeDisabled}},
@@ -113,8 +119,10 @@ func TestToolWritesTouchTheirToolBox(t *testing.T) {
 			run: func(t *testing.T, f *touchFixture) error {
 				f.toolDB.EXPECT().SelectToolBoxByID(gomock.Any(), touchBoxID, []string{touchToolID}).
 					Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOperator}}, nil)
-				f.toolDB.EXPECT().DeleteBoxByIDAndTools(gomock.Any(), f.tx, touchBoxID, []string{touchToolID}).Return(nil)
-				f.expectTouchInTx(nil)
+				gomock.InOrder(
+					f.expectTouchInTx(nil),
+					f.toolDB.EXPECT().DeleteBoxByIDAndTools(gomock.Any(), f.tx, touchBoxID, []string{touchToolID}).Return(nil),
+				)
 				_, err := f.svc.DeleteBoxTool(context.Background(), &interfaces.BatchDeleteToolReq{
 					UserID: touchUserID, BoxID: touchBoxID, ToolIDs: []string{touchToolID},
 				})
@@ -137,13 +145,12 @@ func TestToolWritesTouchTheirToolBox(t *testing.T) {
 }
 
 // Inside a transaction the touch belongs to the tool write: if the toolbox cannot be touched,
-// the tool change is rolled back instead of leaving the toolbox time stale.
-func TestToolBoxTouchFailureRollsBackTheToolWrite(t *testing.T) {
+// no tool row is written and the transaction is rolled back instead of leaving the time stale.
+func TestToolBoxTouchFailureAbortsTheToolWrite(t *testing.T) {
 	f := newTouchFixture(t)
 	f.toolDB.EXPECT().SelectToolBoxByID(gomock.Any(), touchBoxID, []string{touchToolID}).
 		Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOpenAPI}}, nil)
-	f.toolDB.EXPECT().UpdateToolStatus(gomock.Any(), f.tx, touchToolID,
-		string(interfaces.ToolStatusTypeEnabled), touchUserID).Return(nil)
+	// UpdateToolStatus is not expected: once called, gomock fails the test.
 	f.expectTouchInTx(errors.New("db down"))
 
 	_, err := f.svc.UpdateToolStatus(context.Background(), &interfaces.UpdateToolStatusReq{

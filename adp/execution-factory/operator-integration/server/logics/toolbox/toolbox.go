@@ -472,11 +472,12 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 			_ = tx.Commit()
 		}
 	}()
-	err = s.deleteTools(ctx, tx, req.BoxID, tools)
+	// Lock the toolbox row before any tool row, in the same order the importer does.
+	err = s.touchToolBox(ctx, tx, req.BoxID, req.UserID)
 	if err != nil {
 		return
 	}
-	err = s.touchToolBox(ctx, tx, req.BoxID, req.UserID)
+	err = s.deleteTools(ctx, tx, req.BoxID, tools)
 	if err != nil {
 		return
 	}
@@ -712,6 +713,11 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 			_ = tx.Commit()
 		}
 	}()
+	// Lock the toolbox row before any tool row, in the same order the importer does.
+	err = s.touchToolBox(ctx, tx, req.BoxID, req.UserID)
+	if err != nil {
+		return
+	}
 	resp = []*interfaces.ToolStatus{}
 	for _, tool := range req.ToolStatusList {
 		err = s.ToolDB.UpdateToolStatus(ctx, tx, tool.ToolID, string(tool.Status), req.UserID)
@@ -724,10 +730,6 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 			ToolID: tool.ToolID,
 			Status: tool.Status,
 		})
-	}
-	err = s.touchToolBox(ctx, tx, req.BoxID, req.UserID)
-	if err != nil {
-		return
 	}
 	// Record audit log.
 	go func() {
