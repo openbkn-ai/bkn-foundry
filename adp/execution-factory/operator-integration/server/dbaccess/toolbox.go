@@ -273,6 +273,31 @@ func (b *toolboxDB) UpdateToolBoxStatus(ctx context.Context, tx *sql.Tx, boxID, 
 	return
 }
 
+// TouchToolBox records a change to one of the toolbox's tools as a change to the
+// toolbox, so its update time and updater follow the newest tool edit.
+func (b *toolboxDB) TouchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) (err error) {
+	orm := b.orm
+	if tx != nil {
+		orm = b.orm.WithTx(tx)
+	}
+	row, err := orm.Update(tbToolBox).SetData(map[string]interface{}{
+		"f_update_user": userID,
+		"f_update_time": time.Now().UnixNano(),
+	}).WhereEq("f_box_id", boxID).Execute(ctx)
+	if err != nil {
+		err = errors.Wrapf(err, "touch toolbox error")
+		return
+	}
+	ok, err := checkAffected(row)
+	if err != nil {
+		return
+	}
+	if !ok {
+		err = fmt.Errorf("touch toolbox %s failed: no row updated", boxID)
+	}
+	return
+}
+
 // SelectListByBoxIDs Get the toolbox list.
 func (b *toolboxDB) SelectListByBoxIDs(ctx context.Context, boxIDs []string, status ...string) (toolboxList []*model.ToolboxDB, err error) {
 	toolboxList = []*model.ToolboxDB{}

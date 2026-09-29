@@ -2,6 +2,7 @@ package toolbox
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 
@@ -222,6 +223,25 @@ func (s *ToolServiceImpl) saveToolToBox(ctx context.Context, tool *model.ToolDB,
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("insert tool failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return
 	}
+	err = s.touchToolBox(ctx, tx, tool.BoxID, tool.UpdateUser)
 	return
+}
+
+// touchToolBox marks the toolbox changed whenever one of its tools is created, edited,
+// enabled, disabled or removed, so the toolbox's update time follows its newest tool change.
+// Inside a transaction a failure rolls the tool change back with it. Without one the tool
+// change has already committed, so a failure is only logged: the requested write succeeded.
+func (s *ToolServiceImpl) touchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) error {
+	err := s.ToolBoxDB.TouchToolBox(ctx, tx, boxID, userID)
+	if err == nil {
+		return nil
+	}
+	if tx == nil {
+		s.Logger.WithContext(ctx).Warnf("touch toolbox %s failed, err: %v", boxID, err)
+		return nil
+	}
+	s.Logger.WithContext(ctx).Errorf("touch toolbox %s failed, err: %v", boxID, err)
+	return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 }

@@ -229,7 +229,9 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		if err != nil {
 			s.Logger.WithContext(ctx).Errorf("update tool failed, err: %v", err)
 			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			return
 		}
+		_ = s.touchToolBox(ctx, nil, toolDB.BoxID, toolDB.UpdateUser)
 		return
 	}
 	tx, err := s.DBTx.GetTx(ctx)
@@ -313,6 +315,8 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("update tool failed, err: %v", err)
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return
 	}
+	err = s.touchToolBox(ctx, tx, toolDB.BoxID, toolDB.UpdateUser)
 	return
 }

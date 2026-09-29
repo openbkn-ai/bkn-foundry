@@ -476,6 +476,10 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 	if err != nil {
 		return
 	}
+	err = s.touchToolBox(ctx, tx, req.BoxID, req.UserID)
+	if err != nil {
+		return
+	}
 	// Record audit log.
 	go func() {
 		var detils []metric.AuditLogToolDetil
@@ -720,6 +724,10 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 			ToolID: tool.ToolID,
 			Status: tool.Status,
 		})
+	}
+	err = s.touchToolBox(ctx, tx, req.BoxID, req.UserID)
+	if err != nil {
+		return
 	}
 	// Record audit log.
 	go func() {
