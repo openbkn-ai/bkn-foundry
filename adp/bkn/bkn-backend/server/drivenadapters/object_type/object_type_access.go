@@ -575,7 +575,9 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 // properties it skips are the bulk of a large network: at 10,000 object types they are hundreds
 // of megabytes that the statistics path used to read and decode just to find the tools in use.
 //
-// The status join is kept so the result covers the same object types as ListObjectTypes.
+// The status join is kept so the result covers the same object types as ListObjectTypes. Only
+// the filters of query apply: it never pages or sorts, because its caller needs every object type
+// that uses a tool, and a page of them would read as "nothing else uses it".
 func (ota *objectTypeAccess) ListObjectTypeLogicProperties(ctx context.Context,
 	query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListObjectTypeLogicProperties")
