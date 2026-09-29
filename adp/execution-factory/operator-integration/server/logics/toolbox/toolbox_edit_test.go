@@ -81,7 +81,9 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 			// After backfilling, follow the openapi branch. The service address still needs to be verified.
 			mockValidator.EXPECT().ValidatorURL(gomock.Any(), "http://new.example.com").Return(nil)
 			mockDBTx.EXPECT().GetTx(gomock.Any()).Return(tx, nil)
-			mockToolBoxDB.EXPECT().UpdateToolBox(gomock.Any(), tx, stored).DoAndReturn(
+			// The toolbox row is locked first, in the order every tool write takes it (#1217).
+			touch := mockToolBoxDB.EXPECT().TouchToolBox(gomock.Any(), tx, boxID, "user_1").Return(nil)
+			mockToolBoxDB.EXPECT().UpdateToolBox(gomock.Any(), tx, stored).After(touch).DoAndReturn(
 				func(_ context.Context, _ *sql.Tx, box *model.ToolboxDB) error {
 					So(box.ServerURL, ShouldEqual, "http://new.example.com")
 					So(box.Description, ShouldEqual, "new_desc")
@@ -116,7 +118,9 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 			expectPreflight(stored)
 			// ValidatorURL is not declared. Expectation: Once called, gomock will directly fail.
 			mockDBTx.EXPECT().GetTx(gomock.Any()).Return(tx, nil)
-			mockToolBoxDB.EXPECT().UpdateToolBox(gomock.Any(), tx, stored).DoAndReturn(
+			// The toolbox row is locked first, in the order every tool write takes it (#1217).
+			touch := mockToolBoxDB.EXPECT().TouchToolBox(gomock.Any(), tx, boxID, "user_1").Return(nil)
+			mockToolBoxDB.EXPECT().UpdateToolBox(gomock.Any(), tx, stored).After(touch).DoAndReturn(
 				func(_ context.Context, _ *sql.Tx, box *model.ToolboxDB) error {
 					// The function branch does not touch the service address and retains the original value.
 					So(box.ServerURL, ShouldEqual, "http://function.example.com")

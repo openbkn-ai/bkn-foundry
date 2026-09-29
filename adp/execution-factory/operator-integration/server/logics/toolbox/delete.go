@@ -59,15 +59,15 @@ func (s *ToolServiceImpl) deleteToolBox(ctx context.Context, tx *sql.Tx, boxID s
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	err = s.deleteTools(ctx, tx, boxID, tools)
-	if err != nil {
-		return
-	}
-	// Delete toolbox.
+	// Delete the toolbox row before its tool rows, the order every tool write locks them in.
 	err = s.ToolBoxDB.DeleteToolBox(ctx, tx, boxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("delete toolbox failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return
+	}
+	err = s.deleteTools(ctx, tx, boxID, tools)
+	if err != nil {
 		return
 	}
 	// Delete configuration.
