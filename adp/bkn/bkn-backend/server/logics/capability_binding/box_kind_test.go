@@ -150,3 +150,55 @@ func TestBoxKindsBoundedConcurrency(t *testing.T) {
 		So(atomic.LoadInt32(&peak), ShouldBeLessThanOrEqualTo, boxKindLookupLimit)
 	})
 }
+
+// TestBoxKindsStopsAtFirstFailure: one unreadable box decides the answer, so the lookups still in
+// flight are cancelled and no new ones start. Without that, a failure next to hung lookups would
+// wait out the client timeout of every one of them.
+func TestBoxKindsStopsAtFirstFailure(t *testing.T) {
+	Convey("首个工具集读取失败后取消其余查询", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		service, _, aoa := newTestServiceWithFactory(t, ctrl)
+		aoa.EXPECT().ListBoxTools(gomock.Any(), "box-bad").Return(nil, errors.New("factory down"))
+		aoa.EXPECT().ListBoxTools(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _ string) ([]*interfaces.ToolBrief, error) {
+				// A hung factory: only cancellation ends the call.
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(5 * time.Second):
+					return nil, errors.New("lookup was not cancelled")
+				}
+			}).AnyTimes()
+
+		// One batch, so every lookup is in flight when box-bad fails whatever the map order.
+		boxIDs := map[string]struct{}{"box-bad": {}}
+		for i := 0; i < boxKindLookupLimit-1; i++ {
+			boxIDs[fmt.Sprintf("box-%02d", i)] = struct{}{}
+		}
+
+		start := time.Now()
+		_, failedBox, err := service.boxKinds(context.Background(), boxIDs)
+		So(err, ShouldNotBeNil)
+		So(failedBox, ShouldEqual, "box-bad")
+		So(time.Since(start), ShouldBeLessThan, 2*time.Second)
+	})
+
+	Convey("调用方 context 已结束时返回错误而不是不完整的结果", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		service, _, aoa := newTestServiceWithFactory(t, ctrl)
+		aoa.EXPECT().ListBoxTools(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _ string) ([]*interfaces.ToolBrief, error) {
+				return nil, ctx.Err()
+			}).AnyTimes()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		kinds, _, err := service.boxKinds(ctx, map[string]struct{}{"box-1": {}, "box-2": {}})
+		So(err, ShouldNotBeNil)
+		So(kinds, ShouldBeNil)
+	})
+}

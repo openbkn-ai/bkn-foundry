@@ -503,8 +503,15 @@ const boxKindLookupLimit = 8
 // boxKinds resolves the kind of each tool box, empty IDs skipped. A box with no tools, or whose
 // tools do not say, is a function box. On failure it returns the ID of a box that could not be
 // read, so the caller can name it.
+//
+// The first failure cancels the lookups still in flight and stops new ones: one failed box
+// already decides the answer, and against a hung execution factory the remaining calls would
+// otherwise each wait out the client timeout, a batch of eight at a time.
 func (cbs *capabilityBindingService) boxKinds(ctx context.Context,
 	boxIDs map[string]struct{}) (map[string]string, string, error) {
+	lookupCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var (
 		mu        sync.Mutex
 		wg        sync.WaitGroup
@@ -517,18 +524,25 @@ func (cbs *capabilityBindingService) boxKinds(ctx context.Context,
 		if boxID == "" {
 			continue
 		}
+		select {
+		case slots <- struct{}{}:
+		case <-lookupCtx.Done():
+		}
+		if lookupCtx.Err() != nil {
+			break
+		}
 		wg.Add(1)
-		slots <- struct{}{}
 		go func(boxID string) {
 			defer wg.Done()
 			defer func() { <-slots }()
 
-			tools, err := cbs.aoa.ListBoxTools(ctx, boxID)
+			tools, err := cbs.aoa.ListBoxTools(lookupCtx, boxID)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
 				if firstErr == nil {
 					failedBox, firstErr = boxID, err
+					cancel()
 				}
 				return
 			}
@@ -543,8 +557,13 @@ func (cbs *capabilityBindingService) boxKinds(ctx context.Context,
 	if firstErr != nil {
 		return nil, failedBox, firstErr
 	}
+	// The caller's context ended before every box was looked up: the kinds are incomplete.
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
 	return kinds, "", nil
 }
+
 func (cbs *capabilityBindingService) DeleteCapabilitiesByKnID(ctx context.Context, tx *sql.Tx, knID,
 	branch string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete capabilities by knowledge network")
