@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"context"
 	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -963,8 +964,17 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 		kn.SlimForSummary()
 	}
 
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetKN Success")
+	if mode == interfaces.Mode_Export {
+		filename := strings.TrimSpace(kn.KNName)
+		if filename == "" {
+			filename = kn.KNID
+		}
+		c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{
+			"filename": filename + ".json",
+		}))
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, kn)
 }
 

@@ -324,51 +324,55 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 		return relationTypes, total, nil
 	}
 
-	objectTypeIDs := make([]string, 0, len(relationTypes)*2)
-	for _, relationType := range relationTypes {
-		objectTypeIDs = append(objectTypeIDs, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
-	}
+	if !interfaces.IsObjectReferenceEnrichmentDeferred(ctx) {
+		objectTypeIDs := make([]string, 0, len(relationTypes)*2)
+		for _, relationType := range relationTypes {
+			objectTypeIDs = append(objectTypeIDs, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
+		}
 
-	objectTypeMap, err := rts.ots.GetObjectTypesMapByIDs(ctx, query.KNID, query.Branch,
-		common.DuplicateSlice(objectTypeIDs), false)
-	if err != nil {
-		return []*interfaces.RelationType{}, 0, err
-	}
+		objectTypeMap, err := rts.ots.GetObjectTypesMapByIDs(ctx, query.KNID, query.Branch,
+			common.DuplicateSlice(objectTypeIDs), false)
+		if err != nil {
+			return []*interfaces.RelationType{}, 0, err
+		}
 
-	// Populate source and target object type names for the current relation type page.
-	for _, relationType := range relationTypes {
-		sourceObj := objectTypeMap[relationType.SourceObjectTypeID]
-		targetObj := objectTypeMap[relationType.TargetObjectTypeID]
+		// Populate source and target object type names for the current relation type page.
+		for _, relationType := range relationTypes {
+			sourceObj := objectTypeMap[relationType.SourceObjectTypeID]
+			targetObj := objectTypeMap[relationType.TargetObjectTypeID]
 
-		if sourceObj != nil {
-			relationType.SourceObjectType = interfaces.SimpleObjectType{
-				OTID:   relationType.SourceObjectTypeID,
-				OTName: sourceObj.OTName,
-				Icon:   sourceObj.Icon,
-				Color:  sourceObj.Color,
+			if sourceObj != nil {
+				relationType.SourceObjectType = interfaces.SimpleObjectType{
+					OTID:   relationType.SourceObjectTypeID,
+					OTName: sourceObj.OTName,
+					Icon:   sourceObj.Icon,
+					Color:  sourceObj.Color,
+				}
+			}
+			if targetObj != nil {
+				relationType.TargetObjectType = interfaces.SimpleObjectType{
+					OTID:   relationType.TargetObjectTypeID,
+					OTName: targetObj.OTName,
+					Icon:   targetObj.Icon,
+					Color:  targetObj.Color,
+				}
 			}
 		}
-		if targetObj != nil {
-			relationType.TargetObjectType = interfaces.SimpleObjectType{
-				OTID:   relationType.TargetObjectTypeID,
-				OTName: targetObj.OTName,
-				Icon:   targetObj.Icon,
-				Color:  targetObj.Color,
-			}
+	}
+
+	if !interfaces.IsAccountNameEnrichmentDeferred(ctx) {
+		accountInfos := make([]*interfaces.AccountInfo, 0, len(relationTypes)*2)
+		for _, relationType := range relationTypes {
+			accountInfos = append(accountInfos, &relationType.Creator, &relationType.Updater)
 		}
-	}
 
-	accountInfos := make([]*interfaces.AccountInfo, 0, len(relationTypes)*2)
-	for _, relationType := range relationTypes {
-		accountInfos = append(accountInfos, &relationType.Creator, &relationType.Updater)
-	}
+		err = rts.ums.GetAccountNames(ctx, accountInfos)
+		if err != nil {
+			span.SetStatus(codes.Error, "GetAccountNames error")
 
-	err = rts.ums.GetAccountNames(ctx, accountInfos)
-	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-
-		return []*interfaces.RelationType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
+			return []*interfaces.RelationType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")
