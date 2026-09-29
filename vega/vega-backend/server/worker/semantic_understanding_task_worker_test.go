@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	// "net/http" // Catalog 父目录测试恢复时启用。
 	"testing"
 	"time"
@@ -719,6 +720,44 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 		assert.True(t, got.Applied)
 		assert.JSONEq(t, `{"resource_updated":false,"updated_fields":["first"],"skipped_fields":["second: display_name duplicates another field"],"field_details":[{"name":"first","status":"updated","updated":["display_name"]},{"name":"second","status":"unchanged","reasons":["display_name duplicates another field"]}]}`, got.DetailJSON)
 	})
+
+	for _, tc := range []struct {
+		name       string
+		secondName string
+	}{
+		{name: "accepts chained renames", secondName: "Gamma"},
+		{name: "accepts swapped names", secondName: "Alpha"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			resourceService := vmock.NewMockResourceService(ctrl)
+			worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+			resource := &interfaces.Resource{
+				ID: "resource-1", Category: interfaces.ResourceCategoryDataset,
+				SchemaDefinition: []*interfaces.Property{
+					{Name: "first", DisplayName: "Alpha", Type: interfaces.DataType_String},
+					{Name: "second", DisplayName: "Beta", Type: interfaces.DataType_String},
+				},
+			}
+			resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+			resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+					assert.Equal(t, "Beta", got.SchemaDefinition[0].DisplayName)
+					assert.Equal(t, tc.secondName, got.SchemaDefinition[1].DisplayName)
+					return nil
+				})
+
+			resultJSON := fmt.Sprintf(`{"fields":[{"name":"first","display_name":"Beta"},{"name":"second","display_name":%q}]}`, tc.secondName)
+			got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+				Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1",
+				ApplyMode: interfaces.SemanticUnderstandingApplyModeForce,
+			}, resultJSON, 0.9)
+
+			require.NoError(t, err)
+			assert.True(t, got.Applied)
+			assert.JSONEq(t, `{"resource_updated":false,"updated_fields":["first","second"],"field_details":[{"name":"first","status":"updated","updated":["display_name"]},{"name":"second","status":"updated","updated":["display_name"]}]}`, got.DetailJSON)
+		})
+	}
 
 	t.Run("fails when applied marker is not updated", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

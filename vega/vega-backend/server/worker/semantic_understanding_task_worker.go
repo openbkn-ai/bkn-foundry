@@ -1021,13 +1021,12 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	}
 
 	fieldByName := make(map[string]*interfaces.Property, len(resourceInfo.SchemaDefinition))
-	displayNameCounts := make(map[string]int, len(resourceInfo.SchemaDefinition))
 	for _, property := range resourceInfo.SchemaDefinition {
 		if property != nil {
 			fieldByName[property.Name] = property
-			displayNameCounts[strings.TrimSpace(property.DisplayName)]++
 		}
 	}
+	displayNameCandidates, acceptedDisplayNames := planSemanticDisplayNameUpdates(task, result.Fields, resourceInfo.SchemaDefinition, fieldByName)
 
 	seenFields := make(map[string]struct{}, len(result.Fields))
 	updatedFields := make([]string, 0)
@@ -1086,21 +1085,12 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		}
 
 		updated := make([]string, 0, 2)
-		candidateDisplayName := property.DisplayName
-		if !invalidDisplayName && applyStringByMode(task.ApplyMode, &candidateDisplayName, displayName, property.DisplayName == property.Name) {
-			currentKey := strings.TrimSpace(property.DisplayName)
-			candidateKey := strings.TrimSpace(candidateDisplayName)
-			otherFieldsWithName := displayNameCounts[candidateKey]
-			if candidateKey == currentKey {
-				otherFieldsWithName--
-			}
-			if otherFieldsWithName > 0 {
+		if candidateDisplayName, hasCandidate := displayNameCandidates[field.Name]; hasCandidate {
+			if !acceptedDisplayNames[field.Name] {
 				skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name duplicates another field", field.Name))
 				reasons = append(reasons, "display_name duplicates another field")
 			} else {
 				property.DisplayName = candidateDisplayName
-				displayNameCounts[currentKey]--
-				displayNameCounts[candidateKey]++
 				updated = append(updated, "display_name")
 			}
 		}
@@ -1173,6 +1163,71 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		Applied:    true,
 		DetailJSON: detailStr,
 	}, nil
+}
+
+// planSemanticDisplayNameUpdates checks the names that would exist after the whole
+// result is applied, so a rename can reuse a name freed by another field.
+func planSemanticDisplayNameUpdates(task *interfaces.SemanticUnderstandingTask,
+	fields []interfaces.SemanticUnderstandingResourceResultField, schema []*interfaces.Property,
+	fieldByName map[string]*interfaces.Property) (map[string]string, map[string]bool) {
+	candidates := make(map[string]string, len(fields))
+	accepted := make(map[string]bool, len(fields))
+	order := make([]string, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		if field.Name == "" {
+			continue
+		}
+		if _, duplicate := seen[field.Name]; duplicate {
+			continue
+		}
+		seen[field.Name] = struct{}{}
+		property := fieldByName[field.Name]
+		displayName := strings.TrimSpace(field.DisplayName)
+		if property == nil || utf8.RuneCountInString(displayName) > interfaces.MaxLength_PropertyDisplayName ||
+			(field.DisplayName != "" && isTechnicalFieldName(field.Name, field.DisplayName)) ||
+			utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription ||
+			validateConfidence(field.Confidence, "") != nil ||
+			(field.Confidence != nil && *field.Confidence < task.ConfidenceThreshold) {
+			continue
+		}
+		candidate := property.DisplayName
+		if !applyStringByMode(task.ApplyMode, &candidate, displayName, property.DisplayName == property.Name) {
+			continue
+		}
+		candidates[field.Name] = candidate
+		accepted[field.Name] = true
+		order = append(order, field.Name)
+	}
+
+	counts := make(map[string]int, len(schema))
+	for _, property := range schema {
+		if property == nil {
+			continue
+		}
+		counts[strings.TrimSpace(property.DisplayName)]++
+	}
+	for _, name := range order {
+		counts[strings.TrimSpace(fieldByName[name].DisplayName)]--
+		counts[strings.TrimSpace(candidates[name])]++
+	}
+	// Reject later suggestions first when several final names collide. Repeat
+	// because rejecting one rename may restore a name needed by another.
+	for changed := true; changed; {
+		changed = false
+		for i := len(order) - 1; i >= 0; i-- {
+			name := order[i]
+			candidateKey := strings.TrimSpace(candidates[name])
+			if !accepted[name] || counts[candidateKey] <= 1 {
+				continue
+			}
+			accepted[name] = false
+			counts[candidateKey]--
+			counts[strings.TrimSpace(fieldByName[name].DisplayName)]++
+			changed = true
+		}
+	}
+	return candidates, accepted
 }
 
 func applyStringByMode(mode string, current *string, next string, treatCurrentAsEmpty bool) bool {
