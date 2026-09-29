@@ -23,7 +23,7 @@ func (l *recordingLogger) Warnf(f string, v ...interface{})              { l.War
 func (l *recordingLogger) Errorf(f string, v ...interface{})             { l.Error(fmt.Sprintf(f, v...)) }
 func (l *recordingLogger) WithContext(context.Context) interfaces.Logger { return l }
 
-func TestOperationLogAttributesCarryTrustedBusinessOperationScope(t *testing.T) {
+func TestOperationLogAttributesCarryBusinessOperationScopeWithoutSelfAttestedTrust(t *testing.T) {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		RequestID:      "req_11111111-1111-4111-8111-111111111111",
 		ConversationID: "conv-1",
@@ -52,7 +52,6 @@ func TestOperationLogAttributesCarryTrustedBusinessOperationScope(t *testing.T) 
 		"interaction_id":       "int-1",
 		"operation_id":         "op-1",
 		"tool_name":            "run_sql",
-		"trust_level":          "trusted",
 		"log_category":         "runtime.business",
 		"event_name":           "operation.completed",
 		"outcome":              "success",
@@ -60,6 +59,11 @@ func TestOperationLogAttributesCarryTrustedBusinessOperationScope(t *testing.T) 
 	for key, expected := range want {
 		if values[key] != expected {
 			t.Fatalf("%s=%q, want %q (all=%v)", key, values[key], expected, values)
+		}
+	}
+	for _, forbidden := range []string{"trust_level", "ingress_principal"} {
+		if _, present := values[forbidden]; present {
+			t.Fatalf("producer must not self-attest %s (all=%v)", forbidden, values)
 		}
 	}
 }
