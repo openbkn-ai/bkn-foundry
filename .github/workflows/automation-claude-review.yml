@@ -694,6 +694,9 @@ jobs:
 
             - `${{ github.workspace }}/pr-head/`：head 提交的完整文件树（只读快照）。
               Read / Grep / Glob 读 PR 代码时一律指向这个目录，不要读根目录下的同名文件。
+              快照里有意去掉了符号链接和 `.claude/`、`.mcp.json`、`CLAUDE.md`、
+              `CLAUDE.local.md`、`AGENTS.md`：在这里找不到它们不代表 PR 删了，改动以
+              `pr.diff` 和 `git show ${{ env.HEAD_SHA }}:<path>` 为准。
             - `${{ github.workspace }}/pr.diff`：本轮的完整 diff。不要用 `gh pr diff`
               ——它取的是 PR 当前最新的提交，可能已经不是本轮这一版。
 
