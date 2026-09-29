@@ -13,11 +13,14 @@ import "sync"
 type CursorSession struct {
 	mu sync.Mutex
 
-	ID          string
-	AccountID   string
-	CatalogID   string
-	ResourceIDs []string
-	CompiledSQL string
+	ID        string
+	AccountID string
+	// QuotaOwnerID may be the trusted caller behind an internal access account.
+	// AccountID remains the authority for cursor continuation and close.
+	QuotaOwnerID string
+	CatalogID    string
+	ResourceIDs  []string
+	CompiledSQL  string
 
 	QueryFormat     QueryFormat
 	OpenSearchQuery map[string]any

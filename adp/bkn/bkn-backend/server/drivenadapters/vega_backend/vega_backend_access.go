@@ -72,9 +72,11 @@ func (vba *vegaBackendAccess) buildHeaders(ctx context.Context) map[string]strin
 func (vba *vegaBackendAccess) buildDatasetDataHeaders(ctx context.Context, datasetID string) map[string]string {
 	headers := vba.buildHeaders(ctx)
 	if datasetID == interfaces.BKN_DATASET_ID {
-		// The concept dataset is an internal implementation resource. BKN accesses
-		// it as the built-in administrator while retaining the caller identity for
-		// every ordinary resource.
+		if accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo); ok && accountInfo.ID != "" {
+			headers[interfaces.HTTP_HEADER_BKN_CALLER_ID] = accountInfo.ID
+		}
+		// The concept dataset requires administrator access. The separate caller
+		// header is used only for cursor quota accounting in Vega.
 		headers[interfaces.HTTP_HEADER_ACCOUNT_ID] = interfaces.ADMIN_ACCOUNT_ID
 		headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE] = interfaces.ADMIN_ACCOUNT_TYPE
 	}

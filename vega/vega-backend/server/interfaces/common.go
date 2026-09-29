@@ -12,6 +12,20 @@ import (
 
 type contextKey string // Customize the exclusive key type
 
+const cursorQuotaOwnerKey contextKey = "cursor-quota-owner"
+
+// WithCursorQuotaOwner associates a trusted caller with cursor quota accounting.
+// Cursor authorization continues to use the authenticated account.
+func WithCursorQuotaOwner(ctx context.Context, callerID string) context.Context {
+	return context.WithValue(ctx, cursorQuotaOwnerKey, callerID)
+}
+
+// CursorQuotaOwner returns the trusted caller, if one was supplied.
+func CursorQuotaOwner(ctx context.Context) string {
+	callerID, _ := ctx.Value(cursorQuotaOwnerKey).(string)
+	return callerID
+}
+
 const (
 	CONTENT_TYPE_NAME = "Content-Type"
 	CONTENT_TYPE_JSON = "application/json"

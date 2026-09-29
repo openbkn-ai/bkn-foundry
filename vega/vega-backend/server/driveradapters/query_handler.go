@@ -41,6 +41,39 @@ func (r *restHandler) RawQueryByIn(c *gin.Context) {
 	r.rawQuery(c, visitor)
 }
 
+// CloseCursorByEx releases a cursor created by either query API.
+func (r *restHandler) CloseCursorByEx(c *gin.Context) {
+	caller, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.closeCursor(c, caller)
+}
+
+// CloseCursorByIn releases a cursor on the internal API.
+func (r *restHandler) CloseCursorByIn(c *gin.Context) {
+	r.closeCursor(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) closeCursor(c *gin.Context, caller hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	err := query.CloseCursorSession(ctx, caller.ID, c.Param("cursor"))
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, errors.VegaBackend_Query_ExecuteFailed)
+		otellog.LogError(ctx, "Close cursor failed", httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+}
+
 // sqlQuery is the shared implementation for SQL query
 func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)

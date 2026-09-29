@@ -234,6 +234,11 @@ Description = "Cursor session limit exceeded"
 Solution = "Please try again later"
 ErrorLink = ""
 
+[VegaBackend.Query.CursorInUse]
+Description = "Cursor is in use"
+Solution = "Please try again later"
+ErrorLink = ""
+
 [VegaBackend.Query.ExecuteFailed]
 Description = "Query execution failed"
 Solution = "Please contact the administrator"

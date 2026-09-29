@@ -23,6 +23,7 @@ const (
 	HTTP_HEADER_METHOD_OVERRIDE = "x-http-method-override"
 	HTTP_HEADER_ACCOUNT_ID      = "x-account-id"
 	HTTP_HEADER_ACCOUNT_TYPE    = "x-account-type"
+	HTTP_HEADER_BKN_CALLER_ID   = "x-bkn-caller-id"
 
 	ACCOUNT_INFO_KEY contextKey = "x-account-info" // Avoid using a raw string directly.
 

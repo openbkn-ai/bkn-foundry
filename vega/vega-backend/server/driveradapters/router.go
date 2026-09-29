@@ -166,6 +166,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			resources.POST("/:id/discover", r.DiscoverResourceByEx)
 			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByEx)
 
+			resources.DELETE("/cursors/:cursor", r.CloseCursorByEx)
+
 			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByEx)
 			resources.PUT("/:id/data/:docid", r.verifyJsonContentType(), r.PutResourceDataDocByEx)
 			resources.GET("/:id/data/:docid", r.GetResourceDataDocByEx)
@@ -272,6 +274,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			resources.POST("/:id/disable", r.DisableResourceByIn)
 			resources.POST("/:id/discover", r.DiscoverResourceByIn)
 			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByIn)
+
+			resources.DELETE("/cursors/:cursor", r.CloseCursorByIn)
 
 			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByIn)
 			resources.PUT("/:id/data/:docid", r.verifyJsonContentType(), r.PutResourceDataDocByIn)

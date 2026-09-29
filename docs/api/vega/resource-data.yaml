@@ -22,6 +22,10 @@ info:
 
     **错误码复用 Resource 系列**：本规范不引入 `Dataset.*` 专属错误码；单条文档不存在
     与 resource 不存在共用 `VegaBackend.Resource.NotFound`，靠 `error_details` 区分。
+
+    cursor 可通过 `DELETE /resources/cursors/{cursor}` 提前关闭，详见
+    [raw-query.yaml](raw-query.yaml)。默认空闲租约为 1800 秒；单账号 cursor session
+    默认上限 100，全局默认上限 1000。
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -110,6 +114,14 @@ paths:
           $ref: "#/components/responses/NotAcceptable"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          description: |
+            `VegaBackend.Query.CursorSessionLimitExceeded`。`error_details` 区分
+            `per-account cursor session limit reached` 与 `global cursor session limit reached`。
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
         "501":

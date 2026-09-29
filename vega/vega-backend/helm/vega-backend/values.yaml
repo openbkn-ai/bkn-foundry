@@ -99,6 +99,9 @@ depServices:
     protocol: http
 
 config:
+  query:
+    cursorMaxSessions: 1000
+    cursorMaxSessionsPerAccount: 100
   server:
     runMode: release
     httpPort: 13014

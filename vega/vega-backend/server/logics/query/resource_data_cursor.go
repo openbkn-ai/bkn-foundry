@@ -43,9 +43,13 @@ func ExecuteInitialResourceDataCursorWithCategory(ctx context.Context, accountID
 func ExecuteInitialResourceDataCursorWithCategoryRunner(ctx context.Context, accountID string, resource *interfaces.Resource,
 	source *interfaces.Resource, paginationCategory string, params *interfaces.ResourceDataQueryParams,
 	execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
-	session, err := rawQueryCursorSessions.createResourceData(accountID, resource, params)
+	quotaOwnerID := interfaces.CursorQuotaOwner(ctx)
+	if quotaOwnerID == "" {
+		quotaOwnerID = accountID
+	}
+	session, err := rawQueryCursorSessions.createResourceData(accountID, quotaOwnerID, resource, params)
 	if err != nil {
-		return nil, cursorSessionLimitError(ctx)
+		return nil, cursorSessionCreateError(ctx, err)
 	}
 	session.ResourceDataCategory = paginationCategory
 	session.ResourceDataSource = cursorSourceBinding(source)
