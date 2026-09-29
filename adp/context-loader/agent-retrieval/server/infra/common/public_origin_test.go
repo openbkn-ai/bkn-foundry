@@ -21,8 +21,8 @@ func TestPublicOriginFromRequest(t *testing.T) {
 		want    string
 	}{
 		{name: "in-cluster call has no browsable host", host: "agent-retrieval:30779", want: ""},
-		{name: "ingress sets proto only", host: "bkn.example.com",
-			headers: map[string]string{"X-Forwarded-Proto": "https"}, want: "https://bkn.example.com"},
+		{name: "proto alone does not make a service-name Host public", host: "agent-retrieval:30779",
+			headers: map[string]string{"X-Forwarded-Proto": "https"}, want: ""},
 		{name: "forwarded host wins over Host", host: "agent-retrieval:30779",
 			headers: map[string]string{"X-Forwarded-Host": "bkn.example.com:8443", "X-Forwarded-Proto": "https"},
 			want:    "https://bkn.example.com:8443"},
@@ -38,8 +38,8 @@ func TestPublicOriginFromRequest(t *testing.T) {
 			headers: map[string]string{"X-Forwarded-Host": "evil.example.com/phish?", "X-Forwarded-Proto": "https"}, want: ""},
 		{name: "host with credentials is refused", host: "internal",
 			headers: map[string]string{"X-Forwarded-Host": "user@evil.example.com", "X-Forwarded-Proto": "https"}, want: ""},
-		{name: "non-web scheme is refused", host: "bkn.example.com",
-			headers: map[string]string{"X-Forwarded-Proto": "javascript"}, want: ""},
+		{name: "non-web scheme is refused", host: "internal",
+			headers: map[string]string{"X-Forwarded-Host": "bkn.example.com", "X-Forwarded-Proto": "javascript"}, want: ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

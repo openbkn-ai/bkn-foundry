@@ -118,15 +118,43 @@ func TestQueryObjectInstanceMaskedResultCarriesPermissionGuidance(t *testing.T) 
 }
 
 func TestGetLogicPropertiesRefusalCarriesPermissionGuidance(t *testing.T) {
-	stub := &stubLogicPropertyResolverService{err: &infraErr.HTTPError{HTTPCode: http.StatusForbidden, Code: "Public.Forbidden"}}
-	handler := handleGetLogicPropertiesValues(stub, guidanceTestGuide())
-
-	result, _ := handler(guidanceTestCtx(), mcpReq(map[string]any{
+	args := map[string]any{
 		"kn_id": "kn-1", "ot_id": "ot-1", "properties": []any{"score"},
 		"_instance_identities": []any{map[string]any{"id": "1"}},
-	}))
-
+	}
+	objectTypeRefusal := &infraErr.HTTPError{HTTPCode: http.StatusForbidden, Code: "Public.Forbidden",
+		ErrorDetails: "Public.Forbidden: query_data was not granted for object_type:kn-1/ot-1"}
+	result, _ := handleGetLogicPropertiesValues(&stubLogicPropertyResolverService{err: objectTypeRefusal},
+		guidanceTestGuide())(guidanceTestCtx(), mcpReq(args))
 	if result == nil || !result.IsError || !strings.Contains(resultText(result), `"permission_guidance"`) {
 		t.Fatalf("result = %+v, want a refusal with guidance", result)
+	}
+
+	// A 403 from the metric or tool behind a logic property is not an object
+	// type grant, so no object type link is offered for it.
+	metricRefusal := &infraErr.HTTPError{HTTPCode: http.StatusForbidden, Code: "Public.Forbidden",
+		ErrorDetails: "Public.Forbidden: execute was not granted for metric:m-1"}
+	result, _ = handleGetLogicPropertiesValues(&stubLogicPropertyResolverService{err: metricRefusal},
+		guidanceTestGuide())(guidanceTestCtx(), mcpReq(args))
+	if strings.Contains(resultText(result), `"permission_guidance"`) {
+		t.Fatalf("result = %s, want no guidance for a metric refusal", resultText(result))
+	}
+}
+
+func TestQueryObjectInstanceWithOnlyFullRequestedPropertiesHasNoGuidance(t *testing.T) {
+	stub := &stubOntologyQuery{resp: &interfaces.QueryObjectInstancesResp{
+		Data: []any{map[string]any{"name": "a"}},
+		EffectivePermissions: map[string]interfaces.PropertyAccessLevel{
+			"name": interfaces.PropertyAccessFull, "salary": interfaces.PropertyAccessMasked,
+		},
+	}}
+	handler := handleQueryObjectInstance(stub, guidanceTestGuide())
+
+	result, _ := handler(guidanceTestCtx(), mcpReq(map[string]any{
+		"kn_id": "kn-1", "ot_id": "ot-1", "properties": []any{"name"}, "response_format": "json",
+	}))
+
+	if strings.Contains(resultText(result), "permission_guidance") {
+		t.Fatalf("result = %s, want no guidance when no requested property was restricted", resultText(result))
 	}
 }

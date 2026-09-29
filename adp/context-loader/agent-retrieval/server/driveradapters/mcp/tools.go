@@ -156,7 +156,7 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery,
 		}
 		bkntrace.EmitQueryObjectInstanceEvents(ctx, nil, queryReq, resp)
 		resp.ObjectConcept = nil
-		resp.PermissionGuidance = guide.ForObjectQuery(ctx, queryReq.KnID, queryReq.OtID,
+		resp.PermissionGuidance = guide.ForObjectQuery(ctx, queryReq.KnID, queryReq.OtID, queryReq.Properties,
 			resp.EffectivePermissions, resp.RowFilterApplied)
 		resp.RowFilterApplied = false // Restated by the guidance.
 		// Pure structured filtering has no relevance score; strip the constant _score to avoid misleading callers.
@@ -298,7 +298,7 @@ func handleGetLogicPropertiesValues(service interfaces.IKnLogicPropertyResolverS
 		resp, err := service.ResolveLogicProperties(ctx, resolveReq)
 		if err != nil {
 			return toolErrorWithPermissionGuidance(err,
-				guide.ForObjectTypeError(ctx, err, resolveReq.KnID, resolveReq.OtID)), nil
+				guide.ForObjectTypeDenial(ctx, err, resolveReq.KnID, resolveReq.OtID)), nil
 		}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {

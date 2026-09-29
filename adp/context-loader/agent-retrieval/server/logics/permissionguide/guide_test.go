@@ -171,7 +171,7 @@ func TestOnlyForbiddenErrorsGetGuidance(t *testing.T) {
 func TestSuccessfulQueryReportsMaskingAndRowFilter(t *testing.T) {
 	guide := newTestGuide(&schemaProbeStub{})
 
-	got := guide.ForObjectQuery(userCtx("https://bkn.example.com"), "kn", "ot", map[string]interfaces.PropertyAccessLevel{
+	got := guide.ForObjectQuery(userCtx("https://bkn.example.com"), "kn", "ot", nil, map[string]interfaces.PropertyAccessLevel{
 		"name": interfaces.PropertyAccessFull, "phone": interfaces.PropertyAccessMasked, "salary": interfaces.PropertyAccessSchema,
 	}, true)
 
@@ -212,7 +212,7 @@ func TestUnrestrictedQueryGetsNoGuidance(t *testing.T) {
 	probe := &schemaProbeStub{}
 	guide := newTestGuide(probe)
 
-	got := guide.ForObjectQuery(userCtx(""), "kn", "ot",
+	got := guide.ForObjectQuery(userCtx(""), "kn", "ot", nil,
 		map[string]interfaces.PropertyAccessLevel{"name": interfaces.PropertyAccessFull}, false)
 
 	if got != nil || probe.calls != 0 {
@@ -227,8 +227,8 @@ func TestVisibilityProbeIsCachedPerCallerUntilExpiry(t *testing.T) {
 	guide.now = func() time.Time { return now }
 	masked := map[string]interfaces.PropertyAccessLevel{"phone": interfaces.PropertyAccessMasked}
 
-	guide.ForObjectQuery(userCtx(""), "kn", "ot", masked, false)
-	guide.ForObjectQuery(userCtx(""), "kn", "ot", masked, false)
+	guide.ForObjectQuery(userCtx(""), "kn", "ot", nil, masked, false)
+	guide.ForObjectQuery(userCtx(""), "kn", "ot", nil, masked, false)
 	if probe.calls != 1 {
 		t.Fatalf("probes = %d, want 1 within the TTL", probe.calls)
 	}
@@ -236,13 +236,13 @@ func TestVisibilityProbeIsCachedPerCallerUntilExpiry(t *testing.T) {
 	other := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
 		AccountID: "u-2", AccountType: interfaces.AccessorTypeUser,
 	})
-	guide.ForObjectQuery(other, "kn", "ot", masked, false)
+	guide.ForObjectQuery(other, "kn", "ot", nil, masked, false)
 	if probe.calls != 2 {
 		t.Fatalf("probes = %d, want a separate probe for another caller", probe.calls)
 	}
 
 	now = now.Add(visibilityTTL + time.Second)
-	guide.ForObjectQuery(userCtx(""), "kn", "ot", masked, false)
+	guide.ForObjectQuery(userCtx(""), "kn", "ot", nil, masked, false)
 	if probe.calls != 3 {
 		t.Fatalf("probes = %d, want a new probe after expiry", probe.calls)
 	}
@@ -286,7 +286,7 @@ func TestMessageFollowsTheRequestLanguage(t *testing.T) {
 	guide := newTestGuide(&schemaProbeStub{})
 	ctx := common.SetLanguageToCtx(userCtx(""), common.Language("en-US"))
 
-	got := guide.ForObjectQuery(ctx, "kn", "ot", map[string]interfaces.PropertyAccessLevel{
+	got := guide.ForObjectQuery(ctx, "kn", "ot", nil, map[string]interfaces.PropertyAccessLevel{
 		"phone": interfaces.PropertyAccessMasked, "salary": interfaces.PropertyAccessSchema,
 	}, true)
 
@@ -299,5 +299,35 @@ func TestMessageFollowsTheRequestLanguage(t *testing.T) {
 	_, query := splitLink(t, got.Shortfalls[0].RequestPermissionURL)
 	if reason := query.Get("reason"); reason != "The agent needs raw values in “客户信息” for phone, salary" {
 		t.Fatalf("reason = %q", reason)
+	}
+}
+
+func TestOnlyRequestedPropertiesAreReportedAsWithheld(t *testing.T) {
+	guide := newTestGuide(&schemaProbeStub{})
+	effective := map[string]interfaces.PropertyAccessLevel{
+		"name": interfaces.PropertyAccessFull, "phone": interfaces.PropertyAccessMasked, "salary": interfaces.PropertyAccessSchema,
+	}
+
+	if got := guide.ForObjectQuery(userCtx(""), "kn", "ot", []string{"name"}, effective, false); got != nil {
+		t.Fatalf("guidance = %+v, want nil when only full properties were requested", got)
+	}
+	got := guide.ForObjectQuery(userCtx(""), "kn", "ot", []string{"name", "phone"}, effective, false)
+	if got == nil || !reflect.DeepEqual(got.Shortfalls[0].Properties, []string{"phone"}) {
+		t.Fatalf("guidance = %+v, want only the requested masked property", got)
+	}
+}
+
+func TestDenialGuidanceRequiresTheObjectTypeInTheRefusal(t *testing.T) {
+	guide := newTestGuide(&schemaProbeStub{})
+	named := &infraErr.HTTPError{HTTPCode: http.StatusForbidden,
+		ErrorDetails: "Public.Forbidden: query_data was not granted for object_type:kn/ot"}
+	other := &infraErr.HTTPError{HTTPCode: http.StatusForbidden,
+		ErrorDetails: "Public.Forbidden: execute was not granted for metric:m-1"}
+
+	if got := guide.ForObjectTypeDenial(userCtx(""), named, "kn", "ot"); got == nil {
+		t.Fatal("a refusal naming the object type must carry guidance")
+	}
+	if got := guide.ForObjectTypeDenial(userCtx(""), other, "kn", "ot"); got != nil {
+		t.Fatalf("guidance = %+v, want nil for a refusal of another resource", got)
 	}
 }

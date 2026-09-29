@@ -52,7 +52,7 @@ info:
     `get_logic_properties_values` 在访问权限影响调用时附带该对象，两个入口相同。
     被 403 拒绝时，它加在错误正文 JSON（`isError=true`）的顶层，与 `code`、`details`
     并列；`query_object_instance` 成功但有字段脱敏 / 只可见字段名，或行访问范围
-    收窄了结果时，它出现在结果顶层。结构：`message`（按请求语言生成、可直接展示给
+    收窄了结果时，它出现在结果顶层；调用时指定了 `properties` 的，只看这些字段。结构：`message`（按请求语言生成、可直接展示给
     用户的说明：缺什么权限、结果受什么影响，以及下一步——有申请链接时提示提交后
     等待管理员授权再重新发起，没有时提示联系管理员）、`resource`（`type=object_type`、
     `id=<kn_id>/<ot_id>`、`kn_id`、`ot_id`，调用者可查看该对象类定义时才有
@@ -60,7 +60,7 @@ info:
     proposal kind：`grant`（缺基础操作，附 `operations`）、`property_grants`
     （附拿不到原始值的 `properties`）、`row_filter`（结果可能不完整）。
     `request_permission_url` 是 Studio 对象类详情页打开申请弹窗的地址：请求经
-    ingress 进入（带 `X-Forwarded-Host` 或 `X-Forwarded-Proto`）时为绝对地址，
+    ingress 进入（带 `X-Forwarded-Host`）时为绝对地址，
     主机即调用者访问 MCP 所用的主机；集群内调用拿不到对外主机，此时为相对
     Studio 主机的路径（以 `/` 开头），由调用方补全。链接在路由模板后追加申请弹窗的
     预填参数：`operations`（grant，逗号分隔）或 `properties`（property_grants，逗号

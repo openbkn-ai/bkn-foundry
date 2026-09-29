@@ -14,6 +14,8 @@ package permissionguide
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
@@ -99,16 +101,32 @@ func (g *Guide) ForObjectTypeError(ctx context.Context, err error, knID, otID st
 	}})
 }
 
+// ForObjectTypeDenial is ForObjectTypeError for tools whose 403 may come from
+// a resource other than the object type (a logic property's metric or tool).
+// It answers only when ontology-query's refusal names this object type.
+func (g *Guide) ForObjectTypeDenial(ctx context.Context, err error, knID, otID string) *interfaces.PermissionGuidance {
+	var httpErr *infraErr.HTTPError
+	if !errors.As(err, &httpErr) ||
+		!strings.Contains(fmt.Sprint(httpErr.ErrorDetails), "object_type:"+knID+"/"+otID) {
+		return nil
+	}
+	return g.ForObjectTypeError(ctx, err, knID, otID)
+}
+
 // ForObjectQuery returns guidance for a successful query whose result was
 // masked or narrowed, and nil when every returned property was full and no
 // row filter applied.
-func (g *Guide) ForObjectQuery(ctx context.Context, knID, otID string,
+//
+// effective covers every property of the object type, not only the returned
+// ones, so it is narrowed to the requested properties when the caller chose
+// them; an empty list means all properties were returned.
+func (g *Guide) ForObjectQuery(ctx context.Context, knID, otID string, requested []string,
 	effective map[string]interfaces.PropertyAccessLevel, rowFilterApplied bool) *interfaces.PermissionGuidance {
 	if g == nil || knID == "" || otID == "" {
 		return nil
 	}
 	var shortfalls []interfaces.PermissionShortfall
-	if restricted := restrictedProperties(effective); len(restricted) > 0 {
+	if restricted := restrictedProperties(effective, requested); len(restricted) > 0 {
 		shortfalls = append(shortfalls, interfaces.PermissionShortfall{
 			Scope: interfaces.PermissionScopePropertyGrants, Properties: restricted,
 		})
@@ -125,10 +143,17 @@ func (g *Guide) ForObjectQuery(ctx context.Context, knID, otID string,
 // restrictedProperties lists properties whose raw value was withheld. A
 // property the caller cannot see at all (none) is absent from the map by
 // design and stays unmentioned.
-func restrictedProperties(effective map[string]interfaces.PropertyAccessLevel) []string {
+func restrictedProperties(effective map[string]interfaces.PropertyAccessLevel, requested []string) []string {
+	var wanted map[string]bool
+	if len(requested) > 0 {
+		wanted = make(map[string]bool, len(requested))
+		for _, name := range requested {
+			wanted[name] = true
+		}
+	}
 	var names []string
 	for name, level := range effective {
-		if level != interfaces.PropertyAccessFull {
+		if level != interfaces.PropertyAccessFull && (wanted == nil || wanted[name]) {
 			names = append(names, name)
 		}
 	}

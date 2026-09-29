@@ -22,23 +22,22 @@ var publicHostPattern = regexp.MustCompile(`^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)
 // PublicOriginFromRequest returns the scheme://host a caller used to reach
 // this service, or "" when the request did not come through a proxy.
 //
-// Only a request that carries X-Forwarded-Host or X-Forwarded-Proto is trusted
-// to have a browsable host: the ingress sets them, while an in-cluster caller
-// (bkn-agent, the sandbox calling back) dials the service name, which a user's
-// browser cannot open. Such callers get relative links instead.
+// Only a request that carries X-Forwarded-Host is trusted to have a browsable
+// host: the ingress sets it, while an in-cluster caller (bkn-agent, the
+// sandbox calling back) dials the service name, which a user's browser cannot
+// open. X-Forwarded-Proto alone is not enough, since a sidecar or internal
+// gateway may add it in front of a service-name Host. Such callers get
+// relative links instead.
 func PublicOriginFromRequest(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
 	forwardedHost := firstHeaderValue(r.Header.Get("X-Forwarded-Host"))
 	forwardedProto := strings.ToLower(firstHeaderValue(r.Header.Get("X-Forwarded-Proto")))
-	if forwardedHost == "" && forwardedProto == "" {
+	if forwardedHost == "" {
 		return ""
 	}
 	host := forwardedHost
-	if host == "" {
-		host = r.Host
-	}
 	scheme := forwardedProto
 	if scheme == "" {
 		scheme = "http"
