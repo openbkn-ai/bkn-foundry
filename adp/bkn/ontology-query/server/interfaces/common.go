@@ -116,5 +116,7 @@ type PageQuery struct {
 	// ResourceCursor is the opaque Vega continuation state restored from Cursor.
 	// It must never be accepted from or exposed to API callers directly.
 	ResourceCursor string `json:"-"`
+	// ResourceOffset is the stateless resource continuation restored from Cursor.
+	ResourceOffset int `json:"-"`
 	SearchAfterParams
 }

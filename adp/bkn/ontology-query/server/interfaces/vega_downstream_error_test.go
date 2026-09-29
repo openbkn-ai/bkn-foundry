@@ -58,6 +58,16 @@ func Test_VegaDownstreamError(t *testing.T) {
 		if forbidden.CanExposeQueryClientMessage() {
 			t.Fatal("authorization response details must stay redacted")
 		}
+		sessionLimit := NewVegaDownstreamError(http.StatusTooManyRequests,
+			`{"error_code":"VegaBackend.Query.CursorSessionLimitExceeded","error_details":"cursor session limit reached, please retry later"}`)
+		if !sessionLimit.CanExposeQueryClientMessage() {
+			t.Fatal("cursor session exhaustion details should tell the caller to retry")
+		}
+		otherLimit := NewVegaDownstreamError(http.StatusTooManyRequests,
+			`{"error_code":"Gateway.RateLimited","error_details":"route catalog-secret"}`)
+		if otherLimit.CanExposeQueryClientMessage() {
+			t.Fatal("unknown 429 details must stay redacted")
+		}
 	})
 
 	t.Run("解析不出结构的长报文被截断", func(t *testing.T) {

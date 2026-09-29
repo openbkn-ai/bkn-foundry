@@ -27,7 +27,8 @@ func Test_downstreamErrorCode(t *testing.T) {
 		http.StatusConflict:     rest.PublicError_Conflict,
 		// When there is no semantically corresponding public code, fall back to this service's parameter error code instead of Public.BadRequest.
 		// The latter's en-US message is "Internal Server Error".
-		http.StatusTooManyRequests:       oerrors.OntologyQuery_ObjectType_InvalidParameter,
+		// 429 is capacity exhaustion: callers must retry, not change the query (#1937).
+		http.StatusTooManyRequests:       oerrors.OntologyQuery_ObjectType_TooManyRequests,
 		http.StatusRequestEntityTooLarge: oerrors.OntologyQuery_ObjectType_InvalidParameter,
 	}
 	for status, want := range cases {

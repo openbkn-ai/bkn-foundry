@@ -919,6 +919,15 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "429":
+          description: >-
+            A downstream data service is at capacity, for example its pagination session
+            limit is reached (`OntologyQuery.ObjectType.TooManyRequests`). Retry later with
+            the same request; error_details carries the downstream reason.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         "503":
           $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 检索指定对象类的对象的详细数据
@@ -4298,7 +4307,9 @@ components:
       properties:
         next_cursor:
           type: [string, 'null']
-          description: 下一页使用的不透明且经过认证的对象查询游标；为空表示已到末页。
+          description: >-
+            下一页使用的不透明且经过认证的对象查询游标；为空表示已到末页。
+            need_total 为 false 时，恰好取满 limit 的最后一页仍可能返回游标，续页得到空结果且不再返回游标。
         expires_at_sec:
           type: [integer, 'null']
           format: int64

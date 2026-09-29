@@ -29,6 +29,11 @@ Description = "Unsupported Logic Property Parameter Source"
 Solution = "Please check whether the parameter is correct."
 ErrorLink = ""
 
+[OntologyQuery.ObjectType.TooManyRequests]
+Description = "Too Many Requests"
+Solution = "A downstream service is at capacity. Retry later without changing the query."
+ErrorLink = ""
+
 [OntologyQuery.ObjectType.ObjectTypeNotFound]
 Description = "The Object Type Does Not Exist"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."

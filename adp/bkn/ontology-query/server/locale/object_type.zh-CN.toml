@@ -29,6 +29,11 @@ Description = "不支持的逻辑属性的参数来源"
 Solution = "请检查参数是否正确。"
 ErrorLink = ""
 
+[OntologyQuery.ObjectType.TooManyRequests]
+Description = "请求过多"
+Solution = "下游服务容量已满，请稍后原样重试，无需修改查询。"
+ErrorLink = ""
+
 [OntologyQuery.ObjectType.ObjectTypeNotFound]
 Description = "对象类不存在"
 Solution = "请检查参数是否正确。"
