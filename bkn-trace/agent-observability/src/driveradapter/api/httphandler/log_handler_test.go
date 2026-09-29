@@ -237,13 +237,16 @@ func TestLogSourceInventorySeparatesRegisteredTargetsFromQueryableSources(t *tes
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.RegistryVersion != "0.3.28" || len(body.Data) != 16 {
-		t.Fatalf("expected 16 runtime sources in 0.3.28 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
+	if body.RegistryVersion != "0.3.29" || len(body.Data) != 15 {
+		t.Fatalf("expected 15 runtime sources in 0.3.29 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
 	}
 	modelManagerFound := false
 	for _, source := range body.Data {
 		if source.SourceID == "otel-runtime" {
 			t.Fatal("OpenSearch query adapter must not appear as a Collector producer")
+		}
+		if source.SourceID == "agent-retrieval" {
+			t.Fatal("Retrieval workload must not duplicate the context-loader log producer")
 		}
 		if source.SourceID == "model-manager" {
 			if source.DeclaredCollectionMethod != "kafka_audit" || source.QueryStatus != "not_listed" {
