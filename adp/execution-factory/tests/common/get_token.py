@@ -19,7 +19,8 @@ from hashlib import md5
 from urllib.parse import parse_qsl
 from urllib.parse import urlsplit
 from urllib.parse import unquote
-from M2Crypto import RSA, BIO
+from Crypto.Cipher import PKCS1_v1_5
+from Crypto.PublicKey import RSA
 
 class GetToken(object):
     def __init__(self, host):
@@ -224,10 +225,11 @@ OQE5VFOIXPVTaa25mQIDAQAB
         return base64 encoded encrypted string
         '''
 
-        pubkey = str(key).encode('utf8')
-        bio = BIO.MemoryBuffer(pubkey)
-        rsa = RSA.load_pub_key_bio(bio)
-        encrypted = rsa.public_encrypt(message.encode('utf8'), RSA.pkcs1_padding)
+        # RSAES-PKCS1-v1_5 over a PEM SubjectPublicKeyInfo key: the same scheme
+        # as M2Crypto's public_encrypt(..., RSA.pkcs1_padding). The embedded
+        # PEM strings carry surrounding whitespace, which OpenSSL tolerated.
+        pubkey = RSA.import_key(str(key).strip())
+        encrypted = PKCS1_v1_5.new(pubkey).encrypt(message.encode('utf8'))
         # result = encrypted.encode('base64')
         result = base64.b64encode(encrypted)
         result = result.decode("utf-8")
