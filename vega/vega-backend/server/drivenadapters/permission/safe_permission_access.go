@@ -11,6 +11,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -27,8 +30,26 @@ type safeClient struct {
 
 const safeHTTPTimeout = 30 * time.Second
 
+// defaultSafeMaxIdleConns keeps the connections to bkn-safe reusable under
+// load. Every resource read is authorized here, so a concurrent caller holds
+// dozens of requests in flight at once. With the default transport only two of
+// them returned to the pool; the rest were closed into TIME_WAIT, hundreds a
+// second, until the pod ran out of local ports and dials failed with
+// EADDRNOTAVAIL (#1907). BKN_SAFE_MAX_IDLE_CONNS overrides it.
+const defaultSafeMaxIdleConns = 128
+
+func safeMaxIdleConns() int {
+	if value, err := strconv.Atoi(strings.TrimSpace(os.Getenv("BKN_SAFE_MAX_IDLE_CONNS"))); err == nil && value > 0 {
+		return value
+	}
+	return defaultSafeMaxIdleConns
+}
+
 func newSafeClient(baseURL string) *safeClient {
-	return &safeClient{baseURL: baseURL, http: &http.Client{Timeout: safeHTTPTimeout}}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = safeMaxIdleConns()
+	transport.MaxIdleConnsPerHost = transport.MaxIdleConns
+	return &safeClient{baseURL: baseURL, http: &http.Client{Transport: transport, Timeout: safeHTTPTimeout}}
 }
 
 func uniqueStrings(values []string) []string {

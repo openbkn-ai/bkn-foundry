@@ -8,8 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,6 +34,51 @@ func TestNewSafeClientAllowsLongRunningCleanupRequests(t *testing.T) {
 	client := newSafeClient("http://bkn-safe")
 
 	assert.Equal(t, 30*time.Second, client.http.Timeout)
+}
+
+// TestSafeClientReusesConnectionsUnderConcurrency guards #1907: concurrent
+// authorization calls must return their connections to the pool instead of
+// opening a new one per request.
+func TestSafeClientReusesConnectionsUnderConcurrency(t *testing.T) {
+	var opened atomic.Int64
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Millisecond)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			opened.Add(1)
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+	client := newSafeClient(server.URL)
+
+	const workers, rounds = 32, 5
+	for round := 0; round < rounds; round++ {
+		var wg sync.WaitGroup
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				assert.NoError(t, client.do(context.Background(), http.MethodPost, "/api/safe/v1/authz/checks", map[string]any{}, nil))
+			}()
+		}
+		wg.Wait()
+	}
+	assert.LessOrEqual(t, opened.Load(), int64(workers),
+		"%d concurrent callers over %d rounds opened %d connections", workers, rounds, opened.Load())
+}
+
+func TestSafeClientIdleConnectionLimitIsConfigurable(t *testing.T) {
+	idle := func() int {
+		return newSafeClient("http://bkn-safe").http.Transport.(*http.Transport).MaxIdleConnsPerHost
+	}
+	assert.Equal(t, defaultSafeMaxIdleConns, idle())
+	t.Setenv("BKN_SAFE_MAX_IDLE_CONNS", "16")
+	assert.Equal(t, 16, idle())
+	t.Setenv("BKN_SAFE_MAX_IDLE_CONNS", "not-a-number")
+	assert.Equal(t, defaultSafeMaxIdleConns, idle())
 }
 
 func TestSafePermissionAccessResourceParents(t *testing.T) {
