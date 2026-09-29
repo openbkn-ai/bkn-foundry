@@ -237,6 +237,21 @@ func (mr *MockObjectTypeAccessMockRecorder) GetObjectTypesTotal(ctx, query any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTypesTotal", reflect.TypeOf((*MockObjectTypeAccess)(nil).GetObjectTypesTotal), ctx, query)
 }
 
+// ListObjectTypeLogicProperties mocks base method.
+func (m *MockObjectTypeAccess) ListObjectTypeLogicProperties(ctx context.Context, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListObjectTypeLogicProperties", ctx, query)
+	ret0, _ := ret[0].([]*interfaces.ObjectType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListObjectTypeLogicProperties indicates an expected call of ListObjectTypeLogicProperties.
+func (mr *MockObjectTypeAccessMockRecorder) ListObjectTypeLogicProperties(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectTypeLogicProperties", reflect.TypeOf((*MockObjectTypeAccess)(nil).ListObjectTypeLogicProperties), ctx, query)
+}
+
 // ListObjectTypeSummaries mocks base method.
 func (m *MockObjectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sql.Tx, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
 	m.ctrl.T.Helper()
