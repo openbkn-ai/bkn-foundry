@@ -27,6 +27,7 @@ EVENT_FIELDS = (
     "required_attributes", "allowed_attributes", "sensitive_attributes",
     "outcome_mapping", "schema_version", "allow_unknown",
 )
+AUDIT_CATEGORIES = {"access.user", "audit.admin", "audit.security"}
 
 
 def project(raw: bytes) -> bytes:
@@ -36,7 +37,11 @@ def project(raw: bytes) -> bytes:
         "registry_version": registry["registry_version"],
         "contract_version": registry["contract_version"],
         "sources": [pick(source, SOURCE_FIELDS) for source in registry["sources"]],
-        "events": [pick(event, EVENT_FIELDS) for event in registry["events"]],
+        "events": [
+            pick(event, EVENT_FIELDS)
+            for event in registry["events"]
+            if event["log_category"] in AUDIT_CATEGORIES
+        ],
     }
     return json.dumps(projected, ensure_ascii=False, separators=(",", ":")).encode() + b"\n"
 

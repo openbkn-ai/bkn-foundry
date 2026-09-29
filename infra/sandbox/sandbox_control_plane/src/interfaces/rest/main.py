@@ -53,6 +53,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # Start-up
     logger.info("Starting Sandbox Control Plane")
+    from src.infrastructure import observability
+    observability.setup()
 
     # Wire up dependency injection
     from src.infrastructure.dependencies import initialize_dependencies, get_storage_service
@@ -207,6 +209,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await cleanup_dependencies(app)
     await db_manager.close()
+    observability.shutdown()
 
 
 def create_app() -> FastAPI:
@@ -371,6 +374,22 @@ def _register_routes(app: FastAPI) -> None:
 
 def _register_middleware(app: FastAPI) -> None:
     """Register the middleware"""
+
+    @app.middleware("http")
+    async def observability_middleware(request: Request, call_next):
+        from src.infrastructure import observability
+
+        route = "unmatched"
+        status_code = 500
+        with observability.start_http_request_span() as span:
+            try:
+                response = await call_next(request)
+                status_code = response.status_code
+                route = getattr(request.scope.get("route"), "path", None) or "unmatched"
+                return response
+            finally:
+                observability.finish_http_request_span(span, request.method, route, status_code)
+                observability.emit_http_request_log(request.method, route, status_code)
 
     @app.middleware("http")
     async def locale_middleware(request: Request, call_next):

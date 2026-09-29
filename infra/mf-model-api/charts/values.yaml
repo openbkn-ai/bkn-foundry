@@ -118,17 +118,19 @@ resources:
     cpu: 4
     memory: 8Gi
 observability:
-    logEnabled: "false"
-    traceEnabled: "false"
+    logEnabled: "true"
+    traceEnabled: "true"
     metricEnabled: "false"
     # Same as mf-model-manager: after the AR backend was removed, the HTTP exporter has no target service.
     # Default to console (stdlib logging) to prevent the background log thread from blocking in getaddrinfo.
-    logExporter: "console"
-    traceProvider: "console"
+    logExporter: "otlp_http"
+    traceProvider: "otlp_http"
     metricProvider: "console"
     logLoadInternal: "10"
     logLoadMaxLog: "1000"
-    traceMaxQueueSize: "50000"
+    traceMaxQueueSize: "2048"
+    traceMaxExportBatchSize: "512"
+    otlpEndpoint: "http://otelcol-contrib:4318"
     metricIntervalSecond: "60"
     httpLogFeedIngesterUrl: "http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-log/events"
     httpTraceFeedIngesterUrl: "http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-trace/events"

@@ -13,11 +13,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/middleware"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"ontology-query/common"
 	oerrors "ontology-query/errors"
@@ -68,8 +74,8 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 }
 
 func (r *restHandler) RegisterPublic(c *gin.Engine) {
-	c.Use(r.AccessLog())
 	c.Use(middleware.TracingMiddleware())
+	c.Use(r.AccessLog())
 	c.Use(r.TraceContextMiddleware())
 	c.Use(r.LanguageMiddleware())
 
@@ -181,6 +187,10 @@ func (r *restHandler) TraceContextMiddleware() gin.HandlerFunc {
 func (r *restHandler) AccessLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		beginTime := time.Now()
+		ctx, span := otel.Tracer("ontology-query/http").Start(
+			c.Request.Context(), "HTTP request", trace.WithSpanKind(trace.SpanKindServer),
+		)
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 		endTime := time.Now()
 		durTime := endTime.Sub(beginTime).Seconds()
@@ -192,6 +202,49 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 			endTime.Format(libCommon.RFC3339Milli),
 			durTime,
 		)
+		route := c.FullPath()
+		if route == "" {
+			route = "unmatched"
+		}
+		span.SetName(c.Request.Method + " " + route)
+		span.SetAttributes(operationSpanAttributes(c.Request.Method, route, c.Writer.Status())...)
+		if c.Writer.Status() >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(c.Writer.Status()))
+		}
+		otellog.LogInfo(c.Request.Context(), "http.request.completed",
+			operationLogAttributes(c.Request.Method, route, c.Writer.Status())...)
+		span.End()
+	}
+}
+
+func operationSpanAttributes(method, route string, status int) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("http.request.method", method),
+		attribute.String("http.route", route),
+		attribute.Int("http.response.status_code", status),
+	}
+}
+
+func operationLogAttributes(method, route string, status int) []attribute.KeyValue {
+	sourceLogID := uuid.NewString()
+	outcome := "success"
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		outcome = "denied"
+	} else if status >= http.StatusBadRequest {
+		outcome = "failure"
+	}
+	return []attribute.KeyValue{
+		attribute.String("schema_version", "1.0.0"),
+		attribute.String("log_id", sourceLogID),
+		attribute.String("source_log_id", sourceLogID),
+		attribute.String("source_id", "ontology-query"),
+		attribute.String("log_category", "runtime.system"),
+		attribute.String("event_name", "http.request.completed"),
+		attribute.String("outcome", outcome),
+		attribute.String("safe_summary", fmt.Sprintf("%s %s completed with HTTP %d", method, route, status)),
+		attribute.String("http.request.method", method),
+		attribute.String("http.route", route),
+		attribute.Int("http.response.status_code", status),
 	}
 }
 

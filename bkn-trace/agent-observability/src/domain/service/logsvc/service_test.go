@@ -838,7 +838,7 @@ func TestOperationAuditOnlyWhitelistsConversationCreatedWithoutOpeningRuntimeBus
 	}
 }
 
-func TestListExcludesUntrustedUnknownAndCategoryMismatchedRecords(t *testing.T) {
+func TestListDoesNotTurnRegistryOrLegacyTrustIntoARejectionGate(t *testing.T) {
 	now := time.Now().UTC()
 	base := observabilityvo.LogRecord{
 		Category:         observabilityvo.CategoryRuntimeSystem,
@@ -862,8 +862,8 @@ func TestListExcludesUntrustedUnknownAndCategoryMismatchedRecords(t *testing.T) 
 	if err != nil {
 		t.Fatalf("query logs: %v", err)
 	}
-	if len(result.Records) != 1 || result.Records[0].LogID != "trusted" {
-		t.Fatalf("quarantined records escaped the query projection: %+v", result.Records)
+	if len(result.Records) != 4 {
+		t.Fatalf("internal logs were rejected by legacy trust or registry classification: %+v", result.Records)
 	}
 }
 
@@ -954,8 +954,10 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 		filtered[index] = observabilityvo.LogRecord{
 			LogID:            "filtered-" + time.Duration(index).String(),
 			Category:         observabilityvo.CategoryRuntimeSystem,
-			EventName:        "sandbox.session.changed",
+			EventName:        "plugin.custom.event",
 			EventTimestamp:   base.Add(-time.Duration(index) * time.Second),
+			SeverityNumber:   25,
+			SeverityText:     "INVALID",
 			TrustLevel:       "untrusted",
 			IngressPrincipal: "otel-gateway",
 		}
@@ -1164,6 +1166,21 @@ func TestMatchesQueryMatchesActorNameSnapshot(t *testing.T) {
 	}
 	if matchesQuery(record, observabilityvo.LogQuery{ActorQuery: "operator"}) {
 		t.Fatal("unrelated actor display name must not match")
+	}
+}
+
+func TestCanReadRegisteredInternalLogWithoutLegacyTrustFields(t *testing.T) {
+	record := validTestRecord(observabilityvo.LogRecord{
+		LogID:          "context-loader:source-log-a",
+		SourceID:       "context-loader",
+		SourceLogID:    "source-log-a",
+		Category:       observabilityvo.CategoryRuntimeBusiness,
+		EventName:      "knowledge.read.completed",
+		EventTimestamp: time.Now().UTC(),
+	})
+	profile := activeProfile("admin-a", "super_admin")
+	if !canReadLog(profile, observabilityvo.CapabilitiesFor(profile), record, false) {
+		t.Fatal("registered internal log must not require trust_level or ingress_principal")
 	}
 }
 

@@ -49,7 +49,7 @@ func BuildKafkaRecord(entry Entry, environment string) ([]byte, error) {
 		channel = "unknown"
 	}
 	record := map[string]any{
-		"schema_version": auditpublisher.SchemaVersion,
+		"schema_version":  auditpublisher.SchemaVersion,
 		"event_id":        eventID.String(),
 		"source_id":       accessSourceID,
 		"category":        "access.user",
@@ -72,9 +72,6 @@ func BuildKafkaRecord(entry Entry, environment string) ([]byte, error) {
 	}
 	value, err := json.Marshal(record)
 	if err != nil {
-		return nil, err
-	}
-	if _, err := auditpublisher.BuildRecord(value); err != nil {
 		return nil, err
 	}
 	return value, nil

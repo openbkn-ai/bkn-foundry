@@ -3,7 +3,7 @@
 
 from app.utils.observability.observability_setting import ServerInfo, ObservabilitySetting
 from app.utils.observability.observability_log import init_log_provider, shutdown_log_provider
-from app.utils.observability.observability_trace import init_trace_provider
+from app.utils.observability.observability_trace import init_trace_provider, shutdown_trace_provider
 
 def init_observability(server_info: ServerInfo, setting: ObservabilitySetting):
 
@@ -22,3 +22,4 @@ def init_observability(server_info: ServerInfo, setting: ObservabilitySetting):
 def shutdown_observability() -> None:
     """Shut down the observability components."""
     shutdown_log_provider()
+    shutdown_trace_provider()

@@ -121,7 +121,6 @@ func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.Lo
 func buildDetailQuery(logID string) map[string]any {
 	filters := []any{
 		map[string]any{"term": map[string]any{"attributes.log_id.keyword": logID}},
-		map[string]any{"term": map[string]any{"attributes.trust_level.keyword": "trusted"}},
 	}
 	return map[string]any{
 		"size": 1, "track_total_hits": false,
@@ -148,7 +147,6 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 			filters = append(filters, map[string]any{"terms": map[string]any{field: values}})
 		}
 	}
-	addTerm("attributes.trust_level.keyword", "trusted")
 	authorizedCategories := intersectValues(query.Categories, query.AuthorizedCategories)
 	if len(query.Categories) == 0 {
 		authorizedCategories = query.AuthorizedCategories
@@ -187,11 +185,7 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 	addTerm("attributes.resource_id.keyword", query.ResourceID)
 	addTerms("resource.service.name.keyword", query.Services)
 	addTerms("resource.deployment.environment.keyword", query.Environments)
-	authorizedEventNames := observabilityvo.RegisteredEventNames(authorizedCategories)
-	if len(query.EventNames) > 0 {
-		authorizedEventNames = intersectValues(query.EventNames, authorizedEventNames)
-	}
-	addTerms("attributes.event_name.keyword", authorizedEventNames)
+	addTerms("attributes.event_name.keyword", query.EventNames)
 	if query.TimeFrom != nil || query.TimeTo != nil {
 		bounds := make(map[string]any)
 		if query.TimeFrom != nil {

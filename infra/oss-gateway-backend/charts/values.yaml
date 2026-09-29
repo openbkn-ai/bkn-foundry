@@ -111,8 +111,10 @@ resources:
     cpu: 4
     memory: 8Gi
 observability:
-    logEnabled: "false"
-    traceEnabled: "false"
+    environment: production
+    otlpEndpoint: otelcol-contrib:4318
+    logEnabled: "true"
+    traceEnabled: "true"
     metricEnabled: "false"
     logExporter: "http"
     traceProvider: "http"

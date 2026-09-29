@@ -39,36 +39,6 @@ Description = "Invalid Pagination Limit"
 Solution = "Please check whether the parameter is correct."
 ErrorLink = ""
 
-[BknBackend.OperationAudit.InvalidRange]
-Description = "The operation-audit time range is invalid."
-Solution = "Provide a valid RFC3339 time range no longer than 30 days."
-ErrorLink = ""
-
-[BknBackend.OperationAudit.InvalidBeforeTime]
-Description = "The operation-audit pagination time is invalid."
-Solution = "Provide a valid RFC3339 before_time parameter."
-ErrorLink = ""
-
-[BknBackend.OperationAudit.AccessDenied]
-Description = "You are not permitted to view operation-audit records."
-Solution = "Check the access scope or contact an administrator."
-ErrorLink = ""
-
-[BknBackend.OperationAudit.ServiceUnavailable]
-Description = "The operation-audit service is temporarily unavailable."
-Solution = "Try again later."
-ErrorLink = ""
-
-[BknBackend.OperationAudit.QueryFailed]
-Description = "The operation-audit query failed."
-Solution = "Try again later; contact an administrator if the problem persists."
-ErrorLink = ""
-
-[BknBackend.OperationAudit.NotFound]
-Description = "The operation-audit event was not found."
-Solution = "Check that the event identifier is correct."
-ErrorLink = ""
-
 [BknBackend.InvalidParameter.ModuleType]
 Description = "Invalid Module Name"
 Solution = "Please check whether the parameter is correct."

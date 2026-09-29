@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"os"
 	"oss-gateway/internal/config"
 	"oss-gateway/internal/database"
 	"oss-gateway/internal/logger"
@@ -8,11 +10,23 @@ import (
 	"oss-gateway/pkg/crypto"
 
 	_ "github.com/joho/godotenv/autoload"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
 )
 
 func main() {
 	cfg := config.NewConfig()
 	log := logger.NewLogger(cfg)
+	providers, err := otel.InitOTel(context.Background(), &otel.OtelConfig{
+		ServiceName: "oss-gateway-backend", ServiceVersion: "0.2.0",
+		Environment: os.Getenv("ENVIRONMENT"), OTLPEndpoint: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		Trace: otel.TraceConf{Enabled: true, SamplingRate: 1},
+		Log:   otel.LogConf{Enabled: true, Level: "info"},
+	})
+	if err != nil {
+		log.WithError(err).Warn("OTLP observability unavailable; business continues")
+	} else {
+		defer providers.Shutdown(context.Background())
+	}
 	aesCrypto, err := crypto.NewAESCrypto(cfg.CryptoConfig.AESKey)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to initialize AES crypto")

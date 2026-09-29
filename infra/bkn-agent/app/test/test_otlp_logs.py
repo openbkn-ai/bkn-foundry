@@ -27,9 +27,18 @@ def test_agent_logs_batch_to_otlp_independently_of_trace_switch(monkeypatch):
         records = exporter.get_finished_logs()
         assert len(records) == 1
         assert records[0].log_record.body == "http.request.completed"
+        attributes = records[0].log_record.attributes
+        assert attributes["schema_version"] == "1.0.0"
+        assert attributes["source_id"] == "bkn-agent"
+        assert attributes["source_log_id"] == attributes["log_id"]
+        assert attributes["log_category"] == "runtime.system"
+        assert attributes["event_name"] == "http.request.completed"
+        assert attributes["outcome"] == "success"
+        assert attributes["safe_summary"] == "GET /api/bkn-agent/v1/threads/{thread_id} completed with HTTP 200"
         assert records[0].log_record.attributes["http.route"] == "/api/bkn-agent/v1/threads/{thread_id}"
         assert records[0].log_record.attributes["http.response.status_code"] == 200
         assert records[0].resource.attributes["service.name"] == "bkn-agent"
+        assert records[0].resource.attributes["deployment.environment"] == "production"
     finally:
         app_logger.handlers[:] = original_handlers
         app_logger.setLevel(original_level)

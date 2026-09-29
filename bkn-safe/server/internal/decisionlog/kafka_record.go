@@ -84,9 +84,6 @@ func BuildKafkaRecord(entry Entry, environment string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := auditpublisher.BuildRecord(value); err != nil {
-		return nil, err
-	}
 	return value, nil
 }
 

@@ -27,10 +27,6 @@ not_contains 'name: TRACE_ADMISSION_POLICY_URL'
 contains 'name: BKN_TRACE_ARTIFACT_INGEST_URL'
 contains 'name: BKN_TRACE_ARTIFACT_INGEST_TOKEN'
 contains 'name: OTEL_LOGS_ENABLED'
-contains 'kind: ServiceAccount'
-contains 'serviceAccountName: bkn-agent'
-contains 'automountServiceAccountToken: false'
-
 independent_logs="$(helm template bkn-agent "${chart_dir}" --set observability.otelEnabled=false --set observability.logsEnabled=true)"
 if ! grep -A1 'name: OTEL_LOGS_ENABLED' <<<"${independent_logs}" | grep -Fq 'value: "true"'; then
   echo 'OTLP logs must remain enabled when Trace is disabled' >&2

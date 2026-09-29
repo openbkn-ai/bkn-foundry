@@ -20,11 +20,11 @@ spec:
       module: {{ .Values.moduleName }}
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | quote }}
       labels:
         module: {{ .Values.moduleName }}
     spec:
-      serviceAccountName: {{ .Values.moduleName }}
-      automountServiceAccountToken: false
 {{- with .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}

@@ -77,6 +77,10 @@ spec:
           env:
             - name: DEVICE_CODE
               value: {{ .Values.env.devicecode }}
+            - name: ENVIRONMENT
+              value: {{ .Values.observability.environment | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.otlpEndpoint | quote }}
             - name: RDSHOST
               valueFrom:
                 configMapKeyRef:

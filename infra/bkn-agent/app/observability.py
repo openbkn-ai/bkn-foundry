@@ -89,7 +89,10 @@ def setup_otlp_logging():
         from opentelemetry.sdk.resources import Resource
 
         endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otelcol-contrib:4318")
-        provider = LoggerProvider(resource=Resource.create({"service.name": MODULE_NAME}))
+        provider = LoggerProvider(resource=Resource.create({
+            "service.name": MODULE_NAME,
+            "deployment.environment": os.getenv("DEPLOYMENT_ENVIRONMENT", "production"),
+        }))
         provider.add_log_record_processor(BatchLogRecordProcessor(
             OTLPLogExporter(endpoint=f"{endpoint.rstrip('/')}/v1/logs", timeout=3),
             max_queue_size=2048, max_export_batch_size=512,
@@ -113,11 +116,22 @@ def emit_http_request_log(method: str, route_template: Optional[str], status: in
     if _log_provider is None:
         return
     try:
+        source_log_id = str(uuid.uuid4())
+        route = route_template or "unmatched"
+        outcome = "denied" if status in (401, 403) else ("success" if status < 400 else "failure")
         logging.getLogger("bkn-agent.telemetry").info(
             "http.request.completed",
             extra={
+                "schema_version": "1.0.0",
+                "log_id": source_log_id,
+                "source_log_id": source_log_id,
+                "source_id": MODULE_NAME,
+                "log_category": "runtime.system",
+                "event_name": "http.request.completed",
+                "outcome": outcome,
+                "safe_summary": f"{method} {route} completed with HTTP {status}",
                 "http.request.method": method,
-                "http.route": route_template or "unmatched",
+                "http.route": route,
                 "http.response.status_code": status,
             },
         )

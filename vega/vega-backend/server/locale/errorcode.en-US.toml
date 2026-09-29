@@ -239,36 +239,6 @@ Description = "Query execution failed"
 Solution = "Please contact the administrator"
 ErrorLink = ""
 
-[VegaBackend.OperationAudit.InvalidRange]
-Description = "The operation-audit time range is invalid."
-Solution = "Provide a valid RFC3339 time range no longer than 30 days."
-ErrorLink = ""
-
-[VegaBackend.OperationAudit.InvalidBeforeTime]
-Description = "The operation-audit cursor time is invalid."
-Solution = "Provide before_time in RFC3339 format."
-ErrorLink = ""
-
-[VegaBackend.OperationAudit.AccessDenied]
-Description = "You are not permitted to view operation-audit records."
-Solution = "Request an admin, audit, or super_admin role."
-ErrorLink = ""
-
-[VegaBackend.OperationAudit.ServiceUnavailable]
-Description = "The operation-audit service is unavailable."
-Solution = "Try again later."
-ErrorLink = ""
-
-[VegaBackend.OperationAudit.QueryFailed]
-Description = "The operation-audit query failed."
-Solution = "Try again later or contact an administrator."
-ErrorLink = ""
-
-[VegaBackend.OperationAudit.NotFound]
-Description = "The operation-audit event was not found."
-Solution = "Check the event_id and scope."
-ErrorLink = ""
-
 [VegaBackend.Connector.EntitlementDenied]
 Description = "The current license does not include this connector"
 Solution = "Upgrade the license to an edition that includes this connector"

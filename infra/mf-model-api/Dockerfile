@@ -3,6 +3,10 @@ ARG BASE_IMAGE=ghcr.io/openbkn-ai/model-factory-base:v2
 FROM ${BASE_IMAGE}
 # Set the application working directory to /app.
 WORKDIR /app
+# The shared base already contains the OTel SDK and FastAPI instrumentation.
+# Keep only the matching OTLP HTTP exporter service-local until the next base release.
+COPY requirements-observability.txt /tmp/requirements-observability.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-observability.txt
 # Copy the current source tree into /app.
 ADD . /app
 

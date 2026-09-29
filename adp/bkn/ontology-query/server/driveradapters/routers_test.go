@@ -25,6 +25,35 @@ import (
 	omock "ontology-query/interfaces/mock"
 )
 
+func TestOperationLogAttributes(t *testing.T) {
+	attributes := operationLogAttributes(http.MethodGet, "/api/ontology-query/v1/health", http.StatusOK)
+	values := make(map[string]string, len(attributes))
+	for _, item := range attributes {
+		values[string(item.Key)] = item.Value.AsString()
+	}
+	for key, want := range map[string]string{
+		"schema_version": "1.0.0", "source_id": "ontology-query",
+		"log_category": "runtime.system", "event_name": "http.request.completed",
+		"outcome": "success", "safe_summary": "GET /api/ontology-query/v1/health completed with HTTP 200",
+	} {
+		if values[key] != want {
+			t.Fatalf("%s = %q, want %q", key, values[key], want)
+		}
+	}
+	if values["log_id"] == "" || values["source_log_id"] != values["log_id"] {
+		t.Fatalf("expected one non-empty source log id, got log_id=%q source_log_id=%q", values["log_id"], values["source_log_id"])
+	}
+}
+
+func TestOperationSpanAttributesUseRouteTemplate(t *testing.T) {
+	attributes := operationSpanAttributes(http.MethodPost, "/api/ontology-query/v1/knowledge-networks/:kn_id/subgraph", http.StatusAccepted)
+	if attributes[0].Value.AsString() != http.MethodPost ||
+		attributes[1].Value.AsString() != "/api/ontology-query/v1/knowledge-networks/:kn_id/subgraph" ||
+		attributes[2].Value.AsInt64() != http.StatusAccepted {
+		t.Fatalf("unexpected span attributes: %#v", attributes)
+	}
+}
+
 // setGinMode sets Gin to test mode and returns a restore function.
 func setGinMode() func() {
 	oldMode := gin.Mode()

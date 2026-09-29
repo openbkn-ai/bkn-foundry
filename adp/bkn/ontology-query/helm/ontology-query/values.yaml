@@ -109,13 +109,13 @@ config:
 
     # Trace configuration
     trace:
-      enabled: false
+      enabled: true
       # Sampling rate: 0.0 - 1.0
       sampling_rate: 1.0
 
     # Log configuration
     log:
-      enabled: false
+      enabled: true
       # Log level: debug, info, warn, error
       level: "info"
 
