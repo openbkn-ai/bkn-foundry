@@ -245,6 +245,12 @@ spec:
                 configMapKeyRef:
                   name: {{ .Values.configMap.name }}
                   key: PYTHONUNBUFFERED
+            - name: OTEL_LOGS_ENABLED
+              value: {{ .Values.controlPlane.observability.logEnabled | quote }}
+            - name: OTEL_TRACES_ENABLED
+              value: {{ .Values.controlPlane.observability.traceEnabled | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.controlPlane.observability.otlpEndpoint | quote }}
             - name: BKN_BASE_URL
               valueFrom:
                 configMapKeyRef:

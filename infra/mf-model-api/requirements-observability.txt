@@ -1,0 +1,1 @@
+opentelemetry-exporter-otlp-proto-http==1.44.0

@@ -31,16 +31,31 @@ func TestPublicLogEventAllowlistMatchesEmbeddedAuditRegistry(t *testing.T) {
 	}
 }
 
+func TestUnshippedAgentManagementAuditIsNotAdmitted(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range validator.registry.Events {
+		if rule.Name == "agent.config.changed" {
+			t.Fatal("unshipped Agent management event must not be admitted")
+		}
+	}
+	if observabilityvo.IsRegisteredLogEvent(observabilityvo.CategoryAuditAdmin, "agent.config.changed") {
+		t.Fatal("unshipped Agent management event must not appear in public logs")
+	}
+}
+
 func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t *testing.T) {
 	validator, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for file, expected := range map[string]string{
-		"schema.json":                   "530c532e52472186fafbd8dae282c8e5fcaa067909c42518fa06be72d150d953",
-		"registry-runtime-v1.json":      "0687650868cd5140c6d25bea3b5e9e1cbf3c2e9bcb21206e128e3f295d723fae",
-		"audit-record-golden.json":      "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40",
-		"audit-kafka-golden.json":       "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4",
+		"schema.json":                   "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f",
+		"registry-runtime-v1.json":      "b8cf27603befc3c745c94572b2f209b741fb8d337a570153cba3de39333993c2",
+		"audit-record-golden.json":      "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3",
+		"audit-kafka-golden.json":       "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
 	} {
 		content, err := os.ReadFile("assets/" + file)
@@ -181,7 +196,7 @@ func TestValidatorAcceptsRegisteredKafkaAuditSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"execution-factory", "agent-observability", "vega"} {
+	for _, id := range []string{"bkn-safe-access", "execution-factory", "agent-observability", "vega"} {
 		source, found := findSource(validator.registry.Sources, id)
 		if !found || source.CollectionMethod != "kafka_audit" {
 			t.Fatalf("%s must be registered as kafka_audit, got %+v, found=%v", id, source, found)
@@ -206,6 +221,87 @@ func TestValidatorAcceptsRegisteredKafkaAuditSource(t *testing.T) {
 	record.BrokerTime = record.BrokerTime.Add(time.Nanosecond)
 	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "retention_expired") {
 		t.Fatalf("event older than the maximum accepted age must be rejected: %v", err)
+	}
+}
+
+func TestSafeAccessKafkaPayloadIsAdmitted(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+	value["event_id"] = "0199196f-e7f3-7c7a-91f6-c4ad242d0db7"
+	value["source_id"] = "bkn-safe-access"
+	value["category"] = "access.user"
+	value["event_name"] = "login.failed"
+	value["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+	value["actor"] = map[string]any{"id": "anonymous", "effective_subject": "anonymous", "type": "anonymous", "auth_method": "password"}
+	value["target"] = map[string]any{"type": "session", "id": "session:0199196f-e7f3-7c7a-91f6-c4ad242d0db7"}
+	value["outcome"] = "failure"
+	value["scope"] = map[string]any{"business_module": "system_management", "environment": "test", "platform_scope": true, "knowledge_network_ids": []string{}}
+	value["request_context"] = map[string]any{"source_channel": "unknown", "transport": "http", "method": "POST"}
+	value["correlation"] = map[string]any{}
+	value["summary"] = "safe access login.failed"
+	value["facts"] = map[string]any{"action": "login", "result": "failure"}
+	value["failure_code"] = "INVALID_CREDENTIALS"
+	content, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{
+		Topic:      auditconsumer.Topic,
+		Key:        []byte("bkn-safe-access\x1fsession\x1fsession:0199196f-e7f3-7c7a-91f6-c4ad242d0db7"),
+		Value:      content,
+		Headers:    []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}},
+		BrokerTime: time.Now().UTC(),
+	}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("Safe Access Kafka audit payload rejected: %v", err)
+	}
+}
+
+func TestSafeSecurityDecisionWithoutUnobservablePolicyRevisionIsAdmitted(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+	value["event_id"] = "0199196f-e7f3-7c7a-91f6-c4ad242d0db8"
+	value["source_id"] = "bkn-safe-security"
+	value["category"] = "audit.security"
+	value["event_name"] = "authorization.decided"
+	value["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+	value["actor"] = map[string]any{"id": "anonymous", "effective_subject": "anonymous", "type": "anonymous", "auth_method": "unknown"}
+	value["target"] = map[string]any{"type": "authorization_decision", "id": "decision:0199196f-e7f3-7c7a-91f6-c4ad242d0db8"}
+	value["outcome"] = "denied"
+	delete(value, "http_status")
+	value["scope"] = map[string]any{"business_module": "system_management", "environment": "test", "platform_scope": true, "knowledge_network_ids": []string{}}
+	value["request_context"] = map[string]any{"source_channel": "api", "transport": "http", "method": "POST"}
+	value["correlation"] = map[string]any{"request_id": "req-safe-security-test"}
+	value["summary"] = "safe authorization decision"
+	value["facts"] = map[string]any{"action": "check", "decision": "deny", "resource_scope": "knowledge_network:kn-1"}
+	value["failure_code"] = "AUTHZ_DENIED"
+	content, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := auditconsumer.Record{Topic: auditconsumer.Topic, Key: []byte("bkn-safe-security\x1fauthorization_decision\x1fdecision:0199196f-e7f3-7c7a-91f6-c4ad242d0db8"), Value: content, BrokerTime: time.Now().UTC(), Headers: []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}}}
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("Safe Security decision rejected: %v", err)
 	}
 }
 
@@ -288,8 +384,8 @@ func TestVegaManagementAuditRecordIsAdmittedAfterCutover(t *testing.T) {
 		t.Fatal(err)
 	}
 	record.Key = []byte("vega\x1fcatalog\x1fbak_abcdefghijkl")
-	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "secret_detected") {
-		t.Fatalf("Writer must reject a secret-like input before Ledger insert: %v", err)
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("Writer must preserve a valid target identifier regardless of prefix: %v", err)
 	}
 	digest := sha256.Sum256([]byte("bak_abcdefghijkl"))
 	alias := "sha256:" + hex.EncodeToString(digest[:])

@@ -15,6 +15,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
+func TestSafeSecurityDecisionIsVisibleInOperationAuditProjection(t *testing.T) {
+	record := auditLogRecord(auditsvc.Record{
+		EventID: "evt-safe-security", SourceID: "bkn-safe-security",
+		Category: "audit.security", EventName: "authorization.decided",
+		BusinessModule: "system_management", ActorID: "anonymous",
+		TargetType: "authorization_decision", TargetID: "decision:evt-safe-security",
+		Action: "check", Outcome: "denied", AuthMethod: "unknown", SourceChannel: "api",
+	})
+	if record.Action != "check" || record.Category != observabilityvo.CategoryAuditSecurity {
+		t.Fatalf("Safe Security projection lost operation facts: %+v", record)
+	}
+}
+
 func TestAuditLedgerSourceStatusReturnsDropWindowAsAnUnknownPair(t *testing.T) {
 	payload, err := json.Marshal(NewAuditLedgerSource(nil).Metadata())
 	if err != nil {
@@ -39,15 +52,19 @@ func TestAuditLedgerSourceDeclaresSourceIDPushdown(t *testing.T) {
 }
 
 func TestAuditQueryCategoriesUsesAuthorizedDefaultAndIntersection(t *testing.T) {
-	authorized := []string{"runtime.system", "audit.admin", "audit.security"}
-	if got := auditQueryCategories(observabilityvo.LogQuery{AuthorizedCategories: authorized}); !reflect.DeepEqual(got, []string{"audit.admin", "audit.security"}) {
+	authorized := []string{"runtime.system", "access.user", "audit.admin", "audit.security"}
+	if got := auditQueryCategories(observabilityvo.LogQuery{AuthorizedCategories: authorized}); !reflect.DeepEqual(got, []string{"access.user", "audit.admin", "audit.security"}) {
 		t.Fatalf("default categories=%v", got)
 	}
 	got := auditQueryCategories(observabilityvo.LogQuery{
-		Categories: []string{"audit.admin", "runtime.business"}, AuthorizedCategories: authorized,
+		Categories: []string{"access.user", "audit.admin", "runtime.business"}, AuthorizedCategories: authorized,
 	})
-	if !reflect.DeepEqual(got, []string{"audit.admin"}) {
+	if !reflect.DeepEqual(got, []string{"access.user", "audit.admin"}) {
 		t.Fatalf("intersected categories=%v", got)
+	}
+	metadata := NewAuditLedgerSource(nil).Metadata()
+	if !reflect.DeepEqual(metadata.Categories, []string{"access.user", "audit.admin", "audit.security"}) {
+		t.Fatalf("ledger categories=%v", metadata.Categories)
 	}
 }
 

@@ -40,7 +40,6 @@ import (
 	mariadbevidencemigration "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/evidencemigration"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeuseraccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchconversationaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchcoreprojection"
@@ -404,10 +403,10 @@ func NewApp() (*App, error) {
 		localizedHTTPClient(accessScopeConfig.Timeout),
 	)
 	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
+	evidenceHandler.SetLogQueryAuditSink(captureAudit.query)
 	logOptions := logsvc.Options{
 		CursorKey: observabilityConfig.CursorSigningKey, SourceTimeout: observabilityConfig.SourceTimeout,
 		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
-		OperationAuditOnly:   true,
 	}
 	if coverageStoreSupported && observabilityConfig.SourceCoverageDeploymentID != "" {
 		logOptions.CoverageStore = coverageStore
@@ -415,7 +414,6 @@ func NewApp() (*App, error) {
 	}
 	runtimeLogSources := []logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
-		bknsafeuseraccess.New(accessScopeConfig.BKNBaseURL, localizedHTTPClient(accessScopeConfig.Timeout)),
 	}
 	if coreConfig.ProjectionEnabled {
 		runtimeLogSources = append(runtimeLogSources, opensearchconversationaudit.New(openSearchClient, coreConfig.ProjectionIndex))

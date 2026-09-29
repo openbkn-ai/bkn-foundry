@@ -698,9 +698,7 @@
           "outcome",
           "safe_summary",
           "service_name",
-          "deployment_environment",
-          "ingress_principal",
-          "trust_level"
+          "deployment_environment"
         ],
         "properties": {
           "schema_version": {
@@ -758,14 +756,6 @@
           },
           "application_id": {
             "type": "string"
-          },
-          "ingress_principal": {
-            "type": "string"
-          },
-          "trust_level": {
-            "type": "string",
-            "description": "This OpenAPI describes only the ordinary authorized query projection; quarantined records have no query endpoint.",
-            "const": "trusted"
           },
           "request_id": {
             "type": "string"

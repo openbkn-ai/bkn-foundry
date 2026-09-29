@@ -326,6 +326,10 @@ spec:
               value: {{ .Values.observability.logLoadMaxLog | quote }}
             - name: TRACE_MAX_QUEUE_SIZE
               value: {{ .Values.observability.traceMaxQueueSize | quote }}
+            - name: TRACE_MAX_EXPORT_BATCH_SIZE
+              value: {{ .Values.observability.traceMaxExportBatchSize | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.otlpEndpoint | quote }}
             - name: METRIC_INTERVAL_SECOND
               value: {{ .Values.observability.metricIntervalSecond | quote }}
             - name: HTTP_LOG_FEED_INGESTER_URL

@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/decisionlog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -140,7 +141,7 @@ func TestAuthenticationFailuresAreAuditedAndThrottled(t *testing.T) {
 }
 
 func TestAuthorizationRefusalsAreAuditedWithSubjectAndDecision(t *testing.T) {
-	r, _, db, users := newAdminServer(t)
+	r, _, db, users, collector := newAdminServerWithDecisions(t)
 	const outsider = "user-outsider"
 	if err := users.CreateLocalUser(t.Context(), &model.User{ID: outsider, Account: outsider, Name: "Out Sider", Enabled: true}, "pw-init0"); err != nil {
 		t.Fatal(err)
@@ -182,22 +183,24 @@ func TestAuthorizationRefusalsAreAuditedWithSubjectAndDecision(t *testing.T) {
 	}
 	// Every refusal is also a decision (decisions are not throttled): safe_admin
 	// console manage, denied — 2 distinct requests + 5 repeats.
-	var decisions []model.AuthzDecision
-	if err := db.Where("accessor_id = ?", outsider).Find(&decisions).Error; err != nil {
-		t.Fatal(err)
+	var decisions []decisionlog.Entry
+	for _, entry := range collector.Snapshot() {
+		if entry.AccessorID == outsider {
+			decisions = append(decisions, entry)
+		}
 	}
 	if len(decisions) != 7 {
 		t.Fatalf("outsider decisions = %d, want 7: %+v", len(decisions), decisions)
 	}
 	for _, d := range decisions {
-		if d.Source != decisionSourceAdmin || d.ResourceType != "safe_admin" || d.ResourceID != "console" || d.Operation != "manage" || d.Decision != "deny" || d.Basis == "" {
+		if d.Source != decisionSourceAdmin || d.ResourceType != "safe_admin" || d.ResourceID != "console" || d.Operation != "manage" || d.Decision != "deny" || d.Basis == "" || d.VerifiedActorID != outsider {
 			t.Fatalf("admin gate decision facts: %+v", d)
 		}
 	}
 }
 
 func TestPermissionPointRefusalOnMutationIsRecordedOnceWithGate(t *testing.T) {
-	r, e, db, users := newAdminServer(t)
+	r, e, db, users, collector := newAdminServerWithDecisions(t)
 	// A console administrator without the department create point.
 	const limited = "user-limited"
 	if err := users.CreateLocalUser(t.Context(), &model.User{ID: limited, Account: limited, Name: limited, Enabled: true}, "pw-init0"); err != nil {
@@ -219,9 +222,11 @@ func TestPermissionPointRefusalOnMutationIsRecordedOnceWithGate(t *testing.T) {
 	if rows[0].Status != http.StatusForbidden || rows[0].Resource != "departments" || !strings.Contains(rows[0].Detail, `"_gate":"permission"`) || !strings.Contains(rows[0].Detail, `"name":"Y"`) {
 		t.Fatalf("refused mutation row must carry the body and the gate: %+v", rows[0])
 	}
-	var decision model.AuthzDecision
-	if err := db.Where("accessor_id = ? AND resource_type = ?", limited, "admin-dept").First(&decision).Error; err != nil {
-		t.Fatalf("permission point decision not recorded: %v", err)
+	var decision decisionlog.Entry
+	for _, entry := range collector.Snapshot() {
+		if entry.AccessorID == limited && entry.ResourceType == "admin-dept" {
+			decision = entry
+		}
 	}
 	if decision.Operation != "create" || decision.Decision != "deny" || decision.Source != decisionSourceAdmin {
 		t.Fatalf("permission point decision facts: %+v", decision)
@@ -229,7 +234,7 @@ func TestPermissionPointRefusalOnMutationIsRecordedOnceWithGate(t *testing.T) {
 }
 
 func TestCheckRecordsDecisionsForActiveInactiveAndUnknownAccessors(t *testing.T) {
-	r, _, db, users := newAdminServer(t)
+	r, _, _, users, collector := newAdminServerWithDecisions(t)
 	const plain = "user-plain"
 	if err := users.CreateLocalUser(t.Context(), &model.User{ID: plain, Account: plain, Name: plain, Enabled: true}, "pw-init0"); err != nil {
 		t.Fatal(err)
@@ -258,14 +263,16 @@ func TestCheckRecordsDecisionsForActiveInactiveAndUnknownAccessors(t *testing.T)
 	if body := check("nobody"); body["allowed"] != false {
 		t.Fatalf("unknown check = %v", body)
 	}
-	var rows []model.AuthzDecision
-	if err := db.Where("source = ?", decisionSourceCheck).Order("request_id ASC").Find(&rows).Error; err != nil {
-		t.Fatal(err)
+	var rows []decisionlog.Entry
+	for _, entry := range collector.Snapshot() {
+		if entry.Source == decisionSourceCheck {
+			rows = append(rows, entry)
+		}
 	}
 	if len(rows) != 3 {
 		t.Fatalf("check decisions = %d, want 3: %+v", len(rows), rows)
 	}
-	byAccessor := map[string]model.AuthzDecision{}
+	byAccessor := map[string]decisionlog.Entry{}
 	for _, row := range rows {
 		byAccessor[row.AccessorID] = row
 		if row.ResourceType != "knowledge_network" || row.ResourceID != "kn-1" || row.Operation != "view_detail" || row.Scope != "effective" {
@@ -287,16 +294,18 @@ func TestCheckRecordsDecisionsForActiveInactiveAndUnknownAccessors(t *testing.T)
 }
 
 func TestResourceFilterRecordsOneRowPerCall(t *testing.T) {
-	r, _, db, _ := newAdminServer(t)
+	r, _, _, _, collector := newAdminServerWithDecisions(t)
 	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
 		"accessor_id": adminSub, "resource_type": "knowledge_network", "resource_ids": []string{"kn-1", "kn-2", "kn-3"},
 		"visibility_operations": []string{"view_detail"}, "include_operations": true,
 	}); w.Code != http.StatusOK {
 		t.Fatalf("resource-filter: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
-	var filters []model.AuthzDecision
-	if err := db.Where("source = ?", decisionSourceFilter).Find(&filters).Error; err != nil {
-		t.Fatal(err)
+	var filters []decisionlog.Entry
+	for _, entry := range collector.Snapshot() {
+		if entry.Source == decisionSourceFilter {
+			filters = append(filters, entry)
+		}
 	}
 	if len(filters) != 1 {
 		t.Fatalf("resource-filter decisions = %d, want exactly 1 for a 3-resource batch", len(filters))
@@ -306,10 +315,8 @@ func TestResourceFilterRecordsOneRowPerCall(t *testing.T) {
 	}
 }
 
-func TestDecisionReadEndpointListsAnAccountsDecisionsInAWindow(t *testing.T) {
+func TestDecisionReadEndpointIsRetiredButHistoryRemains(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
-	// A permission-point decision from the request itself plus two planted
-	// rows on either side of the window.
 	old := model.AuthzDecision{ID: "old", AccessorID: "acct-x", Decision: "deny", Source: "check", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
 	in := model.AuthzDecision{ID: "in", AccessorID: "acct-x", Decision: "allow", Source: "check", CreatedAt: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)}
 	for _, row := range []model.AuthzDecision{old, in} {
@@ -318,29 +325,15 @@ func TestDecisionReadEndpointListsAnAccountsDecisionsInAWindow(t *testing.T) {
 		}
 	}
 	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/authz-decisions?accessor_id=acct-x&from=2026-05-01T00:00:00Z&to=2026-07-01T00:00:00Z", nil)
-	if w.Code != http.StatusOK {
-		t.Fatalf("list: want 200, got %d (%s)", w.Code, w.Body.String())
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("retired local query: want 404, got %d (%s)", w.Code, w.Body.String())
 	}
-	var body struct {
-		Decisions []model.AuthzDecision `json:"decisions"`
-		Total     int64                 `json:"total"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+	var count int64
+	if err := db.Model(&model.AuthzDecision{}).Where("accessor_id = ?", "acct-x").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if body.Total != 1 || len(body.Decisions) != 1 || body.Decisions[0].ID != "in" {
-		t.Fatalf("window list = %+v", body)
-	}
-	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/authz-decisions?from=not-a-time", nil); w.Code != http.StatusBadRequest {
-		t.Fatalf("bad from: want 400, got %d", w.Code)
-	}
-	// The read itself passed a permission point, which is a decision too.
-	var mine model.AuthzDecision
-	if err := db.Where("accessor_id = ? AND resource_type = ? AND operation = ?", adminSub, "admin-audit", "view").First(&mine).Error; err != nil {
-		t.Fatalf("permission point decision for the read: %v", err)
-	}
-	if mine.Decision != "allow" {
-		t.Fatalf("read decision: %+v", mine)
+	if count != 2 {
+		t.Fatalf("historical decisions lost: %d", count)
 	}
 }
 
@@ -460,7 +453,7 @@ func TestAuditDetailFromPrefixKeepsLeadingFieldsAndSkipsArrays(t *testing.T) {
 }
 
 func TestOneRequestIDTiesResponseAuditAndDecisions(t *testing.T) {
-	r, _, db, _ := newAdminServer(t)
+	r, _, db, _, collector := newAdminServerWithDecisions(t)
 	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments", map[string]any{"id": "d-rid", "name": "RID"})
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create: want 201, got %d (%s)", w.Code, w.Body.String())
@@ -476,9 +469,11 @@ func TestOneRequestIDTiesResponseAuditAndDecisions(t *testing.T) {
 	if row.Resource != "departments" || row.Method != http.MethodPost || row.Status != http.StatusCreated {
 		t.Fatalf("audit row for the request id: %+v", row)
 	}
-	var decisions []model.AuthzDecision
-	if err := db.Where("request_id = ?", rid).Find(&decisions).Error; err != nil {
-		t.Fatal(err)
+	var decisions []decisionlog.Entry
+	for _, entry := range collector.Snapshot() {
+		if entry.RequestID == rid {
+			decisions = append(decisions, entry)
+		}
 	}
 	if len(decisions) < 2 {
 		t.Fatalf("decisions sharing the request id = %d, want the console gate and the permission point: %+v", len(decisions), decisions)

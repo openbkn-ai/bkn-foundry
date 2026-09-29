@@ -247,8 +247,8 @@ func projectReceipt(document sessionvo.ReceiptProjectionDocument) observabilityv
 		SeverityNumber: severityNumber, SeverityText: severityText, Outcome: outcome,
 		SafeSummary: "Executed " + targetName, ServiceName: "bkn-trace-core", Environment: "unknown",
 		ActorID: document.Owner.EffectiveSubjectID, EffectiveSubjectID: document.Owner.EffectiveSubjectID,
-		ApplicationID: document.Owner.ApplicationPrincipalID, IngressPrincipal: "bkn-trace-core", TrustLevel: "trusted",
-		RequestID: document.RequestID, TraceID: document.TraceID, ConversationID: document.ConversationID,
+		ApplicationID: document.Owner.ApplicationPrincipalID,
+		RequestID:     document.RequestID, TraceID: document.TraceID, ConversationID: document.ConversationID,
 		InteractionID: document.InteractionID, OperationID: document.OperationID, ToolName: document.ToolName,
 		KnowledgeNetworkIDs: append([]string(nil), document.KnowledgeNetworkIDs...),
 		Attributes: map[string]any{

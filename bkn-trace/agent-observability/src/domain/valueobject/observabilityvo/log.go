@@ -51,8 +51,6 @@ type LogRecord struct {
 	ActorID             string          `json:"actor_id,omitempty"`
 	EffectiveSubjectID  string          `json:"effective_subject_id,omitempty"`
 	ApplicationID       string          `json:"application_id,omitempty"`
-	IngressPrincipal    string          `json:"ingress_principal"`
-	TrustLevel          string          `json:"trust_level"`
 	RequestID           string          `json:"request_id,omitempty"`
 	TraceID             string          `json:"trace_id,omitempty"`
 	SpanID              string          `json:"span_id,omitempty"`

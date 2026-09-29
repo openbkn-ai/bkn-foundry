@@ -815,8 +815,7 @@ func canReadLog(
 	record observabilityvo.LogRecord,
 	associated bool,
 ) bool {
-	if !validLogProjection(record) || record.TrustLevel != "trusted" || record.IngressPrincipal == "" ||
-		!observabilityvo.IsRegisteredLogEvent(record.Category, record.EventName) {
+	if !validLogProjection(record) {
 		return false
 	}
 	if associated && !capabilities.GlobalLogSearch {

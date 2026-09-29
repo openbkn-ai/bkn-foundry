@@ -30,7 +30,7 @@ import (
 // requested scopes with explicit Authorize/Decline.
 const ctxHydraBrowserPublicURL = "hydra_browser_public_url"
 
-func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessStore *accesslog.Store, browserPublicURL string) {
+func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessStore accesslog.Recorder, browserPublicURL string) {
 	r.GET(openBKNLogoPath, serveOpenBKNLogo)
 	r.GET(loginBackgroundPath, serveLoginBackground)
 	r.GET("/login", func(c *gin.Context) { showLogin(c, h) })
@@ -372,7 +372,7 @@ func showLogin(c *gin.Context, h *auth.HydraAdmin) {
 	renderHTML(c, loginPage, data)
 }
 
-func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
+func doLogin(c *gin.Context, p *auth.Provider, accessStore accesslog.Recorder) {
 	applyAuthLocale(c, "")
 	challenge := c.PostForm("login_challenge")
 	account := c.PostForm("account")
@@ -432,7 +432,7 @@ func showChangePassword(c *gin.Context) {
 
 // doChangePassword re-verifies the current password, sets the new one, and
 // completes the hydra login. Validation errors re-render the page with a note.
-func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
+func doChangePassword(c *gin.Context, p *auth.Provider, accessStore accesslog.Recorder) {
 	applyAuthLocale(c, "")
 	challenge := c.PostForm("login_challenge")
 	account := resolveChangePasswordAccount(c, c.PostForm("account"))
@@ -477,7 +477,7 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.S
 	redirectToHydra(c, redirectTo)
 }
 
-func recordLogin(c *gin.Context, store *accesslog.Store, user *model.User, account, outcome, failureCode string) {
+func recordLogin(c *gin.Context, store accesslog.Recorder, user *model.User, account, outcome, failureCode string) {
 	if store == nil {
 		return
 	}

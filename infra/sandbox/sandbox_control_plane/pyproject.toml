@@ -45,6 +45,8 @@ dependencies = [
     "prometheus-client>=0.19.0",
     "python-multipart>=0.0.21",
     "aiodocker>=0.25.0",
+    "opentelemetry-sdk==1.44.0",
+    "opentelemetry-exporter-otlp-proto-http==1.44.0",
 ]
 
 [project.optional-dependencies]

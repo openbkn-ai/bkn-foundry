@@ -7,6 +7,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.openapi.utils import get_openapi
 from starlette.middleware.base import BaseHTTPMiddleware
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
 
 from app.commons.errors import UnauthorizedError, HydraServiceError, BknSafeServiceError
 from app.commons.locale import (
@@ -26,6 +28,7 @@ from app.routers import router_init
 from app.utils.comment_utils import write_log
 from app.utils import openai_error
 from app.utils.observability.observability import init_observability, shutdown_observability
+from app.utils.observability.observability_log import emit_http_request_log
 
 
 def conf_init(app):
@@ -185,6 +188,28 @@ async def auth_middleware(request: Request, call_next):
     return response
 
 
+async def observability_middleware(request: Request, call_next):
+    """Emit one bounded internal span and product log per HTTP request."""
+    tracer = trace.get_tracer("model-api.http")
+    route = "unmatched"
+    status = 500
+    with tracer.start_as_current_span(
+        "HTTP request", kind=SpanKind.SERVER
+    ) as span:
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            route_object = request.scope.get("route")
+            route = getattr(route_object, "path", None) or "unmatched"
+            return response
+        finally:
+            span.update_name(f"{request.method} {route}")
+            span.set_attribute("http.request.method", request.method)
+            span.set_attribute("http.route", route)
+            span.set_attribute("http.response.status_code", status)
+            emit_http_request_log(request.method, route, status)
+
+
 class RequestSizeMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         content_length = request.headers.get('content-length')
@@ -280,6 +305,7 @@ def create_app():
     app.add_middleware(BaseHTTPMiddleware, dispatch=auth_middleware)
     # Added after auth so this ASGI middleware is outermost: it also decorates auth failures.
     app.add_middleware(LocaleResponseMiddleware)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=observability_middleware)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
     # Initialize logging.

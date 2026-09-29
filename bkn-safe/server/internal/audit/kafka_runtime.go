@@ -60,13 +60,26 @@ func (r *KafkaRuntime) Close() {
 	}
 }
 
+// Publisher exposes the narrow, credential-free producer boundary so Safe's
+// registered Audit sources share one bounded queue and delivery worker pool.
+func (r *KafkaRuntime) Publisher() KafkaPublisher {
+	if r == nil || r.publisher == nil {
+		return nil
+	}
+	return r.publisher
+}
+
 type safeDeliveryObserver struct{ telemetry *PublishTelemetry }
 
 func (o safeDeliveryObserver) ObserveDelivery(delivery auditpublisher.Delivery) {
+	sourceID := "bkn-safe-admin"
+	if parts := strings.SplitN(string(delivery.Record.Key), "\x1f", 2); len(parts) == 2 && parts[0] != "" {
+		sourceID = parts[0]
+	}
 	if delivery.Outcome == auditpublisher.Delivered {
-		o.telemetry.Observe("delivered")
+		o.telemetry.ObserveForSource(sourceID, "delivered")
 	} else {
-		o.telemetry.Observe("dropped_" + string(delivery.Outcome))
+		o.telemetry.ObserveForSource(sourceID, "dropped_"+string(delivery.Outcome))
 	}
 	if delivery.Outcome != auditpublisher.Delivered {
 		slog.Error("safe audit delivery coverage gap", "outcome", delivery.Outcome, "attempts", delivery.Attempts, "error", delivery.Err)

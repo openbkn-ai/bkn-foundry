@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
 	"gorm.io/gorm"
 
@@ -66,9 +65,6 @@ type App struct {
 	deps         httpapi.Deps
 	licSvc       *license.Service
 	auditRuntime *audit.KafkaRuntime
-	// decisions is the authorization decision log; its retention purge runs
-	// alongside the listener.
-	decisions *decisionlog.Store
 	// freshAuthorizationStore is captured before AutoMigrate creates the
 	// Casbin/marker schema. An old but empty store must still run the explicit
 	// offline migration and therefore is never inferred as fresh later.
@@ -137,12 +133,16 @@ func Boot(opts Options) (*App, error) {
 	}
 	provider := auth.NewProvider(authenticator, hydraAdmin, userStore)
 	dir := directory.New(db)
-	accessLogStore := accesslog.New(db)
-	decisionStore := decisionlog.New(db, decisionlog.Options{
-		Enabled:         cfg.Audit.DecisionLog.Enabled,
-		AllowSampleRate: cfg.Audit.DecisionLog.AllowSampleRate,
-		QueueSize:       cfg.Audit.DecisionLog.QueueSize,
-	})
+	accessLogRecorder := accesslog.NewKafkaRecorder(
+		auditRuntime.Publisher(),
+		os.Getenv("BKN_AUDIT_ENVIRONMENT"),
+		func(outcome string) { auditRuntime.Telemetry.ObserveForSource("bkn-safe-access", outcome) },
+	)
+	decisionRecorder := decisionlog.NewKafkaRecorder(
+		auditRuntime.Publisher(),
+		os.Getenv("BKN_AUDIT_ENVIRONMENT"),
+		func(outcome string) { auditRuntime.Telemetry.ObserveForSource("bkn-safe-security", outcome) },
+	)
 	authorizationResources, err := httpapi.NewAuthorizationResourceCatalog(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
 	if err != nil {
 		return nil, fmt.Errorf("authorization resource catalog: %w", err)
@@ -154,11 +154,6 @@ func Boot(opts Options) (*App, error) {
 	rowFilterPublishedObjectTypes, err := httpapi.NewRowFilterPublishedObjectTypeResolver(cfg.Upstreams.OntologyQuery)
 	if err != nil {
 		return nil, fmt.Errorf("row-filter published object type resolver: %w", err)
-	}
-	if decisionStore.Enabled() {
-		slog.Info("authz decision log enabled",
-			"allow_sample_rate", cfg.Audit.DecisionLog.AllowSampleRate,
-			"retention_days", cfg.Audit.DecisionLog.RetentionDays)
 	}
 
 	// Cluster license hub: hold the one .lic, be the only egress to the
@@ -192,7 +187,6 @@ func Boot(opts Options) (*App, error) {
 		licSvc:                  licSvc,
 		auditRuntime:            auditRuntime,
 		freshAuthorizationStore: freshAuthorizationStore,
-		decisions:               decisionStore,
 		deps: httpapi.Deps{
 			Enforcer:                      enforcer,
 			DB:                            db,
@@ -203,8 +197,8 @@ func Boot(opts Options) (*App, error) {
 			Users:                         userStore,
 			Audit:                         auditRuntime.Recorder,
 			AuditTelemetry:                auditRuntime.Telemetry,
-			AccessLog:                     accessLogStore,
-			Decisions:                     decisionStore,
+			AccessLog:                     accessLogRecorder,
+			Decisions:                     decisionRecorder,
 			OAuthAccessOrigins:            oauthAccessOrigins,
 			License:                       licSvc,
 			AuthorizationResources:        authorizationResources,
@@ -236,21 +230,16 @@ func (a *App) Run() error {
 	entitlement.Freeze()
 	slog.Info("extensions assembled", "assembled", entitlement.Assembled())
 
-	// Background audit work lives for as long as the listener: committed audit
-	// events are chained asynchronously, the chain head is anchored externally,
-	// and decision logs are retained.
+	// Background work lives for as long as the listener.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	defer a.auditRuntime.Close()
-	go a.decisions.RunRetention(ctx, a.cfg.Audit.DecisionLog.RetentionDays, 24*time.Hour)
 	go a.enforcer.RunPolicyRefresh(ctx, a.cfg.Authz.PolicyRefreshInterval)
 	go a.deps.OAuthAccessOrigins.Run(ctx, a.cfg.OAuth.ReconcileInterval)
 
 	r := httpapi.New(a.deps)
 	slog.Info("bkn-safe listening", "addr", a.cfg.HTTPAddr)
 	err := r.Run(a.cfg.HTTPAddr)
-	// The listener is gone; drain the queued decisions before reporting why.
-	a.decisions.Close()
 	return err
 }
 

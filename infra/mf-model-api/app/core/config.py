@@ -119,6 +119,17 @@ def _stripped_env(name):
     return os.getenv(name, '').strip()
 
 
+def _positive_int_env(name, default):
+    """Treat an omitted or empty Helm value as the bounded service default."""
+    value = _stripped_env(name)
+    if not value:
+        return default
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError(f"{name} must be positive")
+    return parsed
+
+
 def directory_settings():
     """Directory (name resolution) backend selection, same normalisation."""
     return _stripped_env('DIRECTORY_PROVIDER'), _stripped_env('BKN_SAFE_URL')
@@ -136,7 +147,7 @@ def validate_authz_config():
 
 
 server_info = ServerInfo(
-    server_name="agent-executor",
+    server_name="model-api",
     server_version="1.0.0",
     language="python",
     python_version=sys.version,
@@ -150,13 +161,11 @@ observability_config = ObservabilitySetting(
         log_load_max_log=int(os.getenv("LOG_LOAD_MAX_LOG", "1000")),
         http_log_feed_ingester_url=os.getenv("httpLogFeedIngesterUrl",
                                              "http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-log/events"),
-    )
-    # trace=TraceSetting(
-    #     trace_enabled=os.getenv("O11Y_TRACE_ENABLED", "false") == "true",
-    #     trace_provider=os.getenv("O11Y_TRACE_PROVIDER", "http"),
-    #     trace_max_queue_size=int(os.getenv("O11Y_TRACE_MAX_QUEUE_SIZE", "512")),
-    #     max_export_batch_size=int(os.getenv("O11Y_TRACE_MAX_EXPORT_BATCH_SIZE", "512")),
-    #     http_trace_feed_ingester_url=os.getenv("O11Y_HTTP_TRACE_FEED_INGESTER_URL",
-    #                                            "http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-trace/events"),
-    # )
+    ),
+    trace=TraceSetting(
+        trace_enabled=os.getenv("TRACE_ENABLED", "false") == "true",
+        trace_provider="otlp_http",
+        trace_max_queue_size=_positive_int_env("TRACE_MAX_QUEUE_SIZE", 2048),
+        max_export_batch_size=_positive_int_env("TRACE_MAX_EXPORT_BATCH_SIZE", 512),
+    ),
 )

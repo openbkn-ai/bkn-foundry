@@ -46,7 +46,7 @@ func TestRecordContract(t *testing.T) {
 	}
 }
 
-func TestRejectsOversizeOrSecret(t *testing.T) {
+func TestRejectsOversizeButKeepsOpaqueIdentifiers(t *testing.T) {
 	value, err := os.ReadFile("testdata/audit-record-v1-golden.json")
 	if err != nil {
 		t.Fatal(err)
@@ -55,9 +55,9 @@ func TestRejectsOversizeOrSecret(t *testing.T) {
 	if _, err := BuildRecord(oversize); err == nil {
 		t.Fatal("oversize value was accepted")
 	}
-	secret := bytes.Replace(value, []byte(`"summary": "updated knowledge network"`), []byte(`"summary": "Bearer abcdefghijklmnop"`), 1)
-	if _, err := BuildRecord(secret); err == nil {
-		t.Fatal("secret-shaped value was accepted")
+	identifier := bytes.Replace(value, []byte(`"summary": "updated knowledge network"`), []byte(`"summary": "bkn_valid_identifier_123"`), 1)
+	if _, err := BuildRecord(identifier); err != nil {
+		t.Fatalf("transport must not reject a legitimate identifier by its prefix: %v", err)
 	}
 }
 

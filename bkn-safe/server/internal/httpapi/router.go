@@ -48,11 +48,11 @@ type Deps struct {
 	// injects the Kafka recorder; historical local Audit HTTP reads are absent.
 	Audit          AuditRecorder
 	AuditTelemetry *audit.PublishTelemetry
-	// AccessLog records login/logout outcomes separately from management audit.
-	AccessLog *accesslog.Store
-	// Decisions records authorization decisions (#334). When nil, nothing is
-	// recorded and the decision read endpoint is not mounted.
-	Decisions *decisionlog.Store
+	// AccessLog publishes login/logout facts. Production injects the Kafka
+	// recorder; local access-log reads are intentionally absent.
+	AccessLog accesslog.Recorder
+	// Decisions publishes authorization decisions; historical local reads are absent.
+	Decisions decisionlog.Recorder
 	// TokenVerifier validates admin-API bearer tokens. Defaults to Hydra when
 	// nil (production); tests inject a stub.
 	TokenVerifier TokenVerifier
@@ -183,12 +183,6 @@ func New(deps Deps) *gin.Engine {
 		// for authenticated callers (failed-auth 401/403 are not audited).
 		if recorder != nil {
 			admin.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
-		}
-		if deps.AccessLog != nil {
-			registerAccessLogReads(admin, deps.AccessLog, deps.Enforcer)
-		}
-		if deps.Decisions != nil {
-			registerDecisionReads(admin, deps.Decisions, deps.Enforcer)
 		}
 		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
 		registerAdminReads(admin, deps.Directory, deps.Enforcer)

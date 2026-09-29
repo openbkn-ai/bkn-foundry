@@ -23,9 +23,9 @@ func SetupRouter(config *RouterConfig) *gin.Engine {
 	locale.Register()
 	r := gin.New()
 
+	r.Use(middleware.Logger(config.Logger))
 	r.Use(middleware.Recovery(config.Logger))
 	r.Use(middleware.Language())
-	r.Use(middleware.Logger(config.Logger))
 	r.Use(middleware.CORS())
 
 	r.GET("/health/ready", config.HealthHandler.Ready)

@@ -60,6 +60,11 @@ controlPlane:
       cpu: 500m
       memory: 1Gi
 
+  observability:
+    logEnabled: true
+    traceEnabled: true
+    otlpEndpoint: "http://otelcol-contrib:4318"
+
   # Node selector
   nodeSelector: {}
 

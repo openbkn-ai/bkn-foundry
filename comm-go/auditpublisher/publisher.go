@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"sync"
 	"time"
 
@@ -32,8 +31,6 @@ const (
 	MaxRetryElapsed      = 5 * time.Second
 	ShutdownDrainTimeout = 5 * time.Second
 )
-
-var secretPattern = regexp.MustCompile(`(?i)(?:bearer\s+[a-z0-9._~-]{8,}|bkn_[a-z0-9._~-]{8,})`)
 
 // Header is the only wire header currently permitted on an Audit v1 record.
 type Header struct {
@@ -65,9 +62,6 @@ func BuildRecord(value []byte) (Record, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(value, &payload); err != nil {
 		return Record{}, fmt.Errorf("audit value is not JSON: %w", err)
-	}
-	if hasSecret(payload) {
-		return Record{}, errors.New("audit value matched secret detection rule")
 	}
 	if payload["schema_version"] != SchemaVersion {
 		return Record{}, errors.New("audit schema_version must be 1.0")
@@ -102,26 +96,6 @@ func BuildRecord(value []byte) (Record, error) {
 		TimestampType: LogAppendTime,
 		ContentHash:   "sha256:" + hex.EncodeToString(digest[:]),
 	}, nil
-}
-
-func hasSecret(value any) bool {
-	switch current := value.(type) {
-	case string:
-		return secretPattern.MatchString(current)
-	case map[string]any:
-		for _, child := range current {
-			if hasSecret(child) {
-				return true
-			}
-		}
-	case []any:
-		for _, child := range current {
-			if hasSecret(child) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // WireBytes reports the queue byte accounting mandated by C1: key + headers +

@@ -6,7 +6,6 @@ package httpapi
 
 import (
 	"encoding/json"
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -32,19 +31,19 @@ const (
 const basisInactiveAccount = "inactive_account"
 
 // withDecisionLog makes store reachable from any handler on the engine.
-func withDecisionLog(store *decisionlog.Store) gin.HandlerFunc {
+func withDecisionLog(store decisionlog.Recorder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set(ctxDecisionLog, store)
 		c.Next()
 	}
 }
 
-func decisionLogFrom(c *gin.Context) *decisionlog.Store {
+func decisionLogFrom(c *gin.Context) decisionlog.Recorder {
 	raw, ok := c.Get(ctxDecisionLog)
 	if !ok {
 		return nil
 	}
-	store, _ := raw.(*decisionlog.Store)
+	store, _ := raw.(decisionlog.Recorder)
 	return store
 }
 
@@ -61,6 +60,17 @@ func recordDecision(c *gin.Context, e decisionlog.Entry) {
 	}
 	if e.TraceID == "" {
 		e.TraceID = traceIDFromHeader(c)
+	}
+	if e.Method == "" {
+		e.Method = c.Request.Method
+	}
+	if e.VerifiedActorID == "" {
+		e.VerifiedActorID = c.GetString(ctxAccessorID)
+		if e.VerifiedActorID == "" && e.Source == decisionSourceAdmin {
+			// The admin gate records its decision after token verification,
+			// before ctxAccessorID is set for downstream handlers.
+			e.VerifiedActorID = c.GetString(ctxAuthnSubject)
+		}
 	}
 	if e.ClientIP == "" {
 		e.ClientIP = c.ClientIP()
@@ -106,41 +116,12 @@ func isHexRune(r rune) bool {
 	return (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
 }
 
-// decisionDetail renders a small JSON object for the Detail column, dropping
-// it when it would not fit rather than storing a truncated fragment.
+// decisionDetail bounds the in-process summary; Kafka records omit it because
+// it can contain untrusted request input.
 func decisionDetail(m map[string]any) string {
 	b, err := json.Marshal(m)
 	if err != nil || len(b) > 1000 {
 		return ""
 	}
 	return string(b)
-}
-
-// registerDecisionReads mounts the decision-log read endpoint under the admin
-// group, behind the same permission point as the audit log.
-func registerDecisionReads(g *gin.RouterGroup, store *decisionlog.Store, e *authz.Enforcer) {
-	// GET /authz-decisions — list decisions newest-first. Query:
-	// ?accessor_id=&resource_type=&resource_id=&operation=&decision=&source=
-	// &from=&to=&offset=&limit= (from/to RFC3339). -> { decisions:[...], total }
-	g.GET("/authz-decisions", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
-		f := decisionlog.Filter{
-			AccessorID:   c.Query("accessor_id"),
-			ResourceType: c.Query("resource_type"),
-			ResourceID:   c.Query("resource_id"),
-			Operation:    c.Query("operation"),
-			Decision:     c.Query("decision"),
-			Source:       c.Query("source"),
-			Offset:       atoiDefault(c.Query("offset"), 0),
-			Limit:        atoiDefault(c.Query("limit"), 0),
-		}
-		if !accessLogTimeFilter(c, "from", &f.From) || !accessLogTimeFilter(c, "to", &f.To) {
-			return
-		}
-		rows, total, err := store.List(c.Request.Context(), f)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"decisions": rows, "total": total, "dropped": store.Dropped()})
-	})
 }

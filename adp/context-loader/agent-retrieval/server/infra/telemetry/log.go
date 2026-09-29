@@ -235,9 +235,7 @@ func operationLogAttributes(ctx context.Context, failed bool, sourceLogID string
 		attribute.String("log_id", contextLoaderLogSource+":"+sourceLogID),
 		attribute.String("source_id", contextLoaderLogSource),
 		attribute.String("source_log_id", sourceLogID),
-		attribute.String("trust_level", "trusted"),
 		attribute.String("log_category", "runtime.business"),
-		attribute.String("ingress_principal", contextLoaderLogSource),
 	)
 	if failed {
 		return append(attrs,

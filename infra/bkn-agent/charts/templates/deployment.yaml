@@ -89,6 +89,8 @@ spec:
               value: {{ .Values.runtime.checkpointerAllowRuntimeDdl | quote }}
             - name: OTEL_ENABLED
               value: {{ .Values.observability.otelEnabled | quote }}
+            - name: OTEL_LOGS_ENABLED
+              value: {{ .Values.observability.logsEnabled | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.observability.otlpEndpoint | quote }}
             - name: BKN_TRACE_ARTIFACT_INGEST_URL

@@ -183,8 +183,6 @@ func projectConversation(conversation sessionvo.Conversation) observabilityvo.Lo
 		ActorID:            conversation.Owner.EffectiveSubjectID,
 		EffectiveSubjectID: conversation.Owner.EffectiveSubjectID,
 		ApplicationID:      conversation.Owner.ApplicationPrincipalID,
-		IngressPrincipal:   "bkn-trace-core",
-		TrustLevel:         "trusted",
 		ConversationID:     conversation.ID,
 		RequestID:          conversation.CreationRequestID,
 		Attributes: map[string]any{

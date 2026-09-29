@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -45,10 +46,36 @@ func (stubVerifier) VerifyToken(_ context.Context, token string) (string, error)
 
 const adminSub = "admin-1" // seeded as super-admin in newAdminServer
 
+type discardAccessRecorder struct{}
+
+func (discardAccessRecorder) Record(context.Context, accesslog.Entry) error { return nil }
+
+type collectedDecisions struct {
+	mu   sync.Mutex
+	rows []decisionlog.Entry
+}
+
+func (c *collectedDecisions) Record(entry decisionlog.Entry) {
+	c.mu.Lock()
+	c.rows = append(c.rows, entry)
+	c.mu.Unlock()
+}
+
+func (c *collectedDecisions) Snapshot() []decisionlog.Entry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]decisionlog.Entry(nil), c.rows...)
+}
+
 // newAdminServer builds a full server with the admin API mounted: a stub token
 // verifier (token==subject) and adminSub seeded as super-admin (wildcard grant)
 // so RequireAdmin passes for Bearer adminSub.
 func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth.UserStore) {
+	r, e, db, users, _ := newAdminServerWithDecisions(t)
+	return r, e, db, users
+}
+
+func newAdminServerWithDecisions(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth.UserStore, *collectedDecisions) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -81,16 +108,15 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 	}))
 	adminwrite.RegisterMounter(licverify.EditionProfessional, adminwrite.Routes)
 	finegrained.Register(licverify.EditionProfessional)
+	decisions := &collectedDecisions{}
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
-		Audit:     audit.New(db),
-		AccessLog: accesslog.New(db),
-		// Synchronous so a test can read a decision right after the request
-		// that produced it; production writes through the queue.
-		Decisions:     decisionlog.New(db, decisionlog.Options{Enabled: true, AllowSampleRate: 1, Synchronous: true}),
+		Audit:         audit.New(db),
+		AccessLog:     discardAccessRecorder{},
+		Decisions:     decisions,
 		TokenVerifier: stubVerifier{},
 	})
-	return r, e, db, users
+	return r, e, db, users, decisions
 }
 
 // adminReq issues a request authenticated as the seeded super-admin.

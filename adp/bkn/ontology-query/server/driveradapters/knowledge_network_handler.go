@@ -84,7 +84,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	// Record only the route; the body may contain full object-property values.
-	otellog.LogInfo(ctx, fmt.Sprintf("Object subgraph query request: [%s]", c.Request.RequestURI))
+	otellog.LogInfo(ctx, fmt.Sprintf("Object subgraph query request: [%s]", observabilityRoute(c)))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
@@ -217,7 +217,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	// Record only the route; the body may contain full object-property values.
-	otellog.LogInfo(ctx, fmt.Sprintf("Object subgraph path query request: [%s]", c.Request.RequestURI))
+	otellog.LogInfo(ctx, fmt.Sprintf("Object subgraph path query request: [%s]", observabilityRoute(c)))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
@@ -376,7 +376,7 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	// Record only the route; the body may contain full object-property values.
-	otellog.LogInfo(ctx, fmt.Sprintf("Object-set subgraph query request: [%s]", c.Request.RequestURI))
+	otellog.LogInfo(ctx, fmt.Sprintf("Object-set subgraph query request: [%s]", observabilityRoute(c)))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")

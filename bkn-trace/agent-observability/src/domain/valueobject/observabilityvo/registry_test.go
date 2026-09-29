@@ -8,10 +8,10 @@ package observabilityvo
 import "testing"
 
 func TestRegisteredLogEventsRejectUnknownAndCategoryMismatch(t *testing.T) {
-	if !IsRegisteredLogEvent(CategoryRuntimeBusiness, "knowledge.read.completed") {
+	if !IsRegisteredLogEvent(CategoryRuntimeBusiness, "operation.executed") {
 		t.Fatal("registered business event was rejected")
 	}
-	if IsRegisteredLogEvent(CategoryRuntimeSystem, "knowledge.read.completed") {
+	if IsRegisteredLogEvent(CategoryRuntimeSystem, "operation.executed") {
 		t.Fatal("registered event was accepted under the wrong category")
 	}
 	if IsRegisteredLogEvent(CategoryRuntimeSystem, "plugin.custom.event") {

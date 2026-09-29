@@ -55,7 +55,16 @@ func TestBuildKafkaAuditRecord(t *testing.T) {
 	}
 
 	entry.TargetID = strings.Repeat("x", 257)
-	_, err = BuildKafkaAuditRecord(entry, "test")
-	require.Error(t, err)
-	assert.NotContains(t, err.Error(), entry.TargetID)
+	value, err = BuildKafkaAuditRecord(entry, "test")
+	require.NoError(t, err)
+	assert.NotContains(t, string(value), entry.TargetID)
+	require.NoError(t, json.Unmarshal(value, &record))
+	assert.Contains(t, record["target"].(map[string]any)["id"], "ref_")
+	entry.TargetID = "catalog-1"
+	entry.ActorName = "Bearer abcdefghijklmnop"
+	entry.TargetName = "bak_123456789012_abcdefghijklmnopqrstuvwxyz1"
+	value, err = BuildKafkaAuditRecord(entry, "test")
+	require.NoError(t, err)
+	assert.Contains(t, string(value), "Bearer abcdefghijklmnop")
+	assert.Contains(t, string(value), "bak_123456789012_abcdefghijklmnopqrstuvwxyz1")
 }

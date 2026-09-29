@@ -15,7 +15,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/google/uuid v1.6.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20260927015203-0f3b199d9b54
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20260929020905-34e2e7470d7b
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/ory/hydra-client-go/v2 v2.2.1
 	golang.org/x/crypto v0.55.0

@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
@@ -28,11 +27,11 @@ import (
 const (
 	SchemaVersion                 = "1.0"
 	SchemaHeader                  = "bkn-audit-schema-version"
-	CanonicalSchemaSHA256         = "530c532e52472186fafbd8dae282c8e5fcaa067909c42518fa06be72d150d953"
-	CanonicalRegistrySHA256       = "b0a7ebc3146804f1b6e89e7dded4392335d84546566e691a344e2bc3cca021d5"
-	RuntimeRegistrySHA256         = "0687650868cd5140c6d25bea3b5e9e1cbf3c2e9bcb21206e128e3f295d723fae"
-	CanonicalValueFixtureSHA256   = "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40"
-	KafkaFixtureSHA256            = "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4"
+	CanonicalSchemaSHA256         = "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f"
+	CanonicalRegistrySHA256       = "555134f555aa4b802b9a69940a28f5332a136061335284f6a42ba9fbe594cb59"
+	RuntimeRegistrySHA256         = "b8cf27603befc3c745c94572b2f209b741fb8d337a570153cba3de39333993c2"
+	CanonicalValueFixtureSHA256   = "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3"
+	KafkaFixtureSHA256            = "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f"
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
 	maxAuditValueBytes            = 32 * 1024
 	maxClockSkew                  = 5 * time.Minute
@@ -48,11 +47,10 @@ type Validator struct {
 }
 
 type registry struct {
-	SourceRegistrySHA256 string            `json:"source_registry_sha256"`
-	RegistryVersion      string            `json:"registry_version"`
-	Sources              []sourceRule      `json:"sources"`
-	Events               []eventRule       `json:"events"`
-	SecretRules          []secretDetection `json:"secret_detection_rules"`
+	SourceRegistrySHA256 string       `json:"source_registry_sha256"`
+	RegistryVersion      string       `json:"registry_version"`
+	Sources              []sourceRule `json:"sources"`
+	Events               []eventRule  `json:"events"`
 }
 
 type sourceRule struct {
@@ -117,12 +115,6 @@ type eventRule struct {
 
 type outcomeMapping struct {
 	Accepted []string `json:"accepted_outcomes"`
-}
-
-type secretDetection struct {
-	Target  string `json:"match_target"`
-	Pattern string `json:"pattern"`
-	Action  string `json:"action"`
 }
 
 type rejection struct{ reason string }
@@ -193,9 +185,6 @@ func (v *Validator) Validate(_ context.Context, record auditconsumer.Record) (au
 	}
 	if err := validateRegistry(value, v.registry); err != nil {
 		return auditstore.Event{}, err
-	}
-	if containsSecret(value, v.registry.SecretRules) {
-		return auditstore.Event{}, permanent("secret_detected")
 	}
 	canonical, err := jsoncanonicalizer.Transform(record.Value)
 	if err != nil {
@@ -285,52 +274,6 @@ func validateRegistry(value map[string]any, rules registry) error {
 		return permanent("source_collection_method_rejected")
 	}
 	return nil
-}
-
-func containsSecret(value any, rules []secretDetection) bool {
-	compiled := make([]struct {
-		target  string
-		pattern *regexp.Regexp
-	}, 0, len(rules))
-	for _, rule := range rules {
-		pattern, err := regexp.Compile(rule.Pattern)
-		if err == nil {
-			compiled = append(compiled, struct {
-				target  string
-				pattern *regexp.Regexp
-			}{rule.Target, pattern})
-		}
-	}
-	var walk func(any, string) bool
-	walk = func(current any, key string) bool {
-		for _, rule := range compiled {
-			if rule.target == "field_name_regex" && rule.pattern.MatchString(key) {
-				return true
-			}
-		}
-		switch item := current.(type) {
-		case map[string]any:
-			for childKey, child := range item {
-				if walk(child, childKey) {
-					return true
-				}
-			}
-		case []any:
-			for _, child := range item {
-				if walk(child, key) {
-					return true
-				}
-			}
-		case string:
-			for _, rule := range compiled {
-				if rule.target == "value_regex" && rule.pattern.MatchString(item) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	return walk(value, "")
 }
 
 func findSource(sources []sourceRule, id string) (sourceRule, bool) {

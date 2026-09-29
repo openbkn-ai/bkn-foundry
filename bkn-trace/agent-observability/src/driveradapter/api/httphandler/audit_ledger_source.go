@@ -21,7 +21,7 @@ func NewAuditLedgerSource(reader *auditstore.Reader) *auditLedgerSource {
 func (s *auditLedgerSource) ID() string                   { return "audit-ledger" }
 func (s *auditLedgerSource) SupportsSourceIDFilter() bool { return true }
 func (s *auditLedgerSource) Metadata() observabilityvo.SourceStatus {
-	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: "degraded", Reason: "producer_coverage_unverified", Reliability: "best_effort", CollectionMethod: "kafka_audit", CountAccuracy: "partial", Categories: []string{"audit.admin", "audit.security"}}
+	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: "degraded", Reason: "producer_coverage_unverified", Reliability: "best_effort", CollectionMethod: "kafka_audit", CountAccuracy: "partial", Categories: []string{"access.user", "audit.admin", "audit.security"}}
 }
 func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	if q.TimeFrom == nil || q.TimeTo == nil {
@@ -59,13 +59,13 @@ func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQue
 func auditQueryCategories(query observabilityvo.LogQuery) []string {
 	authorized := make(map[string]struct{}, len(query.AuthorizedCategories))
 	for _, category := range query.AuthorizedCategories {
-		if category == observabilityvo.CategoryAuditAdmin || category == observabilityvo.CategoryAuditSecurity {
+		if category == observabilityvo.CategoryAccessUser || category == observabilityvo.CategoryAuditAdmin || category == observabilityvo.CategoryAuditSecurity {
 			authorized[category] = struct{}{}
 		}
 	}
 	requested := query.Categories
 	if len(requested) == 0 {
-		requested = []string{observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity}
+		requested = []string{observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity}
 	}
 	result := make([]string, 0, len(requested))
 	for _, category := range requested {
@@ -113,8 +113,8 @@ func auditLogRecord(r auditsvc.Record) observabilityvo.LogRecord {
 		ActorType: r.ActorType, AuthMethod: r.AuthMethod, SourceChannel: r.SourceChannel,
 		BusinessModule: r.BusinessModule, TargetType: r.TargetType, TargetID: r.TargetID,
 		TargetNameSnapshot: targetName, Action: r.Action, Outcome: r.Outcome, SafeSummary: r.Summary, FailureCode: r.FailureCode,
-		ServiceName: r.SourceID, Environment: r.Environment, IngressPrincipal: "audit-kafka-validator",
-		SeverityNumber: 9, SeverityText: "INFO", TrustLevel: "trusted", ApplicationID: r.ApplicationID,
+		ServiceName: r.SourceID, Environment: r.Environment,
+		SeverityNumber: 9, SeverityText: "INFO", ApplicationID: r.ApplicationID,
 		KnowledgeNetworkIDs: append([]string(nil), r.KnowledgeNetworkIDs...), RequestID: r.RequestID,
 		TraceID: r.TraceID, OperationID: r.OperationID,
 		ResourceRef: &observabilityvo.ResourceRef{ResourceType: r.TargetType, ResourceID: r.TargetID},

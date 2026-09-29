@@ -13,7 +13,7 @@
     "schema_version": { "const": "1.0" },
     "event_id": { "type": "string", "format": "uuid" },
     "source_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,63}$" },
-    "category": { "enum": ["audit.admin", "audit.security"] },
+    "category": { "enum": ["access.user", "audit.admin", "audit.security"] },
     "event_name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$" },
     "occurred_at": {
       "type": "string",
@@ -126,6 +126,7 @@
       "required": [],
       "properties": {
         "action": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        "result": { "enum": ["success", "failure", "denied"] },
         "decision": { "type": "string", "maxLength": 64 },
         "changed_fields": { "type": "array", "uniqueItems": true, "maxItems": 100, "items": { "type": "string", "maxLength": 128 } },
         "before_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
@@ -151,9 +152,10 @@
     {
       "if": {
         "properties": {
-          "event_name": { "not": { "const": "execution_factory.operation.observed" } }
+          "event_name": { "not": { "const": "execution_factory.operation.observed" } },
+          "category": { "enum": ["audit.admin", "audit.security"] }
         },
-        "required": ["event_name"]
+        "required": ["event_name", "category"]
       },
       "then": { "properties": { "facts": { "required": ["decision"] } } }
     },
@@ -178,67 +180,22 @@
       "if": {
         "properties": {
           "event_name": { "not": { "const": "execution_factory.operation.observed" } },
+          "category": { "enum": ["audit.admin", "audit.security"] },
           "request_context": { "properties": { "transport": { "const": "http" } }, "required": ["transport"] }
         },
-        "required": ["event_name", "request_context"]
+        "required": ["event_name", "category", "request_context"]
       },
       "then": { "properties": { "request_context": { "properties": { "source_channel": { "enum": ["api", "cli", "mcp", "sdk", "studio"] } } } } }
     },
     {
-      "if": { "properties": { "category": { "const": "audit.security" } }, "required": ["category"] },
-      "then": {
-        "properties": {
-          "facts": { "required": ["decision", "policy_revision", "resource_scope"] }
-        }
-      }
-    },
-    {
-      "if": { "properties": { "event_name": { "const": "access.anomaly_detected" } }, "required": ["event_name"] },
-      "then": { "properties": { "facts": { "required": ["decision", "policy_revision", "resource_scope", "detection_rule_id"] } } }
-    },
-    {
-      "if": { "properties": { "event_name": { "const": "audit_retention_policy.changed" } }, "required": ["event_name"] },
-      "then": {
-        "properties": {
-          "source_id": { "const": "agent-observability" },
-          "category": { "const": "audit.admin" },
-          "target": {
-            "properties": {
-              "type": { "const": "audit_retention_policy" },
-              "id": { "const": "global" }
-            }
-          },
-          "scope": {
-            "properties": {
-              "business_module": { "const": "observability" },
-              "platform_scope": { "const": true },
-              "knowledge_network_ids": { "maxItems": 0 }
-            }
-          },
-          "facts": {
-            "required": ["action", "decision", "previous_retention_days", "retention_days", "change_reason"],
-            "properties": {
-              "action": { "const": "update" },
-              "decision": { "const": "allowed" }
-            }
-          },
-          "outcome": { "const": "success" }
-        }
-      }
+      "if": { "properties": { "event_name": { "const": "authorization.decided" } }, "required": ["event_name"] },
+      "then": { "properties": { "facts": { "required": ["action", "decision", "resource_scope"] } } }
     },
     {
       "if": {
         "properties": {
           "event_name": {
             "enum": [
-              "role.updated",
-              "model_config.changed",
-              "resource_config.changed",
-              "agent.config.changed",
-              "tool.config.changed",
-              "skill.config.changed",
-              "toolbox.config.changed",
-              "mcp.config.changed",
               "trace_evidence.configuration_change_requested"
             ]
           }
@@ -258,14 +215,6 @@
         "properties": {
           "event_name": {
             "enum": [
-              "role.updated",
-              "model_config.changed",
-              "resource_config.changed",
-              "agent.config.changed",
-              "tool.config.changed",
-              "skill.config.changed",
-              "toolbox.config.changed",
-              "mcp.config.changed",
               "trace_evidence.configuration_change_requested"
             ]
           },
@@ -290,14 +239,6 @@
         "properties": {
           "event_name": {
             "enum": [
-              "role.updated",
-              "model_config.changed",
-              "resource_config.changed",
-              "agent.config.changed",
-              "tool.config.changed",
-              "skill.config.changed",
-              "toolbox.config.changed",
-              "mcp.config.changed",
               "trace_evidence.configuration_change_requested"
             ]
           },
@@ -319,14 +260,6 @@
         "properties": {
           "event_name": {
             "enum": [
-              "role.updated",
-              "model_config.changed",
-              "resource_config.changed",
-              "agent.config.changed",
-              "tool.config.changed",
-              "skill.config.changed",
-              "toolbox.config.changed",
-              "mcp.config.changed",
               "trace_evidence.configuration_change_requested"
             ]
           },
@@ -426,9 +359,10 @@
             "properties": { "transport": { "const": "http" } },
             "required": ["transport"]
           },
-          "event_name": { "not": { "const": "execution_factory.operation.observed" } }
+          "event_name": { "not": { "enum": ["execution_factory.operation.observed", "authorization.decided"] } },
+          "category": { "enum": ["audit.admin", "audit.security"] }
         },
-        "required": ["request_context", "event_name"]
+        "required": ["request_context", "event_name", "category"]
       },
       "then": { "required": ["http_status"] }
     }

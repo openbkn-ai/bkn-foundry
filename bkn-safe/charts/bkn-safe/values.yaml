@@ -196,21 +196,6 @@ config:
     # is what made every Helm upgrade invalidate an activated license
     # (openbkn-ai/bkn-foundry#508).
     instanceId: ""
-  # Authorization decision log remains independent of Kafka Audit publishing.
-  audit:
-    decisionLog:
-      # Record every authorization decision (/authz/checks, batch summaries for
-      # /resource-filter, admin gate and permission points).
-      # Written off the request path; a full queue drops rows, never blocks.
-      enabled: true
-      # Fraction [0,1] of ALLOW decisions kept. Denies are always kept. Lower
-      # it on a busy cluster; 1 keeps everything.
-      allowSampleRate: "1"
-      # Rows waiting to be written before Record starts dropping.
-      queueSize: "4096"
-      # Purge decision rows older than this many days (daily). 0 = keep all.
-      retentionDays: "90"
-
 resources:
   requests:
     cpu: 200m
