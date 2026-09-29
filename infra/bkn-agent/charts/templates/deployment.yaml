@@ -26,6 +26,8 @@ spec:
       labels:
         app: {{ .Values.image.name }}
     spec:
+      serviceAccountName: {{ .Values.image.name }}
+      automountServiceAccountToken: false
       dnsConfig:
         options:
           - name: ndots
