@@ -403,6 +403,7 @@ func NewApp() (*App, error) {
 		localizedHTTPClient(accessScopeConfig.Timeout),
 	)
 	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
+	evidenceHandler.SetLogQueryAuditSink(captureAudit.query)
 	logOptions := logsvc.Options{
 		CursorKey: observabilityConfig.CursorSigningKey, SourceTimeout: observabilityConfig.SourceTimeout,
 		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,

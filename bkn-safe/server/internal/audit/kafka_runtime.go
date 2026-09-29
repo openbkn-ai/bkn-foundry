@@ -63,7 +63,7 @@ func (r *KafkaRuntime) Close() {
 // Publisher exposes the narrow, credential-free producer boundary so Safe's
 // registered Audit sources share one bounded queue and delivery worker pool.
 func (r *KafkaRuntime) Publisher() KafkaPublisher {
-	if r == nil {
+	if r == nil || r.publisher == nil {
 		return nil
 	}
 	return r.publisher

@@ -635,6 +635,63 @@ func TestTrustedQueryMiddlewareCachesResolvedScope(t *testing.T) {
 	}
 }
 
+func TestTrustedLogQueryEmitsAuthorizedAuditFact(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{AllowUnauthenticatedQuery: true})
+	var facts []LogQueryAuditFact
+	handler.SetLogQueryAuditSink(func(fact LogQueryAuditFact) { facts = append(facts, fact) })
+	scope := evidencevo.QueryScope{AccountID: "acct-log-reader", AccountType: "user", AccessProfile: &evidencevo.AccessProfile{
+		ActorID: "acct-log-reader", EffectiveSubjectID: "acct-log-reader", AccountActive: true,
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs", nil)
+	request = request.WithContext(context.WithValue(request.Context(), trustedQueryScopeContextKey{}, scope))
+	response := httptest.NewRecorder()
+	handler.RequireTrustedQueryIdentity(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})(response, request)
+	if response.Code != http.StatusNoContent || len(facts) != 1 {
+		t.Fatalf("status=%d facts=%v", response.Code, facts)
+	}
+	if facts[0].ActorID != "acct-log-reader" || facts[0].Status != http.StatusNoContent || facts[0].Outcome != "success" {
+		t.Fatalf("untrusted query Audit attribution: %+v", facts[0])
+	}
+}
+
+func TestUnauthenticatedLogQueryEmitsDeniedAuditFactWithoutClaimedIdentity(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{AllowUnauthenticatedQuery: true})
+	var facts []LogQueryAuditFact
+	handler.SetLogQueryAuditSink(func(fact LogQueryAuditFact) { facts = append(facts, fact) })
+	request := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs", nil)
+	request.Header.Set("x-account-id", "forged-account")
+	response := httptest.NewRecorder()
+	handler.RequireTrustedQueryIdentity(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})(response, request)
+	if response.Code != http.StatusUnauthorized || len(facts) != 1 {
+		t.Fatalf("status=%d facts=%v", response.Code, facts)
+	}
+	if facts[0].ActorID != "anonymous" || facts[0].ActorType != "anonymous" || facts[0].Outcome != "denied" || facts[0].Status != http.StatusUnauthorized {
+		t.Fatalf("denial claimed untrusted identity: %+v", facts[0])
+	}
+}
+
+func TestTrustedLogQueryPermissionDenialRetainsTrustedActor(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{AllowUnauthenticatedQuery: true})
+	var facts []LogQueryAuditFact
+	handler.SetLogQueryAuditSink(func(fact LogQueryAuditFact) { facts = append(facts, fact) })
+	scope := evidencevo.QueryScope{AccountID: "acct-denied-reader", AccountType: "user", AccessProfile: &evidencevo.AccessProfile{
+		ActorID: "acct-denied-reader", EffectiveSubjectID: "acct-denied-reader", AccountActive: true,
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs", nil)
+	request = request.WithContext(context.WithValue(request.Context(), trustedQueryScopeContextKey{}, scope))
+	response := httptest.NewRecorder()
+	handler.RequireTrustedQueryIdentity(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	})(response, request)
+	if response.Code != http.StatusForbidden || len(facts) != 1 || facts[0].ActorID != "acct-denied-reader" || facts[0].Outcome != "denied" {
+		t.Fatalf("trusted denial attribution/status changed: status=%d facts=%+v", response.Code, facts)
+	}
+}
+
 func TestTrustedQueryMiddlewareResolvesAuthenticatedScope(t *testing.T) {
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"realname"}}`)

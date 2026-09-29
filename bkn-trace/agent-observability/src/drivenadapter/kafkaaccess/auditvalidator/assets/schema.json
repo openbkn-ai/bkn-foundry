@@ -191,7 +191,7 @@
       "if": {
         "properties": {
           "category": { "const": "audit.security" },
-          "event_name": { "not": { "const": "authorization.decided" } }
+          "event_name": { "not": { "enum": ["authorization.decided", "log.query.authorized", "log.query.denied"] } }
         },
         "required": ["category", "event_name"]
       },

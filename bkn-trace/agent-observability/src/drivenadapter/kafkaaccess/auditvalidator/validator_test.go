@@ -52,8 +52,8 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 		t.Fatal(err)
 	}
 	for file, expected := range map[string]string{
-		"schema.json":                   "930c00a50b0bc4e447baf66c2a64f0b9c9fe2a1feabfb3022ee4a34977de7aeb",
-		"registry-runtime-v1.json":      "cf7cf66a53d98ffe796279414e02cc06edf39a4475a59837bb9117a9620b73d5",
+		"schema.json":                   "d8c7d5e9cdc9ff31c49fcec21b5866ad159bb852d5987a759b24730bda1a6177",
+		"registry-runtime-v1.json":      "26b5225b77d655043b269dc95695784b73546e451ee069c5713f8d13386c0d13",
 		"audit-record-golden.json":      "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40",
 		"audit-kafka-golden.json":       "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",

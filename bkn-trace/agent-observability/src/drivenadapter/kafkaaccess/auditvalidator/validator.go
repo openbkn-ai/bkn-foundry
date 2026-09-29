@@ -27,9 +27,9 @@ import (
 const (
 	SchemaVersion                 = "1.0"
 	SchemaHeader                  = "bkn-audit-schema-version"
-	CanonicalSchemaSHA256         = "930c00a50b0bc4e447baf66c2a64f0b9c9fe2a1feabfb3022ee4a34977de7aeb"
-	CanonicalRegistrySHA256       = "140ef7ad0887be5e0297c17410fcc83ea448b74638a096bc7bf367adf3955414"
-	RuntimeRegistrySHA256         = "cf7cf66a53d98ffe796279414e02cc06edf39a4475a59837bb9117a9620b73d5"
+	CanonicalSchemaSHA256         = "d8c7d5e9cdc9ff31c49fcec21b5866ad159bb852d5987a759b24730bda1a6177"
+	CanonicalRegistrySHA256       = "e8c724f84773e65a4f3aa920a2d7b901ddcdb2f21075704cef6dfd71f9cb2548"
+	RuntimeRegistrySHA256         = "26b5225b77d655043b269dc95695784b73546e451ee069c5713f8d13386c0d13"
 	CanonicalValueFixtureSHA256   = "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40"
 	KafkaFixtureSHA256            = "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4"
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
