@@ -98,6 +98,12 @@ type Service struct {
 	// every state evaluation, and that must not become a query per call. Zero
 	// means "not resolved yet" — see firstRun for why a failure is not cached.
 	firstRunAt atomic.Int64
+
+	// lastPageCheck throttles page-open binding checks on this replica (unix
+	// nanoseconds). It is kept apart from the row's binding_checked_at because
+	// a failed page check must not push the shared schedule forward; see
+	// checkBindingOlderThan.
+	lastPageCheck atomic.Int64
 }
 
 // New builds the service with the official compiled-in key table. The
@@ -381,6 +387,17 @@ func (s *Service) Remove(ctx context.Context) error {
 // about. An admin re-activating while the check is in flight stores a fresh
 // text, and a late "unbound" about the old one must not land on it.
 func (s *Service) CheckBinding(ctx context.Context) error {
+	return s.checkBinding(ctx, true)
+}
+
+// checkBinding is CheckBinding with a choice about failed attempts.
+// recordFailure stamps binding_checked_at even when no answer came back, so
+// the periodic path retries a dead issuer on its own schedule instead of every
+// tick. The page path passes false: its 5-second budget can fail against an
+// issuer the periodic path's 30 seconds would reach, and stamping those
+// failures would keep pushing the periodic check back for as long as someone
+// keeps opening the page.
+func (s *Service) checkBinding(ctx context.Context, recordFailure bool) error {
 	if s.serverURL == "" {
 		return ErrOfflineDeployment
 	}
@@ -397,10 +414,11 @@ func (s *Service) CheckBinding(ctx context.Context) error {
 	status, err := checkBinding(ctx, s.hc, s.serverURL, row.Text, s.fp)
 	now := time.Now().Unix()
 	if err != nil {
-		// Record the attempt so a dead issuer is retried on schedule rather
-		// than on every tick, but keep whatever the last real answer was.
-		s.db.Model(&model.License{}).Where("id = ? AND version = ?", rowID, row.Version).
-			Update("binding_checked_at", now)
+		// Keep whatever the last real answer was either way.
+		if recordFailure {
+			s.db.Model(&model.License{}).Where("id = ? AND version = ?", rowID, row.Version).
+				Update("binding_checked_at", now)
+		}
 		return err
 	}
 	binding := ""
@@ -425,12 +443,22 @@ func (s *Service) CheckBinding(ctx context.Context) error {
 }
 
 // CheckBindingIfStale is the page-open trigger: at most one issuer call per
-// bindingCheckMinGap, bounded by bindingCheckTimeout.
+// bindingCheckMinGap on this replica, bounded by bindingCheckTimeout. Its
+// failures are not recorded in the shared schedule (see checkBinding).
 func (s *Service) CheckBindingIfStale(ctx context.Context) {
-	s.checkBindingOlderThan(ctx, bindingCheckMinGap, bindingCheckTimeout)
+	if s.serverURL == "" {
+		return
+	}
+	now := time.Now()
+	if last := s.lastPageCheck.Load(); last != 0 && now.Sub(time.Unix(0, last)) < bindingCheckMinGap {
+		s.guard.Refresh() // still pick up another replica's answer
+		return
+	}
+	s.lastPageCheck.Store(now.UnixNano())
+	s.checkBindingOlderThan(ctx, bindingCheckMinGap, bindingCheckTimeout, false)
 }
 
-func (s *Service) checkBindingOlderThan(ctx context.Context, age, timeout time.Duration) {
+func (s *Service) checkBindingOlderThan(ctx context.Context, age, timeout time.Duration, recordFailure bool) {
 	if s.serverURL == "" {
 		return
 	}
@@ -446,7 +474,7 @@ func (s *Service) checkBindingOlderThan(ctx context.Context, age, timeout time.D
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	if err := s.CheckBinding(cctx); err != nil {
+	if err := s.checkBinding(cctx, recordFailure); err != nil {
 		slog.Info("license: binding check skipped", "err", err)
 	}
 }
@@ -478,7 +506,7 @@ func (s *Service) Run(ctx context.Context) {
 		case <-t.C:
 			s.RenewNow()
 			s.checkClock(time.Now())
-			s.checkBindingOlderThan(ctx, bindingCheckInterval, 30*time.Second)
+			s.checkBindingOlderThan(ctx, bindingCheckInterval, 30*time.Second, true)
 		}
 	}
 }
@@ -558,7 +586,10 @@ func (s *Service) storeText(text string) error {
 		Where("id = ? AND version = ?", rowID, row.Version).
 		// A new text is a new answer from the issuer (activation, renewal) or a
 		// deliberate admin import; either way the old verdict no longer applies.
-		Updates(map[string]any{"text": text, "version": row.Version + 1, "binding": ""})
+		// It is not a fresh verdict either: re-importing the very certificate
+		// the issuer revoked stores it without contacting the issuer, so the
+		// schedule is reset and the next tick or page open asks straight away.
+		Updates(map[string]any{"text": text, "version": row.Version + 1, "binding": "", "binding_checked_at": 0})
 	if res.Error != nil {
 		return res.Error
 	}

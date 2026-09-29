@@ -276,10 +276,80 @@ func TestCheckBindingThrottle(t *testing.T) {
 		t.Fatalf("issuer calls = %d, want 1 within the throttle window", got)
 	}
 	// The periodic path uses the long interval: a fresh check is not redone.
-	svc.checkBindingOlderThan(t.Context(), bindingCheckInterval, time.Second)
+	svc.checkBindingOlderThan(t.Context(), bindingCheckInterval, time.Second, true)
 	if got := f.calls.Load(); got != 1 {
 		t.Fatalf("issuer calls = %d, want 1 inside the periodic interval", got)
 	}
+}
+
+func checkedAt(t *testing.T, db *gorm.DB) int64 {
+	t.Helper()
+	var row model.License
+	if err := db.First(&row, "id = ?", rowID).Error; err != nil {
+		t.Fatal(err)
+	}
+	return row.BindingCheckedAt
+}
+
+// A page-open check that gets no answer must not push the shared schedule
+// forward: an issuer slower than the page's 5s budget would otherwise keep the
+// periodic check (30s budget) from ever running while admins use the page.
+func TestPageCheckFailureDoesNotDelayPeriodicCheck(t *testing.T) {
+	svc, f, db, _ := boundService(t)
+	f.answer(http.StatusInternalServerError, "")
+	svc.CheckBindingIfStale(t.Context())
+	if got := f.calls.Load(); got != 1 {
+		t.Fatalf("issuer calls = %d, want the page check to have asked", got)
+	}
+	if got := checkedAt(t, db); got != 0 {
+		t.Fatalf("binding_checked_at = %d after a failed page check, want untouched", got)
+	}
+
+	// Still throttled on this replica, so a slow issuer is not hit per page load.
+	svc.CheckBindingIfStale(t.Context())
+	if got := f.calls.Load(); got != 1 {
+		t.Fatalf("issuer calls = %d, want the page path throttled after a failure", got)
+	}
+
+	// The periodic path is therefore still due, and gets its answer.
+	f.answer(http.StatusOK, BindingUnbound)
+	svc.checkBindingOlderThan(t.Context(), bindingCheckInterval, time.Second, true)
+	assertTakenBack(t, svc, BindingUnbound)
+
+	// The periodic path does record its own failures, so a dead issuer is
+	// retried on schedule rather than every tick.
+	svc2, f2, db2, _ := boundService(t)
+	f2.answer(http.StatusInternalServerError, "")
+	svc2.checkBindingOlderThan(t.Context(), bindingCheckInterval, time.Second, true)
+	if checkedAt(t, db2) == 0 {
+		t.Fatal("a failed periodic check must stamp binding_checked_at")
+	}
+}
+
+// Re-importing the certificate the issuer revoked stores it without asking the
+// issuer (it already names this cluster), which clears the verdict. The next
+// check must therefore be due at once, not up to six hours later.
+func TestReimportAfterRevokeIsRecheckedAtOnce(t *testing.T) {
+	svc, f, db, _ := boundService(t)
+	text, _, err := svc.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.answer(http.StatusOK, BindingRevoked)
+	if err := svc.CheckBinding(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	assertTakenBack(t, svc, BindingRevoked)
+
+	if _, actErr, err := svc.Import(t.Context(), text); err != nil || actErr != nil {
+		t.Fatalf("re-import: err=%v actErr=%v", err, actErr)
+	}
+	if got := checkedAt(t, db); got != 0 {
+		t.Fatalf("binding_checked_at = %d after storing a new text, want reset to 0", got)
+	}
+	// Both triggers consider it due; the periodic one is the slower of the two.
+	svc.checkBindingOlderThan(t.Context(), bindingCheckInterval, time.Second, true)
+	assertTakenBack(t, svc, BindingRevoked)
 }
 
 // Replicas share one row: a verdict written by one pod reaches another the
