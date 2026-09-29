@@ -485,9 +485,14 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          gh api -X POST "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" -f body="$(printf '%s\n\n%s' \
-            '自动评审只处理分支在本仓库内的 PR。这个 PR 的分支来自 fork，评审 job 会接触 PR 内容并持有凭据，因此本轮跳过。' \
-            '需要评审的话，请把分支推到本仓库后重开 PR，或由维护者人工评审。')" >/dev/null
+          # 带标记、复用同一条：维护者在同一个 fork PR 上回几次 /review 不该堆几条同样的话。
+          MARKER='<!-- claude-review-fork-skip -->'
+          body=$(printf '%s\n%s\n\n%s' "$MARKER" \
+            '自动评审只处理分支在本仓库内的 PR。这个 PR 的分支来自 fork，评审 job 会接触 PR 内容并持有凭据，因此跳过。' \
+            '需要评审的话，请把分支推到本仓库后重开 PR，或由维护者人工评审。')
+          existing=$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\")) | .id] | last // empty")
+          [ -n "$existing" ] || gh api -X POST "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null
 
       # 同一条评论反复复用（靠 body 里的 HTML 标记定位），复评不会越堆越多。
       # 失败不阻断评审：进度提示挂了没关系，评审本身要继续。
@@ -600,9 +605,10 @@ jobs:
           # 符号链接可以指向 /proc/self/environ 之类的位置，模型一读就把凭据带进上下文；
           # Claude 的项目配置只从工作目录根加载，这里再删一遍防它被当成嵌套配置读到。
           # CLAUDE.md 不同：读到某个子目录的文件时，那一级的 CLAUDE.md 会被当作指令
-          # 自动载入，PR 改它就能改写评审行为。它的改动仍在 pr.diff / git show 里可审。
+          # 自动载入，PR 改它就能改写评审行为。AGENTS.md 是本仓的 agent 指令入口，
+          # 同样删掉，不赌加载规则。它们的改动仍在 pr.diff / git show 里可审。
           find pr-head -type l -delete
-          find pr-head \( -name .claude -o -name .mcp.json -o -name CLAUDE.md -o -name CLAUDE.local.md \) -prune -exec rm -rf {} +
+          find pr-head \( -name .claude -o -name .mcp.json -o -name CLAUDE.md -o -name CLAUDE.local.md -o -name AGENTS.md \) -prune -exec rm -rf {} +
           git diff "${BASE_SHA}...${HEAD_SHA}" > pr.diff
           echo "PR #$PR_NUMBER 快照：base ${BASE_SHA:0:12} → head ${HEAD_SHA:0:12}，$(wc -l < pr.diff) 行 diff"
 
@@ -1130,7 +1136,7 @@ jobs:
           rm -rf pr-head && mkdir pr-head
           git archive --worktree-attributes "$HEAD_SHA" | tar -x -C pr-head
           find pr-head -type l -delete
-          find pr-head \( -name .claude -o -name .mcp.json -o -name CLAUDE.md -o -name CLAUDE.local.md \) -prune -exec rm -rf {} +
+          find pr-head \( -name .claude -o -name .mcp.json -o -name CLAUDE.md -o -name CLAUDE.local.md -o -name AGENTS.md \) -prune -exec rm -rf {} +
           git diff "${BASE_SHA}...${HEAD_SHA}" > pr.diff
 
       # 全部分片都没产出时一个 artifact 都不存在。download-artifact 在这种情况下是否
