@@ -1158,6 +1158,108 @@ func Test_knowledgeNetworkService_expandObjectPathsBatch(t *testing.T) {
 			So(result, ShouldNotBeNil)
 		})
 
+		// Regression for #532: every hop must be read with that hop's own filter,
+		// not just the source hop's.
+		Convey("成功 - 两跳路径第二跳按 eq 条件过滤", func() {
+			query := &interfaces.SubGraphQueryBaseOnSource{
+				KNID:              knID,
+				SourceObjecTypeId: sourceObjectTypeID,
+				PageQuery:         interfaces.PageQuery{Limit: 10},
+				PathQuotaManager: &interfaces.PathQuotaManager{
+					TotalLimit:         100,
+					RequestPathTypeNum: 1,
+				},
+				BatchQueryState: interfaces.BatchQueryState{
+					BatchSize: 50,
+					Visited:   make(map[string]bool),
+				},
+			}
+
+			edgeTo := func(from, to string) interfaces.TypeEdge {
+				return interfaces.TypeEdge{
+					RelationTypeId:     from + "_" + to,
+					SourceObjectTypeId: from,
+					TargetObjectTypeId: to,
+					Direction:          interfaces.DIRECTION_FORWARD,
+					RelationType: interfaces.RelationType{
+						SourceObjectTypeID: from,
+						TargetObjectTypeID: to,
+						MappingRules: []interfaces.Mapping{{
+							SourceProp: interfaces.SimpleProperty{Name: "id"},
+							TargetProp: interfaces.SimpleProperty{Name: "parent_id"},
+						}},
+					},
+				}
+			}
+			activeOnly := &cond.CondCfg{
+				Name:        "status",
+				Operation:   cond.OperationEq,
+				ValueOptCfg: cond.ValueOptCfg{ValueFrom: "const", Value: "active"},
+			}
+			typePath := interfaces.RelationTypePath{
+				ID: 1,
+				ObjectTypes: []interfaces.ObjectTypeWithKeyField{
+					{OTID: sourceObjectTypeID},
+					{OTID: "ot2"},
+					{OTID: "ot3", ActualCondition: activeOnly},
+				},
+				TypeEdges: []interfaces.TypeEdge{edgeTo(sourceObjectTypeID, "ot2"), edgeTo("ot2", "ot3")},
+			}
+
+			row := func(otID, id, parentID, status string) map[string]any {
+				return map[string]any{
+					"id": id, "parent_id": parentID, "status": status,
+					interfaces.SYSTEM_PROPERTY_INSTANCE_ID:       otID + "-" + id,
+					interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": id},
+				}
+			}
+			objectsOf := func(otID string, datas []map[string]any) interfaces.Objects {
+				return interfaces.Objects{
+					Datas:      datas,
+					TotalCount: int64(len(datas)),
+					ObjectType: &interfaces.ObjectType{
+						ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+							OTID:        otID,
+							PrimaryKeys: []string{"id"},
+						},
+					},
+				}
+			}
+			store := map[string][]map[string]any{
+				"ot2": {row("ot2", "b1", "a1", "inactive")},
+				"ot3": {
+					row("ot3", "c1", "b1", "active"),
+					row("ot3", "c2", "b1", "inactive"),
+				},
+			}
+
+			// Fake object store: evaluates the pushed-down condition, so a hop
+			// filter that never reaches the query lets the inactive row through.
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+					var hits []map[string]any
+					for _, data := range store[q.ObjectTypeID] {
+						if matchesTestCondition(q.ActualCondition, data) {
+							hits = append(hits, data)
+						}
+					}
+					return objectsOf(q.ObjectTypeID, hits), nil
+				}).Times(2)
+
+			startObjects := objectsOf(sourceObjectTypeID, []map[string]any{row(sourceObjectTypeID, "a1", "", "")})
+			objectsMap := make(map[string]interfaces.ObjectInfoInSubgraph)
+
+			result, err := service.expandObjectPathsBatch(ctx, query, typePath, startObjects, objectsMap)
+			So(err, ShouldBeNil)
+			So(len(result), ShouldEqual, 1)
+			So(len(result[0].Relations), ShouldEqual, 2)
+			// The first hop has no filter, so its inactive object stays on the path.
+			So(result[0].Relations[0].TargetObjectId, ShouldEqual, "ot2-b1")
+			So(result[0].Relations[1].TargetObjectId, ShouldEqual, "ot3-c1")
+			So(objectsMap, ShouldContainKey, "ot3-c1")
+			So(objectsMap, ShouldNotContainKey, "ot3-c2")
+		})
+
 		Convey("成功 - 达到路径终点", func() {
 			query := &interfaces.SubGraphQueryBaseOnSource{
 				KNID:              knID,
@@ -2429,5 +2531,41 @@ func resourceBacking(id string) *interfaces.ResourceInfo {
 	return &interfaces.ResourceInfo{
 		Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
 		ID:   id,
+	}
+}
+
+// matchesTestCondition evaluates the and/or/==/in subset of conditions the
+// subgraph expansion pushes down, so fake object stores can filter like Vega.
+func matchesTestCondition(c *cond.CondCfg, data map[string]any) bool {
+	if c == nil {
+		return true
+	}
+	switch c.Operation {
+	case cond.OperationAnd:
+		for _, sub := range c.SubConds {
+			if !matchesTestCondition(sub, data) {
+				return false
+			}
+		}
+		return true
+	case cond.OperationOr:
+		for _, sub := range c.SubConds {
+			if matchesTestCondition(sub, data) {
+				return true
+			}
+		}
+		return false
+	case cond.OperationEq:
+		return fmt.Sprint(data[c.Name]) == fmt.Sprint(c.Value)
+	case cond.OperationIn:
+		values, _ := c.Value.([]any)
+		for _, v := range values {
+			if fmt.Sprint(data[c.Name]) == fmt.Sprint(v) {
+				return true
+			}
+		}
+		return false
+	default:
+		panic("matchesTestCondition: unsupported operation " + c.Operation)
 	}
 }
