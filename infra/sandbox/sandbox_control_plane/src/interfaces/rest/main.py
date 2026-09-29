@@ -223,6 +223,10 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
         openapi_url="/openapi.json",
         lifespan=lifespan,
+        # FastAPI >= 0.132 rejects JSON bodies without a JSON Content-Type by
+        # default. The execution-factory Go client posts JSON without one, so
+        # keep the pre-upgrade lenient behavior.
+        strict_content_type=False,
     )
 
     # Configure CORS

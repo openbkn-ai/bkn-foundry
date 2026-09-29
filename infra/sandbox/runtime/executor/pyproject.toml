@@ -23,7 +23,9 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastapi>=0.104.0",
+    "fastapi>=0.133.0",
+    # fastapi<0.133 caps starlette<1.0; starlette>=1.3.1 carries the FormParser limit fixes
+    "starlette>=1.3.1",
     "uvicorn[standard]>=0.24.0",
     "pydantic>=2.5.0",
     "httpx>=0.25.0",

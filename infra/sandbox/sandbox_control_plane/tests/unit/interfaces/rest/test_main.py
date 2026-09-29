@@ -1,8 +1,9 @@
 """Unit tests for main."""
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.routing import iter_route_contexts
 from starlette.testclient import TestClient
 
 from src.interfaces.rest.main import (
@@ -12,6 +13,12 @@ from src.interfaces.rest.main import (
     _register_middleware,
 )
 from src.shared.errors.domain import NotFoundError, ValidationError
+
+
+def _route_paths(app: FastAPI) -> list:
+    # FastAPI >= 0.137 keeps included routers as nodes in app.routes, so walk
+    # the effective routes instead of reading .path off each top-level entry.
+    return [context.path for context in iter_route_contexts(app.routes)]
 
 
 class TestCreateApp:
@@ -68,7 +75,7 @@ class TestCreateApp:
             app = create_app()
 
             # Check that routes are registered
-            routes = [route.path for route in app.routes]
+            routes = _route_paths(app)
             assert "/docs" in routes
             assert "/redoc" in routes
             assert "/openapi.json" in routes
@@ -80,6 +87,30 @@ class TestCreateApp:
 
             # The router should have the lifespan set
             assert app.router.lifespan_context is not None
+
+    def test_create_app_accepts_json_body_without_content_type(self):
+        """JSON bodies without Content-Type stay accepted on included routers.
+
+        The execution-factory Go client posts JSON without a Content-Type
+        header; FastAPI >= 0.132 would reject that with 422 by default.
+        """
+        with patch('src.interfaces.rest.main.lifespan'):
+            app = create_app()
+
+        probe = APIRouter()
+
+        @probe.post("/content-type-probe")
+        async def content_type_probe(payload: dict) -> dict:
+            return payload
+
+        app.include_router(probe, prefix="/api/v1")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.post("/api/v1/content-type-probe", content=b'{"language": "python"}')
+
+        assert "content-type" not in response.request.headers
+        assert response.status_code == 200
+        assert response.json() == {"language": "python"}
 
 
 class TestRegisterExceptionHandlers:
@@ -169,7 +200,7 @@ class TestRegisterRoutes:
         """Test register routes adds routers."""
         _register_routes(app)
 
-        routes = [route.path for route in app.routes]
+        routes = _route_paths(app)
 
         # Check API routes
         assert "/api/v1/health" in routes or any("/health" in r for r in routes)
@@ -181,7 +212,7 @@ class TestRegisterRoutes:
 
         # Find root route
         root_route = None
-        for route in app.routes:
+        for route in iter_route_contexts(app.routes):
             if route.path == "/":
                 root_route = route
                 break
