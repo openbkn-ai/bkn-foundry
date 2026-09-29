@@ -164,7 +164,9 @@ paths:
           `logic_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`、
           `type` 与非空 `display_name` 必填，`type` 必须等于绑定的源 Resource 字段类型。
           `display_name` 是 View 自身的显示名，可与源字段不同，最多 255 个字符；
-          不提供自动继承。源资源仅支持 table/index。
+          不提供自动继承。同一 View 内输出字段的 `name` 与 `display_name` 均不得重复；
+          重复显示名返回 400 `VegaBackend.LogicView.Duplicated.FieldDisplayName`。
+          源资源仅支持 table/index。
           `source_metadata` 由服务端从源资源生成，请求值不参与写入；
           未安装 EE 扩展返回 501；授权版本不足返回 403 `Public.Forbidden`。
           通过字段校验的复合视图定义暂时返回 501。
@@ -411,7 +413,10 @@ components:
         - `VegaBackend.Resource.Duplicated.FieldFeatureType`：同一字段存在多个相同类型的特征
         - `VegaBackend.Resource.CategoryNotCreatable`：尝试通过 API 创建非 `dataset`/`logicview` 类资源
         - `VegaBackend.Dataset.*`：dataset 创建时 `schema_definition` 为空 / 字段名 / 长度 / 重复 / 类型 / 特征校验失败
-        - `VegaBackend.LogicView.*`：logicview 创建时 `logic_definition` / 字段 / 特征校验失败
+        - `VegaBackend.LogicView.InvalidParameter.LogicDefinition`：derived 定义或输出字段非法，
+          包括缺失、空白或超长的 `display_name`
+        - `VegaBackend.LogicView.Duplicated.FieldDisplayName`：derived 输出字段显示名重复
+        - `VegaBackend.LogicView.*`：其他 logicview 定义 / 字段 / 特征校验失败
       content:
         application/json:
           schema:
@@ -854,7 +859,8 @@ components:
         schema_definition:
           description: |
             derived 逻辑视图必填且非空；每个字段的 name、original_name、type、display_name
-            均必填，display_name 不得为空且最多 255 个字符，可与源字段显示名不同。
+            均必填，display_name 不得为空且最多 255 个字符，可与源字段显示名不同，
+            同一 View 内不得重复；输出字段 name 也必须唯一。
             GET 返回已保存的 View 显示名；完整 PUT 须显式传入希望保留或更新的值。
             type 须与源字段一致。
             每个字段省略 features 时继承源字段全部 Feature；显式传 [] 时不公开任何 Feature；
