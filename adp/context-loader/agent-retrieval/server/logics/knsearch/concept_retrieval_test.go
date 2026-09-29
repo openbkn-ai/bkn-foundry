@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -736,5 +737,52 @@ func TestFetchSampleData(t *testing.T) {
 	}
 	if mockQuery.callCount != 1 {
 		t.Errorf("Expected 1 query call, got %d", mockQuery.callCount)
+	}
+}
+
+// failingSchemaAccess answers every read except those in fail.
+type failingSchemaAccess struct {
+	fail map[string]error
+}
+
+func (s failingSchemaAccess) GetObjectTypeSchema(_ context.Context, _ string, otID string) (*interfaces.ObjectTypeSchemaResp, error) {
+	if err := s.fail[otID]; err != nil {
+		return nil, err
+	}
+	return &interfaces.ObjectTypeSchemaResp{EffectivePermissions: map[string]interfaces.PropertyAccessLevel{
+		"id": interfaces.PropertyAccessFull,
+	}}, nil
+}
+
+// #1906: one object type whose schema read fails with a dependency fault no
+// longer fails search_schema. It comes back without properties, and the
+// message names it so an agent does not read it as an object type with none.
+func TestSearchKeepsObjectTypeWhoseSchemaIsUnavailable(t *testing.T) {
+	detail := &interfaces.KnowledgeNetworkDetail{ObjectTypes: []*interfaces.ObjectType{
+		{ID: "customer", Name: "Customer", DataSource: &interfaces.ResourceInfo{Type: "resource", ID: "customers"},
+			DataProperties: []*interfaces.DataProperty{{Name: "id"}}},
+		{ID: "order", Name: "Order", DataSource: &interfaces.ResourceInfo{Type: "resource", ID: "orders"},
+			DataProperties: []*interfaces.DataProperty{{Name: "id"}}},
+	}}
+	svc := &localSearchImpl{
+		logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail},
+		schemaAccess: failingSchemaAccess{fail: map[string]error{"order": &infraErr.HTTPError{HTTPCode: 503}}},
+	}
+
+	resp, err := svc.Search(context.Background(), &interfaces.KnSearchLocalRequest{
+		KnID: "kn-1", Query: "customer order", OnlySchema: true,
+	})
+	if err != nil {
+		t.Fatalf("a dependency fault on one schema read failed the search: %v", err)
+	}
+	properties := map[string]int{}
+	for _, objectType := range resp.ObjectTypes {
+		properties[objectType.ConceptID] = len(objectType.DataProperties)
+	}
+	if properties["customer"] != 1 || properties["order"] != 0 {
+		t.Fatalf("properties per object type = %v, want customer=1 order=0", properties)
+	}
+	if !strings.Contains(resp.Message, "order") || strings.Contains(resp.Message, "%!") {
+		t.Fatalf("message does not name the object type without a schema: %q", resp.Message)
 	}
 }

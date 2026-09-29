@@ -81,6 +81,12 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 		s.logger.WithContext(ctx).Infof("[KnSearchLocal] object_types partially matched, ignored: %v",
 			conceptResult.UnmatchedObjectTypes)
 	}
+	// Object types whose schema read timed out carry no properties. Say so, or
+	// an agent reads them as object types that have none.
+	if len(conceptResult.SchemaUnavailableObjectTypes) > 0 {
+		scopeNotice = joinMessages(scopeNotice, infraErr.LocalizedDetail(ctx, "ObjectTypeSchemaUnavailable",
+			strings.Join(conceptResult.SchemaUnavailableObjectTypes, ", ")))
+	}
 
 	// 4. Semantic instance recall: only done when the caller explicitly wants an instance (search_schema is always schema-only)
 	if req.OnlySchema {

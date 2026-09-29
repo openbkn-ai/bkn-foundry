@@ -124,6 +124,7 @@
     "ObjectTypePageLimitClamped": "limit=%d 超过单页上限 %d，本次按 %d 返回。要取更多请用响应里的 next_offset 续页；total_count 是当前账号在该网络可见的对象类总数。",
     "KnDetailNavigationShell": "该知识网络有 %d 个对象类、%d 个关系类，超过单次返回上限（对象类 %d / 关系类 %d），本次只返回导航信息：概念组清单，以及对象类 / 关系类 / 行动类各自的数量。请先从 concept_groups 中选出 1-3 个相关分组，再调 search_schema 并用 search_scope.concept_groups 收敛检索范围；要某个对象类的完整字段映射调 get_object_types。三个概念数组都回 null；detail_level=full 在这个规模下同样如此。",
     "ScopeObjectTypesIgnored": "object_types 里这些对象类在该知识网络中不存在，或当前账号无权查看，本次已忽略：%s。其余对象类照常检索。",
+    "ObjectTypeSchemaUnavailable": "这些对象类的属性信息暂时未能取到，本次只返回对象类本身、不含属性：%s。稍后重试可取到完整属性。",
     "ScopeObjectTypesNotFound": "object_types 指定的对象类在该知识网络中不存在，或当前账号无权查看：%s。该参数取对象类 id（例如 material），不是名称；id 来自 search_schema 响应的 concept_id 或 search_instance 响应的 object_type_id。",
     "NoPublishedSkillsMatched": "没有匹配的已发布技能。请先在执行工厂注册并发布技能，或放宽名称、分类过滤条件后重试。",
     "SkillContentTruncated": "SKILL.md 内容过长已截断，请使用 read_skill_file 分文件读取。",

@@ -28,3 +28,19 @@ func TestAuthorizationChunkSizeDefaultsAndEnvironment(t *testing.T) {
 		t.Fatalf("environment override failed: %+v", conf.Auth)
 	}
 }
+
+func TestSchemaReadTimeoutDefaultsAndEnvironment(t *testing.T) {
+	conf := &Config{}
+	if err := conf.localConfig("/path/that/does/not/exist"); err == nil {
+		t.Fatal("expected missing fixture error")
+	}
+	if conf.ConceptSearchConfig.SchemaReadTimeoutMS != 5000 {
+		t.Fatalf("default schema read timeout = %dms, want 5000", conf.ConceptSearchConfig.SchemaReadTimeoutMS)
+	}
+
+	t.Setenv("CONTEXT_LOADER_SCHEMA_READ_TIMEOUT_MS", "1500")
+	overrideWithEnv(conf)
+	if conf.ConceptSearchConfig.SchemaReadTimeoutMS != 1500 {
+		t.Fatalf("environment override failed: %+v", conf.ConceptSearchConfig)
+	}
+}

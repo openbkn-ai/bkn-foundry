@@ -176,6 +176,10 @@ type OpenSearchConfig struct {
 type KnConceptSearchConfig struct {
 	ConceptRecallSize int `yaml:"concept_recall_size"` // Concept rough recall size
 	KnnKValue         int `yaml:"knn_k"`               // knn k value
+	// SchemaReadTimeoutMS bounds each selected object type's schema read in
+	// search_schema. A read that has not answered by then keeps its object type
+	// without properties instead of holding the whole search (#1906).
+	SchemaReadTimeoutMS int `yaml:"schema_read_timeout_ms" env:"CONTEXT_LOADER_SCHEMA_READ_TIMEOUT_MS" default:"5000"`
 }
 
 // KnInstanceSearchConfig holds the deployment-calibrated knobs of semantic instance retrieval.

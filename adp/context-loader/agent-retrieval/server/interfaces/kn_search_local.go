@@ -301,6 +301,10 @@ type KnSearchConceptResult struct {
 	// object type in this knowledge network. Carried out of concept retrieval so the caller can be
 	// told "these ids do not exist" instead of being handed a bare empty result.
 	UnmatchedObjectTypes []string
+	// SchemaUnavailableObjectTypes lists the object types whose schema read gave
+	// no answer in time. They are kept with no properties, and the caller is told
+	// so instead of reading them as object types that have none.
+	SchemaUnavailableObjectTypes []string
 }
 
 // KnSearchSemanticInstanceResult semantic instance retrieval result (internal)

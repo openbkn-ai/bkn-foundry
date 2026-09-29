@@ -12,12 +12,27 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
 )
+
+// defaultSchemaReadTimeout bounds each selected object type's schema read when
+// the deployment sets no concept_search_config.schema_read_timeout_ms. A read
+// normally answers well inside a second; one that has not answered after five
+// is kept without properties rather than holding the whole search until the
+// caller's own deadline cancels it (#1906).
+const defaultSchemaReadTimeout = 5 * time.Second
+
+func (s *localSearchImpl) schemaReadTimeout() time.Duration {
+	if s.config != nil && s.config.ConceptSearchConfig.SchemaReadTimeoutMS > 0 {
+		return time.Duration(s.config.ConceptSearchConfig.SchemaReadTimeoutMS) * time.Millisecond
+	}
+	return defaultSchemaReadTimeout
+}
 
 // objectTypeRelationMultiplier The multiple of the number of object types relative to topK when filtering without relationship/relationship.
 const objectTypeRelationMultiplier = 2
@@ -148,10 +163,16 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	rankedRelations := s.rankConcepts(ctx, req.Query, objects, relations,
 		config.TopK, req.EnableRerank, req.RerankModel, config.ObjectRerankCandidateLimit)
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
-	selectedObjects, err = objectpermission.FilterObjectTypes(ctx, s.schemaAccess, req.KnID, selectedObjects)
+	readTimeout := s.schemaReadTimeout()
+	selectedObjects, schemaUnavailable, err := objectpermission.FilterObjectTypesDegrading(ctx, s.schemaAccess,
+		req.KnID, selectedObjects, readTimeout)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[ConceptRetrieval][Groups] object property authorization failed: %v", err)
 		return nil, err
+	}
+	if len(schemaUnavailable) > 0 {
+		s.logger.WithContext(ctx).Warnf("[ConceptRetrieval][Groups] schema read gave no answer within %v, kept without properties: %v",
+			readTimeout, schemaUnavailable)
 	}
 
 	brief := boolValue(config.SchemaBrief)
@@ -166,10 +187,11 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	}
 
 	return &interfaces.KnSearchConceptResult{
-		ObjectTypes:          objectTypesLocal,
-		RelationTypes:        relationTypesLocal,
-		ActionTypes:          actionTypesLocal,
-		UnmatchedObjectTypes: unmatchedObjectTypes,
+		ObjectTypes:                  objectTypesLocal,
+		RelationTypes:                relationTypesLocal,
+		ActionTypes:                  actionTypesLocal,
+		UnmatchedObjectTypes:         unmatchedObjectTypes,
+		SchemaUnavailableObjectTypes: schemaUnavailable,
 	}, nil
 }
 
