@@ -43,6 +43,11 @@ jobs:
           --confcutdir=testcases/openbkn-smoke
           --collect-only -q
 
+      # Offline checks for shared test helpers (no backend needed), e.g. the
+      # RSA password encryption the smoke suite logs in with.
+      - name: Run offline helper tests
+        run: python -m pytest common/test_get_token_rsa.py -q
+
   operator-integration-go-test:
     name: operator-integration unit tests
     runs-on: ubuntu-latest

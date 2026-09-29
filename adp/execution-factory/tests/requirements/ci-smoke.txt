@@ -3,3 +3,4 @@ pytest>=8
 requests>=2.31
 pyyaml>=6.0
 allure-pytest>=2.13
+pycryptodome>=3.23
