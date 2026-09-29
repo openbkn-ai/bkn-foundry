@@ -6,7 +6,7 @@ pytest==9.1.1
 Requests==2.34.2
 ruamel.yaml==0.17.21
 urllib3==2.8.0
-pycryptodome==3.20.0
+pycryptodome==3.23.0
 jsonschema==4.21.1
 jsonschema-specifications==2023.7.1
 pyyaml==6.0.1

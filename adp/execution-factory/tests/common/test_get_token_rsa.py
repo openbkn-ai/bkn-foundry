@@ -73,4 +73,4 @@ def test_message_too_long_is_rejected():
 
     # PKCS#1 v1.5 allows at most k - 11 bytes of plaintext.
     with pytest.raises(ValueError):
-        GetToken("127.0.0.1").auth_Pwd_RSABase64(pem, "x" * (128 - 10))
+        GetToken("127.0.0.1").auth_Pwd_RSABase64(pem, "x" * (private_key.size_in_bytes() - 10))
