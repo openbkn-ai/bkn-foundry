@@ -234,6 +234,39 @@ func TestActionTypeViewAuthorizerChecksTheCanonicalChild(t *testing.T) {
 	}
 }
 
+// The object-type check asks Safe about the canonical child resource bkn-backend guards the object
+// type's detail with, for view_detail and nothing broader.
+func TestObjectTypeViewAuthorizerChecksTheCanonicalChild(t *testing.T) {
+	access := &fakePermissionAccess{allowed: map[string]bool{"kn-a/ot-1": true}}
+	authorizer := NewObjectTypeViewAuthorizerWith(access)
+
+	if err := authorizer.AuthorizeObjectTypeView(authorizedContext(), "kn-a", "ot-1"); err != nil {
+		t.Fatal(err)
+	}
+	want := interfaces.PermissionChecksRequest{
+		AccessorID: "user-1",
+		Checks: []interfaces.PermissionCheck{{
+			Resource: interfaces.PermissionResource{Type: "object_type", ID: "kn-a/ot-1"}, Operation: "view_detail",
+		}},
+	}
+	if len(access.checkRequests) != 1 || !reflect.DeepEqual(access.checkRequests[0], want) {
+		t.Fatalf("object-type permission request = %#v", access.checkRequests)
+	}
+
+	// The same object type id in another network is a different resource.
+	err := authorizer.AuthorizeObjectTypeView(authorizedContext(), "kn-b", "ot-1")
+	status, ok := infraerrors.HTTPStatus(err)
+	if !ok || status != http.StatusForbidden {
+		t.Fatalf("other network error = %v, want 403", err)
+	}
+
+	// An id that could name another resource is refused before Safe is asked.
+	err = authorizer.AuthorizeObjectTypeView(authorizedContext(), "kn-a", "ot-1/../ot-2")
+	if status, ok := infraerrors.HTTPStatus(err); !ok || status != http.StatusBadRequest || len(access.checkRequests) != 2 {
+		t.Fatalf("path id error = %v after %d calls, want 400 after 2", err, len(access.checkRequests))
+	}
+}
+
 func TestActionTypeViewAuthorizerFailsClosed(t *testing.T) {
 	tests := []struct {
 		name       string

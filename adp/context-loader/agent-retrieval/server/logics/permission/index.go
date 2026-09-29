@@ -205,6 +205,34 @@ func (a *knowledgeNetworkAuthorizer) AuthorizeActionTypeView(ctx context.Context
 	}, interfaces.PermissionOperationViewDetail, "ActionTypeNotAuthorized")
 }
 
+// NewObjectTypeViewAuthorizer wires the production Safe adapter.
+func NewObjectTypeViewAuthorizer(conf *config.Config) interfaces.ObjectTypeViewAuthorizer {
+	return NewObjectTypeViewAuthorizerWith(drivenadapters.NewPermissionAccess(conf))
+}
+
+// NewObjectTypeViewAuthorizerWith allows focused tests to inject the outbound boundary.
+func NewObjectTypeViewAuthorizerWith(access interfaces.PermissionAccess) interfaces.ObjectTypeViewAuthorizer {
+	return &knowledgeNetworkAuthorizer{access: access}
+}
+
+// AuthorizeObjectTypeView checks view_detail on one object type, the same canonical child resource
+// bkn-backend checks before it returns the object type's detail. A grant on the whole network
+// reaches it through Safe's resource hierarchy.
+func (a *knowledgeNetworkAuthorizer) AuthorizeObjectTypeView(ctx context.Context, knID, otID string) error {
+	account, ok := trustedAccount(ctx)
+	if !ok {
+		return infraerrors.DefaultHTTPError(ctx, http.StatusUnauthorized, "request subject is missing or invalid")
+	}
+	knID, otID = strings.TrimSpace(knID), strings.TrimSpace(otID)
+	if !validAuthorizationID(knID) || !validAuthorizationID(otID) {
+		return infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid knowledge network or object type id")
+	}
+	return a.authorizeResource(ctx, account, interfaces.PermissionResource{
+		Type: interfaces.PermissionResourceTypeObjectType,
+		ID:   knID + "/" + otID,
+	}, interfaces.PermissionOperationViewDetail, "ObjectTypeNotAuthorized")
+}
+
 func (a *knowledgeNetworkAuthorizer) authorize(ctx context.Context, knID, operation string) error {
 	account, ok := trustedAccount(ctx)
 	if !ok {

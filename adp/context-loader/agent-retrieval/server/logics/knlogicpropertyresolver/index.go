@@ -21,6 +21,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
 const (
@@ -51,6 +53,13 @@ type knLogicPropertyResolverService struct {
 	ontologyQueryClient interfaces.DrivenOntologyQuery
 	schemaAccess        interfaces.ObjectSchemaAccess
 	dynamicLLM          *dynamicParamsLLM // Metric and ToolBox-tool dynamic parameter generator.
+
+	// A tool-backed logic property's definition is read as the caller, and as the network's
+	// proxy when the caller holds no grant on the tool box (see bound_tool_definition.go).
+	toolReader      interfaces.DrivenOperatorIntegration
+	toolReaderAs    interfaces.ToolDetailReaderAs
+	proxyResolver   interfaces.KNProxyResolver
+	objectTypeAuthz interfaces.ObjectTypeViewAuthorizer
 }
 
 var (
@@ -62,12 +71,20 @@ var (
 func NewKnLogicPropertyResolverService() interfaces.IKnLogicPropertyResolverService {
 	serviceOnce.Do(func() {
 		conf := config.NewConfigLoader()
+		bknBackendAccess := drivenadapters.NewBknBackendAccess()
+		operatorIntegration := drivenadapters.NewOperatorIntegrationClient()
+		toolReaderAs, _ := operatorIntegration.(interfaces.ToolDetailReaderAs)
+		proxyResolver, _ := bknBackendAccess.(interfaces.KNProxyResolver)
 		service = &knLogicPropertyResolverService{
 			logger:              conf.GetLogger(),
-			bknBackendAccess:    drivenadapters.NewBknBackendAccess(),
+			bknBackendAccess:    bknBackendAccess,
 			ontologyQueryClient: drivenadapters.NewOntologyQueryAccess(),
 			schemaAccess:        drivenadapters.NewObjectSchemaAccess(),
-			dynamicLLM:          newDynamicParamsLLM(conf.GetLogger(), drivenadapters.NewMFModelAPIClient(), drivenadapters.NewOperatorIntegrationClient()),
+			dynamicLLM:          newDynamicParamsLLM(conf.GetLogger(), drivenadapters.NewMFModelAPIClient()),
+			toolReader:          operatorIntegration,
+			toolReaderAs:        toolReaderAs,
+			proxyResolver:       proxyResolver,
+			objectTypeAuthz:     permission.NewObjectTypeViewAuthorizer(conf),
 		}
 	})
 	return service
@@ -760,7 +777,21 @@ func (s *knLogicPropertyResolverService) generateToolParams(
 		debugCollector.RecordToolAgentRequest(propertyName, agentReq)
 	}
 
-	agentResult, missingParams, err := s.dynamicLLM.GenerateToolParams(ctx, agentReq, req.LLMModel)
+	// The schema stays best-effort, as it always was: a failed read leaves generation without it.
+	// What changed is that a caller who may compute this property is no longer denied the schema
+	// for want of a grant on the tool box.
+	var toolSchema string
+	if boxID != "" && toolID != "" {
+		tool, toolErr := s.readBoundToolDefinition(ctx, req.KnID, req.OtID, property.Name, boxID, toolID)
+		if toolErr != nil {
+			s.logger.WithContext(ctx).Warnf("[KnLogicPropertyResolver] tool schema lookup failed(box_id=%s, tool_id=%s): %v",
+				boxID, toolID, toolErr)
+		} else if tool != nil {
+			toolSchema = utils.ObjectToJSON(tool.Metadata.APISpec)
+		}
+	}
+
+	agentResult, missingParams, err := s.dynamicLLM.GenerateToolParams(ctx, agentReq, toolSchema, req.LLMModel)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[KnLogicPropertyResolver] GenerateToolParams failed: %v", err)
 		return nil, nil, err

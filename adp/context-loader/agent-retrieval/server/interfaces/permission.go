@@ -106,3 +106,11 @@ type KnowledgeNetworkExecuteAuthorizer interface {
 type ActionTypeViewAuthorizer interface {
 	AuthorizeActionTypeView(ctx context.Context, knID, atID string) error
 }
+
+// ObjectTypeViewAuthorizer answers "may this caller view this object type's details".
+//
+// Like ActionTypeViewAuthorizer, it gates a read made on the caller's behalf: the definition of the
+// tool a logic property is computed by, read through the knowledge network's proxy.
+type ObjectTypeViewAuthorizer interface {
+	AuthorizeObjectTypeView(ctx context.Context, knID, otID string) error
+}

@@ -44,16 +44,14 @@ const (
 type dynamicParamsLLM struct {
 	logger        interfaces.Logger
 	mfModelClient interfaces.DrivenMFModelAPIClient
-	toolClient    interfaces.DrivenOperatorIntegration
 }
 
 // newDynamicParamsLLM Builds a direct LLM dynamic parameter generator.
 func newDynamicParamsLLM(
 	logger interfaces.Logger,
 	mfModelClient interfaces.DrivenMFModelAPIClient,
-	toolClient interfaces.DrivenOperatorIntegration,
 ) *dynamicParamsLLM {
-	return &dynamicParamsLLM{logger: logger, mfModelClient: mfModelClient, toolClient: toolClient}
+	return &dynamicParamsLLM{logger: logger, mfModelClient: mfModelClient}
 }
 
 // GenerateMetricParams is directly connected to LLM to generate metric type dynamic parameters.
@@ -89,25 +87,14 @@ func (d *dynamicParamsLLM) GenerateMetricParams(
 	return rawResult, nil, nil
 }
 
-// GenerateToolParams generates dynamic parameters from the selected ToolBox tool schema.
+// GenerateToolParams generates dynamic parameters from the selected ToolBox tool schema. The
+// schema is read by the caller, which knows whose grant allows the read; empty means none was read.
 func (d *dynamicParamsLLM) GenerateToolParams(
 	ctx context.Context,
 	req *interfaces.ToolDynamicParamsGeneratorReq,
+	toolSchema string,
 	llmModel string,
 ) (dynamicParams map[string]any, missingParams *interfaces.MissingPropertyParams, err error) {
-	var toolSchema string
-	if req.BoxID != "" && req.ToolID != "" {
-		tool, toolErr := d.toolClient.GetToolDetail(ctx, &interfaces.GetToolDetailRequest{
-			BoxID: req.BoxID, ToolID: req.ToolID,
-		})
-		if toolErr != nil {
-			d.logger.WithContext(ctx).Warnf("  ├─ [LLM] tool schema lookup failed(box_id=%s, tool_id=%s): %v",
-				req.BoxID, req.ToolID, toolErr)
-		} else if tool != nil {
-			toolSchema = utils.ObjectToJSON(tool.Metadata.APISpec)
-		}
-	}
-
 	userMsg := fmt.Sprintf("【输入】\n%s\n\n【工具的 Schema 信息】\n%s", utils.ObjectToJSON(req), toolSchema)
 	d.logger.WithContext(ctx).Infof("  ├─ [LLM] Tool input: property=%s, box_id=%s, tool_id=%s",
 		req.LogicProperty.Name, req.BoxID, req.ToolID)
