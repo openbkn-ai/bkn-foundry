@@ -33,6 +33,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kntools"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permissionguide"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -137,8 +138,10 @@ func (h *localizedMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		handler = h.handlers[defaultMCPLocale]
 	}
 
-	// The tool handlers read the effective locale from the request context.
-	r = r.WithContext(common.SetLanguageToCtx(r.Context(), common.Language(locale)))
+	// The tool handlers read the effective locale from the request context, and
+	// the origin the caller used so any Studio link they return points back to it.
+	ctx := common.SetLanguageToCtx(r.Context(), common.Language(locale))
+	r = r.WithContext(common.SetPublicOriginToCtx(ctx, common.PublicOriginFromRequest(r)))
 	handler.ServeHTTP(w, r)
 }
 
@@ -178,15 +181,19 @@ func newMCPServerForProfile(
 	b.add(toolKeySearchSchema, handleSearchSchema(knSearchService))
 	b.add(toolKeySearchInstance, handleSearchInstance(knSearchService))
 
+	bknBackend := drivenadapters.NewBknBackendAccess()
+	schemaAccess := drivenadapters.NewObjectSchemaAccess()
+	guide := permissionguide.New(config.NewConfigLoader().PermissionRequest, schemaAccess, bknBackend)
+
 	ontologyQuery := drivenadapters.NewOntologyQueryAccess()
-	b.add(toolKeyQueryObjectInstance, handleQueryObjectInstance(ontologyQuery))
+	b.add(toolKeyQueryObjectInstance, handleQueryObjectInstance(ontologyQuery, guide))
 
 	knQuerySubgraphService := logicsKqs.NewKnQuerySubgraphService()
 	b.add(toolKeyQueryInstanceSubgraph, handleQueryInstanceSubgraph(knQuerySubgraphService))
 	b.add(toolKeyExploreSubgraph, handleExploreSubgraph(knQuerySubgraphService))
 
 	getLogicPropertiesValuesService := logicsKlp.NewKnLogicPropertyResolverService()
-	b.add(toolKeyGetLogicPropertiesValues, handleGetLogicPropertiesValues(getLogicPropertiesValuesService))
+	b.add(toolKeyGetLogicPropertiesValues, handleGetLogicPropertiesValues(getLogicPropertiesValuesService, guide))
 
 	getActionInfoService := logicsKar.NewKnActionRecallService()
 	b.add(toolKeyGetActionInfo, handleGetActionInfo(getActionInfoService))
@@ -197,9 +204,7 @@ func newMCPServerForProfile(
 	metricsService := knmetrics.NewKnMetricsService()
 	b.add(toolKeyQueryMetric, handleQueryMetric(metricsService))
 
-	bknBackend := drivenadapters.NewBknBackendAccess()
 	b.add(toolKeyListKnowledgeNetworks, handleListKnowledgeNetworks(bknBackend))
-	schemaAccess := drivenadapters.NewObjectSchemaAccess()
 	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService, schemaAccess,
 		permission.NewKnowledgeNetworkAuthorizer(config.NewConfigLoader())))
 	b.add(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService, schemaAccess))

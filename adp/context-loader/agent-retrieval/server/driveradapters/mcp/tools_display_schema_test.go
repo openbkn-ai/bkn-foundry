@@ -84,7 +84,7 @@ func TestHandleQueryObjectInstanceNumericDisplayMatchesSchema(t *testing.T) {
 			map[string]any{"seq": 1, "_display": nil, "_instance_id": "block:1", "_instance_identity": map[string]any{"id": "b1"}},
 		},
 	}}
-	handler := handleQueryObjectInstance(stub)
+	handler := handleQueryObjectInstance(stub, nil)
 	result, err := handler(context.Background(), mcpReq(map[string]any{
 		"kn_id": "kn", "ot_id": "block", "response_format": "json",
 	}))

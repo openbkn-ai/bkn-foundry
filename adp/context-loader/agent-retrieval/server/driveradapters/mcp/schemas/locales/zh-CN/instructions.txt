@@ -59,3 +59,5 @@ ContextLoader 知识网络查询工具集使用指南。
 提示：聚合类问题（如「每个 X 的 Y 总数/排名」）用 run_cypher 在模型上写（如 MATCH (x:X)-[:R]->(y:Y) RETURN x.name AS name, sum(y.v) AS total ORDER BY total DESC LIMIT 10）；不要用 query_object_instance 的 sort 近似。
 
 成员资格、多条件阈值、求和、计数和去重也必须下推到 run_cypher 或已建模指标。用户同时要求总数和明细时，让同一次可重算查询返回聚合结果及对应明细，或用共享条件的两次查询分别返回。不能先用 query_object_instance 拉回多页数据，再在 Agent 上下文里自行筛选、计数或去重；这种上下文计算无法形成完整、可重放的业务证据。
+
+权限不足：query_object_instance 与 get_logic_properties_values 的结果或报错里带 permission_guidance 时，说明访问权限影响了这次调用。据此如实告诉用户缺哪类权限（grant 缺基础操作权限；property_grants 列出的字段拿不到原始值；row_filter 结果受行访问范围限制、可能不完整），不要猜测、补全或推断被隐藏的数据。request_permission_url 以 http 开头时作为「申请权限」链接给用户；以 / 开头时请用户在 BKN Studio 中打开该路径，不要自行拼接域名；没有该字段就请用户联系管理员。申请提交后需等审核，通过后重新执行原任务，不要假定权限已生效。没有 permission_guidance 时，空结果或空值不能当作权限不足。

@@ -47,6 +47,23 @@ type Config struct {
 	OTelProviders        *bknotel.Providers     `yaml:"-"`
 	// New configuration - knowledge rearrangement and retrieval related.
 	MFModelAPI PrivateBaseConfig `yaml:"mf_model_api"` // MF-Model API unified service configuration.
+	// PermissionRequest controls the Studio links attached to permission guidance.
+	PermissionRequest PermissionRequestConfig `yaml:"permission_request"`
+}
+
+// PermissionRequestConfig describes where a user requests more access in Studio.
+//
+// The switch is Disabled rather than Enabled on purpose: defaults are applied
+// again when the secret file is loaded, which would turn an explicit
+// "enabled: false" back into the default true.
+type PermissionRequestConfig struct {
+	// Disabled drops the request links, e.g. for a Community deployment whose
+	// Studio has no permission-request flow. The guidance itself stays.
+	Disabled bool `yaml:"disabled" env:"CONTEXT_LOADER_PERMISSION_REQUEST_DISABLED"`
+	// PathTemplate is the Studio route, relative to the host the caller used.
+	// Placeholders: {kn_id}, {ot_id} and {scope_code} (1 grant, 2 row filter,
+	// 3 property access).
+	PathTemplate string `yaml:"path_template" env:"CONTEXT_LOADER_PERMISSION_REQUEST_PATH_TEMPLATE" default:"/studio/knowledge-network/workspace/{kn_id}/object-types/{ot_id}/detail?requestPermission={scope_code}"`
 }
 
 // AuthorizationConfig controls context-loader authorization request batching.

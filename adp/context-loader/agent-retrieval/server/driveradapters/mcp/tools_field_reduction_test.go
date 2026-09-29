@@ -324,7 +324,7 @@ func TestHandleGetLogicPropertiesValues_FixesDefaultParams(t *testing.T) {
 			},
 		}
 
-		handler := handleGetLogicPropertiesValues(stub)
+		handler := handleGetLogicPropertiesValues(stub, nil)
 		req := mcpReq(map[string]any{
 			"kn_id":                "kn-001",
 			"ot_id":                "ot-001",
@@ -355,7 +355,7 @@ func TestHandleGetLogicPropertiesValues_FixesDefaultParams(t *testing.T) {
 func TestHandleGetLogicPropertiesValues_RequiresAuth(t *testing.T) {
 	convey.Convey("handleGetLogicPropertiesValues returns error without auth context", t, func() {
 		stub := &stubLogicPropertyResolverService{}
-		handler := handleGetLogicPropertiesValues(stub)
+		handler := handleGetLogicPropertiesValues(stub, nil)
 		req := mcpReq(map[string]any{})
 
 		result, err := handler(context.Background(), req)
@@ -381,7 +381,7 @@ func TestHandleQueryObjectInstance_StripsObjectType(t *testing.T) {
 			},
 		}
 
-		handler := handleQueryObjectInstance(stub)
+		handler := handleQueryObjectInstance(stub, nil)
 		req := mcpReq(map[string]any{
 			"kn_id":           "kn-001",
 			"ot_id":           "ot-001",
@@ -408,7 +408,7 @@ func TestHandleQueryObjectInstance_FixesIncludeTypeInfoFalse(t *testing.T) {
 			},
 		}
 
-		handler := handleQueryObjectInstance(stub)
+		handler := handleQueryObjectInstance(stub, nil)
 		req := mcpReq(map[string]any{
 			"kn_id":             "kn-001",
 			"ot_id":             "ot-001",
@@ -433,7 +433,7 @@ func TestHandleQueryObjectInstance_DefaultsLimitTo10(t *testing.T) {
 			},
 		}
 
-		handler := handleQueryObjectInstance(stub)
+		handler := handleQueryObjectInstance(stub, nil)
 		req := mcpReq(map[string]any{
 			"kn_id":           "kn-001",
 			"ot_id":           "ot-001",
@@ -456,7 +456,7 @@ func TestHandleQueryObjectInstance_RespectsExplicitLimit(t *testing.T) {
 			},
 		}
 
-		handler := handleQueryObjectInstance(stub)
+		handler := handleQueryObjectInstance(stub, nil)
 		req := mcpReq(map[string]any{
 			"kn_id":           "kn-001",
 			"ot_id":           "ot-001",

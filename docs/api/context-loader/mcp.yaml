@@ -47,6 +47,23 @@ info:
     端点，鉴权、受管生命周期和工具语义与 `/mcp` 相同，面向每次模型调用都携带全部
     工具定义的宿主。它只公布 11 个工具，其余能力经按需网关使用，见下文
     `/mcp-compact` 与 `GET /mcp-compact/info`。
+
+    **权限说明（`permission_guidance`）**：`query_object_instance` 与
+    `get_logic_properties_values` 在访问权限影响调用时附带该对象，两个入口相同。
+    被 403 拒绝时，它加在错误正文 JSON（`isError=true`）的顶层，与 `code`、`details`
+    并列；`query_object_instance` 成功但有字段脱敏 / 只可见字段名，或行访问范围
+    收窄了结果时，它出现在结果顶层。结构：`resource`（`type=object_type`、
+    `id=<kn_id>/<ot_id>`、`kn_id`、`ot_id`，调用者可查看该对象类定义时才有
+    `name`）与 `shortfalls[]`。每项的 `scope` 取 bkn-safe 权限申请的
+    proposal kind：`grant`（缺基础操作，附 `operations`）、`property_grants`
+    （附拿不到原始值的 `properties`）、`row_filter`（结果可能不完整）。
+    `request_permission_url` 是 Studio 对象类详情页打开申请弹窗的地址：请求经
+    ingress 进入（带 `X-Forwarded-Host` 或 `X-Forwarded-Proto`）时为绝对地址，
+    主机即调用者访问 MCP 所用的主机；集群内调用拿不到对外主机，此时为相对
+    Studio 主机的路径（以 `/` 开头），由调用方补全。链接只在调用者是用户账号、且能查看该对象类定义时给出；否则只说明受限，
+    不给链接也不给名称。路径模板和开关由部署配置
+    `permission_request.path_template` / `permission_request.disabled` 决定，
+    社区版没有申请流程时应关闭。空结果或空值本身不代表权限不足。
   version: 0.1.3
 servers:
   - url: /api/agent-retrieval/v1

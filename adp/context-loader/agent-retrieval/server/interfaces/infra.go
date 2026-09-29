@@ -35,6 +35,8 @@ const (
 	// KeyUserID ContextKey = "user_id"
 	// IsPublic Whether public
 	IsPublic ContextKey = "is_public"
+	// KeyPublicOrigin is the scheme://host a caller reached this service through.
+	KeyPublicOrigin ContextKey = "public_origin"
 	// // XUserID internal interface parameter XUserID
 	// XUserID ContextKey = "x-user"
 	// // XVisitorType internal interface parameter XVisitorType, indicates account type
