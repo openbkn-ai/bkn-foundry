@@ -167,8 +167,13 @@ queue:
 }
 
 // transientReadFailure reports a schema read that gave no answer: it timed out,
-// never reached ontology-query, or met a 5xx. A 4xx is ontology-query's verdict
-// on the request and is never treated as transient.
+// never reached ontology-query, or ontology-query answered 5xx. A 4xx is
+// ontology-query's verdict on the request and is never treated as transient.
+//
+// Only a 5xx ontology-query actually sent counts: the HTTP client attaches the
+// response body to those. A 500 raised here because an answer could not be
+// decoded carries none, and a response contract that stopped matching is a
+// fault to surface, not one to hide behind "retry later" on every call.
 func transientReadFailure(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
@@ -177,7 +182,7 @@ func transientReadFailure(err error) bool {
 	if !errors.As(err, &httpErr) {
 		return true
 	}
-	return httpErr.HTTPCode >= 500
+	return httpErr.HTTPCode >= 500 && httpErr.DownstreamBody != nil
 }
 
 func filterObjectType(source *interfaces.ObjectType,

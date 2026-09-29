@@ -340,7 +340,9 @@ func TestFilterObjectTypesDegradingTreatsOnlyDependencyFaultsAsTransient(t *test
 		err      error
 		degraded bool
 	}{
-		{"5xx", &infraErr.HTTPError{HTTPCode: 503}, true},
+		{"5xx", &infraErr.HTTPError{HTTPCode: 503, DownstreamBody: []byte(`{}`)}, true},
+		{"5xx with an empty body", &infraErr.HTTPError{HTTPCode: 502, DownstreamBody: []byte{}}, true},
+		{"undecodable answer", &infraErr.HTTPError{HTTPCode: 500}, false},
 		{"no HTTP answer", errors.New("dial tcp: connection refused"), true},
 		{"403", &infraErr.HTTPError{HTTPCode: 403}, false},
 		{"404", &infraErr.HTTPError{HTTPCode: 404}, false},
@@ -362,7 +364,7 @@ func TestFilterObjectTypesDegradingTreatsOnlyDependencyFaultsAsTransient(t *test
 
 // Degrading is opt-in: the plain filter still fails on a dependency fault.
 func TestFilterObjectTypesStillFailsOnDependencyFault(t *testing.T) {
-	access := selectiveSchemaAccess{fail: map[string]error{"ot-001": &infraErr.HTTPError{HTTPCode: 503}}}
+	access := selectiveSchemaAccess{fail: map[string]error{"ot-001": &infraErr.HTTPError{HTTPCode: 503, DownstreamBody: []byte(`{}`)}}}
 	if _, err := FilterObjectTypes(context.Background(), access, "kn", boundObjectTypes(4)); err == nil {
 		t.Fatal("expected the 503 to fail the call")
 	}

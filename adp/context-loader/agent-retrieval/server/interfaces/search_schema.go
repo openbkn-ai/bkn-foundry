@@ -48,4 +48,8 @@ type SearchSchemaResp struct {
 	RelationTypes []any `json:"relation_types"`
 	ActionTypes   []any `json:"action_types"`
 	MetricTypes   []any `json:"metric_types"`
+	// Message is what retrieval says about this result: object_types ids that
+	// matched nothing, or object types returned without properties because
+	// their schema could not be read in time. Omitted when there is nothing to say.
+	Message string `json:"message,omitempty"`
 }
