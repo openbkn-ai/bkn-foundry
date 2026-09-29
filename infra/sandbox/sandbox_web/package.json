@@ -30,6 +30,7 @@
   },
   "overrides": {
     "@rspack/core": "1.7.3",
-    "@rspack/binding": "1.7.3"
+    "@rspack/binding": "1.7.3",
+    "dompurify": "^3.4.13"
   }
 }
