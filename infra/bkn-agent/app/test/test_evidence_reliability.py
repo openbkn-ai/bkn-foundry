@@ -44,6 +44,15 @@ def test_internal_request_reuses_active_otel_trace_identity(monkeypatch):
     assert ctx.entry_boundary == "internal"
 
 
+def test_context_without_trace_headers_generates_runtime_identifiers(monkeypatch):
+    monkeypatch.setattr(observability, "_active_otel_trace_identity", lambda: (None, None))
+
+    ctx = observability.build_context({})
+
+    assert len(ctx.trace_id) == 32
+    assert ctx.request_id.startswith("req_")
+
+
 def test_external_traceparent_wins_over_active_otel_identity(monkeypatch):
     monkeypatch.setattr(
         observability,
