@@ -62,10 +62,8 @@ func (r *restHandler) postResourceData(c *gin.Context, visitor hydra.Visitor, s2
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	if s2sInternal {
 		ctx = interfaces.WithS2SInternalAccess(ctx)
-		if visitor.ID == interfaces.BuiltinAdminID {
-			if callerID := strings.TrimSpace(c.GetHeader(interfaces.HTTPHeaderBKNCallerID)); callerID != "" {
-				ctx = interfaces.WithCursorQuotaOwner(ctx, callerID)
-			}
+		if callerID := strings.TrimSpace(c.GetHeader(interfaces.HTTPHeaderBKNCallerID)); callerID != "" {
+			ctx = interfaces.WithCursorQuotaOwner(ctx, callerID)
 		}
 	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
