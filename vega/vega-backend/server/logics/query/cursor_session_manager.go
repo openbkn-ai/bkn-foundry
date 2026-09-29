@@ -73,13 +73,13 @@ func (m *cursorSessionManager) configure(maxSessions, perAccount int) {
 	m.mu.Unlock()
 }
 
-func (m *cursorSessionManager) capacityErrorLocked(accountID string) error {
+func (m *cursorSessionManager) capacityErrorLocked(quotaOwnerID string) error {
 	if len(m.sessions) >= m.maxSessions {
 		return errCursorSessionLimitReached
 	}
 	count := 0
 	for _, session := range m.sessions {
-		if session.AccountID == accountID {
+		if session.QuotaOwnerID == quotaOwnerID {
 			count++
 		}
 	}
@@ -101,6 +101,7 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 	session := &interfaces.CursorSession{
 		ID:              generatedID.String(),
 		AccountID:       accountID,
+		QuotaOwnerID:    accountID,
 		CatalogID:       catalogID,
 		ResourceIDs:     append([]string(nil), resourceIDs...),
 		CompiledSQL:     compiledSQL,
@@ -124,7 +125,7 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 	return session, nil
 }
 
-func (m *cursorSessionManager) createResourceData(accountID string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.CursorSession, error) {
+func (m *cursorSessionManager) createResourceData(accountID, quotaOwnerID string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.CursorSession, error) {
 	keepAliveSec := params.Paging.KeepAliveSec
 	if keepAliveSec == 0 {
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
@@ -137,6 +138,7 @@ func (m *cursorSessionManager) createResourceData(accountID string, resource *in
 	session := &interfaces.CursorSession{
 		ID:                     generatedID.String(),
 		AccountID:              accountID,
+		QuotaOwnerID:           quotaOwnerID,
 		CatalogID:              resource.CatalogID,
 		ResourceIDs:            []string{resource.ID},
 		ResourceDataResourceID: resource.ID,
@@ -150,7 +152,7 @@ func (m *cursorSessionManager) createResourceData(accountID string, resource *in
 	}
 	m.mu.Lock()
 	m.removeExpiredLocked(now)
-	if err := m.capacityErrorLocked(accountID); err != nil {
+	if err := m.capacityErrorLocked(quotaOwnerID); err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}

@@ -345,11 +345,13 @@ func TestQueryResourceDataUsesAdminOnlyForInternalConceptDataset(t *testing.T) {
 		name          string
 		resourceID    string
 		wantAccountID string
+		wantCallerID  string
 	}{
 		{
 			name:          "internal concept dataset",
 			resourceID:    interfaces.BKN_DATASET_ID,
 			wantAccountID: interfaces.ADMIN_ACCOUNT_ID,
+			wantCallerID:  "user-42",
 		},
 		{
 			name:          "ordinary resource",
@@ -366,6 +368,7 @@ func TestQueryResourceDataUsesAdminOnlyForInternalConceptDataset(t *testing.T) {
 				PostNoUnmarshal(gomock.Any(), "http://vega/resources/"+tc.resourceID+"/data", gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
 					assert.Equal(t, tc.wantAccountID, headers[interfaces.HTTP_HEADER_ACCOUNT_ID])
+					assert.Equal(t, tc.wantCallerID, headers[interfaces.HTTP_HEADER_BKN_CALLER_ID])
 					assert.Equal(t, interfaces.ADMIN_ACCOUNT_TYPE, headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE])
 					return http.StatusOK, []byte(`{"entries":[],"total_count":0}`), nil
 				})

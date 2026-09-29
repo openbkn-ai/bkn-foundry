@@ -120,6 +120,7 @@ func (r *restHandler) PostResourceDataByProxy(c *gin.Context) {
 	}
 	ctx = interfaces.WithTrustedProxyRead(ctx)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: request.ProxyID, Type: request.ProxyType})
+	ctx = interfaces.WithCursorQuotaOwner(ctx, request.CallerID)
 	resource, ok := r.loadProxyResource(c, ctx, span, request)
 	if !ok {
 		return

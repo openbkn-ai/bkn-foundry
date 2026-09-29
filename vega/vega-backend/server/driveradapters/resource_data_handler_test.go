@@ -86,6 +86,29 @@ func Test_ResourceDataRestHandler_PostResourceData(t *testing.T) {
 
 	const url = "/api/vega-backend/in/v1/resources/res-1/data"
 
+	t.Run("trusted internal caller owns quota without changing access account", func(t *testing.T) {
+		engine, rs, _, rds := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _ *interfaces.Resource, _ *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				account := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+				assert.Equal(t, interfaces.BuiltinAdminID, account.ID)
+				assert.Equal(t, "caller-1", interfaces.CursorQuotaOwner(ctx))
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil
+			})
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, nil, nil, nil, nil, rds)
+		engine.POST("/test/resources/:id/data", func(c *gin.Context) {
+			handler.postResourceData(c, hydra.Visitor{ID: interfaces.BuiltinAdminID}, true)
+		})
+		req := httptest.NewRequest(http.MethodPost, "/test/resources/res-1/data", strings.NewReader(`{"paging":{"limit":1}}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set(interfaces.HTTPHeaderBKNCallerID, "caller-1")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+	})
+
 	t.Run("rejects unsupported override method", func(t *testing.T) {
 		engine, _, _, _ := setupResourceDataHandlerTest(t)
 

@@ -124,10 +124,24 @@ func TestCursorSessionManagerCreate(t *testing.T) {
 		require.NoError(t, err)
 		resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1"}
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}}
-		_, err = manager.createResourceData("account-a", resource, params)
+		_, err = manager.createResourceData("account-a", "account-a", resource, params)
 		require.ErrorIs(t, err, errCursorAccountLimitReached)
-		_, err = manager.createResourceData("account-b", resource, params)
+		_, err = manager.createResourceData("account-b", "account-b", resource, params)
 		assert.NoError(t, err)
+	})
+	t.Run("resource data uses the caller quota while retaining the access account", func(t *testing.T) {
+		manager := newCursorSessionManager(4, 1)
+		resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1"}
+		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}}
+		first, err := manager.createResourceData("admin", "caller-a", resource, params)
+		require.NoError(t, err)
+		assert.Equal(t, "admin", first.AccountID)
+		_, err = manager.createResourceData("admin", "caller-a", resource, params)
+		require.ErrorIs(t, err, errCursorAccountLimitReached)
+		second, err := manager.createResourceData("admin", "caller-b", resource, params)
+		require.NoError(t, err)
+		assert.Equal(t, "admin", second.AccountID)
+		assert.ErrorIs(t, manager.closeForAccount("caller-b", first.ID), errCursorSessionForbidden)
 	})
 	t.Run("concurrent requests cannot exceed the account quota", func(t *testing.T) {
 		manager := newCursorSessionManager(20, 2)
@@ -158,6 +172,17 @@ func TestCursorSessionManagerCreate(t *testing.T) {
 }
 
 func TestCursorSessionManagerConfigure(t *testing.T) {
+	t.Run("clamps account limit below global limit", func(t *testing.T) {
+		manager := newCursorSessionManager(3, 5)
+		_, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		require.NoError(t, err)
+		_, err = manager.create("account-1", "catalog-1", nil, "SELECT 2", 1, 60, 30)
+		require.NoError(t, err)
+		_, err = manager.create("account-1", "catalog-1", nil, "SELECT 3", 1, 60, 30)
+		require.ErrorIs(t, err, errCursorAccountLimitReached)
+		_, err = manager.create("account-2", "catalog-1", nil, "SELECT 4", 1, 60, 30)
+		assert.NoError(t, err)
+	})
 	t.Run("reduced capacity applies to new sessions", func(t *testing.T) {
 		manager := newCursorSessionManager(3, 2)
 		first, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)

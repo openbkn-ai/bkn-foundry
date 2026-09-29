@@ -262,6 +262,28 @@ func TestExecuteResourceDataCursorContinuationWithRunnerRejectsChangedSource(t *
 }
 
 func TestExecuteInitialResourceDataCursor(t *testing.T) {
+	t.Run("accounts quota to trusted caller and binds cursor to access account", func(t *testing.T) {
+		previousManager := rawQueryCursorSessions
+		manager := newCursorSessionManager(4, 1)
+		rawQueryCursorSessions = manager
+		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
+		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}
+		execute := func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
+		}
+		first, err := ExecuteInitialResourceDataCursor(interfaces.WithCursorQuotaOwner(context.Background(), "caller-a"), "admin", resource, params, execute)
+		require.NoError(t, err)
+		require.NotNil(t, first.Paging.NextCursor)
+		_, err = ExecuteInitialResourceDataCursor(interfaces.WithCursorQuotaOwner(context.Background(), "caller-a"), "admin", resource, params, execute)
+		assertHTTPError(t, err, http.StatusTooManyRequests)
+		second, err := ExecuteInitialResourceDataCursor(interfaces.WithCursorQuotaOwner(context.Background(), "caller-b"), "admin", resource, params, execute)
+		require.NoError(t, err)
+		require.NotNil(t, second.Paging.NextCursor)
+		_, err = ExecuteResourceDataCursorContinuation(context.Background(), "caller-a", resource, *first.Paging.NextCursor, execute)
+		assertHTTPError(t, err, http.StatusForbidden)
+	})
+
 	t.Run("active initial page is not reclaimed", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
 		manager := newCursorSessionManager(10, 9)
