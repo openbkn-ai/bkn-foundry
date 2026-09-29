@@ -24,7 +24,7 @@ func TestHandleQueryObjectInstance_ForwardsSort(t *testing.T) {
 			},
 		}
 
-		handler := handleQueryObjectInstance(stub)
+		handler := handleQueryObjectInstance(stub, nil)
 		req := mcpReq(map[string]any{
 			"kn_id": "kn-001",
 			"ot_id": "ot-001",

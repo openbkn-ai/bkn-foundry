@@ -148,6 +148,53 @@ func TestMariaDBConnectorGetMetadata(t *testing.T) {
 	})
 }
 
+func TestMariaDBConnectorListSchemas(t *testing.T) {
+	t.Run("default scope includes only databases with discovered tables", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
+		defer cleanup()
+		connector.connected = true
+		mock.ExpectQuery("SELECT DISTINCT TABLE_SCHEMA FROM information_schema\\.TABLES WHERE TABLE_SCHEMA NOT IN.*ORDER BY TABLE_SCHEMA").
+			WithArgs("information_schema", "mariadb", "mysql", "performance_schema", "sys").
+			WillReturnRows(sqlmock.NewRows([]string{"TABLE_SCHEMA"}).AddRow("app").AddRow("reporting"))
+
+		schemas, err := connector.listSchemas(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"app", "reporting"}, schemas)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("configured scope retains existing empty databases", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "empty"})
+		defer cleanup()
+		connector.connected = true
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN.*ORDER BY SCHEMA_NAME").
+			WithArgs("app", "empty").
+			WillReturnRows(sqlmock.NewRows([]string{"SCHEMA_NAME"}).AddRow("app").AddRow("empty"))
+
+		schemas, err := connector.listSchemas(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"app", "empty"}, schemas)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("configured scope omits missing databases", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "missing"})
+		defer cleanup()
+		connector.connected = true
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN.*ORDER BY SCHEMA_NAME").
+			WithArgs("app", "missing").
+			WillReturnRows(sqlmock.NewRows([]string{"SCHEMA_NAME"}).AddRow("app"))
+
+		schemas, err := connector.listSchemas(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"app"}, schemas)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func mariaDBTableRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"TABLE_SCHEMA", "TABLE_NAME", "TABLE_TYPE", "ENGINE", "TABLE_COLLATION",

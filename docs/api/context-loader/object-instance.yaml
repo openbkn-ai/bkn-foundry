@@ -524,6 +524,13 @@ components:
             `masked` 为脱敏值，`schema` 只有字段定义、取不到值，`none` 的属性不会
             出现在结果里。用它解释「为什么这个字段是空的 / 看起来被改过」，
             不要据此重试。
+        row_filter_applied:
+          type: boolean
+          description: |
+            为 `true` 表示调用者生效的行访问范围收窄了本次查询，结果可能不完整；
+            不返回具体过滤条件。未受行范围限制时省略。MCP 工具
+            `query_object_instance` 不回显此字段，而是把它连同脱敏字段一起
+            归入 `permission_guidance`。
 
     ObjectInstance:
       type: object

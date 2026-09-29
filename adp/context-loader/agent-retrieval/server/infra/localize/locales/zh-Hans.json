@@ -171,6 +171,16 @@
     "ObjectTypeNotAuthorized": "无权查看该对象类。",
     "CapabilityNetworkViewRequired": "这些知识网络范围的工具需要该知识网络本身的查看权限（view_detail）。仅有对象类等子资源的权限，或对某个 Skill 的单独授权，都不足以发现或读取该网络挂载的能力。请联系管理员授予此知识网络的查看权限。对象类上绑定的工具可通过 search_schema 或 get_object_types 发现，并用 get_logic_properties_values 计算；行动类上绑定的工具可通过 search_schema 和 get_action_info 发现。前提是你对相应对象类或行动类有查看权限。",
     "CapabilityNetworkExecuteRequired": "执行知识网络挂载的工具需要该知识网络本身的执行权限（execute）。仅有对象类等子资源的权限，或对工具的单独授权，都不足以在此执行。请联系管理员授予此知识网络的执行权限。对象类逻辑属性绑定的工具经 get_logic_properties_values 运行，行动类绑定的工具经 execute_action 运行，二者按对象类或行动类授权，不需要网络的执行权限。",
-    "SkillNotProvisionedForNetwork": "该 Skill 已挂载，但尚未为知识网络访问完成授权：知识网络的代理账号没有读取它的权限。请让对该 Skill 有执行权限的知识网络编辑者重新发布（或重新挂载）该网络，或为你单独授予该 Skill 的查看权限。"
+    "SkillNotProvisionedForNetwork": "该 Skill 已挂载，但尚未为知识网络访问完成授权：知识网络的代理账号没有读取它的权限。请让对该 Skill 有执行权限的知识网络编辑者重新发布（或重新挂载）该网络，或为你单独授予该 Skill 的查看权限。",
+    "PermissionGuidanceGrant": "你暂无「%s」的数据查询权限，无法完成本次查询。",
+    "PermissionGuidancePropertyGrants": "「%s」中的字段 %s 无法读取原始值。",
+    "PermissionGuidanceRowFilter": "当前仅能访问「%s」的部分数据，结果可能不完整。",
+    "PermissionGuidanceRequestHint": "可通过申请权限链接提交申请；提交后请等待管理员完成授权，再重新发起任务。",
+    "PermissionGuidanceContactAdmin": "请联系管理员授权。",
+    "PermissionGuidanceUnnamedObjectType": "该对象类",
+    "PermissionGuidanceListSeparator": "、",
+    "PermissionGuidanceReasonGrant": "智能体查询「%s」的数据时缺少数据查询权限",
+    "PermissionGuidanceReasonPropertyGrants": "智能体需要读取「%s」中字段 %s 的原始值",
+    "PermissionGuidanceReasonRowFilter": "智能体查询「%s」时受行访问范围限制，需要扩大访问范围"
   }
 }

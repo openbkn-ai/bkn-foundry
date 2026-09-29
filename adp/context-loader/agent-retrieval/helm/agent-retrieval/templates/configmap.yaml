@@ -58,6 +58,11 @@ data:
       private_port: {{ index .Values "depServices" "bkn-safe" "privatePort" }}
     auth:
       resource_filter_chunk_size: {{ .Values.auth.resourceFilterChunkSize | default 200 }}
+    permission_request:
+      disabled: {{ (.Values.permissionRequest).disabled | default false }}
+      {{- with (.Values.permissionRequest).pathTemplate }}
+      path_template: {{ . | quote }}
+      {{- end }}
     redis:
       connectType: {{ .Values.depServices.redis.connectType | quote }}
       enableSSL: {{ .Values.depServices.redis.enableSSL }}

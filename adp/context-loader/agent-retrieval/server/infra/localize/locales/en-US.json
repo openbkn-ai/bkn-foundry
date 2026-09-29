@@ -171,6 +171,16 @@
     "ObjectTypeNotAuthorized": "You are not authorized to view this object type.",
     "CapabilityNetworkViewRequired": "These network-scoped tools need view permission (view_detail) on the knowledge network itself. Permissions on its object types or other child resources, or a standalone grant on a Skill, are not enough to discover or read what the network has mounted. Ask an administrator to grant view on this knowledge network. Tools bound to object types you can view are found through search_schema or get_object_types and computed with get_logic_properties_values; tools bound to action types you can view are found through search_schema and get_action_info.",
     "CapabilityNetworkExecuteRequired": "Running a tool mounted on a knowledge network needs execute permission on the knowledge network itself. Permissions on its object types or other child resources, or a standalone grant on the tool, are not enough to run it here. Ask an administrator to grant execute on this knowledge network. A tool bound to an object type's logic property runs through get_logic_properties_values, and one bound to an action type runs through execute_action; both are authorized on the object type or action type rather than on the network.",
-    "SkillNotProvisionedForNetwork": "This Skill is mounted, but it has not been provisioned for knowledge network access: the network's proxy account holds no grant to read it. Ask a network editor who can execute the Skill to republish (or remount it on) the network, or ask for a direct view grant on the Skill."
+    "SkillNotProvisionedForNetwork": "This Skill is mounted, but it has not been provisioned for knowledge network access: the network's proxy account holds no grant to read it. Ask a network editor who can execute the Skill to republish (or remount it on) the network, or ask for a direct view grant on the Skill.",
+    "PermissionGuidanceGrant": "You do not have permission to query “%s”, so this query could not be completed.",
+    "PermissionGuidancePropertyGrants": "In “%s”, the raw values of %s are not available to you.",
+    "PermissionGuidanceRowFilter": "You can access only part of the data in “%s”, so the result may be incomplete.",
+    "PermissionGuidanceRequestHint": "You can submit a request through the request link; after submitting, wait for an administrator to approve it, then rerun the task.",
+    "PermissionGuidanceContactAdmin": "Ask an administrator for access.",
+    "PermissionGuidanceUnnamedObjectType": "this object type",
+    "PermissionGuidanceListSeparator": ", ",
+    "PermissionGuidanceReasonGrant": "The agent needs permission to query data in “%s”",
+    "PermissionGuidanceReasonPropertyGrants": "The agent needs raw values in “%s” for %s",
+    "PermissionGuidanceReasonRowFilter": "The agent's query on “%s” is limited by the row access scope and needs a wider scope"
   }
 }

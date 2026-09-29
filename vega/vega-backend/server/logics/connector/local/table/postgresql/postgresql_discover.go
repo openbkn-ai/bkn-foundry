@@ -156,18 +156,9 @@ func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.Tab
 	return c.listTables(ctx, "", "")
 }
 
-// listTables filters readable tables and views by optional schema and table name.
-func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName string) ([]*interfaces.TableMeta, error) {
-	if err := c.Connect(ctx); err != nil {
-		return nil, err
-	}
-
-	builder := stmtBuilder.Select(
-		"n.nspname AS table_schema",
-		"c.relname AS table_name",
-		"c.relkind::text AS relkind",
-		"COALESCE(obj_description(c.oid, 'pg_class'), '') AS description",
-	).From("pg_catalog.pg_class c").
+func discoverableRelationsBuilder() sq.SelectBuilder {
+	return stmtBuilder.Select().
+		From("pg_catalog.pg_class c").
 		Join("pg_catalog.pg_namespace n ON n.oid = c.relnamespace").
 		// relkind: r=ordinary table, p=partitioned table, v=view, m=materialized view, f=foreign table.
 		Where(sq.Eq{"c.relkind": tableRelKinds}).
@@ -177,6 +168,20 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 		Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
 		Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)")).
 		Where(sq.Expr("NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid = c.oid)"))
+}
+
+// listTables filters readable tables and views by optional schema and table name.
+func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName string) ([]*interfaces.TableMeta, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+
+	builder := discoverableRelationsBuilder().Columns(
+		"n.nspname AS table_schema",
+		"c.relname AS table_name",
+		"c.relkind::text AS relkind",
+		"COALESCE(obj_description(c.oid, 'pg_class'), '') AS description",
+	)
 
 	if schema != "" {
 		if len(c.config.Schemas) > 0 && !containsSchema(c.config.Schemas, schema) {
@@ -867,14 +872,17 @@ func (c *PostgresqlConnector) GetMetadata(ctx context.Context) (map[string]any, 
 	return metadata, nil
 }
 
-// listSchemas lists non-system schemas within the connector scope.
+// listSchemas lists configured schemas or schemas with discoverable tables.
 func (c *PostgresqlConnector) listSchemas(ctx context.Context) ([]string, error) {
-	builder := stmtBuilder.Select("n.nspname").
-		From("pg_catalog.pg_namespace n").
-		Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
-		Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)"))
+	var builder sq.SelectBuilder
 	if len(c.config.Schemas) > 0 {
+		builder = stmtBuilder.Select("n.nspname").
+			From("pg_catalog.pg_namespace n").
+			Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
+			Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)"))
 		builder = builder.Where(sq.Eq{"n.nspname": c.config.Schemas})
+	} else {
+		builder = discoverableRelationsBuilder().Columns("DISTINCT n.nspname")
 	}
 	builder = builder.OrderBy("n.nspname")
 

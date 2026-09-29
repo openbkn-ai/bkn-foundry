@@ -201,7 +201,13 @@
     "output_schema.properties.datas.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type. Its type follows that display property (a number, a boolean, or a string such as a date) and it is null when the row's display field is empty.",
     "output_schema.properties.datas.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
     "output_schema.properties.datas.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
-    "output_schema.properties.datas.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
+    "output_schema.properties.datas.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics.",
+    "output_schema.properties.permission_guidance.description": "Access notes. Present only when field masking or hiding, or a row filter, shaped this result; its absence means neither limit applied. Tell the user plainly which access is missing, and never guess or fill in withheld data.",
+    "output_schema.properties.permission_guidance.properties.message.description": "A sentence for the user: which access is missing, how the result is affected, and the next step (submit a request and wait for administrator approval before rerunning, or ask an administrator). Relay it to the user as is.",
+    "output_schema.properties.permission_guidance.properties.resource.description": "The restricted object type. name is given only when this account may view the object type's definition.",
+    "output_schema.properties.permission_guidance.properties.shortfalls.description": "Each limit that affected this result.",
+    "output_schema.properties.permission_guidance.properties.shortfalls.items.properties.scope.description": "property_grants: the listed properties have no raw value (masked, or field name only). row_filter: the row access scope narrowed the result, so it may be incomplete, which does not mean data is necessarily missing. grant: a base operation is missing.",
+    "output_schema.properties.permission_guidance.properties.shortfalls.items.properties.request_permission_url.description": "Studio permission-request address. When it starts with http the user can open it directly; when it starts with / it is a path on the Studio host, so do not invent a host and ask the user to open it in BKN Studio. Without it, ask the user to contact an administrator."
   },
   "run_sql": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
