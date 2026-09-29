@@ -407,6 +407,7 @@ func NewApp() (*App, error) {
 	logOptions := logsvc.Options{
 		CursorKey: observabilityConfig.CursorSigningKey, SourceTimeout: observabilityConfig.SourceTimeout,
 		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
+		OperationAuditOnly:   true,
 	}
 	if coverageStoreSupported && observabilityConfig.SourceCoverageDeploymentID != "" {
 		logOptions.CoverageStore = coverageStore
