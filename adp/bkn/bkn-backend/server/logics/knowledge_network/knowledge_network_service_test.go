@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
+	"sync/atomic"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -170,6 +172,196 @@ func TestListOverviewGraphDoesNotRepeatAnEmptyCursorPage(t *testing.T) {
 	}
 	if result.NextCursor != "" {
 		t.Fatalf("empty page next cursor = %q, want none", result.NextCursor)
+	}
+}
+
+func TestRunExportLoadersLimitsConcurrency(t *testing.T) {
+	var running int32
+	var maxRunning int32
+	started := make(chan struct{}, 6)
+	release := make(chan struct{})
+	loaders := make([]exportLoader, 6)
+	for index := range loaders {
+		loaders[index] = func(context.Context) error {
+			current := atomic.AddInt32(&running, 1)
+			for {
+				maximum := atomic.LoadInt32(&maxRunning)
+				if current <= maximum || atomic.CompareAndSwapInt32(&maxRunning, maximum, current) {
+					break
+				}
+			}
+			started <- struct{}{}
+			<-release
+			atomic.AddInt32(&running, -1)
+			return nil
+		}
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runExportLoaders(context.Background(), 3, loaders...)
+	}()
+
+	for range 3 {
+		<-started
+	}
+	if got := atomic.LoadInt32(&running); got != 3 {
+		t.Fatalf("running loaders = %d, want 3", got)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("runExportLoaders() error = %v", err)
+	}
+	if got := atomic.LoadInt32(&maxRunning); got != 3 {
+		t.Fatalf("maximum concurrent loaders = %d, want 3", got)
+	}
+	if got := len(started); got != 3 {
+		t.Fatalf("remaining completed loaders = %d, want 3", got)
+	}
+}
+
+func TestRunExportLoadersCancelsPendingLoadersAfterFirstError(t *testing.T) {
+	expectedErr := errors.New("loader failed")
+	var started [6]atomic.Bool
+	loaders := make([]exportLoader, len(started))
+	loaders[0] = func(context.Context) error {
+		started[0].Store(true)
+		return expectedErr
+	}
+	for index := 1; index < len(loaders); index++ {
+		loaderIndex := index
+		loaders[index] = func(ctx context.Context) error {
+			started[loaderIndex].Store(true)
+			<-ctx.Done()
+			return ctx.Err()
+		}
+	}
+
+	err := runExportLoaders(context.Background(), 3, loaders...)
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("runExportLoaders() error = %v, want %v", err, expectedErr)
+	}
+	for index := 3; index < len(started); index++ {
+		if started[index].Load() {
+			t.Fatalf("pending loader %d started after cancellation", index)
+		}
+	}
+}
+
+func TestRunExportLoadersDoesNotStartWithCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var started atomic.Bool
+
+	err := runExportLoaders(ctx, 1, func(context.Context) error {
+		started.Store(true)
+		return nil
+	})
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("runExportLoaders() error type = %T, want *rest.HTTPError", err)
+	}
+	if httpErr.HTTPCode != http.StatusRequestTimeout {
+		t.Fatalf("runExportLoaders() HTTP status = %d, want %d", httpErr.HTTPCode, http.StatusRequestTimeout)
+	}
+	if started.Load() {
+		t.Fatal("loader started with an already canceled context")
+	}
+}
+
+func TestRunExportLoadersWrapsCancellationReturnedByLoader(t *testing.T) {
+	err := runExportLoaders(context.Background(), 1, func(context.Context) error {
+		return context.Canceled
+	})
+
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("runExportLoaders() error type = %T, want *rest.HTTPError", err)
+	}
+	if httpErr.HTTPCode != http.StatusRequestTimeout {
+		t.Fatalf("runExportLoaders() HTTP status = %d, want %d", httpErr.HTTPCode, http.StatusRequestTimeout)
+	}
+}
+
+func TestEnrichExportObjectReferencesReusesLoadedObjectsAndFetchesMissingOnes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	objectTypes := bmock.NewMockObjectTypeService(ctrl)
+	service := &knowledgeNetworkService{ots: objectTypes}
+	kn := &interfaces.KN{
+		KNID:   "kn-1",
+		Branch: interfaces.MAIN_BRANCH,
+		ObjectTypes: []*interfaces.ObjectType{{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-loaded", OTName: "Loaded"},
+			CommonInfo:             interfaces.CommonInfo{Icon: "loaded-icon", Color: "loaded-color"},
+		}},
+		RelationTypes: []*interfaces.RelationType{{
+			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+				SourceObjectTypeID: "ot-loaded",
+				TargetObjectTypeID: "ot-missing",
+			},
+		}},
+		ActionTypes: []*interfaces.ActionType{{
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ObjectTypeID: "ot-missing"},
+		}},
+	}
+	objectTypes.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"ot-missing"}, false).Return(map[string]*interfaces.ObjectType{
+		"ot-missing": {
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-missing", OTName: "Missing"},
+			CommonInfo:             interfaces.CommonInfo{Icon: "missing-icon", Color: "missing-color"},
+		},
+	}, nil)
+
+	if err := service.enrichExportObjectReferences(context.Background(), kn); err != nil {
+		t.Fatalf("enrichExportObjectReferences() error = %v", err)
+	}
+	if got, want := kn.RelationTypes[0].SourceObjectType.OTName, "Loaded"; got != want {
+		t.Fatalf("source object name = %q, want %q", got, want)
+	}
+	if got, want := kn.RelationTypes[0].TargetObjectType.OTName, "Missing"; got != want {
+		t.Fatalf("target object name = %q, want %q", got, want)
+	}
+	if got, want := kn.ActionTypes[0].ObjectType.OTName, "Missing"; got != want {
+		t.Fatalf("action object name = %q, want %q", got, want)
+	}
+}
+
+func TestFinalizeExportConceptGroupsReusesAuthorizedExportResources(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	permissions := bmock.NewMockPermissionService(ctrl)
+	service := &knowledgeNetworkService{ps: permissions}
+	visibleObjectID := interfaces.KNChildResourceID("kn-1", "ot-visible")
+	hiddenObjectID := interfaces.KNChildResourceID("kn-1", "ot-hidden")
+	permissions.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{visibleObjectID, hiddenObjectID}, []string(nil)).Return(map[string]interfaces.PermissionResourceOps{
+		visibleObjectID: {ResourceID: visibleObjectID, Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA}},
+	}, nil)
+	kn := &interfaces.KN{
+		KNID:   "kn-1",
+		Branch: interfaces.MAIN_BRANCH,
+		ConceptGroups: []*interfaces.ConceptGroup{{
+			CGID:          "cg-1",
+			ObjectTypeIDs: []string{"ot-visible", "ot-hidden"},
+		}},
+		RelationTypes: []*interfaces.RelationType{{
+			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+				SourceObjectTypeID: "ot-visible",
+				TargetObjectTypeID: "ot-visible",
+			},
+		}},
+		ActionTypes: []*interfaces.ActionType{{
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ObjectTypeID: "ot-visible"},
+		}},
+	}
+
+	if err := service.finalizeExportConceptGroups(context.Background(), kn); err != nil {
+		t.Fatalf("finalizeExportConceptGroups() error = %v", err)
+	}
+	if got, want := kn.ConceptGroups[0].ObjectTypeIDs, []string{"ot-visible"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("object type IDs = %v, want %v", got, want)
+	}
+	if got, want := *kn.ConceptGroups[0].Statistics, (interfaces.Statistics{OtTotal: 1, RtTotal: 1, AtTotal: 1}); got != want {
+		t.Fatalf("statistics = %+v, want %+v", got, want)
 	}
 }
 

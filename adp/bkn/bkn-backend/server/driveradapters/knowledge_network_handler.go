@@ -28,6 +28,72 @@ import (
 
 const projectionGrantHeader = "X-BKN-Projection-Grant"
 
+func exportContentDisposition(name, fallback string) string {
+	preferredBase := strings.TrimSpace(name)
+	if preferredBase == "" {
+		preferredBase = strings.TrimSpace(fallback)
+	}
+	if preferredBase == "" {
+		preferredBase = "knowledge-network"
+	}
+
+	asciiBase := preferredBase
+	if !isASCII(asciiBase) {
+		asciiBase = strings.TrimSpace(fallback)
+	}
+	asciiBase = sanitizeASCIIFilename(asciiBase)
+	if asciiBase == "" {
+		asciiBase = "knowledge-network"
+	}
+
+	preferredFilename := preferredBase + ".json"
+	return `attachment; filename="` + asciiBase + `.json"; filename*=utf-8''` +
+		encodeRFC5987Value(preferredFilename)
+}
+
+func isASCII(value string) bool {
+	for _, char := range value {
+		if char > 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func sanitizeASCIIFilename(value string) string {
+	var result strings.Builder
+	for _, char := range value {
+		switch {
+		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z', char >= '0' && char <= '9',
+			char == '-', char == '_', char == '.':
+			result.WriteRune(char)
+		default:
+			result.WriteByte('_')
+		}
+	}
+	return strings.Trim(result.String(), ".")
+}
+
+func encodeRFC5987Value(value string) string {
+	const hex = "0123456789ABCDEF"
+	var result strings.Builder
+	for _, currentByte := range []byte(value) {
+		if isRFC5987AttrChar(currentByte) {
+			result.WriteByte(currentByte)
+			continue
+		}
+		result.WriteByte('%')
+		result.WriteByte(hex[currentByte>>4])
+		result.WriteByte(hex[currentByte&0x0f])
+	}
+	return result.String()
+}
+
+func isRFC5987AttrChar(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' ||
+		value >= '0' && value <= '9' || strings.ContainsRune("!#$&+-.^_`|~", rune(value))
+}
+
 const (
 	defaultOverviewGraphNodeLimit = 60
 	maxOverviewGraphNodeLimit     = 200
@@ -963,8 +1029,11 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 		kn.SlimForSummary()
 	}
 
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetKN Success")
+	if mode == interfaces.Mode_Export {
+		c.Header("Content-Disposition", exportContentDisposition(kn.KNName, kn.KNID))
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, kn)
 }
 

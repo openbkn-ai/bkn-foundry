@@ -167,7 +167,7 @@ func (ms *metricService) filterMetricSummaryOperations(ctx context.Context, knID
 
 func (ms *metricService) hydrateMetricSummaryAccounts(ctx context.Context,
 	items []*interfaces.MetricDefinition) {
-	if len(items) == 0 || ms.uma == nil {
+	if len(items) == 0 || ms.uma == nil || interfaces.IsAccountNameEnrichmentDeferred(ctx) {
 		return
 	}
 	infos := make([]*interfaces.AccountInfo, 0, len(items)*2)

@@ -1471,8 +1471,12 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 
 			smock.ExpectBegin()
 			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
-			smock.ExpectRollback()
+			smock.ExpectCommit()
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(context.Context, []*interfaces.AccountInfo) error {
+					So(smock.ExpectationsWereMet(), ShouldBeNil)
+					return rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError)
+				})
 
 			result, total, err := service.ListObjectTypes(ctx, nil, query)
 			So(err, ShouldNotBeNil)

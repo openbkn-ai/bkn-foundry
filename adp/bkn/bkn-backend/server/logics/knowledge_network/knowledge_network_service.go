@@ -9,6 +9,7 @@ package knowledge_network
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -46,6 +47,10 @@ var (
 	knServiceOnce sync.Once
 	knService     interfaces.KNServiceWithProxyMutation
 )
+
+const exportLoaderConcurrency = 3
+
+type exportLoader func(context.Context) error
 
 type knowledgeNetworkService struct {
 	appSetting *common.AppSetting
@@ -904,11 +909,13 @@ func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, 
 
 		if resource, directlyVisible := visibility.operations[kn.KNID]; directlyVisible {
 			kn.Operations = resource.Operations
-			accountInfos := []*interfaces.AccountInfo{&kn.Creator, &kn.Updater}
-			if err = kns.ums.GetAccountNames(ctx, accountInfos); err != nil {
-				span.SetStatus(codes.Error, "GetAccountNames error")
-				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+			if mode != interfaces.Mode_Export {
+				accountInfos := []*interfaces.AccountInfo{&kn.Creator, &kn.Updater}
+				if err = kns.ums.GetAccountNames(ctx, accountInfos); err != nil {
+					span.SetStatus(codes.Error, "GetAccountNames error")
+					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+						berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+				}
 			}
 		} else if _, childVisible := visibility.childVisibleKNs[kn.KNID]; childVisible && mode == "" {
 			restrictKNToNavigation(kn)
@@ -921,77 +928,332 @@ func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, 
 	}
 
 	if mode == interfaces.Mode_Export {
-		conceptGroups, _, err := kns.cgs.ListConceptGroups(ctx, interfaces.ConceptGroupsQueryParams{
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1,
-			},
-			KNID:   kn.KNID,
-			Branch: kn.Branch,
-		})
-		if err != nil {
+		if err := kns.loadExportResources(ctx, kn); err != nil {
 			return nil, err
 		}
-		kn.ConceptGroups = conceptGroups
-
-		objectTypes, _, err := kns.ots.ListObjectTypes(ctx, nil, interfaces.ObjectTypesQueryParams{
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1,
-			},
-			KNID:   kn.KNID,
-			Branch: kn.Branch,
-		})
-		if err != nil {
-			return nil, err
-		}
-		kn.ObjectTypes = objectTypes
-
-		relationTypes, _, err := kns.rts.ListRelationTypes(ctx, interfaces.RelationTypesQueryParams{
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1,
-			},
-			KNID:   kn.KNID,
-			Branch: kn.Branch,
-		})
-		if err != nil {
-			return nil, err
-		}
-		kn.RelationTypes = relationTypes
-
-		actionTypes, _, err := kns.ats.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1,
-			},
-			KNID:   kn.KNID,
-			Branch: kn.Branch,
-		})
-		if err != nil {
-			return nil, err
-		}
-		kn.ActionTypes = actionTypes
-
-		if kns.riskTypeA != nil {
-			riskTypes, err := kns.riskTypeA.GetAllRiskTypesByKnID(ctx, kn.KNID, kn.Branch)
-			if err != nil {
-				return nil, err
-			}
-			kn.RiskTypes = riskTypes
-		}
-
-		metricsList, err := kns.ms.ListMetrics(ctx, interfaces.MetricsListQueryParams{
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1,
-			},
-			KNID:   kn.KNID,
-			Branch: kn.Branch,
-		})
-		if err != nil {
-			return nil, err
-		}
-		kn.Metrics = metricsList.Entries
 	}
 
 	span.SetStatus(codes.Ok, "")
 	return kn, nil
+}
+
+func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn *interfaces.KN) error {
+	ctx = interfaces.WithDeferredExportEnrichment(ctx)
+	var conceptGroups []*interfaces.ConceptGroup
+	var objectTypes []*interfaces.ObjectType
+	var relationTypes []*interfaces.RelationType
+	var actionTypes []*interfaces.ActionType
+	var riskTypes []*interfaces.RiskType
+	var metricsList *interfaces.MetricsList
+
+	loaders := []exportLoader{
+		func(ctx context.Context) error {
+			var err error
+			conceptGroups, _, err = kns.cgs.ListConceptGroups(ctx, interfaces.ConceptGroupsQueryParams{
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{
+					Limit: -1,
+				},
+				KNID:   kn.KNID,
+				Branch: kn.Branch,
+			})
+			return err
+		},
+		func(ctx context.Context) error {
+			var err error
+			objectTypes, _, err = kns.ots.ListObjectTypes(ctx, nil, interfaces.ObjectTypesQueryParams{
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{
+					Limit: -1,
+				},
+				KNID:   kn.KNID,
+				Branch: kn.Branch,
+			})
+			return err
+		},
+		func(ctx context.Context) error {
+			var err error
+			relationTypes, _, err = kns.rts.ListRelationTypes(ctx, interfaces.RelationTypesQueryParams{
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{
+					Limit: -1,
+				},
+				KNID:   kn.KNID,
+				Branch: kn.Branch,
+			})
+			return err
+		},
+		func(ctx context.Context) error {
+			var err error
+			actionTypes, _, err = kns.ats.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{
+					Limit: -1,
+				},
+				KNID:   kn.KNID,
+				Branch: kn.Branch,
+			})
+			return err
+		},
+	}
+	if kns.riskTypeA != nil {
+		loaders = append(loaders, func(ctx context.Context) error {
+			var err error
+			riskTypes, err = kns.riskTypeA.GetAllRiskTypesByKnID(ctx, kn.KNID, kn.Branch)
+			return err
+		})
+	}
+	loaders = append(loaders, func(ctx context.Context) error {
+		var err error
+		metricsList, err = kns.ms.ListMetrics(ctx, interfaces.MetricsListQueryParams{
+			PaginationQueryParameters: interfaces.PaginationQueryParameters{
+				Limit: -1,
+			},
+			KNID:   kn.KNID,
+			Branch: kn.Branch,
+		})
+		return err
+	})
+
+	if err := runExportLoaders(ctx, exportLoaderConcurrency, loaders...); err != nil {
+		return err
+	}
+
+	kn.ConceptGroups = conceptGroups
+	kn.ObjectTypes = objectTypes
+	kn.RelationTypes = relationTypes
+	kn.ActionTypes = actionTypes
+	kn.RiskTypes = riskTypes
+	if metricsList != nil {
+		kn.Metrics = metricsList.Entries
+	}
+	if err := kns.finalizeExportConceptGroups(ctx, kn); err != nil {
+		return err
+	}
+	if err := kns.enrichExportObjectReferences(ctx, kn); err != nil {
+		return err
+	}
+	if err := kns.ums.GetAccountNames(ctx, exportAccountInfos(kn)); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	return nil
+}
+
+func (kns *knowledgeNetworkService) finalizeExportConceptGroups(ctx context.Context, kn *interfaces.KN) error {
+	allMembers := make([]string, 0)
+	for _, conceptGroup := range kn.ConceptGroups {
+		if conceptGroup != nil {
+			allMembers = append(allMembers, conceptGroup.ObjectTypeIDs...)
+		}
+	}
+	visibleObjectTypes, err := permission.VisibleReferencedObjectTypes(ctx, kns.ps, kn.KNID, allMembers)
+	if err != nil {
+		return err
+	}
+
+	for _, conceptGroup := range kn.ConceptGroups {
+		if conceptGroup == nil {
+			continue
+		}
+		visibleMembers := make([]string, 0, len(conceptGroup.ObjectTypeIDs))
+		members := make(map[string]struct{}, len(conceptGroup.ObjectTypeIDs))
+		for _, objectTypeID := range conceptGroup.ObjectTypeIDs {
+			if _, visible := visibleObjectTypes[objectTypeID]; visible {
+				visibleMembers = append(visibleMembers, objectTypeID)
+				members[objectTypeID] = struct{}{}
+			}
+		}
+
+		statistics := &interfaces.Statistics{OtTotal: len(visibleMembers)}
+		for _, relationType := range kn.RelationTypes {
+			if relationType == nil {
+				continue
+			}
+			_, sourceVisible := members[relationType.SourceObjectTypeID]
+			_, targetVisible := members[relationType.TargetObjectTypeID]
+			if sourceVisible && targetVisible {
+				statistics.RtTotal++
+			}
+		}
+		for _, actionType := range kn.ActionTypes {
+			if actionType == nil {
+				continue
+			}
+			if _, visible := members[actionType.ObjectTypeID]; visible {
+				statistics.AtTotal++
+			}
+		}
+		conceptGroup.ObjectTypeIDs = visibleMembers
+		conceptGroup.Statistics = statistics
+	}
+	return nil
+}
+
+func (kns *knowledgeNetworkService) enrichExportObjectReferences(ctx context.Context, kn *interfaces.KN) error {
+	objectTypeMap := make(map[string]*interfaces.ObjectType, len(kn.ObjectTypes))
+	for _, objectType := range kn.ObjectTypes {
+		if objectType != nil {
+			objectTypeMap[objectType.OTID] = objectType
+		}
+	}
+
+	missingObjectTypeIDs := make([]string, 0)
+	addMissing := func(objectTypeID string) {
+		if _, known := objectTypeMap[objectTypeID]; objectTypeID == "" || known {
+			return
+		}
+		objectTypeMap[objectTypeID] = nil
+		missingObjectTypeIDs = append(missingObjectTypeIDs, objectTypeID)
+	}
+	for _, relationType := range kn.RelationTypes {
+		if relationType != nil {
+			addMissing(relationType.SourceObjectTypeID)
+			addMissing(relationType.TargetObjectTypeID)
+		}
+	}
+	for _, actionType := range kn.ActionTypes {
+		if actionType != nil {
+			addMissing(actionType.ObjectTypeID)
+		}
+	}
+
+	if len(missingObjectTypeIDs) > 0 {
+		missingObjectTypes, err := kns.ots.GetObjectTypesMapByIDs(ctx, kn.KNID, kn.Branch,
+			missingObjectTypeIDs, false)
+		if err != nil {
+			return err
+		}
+		for objectTypeID, objectType := range missingObjectTypes {
+			objectTypeMap[objectTypeID] = objectType
+		}
+	}
+
+	toSimpleObjectType := func(objectType *interfaces.ObjectType) interfaces.SimpleObjectType {
+		if objectType == nil {
+			return interfaces.SimpleObjectType{}
+		}
+		return interfaces.SimpleObjectType{
+			OTID:   objectType.OTID,
+			OTName: objectType.OTName,
+			Icon:   objectType.Icon,
+			Color:  objectType.Color,
+		}
+	}
+	for _, relationType := range kn.RelationTypes {
+		if relationType == nil {
+			continue
+		}
+		relationType.SourceObjectType = toSimpleObjectType(objectTypeMap[relationType.SourceObjectTypeID])
+		relationType.TargetObjectType = toSimpleObjectType(objectTypeMap[relationType.TargetObjectTypeID])
+	}
+	for _, actionType := range kn.ActionTypes {
+		if actionType != nil {
+			actionType.ObjectType = toSimpleObjectType(objectTypeMap[actionType.ObjectTypeID])
+		}
+	}
+	return nil
+}
+
+func exportAccountInfos(kn *interfaces.KN) []*interfaces.AccountInfo {
+	accountInfos := make([]*interfaces.AccountInfo, 0, 2*(1+len(kn.ConceptGroups)+len(kn.ObjectTypes)+
+		len(kn.RelationTypes)+len(kn.ActionTypes)+len(kn.Metrics)))
+	accountInfos = append(accountInfos, &kn.Creator, &kn.Updater)
+	for _, conceptGroup := range kn.ConceptGroups {
+		if conceptGroup != nil {
+			accountInfos = append(accountInfos, &conceptGroup.Creator, &conceptGroup.Updater)
+		}
+	}
+	for _, objectType := range kn.ObjectTypes {
+		if objectType != nil {
+			accountInfos = append(accountInfos, &objectType.Creator, &objectType.Updater)
+		}
+	}
+	for _, relationType := range kn.RelationTypes {
+		if relationType != nil {
+			accountInfos = append(accountInfos, &relationType.Creator, &relationType.Updater)
+		}
+	}
+	for _, actionType := range kn.ActionTypes {
+		if actionType != nil {
+			accountInfos = append(accountInfos, &actionType.Creator, &actionType.Updater)
+		}
+	}
+	for _, metric := range kn.Metrics {
+		if metric != nil {
+			accountInfos = append(accountInfos, &metric.Creator, &metric.Updater)
+		}
+	}
+	return accountInfos
+}
+
+func runExportLoaders(ctx context.Context, concurrency int, loaders ...exportLoader) error {
+	if len(loaders) == 0 {
+		return nil
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	if concurrency > len(loaders) {
+		concurrency = len(loaders)
+	}
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	jobs := make(chan exportLoader)
+	firstError := make(chan error, 1)
+	var workers sync.WaitGroup
+	workers.Add(concurrency)
+	for range concurrency {
+		go func() {
+			defer workers.Done()
+			for loader := range jobs {
+				if workerCtx.Err() != nil {
+					return
+				}
+				if err := loader(workerCtx); err != nil {
+					select {
+					case firstError <- err:
+					default:
+					}
+					cancel()
+					return
+				}
+			}
+		}()
+	}
+
+	dispatching := true
+	for _, loader := range loaders {
+		if workerCtx.Err() != nil {
+			break
+		}
+		select {
+		case jobs <- loader:
+		case <-workerCtx.Done():
+			dispatching = false
+		}
+		if !dispatching {
+			break
+		}
+	}
+	close(jobs)
+	workers.Wait()
+
+	select {
+	case err := <-firstError:
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return exportRequestCanceledError(ctx, err)
+		}
+		return err
+	default:
+	}
+	if err := ctx.Err(); err != nil {
+		return exportRequestCanceledError(ctx, err)
+	}
+	return nil
+}
+
+func exportRequestCanceledError(ctx context.Context, cause error) *rest.HTTPError {
+	return rest.NewHTTPError(ctx, http.StatusRequestTimeout,
+		berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(cause.Error())
 }
 
 func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfaces.KN) (*interfaces.Statistics, error) {
