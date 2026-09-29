@@ -297,7 +297,7 @@ func TestMessageFollowsTheRequestLanguage(t *testing.T) {
 		t.Fatalf("message = %q\nwant      %q", got.Message, want)
 	}
 	_, query := splitLink(t, got.Shortfalls[0].RequestPermissionURL)
-	if reason := query.Get("reason"); reason != "The agent needs the raw values of phone, salary in “客户信息”" {
+	if reason := query.Get("reason"); reason != "The agent needs raw values in “客户信息” for phone, salary" {
 		t.Fatalf("reason = %q", reason)
 	}
 }

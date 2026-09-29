@@ -179,7 +179,7 @@
     "PermissionGuidanceUnnamedObjectType": "this object type",
     "PermissionGuidanceListSeparator": ", ",
     "PermissionGuidanceReasonGrant": "The agent needs permission to query data in “%s”",
-    "PermissionGuidanceReasonPropertyGrants": "The agent needs the raw values of %[2]s in “%[1]s”",
+    "PermissionGuidanceReasonPropertyGrants": "The agent needs raw values in “%s” for %s",
     "PermissionGuidanceReasonRowFilter": "The agent's query on “%s” is limited by the row access scope and needs a wider scope"
   }
 }
