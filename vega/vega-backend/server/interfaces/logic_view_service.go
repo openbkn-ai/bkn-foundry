@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 )
 
 const (
@@ -107,7 +108,7 @@ func DecodeDerivedLogicDefinition(raw any) (*DerivedLogicDefinition, error) {
 		return nil, err
 	}
 	var definition DerivedLogicDefinition
-	if err := json.Unmarshal(encoded, &definition); err != nil {
+	if err := common.UnmarshalPreciseJSON(encoded, &definition); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(definition.SourceResourceID) == "" {

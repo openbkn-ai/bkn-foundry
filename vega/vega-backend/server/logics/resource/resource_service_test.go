@@ -1051,7 +1051,7 @@ func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, "cannot contain null fields")
 }
 
-func TestLogicViewDefinitionEqual(t *testing.T) {
+func TestJSONNumbersEqual(t *testing.T) {
 	stored := map[string]any{
 		"source_resource_id": "source-1",
 		"filter_condition":   map[string]any{"operation": "eq", "value": float64(1)},
@@ -1060,12 +1060,12 @@ func TestLogicViewDefinitionEqual(t *testing.T) {
 		SourceResourceID: "source-1",
 		FilterCondition:  map[string]any{"operation": "eq", "value": json.Number("1.0")},
 	}
-	assert.True(t, logicViewDefinitionEqual(stored, prepared))
-	assert.False(t, logicViewDefinitionEqual(stored, &interfaces.DerivedLogicDefinition{
+	assert.True(t, jsonNumbersEqual(stored, prepared))
+	assert.False(t, jsonNumbersEqual(stored, &interfaces.DerivedLogicDefinition{
 		SourceResourceID: "source-2",
 		FilterCondition:  prepared.FilterCondition,
 	}))
-	assert.False(t, logicViewDefinitionEqual(
+	assert.False(t, jsonNumbersEqual(
 		map[string]any{"filter_condition": map[string]any{"value": json.Number("9007199254740993")}},
 		map[string]any{"filter_condition": map[string]any{"value": json.Number("9007199254740992")}},
 	))

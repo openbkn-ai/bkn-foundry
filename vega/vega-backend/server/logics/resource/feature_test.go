@@ -8,11 +8,15 @@ package resource
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -332,4 +336,32 @@ func TestMutableFeaturesEqualWithServerManagedDimension(t *testing.T) {
 
 	assert.True(t, mutableFeaturesEqual(current, withoutDimension))
 	assert.False(t, mutableFeaturesEqual(current, withDifferentDimension))
+}
+
+func TestValidateMutableSchemaUpdateNumericRepresentations(t *testing.T) {
+	const schema = `[{"name":"title","type":"text","attributes":{"limit":256},"features":[{"name":"raw","feature_type":"keyword","config":{"ignore_above":256}}]}]`
+	var current, requested []*interfaces.Property
+	require.NoError(t, sonic.Unmarshal([]byte(schema), &current))
+	require.NoError(t, common.DecodePreciseJSON(strings.NewReader(schema), &requested))
+
+	t.Run("unchanged numeric values do not reject an ordinary edit or rebuild the index", func(t *testing.T) {
+		changed, err := validateMutableSchemaUpdate(context.Background(), current, requested, false)
+		require.NoError(t, err)
+		assert.False(t, changed)
+	})
+
+	t.Run("a changed immutable attribute remains rejected", func(t *testing.T) {
+		requested[0].Attributes["limit"] = 257
+		changed, err := validateMutableSchemaUpdate(context.Background(), current, requested, false)
+		require.Error(t, err)
+		assert.False(t, changed)
+		requested[0].Attributes["limit"] = json.Number("256")
+	})
+
+	t.Run("a changed keyword config still requires an index rebuild", func(t *testing.T) {
+		requested[0].Features[0].Config["ignore_above"] = 512
+		changed, err := validateMutableSchemaUpdate(context.Background(), current, requested, false)
+		require.NoError(t, err)
+		assert.True(t, changed)
+	})
 }
