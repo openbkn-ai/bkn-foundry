@@ -27,7 +27,6 @@ EVENT_FIELDS = (
     "required_attributes", "allowed_attributes", "sensitive_attributes",
     "outcome_mapping", "schema_version", "allow_unknown",
 )
-SECRET_FIELDS = ("rule_id", "match_target", "pattern", "action")
 
 
 def project(raw: bytes) -> bytes:
@@ -38,9 +37,6 @@ def project(raw: bytes) -> bytes:
         "contract_version": registry["contract_version"],
         "sources": [pick(source, SOURCE_FIELDS) for source in registry["sources"]],
         "events": [pick(event, EVENT_FIELDS) for event in registry["events"]],
-        "secret_detection_rules": [
-            pick(rule, SECRET_FIELDS) for rule in registry["secret_detection_rules"]
-        ],
     }
     return json.dumps(projected, ensure_ascii=False, separators=(",", ":")).encode() + b"\n"
 

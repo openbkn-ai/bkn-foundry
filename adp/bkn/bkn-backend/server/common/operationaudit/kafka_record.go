@@ -6,6 +6,8 @@
 package operationaudit
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,15 +39,18 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 	if _, ok := allowedTargetTypes[entry.TargetType]; !ok {
 		return nil, fmt.Errorf("unregistered Audit target type %q", entry.TargetType)
 	}
+	actorID := boundedAuditReference(entry.ActorID, 128)
+	targetID := boundedAuditReference(entry.TargetID, 256)
+	requestID := boundedAuditReference(entry.RequestID, 128)
 	for _, field := range []struct {
 		name  string
 		value string
 		limit int
 	}{
 		{"event_id", entry.EventID, 0},
-		{"actor_id", entry.ActorID, 128},
-		{"target_id", entry.TargetID, 256},
-		{"request_id", entry.RequestID, 128},
+		{"actor_id", actorID, 128},
+		{"target_id", targetID, 256},
+		{"request_id", requestID, 128},
 		{"knowledge_network_id", entry.KnowledgeNetworkID, 128},
 	} {
 		if field.value == "" && field.name != "knowledge_network_id" {
@@ -87,7 +92,7 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 	actorType := "service_account"
 	if entry.ActorType == "user" {
 		actorType = "user"
-	} else if entry.ActorID == "unauthenticated" {
+	} else if actorID == "unauthenticated" {
 		actorType = "anonymous"
 	}
 	authMethod := entry.AuthMethod
@@ -114,10 +119,10 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 		"event_name":     "backend.operation.observed",
 		"occurred_at":    entry.EventTime.UTC().Format(time.RFC3339Nano),
 		"actor": map[string]any{
-			"id": entry.ActorID, "effective_subject": entry.ActorID,
+			"id": actorID, "effective_subject": actorID,
 			"type": actorType, "auth_method": authMethod,
 		},
-		"target":      map[string]any{"type": entry.TargetType, "id": entry.TargetID},
+		"target":      map[string]any{"type": entry.TargetType, "id": targetID},
 		"outcome":     entry.Outcome,
 		"http_status": entry.HTTPStatus,
 		"scope": map[string]any{
@@ -127,7 +132,7 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 		"request_context": map[string]any{
 			"source_channel": "api", "transport": "http", "method": method,
 		},
-		"correlation": map[string]any{"request_id": entry.RequestID},
+		"correlation": map[string]any{"request_id": requestID},
 		"summary":     entry.Action + " " + entry.TargetType,
 		"facts": map[string]any{
 			"action": entry.Action, "decision": decision, "changed_fields": changedFields,
@@ -136,10 +141,10 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 	if entry.Outcome == "failure" || entry.Outcome == "denied" {
 		record["failure_code"] = fmt.Sprintf("HTTP_%d", entry.HTTPStatus)
 	}
-	if name := strings.TrimSpace(entry.ActorName); name != "" && len(name) <= 256 {
+	if name := safeAuditDisplayName(entry.ActorName, 256); name != "" {
 		record["actor"].(map[string]any)["display_name_snapshot"] = name
 	}
-	if name := strings.TrimSpace(entry.TargetName); name != "" && len(name) <= 512 {
+	if name := safeAuditDisplayName(entry.TargetName, 512); name != "" {
 		record["target"].(map[string]any)["name"] = name
 	}
 	value, err := json.Marshal(record)
@@ -150,6 +155,30 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid Kafka Audit record: %w", err)
 	}
 	return value, nil
+}
+
+func boundedAuditReference(value string, limit int) string {
+	if len(value) <= limit && !credentialShaped(value) {
+		return value
+	}
+	sum := sha256.Sum256([]byte(value))
+	return "ref_" + hex.EncodeToString(sum[:])
+}
+
+func safeAuditDisplayName(value string, limit int) string {
+	name := strings.TrimSpace(value)
+	if len(name) > limit || credentialShaped(name) {
+		return ""
+	}
+	return name
+}
+
+func credentialShaped(value string) bool {
+	if strings.HasPrefix(strings.ToLower(value), "bearer ") {
+		return true
+	}
+	parts := strings.Split(value, "_")
+	return len(parts) == 3 && parts[0] == "bak" && len(parts[1]) == 12 && len(parts[2]) == 27
 }
 
 func validAuditEnvironment(value string) bool {

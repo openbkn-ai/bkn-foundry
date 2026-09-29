@@ -75,8 +75,8 @@ func TestBuildKafkaAuditRecordRejectsUnknownEnvironmentAndBindingTarget(t *testi
 		t.Fatal("unknown deployment environment must not produce an invalid record")
 	}
 	entry.ActorID = strings.Repeat("a", 129)
-	if _, err := BuildKafkaAuditRecord(entry, "test"); err == nil {
-		t.Fatal("oversized actor ID must not reach the Kafka Consumer")
+	if _, err := BuildKafkaAuditRecord(entry, "test"); err != nil {
+		t.Fatalf("oversized identity should be aliased without dropping the Audit: %v", err)
 	}
 }
 
@@ -112,11 +112,8 @@ func TestBuildKafkaAuditRecordNamesInvalidIdentityFieldWithoutValue(t *testing.T
 		{"missing event", "event_id", func(e *Entry) { e.EventID = "" }},
 		{"missing time", "event_time", func(e *Entry) { e.EventTime = time.Time{} }},
 		{"missing actor", "actor_id", func(e *Entry) { e.ActorID = "" }},
-		{"oversized actor", "actor_id", func(e *Entry) { e.ActorID = strings.Repeat("s", 129) }},
 		{"missing target", "target_id", func(e *Entry) { e.TargetID = "" }},
-		{"oversized target", "target_id", func(e *Entry) { e.TargetID = strings.Repeat("s", 257) }},
 		{"missing request", "request_id", func(e *Entry) { e.RequestID = "" }},
-		{"oversized request", "request_id", func(e *Entry) { e.RequestID = strings.Repeat("s", 129) }},
 		{"oversized network", "knowledge_network_id", func(e *Entry) { e.KnowledgeNetworkID = strings.Repeat("s", 129) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -131,5 +128,40 @@ func TestBuildKafkaAuditRecordNamesInvalidIdentityFieldWithoutValue(t *testing.T
 				t.Fatalf("invalid value leaked in error: %v", err)
 			}
 		})
+	}
+}
+
+func TestBuildKafkaAuditRecordAliasesOversizedUntrustedReferences(t *testing.T) {
+	longID := strings.Repeat("x", 300)
+	entry := Entry{EventID: "evt-long-ref", EventTime: time.Now().UTC(), ActorID: longID,
+		RequestID: longID, Method: "POST", HTTPStatus: 201, Action: "create",
+		TargetType: "knowledge_network", TargetID: longID, Outcome: "success",
+		ChangeSummary: map[string]any{"changed_fields": []string{}},
+	}
+	value, err := BuildKafkaAuditRecord(entry, "test")
+	if err != nil {
+		t.Fatalf("valid operation must not lose its whole Audit due to long IDs: %v", err)
+	}
+	if strings.Contains(string(value), longID) {
+		t.Fatal("oversized caller-controlled ID leaked instead of a bounded alias")
+	}
+	if _, err := auditpublisher.BuildRecord(value); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildKafkaAuditRecordOmitsCredentialShapedCallerTextWithoutDroppingAudit(t *testing.T) {
+	entry := Entry{EventID: "evt-source-redaction", EventTime: time.Now().UTC(),
+		ActorID: "user-a", ActorName: "Bearer abcdefghijklmnop", RequestID: "req-1",
+		Method: "POST", HTTPStatus: 201, Action: "create", TargetType: "knowledge_network",
+		TargetID: "kn-1", TargetName: "bak_123456789012_abcdefghijklmnopqrstuvwxyz1",
+		Outcome: "success", ChangeSummary: map[string]any{"changed_fields": []string{}},
+	}
+	value, err := BuildKafkaAuditRecord(entry, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(value), "abcdefghijklmnop") || strings.Contains(string(value), "abcdefghijklmnopqrstuvwxyz1") {
+		t.Fatal("source leaked credential-shaped display text")
 	}
 }

@@ -21,7 +21,7 @@ func NewAuditLedgerSource(reader *auditstore.Reader) *auditLedgerSource {
 func (s *auditLedgerSource) ID() string                   { return "audit-ledger" }
 func (s *auditLedgerSource) SupportsSourceIDFilter() bool { return true }
 func (s *auditLedgerSource) Metadata() observabilityvo.SourceStatus {
-	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: "degraded", Reason: "producer_coverage_unverified", Reliability: "best_effort", CollectionMethod: "kafka_audit", CountAccuracy: "partial", Categories: []string{"audit.admin", "audit.security"}}
+	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: "degraded", Reason: "producer_coverage_unverified", Reliability: "best_effort", CollectionMethod: "kafka_audit", CountAccuracy: "partial", Categories: []string{"access.user", "audit.admin", "audit.security"}}
 }
 func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	if q.TimeFrom == nil || q.TimeTo == nil {
@@ -59,13 +59,13 @@ func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQue
 func auditQueryCategories(query observabilityvo.LogQuery) []string {
 	authorized := make(map[string]struct{}, len(query.AuthorizedCategories))
 	for _, category := range query.AuthorizedCategories {
-		if category == observabilityvo.CategoryAuditAdmin || category == observabilityvo.CategoryAuditSecurity {
+		if category == observabilityvo.CategoryAccessUser || category == observabilityvo.CategoryAuditAdmin || category == observabilityvo.CategoryAuditSecurity {
 			authorized[category] = struct{}{}
 		}
 	}
 	requested := query.Categories
 	if len(requested) == 0 {
-		requested = []string{observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity}
+		requested = []string{observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity}
 	}
 	result := make([]string, 0, len(requested))
 	for _, category := range requested {

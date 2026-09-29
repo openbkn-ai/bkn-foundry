@@ -40,6 +40,15 @@ func TestBuildKafkaRecordPreservesManagementAttemptWithoutInventingChangedState(
 	}
 }
 
+func TestSafeAuditAliasKeepsValidBKNIdentifierButMasksCredentials(t *testing.T) {
+	if got := SafeAuditAlias("bkn_valid_operator_123", 256); got != "bkn_valid_operator_123" {
+		t.Fatalf("valid BKN identifier was altered: %q", got)
+	}
+	if got := SafeAuditAlias("Bearer abcdefghijklmnop", 256); got == "Bearer abcdefghijklmnop" {
+		t.Fatal("Bearer credential was not masked at source")
+	}
+}
+
 func TestBuildKafkaRecordKeepsUnauthenticatedDenialAnonymous(t *testing.T) {
 	eventID, err := uuid.NewV7()
 	if err != nil {

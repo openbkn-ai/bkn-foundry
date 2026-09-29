@@ -5,89 +5,72 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/gin-gonic/gin"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 )
 
-func TestAccessLogReadEndpointIsAvailableToTheExistingAdminSurface(t *testing.T) {
+func TestAccessLogReadEndpointIsRetired(t *testing.T) {
 	r, _, _, _ := newAdminServer(t)
 
 	response := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/access-logs", nil)
-	if response.Code != http.StatusOK {
-		t.Fatalf("access-log read endpoint status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("retired access-log endpoint status = %d, want %d: %s", response.Code, http.StatusNotFound, response.Body.String())
 	}
 }
 
-func TestAccessLogReadsRequireAuditViewPermission(t *testing.T) {
-	r, e, _, users := newAdminServer(t)
-	const (
-		securityUser = "access-log-security"
-		securityRole = "access-log-security-role"
-		auditUser    = "access-log-auditor"
-		auditRole    = "access-log-auditor-role"
-	)
-	for _, roleID := range []string{securityRole, auditRole} {
-		grantAdminSurface(t, e, roleID)
-	}
-	grantRoleOps(t, e, auditRole, "admin-audit", "view")
-	for _, userID := range []string{securityUser, auditUser} {
-		if err := users.CreateLocalUser(t.Context(), &model.User{ID: userID, Account: userID, Name: userID, Enabled: true}, "pw-init0"); err != nil {
-			t.Fatalf("create user %s: %v", userID, err)
-		}
-	}
-	bindRole(t, e, securityUser, securityRole)
-	bindRole(t, e, auditUser, auditRole)
-
-	if response := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/access-logs", nil, securityUser); response.Code != http.StatusForbidden {
-		t.Fatalf("security role status = %d, want 403: %s", response.Code, response.Body.String())
-	}
-	if response := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/access-logs", nil, auditUser); response.Code != http.StatusOK {
-		t.Fatalf("audit role status = %d, want 200: %s", response.Code, response.Body.String())
-	}
+type recordingAccessRecorder struct {
+	entries []accesslog.Entry
+	err     error
 }
 
-func TestVoluntaryLogoutRecordsAnAccessFact(t *testing.T) {
-	r, _, db, _ := newAdminServer(t)
+func (r *recordingAccessRecorder) Record(_ context.Context, entry accesslog.Entry) error {
+	r.entries = append(r.entries, entry)
+	return r.err
+}
+
+func newLogoutTestRouter(recorder accesslog.Recorder, actorID string) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(ctxAccessorID, actorID)
+		c.Next()
+	})
+	registerLogout(r.Group("/api/safe/v1/me"), recorder, nil)
+	return r
+}
+
+func TestVoluntaryLogoutPublishesAnAccessFact(t *testing.T) {
+	recorder := &recordingAccessRecorder{}
+	r := newLogoutTestRouter(recorder, adminSub)
 
 	response := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/logout", nil, adminSub)
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("logout status = %d, want %d: %s", response.Code, http.StatusNoContent, response.Body.String())
 	}
-
-	var row model.AccessLog
-	if err := db.First(&row, "actor_id = ?", adminSub).Error; err != nil {
-		t.Fatalf("read logout access fact: %v", err)
+	if len(recorder.entries) != 1 {
+		t.Fatalf("logout access facts = %d, want 1", len(recorder.entries))
 	}
-	if row.Action != "logout" || row.Outcome != "success" || row.AuthMethod != "oauth" {
-		t.Fatalf("logout access fact = %#v, want oauth/logout/success", row)
+	entry := recorder.entries[0]
+	if entry.ActorID != adminSub || entry.Action != "logout" || entry.Outcome != "success" || entry.AuthMethod != "oauth" {
+		t.Fatalf("logout access fact = %#v, want oauth/logout/success", entry)
 	}
 }
 
-func TestDisabledAccountVoluntaryLogoutRecordsAnAccessFact(t *testing.T) {
-	r, _, db, users := newAdminServer(t)
-	const userID = "disabled-logout-user"
-	if err := users.CreateLocalUser(t.Context(), &model.User{
-		ID: userID, Account: userID, Name: "Disabled Logout User", Enabled: true,
-	}, "pw-init0"); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	if err := db.Model(&model.User{}).Where("id = ?", userID).Update("enabled", false).Error; err != nil {
-		t.Fatalf("disable user: %v", err)
-	}
+func TestVoluntaryLogoutFailsOpenWhenAuditTransportRejectsFact(t *testing.T) {
+	recorder := &recordingAccessRecorder{err: errors.New("queue full")}
+	r := newLogoutTestRouter(recorder, "disabled-logout-user")
 
-	response := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/logout", nil, userID)
+	response := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/logout", nil, "disabled-logout-user")
 	if response.Code != http.StatusNoContent {
-		t.Fatalf("disabled-account logout status = %d, want %d: %s",
-			response.Code, http.StatusNoContent, response.Body.String())
+		t.Fatalf("fail-open logout status = %d, want %d: %s", response.Code, http.StatusNoContent, response.Body.String())
 	}
-
-	var row model.AccessLog
-	if err := db.First(&row, "actor_id = ?", userID).Error; err != nil {
-		t.Fatalf("read disabled-account logout access fact: %v", err)
-	}
-	if row.Action != "logout" || row.Outcome != "success" || row.AuthMethod != "oauth" {
-		t.Fatalf("disabled-account logout access fact = %#v, want oauth/logout/success", row)
+	if len(recorder.entries) != 1 {
+		t.Fatalf("fail-open logout access facts = %d, want 1", len(recorder.entries))
 	}
 }

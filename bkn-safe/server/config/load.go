@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -145,20 +144,6 @@ func applyEnv(cfg *Config) error {
 	}
 	if v, ok := envBool("SAFE_LICENSE_INSECURE_SKIP_VERIFY"); ok {
 		cfg.License.InsecureSkipVerify = v
-	}
-	if v, ok := envBool("SAFE_AUTHZ_DECISION_LOG_ENABLED"); ok {
-		cfg.Audit.DecisionLog.Enabled = v
-	}
-	if v := os.Getenv("SAFE_AUTHZ_DECISION_LOG_ALLOW_SAMPLE_RATE"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			cfg.Audit.DecisionLog.AllowSampleRate = f
-		}
-	}
-	if v, ok := envInt("SAFE_AUTHZ_DECISION_LOG_QUEUE_SIZE"); ok {
-		cfg.Audit.DecisionLog.QueueSize = v
-	}
-	if v, ok := envInt("SAFE_AUTHZ_DECISION_LOG_RETENTION_DAYS"); ok {
-		cfg.Audit.DecisionLog.RetentionDays = v
 	}
 	if v := os.Getenv("SAFE_AUTHZ_POLICY_REFRESH_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {

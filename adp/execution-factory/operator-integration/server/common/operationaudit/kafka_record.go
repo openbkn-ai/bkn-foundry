@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
-var auditSecretShape = regexp.MustCompile(`(?i)(?:bearer\s+[a-z0-9._~-]{8,}|bkn_[a-z0-9._~-]{8,}|^bak_[a-z0-9._-]{12,}$)`)
+var auditSecretShape = regexp.MustCompile(`(?i)(?:bearer\s+[a-z0-9._~-]{8,}|^bak_[a-z0-9._-]{12,}$)`)
 
 var managementTargetTypes = map[string]struct{}{
 	"operator": {}, "mcp": {}, "toolbox": {}, "tool": {}, "skill": {},

@@ -36,14 +36,6 @@ func defaultConfig() *Config {
 		License: LicenseConfig{
 			ServerURL: "https://license.openbkn.ai",
 		},
-		Audit: AuditConfig{
-			DecisionLog: DecisionLogConfig{
-				Enabled:         true,
-				AllowSampleRate: 1,
-				QueueSize:       4096,
-				RetentionDays:   90,
-			},
-		},
 		Authz: AuthzConfig{
 			PolicyRefreshInterval: 10 * time.Minute,
 		},

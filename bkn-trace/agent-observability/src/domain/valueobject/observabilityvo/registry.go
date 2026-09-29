@@ -14,8 +14,6 @@ var registeredEventCategories = map[string]string{
 	"login.succeeded":                      CategoryAccessUser,
 	"login.failed":                         CategoryAccessUser,
 	"logout.succeeded":                     CategoryAccessUser,
-	"token.exchanged":                      CategoryAccessUser,
-	"resource.read":                        CategoryAccessUser,
 	"authorization.decided":                CategoryAuditSecurity,
 	"access.denied":                        CategoryAuditSecurity,
 	"access.anomaly_detected":              CategoryAuditSecurity,
@@ -66,7 +64,6 @@ var registeredEventCategories = map[string]string{
 	"sandbox.execution.completed":          CategoryRuntimeSystem,
 	"sandbox.dependency.changed":           CategoryRuntimeSystem,
 	"sandbox.policy.denied":                CategoryAuditSecurity,
-	"secret.detected":                      CategoryAuditSecurity,
 	// The four control-plane Audit events are frozen in the current Audit v1 registry.
 	"trace_evidence.configuration_change_requested": CategoryAuditAdmin,
 	"trace_evidence.operation_succeeded":            CategoryAuditAdmin,

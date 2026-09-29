@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
@@ -28,9 +27,9 @@ import (
 const (
 	SchemaVersion                 = "1.0"
 	SchemaHeader                  = "bkn-audit-schema-version"
-	CanonicalSchemaSHA256         = "93b87947145883e7fc65fbae40b5a93088069886ca459679bdbd892b7028954b"
-	CanonicalRegistrySHA256       = "075fca113e258390e399cfd7aa3c77d7fde12a23fe9764407435e9646d2384b5"
-	RuntimeRegistrySHA256         = "3e02608d133ba9f06496ced3936962161fa5464ddc8e4543aad8752408c5442c"
+	CanonicalSchemaSHA256         = "930c00a50b0bc4e447baf66c2a64f0b9c9fe2a1feabfb3022ee4a34977de7aeb"
+	CanonicalRegistrySHA256       = "fa12f114b6849a64826fb8395732c03485fde17f42e25f3ca406bb5278cb6e1c"
+	RuntimeRegistrySHA256         = "92912b1fa6e7884f7a9bac3ab2ffe47adabc21c9a1406c14fd6b4512b558986f"
 	CanonicalValueFixtureSHA256   = "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40"
 	KafkaFixtureSHA256            = "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4"
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
@@ -48,11 +47,10 @@ type Validator struct {
 }
 
 type registry struct {
-	SourceRegistrySHA256 string            `json:"source_registry_sha256"`
-	RegistryVersion      string            `json:"registry_version"`
-	Sources              []sourceRule      `json:"sources"`
-	Events               []eventRule       `json:"events"`
-	SecretRules          []secretDetection `json:"secret_detection_rules"`
+	SourceRegistrySHA256 string       `json:"source_registry_sha256"`
+	RegistryVersion      string       `json:"registry_version"`
+	Sources              []sourceRule `json:"sources"`
+	Events               []eventRule  `json:"events"`
 }
 
 type sourceRule struct {
@@ -117,12 +115,6 @@ type eventRule struct {
 
 type outcomeMapping struct {
 	Accepted []string `json:"accepted_outcomes"`
-}
-
-type secretDetection struct {
-	Target  string `json:"match_target"`
-	Pattern string `json:"pattern"`
-	Action  string `json:"action"`
 }
 
 type rejection struct{ reason string }
@@ -193,9 +185,6 @@ func (v *Validator) Validate(_ context.Context, record auditconsumer.Record) (au
 	}
 	if err := validateRegistry(value, v.registry); err != nil {
 		return auditstore.Event{}, err
-	}
-	if containsSecret(value, v.registry.SecretRules) {
-		return auditstore.Event{}, permanent("secret_detected")
 	}
 	canonical, err := jsoncanonicalizer.Transform(record.Value)
 	if err != nil {
@@ -285,52 +274,6 @@ func validateRegistry(value map[string]any, rules registry) error {
 		return permanent("source_collection_method_rejected")
 	}
 	return nil
-}
-
-func containsSecret(value any, rules []secretDetection) bool {
-	compiled := make([]struct {
-		target  string
-		pattern *regexp.Regexp
-	}, 0, len(rules))
-	for _, rule := range rules {
-		pattern, err := regexp.Compile(rule.Pattern)
-		if err == nil {
-			compiled = append(compiled, struct {
-				target  string
-				pattern *regexp.Regexp
-			}{rule.Target, pattern})
-		}
-	}
-	var walk func(any, string) bool
-	walk = func(current any, key string) bool {
-		for _, rule := range compiled {
-			if rule.target == "field_name_regex" && rule.pattern.MatchString(key) {
-				return true
-			}
-		}
-		switch item := current.(type) {
-		case map[string]any:
-			for childKey, child := range item {
-				if walk(child, childKey) {
-					return true
-				}
-			}
-		case []any:
-			for _, child := range item {
-				if walk(child, key) {
-					return true
-				}
-			}
-		case string:
-			for _, rule := range compiled {
-				if rule.target == "value_regex" && rule.pattern.MatchString(item) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	return walk(value, "")
 }
 
 func findSource(sources []sourceRule, id string) (sourceRule, bool) {

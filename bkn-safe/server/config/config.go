@@ -22,10 +22,6 @@ type Config struct {
 	// SeedOnStart controls whether roles/resource-types/operations/grants are
 	// seeded into the DB at startup (idempotent). Default true.
 	SeedOnStart bool `yaml:"seed_on_start"`
-	// Audit tunes the audit chain anchor export and the authorization
-	// decision log (#334).
-	Audit AuditConfig `yaml:"audit"`
-
 	Authz     AuthzConfig     `yaml:"authz"`
 	Upstreams UpstreamsConfig `yaml:"upstreams"`
 }
@@ -49,24 +45,6 @@ type AuthzConfig struct {
 	// PolicyRefreshInterval reloads the in-memory policy from the store on a
 	// timer, picking up rows changed outside bkn-safe. 0 disables it.
 	PolicyRefreshInterval time.Duration `yaml:"policy_refresh_interval"`
-}
-
-// AuditConfig tunes authorization decision logging.
-type AuditConfig struct {
-	// DecisionLog configures the authorization decision log.
-	DecisionLog DecisionLogConfig `yaml:"decision_log"`
-}
-
-// DecisionLogConfig tunes the authorization decision log. Denies are always
-// recorded; only the allow side is sampled.
-type DecisionLogConfig struct {
-	Enabled bool `yaml:"enabled"`
-	// AllowSampleRate in [0,1] is the fraction of allow decisions kept.
-	AllowSampleRate float64 `yaml:"allow_sample_rate"`
-	// QueueSize bounds the rows waiting to be written; beyond it rows drop.
-	QueueSize int `yaml:"queue_size"`
-	// RetentionDays purges older rows daily. 0 keeps everything.
-	RetentionDays int `yaml:"retention_days"`
 }
 
 // LicenseConfig points bkn-safe at the license-server (activation + renewal).
