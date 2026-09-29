@@ -554,9 +554,19 @@ type License struct {
 	HighWater int64
 	// Version is an optimistic lock: concurrent renewals (multi-replica) must
 	// not overwrite each other's freshly reissued license with a stale one.
-	Version   int64
-	UpdatedAt time.Time
-	CreatedAt time.Time
+	Version int64
+	// Binding is the issuer's last definitive answer about this certificate's
+	// activation: "" (bound, or never asked), "unbound" or "revoked". An unbind
+	// or revoke on the issuer changes nothing inside the signed text, so this
+	// column is the only place the cluster can remember it (#1782). Storing a
+	// new text clears it.
+	Binding string `gorm:"size:16;not null;default:''"`
+	// BindingCheckedAt is when the issuer was last asked (unix seconds), shared
+	// by every replica so the periodic check runs on the cluster's schedule
+	// rather than each pod's.
+	BindingCheckedAt int64 `gorm:"not null;default:0"`
+	UpdatedAt        time.Time
+	CreatedAt        time.Time
 }
 
 // OAuthAccessOrigin is an administrator-managed browser origin from which BKN
