@@ -71,6 +71,10 @@ type Objects struct {
 	OverallMs            int64                          `json:"overall_ms"`
 	SearchFromIndex      bool                           `json:"search_from_index"` // Whether to query the index.
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+	// RowFilterApplied reports that the caller's effective row filter narrowed
+	// this query. It never exposes the predicate itself, so callers can explain
+	// a possibly incomplete result without learning the policy.
+	RowFilterApplied bool `json:"row_filter_applied,omitempty"`
 }
 
 // ObjectPagingResponse is the public object-query pagination envelope.
