@@ -148,7 +148,6 @@ func validateSchemaProperties(ctx context.Context, props []*interfaces.Property,
 }
 
 func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, propsMap map[string]*interfaces.Property, allowRefProperty bool) error {
-	enabledMap := make(map[string]bool)
 	featureNameMap := make(map[string]struct{})
 	featureTypeMap := make(map[string]struct{})
 	for i := range prop.Features {
@@ -214,13 +213,6 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 			}
 		}
 
-		if f.IsDefault {
-			if enabledMap[f.FeatureType] {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_DefaultFeaturePerType).
-					WithErrorDetails(fmt.Sprintf("Same feature type can only have one default; field feature '%s' type '%s'", f.FeatureName, f.FeatureType))
-			}
-			enabledMap[f.FeatureType] = true
-		}
 		if _, duplicate := featureTypeMap[f.FeatureType]; duplicate {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType).
 				WithDescription(map[string]any{"FieldName": prop.Name, "FieldFeatureType": f.FeatureType}).

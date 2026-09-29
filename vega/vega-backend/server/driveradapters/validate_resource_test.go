@@ -60,26 +60,38 @@ func TestValidateResourceRequestIgnoresExpectedUpdateTime(t *testing.T) {
 func TestValidateResourceRequestRejectsDuplicateFeatureTypes(t *testing.T) {
 	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryDataset} {
 		t.Run(category, func(t *testing.T) {
-			req := &interfaces.ResourceRequest{
-				Name:     "resource",
-				Category: category,
-				SchemaDefinition: []*interfaces.Property{{
-					Name: "title",
-					Type: interfaces.DataType_Text,
-					Features: []interfaces.PropertyFeature{
-						{FeatureName: "standard", FeatureType: interfaces.PropertyFeatureType_Fulltext},
-						{FeatureName: "english", FeatureType: interfaces.PropertyFeatureType_Fulltext},
-					},
-				}},
-			}
+			for _, tc := range []struct {
+				name         string
+				firstDefault bool
+				lastDefault  bool
+			}{
+				{name: "neither default"},
+				{name: "first default", firstDefault: true},
+				{name: "both default", firstDefault: true, lastDefault: true},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					req := &interfaces.ResourceRequest{
+						Name:     "resource",
+						Category: category,
+						SchemaDefinition: []*interfaces.Property{{
+							Name: "title",
+							Type: interfaces.DataType_Text,
+							Features: []interfaces.PropertyFeature{
+								{FeatureName: "standard", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsDefault: tc.firstDefault},
+								{FeatureName: "english", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsDefault: tc.lastDefault},
+							},
+						}},
+					}
 
-			var httpErr *rest.HTTPError
-			require.ErrorAs(t, ValidateResourceRequest(rest.WithLanguage(context.Background(), rest.AmericanEnglish), req), &httpErr)
-			require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.BaseError.ErrorCode)
-			require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.BaseError.DescriptionTemplateData)
-			require.Equal(t, "Field title already has a fulltext feature", httpErr.BaseError.Description)
-			require.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+					var httpErr *rest.HTTPError
+					require.ErrorAs(t, ValidateResourceRequest(rest.WithLanguage(context.Background(), rest.AmericanEnglish), req), &httpErr)
+					require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.BaseError.ErrorCode)
+					require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.BaseError.DescriptionTemplateData)
+					require.Equal(t, "Field title already has a fulltext feature", httpErr.BaseError.Description)
+					require.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+				})
+			}
 		})
 	}
 }
