@@ -52,7 +52,7 @@ func TestAuditLedgerSourceDeclaresSourceIDPushdown(t *testing.T) {
 }
 
 func TestAuditQueryCategoriesUsesAuthorizedDefaultAndIntersection(t *testing.T) {
-	authorized := []string{"runtime.system", "access.user", "audit.admin", "audit.security"}
+	authorized := []string{"access.user", "audit.admin", "audit.security"}
 	if got := auditQueryCategories(observabilityvo.LogQuery{AuthorizedCategories: authorized}); !reflect.DeepEqual(got, []string{"access.user", "audit.admin", "audit.security"}) {
 		t.Fatalf("default categories=%v", got)
 	}

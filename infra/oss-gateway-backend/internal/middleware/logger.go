@@ -1,13 +1,10 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -60,8 +57,6 @@ func Logger(log *logrus.Entry) gin.HandlerFunc {
 			if statusCode >= http.StatusInternalServerError {
 				span.SetStatus(codes.Error, http.StatusText(statusCode))
 			}
-			otellog.LogInfo(c.Request.Context(), "http.request.completed",
-				operationLogAttributes(method, route, statusCode)...)
 			span.End()
 		}()
 
@@ -71,29 +66,6 @@ func Logger(log *logrus.Entry) gin.HandlerFunc {
 
 func operationSpanAttributes(method, route string, status int) []attribute.KeyValue {
 	return []attribute.KeyValue{
-		attribute.String("http.request.method", method),
-		attribute.String("http.route", route),
-		attribute.Int("http.response.status_code", status),
-	}
-}
-
-func operationLogAttributes(method, route string, status int) []attribute.KeyValue {
-	sourceLogID := uuid.NewString()
-	outcome := "success"
-	if status == http.StatusUnauthorized || status == http.StatusForbidden {
-		outcome = "denied"
-	} else if status >= http.StatusBadRequest {
-		outcome = "failure"
-	}
-	return []attribute.KeyValue{
-		attribute.String("schema_version", "1.0.0"),
-		attribute.String("log_id", sourceLogID),
-		attribute.String("source_log_id", sourceLogID),
-		attribute.String("source_id", "oss-gateway"),
-		attribute.String("log_category", "runtime.system"),
-		attribute.String("event_name", "http.request.completed"),
-		attribute.String("outcome", outcome),
-		attribute.String("safe_summary", fmt.Sprintf("%s %s completed with HTTP %d", method, route, status)),
 		attribute.String("http.request.method", method),
 		attribute.String("http.route", route),
 		attribute.Int("http.response.status_code", status),

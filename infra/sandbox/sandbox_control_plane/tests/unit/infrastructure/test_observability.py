@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from src.infrastructure import observability
-from src.infrastructure.observability import build_http_log_attributes, build_http_span_attributes
+from src.infrastructure.observability import build_http_span_attributes
 
 
 class TestObservability(unittest.TestCase):
@@ -22,15 +22,6 @@ class TestObservability(unittest.TestCase):
 
         setup_logs.assert_not_called()
         setup_traces.assert_called_once()
-
-    def test_http_log_attributes_are_complete_and_status_driven(self):
-        success = build_http_log_attributes("POST", "/api/v1/sessions/{session_id}/executions", 200)
-        self.assertEqual(success["source_id"], "sandbox")
-        self.assertEqual(success["source_log_id"], success["log_id"])
-        self.assertEqual(success["event_name"], "http.request.completed")
-        self.assertEqual(success["outcome"], "success")
-        self.assertEqual(build_http_log_attributes("GET", "/route", 403)["outcome"], "denied")
-        self.assertEqual(build_http_log_attributes("GET", "/route", 500)["outcome"], "failure")
 
     def test_span_attributes_use_route_template(self):
         self.assertEqual(

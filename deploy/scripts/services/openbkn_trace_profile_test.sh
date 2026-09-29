@@ -303,25 +303,6 @@ not_contains "retrieval has no static revision" "${ar_sets}" "capturePolicyRevis
 not_contains "retrieval has no HTTP evidence ingest" "${ar_sets}" "observability.evidence.ingest_url="
 not_contains "retrieval has no query gateway Secret" "${ar_sets}" "gateway_token_secret_name="
 
-# vega-backend is an Evidence producer on an older chart generation: same three
-# facts, different keys. Its chart defaults ingestTokenSecretName to empty and
-# the template only injects the token env when that name is set, so leaving it
-# unwired means Evidence posted with no token — which the receiver rejects.
-# Through _openbkn_release_extra_sets, not _openbkn_trace_profile_sets: the
-# outer function gates which releases reach the inner case at all, so testing
-# the inner one directly passes while the release stays unwired in a real
-# install. That is exactly how vega-backend was missed the first time.
-CORE_RELEASE_EXTRA_SETS=()
-_openbkn_release_extra_sets vega-backend openbkn
-vega_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
-contains "vega posts evidence to the ingest route" "${vega_sets}" "bknTrace.evidence.ingestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
-contains "vega posts artifacts to the artifact route" "${vega_sets}" "bknTrace.evidence.artifactIngestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
-contains "vega uses the evidence ingest Secret" "${vega_sets}" "bknTrace.evidence.ingestTokenSecretName=bkn-trace-evidence-ingest"
-# The chart still defaults this key to the pre-rename name; the receiver reads
-# "token", so the installer has to override it or the two never meet.
-contains "vega reads the token key the receiver writes" "${vega_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
-not_contains "vega does not keep the pre-rename key" "${vega_sets}" "ingestTokenSecretKey=ingest-token"
-
 # bkn-backend is migrated to Kafka; ontology-query deliberately remains on its
 # Ontology uses the same frozen Kafka producer contract as bkn-backend.
 CORE_RELEASE_EXTRA_SETS=()

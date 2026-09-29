@@ -393,7 +393,6 @@ def _register_middleware(app: FastAPI) -> None:
                 return response
             finally:
                 observability.finish_http_request_span(span, request.method, route, status_code)
-                observability.emit_http_request_log(request.method, route, status_code)
 
     @app.middleware("http")
     async def locale_middleware(request: Request, call_next):

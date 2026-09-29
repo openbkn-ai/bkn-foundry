@@ -117,34 +117,6 @@ class TestStreamErrorFrame:
         assert json.loads(chunks[-1])["error"]["message"] == "bad model"
 
 
-class TestTraceStream:
-    @pytest.mark.asyncio
-    async def test_error_frame_marks_trace_failed(self):
-        """Test test error frame marks trace failed."""
-        client = Mock()
-        client._emit_bkn_trace_evidence = Mock()
-
-        async def stream():
-            yield openai_error.error_frame(openai_error.build_error("busy"))
-
-        await _collect(llm_utils.trace_model_stream(client, stream(), MESSAGES, {}))
-
-        assert client._emit_bkn_trace_evidence.call_count == 1
-        assert client._emit_bkn_trace_evidence.call_args.kwargs["status"] == "failed"
-
-    @pytest.mark.asyncio
-    async def test_clean_stream_still_success(self):
-        client = Mock()
-        client._emit_bkn_trace_evidence = Mock()
-
-        async def stream():
-            yield '{"choices":[{"delta":{"content":"hi"}}]}'
-
-        await _collect(llm_utils.trace_model_stream(client, stream(), MESSAGES, {}))
-
-        assert client._emit_bkn_trace_evidence.call_args.kwargs["status"] == "success"
-
-
 class TestControllerResponses:
     def _body(self, response):
         return json.loads(response.body.decode("utf-8"))

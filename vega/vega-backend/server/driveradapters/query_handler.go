@@ -89,6 +89,5 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	emitRawQueryEvidence(c, ctx, &req, resp)
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

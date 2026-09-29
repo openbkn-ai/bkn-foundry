@@ -35,13 +35,6 @@ bknSafe:
   directoryProvider: "bkn-safe"
   url: "http://bkn-safe:3000"
 
-bknTrace:
-  evidence:
-    ingestUrl: ""
-    timeoutMs: "1000"
-    ingestTokenSecretName: ""
-    ingestTokenSecretKey: "ingest-token"
-
 nodeSelector: {}
 
 depServices:

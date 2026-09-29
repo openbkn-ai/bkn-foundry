@@ -511,8 +511,8 @@ func TestEvidenceHandlerReturnsCurrentAccessProfileCapabilities(t *testing.T) {
 		t.Fatalf("unexpected capabilities: %#v", body)
 	}
 	categories, ok := body["allowed_log_categories"].([]any)
-	if !ok || len(categories) != 3 || categories[0] != "runtime.system" ||
-		categories[1] != "runtime.business" || categories[2] != "runtime.model" {
+	if !ok || len(categories) != 2 || categories[0] != "runtime.business" ||
+		categories[1] != "runtime.model" {
 		t.Fatalf("unexpected allowed log categories: %#v", body)
 	}
 	if body["access_scope_fingerprint"] != "sha256:profile-a" {

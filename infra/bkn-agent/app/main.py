@@ -131,9 +131,6 @@ async def bkn_trace_context_middleware(request: Request, call_next):
         "traceparent": ctx.traceparent,
     }.items():
         response.headers[key] = value
-    observability.emit_http_request_log(
-        request.method, getattr(request.scope.get("route"), "path", None), response.status_code
-    )
     return response
 
 
@@ -195,9 +192,6 @@ async def unhandled_handler(request: Request, exc: Exception):
     ErrorEnvelope and crashing SDK-side parsing.
     """
     logger.exception("[BknAgent] unhandled error on %s %s", request.method, request.url.path)
-    observability.emit_http_request_log(
-        request.method, getattr(request.scope.get("route"), "path", None), 500
-    )
     ctx = observability.context_from_request(request)
     effective_locale = getattr(request.state, "effective_locale", None) or (
         locale.resolve_accept_language(request.headers.get(locale.ACCEPT_LANGUAGE_HEADER))

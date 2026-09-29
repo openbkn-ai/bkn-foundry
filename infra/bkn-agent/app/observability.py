@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -109,35 +108,6 @@ def setup_otlp_logging():
     except Exception as exc:
         logger.warning("OTLP application logging unavailable; business continues: %s", exc)
         return None
-
-
-def emit_http_request_log(method: str, route_template: Optional[str], status: int) -> None:
-    """Emit only server-owned request facts; never a raw URL, body or credential."""
-    if _log_provider is None:
-        return
-    try:
-        source_log_id = str(uuid.uuid4())
-        route = route_template or "unmatched"
-        outcome = "denied" if status in (401, 403) else ("success" if status < 400 else "failure")
-        logging.getLogger("bkn-agent.telemetry").info(
-            "http.request.completed",
-            extra={
-                "schema_version": "1.0.0",
-                "log_id": source_log_id,
-                "source_log_id": source_log_id,
-                "source_id": MODULE_NAME,
-                "log_category": "runtime.system",
-                "event_name": "http.request.completed",
-                "outcome": outcome,
-                "safe_summary": f"{method} {route} completed with HTTP {status}",
-                "http.request.method": method,
-                "http.route": route,
-                "http.response.status_code": status,
-            },
-        )
-    except Exception:
-        # Logging must not alter the business response, even during shutdown.
-        pass
 
 
 def setup_otel(app) -> None:

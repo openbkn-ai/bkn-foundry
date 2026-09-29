@@ -84,7 +84,7 @@ func TestSearchUsesRegisteredLogFieldsWithoutAnExtraTrustGate(t *testing.T) {
 
 func TestSearchPushesEventNamesOnlyWhenCallerRequestsThem(t *testing.T) {
 	query := buildQuery(observabilityvo.LogQuery{
-		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
 		EventNames:           []string{"custom.internal.event"},
 	})
 	body, err := json.Marshal(query)
@@ -111,7 +111,7 @@ func TestSearchReplaysNativeSearchAfterValues(t *testing.T) {
 	client := New(backend, "logs")
 	positionTime := time.Date(2026, 8, 1, 10, 0, 0, 123456789, time.UTC)
 	_, err := client.Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
 		PageBefore: &observabilityvo.SourcePosition{
 			EventTimestamp: positionTime, LogID: "source-log-a",
 			SearchAfter: []any{"2026-08-01T10:00:00.123456Z", "context-loader", "source-log-a"},
@@ -133,7 +133,7 @@ func TestSearchReplaysNativeSearchAfterValues(t *testing.T) {
 
 func TestBuildQueryReplaysNativeSearchAfterWithoutAParsedTimestamp(t *testing.T) {
 	query := buildQuery(observabilityvo.LogQuery{
-		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
 		PageBefore: &observabilityvo.SourcePosition{
 			LogID: "source-log-a", SearchAfter: []any{"invalid-legacy-time", "context-loader", "source-log-a"},
 		},
@@ -146,7 +146,7 @@ func TestBuildQueryReplaysNativeSearchAfterWithoutAParsedTimestamp(t *testing.T)
 
 func TestBuildQueryUsesTheContractTieBreakers(t *testing.T) {
 	query := buildQuery(observabilityvo.LogQuery{
-		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
 	})
 	sorts, _ := query["sort"].([]any)
 	encoded, _ := json.Marshal(sorts)
@@ -159,7 +159,7 @@ func TestBuildQueryUsesTheContractTieBreakers(t *testing.T) {
 func TestBuildQueryFreezesObservedTimestampAtTheGatewayWatermark(t *testing.T) {
 	watermark := time.Date(2026, 8, 1, 12, 0, 0, 123, time.UTC)
 	body, err := json.Marshal(buildQuery(observabilityvo.LogQuery{
-		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
 		ObservedBefore:       &watermark,
 	}))
 	if err != nil {

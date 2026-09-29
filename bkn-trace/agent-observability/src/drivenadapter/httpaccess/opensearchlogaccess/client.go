@@ -53,7 +53,6 @@ func (client *Client) Metadata() observabilityvo.SourceStatus {
 		SourceID: sourceID, Status: "healthy", Reliability: "best_effort",
 		CollectionMethod: "direct_otlp", CoveredModules: []string{"openbkn"}, CountAccuracy: "exact",
 		Categories: []string{
-			observabilityvo.CategoryRuntimeSystem,
 			observabilityvo.CategoryRuntimeBusiness,
 			observabilityvo.CategoryRuntimeModel,
 		},

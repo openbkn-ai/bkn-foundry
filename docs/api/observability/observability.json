@@ -629,7 +629,6 @@
           "access.user",
           "audit.admin",
           "audit.security",
-          "runtime.system",
           "runtime.business",
           "runtime.model"
         ]
@@ -645,7 +644,6 @@
       "RuntimeLogCategory": {
         "type": "string",
         "enum": [
-          "runtime.system",
           "runtime.business",
           "runtime.model"
         ]
@@ -1176,40 +1174,6 @@
                       "result",
                       "client_ip",
                       "device_id"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "log_category": {
-                  "const": "runtime.system"
-                }
-              },
-              "required": [
-                "log_category"
-              ]
-            },
-            "then": {
-              "properties": {
-                "attributes": {
-                  "propertyNames": {
-                    "enum": [
-                      "error_code",
-                      "dependency_name",
-                      "url",
-                      "exception_type",
-                      "exception_message",
-                      "dropped_count",
-                      "drop_reason",
-                      "task_id",
-                      "causation_request_id",
-                      "linked_trace_id",
-                      "linked_span_id",
-                      "sandbox_action"
                     ]
                   }
                 }

@@ -102,7 +102,6 @@ func (r *restHandler) GetResourceSchemaByProxy(c *gin.Context) {
 	if schema == nil {
 		schema = []*interfaces.Property{}
 	}
-	emitResourceReadEvidence(c, ctx, "data.resource.schema", []*interfaces.Resource{resource}, 1, map[string]string{"resource_id": resource.ID})
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"schema_definition": schema})
 }

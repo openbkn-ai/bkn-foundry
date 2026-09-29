@@ -640,18 +640,6 @@ _openbkn_trace_profile_sets() {
                 CORE_RELEASE_EXTRA_SETS+=("observability.evidencePublisher.enabled=false")
             fi
             ;;
-        vega-backend)
-            # A different chart generation, so the same three facts live under
-            # different keys. Both the URL and the Secret name must be set: each
-            # gates its own env block in the template, and the token alone —
-            # without an ingest URL — writes nowhere.
-            CORE_RELEASE_EXTRA_SETS+=(
-                "bknTrace.evidence.ingestUrl=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
-                "bknTrace.evidence.artifactIngestUrl=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}"
-                "bknTrace.evidence.ingestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
-                "bknTrace.evidence.ingestTokenSecretKey=token"
-            )
-            ;;
         bkn-backend)
             if _openbkn_trace_admission_values "bknTrace.evidencePublisher"; then
             CORE_RELEASE_EXTRA_SETS+=(
@@ -754,7 +742,6 @@ _openbkn_trace_profile_sets() {
 # complete product install is responsible for wiring every producer here.
 _OPENBKN_TRACE_EVIDENCE_PRODUCERS=(
     agent-retrieval
-    vega-backend
     bkn-backend
     ontology-query
     bkn-agent
@@ -1216,7 +1203,7 @@ _openbkn_release_extra_sets() {
             CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=false")
         fi
     elif [[ "${release_name}" == "agent-retrieval" || "${release_name}" == "otelcol-contrib" ||
-            "${release_name}" == "vega-backend" || "${release_name}" == "bkn-backend" ||
+            "${release_name}" == "bkn-backend" ||
             "${release_name}" == "ontology-query" || "${release_name}" == "agent-operator-integration" ||
             "${release_name}" == "bkn-agent" ]]; then
         # This list gates _openbkn_trace_profile_sets: a release absent here
