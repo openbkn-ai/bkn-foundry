@@ -218,7 +218,12 @@ func (ms *metricService) resolveMetricObjectType(ctx context.Context, tx *sql.Tx
 	}
 	ot, err := ms.ots.GetObjectTypeByID(ctx, tx, metric.KnID, metric.Branch, scopeRef)
 	if err != nil {
-		return nil, scopeRef, err
+		// A missing scope object type is a bad scope_ref in the request, not a missing metric.
+		var httpErr *rest.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusNotFound {
+			return nil, scopeRef, err
+		}
+		ot = nil
 	}
 	if ot == nil {
 		return nil, scopeRef, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).

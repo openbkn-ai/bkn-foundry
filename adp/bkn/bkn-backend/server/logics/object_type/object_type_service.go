@@ -2423,8 +2423,14 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 	// Get basic object type information.
 	objectType, err := ots.ota.GetObjectTypeByID(ctx, tx, knID, branch, otID)
 	if err != nil {
-		logger.Errorf("GetObjectTypeByID error: %s", err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("Get object type by id[%s] error: %v", otID, err))
+		// The access layer reports a missing row as a structured 404; keep it
+		// instead of reclassifying a caller mistake as an internal failure.
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusNotFound {
+			return nil, httpErr
+		}
+		logger.Errorf("GetObjectTypeByID error: %s", err.Error())
 
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).WithErrorDetails(err.Error())

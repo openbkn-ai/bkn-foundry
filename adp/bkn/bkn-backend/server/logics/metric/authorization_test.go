@@ -161,6 +161,47 @@ func TestMetricDependencyAuthorizationDoesNotEnableStrictValidation(t *testing.T
 	}
 }
 
+func TestMetricMissingScopeObjectTypeIsInvalidParameter(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		ot       *interfaces.ObjectType
+		otErr    error
+		wantCode int
+		wantErr  string
+	}{
+		{name: "structured not found", otErr: rest.NewHTTPError(context.Background(), http.StatusNotFound,
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound),
+			wantCode: http.StatusBadRequest, wantErr: berrors.BknBackend_Metric_InvalidParameter},
+		{name: "nil object type",
+			wantCode: http.StatusBadRequest, wantErr: berrors.BknBackend_Metric_InvalidParameter},
+		{name: "internal error", otErr: rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
+			berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed),
+			wantCode: http.StatusInternalServerError, wantErr: berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps := bmock.NewMockPermissionService(ctrl)
+			ots := bmock.NewMockObjectTypeService(ctrl)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/missing",
+			}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA}).Return(nil)
+			ots.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH, "missing").
+				Return(tc.ot, tc.otErr)
+
+			service := &metricService{ps: ps, ots: ots}
+			err := service.authorizeMetricDependencies(context.Background(), nil, metricAuthorizationDefinition("missing"))
+			var httpErr *rest.HTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("authorizeMetricDependencies() error = %v, want HTTP error", err)
+			}
+			if httpErr.HTTPCode != tc.wantCode || httpErr.BaseError.ErrorCode != tc.wantErr {
+				t.Fatalf("authorizeMetricDependencies() = %d %s, want %d %s",
+					httpErr.HTTPCode, httpErr.BaseError.ErrorCode, tc.wantCode, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestMetricMetadataUpdateDoesNotReauthorizeObjectType(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	db, dbMock, err := sqlmock.New()
