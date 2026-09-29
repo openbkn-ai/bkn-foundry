@@ -119,6 +119,12 @@ type QueryObjectInstancesResp struct {
 	TotalCount *int64 `json:"total_count,omitempty"`
 	// Cursor is an opaque next-page token. Pass it back unchanged; an empty value means there is no more data.
 	Cursor string `json:"cursor,omitempty"`
+	// RowFilterApplied is ontology-query's report that the caller's row filter
+	// narrowed this query. It is consumed into PermissionGuidance and not echoed.
+	RowFilterApplied bool `json:"row_filter_applied,omitempty"`
+	// PermissionGuidance is added by the MCP layer when masking or a row filter
+	// shaped the result.
+	PermissionGuidance *PermissionGuidance `json:"permission_guidance,omitempty"`
 }
 
 // StripInstanceScores removes the _score field from each object instance result.

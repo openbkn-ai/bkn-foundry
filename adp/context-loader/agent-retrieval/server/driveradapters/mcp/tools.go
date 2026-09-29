@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permissionguide"
 )
 
 const (
@@ -115,7 +116,11 @@ func handleSearchInstance(knSearchService knsearch.KnSearchService) func(ctx con
 }
 
 // handleQueryObjectInstance handles query_object_instance tool calls.
-func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+//
+// A refusal or a masked / row-filtered result carries permission_guidance so
+// the agent can say what was withheld and where to request access.
+func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery,
+	guide *permissionguide.Guide) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
@@ -146,10 +151,14 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) fun
 
 		resp, err := ontologyQuery.QueryObjectInstances(ctx, queryReq)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolErrorWithPermissionGuidance(err,
+				guide.ForObjectTypeError(ctx, err, queryReq.KnID, queryReq.OtID)), nil
 		}
 		bkntrace.EmitQueryObjectInstanceEvents(ctx, nil, queryReq, resp)
 		resp.ObjectConcept = nil
+		resp.PermissionGuidance = guide.ForObjectQuery(ctx, queryReq.KnID, queryReq.OtID, queryReq.Properties,
+			resp.EffectivePermissions, resp.RowFilterApplied)
+		resp.RowFilterApplied = false // Restated by the guidance.
 		// Pure structured filtering has no relevance score; strip the constant _score to avoid misleading callers.
 		// Keep real relevance scores from knn/match (#236).
 		if !queryReq.HasScoringOperator() {
@@ -254,7 +263,8 @@ func handleExploreSubgraph(service logicsKqs.KnQuerySubgraphService) func(ctx co
 }
 
 // handleGetLogicPropertiesValues handles get_logic_properties_values tool calls.
-func handleGetLogicPropertiesValues(service interfaces.IKnLogicPropertyResolverService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleGetLogicPropertiesValues(service interfaces.IKnLogicPropertyResolverService,
+	guide *permissionguide.Guide) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -287,7 +297,8 @@ func handleGetLogicPropertiesValues(service interfaces.IKnLogicPropertyResolverS
 
 		resp, err := service.ResolveLogicProperties(ctx, resolveReq)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolErrorWithPermissionGuidance(err,
+				guide.ForObjectTypeDenial(ctx, err, resolveReq.KnID, resolveReq.OtID)), nil
 		}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {

@@ -71,6 +71,13 @@ auth:
   # Per-request batch size; this is not a cap on total retrieval candidates.
   resourceFilterChunkSize: 200
 
+# Studio links attached to permission guidance in MCP results. The host is
+# always the one the caller used; only the route is configured here.
+permissionRequest:
+  # Set true when the deployed Studio has no permission-request flow.
+  disabled: false
+  pathTemplate: "/studio/knowledge-network/workspace/{kn_id}/object-types/{ot_id}/detail?requestPermission={scope_code}"
+
 depServices:
   rds:
     type: mysql

@@ -208,6 +208,7 @@ func CopyRequestScopedValues(from, onto context.Context) context.Context {
 		interfaces.KeyAccountAuthContext,
 		interfaces.KeyResponseFormat,
 		interfaces.IsPublic,
+		interfaces.KeyPublicOrigin,
 		// PTC's run_code is executed in the MCP session context and cannot obtain the gin request context;
 		// If you omit this item, the tool side will not be able to get the caller token and can only downgrade to the server identity.
 		interfaces.KeyToken,
