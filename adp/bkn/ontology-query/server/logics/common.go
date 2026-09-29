@@ -686,8 +686,14 @@ func evaluateConditionRecursive(ctx context.Context,
 
 	// Handle logical operators
 	switch condition.Operation {
+	// Empty-set semantics match NewCondition and RewriteCondition: nil children
+	// are skipped, an empty AND matches everything, and an OR without any
+	// non-nil child fails closed instead of silently matching nothing.
 	case cond.OperationAnd:
 		for _, subCond := range condition.SubConds {
+			if subCond == nil {
+				continue
+			}
 			result, err := evaluateConditionRecursive(ctx, instanceData, subCond, propMap)
 			if err != nil {
 				return false, err
@@ -699,7 +705,12 @@ func evaluateConditionRecursive(ctx context.Context,
 		return true, nil
 
 	case cond.OperationOr:
+		evaluated := 0
 		for _, subCond := range condition.SubConds {
+			if subCond == nil {
+				continue
+			}
+			evaluated++
 			result, err := evaluateConditionRecursive(ctx, instanceData, subCond, propMap)
 			if err != nil {
 				return false, err
@@ -707,6 +718,9 @@ func evaluateConditionRecursive(ctx context.Context,
 			if result {
 				return true, nil
 			}
+		}
+		if evaluated == 0 {
+			return false, fmt.Errorf("sub condition size is 0")
 		}
 		return false, nil
 	}

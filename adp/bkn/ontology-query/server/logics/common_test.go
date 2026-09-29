@@ -1677,6 +1677,72 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 	})
 }
 
+func Test_EvaluateDataAgainstCondition_EmptyConditionSets(t *testing.T) {
+	Convey("Test EvaluateDataAgainstCondition empty AND / OR semantics", t, func() {
+		ctx := context.Background()
+		data := map[string]any{"amount": 100}
+		paramDefs := []interfaces.Parameter{{Name: "amount", Type: dtype.DATATYPE_INTEGER}}
+		miss := &cond.CondCfg{
+			Name:        "amount",
+			Operation:   cond.OperationEq,
+			ValueOptCfg: cond.ValueOptCfg{Value: 200},
+		}
+
+		Convey("empty AND matches", func() {
+			condition := &cond.CondCfg{Operation: cond.OperationAnd, SubConds: []*cond.CondCfg{}}
+			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeTrue)
+		})
+
+		Convey("empty AND nested in OR matches", func() {
+			condition := &cond.CondCfg{
+				Operation: cond.OperationOr,
+				SubConds: []*cond.CondCfg{
+					{Operation: cond.OperationAnd, SubConds: []*cond.CondCfg{}},
+					miss,
+				},
+			}
+			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeTrue)
+		})
+
+		Convey("empty OR fails closed", func() {
+			condition := &cond.CondCfg{Operation: cond.OperationOr, SubConds: []*cond.CondCfg{}}
+			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
+			So(err, ShouldNotBeNil)
+			So(result, ShouldBeFalse)
+		})
+
+		Convey("empty OR nested in AND fails closed", func() {
+			condition := &cond.CondCfg{
+				Operation: cond.OperationAnd,
+				SubConds: []*cond.CondCfg{
+					{Operation: cond.OperationOr, SubConds: []*cond.CondCfg{}},
+				},
+			}
+			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
+			So(err, ShouldNotBeNil)
+			So(result, ShouldBeFalse)
+		})
+
+		Convey("nil OR child is skipped rather than treated as true", func() {
+			condition := &cond.CondCfg{Operation: cond.OperationOr, SubConds: []*cond.CondCfg{nil, miss}}
+			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeFalse)
+		})
+
+		Convey("OR with only nil children fails closed", func() {
+			condition := &cond.CondCfg{Operation: cond.OperationOr, SubConds: []*cond.CondCfg{nil}}
+			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
+			So(err, ShouldNotBeNil)
+			So(result, ShouldBeFalse)
+		})
+	})
+}
+
 func TestCondCfgToFilterMap(t *testing.T) {
 	Convey("nil cond returns nil map", t, func() {
 		So(CondCfgToFilterMap(nil), ShouldBeNil)
