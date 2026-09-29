@@ -63,6 +63,7 @@ provenanceBootstrap:
 
 observability:
   otelEnabled: "true"
+  logsEnabled: "true"
   otlpEndpoint: "http://otelcol-contrib:4318"
   bknTraceArtifactIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
   # Artifacts retain their existing HTTP contract; only Evidence events move to Kafka.

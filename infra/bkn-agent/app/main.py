@@ -11,7 +11,7 @@ from app.models import ErrorEnvelope
 from app import auth, evidence, observability
 from app.commons import locale
 from app.commons.i18n import build_error_content
-from app.observability import setup_otel
+from app.observability import setup_otel, setup_otlp_logging
 from app.routers import agents, chat, impex, prompts, tasks, threads
 
 logger = logging.getLogger("bkn-agent")
@@ -65,6 +65,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="bkn-agent", version=VERSION, docs_url=None, redoc_url=None, lifespan=_lifespan)
+setup_otlp_logging()
 setup_otel(app)
 app.include_router(agents.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(chat.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
@@ -130,6 +131,9 @@ async def bkn_trace_context_middleware(request: Request, call_next):
         "traceparent": ctx.traceparent,
     }.items():
         response.headers[key] = value
+    observability.emit_http_request_log(
+        request.method, getattr(request.scope.get("route"), "path", None), response.status_code
+    )
     return response
 
 
@@ -191,6 +195,9 @@ async def unhandled_handler(request: Request, exc: Exception):
     ErrorEnvelope and crashing SDK-side parsing.
     """
     logger.exception("[BknAgent] unhandled error on %s %s", request.method, request.url.path)
+    observability.emit_http_request_log(
+        request.method, getattr(request.scope.get("route"), "path", None), 500
+    )
     ctx = observability.context_from_request(request)
     effective_locale = getattr(request.state, "effective_locale", None) or (
         locale.resolve_accept_language(request.headers.get(locale.ACCEPT_LANGUAGE_HEADER))

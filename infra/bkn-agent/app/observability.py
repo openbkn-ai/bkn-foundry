@@ -10,6 +10,7 @@ from typing import Optional
 logger = logging.getLogger("bkn-agent.otel")
 
 _tracer = None
+_log_provider = None
 TRACE_SCHEMA_VERSION = "1.0.0"
 MODULE_NAME = "bkn-agent"
 REQUEST_ID_HEADER = "bkn-request-id"
@@ -72,6 +73,57 @@ def configure_openinference_redaction() -> None:
     """Default LangChain/OpenInference spans to hash-only BKN Trace safety."""
     for key, value in OPENINFERENCE_REDACTION_DEFAULTS.items():
         os.environ.setdefault(key, value)
+
+
+def setup_otlp_logging():
+    """Batch application logs to the existing OTLP Collector, independently of Trace."""
+    global _log_provider
+    if os.getenv("OTEL_LOGS_ENABLED", "true").lower() != "true":
+        return None
+    if _log_provider is not None:
+        return _log_provider
+    try:
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+        from opentelemetry.sdk.resources import Resource
+
+        endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otelcol-contrib:4318")
+        provider = LoggerProvider(resource=Resource.create({"service.name": MODULE_NAME}))
+        provider.add_log_record_processor(BatchLogRecordProcessor(
+            OTLPLogExporter(endpoint=f"{endpoint.rstrip('/')}/v1/logs", timeout=3),
+            max_queue_size=2048, max_export_batch_size=512,
+            schedule_delay_millis=1000, export_timeout_millis=3000,
+        ))
+        handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
+        # Only explicitly selected source facts enter the central log pipeline.
+        # Existing app/third-party diagnostics may contain prompts or raw errors.
+        application_logger = logging.getLogger("bkn-agent.telemetry")
+        application_logger.addHandler(handler)
+        application_logger.setLevel(logging.INFO)
+        _log_provider = provider
+        return provider
+    except Exception as exc:
+        logger.warning("OTLP application logging unavailable; business continues: %s", exc)
+        return None
+
+
+def emit_http_request_log(method: str, route_template: Optional[str], status: int) -> None:
+    """Emit only server-owned request facts; never a raw URL, body or credential."""
+    if _log_provider is None:
+        return
+    try:
+        logging.getLogger("bkn-agent.telemetry").info(
+            "http.request.completed",
+            extra={
+                "http.request.method": method,
+                "http.route": route_template or "unmatched",
+                "http.response.status_code": status,
+            },
+        )
+    except Exception:
+        # Logging must not alter the business response, even during shutdown.
+        pass
 
 
 def setup_otel(app) -> None:
