@@ -2,15 +2,32 @@ package postgresql
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
+
+func TestPostgresqlConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	connector := &PostgresqlConnector{db: db, connected: true}
+	driverErr := &pq.Error{Code: "42703", Message: `column "missing" does not exist`}
+	mock.ExpectQuery("SELECT missing FROM orders").WillReturnError(driverErr)
+	result, err := connector.ExecuteRawSQL(context.Background(), "SELECT missing FROM orders")
+	assert.Nil(t, result)
+	var invalid *interfaces.SourceQueryInvalidParameterError
+	require.ErrorAs(t, err, &invalid)
+	assert.True(t, errors.Is(err, driverErr))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
 
 func TestPostgresqlConnectorBuildPagedSQL(t *testing.T) {
 	connector := &PostgresqlConnector{}

@@ -18,8 +18,6 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/go-sql-driver/mysql"
-	"github.com/lib/pq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -606,7 +604,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
 	})
 
-	t.Run("returns invalid parameter for an unknown MySQL column", func(t *testing.T) {
+	t.Run("does not expose MySQL driver details for an unknown column", func(t *testing.T) {
 		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "mariadb-catalog", ConnectorType: interfaces.ConnectorTypeMariaDB}
 		ctrl := gomock.NewController(t)
 		connector := mock_interfaces.NewMockTableConnector(ctrl)
@@ -617,7 +615,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT no_such_column FROM brands").
-			Return(nil, fmt.Errorf("execute query failed: %w", &mysql.MySQLError{Number: 1054, Message: "Unknown column 'no_such_column' in 'field list'"}))
+			Return(nil, fmt.Errorf("execute query failed: %w", interfaces.NewSourceQueryInvalidParameterError(errors.New("Unknown column 'no_such_column' in 'field list'"))))
 
 		_, err := svc.executeSQL(context.Background(), catalog,
 			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
@@ -626,7 +624,32 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		var httpErr *rest.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "no_such_column")
+		assert.Equal(t, "query references an unknown column", httpErr.BaseError.ErrorDetails)
+	})
+
+	t.Run("returns source read forbidden for connector privilege errors", func(t *testing.T) {
+		catalog := rawQuerySQLServerCatalog()
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockTableConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
+			Return(connector, nil)
+		svc := &rawQueryService{cf: connectorFactory}
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
+		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT id FROM brands").
+			Return(nil, fmt.Errorf("execute query failed: %w",
+				interfaces.NewSourceReadForbiddenError(errors.New("source driver privilege details"))))
+
+		result, err := svc.executeSQL(context.Background(), catalog,
+			"SELECT id FROM brands", interfaces.PagingModeSingle, nil)
+
+		assert.Nil(t, result)
+		assertHTTPError(t, err, http.StatusForbidden)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, httpErr.BaseError.ErrorDetails, "source driver privilege details")
 	})
 
 	t.Run("connects before executing unpaged SQL", func(t *testing.T) {
@@ -646,7 +669,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		assertHTTPError(t, err, http.StatusInternalServerError)
 	})
 
-	t.Run("returns invalid parameter for an unknown PostgreSQL column", func(t *testing.T) {
+	t.Run("does not expose PostgreSQL driver details for an unknown column", func(t *testing.T) {
 		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "postgresql-catalog", ConnectorType: interfaces.ConnectorTypePostgreSQL}
 		ctrl := gomock.NewController(t)
 		connector := mock_interfaces.NewMockTableConnector(ctrl)
@@ -657,7 +680,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT no_such_column FROM brands").
-			Return(nil, fmt.Errorf("execute query failed: %w", &pq.Error{Code: "42703", Message: "column \"no_such_column\" does not exist"}))
+			Return(nil, fmt.Errorf("execute query failed: %w", interfaces.NewSourceQueryInvalidParameterError(errors.New("column \"no_such_column\" does not exist"))))
 
 		_, err := svc.executeSQL(context.Background(), catalog,
 			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
@@ -666,7 +689,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		var httpErr *rest.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "no_such_column")
+		assert.Equal(t, "query references an unknown column", httpErr.BaseError.ErrorDetails)
 	})
 
 	t.Run("preserves internal errors for other database failures", func(t *testing.T) {

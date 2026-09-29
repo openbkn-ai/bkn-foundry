@@ -1,13 +1,32 @@
 package mariadb
 
 import (
+	"context"
+	"errors"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
+
+func TestMariaDBConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	connector := &MariaDBConnector{db: db, connected: true}
+	driverErr := &mysql.MySQLError{Number: 1054, Message: "Unknown column 'missing' in 'field list'"}
+	mock.ExpectQuery("SELECT missing FROM orders").WillReturnError(driverErr)
+	result, err := connector.ExecuteRawSQL(context.Background(), "SELECT missing FROM orders")
+	assert.Nil(t, result)
+	var invalid *interfaces.SourceQueryInvalidParameterError
+	require.ErrorAs(t, err, &invalid)
+	assert.True(t, errors.Is(err, driverErr))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
 
 func TestMariaDBConnectorBuildPagedSQL(t *testing.T) {
 	connector := &MariaDBConnector{}
