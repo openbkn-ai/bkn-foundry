@@ -4298,6 +4298,9 @@ components:
           type: string
         paging:
           $ref: '#/components/schemas/ObjectPagingResponse'
+        row_filter_applied:
+          description: 为 true 表示调用者生效的行访问范围收窄了本次查询，结果可能不包含全部数据；不返回具体过滤条件。未受行范围限制时省略该字段。
+          type: boolean
     ObjectPagingResponse:
       description: 对象查询分页状态。末页时两个字段均为 null。
       type: object

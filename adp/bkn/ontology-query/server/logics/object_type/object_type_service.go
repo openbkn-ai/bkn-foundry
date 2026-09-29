@@ -286,6 +286,7 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	}
 	query.EffectiveRowFilterDigest = decisions[0].EffectiveRowFilterDigest
 	query.RowFilterNoResults = noResults
+	resps.RowFilterApplied = rowCondition != nil || noResults
 	query.ActualCondition = andRowFilterCondition(query.ActualCondition, rowCondition)
 	for _, name := range rowFields {
 		plan.dependencyFields[name] = struct{}{}
