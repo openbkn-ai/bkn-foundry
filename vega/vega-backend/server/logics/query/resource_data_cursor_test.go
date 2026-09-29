@@ -20,7 +20,7 @@ import (
 func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 	t.Run("pages and closes", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
 		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
@@ -51,7 +51,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 
 	t.Run("preserves need total", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
 		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
@@ -81,7 +81,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 
 	t.Run("rejects wrong resource", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
 		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
@@ -102,7 +102,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 
 	t.Run("preserves opensearch search after", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
 		resource := &interfaces.Resource{ID: "index-1", CatalogID: "catalog-1"}
@@ -127,7 +127,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 
 	t.Run("uses last returned hit for search after", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
 		resource := &interfaces.Resource{ID: "index-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryIndex}
@@ -165,7 +165,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 
 	t.Run("rejects updated resource", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
 		resource := &interfaces.Resource{ID: "view-1", CatalogID: "catalog-1", UpdateTime: 100}
@@ -199,7 +199,7 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 func TestExecuteInitialResourceDataCursorWithCategory(t *testing.T) {
 	t.Run("uses physical pagination category", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
 		resource := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView, CatalogID: "catalog-1"}
@@ -229,7 +229,7 @@ func TestExecuteResourceDataCursorContinuationWithRunnerRejectsChangedSource(t *
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			previousManager := rawQueryCursorSessions
-			rawQueryCursorSessions = newCursorSessionManager(10)
+			rawQueryCursorSessions = newCursorSessionManager(10, 9)
 			t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
 			view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView, UpdateTime: 10}
@@ -264,7 +264,7 @@ func TestExecuteResourceDataCursorContinuationWithRunnerRejectsChangedSource(t *
 func TestExecuteInitialResourceDataCursor(t *testing.T) {
 	t.Run("active initial page is not reclaimed", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		manager := newCursorSessionManager(10)
+		manager := newCursorSessionManager(10, 9)
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 

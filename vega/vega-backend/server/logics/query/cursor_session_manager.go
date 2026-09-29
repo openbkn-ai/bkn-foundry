@@ -7,51 +7,86 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 type cursorSessionManager struct {
-	mu          sync.Mutex
-	sessions    map[string]*interfaces.CursorSession
-	maxSessions int
+	mu                    sync.Mutex
+	sessions              map[string]*interfaces.CursorSession
+	maxSessions           int
+	maxSessionsPerAccount int
 }
 
 const defaultCursorMaxSessions = 1000
+const defaultCursorMaxSessionsPerAccount = 100
 
 var errCursorSessionLimitReached = errors.New("cursor session limit reached")
+var errCursorAccountLimitReached = errors.New("account cursor session limit reached")
+var errCursorSessionBusy = errors.New("cursor session is busy")
+var errCursorSessionNotFound = errors.New("cursor session not found")
+var errCursorSessionForbidden = errors.New("cursor session belongs to another account")
 
-var rawQueryCursorSessions = newCursorSessionManager(defaultCursorMaxSessions)
+var rawQueryCursorSessions = newCursorSessionManager(defaultCursorMaxSessions, defaultCursorMaxSessionsPerAccount)
+
+// ConfigureCursorSessions applies the shared Raw Query and resource-data limits.
+func ConfigureCursorSessions(maxSessions, maxSessionsPerAccount int) {
+	rawQueryCursorSessions.configure(maxSessions, maxSessionsPerAccount)
+}
 
 func init() {
 	go rawQueryCursorSessions.reclaimExpired()
 }
 
-func newCursorSessionManager(maxSessions int) *cursorSessionManager {
-	if maxSessions <= 0 {
-		maxSessions = defaultCursorMaxSessions
-	}
-	return &cursorSessionManager{
-		sessions:    make(map[string]*interfaces.CursorSession),
-		maxSessions: maxSessions,
-	}
+func newCursorSessionManager(maxSessions, maxSessionsPerAccount int) *cursorSessionManager {
+	m := &cursorSessionManager{sessions: make(map[string]*interfaces.CursorSession)}
+	m.configure(maxSessions, maxSessionsPerAccount)
+	return m
 }
 
-func (m *cursorSessionManager) configure(maxSessions int) {
+func (m *cursorSessionManager) configure(maxSessions, perAccount int) {
 	if maxSessions <= 0 {
 		maxSessions = defaultCursorMaxSessions
+	}
+	accountLimit := defaultCursorMaxSessionsPerAccount
+	if perAccount > 0 {
+		accountLimit = perAccount
+	}
+	if maxSessions > 1 && accountLimit >= maxSessions {
+		accountLimit = maxSessions - 1
 	}
 	m.mu.Lock()
 	m.maxSessions = maxSessions
+	m.maxSessionsPerAccount = accountLimit
 	m.mu.Unlock()
+}
+
+func (m *cursorSessionManager) capacityErrorLocked(accountID string) error {
+	if len(m.sessions) >= m.maxSessions {
+		return errCursorSessionLimitReached
+	}
+	count := 0
+	for _, session := range m.sessions {
+		if session.AccountID == accountID {
+			count++
+		}
+	}
+	if count >= m.maxSessionsPerAccount {
+		return errCursorAccountLimitReached
+	}
+	return nil
 }
 
 func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs []string, compiledSQL string, limit, keepAliveSec, queryTimeoutSec int) (*interfaces.CursorSession, error) {
@@ -78,9 +113,9 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 	}
 	m.mu.Lock()
 	m.removeExpiredLocked(time.Now().Unix())
-	if len(m.sessions) >= m.maxSessions {
+	if err := m.capacityErrorLocked(accountID); err != nil {
 		m.mu.Unlock()
-		return nil, errCursorSessionLimitReached
+		return nil, err
 	}
 	m.sessions[session.ID] = session
 	activeSessionsLen := len(m.sessions)
@@ -115,9 +150,9 @@ func (m *cursorSessionManager) createResourceData(accountID string, resource *in
 	}
 	m.mu.Lock()
 	m.removeExpiredLocked(now)
-	if len(m.sessions) >= m.maxSessions {
+	if err := m.capacityErrorLocked(accountID); err != nil {
 		m.mu.Unlock()
-		return nil, errCursorSessionLimitReached
+		return nil, err
 	}
 	m.sessions[session.ID] = session
 	activeSessionsLen := len(m.sessions)
@@ -185,6 +220,45 @@ func (m *cursorSessionManager) closeSession(cursor string) {
 	m.mu.Unlock()
 	if ok {
 		logger.Debugf("Cursor session closed at final page: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
+	}
+}
+
+func (m *cursorSessionManager) closeForAccount(accountID, cursor string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	session, ok := m.sessions[cursor]
+	if !ok {
+		return errCursorSessionNotFound
+	}
+	if session.AccountID != accountID {
+		return errCursorSessionForbidden
+	}
+	if !session.TryLock() {
+		return errCursorSessionBusy
+	}
+	defer session.Unlock()
+	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
+		m.removeLocked(cursor)
+		return errCursorSessionNotFound
+	}
+	m.removeLocked(cursor)
+	return nil
+}
+
+// CloseCursorSession releases a cursor owned by the calling account.
+func CloseCursorSession(ctx context.Context, accountID, cursor string) error {
+	err := rawQueryCursorSessions.closeForAccount(accountID, cursor)
+	switch {
+	case errors.Is(err, errCursorSessionNotFound):
+		return cursorNotFoundError(ctx)
+	case errors.Is(err, errCursorSessionForbidden):
+		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor does not belong to the current account")
+	case errors.Is(err, errCursorSessionBusy):
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorInUse).
+			WithErrorDetails("cursor is in use, please retry later")
+	default:
+		return err
 	}
 }
 

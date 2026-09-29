@@ -39,10 +39,10 @@ depServices:
   class-443:
     ingressClass: class-443
   rds:
-    host: 192.168.40.63
-    port: 30006
+    host: mariadb-mariadb-master.resource.svc.cluster.local.
+    port: 3330
     user: root
-    password: "eisoo.com123"
+    password: ""
     type: MariaDB
   mq:
     mqType: kafka
@@ -90,6 +90,8 @@ rateLimiting:
 query:
   # 进程内 cursor session 的全局上限；达到上限时拒绝新的 cursor 请求。
   cursorMaxSessions: 1000
+  # 单账号的进程内 cursor session 上限；未配置时默认 100。若不低于全局上限，自动限制为全局上限减一（全局上限为 1 时除外）。
+  cursorMaxSessionsPerAccount: 100
 
 indexCleanup:
   workerEnabled: true

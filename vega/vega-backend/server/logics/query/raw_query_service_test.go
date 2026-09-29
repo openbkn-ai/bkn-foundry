@@ -540,7 +540,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 func TestValidateCursorResourceBinding(t *testing.T) {
 	t.Run("validates resource identity and update time", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 		rawSession, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 60)
 		require.NoError(t, err)
@@ -741,7 +741,7 @@ func TestRawQueryServiceExecuteSQLCursorPage(t *testing.T) {
 	t.Run("cursor page requests one lookahead row", func(t *testing.T) {
 		catalog := rawQuerySQLServerCatalog()
 		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10)
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 		session, err := rawQueryCursorSessions.create("account-1", catalog.ID, []string{"resource-1"},
 			"SELECT id FROM dbo.orders", 2, 60, 0)
@@ -1097,7 +1097,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 		indexConnector.EXPECT().Close(gomock.Any()).Return(nil).Times(2)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil).Times(2)
-		manager := newCursorSessionManager(10)
+		manager := newCursorSessionManager(10, 9)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
@@ -1158,7 +1158,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
-		manager := newCursorSessionManager(10)
+		manager := newCursorSessionManager(10, 9)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
@@ -1195,7 +1195,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
-		manager := newCursorSessionManager(10)
+		manager := newCursorSessionManager(10, 9)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
@@ -1223,7 +1223,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(errors.New("connection refused"))
-		manager := newCursorSessionManager(10)
+		manager := newCursorSessionManager(10, 9)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
@@ -1252,7 +1252,7 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		manager := newCursorSessionManager(10)
+		manager := newCursorSessionManager(10, 9)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
@@ -1523,4 +1523,24 @@ func assertHTTPError(t *testing.T, err error, status int) {
 	var httpErr *rest.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, status, httpErr.HTTPCode)
+}
+
+func TestCursorSessionCreateError(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		err     error
+		details string
+	}{
+		{"account", errCursorAccountLimitReached, "per-account cursor session limit reached"},
+		{"global", errCursorSessionLimitReached, "global cursor session limit reached"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := cursorSessionCreateError(context.Background(), testCase.err)
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusTooManyRequests, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_Query_CursorSessionLimitExceeded, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, testCase.details, httpErr.BaseError.ErrorDetails)
+		})
+	}
 }

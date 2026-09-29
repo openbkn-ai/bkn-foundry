@@ -45,7 +45,7 @@ func ExecuteInitialResourceDataCursorWithCategoryRunner(ctx context.Context, acc
 	execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
 	session, err := rawQueryCursorSessions.createResourceData(accountID, resource, params)
 	if err != nil {
-		return nil, cursorSessionLimitError(ctx)
+		return nil, cursorSessionCreateError(ctx, err)
 	}
 	session.ResourceDataCategory = paginationCategory
 	session.ResourceDataSource = cursorSourceBinding(source)

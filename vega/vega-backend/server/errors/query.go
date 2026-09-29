@@ -17,6 +17,7 @@ const (
 
 	// 409 Conflict
 	VegaBackend_Query_CursorResourceChanged = "VegaBackend.Query.CursorResourceChanged"
+	VegaBackend_Query_CursorInUse           = "VegaBackend.Query.CursorInUse"
 
 	// 404 Not Found
 	VegaBackend_Query_CatalogNotFound  = "VegaBackend.Query.CatalogNotFound"
@@ -45,6 +46,7 @@ var QueryErrCodeList = []string{
 
 	// 409 Conflict
 	VegaBackend_Query_CursorResourceChanged,
+	VegaBackend_Query_CursorInUse,
 
 	// 404 Not Found
 	VegaBackend_Query_CatalogNotFound,

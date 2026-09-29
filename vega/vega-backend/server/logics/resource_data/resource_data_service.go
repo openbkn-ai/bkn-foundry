@@ -58,6 +58,7 @@ func connectorCreationError(ctx context.Context, err error) error {
 
 // NewResourceDataService creates a new ResourceDataService.
 func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDataService {
+	querylogic.ConfigureCursorSessions(appSetting.QuerySetting.CursorMaxSessions, appSetting.QuerySetting.CursorMaxSessionsPerAccount)
 	rdServiceOnce.Do(func() {
 		datasetService := dataset.NewDatasetService(appSetting)
 		localIndexManager := local_index.NewLocalIndexManager(appSetting)

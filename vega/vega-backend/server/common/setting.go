@@ -72,7 +72,8 @@ type GlobalConcurrencyConfig struct {
 
 // QueryConfig query service configuration item
 type QueryConfig struct {
-	CursorMaxSessions int `mapstructure:"cursorMaxSessions"`
+	CursorMaxSessions           int `mapstructure:"cursorMaxSessions"`
+	CursorMaxSessionsPerAccount int `mapstructure:"cursorMaxSessionsPerAccount"`
 }
 
 // CatalogHealthCheckConfig configures the periodic physical Catalog health-check worker.

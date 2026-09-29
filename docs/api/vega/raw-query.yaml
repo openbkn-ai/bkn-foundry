@@ -40,6 +40,28 @@ servers:
 security:
   - OAuth2: []
 paths:
+  /resources/cursors/{cursor}:
+    delete:
+      summary: 提前关闭 Raw Query 或资源数据查询的 cursor
+      description: 仅创建该 cursor 的账号可关闭；成功返回 204。分页执行中返回 409 `VegaBackend.Query.CursorInUse`，可稍后重试。cursor 已关闭或过期时返回 404。
+      parameters:
+        - name: cursor
+          in: path
+          required: true
+          description: 响应中的 paging.next_cursor
+          schema:
+            type: string
+      responses:
+        "204":
+          description: cursor 已释放
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /resources/query:
     post:
       summary: 执行原生查询（SQL 或 DSL）
@@ -162,7 +184,12 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     TooManyRequests:
-      description: Cursor session 数量达到全局上限；请稍后重试或等待已有 cursor 过期。
+      description: |
+        `VegaBackend.Query.CursorSessionLimitExceeded`。`error_details` 为
+        `per-account cursor session limit reached` 或 `global cursor session limit reached`。
+        单账号默认上限 100，全局默认上限 1000；可分别通过
+        `query.cursorMaxSessionsPerAccount`、`query.cursorMaxSessions` 配置。
+        达到上限后可关闭不再需要的 cursor，或等待其空闲租约到期。
       content:
         application/json:
           schema:

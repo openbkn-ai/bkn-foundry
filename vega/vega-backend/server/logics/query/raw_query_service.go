@@ -59,7 +59,7 @@ func connectorInitializationError(ctx context.Context, err error) error {
 
 // NewRawQueryService creates SQL query services (singleton pattern)
 func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryService {
-	rawQueryCursorSessions.configure(appSetting.QuerySetting.CursorMaxSessions)
+	ConfigureCursorSessions(appSetting.QuerySetting.CursorMaxSessions, appSetting.QuerySetting.CursorMaxSessionsPerAccount)
 	rqServiceOnce.Do(func() {
 		rqService = &rawQueryService{
 			cf: factory.NewConnectorFactory(appSetting),
@@ -187,7 +187,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 		req.QueryTimeoutSec,
 	)
 	if err != nil {
-		return nil, cursorSessionLimitError(ctx)
+		return nil, cursorSessionCreateError(ctx, err)
 	}
 	session.PageOffset = req.Paging.Offset
 	session.TotalCount = totalCount
@@ -404,7 +404,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 		accountIDFromContext(ctx), catalog.ID, []string{queryResourceID(req.Query)}, "", req.Paging.Limit, req.Paging.KeepAliveSec, req.QueryTimeoutSec,
 	)
 	if err != nil {
-		return nil, cursorSessionLimitError(ctx)
+		return nil, cursorSessionCreateError(ctx, err)
 	}
 	session.QueryFormat = interfaces.QueryFormatDSL
 	bindCursorResource(session, req)
@@ -437,9 +437,16 @@ func queryResourceID(query any) string {
 	return resourceID
 }
 
-func cursorSessionLimitError(ctx context.Context) error {
-	return rest.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
-		WithErrorDetails("cursor session limit reached, please retry later")
+func cursorSessionCreateError(ctx context.Context, err error) error {
+	if errors.Is(err, errCursorAccountLimitReached) {
+		return rest.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
+			WithErrorDetails("per-account cursor session limit reached")
+	}
+	if errors.Is(err, errCursorSessionLimitReached) {
+		return rest.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
+			WithErrorDetails("global cursor session limit reached")
+	}
+	return err
 }
 
 func bindCursorResource(session *interfaces.CursorSession, req *interfaces.RawQueryRequest) {
