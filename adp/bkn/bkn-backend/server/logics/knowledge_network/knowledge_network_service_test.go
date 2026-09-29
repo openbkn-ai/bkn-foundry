@@ -2315,6 +2315,27 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 			So(paths, ShouldBeNil)
 		})
 
+		Convey("Keeps not found when the source object type does not exist\n", func() {
+			query := interfaces.RelationTypePathsBaseOnSource{
+				KNID:              "kn1",
+				Branch:            interfaces.MAIN_BRANCH,
+				SourceObjecTypeId: "missing",
+				Direction:         "bidirectional",
+				PathLength:        1,
+			}
+
+			allowKNView()
+			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "missing").
+				Return(nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound))
+
+			paths, err := service.GetRelationTypePaths(ctx, query)
+			So(paths, ShouldBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		})
+
 		Convey("Failed when GetNeighborPathsBatch returns error\n", func() {
 			query := interfaces.RelationTypePathsBaseOnSource{
 				KNID:              "kn1",

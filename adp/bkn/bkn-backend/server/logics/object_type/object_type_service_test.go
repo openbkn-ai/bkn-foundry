@@ -9,6 +9,7 @@ package object_type
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -583,6 +584,51 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 			result, err := service.GetObjectTypeByID(ctx, nil, knID, branch, otID)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
+		})
+
+		Convey("Keeps not found when access layer returns a structured 404\n", func() {
+			smock.ExpectBegin()
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound))
+			smock.ExpectRollback()
+
+			result, err := service.GetObjectTypeByID(ctx, nil, "kn1", interfaces.MAIN_BRANCH, "missing")
+			So(result, ShouldBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		})
+
+		Convey("Returns not found when access layer returns no object type\n", func() {
+			smock.ExpectBegin()
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+			smock.ExpectCommit()
+
+			result, err := service.GetObjectTypeByID(ctx, nil, "kn1", interfaces.MAIN_BRANCH, "missing")
+			So(result, ShouldBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		})
+
+		Convey("Wraps a plain database error as internal error\n", func() {
+			smock.ExpectBegin()
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, errors.New("connection reset"))
+			smock.ExpectRollback()
+
+			result, err := service.GetObjectTypeByID(ctx, nil, "kn1", interfaces.MAIN_BRANCH, "ot1")
+			So(result, ShouldBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
 		})
 	})
 }
