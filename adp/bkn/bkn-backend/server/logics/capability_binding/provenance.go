@@ -69,12 +69,12 @@ func (cbs *capabilityBindingService) collectProvenance(ctx context.Context, knID
 		refs[key][kind] = append(refs[key][kind], ref)
 	}
 
-	objectTypes, err := cbs.ota.ListObjectTypes(ctx, nil, interfaces.ObjectTypesQueryParams{
+	// Narrow reads only: the full object type carries the raw import payload and data properties,
+	// hundreds of megabytes on a large network, and none of it says which tool is in use.
+	// It never pages, for the reason noPagingLimit gives.
+	objectTypes, err := cbs.ota.ListObjectTypeLogicProperties(ctx, interfaces.ObjectTypesQueryParams{
 		KNID:   knID,
 		Branch: branch,
-		PaginationQueryParameters: interfaces.PaginationQueryParameters{
-			Limit: noPagingLimit,
-		},
 	})
 	if err != nil {
 		logger.Warnf("capability provenance: object types unreadable for kn_id=%s: %v", knID, err)
@@ -99,7 +99,7 @@ func (cbs *capabilityBindingService) collectProvenance(ctx context.Context, knID
 		}
 	}
 
-	actionTypes, err := cbs.ata.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{
+	actionTypes, err := cbs.ata.ListActionTypeSummaries(ctx, interfaces.ActionTypesQueryParams{
 		KNID:   knID,
 		Branch: branch,
 		PaginationQueryParameters: interfaces.PaginationQueryParameters{

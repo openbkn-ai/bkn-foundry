@@ -1933,3 +1933,58 @@ func Test_objectTypeAccess_ProcessQueryCondition(t *testing.T) {
 		})
 	})
 }
+
+func Test_objectTypeAccess_ListObjectTypeLogicProperties(t *testing.T) {
+	Convey("test ListObjectTypeLogicProperties\n", t, func() {
+		appSetting := &common.AppSetting{}
+		ota, smock := MockNewObjectTypeAccess(appSetting)
+
+		// Exact match: the statistics path must never read f_bkn_raw_content or
+		// f_data_properties again, which on a 10,000 object type network are hundreds of MB.
+		sqlStr := "SELECT ot.f_id, ot.f_name, ot.f_logic_properties FROM t_object_type AS ot " +
+			"JOIN t_object_type_status AS ots ON ot.f_id = ots.f_id AND ot.f_kn_id = ots.f_kn_id AND ot.f_branch = ots.f_branch " +
+			"WHERE ot.f_kn_id = ? AND ot.f_branch = ?"
+		query := interfaces.ObjectTypesQueryParams{KNID: "kn1", Branch: "main"}
+
+		Convey("Success \n", func() {
+			rows := sqlmock.NewRows([]string{"f_id", "f_name", "f_logic_properties"}).
+				AddRow("ot1", "Object 1", `[{"name":"lp1","data_source":{"type":"tool","box_id":"box1","tool_id":"tool1"}}]`).
+				AddRow("ot2", "Object 2", "")
+			smock.ExpectQuery(sqlStr).WithArgs("kn1", "main").WillReturnRows(rows)
+
+			objectTypes, err := ota.ListObjectTypeLogicProperties(testCtx, query)
+			So(err, ShouldBeNil)
+			So(len(objectTypes), ShouldEqual, 2)
+			So(objectTypes[0].OTID, ShouldEqual, "ot1")
+			So(objectTypes[0].OTName, ShouldEqual, "Object 1")
+			So(len(objectTypes[0].LogicProperties), ShouldEqual, 1)
+			So(objectTypes[0].LogicProperties[0].Name, ShouldEqual, "lp1")
+			So(objectTypes[0].LogicProperties[0].DataSource.BoxID, ShouldEqual, "box1")
+			So(objectTypes[0].LogicProperties[0].DataSource.ToolID, ShouldEqual, "tool1")
+			So(objectTypes[1].LogicProperties, ShouldBeEmpty)
+
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+
+		Convey("Query failed \n", func() {
+			expectedErr := errors.New("some error")
+			smock.ExpectQuery(sqlStr).WithArgs("kn1", "main").WillReturnError(expectedErr)
+
+			objectTypes, err := ota.ListObjectTypeLogicProperties(testCtx, query)
+			So(objectTypes, ShouldBeNil)
+			So(err, ShouldResemble, expectedErr)
+		})
+
+		Convey("Malformed logic properties \n", func() {
+			rows := sqlmock.NewRows([]string{"f_id", "f_name", "f_logic_properties"}).
+				AddRow("ot1", "Object 1", "{not json")
+			smock.ExpectQuery(sqlStr).WithArgs("kn1", "main").WillReturnRows(rows)
+
+			objectTypes, err := ota.ListObjectTypeLogicProperties(testCtx, query)
+			So(objectTypes, ShouldBeNil)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}

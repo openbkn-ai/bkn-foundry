@@ -570,6 +570,60 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 	return result, nil
 }
 
+// ListObjectTypeLogicProperties reads only the ID, name and logic properties of the matching
+// object types. Capability provenance needs nothing else, and the raw import payload and data
+// properties it skips are the bulk of a large network: at 10,000 object types they are hundreds
+// of megabytes that the statistics path used to read and decode just to find the tools in use.
+//
+// The status join is kept so the result covers the same object types as ListObjectTypes.
+func (ota *objectTypeAccess) ListObjectTypeLogicProperties(ctx context.Context,
+	query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListObjectTypeLogicProperties")
+	defer span.End()
+
+	builder := processQueryCondition(query, sq.Select(
+		"ot.f_id",
+		"ot.f_name",
+		"ot.f_logic_properties",
+	).From(OT_TABLE_NAME+" AS ot").
+		Join(OT_STATUS_TABLE_NAME+" AS ots ON ot.f_id = ots.f_id AND ot.f_kn_id = ots.f_kn_id AND ot.f_branch = ots.f_branch"))
+
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	rows, err := ota.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make([]*interfaces.ObjectType, 0)
+	logicBytesTotal := 0
+	for rows.Next() {
+		item := &interfaces.ObjectType{ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE}
+		var logicProperties []byte
+		if err := rows.Scan(&item.OTID, &item.OTName, &logicProperties); err != nil {
+			return nil, err
+		}
+		logicBytesTotal += len(logicProperties)
+		if err := common.UnmarshalStoredJSON(logicProperties, &item.LogicProperties); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	span.SetAttributes(
+		attr.Key("row_count").Int(len(result)),
+		attr.Key("logic_properties_bytes").Int(logicBytesTotal),
+	)
+	span.SetStatus(codes.Ok, "")
+	return result, nil
+}
+
 func (ota *objectTypeAccess) GetObjectTypesTotal(ctx context.Context, query interfaces.ObjectTypesQueryParams) (int, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetObjectTypesTotal")
 	defer span.End()
