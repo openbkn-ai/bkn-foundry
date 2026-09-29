@@ -3,6 +3,11 @@ Description = "Invalid resource parameter"
 Solution = "Please check the parameter"
 ErrorLink = ""
 
+[VegaBackend.Resource.Duplicated.FieldFeatureType]
+Description = "Field {{.FieldName}} already has a {{.FieldFeatureType}} feature"
+Solution = "Please keep only one feature of this type for the field"
+ErrorLink = ""
+
 [VegaBackend.Resource.CategoryNotCreatable]
 Description = "Resource category cannot be created via API"
 Solution = "Only 'dataset' and 'logicview' resources can be created via this API. Other categories must be created via a discover task."

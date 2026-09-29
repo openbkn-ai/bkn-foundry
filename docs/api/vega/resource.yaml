@@ -404,6 +404,7 @@ components:
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.Resource.InvalidParameter.*`：具体字段非法
+        - `VegaBackend.Resource.Duplicated.FieldFeatureType`：同一字段存在多个相同类型的特征
         - `VegaBackend.Resource.CategoryNotCreatable`：尝试通过 API 创建非 `dataset`/`logicview` 类资源
         - `VegaBackend.Dataset.*`：dataset 创建时 `schema_definition` 为空 / 字段名 / 长度 / 重复 / 类型 / 特征校验失败
         - `VegaBackend.LogicView.*`：logicview 创建时 `logic_definition` / 字段 / 特征校验失败
