@@ -103,6 +103,11 @@ func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.Upd
 			_ = tx.Commit()
 		}
 	}()
+	// Lock the toolbox row before the tool rows below, the order every tool write takes them in.
+	err = s.touchToolBox(ctx, tx, toolBox.BoxID, req.UserID)
+	if err != nil {
+		return
+	}
 	resp = &interfaces.UpdateToolBoxResp{}
 	// Update metadata.
 	switch req.MetadataType {

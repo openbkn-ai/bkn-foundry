@@ -205,3 +205,21 @@ func TestOperatorDeleteEventTouchesToolBoxesOfDisabledTools(t *testing.T) {
 		t.Fatalf("touched toolboxes %v, want [box-a box-b]", touched)
 	}
 }
+
+// Deleting a toolbox takes its row before its tool rows, the same order every tool write takes
+// them in, so the two cannot deadlock on the same toolbox.
+func TestDeleteToolBoxRemovesTheToolBoxRowBeforeItsTools(t *testing.T) {
+	f := newTouchFixture(t)
+	config := mocks.NewMockIIntCompConfigService(gomock.NewController(t))
+	f.svc.IntCompConfigSvc = config
+	f.toolDB.EXPECT().SelectToolByBoxID(gomock.Any(), touchBoxID).
+		Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOperator}}, nil)
+	gomock.InOrder(
+		f.toolBoxDB.EXPECT().DeleteToolBox(gomock.Any(), f.tx, touchBoxID).Return(nil),
+		f.toolDB.EXPECT().DeleteBoxByIDAndTools(gomock.Any(), f.tx, touchBoxID, []string{touchToolID}).Return(nil),
+		config.EXPECT().DeleteConfig(gomock.Any(), f.tx, interfaces.ComponentTypeToolBox.String(), touchBoxID).Return(nil),
+	)
+	if err := f.svc.deleteToolBox(context.Background(), f.tx, touchBoxID); err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+}
