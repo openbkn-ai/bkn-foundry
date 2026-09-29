@@ -447,6 +447,9 @@ def create_app() -> FastAPI:
         description="HTTP API for executing code in secure sandbox environments",
         version="1.0.0",
         lifespan=lifespan,
+        # FastAPI >= 0.132 rejects JSON bodies without a JSON Content-Type by
+        # default. Keep accepting them so existing callers are not broken.
+        strict_content_type=False,
     )
 
     # Exception handlers
