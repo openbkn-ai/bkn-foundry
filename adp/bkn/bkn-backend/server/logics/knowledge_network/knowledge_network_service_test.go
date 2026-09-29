@@ -257,11 +257,29 @@ func TestRunExportLoadersDoesNotStartWithCanceledContext(t *testing.T) {
 		started.Store(true)
 		return nil
 	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("runExportLoaders() error = %v, want %v", err, context.Canceled)
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("runExportLoaders() error type = %T, want *rest.HTTPError", err)
+	}
+	if httpErr.HTTPCode != http.StatusRequestTimeout {
+		t.Fatalf("runExportLoaders() HTTP status = %d, want %d", httpErr.HTTPCode, http.StatusRequestTimeout)
 	}
 	if started.Load() {
 		t.Fatal("loader started with an already canceled context")
+	}
+}
+
+func TestRunExportLoadersWrapsCancellationReturnedByLoader(t *testing.T) {
+	err := runExportLoaders(context.Background(), 1, func(context.Context) error {
+		return context.Canceled
+	})
+
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("runExportLoaders() error type = %T, want *rest.HTTPError", err)
+	}
+	if httpErr.HTTPCode != http.StatusRequestTimeout {
+		t.Fatalf("runExportLoaders() HTTP status = %d, want %d", httpErr.HTTPCode, http.StatusRequestTimeout)
 	}
 }
 

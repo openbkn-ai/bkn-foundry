@@ -493,6 +493,8 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 	if interfaces.IsConceptGroupMemberScopeDeferred(ctx) {
+		// SECURITY: these IDs have not passed object-type visibility filtering. The export-only
+		// caller must apply VisibleReferencedObjectTypes before returning the response.
 		for _, conceptGroup := range conceptGroups {
 			conceptGroup.ObjectTypeIDs = membersByGroup[conceptGroup.CGID]
 		}

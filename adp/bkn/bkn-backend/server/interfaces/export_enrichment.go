@@ -8,9 +8,12 @@ import "context"
 
 type deferredExportEnrichmentContextKey struct{}
 
-// WithDeferredExportEnrichment marks a request whose caller will finish cross-resource
+// WithDeferredExportEnrichment is an export-only marker whose caller will finish cross-resource
 // enrichment after all export sections have been loaded. This lets the caller reuse one object
 // map, one account-name batch, and the already-authorized relation and action lists.
+//
+// Security invariant: ListConceptGroups returns unfiltered ObjectTypeIDs while this marker is set.
+// The caller must filter those IDs through VisibleReferencedObjectTypes before returning any data.
 func WithDeferredExportEnrichment(ctx context.Context) context.Context {
 	return context.WithValue(ctx, deferredExportEnrichmentContextKey{}, true)
 }

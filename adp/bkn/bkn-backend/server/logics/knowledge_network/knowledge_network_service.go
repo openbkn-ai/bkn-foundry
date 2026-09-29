@@ -9,6 +9,7 @@ package knowledge_network
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -1238,13 +1239,21 @@ func runExportLoaders(ctx context.Context, concurrency int, loaders ...exportLoa
 
 	select {
 	case err := <-firstError:
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return exportRequestCanceledError(ctx, err)
+		}
 		return err
 	default:
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return exportRequestCanceledError(ctx, err)
 	}
 	return nil
+}
+
+func exportRequestCanceledError(ctx context.Context, cause error) *rest.HTTPError {
+	return rest.NewHTTPError(ctx, http.StatusRequestTimeout,
+		berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(cause.Error())
 }
 
 func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfaces.KN) (*interfaces.Statistics, error) {
