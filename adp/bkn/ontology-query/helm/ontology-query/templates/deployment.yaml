@@ -25,6 +25,10 @@ spec:
       labels:
         module: {{ .Values.moduleName }}
     spec:
+      # Explicitly overwrite the custom ServiceAccount used by earlier chart
+      # revisions so an in-place upgrade converges to the namespace default.
+      serviceAccountName: default
+      automountServiceAccountToken: false
 {{- with .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
