@@ -52,10 +52,10 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 		t.Fatal(err)
 	}
 	for file, expected := range map[string]string{
-		"schema.json":                   "d8c7d5e9cdc9ff31c49fcec21b5866ad159bb852d5987a759b24730bda1a6177",
-		"registry-runtime-v1.json":      "fabde54e44aea6791f51a950b4fee8f7d7ca80f11f4a8686dc4b222e4ffea59f",
-		"audit-record-golden.json":      "2976cc4822bc9a9248b1aa66de29916a35fcb9988b61a313d6e86fc68c17ce40",
-		"audit-kafka-golden.json":       "6ca65bf73f3345964d6a70eb95c3405e7145ebc64848aceabf16472057538dd4",
+		"schema.json":                   "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f",
+		"registry-runtime-v1.json":      "b8cf27603befc3c745c94572b2f209b741fb8d337a570153cba3de39333993c2",
+		"audit-record-golden.json":      "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3",
+		"audit-kafka-golden.json":       "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
 	} {
 		content, err := os.ReadFile("assets/" + file)

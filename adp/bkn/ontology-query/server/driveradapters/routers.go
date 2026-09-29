@@ -191,29 +191,38 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 			c.Request.Context(), "HTTP request", trace.WithSpanKind(trace.SpanKindServer),
 		)
 		c.Request = c.Request.WithContext(ctx)
-		c.Next()
-		endTime := time.Now()
-		durTime := endTime.Sub(beginTime).Seconds()
+		defer func() {
+			panicValue := recover()
+			if panicValue != nil && !c.Writer.Written() {
+				c.Status(http.StatusInternalServerError)
+			}
+			endTime := time.Now()
+			durTime := endTime.Sub(beginTime).Seconds()
 
-		logger.Debugf("access log: url: %s, method: %s, begin_time: %s, end_time: %s, subTime: %f",
-			c.Request.URL.Path,
-			c.Request.Method,
-			beginTime.Format(libCommon.RFC3339Milli),
-			endTime.Format(libCommon.RFC3339Milli),
-			durTime,
-		)
-		route := c.FullPath()
-		if route == "" {
-			route = "unmatched"
-		}
-		span.SetName(c.Request.Method + " " + route)
-		span.SetAttributes(operationSpanAttributes(c.Request.Method, route, c.Writer.Status())...)
-		if c.Writer.Status() >= http.StatusInternalServerError {
-			span.SetStatus(codes.Error, http.StatusText(c.Writer.Status()))
-		}
-		otellog.LogInfo(c.Request.Context(), "http.request.completed",
-			operationLogAttributes(c.Request.Method, route, c.Writer.Status())...)
-		span.End()
+			logger.Debugf("access log: url: %s, method: %s, begin_time: %s, end_time: %s, subTime: %f",
+				c.Request.URL.Path,
+				c.Request.Method,
+				beginTime.Format(libCommon.RFC3339Milli),
+				endTime.Format(libCommon.RFC3339Milli),
+				durTime,
+			)
+			route := c.FullPath()
+			if route == "" {
+				route = "unmatched"
+			}
+			span.SetName(c.Request.Method + " " + route)
+			span.SetAttributes(operationSpanAttributes(c.Request.Method, route, c.Writer.Status())...)
+			if c.Writer.Status() >= http.StatusInternalServerError {
+				span.SetStatus(codes.Error, http.StatusText(c.Writer.Status()))
+			}
+			otellog.LogInfo(c.Request.Context(), "http.request.completed",
+				operationLogAttributes(c.Request.Method, route, c.Writer.Status())...)
+			span.End()
+			if panicValue != nil {
+				panic(panicValue)
+			}
+		}()
+		c.Next()
 	}
 }
 

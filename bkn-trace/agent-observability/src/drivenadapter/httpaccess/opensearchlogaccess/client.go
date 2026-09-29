@@ -267,8 +267,6 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 		ActorID:             stringAttribute(document.Attributes, "actor_id", ""),
 		EffectiveSubjectID:  stringAttribute(document.Attributes, "effective_subject_id", ""),
 		ApplicationID:       stringAttribute(document.Attributes, "application_id", ""),
-		IngressPrincipal:    stringAttribute(document.Attributes, "ingress_principal", ""),
-		TrustLevel:          stringAttribute(document.Attributes, "trust_level", ""),
 		RequestID:           stringAttribute(document.Attributes, "request_id", ""),
 		TraceID:             firstNonEmpty(document.TraceID, stringAttribute(document.Attributes, "trace_id", "")),
 		SpanID:              firstNonEmpty(document.SpanID, stringAttribute(document.Attributes, "span_id", "")),

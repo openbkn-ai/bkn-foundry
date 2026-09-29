@@ -158,7 +158,7 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 }
 
 func boundedAuditReference(value string, limit int) string {
-	if len(value) <= limit && !credentialShaped(value) {
+	if len(value) <= limit {
 		return value
 	}
 	sum := sha256.Sum256([]byte(value))
@@ -167,18 +167,10 @@ func boundedAuditReference(value string, limit int) string {
 
 func safeAuditDisplayName(value string, limit int) string {
 	name := strings.TrimSpace(value)
-	if len(name) > limit || credentialShaped(name) {
+	if len(name) > limit {
 		return ""
 	}
 	return name
-}
-
-func credentialShaped(value string) bool {
-	if strings.HasPrefix(strings.ToLower(value), "bearer ") {
-		return true
-	}
-	parts := strings.Split(value, "_")
-	return len(parts) == 3 && parts[0] == "bak" && len(parts[1]) == 12 && len(parts[2]) == 27
 }
 
 func validAuditEnvironment(value string) bool {

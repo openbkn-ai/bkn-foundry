@@ -150,7 +150,7 @@ func TestBuildKafkaAuditRecordAliasesOversizedUntrustedReferences(t *testing.T) 
 	}
 }
 
-func TestBuildKafkaAuditRecordOmitsCredentialShapedCallerTextWithoutDroppingAudit(t *testing.T) {
+func TestBuildKafkaAuditRecordPreservesCallerTextWithoutGuessingSecrets(t *testing.T) {
 	entry := Entry{EventID: "evt-source-redaction", EventTime: time.Now().UTC(),
 		ActorID: "user-a", ActorName: "Bearer abcdefghijklmnop", RequestID: "req-1",
 		Method: "POST", HTTPStatus: 201, Action: "create", TargetType: "knowledge_network",
@@ -161,7 +161,7 @@ func TestBuildKafkaAuditRecordOmitsCredentialShapedCallerTextWithoutDroppingAudi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(value), "abcdefghijklmnop") || strings.Contains(string(value), "abcdefghijklmnopqrstuvwxyz1") {
-		t.Fatal("source leaked credential-shaped display text")
+	if !strings.Contains(string(value), "Bearer abcdefghijklmnop") || !strings.Contains(string(value), "bak_123456789012_abcdefghijklmnopqrstuvwxyz1") {
+		t.Fatal("source rewrote valid audit display text based on content")
 	}
 }

@@ -76,7 +76,7 @@ func TestLogHandlerReturnsOnlyTheOperationAuditContract(t *testing.T) {
 		Category: observabilityvo.CategoryRuntimeBusiness, EventName: "knowledge.read.completed",
 		EventTimestamp: time.Now().UTC(), ObservedTimestamp: time.Now().UTC(),
 		SeverityNumber: 9, SeverityText: "INFO", Outcome: "success", SafeSummary: "读取需求预测对象",
-		ServiceName: "context-loader", Environment: "local", EffectiveSubjectID: "other-a", IngressPrincipal: "otel-collector", TrustLevel: "trusted",
+		ServiceName: "context-loader", Environment: "local", EffectiveSubjectID: "other-a",
 		KnowledgeNetworkIDs: []string{"kn-a"}, TraceID: "4b3d59daeff5bfbb23d46c47a5051ec9",
 	}})
 	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?business_module=domain_knowledge_network&limit=20", nil)
@@ -116,7 +116,7 @@ func TestLogHandlerReturnsOnlyTheOperationAuditContract(t *testing.T) {
 	}
 	for _, legacyField := range []string{
 		"log_id", "source_log_id", "severity_number", "severity_text",
-		"safe_summary", "service_name", "deployment_environment", "ingress_principal", "trust_level", "module",
+		"safe_summary", "service_name", "deployment_environment", "module",
 		"action", "target_type", "target_id", "request_id", "trace_id", "conversation_id",
 	} {
 		if _, exists := data[0].(map[string]any)[legacyField]; exists {
@@ -237,8 +237,8 @@ func TestLogSourceInventorySeparatesRegisteredTargetsFromQueryableSources(t *tes
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.RegistryVersion != "0.3.31" || len(body.Data) != 15 {
-		t.Fatalf("expected 15 runtime sources in 0.3.31 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
+	if body.RegistryVersion != "0.3.32" || len(body.Data) != 15 {
+		t.Fatalf("expected 15 runtime sources in 0.3.32 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
 	}
 	modelManagerFound := false
 	for _, source := range body.Data {
@@ -462,12 +462,6 @@ func newTestLogHandler(profile evidencevo.AccessProfile, records []observability
 			default:
 				records[index].EventName = "sandbox.session.changed"
 			}
-		}
-		if records[index].TrustLevel == "" {
-			records[index].TrustLevel = "trusted"
-		}
-		if records[index].IngressPrincipal == "" {
-			records[index].IngressPrincipal = "test-gateway"
 		}
 	}
 	resolver := &fakeAccessScopeResolver{profile: profile}

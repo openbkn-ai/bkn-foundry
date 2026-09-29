@@ -54,6 +54,20 @@ func TestOperationSpanAttributesUseRouteTemplate(t *testing.T) {
 	}
 }
 
+func TestAccessLogFinalizesAndPreservesPanic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := &restHandler{}
+	router := gin.New()
+	router.Use(handler.AccessLog())
+	router.Use(gin.Recovery())
+	router.GET("/panic", func(*gin.Context) { panic("boom") })
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/panic", nil))
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected recovered 500, got %d", recorder.Code)
+	}
+}
+
 // setGinMode sets Gin to test mode and returns a restore function.
 func setGinMode() func() {
 	oldMode := gin.Mode()

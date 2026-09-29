@@ -35,7 +35,6 @@ const operationAuditTargetIDKey = "vega.operation_audit.target_id"
 const maximumOperationAuditRequestBody = 64 << 10
 
 var operationAuditFieldName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,127}$`)
-var operationAuditSecretValue = regexp.MustCompile(`(?i)(?:bearer\s+[a-z0-9._~-]{8,}|bkn_[a-z0-9._~-]{8,}|^bak_[a-z0-9._-]{12,}$)`)
 
 type operationAuditRecorder interface {
 	Record(context.Context, operationaudit.Entry) error
@@ -111,11 +110,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 func operationAuditChangedFields(request map[string]any) []string {
 	fields := make([]string, 0, len(request))
 	for name := range request {
-		lower := strings.ToLower(name)
-		if !operationAuditFieldName.MatchString(name) || operationAuditSecretValue.MatchString(name) ||
-			strings.Contains(lower, "password") ||
-			strings.Contains(lower, "secret") || strings.Contains(lower, "token") ||
-			strings.Contains(lower, "credential") {
+		if !operationAuditFieldName.MatchString(name) {
 			continue
 		}
 		fields = append(fields, name)
@@ -128,11 +123,10 @@ func operationAuditChangedFields(request map[string]any) []string {
 }
 
 func operationAuditCorrelationID(requestID string) string {
-	if len(requestID) <= 128 && !operationAuditSecretValue.MatchString(requestID) {
+	if len(requestID) <= 128 {
 		return requestID
 	}
-	// Trace permits longer or token-shaped client IDs than the frozen Audit
-	// record. A deterministic alias keeps the event admissible.
+	// A deterministic alias keeps oversized IDs within the frozen Audit record.
 	digest := sha256.Sum256([]byte(requestID))
 	return "req_" + hex.EncodeToString(digest[:])
 }
@@ -179,7 +173,7 @@ func operationAuditTarget(c *gin.Context, targetType string, request map[string]
 		digest := sha256.Sum256([]byte(targetID))
 		return "batch:" + hex.EncodeToString(digest[:]), fmt.Sprintf("%d targets", strings.Count(targetID, ",")+1)
 	}
-	if len(targetID) > 256 || operationAuditSecretValue.MatchString(targetID) {
+	if len(targetID) > 256 {
 		digest := sha256.Sum256([]byte(targetID))
 		targetID = "sha256:" + hex.EncodeToString(digest[:])
 	}
@@ -193,9 +187,6 @@ func operationAuditTarget(c *gin.Context, targetType string, request map[string]
 		}
 	}
 	if name == "" {
-		name = targetID
-	}
-	if operationAuditSecretValue.MatchString(name) {
 		name = targetID
 	}
 	return targetID, name

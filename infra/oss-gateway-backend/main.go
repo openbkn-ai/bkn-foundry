@@ -8,6 +8,7 @@ import (
 	"oss-gateway/internal/logger"
 	"oss-gateway/internal/server"
 	"oss-gateway/pkg/crypto"
+	"strconv"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
@@ -19,8 +20,8 @@ func main() {
 	providers, err := otel.InitOTel(context.Background(), &otel.OtelConfig{
 		ServiceName: "oss-gateway-backend", ServiceVersion: "0.2.0",
 		Environment: os.Getenv("ENVIRONMENT"), OTLPEndpoint: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-		Trace: otel.TraceConf{Enabled: true, SamplingRate: 1},
-		Log:   otel.LogConf{Enabled: true, Level: "info"},
+		Trace: otel.TraceConf{Enabled: envEnabled("TRACE_ENABLED", true), SamplingRate: 1},
+		Log:   otel.LogConf{Enabled: envEnabled("LOG_ENABLED", true), Level: "info"},
 	})
 	if err != nil {
 		log.WithError(err).Warn("OTLP observability unavailable; business continues")
@@ -36,4 +37,16 @@ func main() {
 
 	srv := server.NewServer(cfg, log, db, aesCrypto)
 	srv.Start()
+}
+
+func envEnabled(name string, fallback bool) bool {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return enabled
 }

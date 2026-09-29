@@ -150,11 +150,11 @@ func TestOperationAuditUsesCreatedResourceID(t *testing.T) {
 	assert.Equal(t, "created-catalog-1", recorder.entries[0].TargetID)
 }
 
-func TestOperationAuditChangedFieldsRejectsUntrustedNames(t *testing.T) {
+func TestOperationAuditChangedFieldsUsesStructureAndSourceOwnedSensitiveFields(t *testing.T) {
 	fields := operationAuditChangedFields(map[string]any{
-		"name": "safe", "Bearer abcdefghi": "ignored", "bkn_abcdefgh": "ignored", "bak_abcdefghijkl": "ignored",
+		"name": "safe", "Bearer abcdefghi": "invalid structure", "bkn_abcdefgh": "kept", "bak_abcdefghijkl": "kept", "password_hint": "kept",
 	})
-	assert.Equal(t, []string{"name"}, fields)
+	assert.Equal(t, []string{"bak_abcdefghijkl", "bkn_abcdefgh", "name", "password_hint"}, fields)
 }
 
 func TestOperationAuditNormalizesOversizedRequestID(t *testing.T) {
@@ -179,12 +179,11 @@ func TestOperationAuditNormalizesOversizedRequestID(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestOperationAuditNormalizesSecretLikeRequestID(t *testing.T) {
+func TestOperationAuditPreservesValidRequestIDRegardlessOfContent(t *testing.T) {
 	requestID := "req_bkn_abcdefghijkl"
 	alias := operationAuditCorrelationID(requestID)
-	assert.NotEqual(t, requestID, alias)
+	assert.Equal(t, requestID, alias)
 	assert.Equal(t, alias, operationAuditCorrelationID(requestID))
-	assert.NotContains(t, alias, "bkn_")
 	entry := operationaudit.Entry{
 		EventID: uuid.NewString(), EventTime: time.Now().UTC(), ActorID: "user-1",
 		RequestID: alias, SourceChannel: "api", Method: "PUT", HTTPStatus: 204,
@@ -236,14 +235,14 @@ func TestOperationAuditTargetUsesConnectorType(t *testing.T) {
 	assert.Equal(t, "mysql", id)
 }
 
-func TestOperationAuditTargetExcludesSecretLikeInput(t *testing.T) {
+func TestOperationAuditTargetPreservesValidInputRegardlessOfContent(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
 	context.Params = gin.Params{{Key: "id", Value: "bkn_abcdefghijklm"}}
 	id, name := operationAuditTarget(context, "catalog", map[string]any{"name": "Bearer abcdefghi"}, "req-a")
-	assert.NotContains(t, id, "bkn_")
-	assert.NotContains(t, name, "Bearer")
+	assert.Equal(t, "bkn_abcdefghijklm", id)
+	assert.Equal(t, "Bearer abcdefghi", name)
 	entry := operationaudit.Entry{
 		EventID: uuid.NewString(), EventTime: time.Now().UTC(), ActorID: "user-1",
 		RequestID: "req-a", SourceChannel: "api", Method: "PUT", HTTPStatus: 204,
@@ -253,8 +252,8 @@ func TestOperationAuditTargetExcludesSecretLikeInput(t *testing.T) {
 	assert.NoError(t, err)
 	context.Params = gin.Params{{Key: "id", Value: "bak_abcdefghijkl"}}
 	id, name = operationAuditTarget(context, "catalog", map[string]any{"name": "bak_abcdefghijkl"}, "req-a")
-	assert.NotContains(t, id, "bak_")
-	assert.NotContains(t, name, "bak_")
+	assert.Equal(t, "bak_abcdefghijkl", id)
+	assert.Equal(t, "bak_abcdefghijkl", name)
 }
 
 func TestOperationAuditDoesNotFetchDisplayNameDuringBusinessRequest(t *testing.T) {

@@ -65,6 +65,6 @@ func TestBuildKafkaAuditRecord(t *testing.T) {
 	entry.TargetName = "bak_123456789012_abcdefghijklmnopqrstuvwxyz1"
 	value, err = BuildKafkaAuditRecord(entry, "test")
 	require.NoError(t, err)
-	assert.NotContains(t, string(value), "abcdefghijklmnop")
-	assert.NotContains(t, string(value), "abcdefghijklmnopqrstuvwxyz1")
+	assert.Contains(t, string(value), "Bearer abcdefghijklmnop")
+	assert.Contains(t, string(value), "bak_123456789012_abcdefghijklmnopqrstuvwxyz1")
 }

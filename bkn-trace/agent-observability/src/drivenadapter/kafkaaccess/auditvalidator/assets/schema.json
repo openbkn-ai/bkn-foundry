@@ -188,69 +188,14 @@
       "then": { "properties": { "request_context": { "properties": { "source_channel": { "enum": ["api", "cli", "mcp", "sdk", "studio"] } } } } }
     },
     {
-      "if": {
-        "properties": {
-          "category": { "const": "audit.security" },
-          "event_name": { "not": { "enum": ["authorization.decided", "log.query.authorized", "log.query.denied"] } }
-        },
-        "required": ["category", "event_name"]
-      },
-      "then": {
-        "properties": {
-          "facts": { "required": ["decision", "policy_revision", "resource_scope"] }
-        }
-      }
-    },
-    {
       "if": { "properties": { "event_name": { "const": "authorization.decided" } }, "required": ["event_name"] },
       "then": { "properties": { "facts": { "required": ["action", "decision", "resource_scope"] } } }
-    },
-    {
-      "if": { "properties": { "event_name": { "const": "access.anomaly_detected" } }, "required": ["event_name"] },
-      "then": { "properties": { "facts": { "required": ["decision", "policy_revision", "resource_scope", "detection_rule_id"] } } }
-    },
-    {
-      "if": { "properties": { "event_name": { "const": "audit_retention_policy.changed" } }, "required": ["event_name"] },
-      "then": {
-        "properties": {
-          "source_id": { "const": "agent-observability" },
-          "category": { "const": "audit.admin" },
-          "target": {
-            "properties": {
-              "type": { "const": "audit_retention_policy" },
-              "id": { "const": "global" }
-            }
-          },
-          "scope": {
-            "properties": {
-              "business_module": { "const": "observability" },
-              "platform_scope": { "const": true },
-              "knowledge_network_ids": { "maxItems": 0 }
-            }
-          },
-          "facts": {
-            "required": ["action", "decision", "previous_retention_days", "retention_days", "change_reason"],
-            "properties": {
-              "action": { "const": "update" },
-              "decision": { "const": "allowed" }
-            }
-          },
-          "outcome": { "const": "success" }
-        }
-      }
     },
     {
       "if": {
         "properties": {
           "event_name": {
             "enum": [
-              "role.updated",
-              "model_config.changed",
-              "resource_config.changed",
-              "tool.config.changed",
-              "skill.config.changed",
-              "toolbox.config.changed",
-              "mcp.config.changed",
               "trace_evidence.configuration_change_requested"
             ]
           }
@@ -270,13 +215,6 @@
         "properties": {
           "event_name": {
             "enum": [
-              "role.updated",
-              "model_config.changed",
-              "resource_config.changed",
-              "tool.config.changed",
-              "skill.config.changed",
-              "toolbox.config.changed",
-              "mcp.config.changed",
               "trace_evidence.configuration_change_requested"
             ]
           },
@@ -301,13 +239,6 @@
         "properties": {
           "event_name": {
             "enum": [
-              "role.updated",
-              "model_config.changed",
-              "resource_config.changed",
-              "tool.config.changed",
-              "skill.config.changed",
-              "toolbox.config.changed",
-              "mcp.config.changed",
               "trace_evidence.configuration_change_requested"
             ]
           },
@@ -329,13 +260,6 @@
         "properties": {
           "event_name": {
             "enum": [
-              "role.updated",
-              "model_config.changed",
-              "resource_config.changed",
-              "tool.config.changed",
-              "skill.config.changed",
-              "toolbox.config.changed",
-              "mcp.config.changed",
               "trace_evidence.configuration_change_requested"
             ]
           },
