@@ -8,7 +8,6 @@
 package resource
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -767,8 +766,8 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		previousDefinition := resource.LogicDefinition
 		previousSchema := resource.SchemaDefinition
 		previousMetadata := resource.SourceMetadata
-		if logicViewDefinitionEqual(previousDefinition, req.LogicDefinition) &&
-			reflect.DeepEqual(previousSchema, req.SchemaDefinition) {
+		if jsonNumbersEqual(previousDefinition, req.LogicDefinition) &&
+			jsonNumbersEqual(previousSchema, req.SchemaDefinition) {
 			if properties, ok := previousMetadata["properties"]; ok {
 				if req.SourceMetadata == nil {
 					req.SourceMetadata = make(map[string]any)
@@ -929,30 +928,30 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	return nil
 }
 
-func logicViewDefinitionEqual(current, next any) bool {
-	currentValue, err := comparableLogicViewDefinition(current)
+// jsonNumbersEqual compares JSON-backed values without treating float64 and
+// json.Number representations of the same number as a schema change.
+func jsonNumbersEqual(current, next any) bool {
+	currentValue, err := comparableJSONValue(current)
 	if err != nil {
 		return false
 	}
-	nextValue, err := comparableLogicViewDefinition(next)
+	nextValue, err := comparableJSONValue(next)
 	return err == nil && reflect.DeepEqual(currentValue, nextValue)
 }
 
-func comparableLogicViewDefinition(definition any) (any, error) {
-	encoded, err := json.Marshal(definition)
+func comparableJSONValue(value any) (any, error) {
+	encoded, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.UseNumber()
 	var decoded any
-	if err := decoder.Decode(&decoded); err != nil {
+	if err := common.UnmarshalPreciseJSON(encoded, &decoded); err != nil {
 		return nil, err
 	}
-	return normalizeLogicViewNumbers(decoded), nil
+	return normalizeJSONNumbers(decoded), nil
 }
 
-func normalizeLogicViewNumbers(value any) any {
+func normalizeJSONNumbers(value any) any {
 	switch v := value.(type) {
 	case json.Number:
 		if number, ok := new(big.Rat).SetString(string(v)); ok {
@@ -961,11 +960,11 @@ func normalizeLogicViewNumbers(value any) any {
 		return v
 	case []any:
 		for i := range v {
-			v[i] = normalizeLogicViewNumbers(v[i])
+			v[i] = normalizeJSONNumbers(v[i])
 		}
 	case map[string]any:
 		for key := range v {
-			v[key] = normalizeLogicViewNumbers(v[key])
+			v[key] = normalizeJSONNumbers(v[key])
 		}
 	}
 	return value
@@ -1513,8 +1512,8 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
 		}
 		req.SchemaDefinition = viewFields
-		return !logicViewDefinitionEqual(resource.LogicDefinition, req.LogicDefinition) ||
-			!reflect.DeepEqual(resource.SchemaDefinition, viewFields), nil
+		return !jsonNumbersEqual(resource.LogicDefinition, req.LogicDefinition) ||
+			!jsonNumbersEqual(resource.SchemaDefinition, viewFields), nil
 	}
 	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {
@@ -1854,7 +1853,7 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 		requestedComparable.DisplayName = ""
 		requestedComparable.Description = ""
 		requestedComparable.Features = nil
-		if !reflect.DeepEqual(currentComparable, requestedComparable) {
+		if !jsonNumbersEqual(currentComparable, requestedComparable) {
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
 		}
 		if !mutableFeaturesEqual(currentProp.Features, requestedProp.Features) {
@@ -1925,7 +1924,7 @@ func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool 
 			currentCopy[i].Config = config
 		}
 	}
-	return reflect.DeepEqual(currentCopy, requestedCopy)
+	return jsonNumbersEqual(currentCopy, requestedCopy)
 }
 
 func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) []*interfaces.Property {
