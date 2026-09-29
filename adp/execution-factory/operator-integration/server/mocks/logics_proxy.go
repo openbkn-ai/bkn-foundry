@@ -57,44 +57,6 @@ func (mr *MockProxyHandlerMockRecorder) HandlerRequest(ctx, req any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandlerRequest", reflect.TypeOf((*MockProxyHandler)(nil).HandlerRequest), ctx, req)
 }
 
-// MockIOutboxMessageEvent is a mock of IOutboxMessageEvent interface.
-type MockIOutboxMessageEvent struct {
-	ctrl     *gomock.Controller
-	recorder *MockIOutboxMessageEventMockRecorder
-	isgomock struct{}
-}
-
-// MockIOutboxMessageEventMockRecorder is the mock recorder for MockIOutboxMessageEvent.
-type MockIOutboxMessageEventMockRecorder struct {
-	mock *MockIOutboxMessageEvent
-}
-
-// NewMockIOutboxMessageEvent creates a new mock instance.
-func NewMockIOutboxMessageEvent(ctrl *gomock.Controller) *MockIOutboxMessageEvent {
-	mock := &MockIOutboxMessageEvent{ctrl: ctrl}
-	mock.recorder = &MockIOutboxMessageEventMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockIOutboxMessageEvent) EXPECT() *MockIOutboxMessageEventMockRecorder {
-	return m.recorder
-}
-
-// Publish mocks base method.
-func (m *MockIOutboxMessageEvent) Publish(ctx context.Context, req *interfaces.OutboxMessageReq) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Publish", ctx, req)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Publish indicates an expected call of Publish.
-func (mr *MockIOutboxMessageEventMockRecorder) Publish(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*MockIOutboxMessageEvent)(nil).Publish), ctx, req)
-}
-
 // MockForwarder is a mock of Forwarder interface.
 type MockForwarder struct {
 	ctrl     *gomock.Controller

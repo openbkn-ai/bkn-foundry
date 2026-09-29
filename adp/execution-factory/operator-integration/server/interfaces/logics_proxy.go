@@ -12,11 +12,6 @@ type ProxyHandler interface {
 	HandlerRequest(ctx context.Context, req *HTTPRequest) (resp *HTTPResponse, err error)
 }
 
-// IOutboxMessageEvent message event management.
-type IOutboxMessageEvent interface {
-	Publish(ctx context.Context, req *OutboxMessageReq) (err error)
-}
-
 // Forwarder forwarder interface.
 type Forwarder interface {
 	Forward(ctx context.Context, req *HTTPRequest) (*HTTPResponse, error)

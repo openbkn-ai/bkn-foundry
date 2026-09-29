@@ -168,19 +168,3 @@ const (
 	BizStatusOffline   BizStatus = "offline"   // Removed.
 	BizStatusEditing   BizStatus = "editing"   // Published and editing.
 )
-
-// OutboxMessageReq message event request.
-type OutboxMessageReq struct {
-	EventID   string                 `json:"event_id"`
-	EventType OutboxMessageEventType `json:"event_type" validate:"required"`
-	Topic     string                 `json:"topic" validate:"required"`
-	Payload   string                 `json:"payload" validate:"required"`
-}
-
-// OutboxMessageEventType message event type.
-type OutboxMessageEventType string
-
-// String Returns a string.
-func (eventType OutboxMessageEventType) String() string {
-	return string(eventType)
-}
