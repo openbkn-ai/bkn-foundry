@@ -62,7 +62,8 @@ type PermissionRequestConfig struct {
 	Disabled bool `yaml:"disabled" env:"CONTEXT_LOADER_PERMISSION_REQUEST_DISABLED"`
 	// PathTemplate is the Studio route, relative to the host the caller used.
 	// Placeholders: {kn_id}, {ot_id} and {scope_code} (1 grant, 2 row filter,
-	// 3 property access).
+	// 3 property access). The dialog prefill values (operations or properties,
+	// reason, source=agent) are appended to it.
 	PathTemplate string `yaml:"path_template" env:"CONTEXT_LOADER_PERMISSION_REQUEST_PATH_TEMPLATE" default:"/studio/knowledge-network/workspace/{kn_id}/object-types/{ot_id}/detail?requestPermission={scope_code}"`
 }
 

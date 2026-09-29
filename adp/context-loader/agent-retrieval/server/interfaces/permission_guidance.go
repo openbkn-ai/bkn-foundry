@@ -47,6 +47,9 @@ type PermissionShortfall struct {
 // and where the user can request more access. It is attached to a refused call
 // and to a successful call whose result was masked or narrowed.
 type PermissionGuidance struct {
+	// Message is a localized sentence for the user: what was withheld and the
+	// next step (request and wait for approval, or ask an administrator).
+	Message    string                     `json:"message"`
 	Resource   PermissionGuidanceResource `json:"resource"`
 	Shortfalls []PermissionShortfall      `json:"shortfalls"`
 }

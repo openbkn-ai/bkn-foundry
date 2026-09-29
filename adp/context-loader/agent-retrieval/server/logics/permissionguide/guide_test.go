@@ -9,7 +9,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,6 +42,20 @@ func (s objectTypeReaderStub) GetObjectTypeDetail(_ context.Context, _ string, o
 	return []*interfaces.ObjectType{{ID: otIDs[0], Name: s.name}}, nil
 }
 
+// splitLink separates a request link into its route and query values.
+func splitLink(t *testing.T, link string) (string, url.Values) {
+	t.Helper()
+	parsed, err := url.Parse(link)
+	if err != nil {
+		t.Fatalf("link %q does not parse: %v", link, err)
+	}
+	route := parsed.Path
+	if parsed.Host != "" {
+		route = parsed.Scheme + "://" + parsed.Host + route
+	}
+	return route, parsed.Query()
+}
+
 func forbidden() error {
 	return &infraErr.HTTPError{HTTPCode: http.StatusForbidden, Code: "Public.Forbidden"}
 }
@@ -60,17 +76,33 @@ func TestForbiddenQueryGetsGrantLinkOnTheCallersHost(t *testing.T) {
 
 	got := guide.ForObjectTypeError(userCtx("https://bkn.example.com"), forbidden(), "55555", "6666")
 
+	link := got.Shortfalls[0].RequestPermissionURL
+	got.Shortfalls[0].RequestPermissionURL = ""
 	want := &interfaces.PermissionGuidance{
+		Message: "你暂无「客户信息」的数据查询权限，无法完成本次查询。可通过申请权限链接提交申请；提交后请等待管理员完成授权，再重新发起任务。",
 		Resource: interfaces.PermissionGuidanceResource{
 			Type: "object_type", ID: "55555/6666", KnID: "55555", OtID: "6666", Name: "客户信息",
 		},
 		Shortfalls: []interfaces.PermissionShortfall{{
 			Scope: interfaces.PermissionScopeGrant, Operations: []string{"query_data"},
-			RequestPermissionURL: "https://bkn.example.com/studio/knowledge-network/workspace/55555/object-types/6666/detail?requestPermission=1",
 		}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("guidance = %+v\nwant %+v", got, want)
+	}
+
+	route, query := splitLink(t, link)
+	if route != "https://bkn.example.com/studio/knowledge-network/workspace/55555/object-types/6666/detail" {
+		t.Fatalf("route = %q", route)
+	}
+	wantQuery := url.Values{
+		"requestPermission": {"1"},
+		"operations":        {"query_data"},
+		"reason":            {"智能体查询「客户信息」的数据时缺少数据查询权限"},
+		"source":            {"agent"},
+	}
+	if !reflect.DeepEqual(query, wantQuery) {
+		t.Fatalf("query = %v, want %v", query, wantQuery)
 	}
 }
 
@@ -79,9 +111,9 @@ func TestInClusterCallerGetsARelativeLink(t *testing.T) {
 
 	got := guide.ForObjectTypeError(userCtx(""), forbidden(), "kn", "ot")
 
-	if link := got.Shortfalls[0].RequestPermissionURL; link !=
-		"/studio/knowledge-network/workspace/kn/object-types/ot/detail?requestPermission=1" {
-		t.Fatalf("link = %q, want the path on the Studio host", link)
+	if route, _ := splitLink(t, got.Shortfalls[0].RequestPermissionURL); route !=
+		"/studio/knowledge-network/workspace/kn/object-types/ot/detail" {
+		t.Fatalf("route = %q, want the path on the Studio host", route)
 	}
 }
 
@@ -148,13 +180,31 @@ func TestSuccessfulQueryReportsMaskingAndRowFilter(t *testing.T) {
 	}
 	properties, rows := got.Shortfalls[0], got.Shortfalls[1]
 	if properties.Scope != interfaces.PermissionScopePropertyGrants ||
-		!reflect.DeepEqual(properties.Properties, []string{"phone", "salary"}) ||
-		properties.RequestPermissionURL != "https://bkn.example.com/studio/knowledge-network/workspace/kn/object-types/ot/detail?requestPermission=3" {
+		!reflect.DeepEqual(properties.Properties, []string{"phone", "salary"}) {
 		t.Fatalf("property shortfall = %+v", properties)
 	}
-	if rows.Scope != interfaces.PermissionScopeRowFilter ||
-		rows.RequestPermissionURL != "https://bkn.example.com/studio/knowledge-network/workspace/kn/object-types/ot/detail?requestPermission=2" {
+	if !strings.Contains(properties.RequestPermissionURL, "properties=phone,salary&") {
+		t.Fatalf("property list must keep literal commas: %s", properties.RequestPermissionURL)
+	}
+	_, query := splitLink(t, properties.RequestPermissionURL)
+	if want := (url.Values{
+		"requestPermission": {"3"}, "properties": {"phone,salary"},
+		"reason": {"智能体需要读取「客户信息」中字段 phone、salary 的原始值"}, "source": {"agent"},
+	}); !reflect.DeepEqual(query, want) {
+		t.Fatalf("property link query = %v, want %v", query, want)
+	}
+	if rows.Scope != interfaces.PermissionScopeRowFilter {
 		t.Fatalf("row-filter shortfall = %+v", rows)
+	}
+	_, query = splitLink(t, rows.RequestPermissionURL)
+	if want := (url.Values{
+		"requestPermission": {"2"},
+		"reason":            {"智能体查询「客户信息」时受行访问范围限制，需要扩大访问范围"}, "source": {"agent"},
+	}); !reflect.DeepEqual(query, want) {
+		t.Fatalf("row-filter link query = %v, want %v", query, want)
+	}
+	if strings.Contains(rows.RequestPermissionURL, "+") {
+		t.Fatalf("spaces must be encoded as %%20, not +: %s", rows.RequestPermissionURL)
 	}
 }
 
@@ -216,8 +266,38 @@ func TestIDsAreEscapedIntoThePath(t *testing.T) {
 
 	got := guide.ForObjectTypeError(userCtx(""), forbidden(), "kn/../x", "o t")
 
-	if path := got.Shortfalls[0].RequestPermissionURL; path !=
-		"/studio/knowledge-network/workspace/kn%2F..%2Fx/object-types/o%20t/detail?requestPermission=1" {
-		t.Fatalf("path = %q", path)
+	if link := got.Shortfalls[0].RequestPermissionURL; !strings.HasPrefix(link,
+		"/studio/knowledge-network/workspace/kn%2F..%2Fx/object-types/o%20t/detail?requestPermission=1&") {
+		t.Fatalf("link = %q", link)
+	}
+}
+
+func TestMessageAsksUnlinkedCallersToContactAnAdministrator(t *testing.T) {
+	guide := newTestGuide(&schemaProbeStub{err: forbidden()})
+
+	got := guide.ForObjectTypeError(userCtx(""), forbidden(), "kn", "ot")
+
+	if want := "你暂无「该对象类」的数据查询权限，无法完成本次查询。请联系管理员授权。"; got.Message != want {
+		t.Fatalf("message = %q, want %q", got.Message, want)
+	}
+}
+
+func TestMessageFollowsTheRequestLanguage(t *testing.T) {
+	guide := newTestGuide(&schemaProbeStub{})
+	ctx := common.SetLanguageToCtx(userCtx(""), common.Language("en-US"))
+
+	got := guide.ForObjectQuery(ctx, "kn", "ot", map[string]interfaces.PropertyAccessLevel{
+		"phone": interfaces.PropertyAccessMasked, "salary": interfaces.PropertyAccessSchema,
+	}, true)
+
+	want := "In “客户信息”, the raw values of phone, salary are not available to you. " +
+		"You can access only part of the data in “客户信息”, so the result may be incomplete. " +
+		"You can submit a request through the request link; after submitting, wait for an administrator to approve it, then rerun the task."
+	if got.Message != want {
+		t.Fatalf("message = %q\nwant      %q", got.Message, want)
+	}
+	_, query := splitLink(t, got.Shortfalls[0].RequestPermissionURL)
+	if reason := query.Get("reason"); reason != "The agent needs the raw values of phone, salary in “客户信息”" {
+		t.Fatalf("reason = %q", reason)
 	}
 }

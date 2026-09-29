@@ -144,22 +144,56 @@ func (g *Guide) build(ctx context.Context, knID, otID string,
 		},
 		Shortfalls: shortfalls,
 	}
-	if !g.canRequest(ctx) {
-		return guidance
-	}
-	seen := g.lookup(ctx, knID, otID)
-	if !seen.viewable {
+	linked := false
+	if g.canRequest(ctx) {
 		// Studio's request dialog needs the object type page; a caller who
 		// cannot view it gets no link and no name, only the refusal.
-		return guidance
+		if seen := g.lookup(ctx, knID, otID); seen.viewable {
+			guidance.Resource.Name = seen.name
+			// Without a known public origin the link stays relative to the Studio host.
+			origin := common.GetPublicOriginFromCtx(ctx)
+			for i := range guidance.Shortfalls {
+				guidance.Shortfalls[i].RequestPermissionURL = origin +
+					g.requestPath(ctx, knID, otID, seen.name, guidance.Shortfalls[i])
+			}
+			linked = true
+		}
 	}
-	guidance.Resource.Name = seen.name
-	// Without a known public origin the link stays relative to the Studio host.
-	origin := common.GetPublicOriginFromCtx(ctx)
-	for i := range guidance.Shortfalls {
-		guidance.Shortfalls[i].RequestPermissionURL = origin + g.requestPath(knID, otID, guidance.Shortfalls[i].Scope)
-	}
+	guidance.Message = message(ctx, guidance, linked)
 	return guidance
+}
+
+// message renders the user-facing sentence: one clause per shortfall, then
+// the next step. With a link the user is told to wait for approval before
+// rerunning, since a submitted request does not change access by itself.
+func message(ctx context.Context, guidance *interfaces.PermissionGuidance, linked bool) string {
+	name := guidance.Resource.Name
+	if name == "" {
+		name = infraErr.LocalizedDetail(ctx, "PermissionGuidanceUnnamedObjectType")
+	}
+	var parts []string
+	for _, shortfall := range guidance.Shortfalls {
+		switch shortfall.Scope {
+		case interfaces.PermissionScopeGrant:
+			parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceGrant", name))
+		case interfaces.PermissionScopePropertyGrants:
+			separator := infraErr.LocalizedDetail(ctx, "PermissionGuidanceListSeparator")
+			parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidancePropertyGrants",
+				name, strings.Join(shortfall.Properties, separator)))
+		case interfaces.PermissionScopeRowFilter:
+			parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceRowFilter", name))
+		}
+	}
+	if linked {
+		parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceRequestHint"))
+	} else {
+		parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceContactAdmin"))
+	}
+	separator := ""
+	if language := strings.ToLower(string(common.GetLanguageFromCtx(ctx))); strings.HasPrefix(language, "en") {
+		separator = " "
+	}
+	return strings.Join(parts, separator)
 }
 
 // canRequest reports whether a request link can help this caller. Studio
@@ -172,12 +206,55 @@ func (g *Guide) canRequest(ctx context.Context) bool {
 	return ok && auth != nil && auth.AccountID != "" && auth.AccountType == interfaces.AccessorTypeUser
 }
 
-func (g *Guide) requestPath(knID, otID string, scope interfaces.PermissionRequestScope) string {
-	return strings.NewReplacer(
+// requestPath fills the route template and appends the values Studio uses to
+// prefill the request dialog: the operations or properties to request, a
+// default reason and source=agent for audit.
+func (g *Guide) requestPath(ctx context.Context, knID, otID, name string,
+	shortfall interfaces.PermissionShortfall) string {
+	path := strings.NewReplacer(
 		"{kn_id}", url.PathEscape(knID),
 		"{ot_id}", url.PathEscape(otID),
-		"{scope_code}", scopeCodes[scope],
+		"{scope_code}", scopeCodes[shortfall.Scope],
 	).Replace(g.pathTemplate)
+
+	if name == "" {
+		name = infraErr.LocalizedDetail(ctx, "PermissionGuidanceUnnamedObjectType")
+	}
+	var params []string
+	switch shortfall.Scope {
+	case interfaces.PermissionScopeGrant:
+		params = append(params, "operations="+escapedList(shortfall.Operations))
+		params = append(params, "reason="+queryEscape(infraErr.LocalizedDetail(ctx, "PermissionGuidanceReasonGrant", name)))
+	case interfaces.PermissionScopePropertyGrants:
+		params = append(params, "properties="+escapedList(shortfall.Properties))
+		params = append(params, "reason="+queryEscape(infraErr.LocalizedDetail(ctx, "PermissionGuidanceReasonPropertyGrants",
+			name, strings.Join(shortfall.Properties, infraErr.LocalizedDetail(ctx, "PermissionGuidanceListSeparator")))))
+	case interfaces.PermissionScopeRowFilter:
+		params = append(params, "reason="+queryEscape(infraErr.LocalizedDetail(ctx, "PermissionGuidanceReasonRowFilter", name)))
+	}
+	params = append(params, "source=agent")
+
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + strings.Join(params, "&")
+}
+
+// queryEscape escapes a query value with %20 for spaces, which both
+// URLSearchParams and decodeURIComponent read back correctly ("+" is not).
+func queryEscape(value string) string {
+	return strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
+}
+
+// escapedList joins escaped items with a literal comma, the list form Studio
+// splits on.
+func escapedList(items []string) string {
+	escaped := make([]string, len(items))
+	for i, item := range items {
+		escaped[i] = queryEscape(item)
+	}
+	return strings.Join(escaped, ",")
 }
 
 // lookup probes view_detail through the schema endpoint and caches the answer

@@ -64,7 +64,8 @@ func TestQueryObjectInstanceRefusalCarriesPermissionGuidance(t *testing.T) {
 	shortfalls := envelope.Guidance.Shortfalls
 	if envelope.Guidance.Resource.ID != "kn-1/ot-1" || len(shortfalls) != 1 ||
 		shortfalls[0].Scope != interfaces.PermissionScopeGrant ||
-		shortfalls[0].RequestPermissionURL != "https://bkn.example.com/studio/knowledge-network/workspace/kn-1/object-types/ot-1/detail?requestPermission=1" {
+		!strings.HasPrefix(shortfalls[0].RequestPermissionURL,
+			"https://bkn.example.com/studio/knowledge-network/workspace/kn-1/object-types/ot-1/detail?requestPermission=1&operations=query_data&") {
 		t.Fatalf("guidance = %+v", envelope.Guidance)
 	}
 }
