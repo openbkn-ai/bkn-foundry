@@ -867,14 +867,25 @@ func (c *PostgresqlConnector) GetMetadata(ctx context.Context) (map[string]any, 
 	return metadata, nil
 }
 
-// listSchemas lists non-system schemas within the connector scope.
+// listSchemas lists configured schemas or schemas with discoverable tables.
 func (c *PostgresqlConnector) listSchemas(ctx context.Context) ([]string, error) {
-	builder := stmtBuilder.Select("n.nspname").
-		From("pg_catalog.pg_namespace n").
-		Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
-		Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)"))
+	var builder sq.SelectBuilder
 	if len(c.config.Schemas) > 0 {
+		builder = stmtBuilder.Select("n.nspname").
+			From("pg_catalog.pg_namespace n").
+			Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
+			Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)"))
 		builder = builder.Where(sq.Eq{"n.nspname": c.config.Schemas})
+	} else {
+		builder = stmtBuilder.Select("DISTINCT n.nspname").
+			From("pg_catalog.pg_class c").
+			Join("pg_catalog.pg_namespace n ON n.oid = c.relnamespace").
+			Where(sq.Eq{"c.relkind": tableRelKinds}).
+			Where(sq.NotEq{"c.relpersistence": "t"}).
+			Where(sq.Expr("has_table_privilege(c.oid, ?)", "SELECT")).
+			Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
+			Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)")).
+			Where(sq.Expr("NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid = c.oid)"))
 	}
 	builder = builder.OrderBy("n.nspname")
 
