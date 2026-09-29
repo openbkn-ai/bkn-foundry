@@ -2,7 +2,6 @@
 
 import logging
 import os
-import uuid
 from contextlib import nullcontext
 
 _provider = None
@@ -81,35 +80,6 @@ def _setup_traces(endpoint: str) -> None:
         )
     )
     _tracer = _trace_provider.get_tracer("sandbox-control-plane/http")
-
-
-def build_http_log_attributes(method: str, route: str, status: int) -> dict:
-    source_log_id = str(uuid.uuid4())
-    outcome = "denied" if status in (401, 403) else ("success" if status < 400 else "failure")
-    return {
-        "schema_version": "1.0.0",
-        "log_id": source_log_id,
-        "source_log_id": source_log_id,
-        "source_id": "sandbox",
-        "log_category": "runtime.system",
-        "event_name": "http.request.completed",
-        "outcome": outcome,
-        "safe_summary": f"{method} {route} completed with HTTP {status}",
-        "http.request.method": method,
-        "http.route": route,
-        "http.response.status_code": status,
-    }
-
-
-def emit_http_request_log(method: str, route: str, status: int) -> None:
-    if _provider is None:
-        return
-    try:
-        logging.getLogger("sandbox.telemetry").info(
-            "http.request.completed", extra=build_http_log_attributes(method, route, status)
-        )
-    except Exception:
-        pass
 
 
 def build_http_span_attributes(method: str, route: str, status: int) -> dict:

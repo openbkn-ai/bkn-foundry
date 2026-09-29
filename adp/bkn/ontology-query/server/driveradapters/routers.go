@@ -13,12 +13,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/middleware"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -215,8 +213,6 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 			if c.Writer.Status() >= http.StatusInternalServerError {
 				span.SetStatus(codes.Error, http.StatusText(c.Writer.Status()))
 			}
-			otellog.LogInfo(c.Request.Context(), "http.request.completed",
-				operationLogAttributes(c.Request.Method, route, c.Writer.Status())...)
 			span.End()
 			if panicValue != nil {
 				panic(panicValue)
@@ -228,29 +224,6 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 
 func operationSpanAttributes(method, route string, status int) []attribute.KeyValue {
 	return []attribute.KeyValue{
-		attribute.String("http.request.method", method),
-		attribute.String("http.route", route),
-		attribute.Int("http.response.status_code", status),
-	}
-}
-
-func operationLogAttributes(method, route string, status int) []attribute.KeyValue {
-	sourceLogID := uuid.NewString()
-	outcome := "success"
-	if status == http.StatusUnauthorized || status == http.StatusForbidden {
-		outcome = "denied"
-	} else if status >= http.StatusBadRequest {
-		outcome = "failure"
-	}
-	return []attribute.KeyValue{
-		attribute.String("schema_version", "1.0.0"),
-		attribute.String("log_id", sourceLogID),
-		attribute.String("source_log_id", sourceLogID),
-		attribute.String("source_id", "ontology-query"),
-		attribute.String("log_category", "runtime.system"),
-		attribute.String("event_name", "http.request.completed"),
-		attribute.String("outcome", outcome),
-		attribute.String("safe_summary", fmt.Sprintf("%s %s completed with HTTP %d", method, route, status)),
 		attribute.String("http.request.method", method),
 		attribute.String("http.route", route),
 		attribute.Int("http.response.status_code", status),

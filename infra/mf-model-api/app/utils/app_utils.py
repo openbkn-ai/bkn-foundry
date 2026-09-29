@@ -28,7 +28,6 @@ from app.routers import router_init
 from app.utils.comment_utils import write_log
 from app.utils import openai_error
 from app.utils.observability.observability import init_observability, shutdown_observability
-from app.utils.observability.observability_log import emit_http_request_log
 
 
 def conf_init(app):
@@ -207,7 +206,6 @@ async def observability_middleware(request: Request, call_next):
             span.set_attribute("http.request.method", request.method)
             span.set_attribute("http.route", route)
             span.set_attribute("http.response.status_code", status)
-            emit_http_request_log(request.method, route, status)
 
 
 class RequestSizeMiddleware(BaseHTTPMiddleware):

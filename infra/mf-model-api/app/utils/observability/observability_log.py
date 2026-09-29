@@ -10,7 +10,6 @@ debug, and fatal remain unchanged.
 import inspect
 import logging
 import os
-import uuid
 from typing import Optional
 from opentelemetry import context
 
@@ -122,36 +121,6 @@ def init_log_provider(server_info: ServerInfo, setting: LogSetting) -> None:
     except Exception as exc:
         logger.warning(message=f"OTLP logging unavailable; business continues: {exc}")
         _log_provider = None
-
-
-def build_http_log_attributes(method: str, route: str, status: int) -> dict:
-    source_log_id = str(uuid.uuid4())
-    outcome = "denied" if status in (401, 403) else ("success" if status < 400 else "failure")
-    return {
-        "schema_version": "1.0.0",
-        "log_id": source_log_id,
-        "source_log_id": source_log_id,
-        "source_id": "model-api",
-        "log_category": "runtime.system",
-        "event_name": "http.request.completed",
-        "outcome": outcome,
-        "safe_summary": f"{method} {route} completed with HTTP {status}",
-        "http.request.method": method,
-        "http.route": route,
-        "http.response.status_code": status,
-    }
-
-
-def emit_http_request_log(method: str, route: str, status: int) -> None:
-    if _log_provider is None:
-        return
-    try:
-        logging.getLogger("model-api.telemetry").info(
-            "http.request.completed",
-            extra=build_http_log_attributes(method, route, status),
-        )
-    except Exception:
-        pass
 
 
 def get_logger():

@@ -233,14 +233,6 @@ class OpenAIClientRequest:
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":{prompt_tokens},"completion_tokens":{completion_tokens},'
                             f'"total_tokens":{total_tokens},"func_module":{func_module},"status":"success"}}')
-                    self._emit_bkn_trace_evidence(
-                        messages=messages,
-                        params=params,
-                        status="success",
-                        input_token_count=prompt_tokens,
-                        output_token_count=completion_tokens,
-                        output=result,
-                    )
                     return result
                 else:
                     error_dict = openai_error.with_http_status(
@@ -252,13 +244,6 @@ class OpenAIClientRequest:
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                    self._emit_bkn_trace_evidence(
-                        messages=messages,
-                        params=params,
-                        status="failed",
-                        output=openai_error.public_copy(error_dict),
-                        error_category="model_provider_error",
-                    )
                     return error_dict
 
     async def chat_completion_stream_openai(self, messages, user_id, return_info, func_module, cache=False):
@@ -314,12 +299,6 @@ class OpenAIClientRequest:
                                     f"model={self.api_model}, left={retry_time}")
                                 await sleep_before_retry(retry_time)
                                 continue
-                            self._emit_bkn_trace_evidence(
-                                messages=messages,
-                                params=params,
-                                status="failed",
-                                error_category="model_provider_error",
-                            )
                             yield openai_error.error_frame(
                                 openai_error.from_upstream(info, response.status))
                             return
@@ -416,12 +395,6 @@ class OpenAIClientRequest:
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                    self._emit_bkn_trace_evidence(
-                        messages=messages,
-                        params=params,
-                        status="failed",
-                        error_category="dependency_error",
-                    )
                     return
                 else:
                     StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
@@ -433,12 +406,6 @@ class OpenAIClientRequest:
                         f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                self._emit_bkn_trace_evidence(
-                    messages=messages,
-                    params=locals().get("params", {}),
-                    status="failed",
-                    error_category="internal_error",
-                )
                 # Send a compliant error frame before raising for observability.
                 yield openai_error.error_frame(_platform_stream_error(
                     "ModelFactory.Stream.InternalError", "server_error"))
