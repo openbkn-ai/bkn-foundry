@@ -189,7 +189,7 @@ func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 		EffectiveSubjectID: "admin-a",
 		Roles:              []string{"admin"}, AccountActive: true}
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{{
-		LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed",
+		LogID: "system-a", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "sandbox.session.changed",
 		EffectiveSubjectID: "admin-a",
 		EventTimestamp:     time.Now().UTC(),
 	}})
@@ -201,7 +201,7 @@ func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 		assert func([]byte) bool
 	}{
 		{name: "sources", path: "/api/observability/v1/log-sources", call: handler.ListLogSources, assert: func(body []byte) bool { return containsJSONSource(body, "otel") }},
-		{name: "policies", path: "/api/observability/v1/log-policies", call: handler.ListLogPolicies, assert: func(body []byte) bool { return containsJSONPolicy(body, observabilityvo.CategoryRuntimeSystem) }},
+		{name: "policies", path: "/api/observability/v1/log-policies", call: handler.ListLogPolicies, assert: func(body []byte) bool { return containsJSONPolicy(body, observabilityvo.CategoryRuntimeBusiness) }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -340,9 +340,9 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 	}
 	base := time.Now().UTC().Truncate(time.Second)
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{
-		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, EventTimestamp: base},
-		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, EventTimestamp: base.Add(-time.Second)},
-		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, EventTimestamp: base.Add(-2 * time.Second)},
+		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base},
+		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base.Add(-time.Second)},
+		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base.Add(-2 * time.Second)},
 	})
 	firstRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2", nil)
 	setLogTestIdentity(firstRequest, "admin-a")

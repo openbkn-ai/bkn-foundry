@@ -21,8 +21,8 @@ func TestCapabilitiesFollowTheExistingSixRoleLogMatrix(t *testing.T) {
 		policyRead bool
 	}{
 		{role: "normal_user", categories: []string{}, global: false, policyRead: false},
-		{role: "network_builder", categories: []string{CategoryRuntimeBusiness, CategoryRuntimeModel, CategoryRuntimeSystem}, global: true, policyRead: false},
-		{role: "admin", categories: []string{CategoryRuntimeBusiness, CategoryRuntimeModel, CategoryRuntimeSystem}, global: true, policyRead: true},
+		{role: "network_builder", categories: []string{CategoryRuntimeBusiness, CategoryRuntimeModel}, global: true, policyRead: false},
+		{role: "admin", categories: []string{CategoryRuntimeBusiness, CategoryRuntimeModel}, global: true, policyRead: true},
 		{role: "security", categories: []string{CategoryAccessUser, CategoryAuditSecurity}, global: true, policyRead: true},
 		{role: "audit", categories: []string{CategoryAccessUser, CategoryAuditAdmin, CategoryAuditSecurity}, global: true, policyRead: true},
 		{role: "super_admin", categories: append([]string(nil), AllCategories...), global: true, policyRead: true},

@@ -27,12 +27,12 @@ func TestAccessProfileResponseUsesTheR62RoleMatrix(t *testing.T) {
 		{name: "normal user", categories: []string{}},
 		{
 			name: "network builder", roles: []string{"network_builder"}, managedNetworks: []string{"kn-a"},
-			globalSearch: true, categories: []string{"runtime.system", "runtime.business", "runtime.model"},
+			globalSearch: true, categories: []string{"runtime.business", "runtime.model"},
 			export: true, managedProvenance: true,
 		},
 		{
 			name: "admin", roles: []string{"admin"}, globalSearch: true,
-			categories:      []string{"runtime.system", "runtime.business", "runtime.model"},
+			categories:      []string{"runtime.business", "runtime.model"},
 			sensitiveFields: true, export: true, policyRead: true,
 		},
 		{
@@ -49,7 +49,7 @@ func TestAccessProfileResponseUsesTheR62RoleMatrix(t *testing.T) {
 			name: "super admin", roles: []string{"super_admin"}, globalSearch: true,
 			categories: []string{
 				"access.user", "audit.admin", "audit.security",
-				"runtime.system", "runtime.business", "runtime.model",
+				"runtime.business", "runtime.model",
 			},
 			sensitiveFields: true, export: true, policyRead: true,
 		},
@@ -94,10 +94,10 @@ func TestAccessProfileResponseCapturePolicyCapabilitiesFollowPermissions(t *test
 		}
 	}
 	tests := []struct {
-		name         string
-		profile      evidencevo.AccessProfile
-		wantRead     bool
-		wantWrite    bool
+		name      string
+		profile   evidencevo.AccessProfile
+		wantRead  bool
+		wantWrite bool
 	}{
 		{name: "role alone is insufficient", profile: evidencevo.AccessProfile{AccountActive: true, Roles: []string{"super_admin"}}},
 		{name: "read only", profile: evidencevo.AccessProfile{AccountActive: true, Permissions: []evidencevo.Permission{grant("read")}}, wantRead: true},

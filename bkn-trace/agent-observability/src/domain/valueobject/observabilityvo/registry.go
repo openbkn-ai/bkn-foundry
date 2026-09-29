@@ -20,7 +20,6 @@ var registeredEventCategories = map[string]string{
 	"operation.executed":                            CategoryRuntimeBusiness,
 	"operation.completed":                           CategoryRuntimeBusiness,
 	"operation.failed":                              CategoryRuntimeBusiness,
-	"http.request.completed":                        CategoryRuntimeSystem,
 	"log.query.authorized":                          CategoryAuditSecurity,
 	"log.query.denied":                              CategoryAuditSecurity,
 	"backend.operation.observed":                    CategoryAuditAdmin,

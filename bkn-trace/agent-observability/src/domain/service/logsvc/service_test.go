@@ -114,7 +114,7 @@ func (source *blockingSource) ID() string { return source.id }
 func (source *blockingSource) Metadata() observabilityvo.SourceStatus {
 	return observabilityvo.SourceStatus{
 		SourceID: source.id, Status: "healthy", Reliability: "best_effort",
-		Categories: []string{observabilityvo.CategoryRuntimeSystem},
+		Categories: []string{observabilityvo.CategoryRuntimeBusiness},
 	}
 }
 
@@ -157,7 +157,7 @@ func (source fakeDetailSource) Get(context.Context, string) (observabilityvo.Log
 }
 
 func (source fakeDetailSource) Metadata() observabilityvo.SourceStatus {
-	categories := []string{observabilityvo.CategoryRuntimeSystem}
+	categories := []string{observabilityvo.CategoryRuntimeBusiness}
 	if len(source.records) > 0 && source.records[0].Category != "" {
 		categories = []string{source.records[0].Category}
 	}
@@ -189,7 +189,7 @@ func TestListDisclosesDurableDegradedCoverageAfterSuccessfulSourceQuery(t *testi
 		id: "runtime",
 		records: []observabilityvo.LogRecord{{
 			LogID:          "log-1",
-			Category:       observabilityvo.CategoryRuntimeSystem,
+			Category:       observabilityvo.CategoryRuntimeBusiness,
 			EventTimestamp: time.Now().UTC(),
 		}}}},
 		Options{
@@ -377,7 +377,7 @@ func TestListReportsPartialAndFailsWhenEveryAuthorizedSourceFails(t *testing.T) 
 	available := fakeSource{id: "otel", records: []observabilityvo.LogRecord{
 		{
 			LogID:          "system-a",
-			Category:       observabilityvo.CategoryRuntimeSystem,
+			Category:       observabilityvo.CategoryRuntimeBusiness,
 			EventName:      "sandbox.session.changed",
 			EventTimestamp: time.Now(),
 		},
@@ -508,10 +508,10 @@ func TestListTimesOutOneSourceAndReturnsTheHealthySource(t *testing.T) {
 	var peak atomic.Int32
 	slow := &blockingSource{id: "slow", started: started, release: release, active: &active, peak: &peak}
 	healthy := categorizedSource{
-		id: "healthy", categories: []string{observabilityvo.CategoryRuntimeSystem},
+		id: "healthy", categories: []string{observabilityvo.CategoryRuntimeBusiness},
 		records: []observabilityvo.LogRecord{{
 			LogID:          "system-a",
-			Category:       observabilityvo.CategoryRuntimeSystem,
+			Category:       observabilityvo.CategoryRuntimeBusiness,
 			EventName:      "sandbox.session.changed",
 			EventTimestamp: time.Now(),
 		}},
@@ -595,7 +595,7 @@ func TestSourcesAndPoliciesFollowTheAccessProfile(t *testing.T) {
 		t.Fatalf("source coverage missing: sources=%+v err=%v", sources, err)
 	}
 	policies, err := service.Policies(admin)
-	if err != nil || len(policies) != 3 {
+	if err != nil || len(policies) != 2 {
 		t.Fatalf("admin runtime policies missing: policies=%+v err=%v", policies, err)
 	}
 	if _, err := service.Policies(activeProfile("user-a", "normal_user")); !errors.Is(err, ErrAccessDenied) {
@@ -610,7 +610,7 @@ func TestSourcesHealthCheckUsesTheConfiguredSourceTimeout(t *testing.T) {
 	var peak atomic.Int32
 	service := NewWithOptions([]Source{
 		&blockingSource{id: "slow", started: started, release: release, active: &active, peak: &peak},
-		&categorizedSource{id: "healthy", categories: []string{observabilityvo.CategoryRuntimeSystem}},
+		&categorizedSource{id: "healthy", categories: []string{observabilityvo.CategoryRuntimeBusiness}},
 	}, Options{CursorKey: []byte("test-cursor-key"), SourceTimeout: 20 * time.Millisecond, MaxConcurrentSources: 2})
 
 	startedAt := time.Now()
@@ -678,7 +678,7 @@ func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
 	if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{}); err != nil {
 		t.Fatalf("builder list failed: %v", err)
 	}
-	if len(source.query.AuthorizedCategories) != 3 || len(source.query.AuthorizedKnowledgeNetworkIDs) != 2 {
+	if len(source.query.AuthorizedCategories) != 2 || len(source.query.AuthorizedKnowledgeNetworkIDs) != 2 {
 		t.Fatalf("role and managed-network scope was not pushed down: %+v", source.query)
 	}
 	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.TimeTo.Sub(*source.query.TimeFrom) != 30*24*time.Hour {
@@ -716,10 +716,10 @@ func TestListRejectsTimeWindowsLongerThanThirtyDays(t *testing.T) {
 
 func TestListDoesNotQueryOrDiscloseUnauthorizedSources(t *testing.T) {
 	runtimeSource := &categorizedSource{
-		id: "runtime", categories: []string{observabilityvo.CategoryRuntimeSystem},
+		id: "runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness},
 		records: []observabilityvo.LogRecord{{
 			LogID:          "system-a",
-			Category:       observabilityvo.CategoryRuntimeSystem,
+			Category:       observabilityvo.CategoryRuntimeBusiness,
 			EventName:      "sandbox.session.changed",
 			EventTimestamp: time.Now(),
 		}},
@@ -745,7 +745,7 @@ func TestListDoesNotQueryOrDiscloseUnauthorizedSources(t *testing.T) {
 
 func TestOperationAuditListDoesNotQueryOTLPRuntimeSource(t *testing.T) {
 	runtimeSource := &categorizedSource{
-		id: "otel-runtime", categories: []string{observabilityvo.CategoryRuntimeSystem},
+		id: "otel-runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness},
 		err: errors.New("operation audit must not query runtime telemetry"),
 	}
 	auditSource := &categorizedSource{
@@ -822,7 +822,7 @@ func TestOperationAuditOnlyWhitelistsConversationCreatedWithoutOpeningRuntimeBus
 func TestListDoesNotTurnRegistryOrLegacyTrustIntoARejectionGate(t *testing.T) {
 	now := time.Now().UTC()
 	base := observabilityvo.LogRecord{
-		Category:       observabilityvo.CategoryRuntimeSystem,
+		Category:       observabilityvo.CategoryRuntimeBusiness,
 		EventName:      "sandbox.session.changed",
 		EventTimestamp: now,
 	}
@@ -855,7 +855,7 @@ func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
 				LogID:          "log-z",
 				SourceID:       "producer-z",
 				SourceLogID:    "log-z",
-				Category:       observabilityvo.CategoryRuntimeSystem,
+				Category:       observabilityvo.CategoryRuntimeBusiness,
 				EventName:      "sandbox.session.changed",
 				EventTimestamp: timestamp,
 			}}},
@@ -865,7 +865,7 @@ func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
 				LogID:          "log-a",
 				SourceID:       "producer-a",
 				SourceLogID:    "log-a",
-				Category:       observabilityvo.CategoryRuntimeSystem,
+				Category:       observabilityvo.CategoryRuntimeBusiness,
 				EventName:      "sandbox.session.changed",
 				EventTimestamp: timestamp,
 			}}},
@@ -881,9 +881,9 @@ func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
 func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 	base := time.Now().UTC().Truncate(time.Second)
 	source := fakeSource{id: "runtime", records: []observabilityvo.LogRecord{
-		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base},
-		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-time.Second)},
-		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-2 * time.Second)},
+		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "sandbox.session.changed", EventTimestamp: base},
+		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-time.Second)},
+		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-2 * time.Second)},
 	}}
 	service := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key"))
 	profile := activeProfile("admin-a", "admin")
@@ -911,8 +911,8 @@ func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 func TestListSupportsPageNumberPaginationWithoutExposingCursors(t *testing.T) {
 	base := time.Now().UTC().Truncate(time.Second)
 	source := &filteredPageSource{pages: [][]observabilityvo.LogRecord{
-		{{LogID: "log-new", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base}},
-		{{LogID: "log-old", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-time.Second)}},
+		{{LogID: "log-new", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "sandbox.session.changed", EventTimestamp: base}},
+		{{LogID: "log-old", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-time.Second)}},
 	}}
 	result, err := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key")).List(
 		context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 1, Page: 2},
@@ -928,7 +928,7 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 	for index := range filtered {
 		filtered[index] = observabilityvo.LogRecord{
 			LogID:          "filtered-" + time.Duration(index).String(),
-			Category:       observabilityvo.CategoryRuntimeSystem,
+			Category:       observabilityvo.CategoryRuntimeBusiness,
 			EventName:      "plugin.custom.event",
 			EventTimestamp: base.Add(-time.Duration(index) * time.Second),
 			SeverityNumber: 25,
@@ -937,7 +937,7 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 	}
 	visible := observabilityvo.LogRecord{
 		LogID:          "visible",
-		Category:       observabilityvo.CategoryRuntimeSystem,
+		Category:       observabilityvo.CategoryRuntimeBusiness,
 		EventName:      "sandbox.session.changed",
 		EventTimestamp: base.Add(-201 * time.Second),
 	}
@@ -1340,7 +1340,7 @@ func BenchmarkListEightSources(b *testing.B) {
 			records[recordIndex] = validTestRecord(observabilityvo.LogRecord{
 				LogID:          "log-" + time.Duration(sourceIndex*200+recordIndex).String(),
 				SourceID:       "source-" + time.Duration(sourceIndex).String(),
-				Category:       observabilityvo.CategoryRuntimeSystem,
+				Category:       observabilityvo.CategoryRuntimeBusiness,
 				EventName:      "sandbox.session.changed",
 				EventTimestamp: base.Add(-time.Duration(recordIndex) * time.Millisecond),
 			})

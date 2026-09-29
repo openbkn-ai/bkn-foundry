@@ -8,9 +8,11 @@ package observabilityvo
 import "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 
 const (
-	CategoryAccessUser      = "access.user"
-	CategoryAuditAdmin      = "audit.admin"
-	CategoryAuditSecurity   = "audit.security"
+	CategoryAccessUser    = "access.user"
+	CategoryAuditAdmin    = "audit.admin"
+	CategoryAuditSecurity = "audit.security"
+	// CategoryRuntimeSystem is retained only to classify archived legacy data.
+	// It is deliberately absent from AllCategories and no longer queryable.
 	CategoryRuntimeSystem   = "runtime.system"
 	CategoryRuntimeBusiness = "runtime.business"
 	CategoryRuntimeModel    = "runtime.model"
@@ -20,7 +22,6 @@ var AllCategories = []string{
 	CategoryAccessUser,
 	CategoryAuditAdmin,
 	CategoryAuditSecurity,
-	CategoryRuntimeSystem,
 	CategoryRuntimeBusiness,
 	CategoryRuntimeModel,
 }
@@ -77,7 +78,7 @@ func CapabilitiesFor(profile evidencevo.AccessProfile) AccessCapabilities {
 		}
 	}
 	if hasRole("network_builder", "admin", "super_admin") {
-		appendCategories(CategoryRuntimeSystem, CategoryRuntimeBusiness, CategoryRuntimeModel)
+		appendCategories(CategoryRuntimeBusiness, CategoryRuntimeModel)
 	}
 	if hasRole("security", "audit", "super_admin") {
 		appendCategories(CategoryAccessUser)
