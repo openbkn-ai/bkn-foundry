@@ -232,6 +232,7 @@ jobs:
                   % (pr, meta.get("state"), head_repo), encoding="utf-8")
               print("has_shards=false")
               print("skip_round=true")
+              print("ineligible=%s" % ("fork" if meta.get("state") == "open" else "closed"))
               raise SystemExit(0)
 
           # `gh pr view --json files` 一次最多返回 100 个文件，超出部分静默丢掉，那些文件
@@ -475,6 +476,19 @@ jobs:
               gh api -X DELETE "repos/${GH_REPO}/issues/comments/${id}" >/dev/null
             done
 
+      # fork PR 上有人回 `/review` 或手动触发时，跳过只写进 Actions 日志的话，PR 上什么
+      # 都没有——与「压根没触发」无法区分，正是开头说的最坏结果。只对 fork 说明：
+      # 已关闭的 PR 不值得再贴一条。pull_request 事件的 fork PR 在 job if 就被挡掉，
+      # 到不了这里。
+      - name: Explain skipped fork PR
+        if: steps.plan.outputs.ineligible == 'fork'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" -f body="$(printf '%s\n\n%s' \
+            '自动评审只处理分支在本仓库内的 PR。这个 PR 的分支来自 fork，评审 job 会接触 PR 内容并持有凭据，因此本轮跳过。' \
+            '需要评审的话，请把分支推到本仓库后重开 PR，或由维护者人工评审。')" >/dev/null
+
       # 同一条评论反复复用（靠 body 里的 HTML 标记定位），复评不会越堆越多。
       # 失败不阻断评审：进度提示挂了没关系，评审本身要继续。
       - name: Post progress comment
@@ -501,7 +515,7 @@ jobs:
                    "",
                    "评审完成后统一给出一次结论。",
                    ""]
-          # 复选框由各分片跑完后回来打勾（review job 的 Tick progress 步骤）。
+          # 复选框在各分片跑完后打勾（progress job）。
           lines += ["- [ ] `%s`" % s["label"] for s in shards]
           lines += ["", "[查看运行日志](%s)" % os.environ["RUN_URL"],
                     "", "_结论落地后这条会自动消失。_"]
@@ -585,8 +599,10 @@ jobs:
           git archive --worktree-attributes "$HEAD_SHA" | tar -x -C pr-head
           # 符号链接可以指向 /proc/self/environ 之类的位置，模型一读就把凭据带进上下文；
           # Claude 的项目配置只从工作目录根加载，这里再删一遍防它被当成嵌套配置读到。
+          # CLAUDE.md 不同：读到某个子目录的文件时，那一级的 CLAUDE.md 会被当作指令
+          # 自动载入，PR 改它就能改写评审行为。它的改动仍在 pr.diff / git show 里可审。
           find pr-head -type l -delete
-          find pr-head \( -name .claude -o -name .mcp.json \) -prune -exec rm -rf {} +
+          find pr-head \( -name .claude -o -name .mcp.json -o -name CLAUDE.md -o -name CLAUDE.local.md \) -prune -exec rm -rf {} +
           git diff "${BASE_SHA}...${HEAD_SHA}" > pr.diff
           echo "PR #$PR_NUMBER 快照：base ${BASE_SHA:0:12} → head ${HEAD_SHA:0:12}，$(wc -l < pr.diff) 行 diff"
 
@@ -940,76 +956,6 @@ jobs:
               "${SHARD_KEY}" > "$f"
           fi
 
-      # 每片跑完回来把自己那行打勾，让那条唯一的进度评论真的动起来。
-      # 粒度是「每片一次」，不是 track_progress 那种每步一更——后者在分片下会变成
-      # N 条评论各自转圈，把 PR 刷满。
-      # 并发写同一条评论：两片几乎同时结束时可能丢一次更新，纯显示问题，重试三次即可。
-      # continue-on-error：进度显示挂了不该影响评审产出。
-      - name: Tick progress
-        if: always() && steps.prbranch.outputs.skip != 'true'
-        continue-on-error: true
-        env:
-          # 这两个必须显式给：本文件没有 workflow 级 env，review job 的 env 里也没有，
-          # 只有 Prefetch 那步自带。缺了会在本步第一条语句就 KeyError，而
-          # continue-on-error 把它咽成绿色——本地手测时它们来自开发者自己的 shell，
-          # 这类缺失测不出来。
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SHARD_LABEL: ${{ matrix.shard.label }}
-          SHARD_KEY: ${{ matrix.shard.key }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, os, pathlib, subprocess, time
-
-          MARKER = "<!-- claude-review-progress -->"
-          repo, pr = os.environ["GH_REPO"], os.environ["PR_NUMBER"]
-          label = os.environ["SHARD_LABEL"]
-
-          # 判据取 findings 文件本身，不取 job.status。`Claude review` 那步在缺凭据时是
-          # **被跳过**的，跳过不影响 job 绿——用 job.status 会让一次没人审过的运行把每
-          # 一片都打上勾，正是这一步要防的事。回填保证了文件必然存在。
-          try:
-              data = json.loads(
-                  (pathlib.Path("findings") / (os.environ["SHARD_KEY"] + ".json"))
-                  .read_text(encoding="utf-8"))
-              reviewed = isinstance(data, dict) and data.get("status") != "no_output"
-          except Exception:
-              reviewed = False
-
-          done = "- [x] `%s`" % label
-          if not reviewed:
-              done += " —— 未产出结论，本片文件未经评审"
-          todo = "- [ ] `%s`" % label
-
-          def gh(*args):
-              return subprocess.run(["gh", "api", *args], capture_output=True,
-                                    text=True, check=True).stdout
-
-          for attempt in range(3):
-              try:
-                  # `--paginate` 不带 `--jq` 会把每页各输出一个数组、首尾相接，不是合法
-                  # JSON（本文件在预取那处已经踩过并记下了这个坑）。`--jq '.[]'` 逐页
-                  # 展开成一行一个对象，跨页拼接后仍可逐行解析。
-                  raw = gh("repos/%s/issues/%s/comments" % (repo, pr),
-                           "--paginate", "--jq", ".[]")
-                  comments = [json.loads(l) for l in raw.splitlines() if l.strip()]
-                  target = next((c for c in reversed(comments)
-                                 if MARKER in (c.get("body") or "")), None)
-                  if target is None:
-                      break
-                  body = target["body"]
-                  if todo not in body:
-                      break
-                  gh("-X", "PATCH", "repos/%s/issues/comments/%s" % (repo, target["id"]),
-                     "-f", "body=" + body.replace(todo, done, 1))
-                  break
-              except (subprocess.CalledProcessError, ValueError):
-                  if attempt == 2:
-                      raise
-                  time.sleep(2)
-          PY
-
       # 逐轮的工具调用在 Actions 日志里看不到（track_progress: false 不流式输出），
       # 于是「轮数花在哪」只能靠猜，后续调优也就没有依据。这里把 action 写的完整执行
       # 记录留成 artifact，离线就能统计每轮在 Read / Grep / Bash / 思考上的分布。
@@ -1045,6 +991,89 @@ jobs:
         if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
         run: |
           echo "::warning::Secret CLAUDE_CODE_OAUTH_TOKEN not set — skipping Claude review."
+
+  # 每片跑完把自己那行打勾，让那条唯一的进度评论真的动起来。粒度是「每片一次」，
+  # 不是 track_progress 那种每步一更——后者在分片下会变成 N 条评论各自转圈。
+  #
+  # 单独成 job 而不是留在 review 里（#1743）：改评论要写权限，而 review 读的是不可信的
+  # PR 内容、又握着 Claude 凭据，只给只读。这里反过来：有写权限，但不 checkout、不碰
+  # PR 内容，只读 review 上传的 findings artifact。与 verify 并行，不拖慢结论。
+  # continue-on-error：进度显示挂了不该影响评审产出，也不该给整轮留红叉。
+  progress:
+    needs: [plan, review]
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
+      SHARDS: ${{ needs.plan.outputs.shards }}
+    steps:
+      - name: Download findings
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: findings-*
+          path: findings
+          merge-multiple: true
+
+      - name: Tick progress
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, time
+
+          MARKER = "<!-- claude-review-progress -->"
+          repo, pr = os.environ["GH_REPO"], os.environ["PR_NUMBER"]
+
+          # 判据取 findings 文件本身，不取 job 结论。`Claude review` 那步在缺凭据时是
+          # **被跳过**的，跳过不影响 job 绿——用 job 结论会让一次没人审过的运行把每
+          # 一片都打上勾，正是这一步要防的事。文件缺失同样算没审。
+          marks = []
+          for s in json.loads(os.environ["SHARDS"]):
+              try:
+                  data = json.loads((pathlib.Path("findings") / (s["key"] + ".json"))
+                                    .read_text(encoding="utf-8"))
+                  reviewed = isinstance(data, dict) and data.get("status") != "no_output"
+              except Exception:
+                  reviewed = False
+              done = "- [x] `%s`" % s["label"]
+              if not reviewed:
+                  done += " —— 未产出结论，本片文件未经评审"
+              marks.append(("- [ ] `%s`" % s["label"], done))
+
+          def gh(*args):
+              return subprocess.run(["gh", "api", *args], capture_output=True,
+                                    text=True, check=True).stdout
+
+          for attempt in range(3):
+              try:
+                  # `--paginate` 不带 `--jq` 会把每页各输出一个数组、首尾相接，不是合法
+                  # JSON（本文件在预取那处已经踩过并记下了这个坑）。`--jq '.[]'` 逐页
+                  # 展开成一行一个对象，跨页拼接后仍可逐行解析。
+                  raw = gh("repos/%s/issues/%s/comments" % (repo, pr),
+                           "--paginate", "--jq", ".[]")
+                  comments = [json.loads(l) for l in raw.splitlines() if l.strip()]
+                  target = next((c for c in reversed(comments)
+                                 if MARKER in (c.get("body") or "")), None)
+                  if target is None:
+                      break
+                  body = target["body"]
+                  for todo, done in marks:
+                      body = body.replace(todo, done, 1)
+                  if body != target["body"]:
+                      gh("-X", "PATCH", "repos/%s/issues/comments/%s" % (repo, target["id"]),
+                         "-f", "body=" + body)
+                  break
+              except (subprocess.CalledProcessError, ValueError):
+                  if attempt == 2:
+                      raise
+                  time.sleep(2)
+          PY
 
   # 阻塞项在进 PR 之前先过一道独立复核。
   #
@@ -1101,7 +1130,7 @@ jobs:
           rm -rf pr-head && mkdir pr-head
           git archive --worktree-attributes "$HEAD_SHA" | tar -x -C pr-head
           find pr-head -type l -delete
-          find pr-head \( -name .claude -o -name .mcp.json \) -prune -exec rm -rf {} +
+          find pr-head \( -name .claude -o -name .mcp.json -o -name CLAUDE.md -o -name CLAUDE.local.md \) -prune -exec rm -rf {} +
           git diff "${BASE_SHA}...${HEAD_SHA}" > pr.diff
 
       # 全部分片都没产出时一个 artifact 都不存在。download-artifact 在这种情况下是否
@@ -1758,20 +1787,22 @@ jobs:
           # 落在最新提交上，plan 之后才推上来的、没人审过的提交会跟着被 approve。
           review() {
             gh api -X POST "repos/${GH_REPO}/pulls/${PR_NUMBER}/reviews" \
-              -f commit_id="$HEAD_SHA" -f event="$1" -f body="$(cat verdict.md)" >/dev/null
+              -f commit_id="$HEAD_SHA" -f event="$1" -f body="$(cat "${2:-verdict.md}")" >/dev/null
           }
           current=$(gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}" --jq .head.sha)
           if [ "${{ steps.assemble.outputs.action }}" = "request-changes" ]; then
             review REQUEST_CHANGES
           elif [ "$current" != "$HEAD_SHA" ]; then
             # 本轮之后又有新提交：不能 approve 没审过的东西。结论照贴，新提交留给下一轮。
+            # 用 COMMENT 评审而不是普通评论：它进 /pulls/N/reviews，下一轮 plan 才数得到
+            # 这一轮（prior_rounds 决定复评配额），隐藏状态块也读得回来。
             echo "::warning::评审期间 PR 有新提交（${HEAD_SHA:0:12} → ${current:0:12}），不批准，改以评论给出结论。"
             {
               cat verdict.md
               # shellcheck disable=SC2016 # 反引号是 Markdown，不是命令替换。
               printf '\n\n---\n\n_以上结论针对 `%s`。评审期间 PR 又推了新提交，这些提交未经评审，因此不批准。回复 `/review` 评审最新版本。_\n' "${HEAD_SHA:0:12}"
             } > verdict-comment.md
-            gh pr comment "$PR_NUMBER" --body-file verdict-comment.md
+            review COMMENT verdict-comment.md
           elif ! review APPROVE; then
             # 仓库若关闭「Allow GitHub Actions to create and approve pull requests」，
             # approve 会被拒（request-changes 不受限，因为那不算批准）。
