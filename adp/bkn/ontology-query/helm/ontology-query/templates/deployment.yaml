@@ -23,6 +23,8 @@ spec:
       labels:
         module: {{ .Values.moduleName }}
     spec:
+      serviceAccountName: {{ .Values.moduleName }}
+      automountServiceAccountToken: false
 {{- with .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}

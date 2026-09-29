@@ -19,6 +19,8 @@ spec:
         app: {{ .Values.image.name }}
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
+      serviceAccountName: model-api
+      automountServiceAccountToken: false
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
