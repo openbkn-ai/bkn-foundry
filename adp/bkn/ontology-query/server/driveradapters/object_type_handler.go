@@ -174,7 +174,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	// Record only the route; the body may contain full object-property values.
-	otellog.LogInfo(ctx, fmt.Sprintf("Object data query request: [%s]", c.Request.RequestURI))
+	otellog.LogInfo(ctx, fmt.Sprintf("Object data query request: [%s]", observabilityRoute(c)))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
@@ -354,7 +354,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	// Record only the route; the body may contain full object-property values.
-	otellog.LogInfo(ctx, fmt.Sprintf("Object property query request: [%s]", c.Request.RequestURI))
+	otellog.LogInfo(ctx, fmt.Sprintf("Object property query request: [%s]", observabilityRoute(c)))
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
