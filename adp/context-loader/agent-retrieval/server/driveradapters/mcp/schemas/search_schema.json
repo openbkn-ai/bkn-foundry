@@ -244,6 +244,10 @@
           },
           "additionalProperties": true
         }
+      },
+      "message": {
+        "type": "string",
+        "description": "检索层对本次结果的说明，没有要说的就不出现。例如某些对象类的属性信息暂时未能取到，本次只返回对象类本身、不含属性：这时它们的 data_properties 为空**不代表没有属性**，稍后重试可取到。"
       }
     }
   }

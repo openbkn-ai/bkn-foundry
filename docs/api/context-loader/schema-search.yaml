@@ -396,7 +396,8 @@ components:
         [kn-explore.yaml](kn-explore.yaml) 的 `ObjectType` / `RelationType` / `ActionType`。
 
         `metric_types` 仅 `search_schema` 返回；`kn_search` 兼容口不返回该字段。
-        `nodes` / `message` 只有 `kn_search` 传 `only_schema: false` 时才出现。
+        `nodes` 只有 `kn_search` 传 `only_schema: false` 时才出现；`message` 在检索层
+        有话要说时出现（见该字段说明）。
       properties:
         object_types:
           type: array
@@ -459,8 +460,12 @@ components:
         message:
           type: string
           description: |
-            实例召回的说明，例如「未检索到符合条件的实例数据」
-            （仅 `kn_search` 且 `only_schema: false`）。
+            检索层对本次结果的说明，没有要说的就不出现。
+
+            - 某些对象类的属性信息暂时未能取到（读取超时或依赖服务故障）时，这些对象类
+              仍会返回但不含属性，此处会列出它们：属性为空**不代表没有属性**，稍后重试可取到。
+            - 实例召回的说明，例如「未检索到符合条件的实例数据」
+              （仅 `kn_search` 且 `only_schema: false`）。
             若部分对象类因绑定数据资源的元数据读取失败、无法确定检索能力而未参与检索，
             此处会列出这些对象类：此时结果不完整，结果为空也不代表没有匹配数据。
 

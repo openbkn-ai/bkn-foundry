@@ -157,6 +157,12 @@ func FilterSearchSchemaResp(resp *interfaces.KnSearchResp, metricTypes []any, sc
 	if scope.IncludeMetricTypes {
 		result.MetricTypes = limitAnySlice(metricTypes, maxConcepts)
 	}
+	// search_instance already forwards this; without it the schema surface
+	// dropped every notice retrieval wrote, so an object type returned without
+	// properties read as one that has none (#1906).
+	if resp != nil && resp.Message != nil {
+		result.Message = strings.TrimSpace(*resp.Message)
+	}
 	return result
 }
 

@@ -25,6 +25,7 @@ data:
     concept_search_config:
       concept_recall_size: {{ .Values.service.concept_search_config.concept_recall_size }}
       knn_k: {{ .Values.service.concept_search_config.knn_k }}
+      schema_read_timeout_ms: {{ .Values.service.concept_search_config.schema_read_timeout_ms | default 5000 }}
     instance_search_config:
       min_reranker_score: {{ .Values.service.instance_search_config.min_reranker_score }}
       min_object_type_score_ratio: {{ .Values.service.instance_search_config.min_object_type_score_ratio }}
