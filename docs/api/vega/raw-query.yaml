@@ -113,7 +113,8 @@ components:
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法，
           SQL 引用不存在字段，或 SQL 违反只读策略（包括 `WITH` / CTE）。字段不存在时
-          `error_details` 固定为 `query references an unknown column`，不包含数据库驱动原文；
+          `error_details` 固定为 `query references an unknown column`，其他连接器明确归类的
+          参数错误固定为 `invalid source query parameter`，均不包含数据库驱动原文；
           违反只读策略时固定为 `raw query rejected by read-only policy`
         - `VegaBackend.Query.InvalidParameter.QueryTimeout`：`query_timeout_sec` 超出 [1, 3600]
       content:

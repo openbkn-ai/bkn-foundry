@@ -96,7 +96,7 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*i
 	if err != nil {
 		var driverErr *mysql.MySQLError
 		if errors.As(err, &driverErr) && driverErr.Number == 1054 {
-			err = interfaces.NewSourceQueryInvalidParameterError(err)
+			err = interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
 		}
 		return nil, fmt.Errorf("execute query failed: %w", err)
 	}

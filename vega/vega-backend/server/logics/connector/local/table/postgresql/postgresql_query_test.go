@@ -25,6 +25,7 @@ func TestPostgresqlConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
 	assert.Nil(t, result)
 	var invalid *interfaces.SourceQueryInvalidParameterError
 	require.ErrorAs(t, err, &invalid)
+	assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
 	assert.True(t, errors.Is(err, driverErr))
 	require.NoError(t, mock.ExpectationsWereMet())
 }

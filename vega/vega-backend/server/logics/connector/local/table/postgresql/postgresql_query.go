@@ -86,7 +86,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 	if err != nil {
 		var driverErr *pq.Error
 		if errors.As(err, &driverErr) && string(driverErr.Code) == "42703" {
-			err = interfaces.NewSourceQueryInvalidParameterError(err)
+			err = interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
 		}
 		return nil, fmt.Errorf("execute query failed: %w", err)
 	}

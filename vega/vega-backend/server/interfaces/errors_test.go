@@ -30,12 +30,12 @@ func TestSourceReadForbiddenError(t *testing.T) {
 
 func TestSourceQueryInvalidParameterError(t *testing.T) {
 	cause := errors.New("unknown column in source query")
-	err := fmt.Errorf("execute query: %w", NewSourceQueryInvalidParameterError(cause))
+	err := fmt.Errorf("execute query: %w", NewSourceQueryInvalidParameterError(SourceQueryInvalidParameterUnknownColumn, cause))
 	var invalid *SourceQueryInvalidParameterError
-	if !errors.As(err, &invalid) || !errors.Is(err, cause) {
-		t.Fatalf("wrapped source query parameter error lost its type or cause: %v", err)
+	if !errors.As(err, &invalid) || !errors.Is(err, cause) || invalid.Reason != SourceQueryInvalidParameterUnknownColumn {
+		t.Fatalf("wrapped source query parameter error lost its type, reason, or cause: %v", err)
 	}
-	if got := NewSourceQueryInvalidParameterError(nil).Error(); got != "source query invalid parameter" {
+	if got := NewSourceQueryInvalidParameterError("", nil).Error(); got != "source query invalid parameter" {
 		t.Fatalf("source query parameter error without cause = %q", got)
 	}
 }

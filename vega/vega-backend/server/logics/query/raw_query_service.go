@@ -1054,8 +1054,12 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 		}
 		var invalidParameter *interfaces.SourceQueryInvalidParameterError
 		if errors.As(err, &invalidParameter) {
+			detail := "invalid source query parameter"
+			if invalidParameter.Reason == interfaces.SourceQueryInvalidParameterUnknownColumn {
+				detail = "query references an unknown column"
+			}
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails("query references an unknown column")
+				WithErrorDetails(detail)
 		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
