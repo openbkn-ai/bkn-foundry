@@ -267,7 +267,7 @@ func (en *Enforcer) decideResourceOpsScoped(ctx context.Context, accessorID stri
 			return nil, nil, nil, err
 		}
 		if managed {
-			current, err := en.currentProxyPermissions(ctx, accessorID)
+			current, err := en.currentProxyPermissions(ctx, accessorID, allowedProxyPermissions(decided))
 			if err != nil {
 				return nil, nil, nil, err
 			}

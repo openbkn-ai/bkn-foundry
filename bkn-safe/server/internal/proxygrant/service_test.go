@@ -917,6 +917,57 @@ func TestManagedProxyFilterBatchesSourceValidityQueries(t *testing.T) {
 	}
 }
 
+// TestManagedProxyCheckReadsOnlyTheCheckedSources guards #1906: a proxy for a
+// 1000-object network owns ~14k sources, and reading all of them on every
+// single-resource check made one schema read cost 20s.
+func TestManagedProxyCheckReadsOnlyTheCheckedSources(t *testing.T) {
+	f := newFixture(t)
+	const sourceCount = 40
+	for i := 0; i < sourceCount; i++ {
+		resourceID := fmt.Sprintf("r-scope-%02d", i)
+		f.grantOperations(t, f.grantor, resourceID, "query_data")
+		if _, _, err := f.service.Grant(t.Context(), f.request(
+			fmt.Sprintf("source-scope-%02d", i), fmt.Sprintf("ot-scope-%02d", i), resourceID)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var sourceRows atomic.Int64
+	callbackName := "test:count-proxy-source-rows"
+	if err := f.db.Callback().Query().After("gorm:query").Register(callbackName, func(db *gorm.DB) {
+		if db.Statement.Table == "proxy_grant_source" {
+			sourceRows.Add(db.Statement.RowsAffected)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.db.Callback().Query().Remove(callbackName) })
+
+	allowed, err := f.enforcer.Check(f.proxyID, "resource", "r-scope-07", "query_data")
+	if err != nil || !allowed {
+		t.Fatalf("proxy allowed = %v err=%v, want true", allowed, err)
+	}
+	if got := sourceRows.Load(); got != 1 {
+		t.Fatalf("proxy sources read for one check = %d, want 1 of %d", got, sourceCount)
+	}
+
+	sourceRows.Store(0)
+	refs := []authz.ResourceRef{{Type: "resource", ID: "r-scope-03"}, {Type: "resource", ID: "r-scope-11"}}
+	filtered, err := f.enforcer.FilterResourceOps(f.proxyID, refs, []string{"query_data"}, []string{"query_data"})
+	if err != nil || len(filtered) != len(refs) {
+		t.Fatalf("filtered = %+v err=%v, want %d resources", filtered, err, len(refs))
+	}
+	if got := sourceRows.Load(); got != int64(len(refs)) {
+		t.Fatalf("proxy sources read for a %d-resource filter = %d, want %d", len(refs), got, len(refs))
+	}
+
+	// A resource the proxy has no source for stays denied.
+	f.grantOperations(t, f.proxyID, "r-unsourced", "query_data")
+	if allowed, err := f.enforcer.Check(f.proxyID, "resource", "r-unsourced", "query_data"); err != nil || allowed {
+		t.Fatalf("unsourced proxy allowed = %v err=%v, want false", allowed, err)
+	}
+}
+
 func TestSyncPreservesValidHistoricalDelegator(t *testing.T) {
 	f := newFixture(t)
 	f.grantOperations(t, f.grantor, "r-1", "query_data")

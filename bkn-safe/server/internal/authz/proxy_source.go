@@ -18,12 +18,46 @@ type proxyPermission struct {
 	Operation    string
 }
 
-// currentProxyPermissions resolves all currently effective source-backed
-// permissions for one managed proxy with a bounded number of database reads.
-// Delegator policy and hierarchy checks are grouped by delegator instead of by
-// source, which keeps list filtering proportional to the number of delegators.
-func (en *Enforcer) currentProxyPermissions(ctx context.Context, proxyID string) (map[proxyPermission]bool, error) {
-	sources, valid, err := en.currentProxySourceIDs(ctx, proxyID)
+// proxySourceLookupBatch bounds the resource IDs sent in one IN clause when
+// loading the sources behind a batch of decisions.
+const proxySourceLookupBatch = 500
+
+// allowedProxyPermissions lists the permissions a raw decision batch allowed.
+// Only these need source provenance: a denied decision stays denied whatever
+// sources exist.
+func allowedProxyPermissions(decisions map[ResourceRef]map[string]Evaluation) map[proxyPermission]bool {
+	allowed := map[proxyPermission]bool{}
+	for resource, operations := range decisions {
+		for operation, decision := range operations {
+			if decision.Allowed() {
+				allowed[proxyPermission{ResourceType: resource.Type, ResourceID: resource.ID, Operation: operation}] = true
+			}
+		}
+	}
+	return allowed
+}
+
+// currentProxyPermissions reports which of the wanted permissions are backed by
+// a currently valid source for one managed proxy.
+//
+// It reads only the sources for the wanted permissions. A proxy for a large
+// knowledge network owns tens of thousands of sources, and loading every one of
+// them -- then re-validating each against its delegator -- on every single
+// resource check made one schema read cost 20s (#1906). Source validity is
+// evaluated per source, so narrowing the read does not change any answer.
+// Delegator policy and hierarchy checks are still grouped by delegator instead
+// of by source, which keeps list filtering proportional to the number of
+// delegators.
+func (en *Enforcer) currentProxyPermissions(ctx context.Context, proxyID string,
+	wanted map[proxyPermission]bool) (map[proxyPermission]bool, error) {
+	if len(wanted) == 0 {
+		return map[proxyPermission]bool{}, nil
+	}
+	sources, err := en.proxySourcesFor(ctx, proxyID, wanted)
+	if err != nil {
+		return nil, err
+	}
+	valid, err := en.validProxySourceIDs(ctx, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -39,6 +73,42 @@ func (en *Enforcer) currentProxyPermissions(ctx context.Context, proxyID string)
 		}] = true
 	}
 	return permissions, nil
+}
+
+// proxySourcesFor loads the active sources of one proxy that back exactly the
+// wanted permissions. The (proxy, type, resource) prefix is served by
+// idx_proxy_grant_tuple; the operation is matched in memory.
+func (en *Enforcer) proxySourcesFor(ctx context.Context, proxyID string,
+	wanted map[proxyPermission]bool) ([]safemodel.ProxyGrantSource, error) {
+	resourceTypes := map[string]bool{}
+	idsByType := map[string]map[string]bool{}
+	for permission := range wanted {
+		if idsByType[permission.ResourceType] == nil {
+			resourceTypes[permission.ResourceType] = true
+			idsByType[permission.ResourceType] = map[string]bool{}
+		}
+		idsByType[permission.ResourceType][permission.ResourceID] = true
+	}
+	var sources []safemodel.ProxyGrantSource
+	for _, resourceType := range sortedKeys(resourceTypes) {
+		ids := sortedKeys(idsByType[resourceType])
+		for start := 0; start < len(ids); start += proxySourceLookupBatch {
+			end := min(start+proxySourceLookupBatch, len(ids))
+			var batch []safemodel.ProxyGrantSource
+			if err := en.db.WithContext(ctx).Where(
+				"proxy_account_id = ? AND resource_type = ? AND resource_id IN ? AND lifecycle_status = ?",
+				proxyID, resourceType, ids[start:end], safemodel.ProxyGrantSourceStatusActive,
+			).Find(&batch).Error; err != nil {
+				return nil, err
+			}
+			for _, source := range batch {
+				if wanted[proxyPermission{source.ResourceType, source.ResourceID, source.Operation}] {
+					sources = append(sources, source)
+				}
+			}
+		}
+	}
+	return sources, nil
 }
 
 // currentProxySourceIDs returns the active source rows and the subset whose

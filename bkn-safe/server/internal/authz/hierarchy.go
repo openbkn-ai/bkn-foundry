@@ -642,7 +642,7 @@ func (en *Enforcer) applyManagedProxyProvenanceToBatch(ctx context.Context, acce
 	if err != nil || !managed {
 		return err
 	}
-	current, err := en.currentProxyPermissions(ctx, accessorID)
+	current, err := en.currentProxyPermissions(ctx, accessorID, allowedProxyPermissions(decisions))
 	if err != nil {
 		return err
 	}
