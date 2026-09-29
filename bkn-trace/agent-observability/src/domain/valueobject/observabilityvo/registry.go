@@ -28,8 +28,6 @@ var registeredEventCategories = map[string]string{
 	"knowledge.read.completed":             CategoryRuntimeBusiness,
 	"logic.execution.completed":            CategoryRuntimeBusiness,
 	"action.executed":                      CategoryRuntimeBusiness,
-	"service.started":                      CategoryRuntimeSystem,
-	"dependency.failed":                    CategoryRuntimeSystem,
 	"conversation.created":                 CategoryRuntimeBusiness,
 	"operation.executed":                   CategoryRuntimeBusiness,
 	"conversation.closed":                  CategoryRuntimeBusiness,

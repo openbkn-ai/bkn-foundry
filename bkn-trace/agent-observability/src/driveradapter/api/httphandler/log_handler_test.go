@@ -189,7 +189,7 @@ func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 		EffectiveSubjectID: "admin-a",
 		Roles:              []string{"admin"}, AccountActive: true}
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{{
-		LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
+		LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed",
 		EffectiveSubjectID: "admin-a",
 		EventTimestamp:     time.Now().UTC(),
 	}})
@@ -237,18 +237,24 @@ func TestLogSourceInventorySeparatesRegisteredTargetsFromQueryableSources(t *tes
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.RegistryVersion != "0.3.26" || len(body.Data) != 17 {
-		t.Fatalf("expected 17 runtime sources in 0.3.26 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
+	if body.RegistryVersion != "0.3.28" || len(body.Data) != 16 {
+		t.Fatalf("expected 16 runtime sources in 0.3.28 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
 	}
+	modelManagerFound := false
 	for _, source := range body.Data {
+		if source.SourceID == "otel-runtime" {
+			t.Fatal("OpenSearch query adapter must not appear as a Collector producer")
+		}
 		if source.SourceID == "model-manager" {
 			if source.DeclaredCollectionMethod != "kafka_audit" || source.QueryStatus != "not_listed" {
 				t.Fatalf("registry declaration must not imply live producer coverage: %+v", source)
 			}
-			return
+			modelManagerFound = true
 		}
 	}
-	t.Fatal("model-manager is missing from the source inventory")
+	if !modelManagerFound {
+		t.Fatal("model-manager is missing from the source inventory")
+	}
 }
 
 func TestParseLogQueryAcceptsRFC3339TimeRangeAndRejectsReverseRange(t *testing.T) {
@@ -451,7 +457,7 @@ func newTestLogHandler(profile evidencevo.AccessProfile, records []observability
 			case observabilityvo.CategoryRuntimeModel:
 				records[index].EventName = "model.inference.completed"
 			default:
-				records[index].EventName = "service.started"
+				records[index].EventName = "sandbox.session.changed"
 			}
 		}
 		if records[index].TrustLevel == "" {

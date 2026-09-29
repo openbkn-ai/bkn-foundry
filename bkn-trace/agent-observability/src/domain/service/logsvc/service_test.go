@@ -382,7 +382,7 @@ func TestListReportsPartialAndFailsWhenEveryAuthorizedSourceFails(t *testing.T) 
 		{
 			LogID:            "system-a",
 			Category:         observabilityvo.CategoryRuntimeSystem,
-			EventName:        "service.started",
+			EventName:        "sandbox.session.changed",
 			EventTimestamp:   time.Now(),
 			TrustLevel:       "trusted",
 			IngressPrincipal: "otel-gateway",
@@ -520,7 +520,7 @@ func TestListTimesOutOneSourceAndReturnsTheHealthySource(t *testing.T) {
 		records: []observabilityvo.LogRecord{{
 			LogID:            "system-a",
 			Category:         observabilityvo.CategoryRuntimeSystem,
-			EventName:        "service.started",
+			EventName:        "sandbox.session.changed",
 			EventTimestamp:   time.Now(),
 			TrustLevel:       "trusted",
 			IngressPrincipal: "otel-gateway",
@@ -733,7 +733,7 @@ func TestListDoesNotQueryOrDiscloseUnauthorizedSources(t *testing.T) {
 		records: []observabilityvo.LogRecord{{
 			LogID:            "system-a",
 			Category:         observabilityvo.CategoryRuntimeSystem,
-			EventName:        "service.started",
+			EventName:        "sandbox.session.changed",
 			EventTimestamp:   time.Now(),
 			TrustLevel:       "trusted",
 			IngressPrincipal: "otel-gateway",
@@ -842,7 +842,7 @@ func TestListExcludesUntrustedUnknownAndCategoryMismatchedRecords(t *testing.T) 
 	now := time.Now().UTC()
 	base := observabilityvo.LogRecord{
 		Category:         observabilityvo.CategoryRuntimeSystem,
-		EventName:        "service.started",
+		EventName:        "sandbox.session.changed",
 		EventTimestamp:   now,
 		TrustLevel:       "trusted",
 		IngressPrincipal: "otel-gateway",
@@ -877,7 +877,7 @@ func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
 				SourceID:         "producer-z",
 				SourceLogID:      "log-z",
 				Category:         observabilityvo.CategoryRuntimeSystem,
-				EventName:        "service.started",
+				EventName:        "sandbox.session.changed",
 				EventTimestamp:   timestamp,
 				TrustLevel:       "trusted",
 				IngressPrincipal: "otel-gateway",
@@ -889,7 +889,7 @@ func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
 				SourceID:         "producer-a",
 				SourceLogID:      "log-a",
 				Category:         observabilityvo.CategoryRuntimeSystem,
-				EventName:        "service.started",
+				EventName:        "sandbox.session.changed",
 				EventTimestamp:   timestamp,
 				TrustLevel:       "trusted",
 				IngressPrincipal: "otel-gateway",
@@ -906,9 +906,9 @@ func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
 func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 	base := time.Now().UTC().Truncate(time.Second)
 	source := fakeSource{id: "runtime", records: []observabilityvo.LogRecord{
-		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
-		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
-		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base.Add(-2 * time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
+		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
+		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
+		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-2 * time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
 	}}
 	service := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key"))
 	profile := activeProfile("admin-a", "admin")
@@ -936,8 +936,8 @@ func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 func TestListSupportsPageNumberPaginationWithoutExposingCursors(t *testing.T) {
 	base := time.Now().UTC().Truncate(time.Second)
 	source := &filteredPageSource{pages: [][]observabilityvo.LogRecord{
-		{{LogID: "log-new", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
-		{{LogID: "log-old", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
+		{{LogID: "log-new", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
+		{{LogID: "log-old", Category: observabilityvo.CategoryRuntimeSystem, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
 	}}
 	result, err := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key")).List(
 		context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 1, Page: 2},
@@ -954,7 +954,7 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 		filtered[index] = observabilityvo.LogRecord{
 			LogID:            "filtered-" + time.Duration(index).String(),
 			Category:         observabilityvo.CategoryRuntimeSystem,
-			EventName:        "service.started",
+			EventName:        "sandbox.session.changed",
 			EventTimestamp:   base.Add(-time.Duration(index) * time.Second),
 			TrustLevel:       "untrusted",
 			IngressPrincipal: "otel-gateway",
@@ -963,7 +963,7 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 	visible := observabilityvo.LogRecord{
 		LogID:            "visible",
 		Category:         observabilityvo.CategoryRuntimeSystem,
-		EventName:        "service.started",
+		EventName:        "sandbox.session.changed",
 		EventTimestamp:   base.Add(-201 * time.Second),
 		TrustLevel:       "trusted",
 		IngressPrincipal: "otel-gateway",
@@ -1363,7 +1363,7 @@ func BenchmarkListEightSources(b *testing.B) {
 				LogID:            "log-" + time.Duration(sourceIndex*200+recordIndex).String(),
 				SourceID:         "source-" + time.Duration(sourceIndex).String(),
 				Category:         observabilityvo.CategoryRuntimeSystem,
-				EventName:        "service.started",
+				EventName:        "sandbox.session.changed",
 				EventTimestamp:   base.Add(-time.Duration(recordIndex) * time.Millisecond),
 				TrustLevel:       "trusted",
 				IngressPrincipal: "otel-gateway",

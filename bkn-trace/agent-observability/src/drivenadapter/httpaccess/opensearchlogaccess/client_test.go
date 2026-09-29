@@ -35,6 +35,9 @@ func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 			"severity":{"text":"INFO","number":9},"traceId":"trace-a","spanId":"span-a"
 			},"sort":["2026-08-01T11:35:46.123456Z","source-log-a"]}]}}`)}
 	client := New(backend, "ss4o_logs-default-namespace")
+	if client.ID() != "otel-runtime" {
+		t.Fatal("OpenSearch aggregate query adapter ID must remain stable")
+	}
 	page, err := client.Search(context.Background(), observabilityvo.LogQuery{
 		TraceID: "trace-a", Limit: 20,
 		AuthorizedSubjectID:           "builder-a",
