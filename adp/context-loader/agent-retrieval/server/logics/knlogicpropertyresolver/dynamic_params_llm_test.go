@@ -45,7 +45,7 @@ func TestChatJSON_SamplingParamsWithinGatewayRange(t *testing.T) {
 			return `{"ok": true}`, nil
 		})
 
-	d := newDynamicParamsLLM(&noopLogger{}, mfClient, nil)
+	d := newDynamicParamsLLM(&noopLogger{}, mfClient)
 	if _, err := d.chatJSON(context.Background(), "system", "{}", ""); err != nil {
 		t.Fatalf("chatJSON failed: %v", err)
 	}
