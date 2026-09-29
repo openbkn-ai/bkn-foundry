@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -292,11 +293,16 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 		return nil, err
 	}
 
+	// Why each capability is here, and what the model uses that is not mounted at all. Both come
+	// from one read of the branch's object types and action types, read before the metadata_type
+	// filter because the boxes of the unmounted ones are candidates for it too.
+	sources := cbs.collectProvenance(ctx, query.KNID, query.Branch)
+
 	// metadata_type reaches SQL as a set of tool boxes. Resolving it here rather than filtering
 	// the fetched page is what keeps paging honest: the page is drawn from rows that already
 	// match, so total_count is the real total and page two exists.
 	if metadataType := strings.TrimSpace(query.MetadataType); metadataType != "" {
-		boxIDs, boxErr := cbs.boxesOfKind(ctx, query.KNID, query.Branch, metadataType)
+		boxIDs, boxErr := cbs.boxesOfKind(ctx, query.KNID, query.Branch, metadataType, sources)
 		if boxErr != nil {
 			return nil, boxErr
 		}
@@ -324,9 +330,6 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 			berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).WithErrorDetails(err.Error())
 	}
 
-	// Why each capability is here, and what the model uses that is not mounted at all. Both come
-	// from one read of the branch's object types and action types.
-	sources := cbs.collectProvenance(ctx, query.KNID, query.Branch)
 	entries = applyProvenance(entries, sources, query)
 	total := len(entries)
 	entries = pageOf(entries, query.Offset, query.Limit)
@@ -364,6 +367,9 @@ func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Conte
 		KNID: knID, Branch: branch,
 		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: noPagingLimit},
 	})
+	// Unmounted function capabilities per box, so the split below weighs them by their box's kind
+	// like the mounted ones. Left out, an openapi tool the model uses would be counted as a function.
+	implicitPerBox := map[string]int{}
 	if storedErr != nil {
 		logger.Warnf("capability totals: bindings unreadable for kn_id=%s: %v", knID, storedErr)
 	} else {
@@ -374,15 +380,18 @@ func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Conte
 		for key := range sources.byCapability {
 			if _, ok := mounted[key]; !ok {
 				totals[key.capabilityType]++
+				if key.capabilityType == interfaces.CAPABILITY_TYPE_FUNCTION {
+					implicitPerBox[key.ownerID]++
+				}
 			}
 		}
 	}
 
-	// Split the function count by the kind of box each binding belongs to. The kind is not in
+	// Split the function count by the kind of box each capability belongs to. The kind is not in
 	// these rows — it belongs to the box, in the execution factory — so this costs one call per
-	// box that has bindings, not one per binding, and only on the statistics path.
+	// box, not one per capability, and only on the statistics path.
 	if totals[interfaces.CAPABILITY_TYPE_FUNCTION] > 0 {
-		apis, splitErr := cbs.countAPIBindings(ctx, knID, branch)
+		apis, splitErr := cbs.countAPIBindings(ctx, knID, branch, implicitPerBox)
 		if splitErr != nil {
 			// A box that cannot be read leaves its bindings counted as functions, which is the
 			// same fallback the count had before this split existed. Failing the whole
@@ -401,12 +410,16 @@ func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Conte
 
 // boxesOfKind returns the tool boxes of this branch that are of the given kind.
 //
+// The boxes are those holding a mounted function and those holding a function the model uses
+// without a mount. The listing shows both, so a filter that knew only the first would drop the
+// second from every kind at once: present in the unfiltered list, absent from each filtered one.
+//
 // A box that cannot be read counts as a function box, matching countAPIBindings and the meaning
 // the single count had before the split. That keeps a dangling binding — one whose tool is gone
 // while its box remains — inside the function list rather than vanishing from both, which is
 // where its missing marker is meant to be seen.
 func (cbs *capabilityBindingService) boxesOfKind(ctx context.Context, knID, branch,
-	metadataType string) ([]string, error) {
+	metadataType string, sources *provenance) ([]string, error) {
 	perBox, err := cbs.cba.GetFunctionTotalsByOwner(ctx, knID, branch)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -414,59 +427,124 @@ func (cbs *capabilityBindingService) boxesOfKind(ctx context.Context, knID, bran
 			WithErrorDetails(err.Error())
 	}
 
+	candidates := make(map[string]struct{}, len(perBox))
+	for boxID := range perBox {
+		candidates[boxID] = struct{}{}
+	}
+	if sources != nil {
+		for key := range sources.byCapability {
+			if key.capabilityType == interfaces.CAPABILITY_TYPE_FUNCTION {
+				candidates[key.ownerID] = struct{}{}
+			}
+		}
+	}
+
+	kinds, failedBox, err := cbs.boxKinds(ctx, candidates)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadGateway,
+			berrors.BknBackend_CapabilityBinding_ExecutionFactoryUnavailable).
+			WithErrorDetails(fmt.Sprintf("tool box lookup failed: box_id=%s", failedBox))
+	}
+
 	// Non-nil and possibly empty: no box of that kind must select nothing, not everything.
 	boxIDs := []string{}
-	for boxID := range perBox {
-		if boxID == "" {
-			continue
-		}
-		tools, toolsErr := cbs.aoa.ListBoxTools(ctx, boxID)
-		if toolsErr != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadGateway,
-				berrors.BknBackend_CapabilityBinding_ExecutionFactoryUnavailable).
-				WithErrorDetails(fmt.Sprintf("tool box lookup failed: box_id=%s", boxID))
-		}
-		kind := interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION
-		if len(tools) > 0 && tools[0].BoxMetadataType != "" {
-			kind = tools[0].BoxMetadataType
-		}
+	for boxID, kind := range kinds {
 		if kind == metadataType {
 			boxIDs = append(boxIDs, boxID)
 		}
 	}
+	sort.Strings(boxIDs)
 	return boxIDs, nil
 }
 
-// countAPIBindings counts the function bindings whose tool box is an openapi box.
+// countAPIBindings counts the function capabilities whose tool box is an openapi box: the
+// mounted ones, plus implicitPerBox — the capabilities per box that the model uses without a
+// mount, which the totals already count as functions.
 //
 // A box that cannot be read counts as a function rather than failing: that is the pre-split
 // behaviour, and the dangling marker on the listing is what makes a missing box visible.
 func (cbs *capabilityBindingService) countAPIBindings(ctx context.Context, knID,
-	branch string) (int, error) {
+	branch string, implicitPerBox map[string]int) (int, error) {
 	perBox, err := cbs.cba.GetFunctionTotalsByOwner(ctx, knID, branch)
 	if err != nil {
 		return 0, err
 	}
 
-	apis := 0
+	counts := make(map[string]int, len(perBox)+len(implicitPerBox))
 	for boxID, count := range perBox {
-		if boxID == "" {
-			continue
-		}
-		tools, err := cbs.aoa.ListBoxTools(ctx, boxID)
-		if err != nil {
-			return 0, err
-		}
-		if len(tools) == 0 {
-			continue
-		}
-		if tools[0].BoxMetadataType == interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI {
-			apis += count
+		counts[boxID] += count
+	}
+	for boxID, count := range implicitPerBox {
+		counts[boxID] += count
+	}
+	candidates := make(map[string]struct{}, len(counts))
+	for boxID := range counts {
+		candidates[boxID] = struct{}{}
+	}
+
+	kinds, _, err := cbs.boxKinds(ctx, candidates)
+	if err != nil {
+		return 0, err
+	}
+	apis := 0
+	for boxID, kind := range kinds {
+		if kind == interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI {
+			apis += counts[boxID]
 		}
 	}
 	return apis, nil
 }
 
+// boxKindLookupLimit caps the execution factory calls one request makes at once. The calls are
+// independent reads; made one after another, a network whose capabilities span many boxes pays
+// their latencies in sequence on a request that only draws a badge.
+const boxKindLookupLimit = 8
+
+// boxKinds resolves the kind of each tool box, empty IDs skipped. A box with no tools, or whose
+// tools do not say, is a function box. On failure it returns the ID of a box that could not be
+// read, so the caller can name it.
+func (cbs *capabilityBindingService) boxKinds(ctx context.Context,
+	boxIDs map[string]struct{}) (map[string]string, string, error) {
+	var (
+		mu        sync.Mutex
+		wg        sync.WaitGroup
+		failedBox string
+		firstErr  error
+	)
+	kinds := make(map[string]string, len(boxIDs))
+	slots := make(chan struct{}, boxKindLookupLimit)
+	for boxID := range boxIDs {
+		if boxID == "" {
+			continue
+		}
+		wg.Add(1)
+		slots <- struct{}{}
+		go func(boxID string) {
+			defer wg.Done()
+			defer func() { <-slots }()
+
+			tools, err := cbs.aoa.ListBoxTools(ctx, boxID)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					failedBox, firstErr = boxID, err
+				}
+				return
+			}
+			kind := interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION
+			if len(tools) > 0 && tools[0].BoxMetadataType != "" {
+				kind = tools[0].BoxMetadataType
+			}
+			kinds[boxID] = kind
+		}(boxID)
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, failedBox, firstErr
+	}
+	return kinds, "", nil
+}
 func (cbs *capabilityBindingService) DeleteCapabilitiesByKnID(ctx context.Context, tx *sql.Tx, knID,
 	branch string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete capabilities by knowledge network")
