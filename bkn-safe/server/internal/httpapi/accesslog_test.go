@@ -37,6 +37,7 @@ func (r *recordingAccessRecorder) Record(_ context.Context, entry accesslog.Entr
 func newLogoutTestRouter(recorder accesslog.Recorder, actorID string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
+	r.Use(requestIDMiddleware())
 	r.Use(func(c *gin.Context) {
 		c.Set(ctxAccessorID, actorID)
 		c.Next()
@@ -59,6 +60,9 @@ func TestVoluntaryLogoutPublishesAnAccessFact(t *testing.T) {
 	entry := recorder.entries[0]
 	if entry.ActorID != adminSub || entry.Action != "logout" || entry.Outcome != "success" || entry.AuthMethod != "oauth" {
 		t.Fatalf("logout access fact = %#v, want oauth/logout/success", entry)
+	}
+	if entry.RequestID == "" || entry.RequestID != response.Header().Get("x-request-id") {
+		t.Fatalf("logout request id = %q, response = %q", entry.RequestID, response.Header().Get("x-request-id"))
 	}
 }
 

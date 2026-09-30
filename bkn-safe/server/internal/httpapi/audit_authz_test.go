@@ -38,7 +38,7 @@ func serviceReq(t *testing.T, r *gin.Engine, method, path string, body any, call
 	return w
 }
 
-func TestTokenlessPolicyWritesAreAuditedAsServiceActor(t *testing.T) {
+func TestTokenlessPolicyWritesDoNotCreateAuditFactsWithoutAnActor(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
 	grant := map[string]any{
 		"accessor_id": adminSub,
@@ -54,32 +54,16 @@ func TestTokenlessPolicyWritesAreAuditedAsServiceActor(t *testing.T) {
 		t.Fatalf("revoke: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 
-	var rows []model.AuditLog
-	if err := db.Where("resource = ?", "policies").Order("seq ASC").Find(&rows).Error; err != nil {
+	var count int64
+	if err := db.Model(&model.AuditLog{}).Where("resource = ?", "policies").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("policy audit rows = %d, want 2: %+v", len(rows), rows)
-	}
-	grantRow, revokeRow := rows[0], rows[1]
-	if grantRow.Action != "grant" || grantRow.Method != http.MethodPost || grantRow.Status != http.StatusNoContent || grantRow.TargetID != "kn-334" {
-		t.Fatalf("grant row facts: %+v", grantRow)
-	}
-	if grantRow.ActorID != "" || grantRow.ActorType != "service" || grantRow.AuthMethod != "network" || grantRow.SourceChannel != "internal" {
-		t.Fatalf("grant row actor must be the unnamed service peer: %+v", grantRow)
-	}
-	if !strings.Contains(grantRow.Detail, `"_caller_service":"bkn-backend"`) || !strings.Contains(grantRow.Detail, `"accessor_id":"`+adminSub+`"`) {
-		t.Fatalf("grant row detail lacks caller/body facts: %s", grantRow.Detail)
-	}
-	if revokeRow.Action != "revoke" || revokeRow.Method != http.MethodDelete || revokeRow.TargetID != "kn-334" || strings.Contains(revokeRow.Detail, "_caller_service") {
-		t.Fatalf("revoke row facts: %+v", revokeRow)
-	}
-	if grantRow.Seq == nil || revokeRow.Seq == nil || revokeRow.PrevHash != grantRow.RowHash {
-		t.Fatalf("service rows are not chained: %+v -> %+v", grantRow, revokeRow)
+	if count != 0 {
+		t.Fatalf("tokenless policy writes created %d audit facts, want 0", count)
 	}
 }
 
-func TestTokenlessPolicyWriteRefusalIsAudited(t *testing.T) {
+func TestTokenlessPolicyWriteRefusalDoesNotCreateAuditFact(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
 	w := serviceReq(t, r, http.MethodPost, "/api/safe/v1/authz/policies", map[string]any{
 		"accessor_id": adminSub, "resource": map[string]any{"type": "*", "id": "x"}, "operations": []string{"view_detail"},
@@ -87,16 +71,16 @@ func TestTokenlessPolicyWriteRefusalIsAudited(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("wildcard grant: want 400, got %d", w.Code)
 	}
-	var row model.AuditLog
-	if err := db.Where("resource = ? AND status = ?", "policies", http.StatusBadRequest).First(&row).Error; err != nil {
-		t.Fatalf("refused service write not audited: %v", err)
+	var count int64
+	if err := db.Model(&model.AuditLog{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
 	}
-	if row.Action != "grant" || row.ActorType != "service" {
-		t.Fatalf("refused row facts: %+v", row)
+	if count != 0 {
+		t.Fatalf("refused service write created %d audit facts, want 0", count)
 	}
 }
 
-func TestAuthenticationFailuresAreAuditedAndThrottled(t *testing.T) {
+func TestAuthenticationFailuresDoNotCreateAuditFacts(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
 	for i := 0; i < 3; i++ {
 		if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles", nil, ""); w.Code != http.StatusUnauthorized {
@@ -110,37 +94,20 @@ func TestAuthenticationFailuresAreAuditedAndThrottled(t *testing.T) {
 	if err := db.Where("status = ?", http.StatusUnauthorized).Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("401 rows = %d, want 1 (same client+route within the window is throttled): %+v", len(rows), rows)
+	if len(rows) != 0 {
+		t.Fatalf("401 rows = %d, want 0: %+v", len(rows), rows)
 	}
-	row := rows[0]
-	if row.ActorID != "" || row.ActorType != "anonymous" || row.AuthMethod != "none" || row.Resource != "roles" || row.Method != http.MethodGet {
-		t.Fatalf("401 row facts: %+v", row)
-	}
-	if row.RequestID == "" {
-		t.Fatalf("401 row has no request id: %+v", row)
-	}
-	// The client received the same id, so the refusal can be matched to its
-	// row from either side. The header must be set before the gate writes
-	// the response, or it never leaves the server.
-	if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/me", nil, ""); w.Header().Get("x-request-id") == "" {
-		t.Fatal("refused request carries no x-request-id header")
-	}
-	if !strings.Contains(row.Detail, `"_gate":"authn"`) {
-		t.Fatalf("401 row must name the gate: %s", row.Detail)
-	}
-	// A different route is a different key and gets its own row.
 	if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/me", nil, ""); w.Code != http.StatusUnauthorized {
 		t.Fatalf("me without token: want 401, got %d", w.Code)
 	}
 	var n int64
 	db.Model(&model.AuditLog{}).Where("status = ?", http.StatusUnauthorized).Count(&n)
-	if n != 2 {
-		t.Fatalf("401 rows after a second route = %d, want 2", n)
+	if n != 0 {
+		t.Fatalf("401 rows after a second route = %d, want 0", n)
 	}
 }
 
-func TestAuthorizationRefusalsAreAuditedWithSubjectAndDecision(t *testing.T) {
+func TestAuthorizationRefusalsDoNotCreateAuditFacts(t *testing.T) {
 	r, _, db, users, collector := newAdminServerWithDecisions(t)
 	const outsider = "user-outsider"
 	if err := users.CreateLocalUser(t.Context(), &model.User{ID: outsider, Account: outsider, Name: "Out Sider", Enabled: true}, "pw-init0"); err != nil {
@@ -150,14 +117,11 @@ func TestAuthorizationRefusalsAreAuditedWithSubjectAndDecision(t *testing.T) {
 	if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles", nil, outsider); w.Code != http.StatusForbidden {
 		t.Fatalf("outsider read: want 403, got %d", w.Code)
 	}
-	// A write refused at the admin gate: exactly one row, from the failure
-	// recorder (the mutation audit never ran).
+	// A write refused at the admin gate does not create an audit fact either.
 	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments", map[string]any{"id": "d-x", "name": "X"}, outsider); w.Code != http.StatusForbidden {
 		t.Fatalf("outsider write: want 403, got %d", w.Code)
 	}
-	// The same account looping over the same route is one row per window,
-	// not one per request: the chain must not become a write amplifier for
-	// whoever holds a valid but unprivileged token.
+	// Repeated denied reads remain business-noise-free.
 	for i := 0; i < 5; i++ {
 		if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles", nil, outsider); w.Code != http.StatusForbidden {
 			t.Fatalf("outsider repeat read: want 403, got %d", w.Code)
@@ -167,19 +131,8 @@ func TestAuthorizationRefusalsAreAuditedWithSubjectAndDecision(t *testing.T) {
 	if err := db.Where("actor_id = ?", outsider).Order("seq ASC").Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("403 rows for outsider = %d, want 2 (repeats within the window folded): %+v", len(rows), rows)
-	}
-	for _, row := range rows {
-		if row.Status != http.StatusForbidden || row.ActorType != "user" || row.AuthMethod != "oauth" || row.ActorNameSnapshot != "Out Sider" {
-			t.Fatalf("403 row facts: %+v", row)
-		}
-		if !strings.Contains(row.Detail, `"_gate":"authz"`) {
-			t.Fatalf("403 row must name the gate: %s", row.Detail)
-		}
-	}
-	if rows[0].Resource != "roles" || rows[0].Method != http.MethodGet || rows[1].Resource != "departments" || rows[1].Method != http.MethodPost || rows[1].Action != "create" {
-		t.Fatalf("403 rows must keep what was attempted: %+v", rows)
+	if len(rows) != 0 {
+		t.Fatalf("403 rows for outsider = %d, want 0: %+v", len(rows), rows)
 	}
 	// Every refusal is also a decision (decisions are not throttled): safe_admin
 	// console manage, denied — 2 distinct requests + 5 repeats.
@@ -193,13 +146,13 @@ func TestAuthorizationRefusalsAreAuditedWithSubjectAndDecision(t *testing.T) {
 		t.Fatalf("outsider decisions = %d, want 7: %+v", len(decisions), decisions)
 	}
 	for _, d := range decisions {
-		if d.Source != decisionSourceAdmin || d.ResourceType != "safe_admin" || d.ResourceID != "console" || d.Operation != "manage" || d.Decision != "deny" || d.Basis == "" || d.VerifiedActorID != outsider {
+		if d.Source != decisionSourceAdmin || d.ResourceType != "safe_admin" || d.ResourceID != "console" || d.Operation != "manage" || d.Decision != "deny" || d.Basis == "" || d.VerifiedActorID != outsider || d.RequestID == "" {
 			t.Fatalf("admin gate decision facts: %+v", d)
 		}
 	}
 }
 
-func TestPermissionPointRefusalOnMutationIsRecordedOnceWithGate(t *testing.T) {
+func TestPermissionPointRefusalOnMutationDoesNotCreateAuditFact(t *testing.T) {
 	r, e, db, users, collector := newAdminServerWithDecisions(t)
 	// A console administrator without the department create point.
 	const limited = "user-limited"
@@ -216,11 +169,8 @@ func TestPermissionPointRefusalOnMutationIsRecordedOnceWithGate(t *testing.T) {
 	if err := db.Where("actor_id = ?", limited).Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("refused mutation rows = %d, want exactly 1: %+v", len(rows), rows)
-	}
-	if rows[0].Status != http.StatusForbidden || rows[0].Resource != "departments" || !strings.Contains(rows[0].Detail, `"_gate":"permission"`) || !strings.Contains(rows[0].Detail, `"name":"Y"`) {
-		t.Fatalf("refused mutation row must carry the body and the gate: %+v", rows[0])
+	if len(rows) != 0 {
+		t.Fatalf("refused mutation rows = %d, want 0: %+v", len(rows), rows)
 	}
 	var decision decisionlog.Entry
 	for _, entry := range collector.Snapshot() {
@@ -458,8 +408,8 @@ func TestAuditDetailFromPrefixKeepsLeadingFieldsAndSkipsArrays(t *testing.T) {
 	}
 }
 
-func TestOneRequestIDTiesResponseAuditAndDecisions(t *testing.T) {
-	r, _, db, _, collector := newAdminServerWithDecisions(t)
+func TestOneRequestIDTiesResponseAndCommittedAudit(t *testing.T) {
+	r, _, db, _, _ := newAdminServerWithDecisions(t)
 	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments", map[string]any{"id": "d-rid", "name": "RID"})
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create: want 201, got %d (%s)", w.Code, w.Body.String())
@@ -474,30 +424,5 @@ func TestOneRequestIDTiesResponseAuditAndDecisions(t *testing.T) {
 	}
 	if row.Resource != "departments" || row.Method != http.MethodPost || row.Status != http.StatusCreated {
 		t.Fatalf("audit row for the request id: %+v", row)
-	}
-	var decisions []decisionlog.Entry
-	for _, entry := range collector.Snapshot() {
-		if entry.RequestID == rid {
-			decisions = append(decisions, entry)
-		}
-	}
-	if len(decisions) < 2 {
-		t.Fatalf("decisions sharing the request id = %d, want the console gate and the permission point: %+v", len(decisions), decisions)
-	}
-}
-
-func TestFailureLimiterWindow(t *testing.T) {
-	now := time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC)
-	l := newFailureLimiter(time.Minute)
-	l.now = func() time.Time { return now }
-	if !l.allow("k") || l.allow("k") {
-		t.Fatal("first hit allowed, repeat within window throttled")
-	}
-	now = now.Add(61 * time.Second)
-	if !l.allow("k") {
-		t.Fatal("hit after the window must be allowed again")
-	}
-	if !l.allow("other") {
-		t.Fatal("different key is independent")
 	}
 }

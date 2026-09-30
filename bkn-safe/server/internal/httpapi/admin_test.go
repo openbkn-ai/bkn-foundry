@@ -931,8 +931,8 @@ func TestAuditTrail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// three mutations: create dept (POST, no :id), rename it (PUT, :id), and
-	// delete a ghost user (DELETE, :id -> 404 but still audited).
+	// Three committed mutations: create dept (POST, no :id), rename it (PUT,
+	// :id), and delete it. A missing-user delete is a 404, not a business fact.
 	adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments",
 		map[string]any{"id": "d-1", "name": "Root"})
 	adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/departments/d-1",
@@ -944,8 +944,8 @@ func TestAuditTrail(t *testing.T) {
 
 	var total int64
 	db.Model(&model.AuditLog{}).Count(&total)
-	if total != 4 {
-		t.Fatalf("audit rows = %d, want 4 (GET excluded)", total)
+	if total != 3 {
+		t.Fatalf("audit rows = %d, want 3 (GET and failed delete excluded)", total)
 	}
 
 	store := audit.New(db)
@@ -955,31 +955,8 @@ func TestAuditTrail(t *testing.T) {
 		t.Fatalf("retired audit query = %d, want 404", w.Code)
 	}
 	users, count, err := store.List(t.Context(), audit.Filter{Resource: "users"})
-	if err != nil || count != 1 || len(users) != 1 {
-		t.Fatalf("historical users audit: total=%d len=%d err=%v", count, len(users), err)
-	}
-	got := users[0]
-	if got.ActorID != adminSub || got.Method != http.MethodDelete || got.Action != "delete" ||
-		got.TargetID != "ghost" || got.Status != http.StatusNotFound {
-		t.Errorf("ghost-delete entry = %+v", got)
-	}
-	if got.ActorNameSnapshot != "Administrator" || got.ActorType != "user" || got.AuthMethod != "oauth" ||
-		got.RequestID == "" || got.SourceChannel != "api" {
-		t.Errorf("ghost-delete identity/correlation facts = %+v", got)
-	}
-
-	correlated, count, err := store.List(t.Context(), audit.Filter{RequestID: got.RequestID})
-	if err != nil || count != 1 || len(correlated) != 1 || correlated[0].ID != got.ID {
-		t.Fatalf("request_id=%q returned %+v (total=%d, err=%v), want only %+v", got.RequestID, correlated, count, err, got)
-	}
-
-	// Historical detail remains available internally, not over the old route.
-	detail, found, err := store.Get(t.Context(), got.ID)
-	if err != nil || !found || detail.ID != got.ID || detail.TargetID != "ghost" {
-		t.Fatalf("unexpected audit detail: %+v", detail)
-	}
-	if missing := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs/"+got.ID, nil); missing.Code != http.StatusNotFound {
-		t.Fatalf("retired audit detail: want 404, got %d", missing.Code)
+	if err != nil || count != 0 || len(users) != 0 {
+		t.Fatalf("failed user delete created audit facts: total=%d len=%d err=%v", count, len(users), err)
 	}
 
 	depts, count, err := store.List(t.Context(), audit.Filter{Resource: "departments"})
@@ -998,8 +975,8 @@ func TestAuditTrail(t *testing.T) {
 	}
 
 	failed, count, err := store.List(t.Context(), audit.Filter{FailedOnly: true})
-	if err != nil || count != 1 || len(failed) != 1 || failed[0].Status < http.StatusBadRequest {
-		t.Errorf("historical failed_only: total=%d logs=%+v err=%v", count, failed, err)
+	if err != nil || count != 0 || len(failed) != 0 {
+		t.Errorf("failed_only must stay empty: total=%d logs=%+v err=%v", count, failed, err)
 	}
 }
 
@@ -1082,8 +1059,8 @@ func TestRoleManagementSuccessPersistsAuditBeforeChainAppend(t *testing.T) {
 	if err := db.Where("request_id = ?", "role-update-missing").Find(&failedLogs).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(failedLogs) != 1 || failedLogs[0].Status != http.StatusNotFound {
-		t.Fatalf("missing role update audit = %+v, want exactly one 404 event", failedLogs)
+	if len(failedLogs) != 0 {
+		t.Fatalf("missing role update created audit facts: %+v", failedLogs)
 	}
 }
 
@@ -1111,7 +1088,7 @@ func TestRolePermissionBatchAuditsOneRequestOutcome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	request := func(requestID string, operations []string, want int) {
+	request := func(requestID string, operations []string, want int, wantAudit bool) {
 		t.Helper()
 		body, err := json.Marshal(gin.H{
 			"resource":   gin.H{"type": "catalog", "id": "*"},
@@ -1133,13 +1110,17 @@ func TestRolePermissionBatchAuditsOneRequestOutcome(t *testing.T) {
 		if err := db.Where("request_id = ?", requestID).Find(&logs).Error; err != nil {
 			t.Fatal(err)
 		}
-		if len(logs) != 1 || logs[0].Status != want {
-			t.Fatalf("request %q audit logs = %+v, want exactly one status %d", requestID, logs, want)
+		if wantAudit {
+			if len(logs) != 1 || logs[0].Status != want {
+				t.Fatalf("request %q audit logs = %+v, want exactly one status %d", requestID, logs, want)
+			}
+		} else if len(logs) != 0 {
+			t.Fatalf("failed request %q created audit facts: %+v", requestID, logs)
 		}
 	}
 
-	request("role-permission-batch-success", []string{"view_detail", "resource_manage"}, http.StatusNoContent)
-	request("role-permission-batch-invalid", []string{"view_detail", "not-grantable"}, http.StatusBadRequest)
+	request("role-permission-batch-success", []string{"view_detail", "resource_manage"}, http.StatusNoContent, true)
+	request("role-permission-batch-invalid", []string{"view_detail", "not-grantable"}, http.StatusBadRequest, false)
 	grants, err := e.RolePermissions(roleID)
 	if err != nil {
 		t.Fatal(err)

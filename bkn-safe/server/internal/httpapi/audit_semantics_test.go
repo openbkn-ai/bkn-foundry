@@ -44,28 +44,6 @@ func TestSafeAdminMiddlewarePublishesKafkaWithoutLegacyStore(t *testing.T) {
 	}
 }
 
-func TestSafeAdminGateRefusalPublishesAnonymousKafkaAudit(t *testing.T) {
-	publisher := &safeAuditPublisherStub{}
-	router := gin.New()
-	router.Use(auditAuthFailures(audit.NewKafkaRecorder(publisher, "test"), nil, nil))
-	router.POST("/api/safe/v1/admin/users", func(c *gin.Context) { abortGate(c, http.StatusUnauthorized, gateAuthn) })
-	request := httptest.NewRequest(http.MethodPost, "/api/safe/v1/admin/users", nil)
-	request.Header.Set("x-request-id", "req-safe-denied")
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-	if response.Code != http.StatusUnauthorized || len(publisher.values) != 1 {
-		t.Fatalf("business status=%d, Kafka records=%d", response.Code, len(publisher.values))
-	}
-	var record map[string]any
-	if err := json.Unmarshal(publisher.values[0], &record); err != nil {
-		t.Fatal(err)
-	}
-	actor := record["actor"].(map[string]any)
-	if record["outcome"] != "denied" || actor["type"] != "anonymous" {
-		t.Fatalf("wrong denied Safe event: %+v", record)
-	}
-}
-
 func TestSafeAuditRuntimeDoesNotMountHistoricalQueryRoute(t *testing.T) {
 	publisher := &safeAuditPublisherStub{}
 	kafka := audit.NewKafkaRecorder(publisher, "test")
