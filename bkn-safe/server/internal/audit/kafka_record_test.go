@@ -47,6 +47,30 @@ func TestBuildKafkaAdminRecordPreservesCommittedTargetWithoutDetail(t *testing.T
 	}
 }
 
+func TestBuildKafkaAdminRecordBoundsDisplaySnapshots(t *testing.T) {
+	entry := Entry{
+		ActorID: "verified-admin", ActorNameSnapshot: strings.Repeat("操", 300), ActorType: "user", AuthMethod: "oauth",
+		RequestID: "req-safe-role-long-name", SourceChannel: "api", Method: "PUT",
+		Resource: "roles", Action: "update", TargetID: "role-1", TargetName: strings.Repeat("作", 600), Status: 200,
+	}
+	value, err := BuildKafkaAdminRecord(entry, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(value, &record); err != nil {
+		t.Fatal(err)
+	}
+	actor := record["actor"].(map[string]any)
+	if got := []rune(actor["display_name_snapshot"].(string)); len(got) != 256 {
+		t.Fatalf("actor display snapshot length=%d, want 256", len(got))
+	}
+	target := record["target"].(map[string]any)
+	if got := []rune(target["name"].(string)); len(got) != 512 {
+		t.Fatalf("target name snapshot length=%d, want 512", len(got))
+	}
+}
+
 func TestBuildKafkaAdminRecordUsesRequestTargetForFailedAttempt(t *testing.T) {
 	entry := Entry{ActorID: "verified-admin", ActorType: "user", AuthMethod: "oauth",
 		RequestID: "req-safe-failed-1", SourceChannel: "api", Method: "POST",

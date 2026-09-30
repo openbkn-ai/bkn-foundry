@@ -32,6 +32,15 @@ var safeAdminResourceTypes = map[string]string{
 	"profile":                  "user",
 }
 
+func boundedAuditDisplayName(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
 // BuildKafkaAdminRecord projects a committed Safe administration fact into a
 // bounded Audit v1 event. Request Detail is intentionally never serialized:
 // the old redacted JSON was a local troubleshooting aid, not an approved
@@ -101,11 +110,11 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 		correlation["request_id"] = entry.RequestID
 	}
 	target := map[string]any{"type": targetType, "id": targetID}
-	if targetName := strings.TrimSpace(entry.TargetName); targetName != "" {
+	if targetName := boundedAuditDisplayName(entry.TargetName, 512); targetName != "" {
 		target["name"] = targetName
 	}
 	actor := map[string]any{"id": actorID, "effective_subject": actorID, "type": actorType, "auth_method": authMethod}
-	if actorName := strings.TrimSpace(entry.ActorNameSnapshot); actorName != "" {
+	if actorName := boundedAuditDisplayName(entry.ActorNameSnapshot, 256); actorName != "" {
 		actor["display_name_snapshot"] = actorName
 	}
 	record := map[string]any{
