@@ -98,6 +98,9 @@ func TestPropertyGrantGateRunsBeforeAuthentication(t *testing.T) {
 		}
 		header := response.Header.Clone()
 		header.Del("Date")
+		// Request correlation is deliberately per-request, so it cannot be
+		// part of the indistinguishability check between the two gate paths.
+		header.Del("X-Request-Id")
 		return wireResponse{status: response.StatusCode, header: header, body: string(body)}
 	}
 	community := probe(propertyGrantRouter(t, false))
