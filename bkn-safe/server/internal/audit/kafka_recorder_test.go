@@ -52,7 +52,7 @@ func TestKafkaRecorderCountsAcceptedAndDroppedWithoutPayload(t *testing.T) {
 	telemetry := NewPublishTelemetry()
 	publisher := &auditPublisherStub{disposition: auditpublisher.Accepted}
 	recorder := NewKafkaRecorder(publisher, "test", telemetry)
-	entry := Entry{RequestID: "req-safe-metrics-secret", Method: "POST", Resource: "roles", Action: "create", Status: 201, TargetID: "role-metrics-secret"}
+	entry := Entry{ActorID: "admin-1", ActorNameSnapshot: "Administrator", RequestID: "req-safe-metrics-secret", Method: "POST", Resource: "roles", Action: "create", Status: 201, TargetID: "role-metrics-secret", TargetName: "运营角色"}
 	if err := recorder.Record(context.Background(), entry); err != nil {
 		t.Fatal(err)
 	}

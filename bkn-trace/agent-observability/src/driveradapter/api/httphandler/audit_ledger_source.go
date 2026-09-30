@@ -21,7 +21,7 @@ func NewAuditLedgerSource(reader *auditstore.Reader) *auditLedgerSource {
 func (s *auditLedgerSource) ID() string                   { return "audit-ledger" }
 func (s *auditLedgerSource) SupportsSourceIDFilter() bool { return true }
 func (s *auditLedgerSource) Metadata() observabilityvo.SourceStatus {
-	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: "degraded", Reason: "producer_coverage_unverified", Reliability: "best_effort", CollectionMethod: "kafka_audit", CountAccuracy: "partial", Categories: []string{"access.user", "audit.admin", "audit.security"}}
+	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: observabilityvo.SourceCoverageHealthy, Reliability: "best_effort", CollectionMethod: "kafka_audit", CoveredModules: []string{"system_management"}, CountAccuracy: "partial", Categories: []string{"access.user", "audit.admin", "audit.security"}}
 }
 func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	if q.TimeFrom == nil || q.TimeTo == nil {
@@ -84,14 +84,6 @@ func (s *auditLedgerSource) Get(ctx context.Context, id string) (observabilityvo
 	return auditLogRecord(r), true, nil
 }
 func auditLogRecord(r auditsvc.Record) observabilityvo.LogRecord {
-	actorName := r.ActorNameSnapshot
-	if actorName == "" {
-		actorName = r.ActorID
-	}
-	targetName := r.TargetNameSnapshot
-	if targetName == "" {
-		targetName = r.TargetID
-	}
 	attributes := map[string]any{}
 	if r.Transport != "" {
 		attributes["transport"] = r.Transport
@@ -109,10 +101,10 @@ func auditLogRecord(r auditsvc.Record) observabilityvo.LogRecord {
 		SchemaVersion: "1.0", EventID: r.EventID, LogID: r.EventID,
 		SourceID: r.SourceID, SourceLogID: r.EventID, Category: r.Category, EventName: r.EventName,
 		EventTime: r.OccurredAt, EventTimestamp: r.OccurredAt, ObservedTimestamp: r.BrokerReceivedAt, RecordedAt: r.RecordedAt,
-		ActorID: r.ActorID, EffectiveSubjectID: r.EffectiveSubjectID, ActorNameSnapshot: actorName,
+		ActorID: r.ActorID, EffectiveSubjectID: r.EffectiveSubjectID, ActorNameSnapshot: r.ActorNameSnapshot,
 		ActorType: r.ActorType, AuthMethod: r.AuthMethod, SourceChannel: r.SourceChannel,
 		BusinessModule: r.BusinessModule, TargetType: r.TargetType, TargetID: r.TargetID,
-		TargetNameSnapshot: targetName, Action: r.Action, Outcome: r.Outcome, SafeSummary: r.Summary, FailureCode: r.FailureCode,
+		TargetNameSnapshot: r.TargetNameSnapshot, Action: r.Action, Outcome: r.Outcome, SafeSummary: r.Summary, FailureCode: r.FailureCode,
 		ServiceName: r.SourceID, Environment: r.Environment,
 		SeverityNumber: 9, SeverityText: "INFO", ApplicationID: r.ApplicationID,
 		KnowledgeNetworkIDs: append([]string(nil), r.KnowledgeNetworkIDs...), RequestID: r.RequestID,

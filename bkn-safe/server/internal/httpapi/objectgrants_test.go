@@ -858,22 +858,12 @@ func TestObjectGrantsOwnerBatchRevokeIsAllOrNothing(t *testing.T) {
 		t.Fatalf("owner batch revoke = %d %s; want 204", w.Code, w.Body.String())
 	}
 	rows := objectGrantRevokeAuditRows(t, db, w.Header().Get("x-request-id"))
-	if len(rows) != 2 {
-		t.Fatalf("owner batch revoke audit rows = %d, want 2", len(rows))
+	if len(rows) != 1 {
+		t.Fatalf("owner batch revoke audit rows = %d, want 1", len(rows))
 	}
-	wantIDs := map[string]bool{ownerViewID: true, ownerModifyID: true}
-	for _, row := range rows {
-		outcome := objectGrantRevokeAuditOutcome(t, row)
-		if !wantIDs[row.TargetID] || outcome["grant_id"] != row.TargetID ||
-			outcome["policy_source"] != "professional_rule" ||
-			outcome["authority_source"] != "owner_delegate" ||
-			outcome["created_by"] != "u-owner" || outcome["via"] != "owner" || outcome["removed"] != true {
-			t.Fatalf("owner batch revoke audit row = %+v outcome=%v", row, outcome)
-		}
-		delete(wantIDs, row.TargetID)
-	}
-	if len(wantIDs) != 0 {
-		t.Fatalf("owner batch revoke missed audit ids: %v", wantIDs)
+	outcome := objectGrantRevokeAuditOutcome(t, rows[0])
+	if rows[0].TargetName != "2 项授权" || outcome["grant_count"] != float64(2) || outcome["removed_count"] != float64(2) {
+		t.Fatalf("owner batch revoke audit fact = %+v outcome=%v", rows[0], outcome)
 	}
 	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
 		t.Fatal("successful batch retained view_detail")
@@ -886,7 +876,7 @@ func TestObjectGrantsOwnerBatchRevokeIsAllOrNothing(t *testing.T) {
 	}
 }
 
-func TestObjectGrantsLargeBatchRevokeKeepsEveryAuditSource(t *testing.T) {
+func TestObjectGrantsLargeBatchRevokeCreatesOneAuditFact(t *testing.T) {
 	r, e, db := ownerGrantFixtureWithDB(t)
 	operations := make([]string, 0, 20)
 	for i := 0; i < cap(operations); i++ {
@@ -905,21 +895,8 @@ func TestObjectGrantsLargeBatchRevokeKeepsEveryAuditSource(t *testing.T) {
 		t.Fatalf("batch source records = %d err=%v, want %d", len(records), err, len(operations))
 	}
 	grantIDs := make([]string, 0, len(records))
-	legacySources := make([]gin.H, 0, len(records))
 	for _, record := range records {
 		grantIDs = append(grantIDs, record.GrantID)
-		source := objectGrantRevokeAuditSource(record, authorityOwner)
-		source["removed"] = true
-		legacySources = append(legacySources, source)
-	}
-	legacyDetail, err := json.Marshal(map[string]any{
-		"grant_ids": grantIDs,
-		"_outcome": map[string]any{
-			"grant_ids": grantIDs, "grant_sources": legacySources, "removed": len(grantIDs),
-		},
-	})
-	if err != nil || len(legacyDetail) <= maxAuditDetail {
-		t.Fatalf("regression fixture detail size = %d err=%v, want over %d", len(legacyDetail), err, maxAuditDetail)
 	}
 
 	clearAuditLog(t, db)
@@ -929,26 +906,12 @@ func TestObjectGrantsLargeBatchRevokeKeepsEveryAuditSource(t *testing.T) {
 		t.Fatalf("large owner batch revoke = %d %s; want 204", w.Code, w.Body.String())
 	}
 	rows := objectGrantRevokeAuditRows(t, db, w.Header().Get("x-request-id"))
-	if len(rows) != len(grantIDs) {
-		t.Fatalf("large batch audit rows = %d, want %d", len(rows), len(grantIDs))
+	if len(rows) != 1 {
+		t.Fatalf("large batch audit rows = %d, want 1", len(rows))
 	}
-	wantIDs := make(map[string]bool, len(grantIDs))
-	for _, grantID := range grantIDs {
-		wantIDs[grantID] = true
-	}
-	for _, row := range rows {
-		outcome := objectGrantRevokeAuditOutcome(t, row)
-		if !wantIDs[row.TargetID] || outcome["grant_id"] != row.TargetID ||
-			outcome["policy_source"] != "professional_rule" ||
-			outcome["authority_source"] != "owner_delegate" ||
-			outcome["created_by"] != "u-owner" || outcome["operation"] == "" ||
-			outcome["effect"] != "allow" || outcome["via"] != "owner" || outcome["removed"] != true {
-			t.Fatalf("large batch audit row = %+v outcome=%v", row, outcome)
-		}
-		delete(wantIDs, row.TargetID)
-	}
-	if len(wantIDs) != 0 {
-		t.Fatalf("large batch audit missed ids: %v", wantIDs)
+	outcome := objectGrantRevokeAuditOutcome(t, rows[0])
+	if rows[0].TargetName != "20 项授权" || outcome["grant_count"] != float64(20) || outcome["removed_count"] != float64(20) {
+		t.Fatalf("large batch audit fact = %+v outcome=%v", rows[0], outcome)
 	}
 	remaining, err := e.PolicyRecords(authz.PolicyFilter{
 		AccessorID: "u-mate", Object: "knowledge_network:kn-mine",

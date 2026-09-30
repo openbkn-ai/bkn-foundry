@@ -71,24 +71,19 @@ func TestBuildKafkaAdminRecordBoundsDisplaySnapshots(t *testing.T) {
 	}
 }
 
-func TestBuildKafkaAdminRecordUsesRequestTargetForFailedAttempt(t *testing.T) {
+func TestBuildKafkaAdminRecordRejectsUncommittedAttempt(t *testing.T) {
 	entry := Entry{ActorID: "verified-admin", ActorType: "user", AuthMethod: "oauth",
 		RequestID: "req-safe-failed-1", SourceChannel: "api", Method: "POST",
 		Resource: "users", Action: "create", Status: 400}
-	value, err := BuildKafkaAdminRecord(entry, "test")
-	if err != nil {
-		t.Fatal(err)
+	if _, err := BuildKafkaAdminRecord(entry, "test"); err == nil {
+		t.Fatal("uncommitted request must not enter the business audit stream")
 	}
-	var record map[string]any
-	if err := json.Unmarshal(value, &record); err != nil {
-		t.Fatal(err)
-	}
-	if record["outcome"] != "failure" || record["failure_code"] != "HTTP_400" {
-		t.Fatalf("failed attempt result = %+v", record)
-	}
-	target := record["target"].(map[string]any)
-	if target["type"] != "user" || target["id"] != "user:req-safe-failed-1" {
-		t.Fatalf("failed request target = %+v", target)
+}
+
+func TestBuildKafkaAdminRecordRejectsMissingActor(t *testing.T) {
+	entry := Entry{ActorType: "user", AuthMethod: "oauth", RequestID: "req-safe-missing-actor", SourceChannel: "api", Method: "POST", Resource: "users", Action: "create", TargetID: "user-1", TargetName: "用户 A", Status: 201}
+	if _, err := BuildKafkaAdminRecord(entry, "test"); err == nil {
+		t.Fatal("admin fact without a resolved actor must not enter the business audit stream")
 	}
 }
 

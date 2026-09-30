@@ -8,12 +8,26 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
+
+type accessActorLookup struct{ user *model.User }
+
+func (s accessActorLookup) ByID(context.Context, string) (*model.User, error) { return s.user, nil }
+func (s accessActorLookup) SetPassword(context.Context, string, string) error { return nil }
+func (s accessActorLookup) ByAccount(_ context.Context, account string) (*model.User, error) {
+	if s.user != nil && s.user.Account == account {
+		return s.user, nil
+	}
+	return nil, errors.New("not found")
+}
 
 func TestAccessLogReadEndpointIsRetired(t *testing.T) {
 	r, _, _, _ := newAdminServer(t)
@@ -76,5 +90,27 @@ func TestVoluntaryLogoutFailsOpenWhenAuditTransportRejectsFact(t *testing.T) {
 	}
 	if len(recorder.entries) != 1 {
 		t.Fatalf("fail-open logout access facts = %d, want 1", len(recorder.entries))
+	}
+}
+
+func TestCredentialFailureUsesResolvedAccountOrProducesNoFact(t *testing.T) {
+	known := &model.User{ID: "user-a", Account: "a", Name: "用户 A"}
+	provider := auth.NewProvider(nil, nil, accessActorLookup{user: known})
+	recorder := &recordingAccessRecorder{}
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = httptest.NewRequest(http.MethodPost, "/login", nil)
+
+	recordLogin(context, provider, recorder, nil, "a", "failure", "invalid_credentials")
+	if len(recorder.entries) != 1 {
+		t.Fatalf("known credential failure facts = %d, want 1", len(recorder.entries))
+	}
+	entry := recorder.entries[0]
+	if entry.ActorID != "user-a" || entry.ActorNameSnapshot != "用户 A" {
+		t.Fatalf("known credential failure actor = %#v", entry)
+	}
+
+	recordLogin(context, provider, recorder, nil, "unknown", "failure", "invalid_credentials")
+	if len(recorder.entries) != 1 {
+		t.Fatalf("unknown credential attempt entered business stream: %#v", recorder.entries)
 	}
 }

@@ -14,8 +14,9 @@ import (
 const accessSourceID = "bkn-safe-access"
 
 // BuildKafkaRecord projects one existing Safe access fact into the bounded
-// Audit v1 transport. It deliberately excludes the legacy display name and
-// client IP fields: neither is needed to audit an authentication outcome.
+// Audit v1 transport. An access fact is a user-facing business fact only when
+// its subject was resolved by Safe; unknown credential attempts stay out of
+// this stream.
 func BuildKafkaRecord(entry Entry, environment string) ([]byte, error) {
 	if environment != "development" && environment != "test" && environment != "staging" && environment != "production" {
 		return nil, errors.New("invalid Safe access environment")
@@ -28,13 +29,13 @@ func BuildKafkaRecord(entry Entry, environment string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	actorID, actorType := strings.TrimSpace(entry.ActorID), "user"
+	actorID := strings.TrimSpace(entry.ActorID)
 	if actorID == "" {
-		actorID, actorType = "anonymous", "anonymous"
+		return nil, errors.New("safe access actor is missing")
 	}
-	targetID := "session:" + eventID.String()
-	if requestID := strings.TrimSpace(entry.RequestID); requestID != "" {
-		targetID = "session:" + requestID
+	actorName := strings.TrimSpace(entry.ActorNameSnapshot)
+	if actorName == "" {
+		return nil, errors.New("safe access actor name is missing")
 	}
 	correlation := map[string]any{}
 	if requestID := strings.TrimSpace(entry.RequestID); requestID != "" {
@@ -55,8 +56,8 @@ func BuildKafkaRecord(entry Entry, environment string) ([]byte, error) {
 		"category":        "access.user",
 		"event_name":      eventName,
 		"occurred_at":     time.Now().UTC().Format(time.RFC3339Nano),
-		"actor":           map[string]any{"id": actorID, "effective_subject": actorID, "type": actorType, "auth_method": authMethod},
-		"target":          map[string]any{"type": "session", "id": targetID},
+		"actor":           map[string]any{"id": actorID, "effective_subject": actorID, "display_name_snapshot": actorName, "type": "user", "auth_method": authMethod},
+		"target":          map[string]any{"type": "user", "id": actorID, "name": actorName},
 		"outcome":         entry.Outcome,
 		"scope":           map[string]any{"business_module": "system_management", "environment": environment, "platform_scope": true, "knowledge_network_ids": []string{}},
 		"request_context": map[string]any{"source_channel": channel, "transport": "http", "method": "POST"},

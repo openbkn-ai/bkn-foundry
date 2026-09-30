@@ -169,6 +169,17 @@ func (s *UserStore) ByID(ctx context.Context, id string) (*model.User, error) {
 	return &u, nil
 }
 
+// ByAccount resolves an existing local account for an internal access fact.
+// It is never used to alter the public authentication response, which remains
+// deliberately opaque for an unknown account and a wrong password.
+func (s *UserStore) ByAccount(ctx context.Context, account string) (*model.User, error) {
+	var u model.User
+	if err := s.db.WithContext(ctx).First(&u, "account = ?", account).Error; err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 // ChangePassword is the self-service password change: it re-verifies the
 // current (old) password, then sets the new one (which also clears
 // MustChangePassword). Returns the same opaque errors as Verify on a bad old

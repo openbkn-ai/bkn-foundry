@@ -6,9 +6,26 @@ import (
 	"testing"
 )
 
-func TestBuildKafkaRecordProjectsLoginFailureWithoutLegacyAccessFields(t *testing.T) {
-	value, err := BuildKafkaRecord(Entry{
+func TestBuildKafkaRecordRejectsAccessFactWithoutResolvedActor(t *testing.T) {
+	_, err := BuildKafkaRecord(Entry{
 		ActorNameSnapshot: "untrusted-account-name",
+		AuthMethod:        "password",
+		SourceChannel:     "web",
+		Action:            "login",
+		Outcome:           "failure",
+		FailureCode:       "invalid_credentials",
+		RequestID:         "req-safe-access-failure",
+		ClientIP:          "192.0.2.10",
+	}, "test")
+	if err == nil {
+		t.Fatal("access fact without a resolved actor must not enter the business log stream")
+	}
+}
+
+func TestBuildKafkaRecordProjectsResolvedLoginFailureWithBusinessTarget(t *testing.T) {
+	value, err := BuildKafkaRecord(Entry{
+		ActorID:           "user-1",
+		ActorNameSnapshot: "用户 A",
 		AuthMethod:        "password",
 		SourceChannel:     "web",
 		Action:            "login",
@@ -35,7 +52,7 @@ func TestBuildKafkaRecordProjectsLoginFailureWithoutLegacyAccessFields(t *testin
 		t.Fatalf("access facts = %+v, want login failure", facts)
 	}
 	target, ok := record["target"].(map[string]any)
-	if !ok || target["type"] != "session" || target["id"] != "session:req-safe-access-failure" {
-		t.Fatalf("access target = %+v, want request-scoped session", target)
+	if !ok || target["type"] != "user" || target["id"] != "user-1" || target["name"] != "用户 A" {
+		t.Fatalf("access target = %+v, want resolved user snapshot", target)
 	}
 }
