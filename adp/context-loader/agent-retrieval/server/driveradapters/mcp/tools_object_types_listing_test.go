@@ -171,7 +171,7 @@ func TestGetObjectTypesWithIDsIgnoresPaging(t *testing.T) {
 // property-plan read each -- for properties the index does not carry -- which is
 // what made a page of twenty take about twenty seconds on a large network.
 func TestListedPageCostsNothingPerObjectType(t *testing.T) {
-	bkn := &listingBknBackend{total: 1000}
+	bkn := &metricCountingBknBackend{listingBknBackend: listingBknBackend{total: 1000}}
 	access := &countingSchemaAccess{}
 	handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), access)
 	result, err := handler(context.Background(), mcpReq(map[string]any{
@@ -182,6 +182,9 @@ func TestListedPageCostsNothingPerObjectType(t *testing.T) {
 	}
 	if access.calls.Load() != 0 {
 		t.Fatalf("read %d object type schemas for an index that carries no properties", access.calls.Load())
+	}
+	if bkn.metricCalls != 0 {
+		t.Fatalf("read metrics %d times for an index that does not carry them", bkn.metricCalls)
 	}
 	got, _ := resultToMap(t, result)["object_types"].([]any)
 	if len(got) != 50 {
