@@ -38,7 +38,7 @@ func serviceReq(t *testing.T, r *gin.Engine, method, path string, body any, call
 	return w
 }
 
-func TestTokenlessPolicyWritesAreAuditedAsServiceActor(t *testing.T) {
+func TestTokenlessPolicyWritesDoNotCreateAuditFactsWithoutAnActor(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
 	grant := map[string]any{
 		"accessor_id": adminSub,
@@ -54,28 +54,12 @@ func TestTokenlessPolicyWritesAreAuditedAsServiceActor(t *testing.T) {
 		t.Fatalf("revoke: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 
-	var rows []model.AuditLog
-	if err := db.Where("resource = ?", "policies").Order("seq ASC").Find(&rows).Error; err != nil {
+	var count int64
+	if err := db.Model(&model.AuditLog{}).Where("resource = ?", "policies").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("policy audit rows = %d, want 2: %+v", len(rows), rows)
-	}
-	grantRow, revokeRow := rows[0], rows[1]
-	if grantRow.Action != "grant" || grantRow.Method != http.MethodPost || grantRow.Status != http.StatusNoContent || grantRow.TargetID != "kn-334" {
-		t.Fatalf("grant row facts: %+v", grantRow)
-	}
-	if grantRow.ActorID != "" || grantRow.ActorType != "service" || grantRow.AuthMethod != "network" || grantRow.SourceChannel != "internal" {
-		t.Fatalf("grant row actor must be the unnamed service peer: %+v", grantRow)
-	}
-	if !strings.Contains(grantRow.Detail, `"_caller_service":"bkn-backend"`) || !strings.Contains(grantRow.Detail, `"accessor_id":"`+adminSub+`"`) {
-		t.Fatalf("grant row detail lacks caller/body facts: %s", grantRow.Detail)
-	}
-	if revokeRow.Action != "revoke" || revokeRow.Method != http.MethodDelete || revokeRow.TargetID != "kn-334" || strings.Contains(revokeRow.Detail, "_caller_service") {
-		t.Fatalf("revoke row facts: %+v", revokeRow)
-	}
-	if grantRow.Seq == nil || revokeRow.Seq == nil || revokeRow.PrevHash != grantRow.RowHash {
-		t.Fatalf("service rows are not chained: %+v -> %+v", grantRow, revokeRow)
+	if count != 0 {
+		t.Fatalf("tokenless policy writes created %d audit facts, want 0", count)
 	}
 }
 
@@ -162,7 +146,7 @@ func TestAuthorizationRefusalsDoNotCreateAuditFacts(t *testing.T) {
 		t.Fatalf("outsider decisions = %d, want 7: %+v", len(decisions), decisions)
 	}
 	for _, d := range decisions {
-		if d.Source != decisionSourceAdmin || d.ResourceType != "safe_admin" || d.ResourceID != "console" || d.Operation != "manage" || d.Decision != "deny" || d.Basis == "" || d.VerifiedActorID != outsider {
+		if d.Source != decisionSourceAdmin || d.ResourceType != "safe_admin" || d.ResourceID != "console" || d.Operation != "manage" || d.Decision != "deny" || d.Basis == "" || d.VerifiedActorID != outsider || d.RequestID == "" {
 			t.Fatalf("admin gate decision facts: %+v", d)
 		}
 	}

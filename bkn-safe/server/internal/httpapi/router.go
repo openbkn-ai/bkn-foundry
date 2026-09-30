@@ -92,6 +92,7 @@ func New(deps Deps) *gin.Engine {
 		}
 		abortInternalError(c)
 	}))
+	r.Use(requestIDMiddleware())
 	r.Use(sharedrest.LanguageMiddleware())
 	recorder := deps.Audit
 	if deps.Decisions != nil {
@@ -107,7 +108,7 @@ func New(deps Deps) *gin.Engine {
 	// local intermediate mode relies on the platform network boundary (#333),
 	// never on a caller-supplied service-name header. Callers resolve the end-user
 	// identity at their own boundary and pass accessor_id.
-	registerAuthz(r, deps.Enforcer, deps.DB, recorder, deps.Directory)
+	registerAuthz(r, deps.Enforcer, deps.DB, deps.Directory)
 
 	// AppKey (user-issued API key) store. Verification is internal, tokenless and
 	// ClusterIP-only (same trust face as /authz) — the Context Loader MCP/REST

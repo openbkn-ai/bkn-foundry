@@ -54,11 +54,14 @@ type auditBatchRecorder interface {
 
 func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestID := strings.TrimSpace(c.GetHeader("x-request-id"))
-		if !validAuditRequestID(requestID) {
-			requestID = audit.NewID()
+		// Every normal audit fact has an authenticated actor. A caller that
+		// reaches this middleware without one is not allowed into the business
+		// audit stream; it may still complete its request normally.
+		if c.GetString(ctxAccessorID) == "" {
+			c.Next()
+			return
 		}
-		c.Header("x-request-id", requestID)
+		requestID := ensureRequestID(c)
 		var raw []byte
 		if isAuditedManagementOperation(c.Request.Method, c.FullPath()) && c.Request.Body != nil {
 			// Buffer a bounded prefix for the Detail snapshot, then hand the
@@ -86,10 +89,6 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		beforeName := auditTargetName(c.Request.Context(), dir, db, resource, targetID, detail)
 		actorID := c.GetString(ctxAccessorID)
 		actorType, authMethod, sourceChannel := "user", "oauth", "api"
-		if actorID == "" {
-			actorType, authMethod, sourceChannel = "service", "network", "internal"
-			detail = withAuditCallerService(detail, c)
-		}
 		operationEntry := audit.Entry{
 			ActorID: actorID, ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
 			ActorType: actorType, AuthMethod: authMethod, RequestID: requestID, SourceChannel: sourceChannel,
@@ -135,14 +134,6 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		}
 		actorID = c.GetString(ctxAccessorID)
 		actorType, authMethod, sourceChannel = "user", "oauth", "api"
-		if actorID == "" {
-			// Tokenless service face (/authz policy and hierarchy writes): the
-			// platform network boundary is the credential, so there is no
-			// subject to name — only the peer address, plus the caller's
-			// self-declared service name in Detail when it sends one.
-			actorType, authMethod, sourceChannel = "service", "network", "internal"
-			detail = withAuditCallerService(detail, c)
-		}
 		// The write may have committed after the caller hung up (its deadline
 		// passed mid-commit); its audit row must not be dropped with the
 		// cancelled request context (#1511). It keeps a bound of its own, so a
@@ -382,22 +373,6 @@ func withAuditGate(detail string, c *gin.Context) string {
 		return detail
 	}
 	return withAuditFact(detail, "_gate", gate)
-}
-
-// maxCallerServiceLen bounds the self-declared x-caller-service header value.
-const maxCallerServiceLen = 64
-
-// withAuditCallerService records the caller's self-declared service name for
-// a tokenless write. It is metadata for correlation only — nothing trusts it —
-// which is why it lives in Detail and never in the actor columns.
-func withAuditCallerService(detail string, c *gin.Context) string {
-	name := strings.TrimSpace(c.GetHeader("x-caller-service"))
-	if name == "" || len(name) > maxCallerServiceLen || strings.ContainsFunc(name, func(r rune) bool {
-		return r < 0x21 || r > 0x7e
-	}) {
-		return detail
-	}
-	return withAuditFact(detail, "_caller_service", name)
 }
 
 // withAuditFact merges one key into the Detail JSON object, keeping the
