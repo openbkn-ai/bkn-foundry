@@ -692,11 +692,13 @@ func (s *Service) validateRequestOperations(ctx context.Context, resourceType st
 	return nil
 }
 
-// hasRequestedPermission checks whether an approval would duplicate an
+// hasRequestedPermission checks whether creating a request would duplicate an
 // existing effective permission. Community stores one full-business bundle, so
 // it is already granted only when every bundled operation is effective. In a
 // fine-grained request, one existing requested operation is sufficient: callers
-// must submit only the operations that are actually missing.
+// must submit only the operations that are actually missing. Approval must not
+// use this check: an approved request owns an independent grant source even
+// when another source has already made the permission effective.
 func (s *Service) hasRequestedPermission(ctx context.Context, accessorID, resourceType, resourceID string, operations []string) (bool, error) {
 	checkOperations := operations
 	communityBundle := false
@@ -1107,6 +1109,21 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 			return err
 		}
 		if req.Status != StatusPending && req.Status != StatusNoReviewer {
+			// A client may retry after the approval transaction has committed but
+			// before it receives the response. The original reviewer's identical
+			// approval is therefore a no-op success. Do not extend this exception
+			// to other reviewers or decisions: those are genuinely closed work.
+			if req.Status == StatusGranted && in.Decision == "approve" {
+				var prior model.PermissionRequestDecision
+				err := tx.DB().Where("request_id = ? AND reviewer_id = ? AND decision = ?", req.ID, in.ReviewerID, "approve").First(&prior).Error
+				if err == nil {
+					result = req
+					return nil
+				}
+				if !errors.Is(err, gorm.ErrRecordNotFound) {
+					return err
+				}
+			}
 			return ErrClosed
 		}
 		if err := s.refreshResourceLiveness(ctx, tx.DB(), &req); err != nil {
@@ -1248,13 +1265,6 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 					result = req
 					return nil
 				}
-			}
-			alreadyGranted, err := s.hasRequestedPermission(ctx, req.RequesterID, req.ResourceType, req.ResourceID, operations)
-			if err != nil {
-				return err
-			}
-			if alreadyGranted {
-				return ErrPermissionAlreadyGranted
 			}
 			decisionID, err := newUUIDv7()
 			if err != nil {

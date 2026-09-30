@@ -198,11 +198,109 @@ func TestApprovalCreatesOneIndependentGrant(t *testing.T) {
 	if grant.AccessorID != "requester" || grant.CreatedBy != "reviewer" {
 		t.Fatalf("unexpected grant: %#v", grant)
 	}
-	if _, err := service.Decide(t.Context(), created.ID, DecisionInput{ReviewerID: "reviewer", Decision: "approve"}); err != ErrClosed {
-		t.Fatalf("second approval = %v, want ErrClosed", err)
+	replayedApproval, err := service.Decide(t.Context(), created.ID, DecisionInput{ReviewerID: "reviewer", Decision: "approve"})
+	if err != nil || replayedApproval.Status != StatusGranted {
+		t.Fatalf("second approval = %#v, %v; want the completed request", replayedApproval, err)
+	}
+	decisions, err := service.ListDecisions(t.Context(), created.ID)
+	if err != nil || len(decisions) != 1 || decisions[0].Decision != "approve" {
+		t.Fatalf("approval replay decisions = %#v, %v; want one approve decision", decisions, err)
 	}
 	if _, _, err := service.Create(t.Context(), CreateInput{RequesterID: "requester", ResourceType: "knowledge_network", ResourceID: "r-1", Operation: authz.ActFullBusinessAccess, Reason: "access needed again"}); err != ErrPermissionAlreadyGranted {
 		t.Fatalf("Create after granted = %v, want ErrPermissionAlreadyGranted", err)
+	}
+}
+
+func TestApprovalAddsPermissionRequestSourceWhenPermissionWasGrantedElsewhere(t *testing.T) {
+	entitlement.ResetForTest()
+	finegrained.ResetForTest()
+	t.Cleanup(func() {
+		finegrained.ResetForTest()
+		entitlement.ResetForTest()
+	})
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Edition: licverify.EditionProfessional}
+	}))
+	finegrained.Register(licverify.EditionProfessional)
+
+	db, err := gorm.Open(sqlite.Open("file:permission-request-source-on-approval?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	enforcer, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"requester", "reviewer", "administrator"} {
+		if err := db.Create(&model.User{ID: id, Account: id, Enabled: true}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Create(&model.ResourceType{ID: "catalog", Name: "Catalog"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	grantable := true
+	if err := db.Create(&[]model.Operation{
+		{ResourceTypeID: "catalog", ID: "view_detail", Name: "View detail", Grantable: &grantable},
+		{ResourceTypeID: "catalog", ID: "resource_manage", Name: "Manage resource", RequiredOperationIDs: "view_detail", Grantable: &grantable},
+		{ResourceTypeID: "catalog", ID: "authorize", Name: "Authorize", Grantable: &grantable},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"view_detail", "resource_manage", "authorize"} {
+		if err := enforcer.GrantObjectPermission("reviewer", "catalog", "catalog-1", operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := enforcer.GrantObjectPermission("requester", "catalog", "catalog-1", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+
+	service := New(db, enforcer)
+	request, _, err := service.Create(t.Context(), CreateInput{
+		RequesterID: "requester", ResourceType: "catalog", ResourceID: "catalog-1",
+		Operations: []string{"resource_manage"}, Reason: "need to manage this catalog",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := enforcer.GrantPolicy(t.Context(), authz.PolicyGrant{
+		GrantID: "admin-authz-resource-manage", AccessorID: "requester", Object: "catalog:catalog-1", Operation: "resource_manage",
+		Effect: authz.EffectAllow, PolicySource: authz.PolicySourceProfessionalRule,
+		AuthoritySource: authz.AuthoritySourceAdminAuthz, CreatedBy: "administrator",
+	})
+	if err != nil || !created {
+		t.Fatalf("admin grant = %v, %v; want created", created, err)
+	}
+
+	approved, err := service.Decide(t.Context(), request.ID, DecisionInput{ReviewerID: "reviewer", Decision: "approve"})
+	if err != nil || approved.Status != StatusGranted {
+		t.Fatalf("Decide() = %#v, %v; want granted", approved, err)
+	}
+	decisions, err := service.ListDecisions(t.Context(), request.ID)
+	if err != nil || len(decisions) != 1 || decisions[0].Decision != "approve" {
+		t.Fatalf("decisions = %#v, %v; want one approve decision", decisions, err)
+	}
+	records, err := enforcer.PolicyRecords(authz.PolicyFilter{
+		AccessorID: "requester", Object: "catalog:catalog-1", Operation: "resource_manage",
+	})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("resource_manage sources = %#v, %v; want admin and request sources", records, err)
+	}
+	if _, err := enforcer.RevokePolicy("admin-authz-resource-manage"); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := enforcer.CheckContext(t.Context(), "requester", "catalog", "catalog-1", "resource_manage"); err != nil || !allowed {
+		t.Fatalf("request grant did not survive admin revoke: allowed=%v err=%v", allowed, err)
+	}
+	if _, err := enforcer.RevokePolicy(request.GrantID); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := enforcer.CheckContext(t.Context(), "requester", "catalog", "catalog-1", "resource_manage"); err != nil || allowed {
+		t.Fatalf("permission remained after all sources were revoked: allowed=%v err=%v", allowed, err)
 	}
 }
 
