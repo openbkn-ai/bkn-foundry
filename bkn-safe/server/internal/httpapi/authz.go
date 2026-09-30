@@ -677,7 +677,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			if err := tx.AssignRole(req.AccessorID, req.RoleID); err != nil {
 				return err
 			}
-			return enqueueRoleAudit(c.Request.Context(), tx.DB(), req.AccessorID, "", http.StatusNoContent)
+			return enqueueRoleAudit(c.Request.Context(), tx.DB(), req.AccessorID, auditBindingTargetName(c.Request.Context(), tx.DB(), req.AccessorID, req.RoleID), http.StatusNoContent)
 		})
 		markRoleAuditHandledIfCommitted(c.Request.Context(), err)
 		if err != nil {
@@ -738,7 +738,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			if err := tx.RemoveRole(req.AccessorID, req.RoleID); err != nil {
 				return err
 			}
-			return enqueueRoleAudit(c.Request.Context(), tx.DB(), req.AccessorID, "", http.StatusNoContent)
+			return enqueueRoleAudit(c.Request.Context(), tx.DB(), req.AccessorID, auditBindingTargetName(c.Request.Context(), tx.DB(), req.AccessorID, req.RoleID), http.StatusNoContent)
 		})
 		markRoleAuditHandledIfCommitted(c.Request.Context(), err)
 		if err != nil {

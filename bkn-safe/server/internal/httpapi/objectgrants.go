@@ -1021,6 +1021,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, reviewerSync reviewer
 				serverError(c, err)
 				return
 			}
+			setAuditOperation(c, "grant", req.Resource.ID, auditObjectGrantName(c.Request.Context(), db, nil, req.AccessorID, req.Resource.Type, req.Resource.ID))
 			outcome["bundle"] = authz.ActFullBusinessAccess
 			setAuditOutcome(c, outcome)
 			c.Status(http.StatusNoContent)
@@ -1078,6 +1079,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, reviewerSync reviewer
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "grant", req.Resource.ID, auditObjectGrantName(c.Request.Context(), db, nil, req.AccessorID, req.Resource.Type, req.Resource.ID))
 		if reviewerSync != nil {
 			if err := reviewerSync.SyncReviewerInbox(c.Request.Context(), req.AccessorID); err != nil {
 				slog.Error("refresh permission-request reviewer inbox after object grant", "accessor_id", req.AccessorID, "error", err)
@@ -1199,6 +1201,7 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if result, ok := revokeObjectGrantIDs(c, e, db, []string{req.GrantID}); ok {
+			setAuditOperation(c, "revoke", req.GrantID, result.targetName)
 			outcome := result.sources[0]
 			outcome["removed"] = result.removed > 0
 			setAuditOutcome(c, outcome)
@@ -1231,8 +1234,9 @@ func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFu
 // rows are deleted. Request bodies contain only opaque stable IDs, so the
 // audit middleware cannot reconstruct the source once RevokePolicies commits.
 type objectGrantRevokeResult struct {
-	sources []gin.H
-	removed int
+	sources    []gin.H
+	removed    int
+	targetName string
 }
 
 func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantIDs []string) (objectGrantRevokeResult, bool) {
@@ -1288,6 +1292,10 @@ func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantI
 			return objectGrantRevokeResult{}, false
 		}
 		source := objectGrantRevokeAuditSource(records[0], authority)
+		if result.targetName == "" {
+			resourceType, resourceID, _ := strings.Cut(records[0].Object, ":")
+			result.targetName = auditObjectGrantName(c.Request.Context(), db, nil, records[0].AccessorID, resourceType, resourceID)
+		}
 		// false is the longer JSON spelling, so this also validates the worst-case
 		// per-target audit size before any policy is removed.
 		source["removed"] = false

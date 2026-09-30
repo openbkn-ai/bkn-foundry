@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -378,6 +379,9 @@ func auditTargetName(
 	targetID string,
 	detail string,
 ) string {
+	if resource == "role-bindings" {
+		return auditDetailName(ctx, dir, db, resource, detail)
+	}
 	if targetID == "" {
 		return auditDetailName(ctx, dir, db, resource, detail)
 	}
@@ -435,6 +439,13 @@ func auditDetailName(
 	if name, ok := body["name"].(string); ok && name != "" {
 		return name
 	}
+	if resource == "object-grants" || resource == "enterprise-object-grants" {
+		accessorID, _ := body["accessor_id"].(string)
+		ref, _ := body["resource"].(map[string]any)
+		resourceType, _ := ref["type"].(string)
+		resourceID, _ := ref["id"].(string)
+		return auditObjectGrantName(ctx, db, dir, accessorID, resourceType, resourceID)
+	}
 	if resource == "role-bindings" {
 		roleID, _ := body["role_id"].(string)
 		accessorID, _ := body["accessor_id"].(string)
@@ -449,6 +460,51 @@ func auditDetailName(
 		return accessorName
 	}
 	return ""
+}
+
+func auditObjectGrantName(ctx context.Context, db *gorm.DB, dir *directory.Service, accessorID, resourceType, resourceID string) string {
+	accessorName := accessorNameByID(ctx, dir, accessorID)
+	if accessorName == "" && db != nil && accessorID != "" {
+		var user model.User
+		if err := db.WithContext(ctx).Select("name").First(&user, "id = ?", accessorID).Error; err == nil {
+			accessorName = user.Name
+		}
+	}
+	if accessorName == "" {
+		accessorName = "grantee"
+	}
+	resourceName := ""
+	if db != nil && resourceType != "" && resourceID != "" {
+		var request model.PermissionRequest
+		if err := db.WithContext(ctx).Select("resource_name").Where("resource_type = ? AND resource_id = ?", resourceType, resourceID).Order("created_at DESC").First(&request).Error; err == nil {
+			resourceName = strings.TrimSpace(request.ResourceName)
+		}
+	}
+	if resourceName == "" {
+		resourceName = fmt.Sprintf("%s %s", resourceType, resourceID)
+	}
+	return fmt.Sprintf("%s · authorization for %s", accessorName, resourceName)
+}
+
+func auditBindingTargetName(ctx context.Context, db *gorm.DB, accessorID, roleID string) string {
+	accessorName := ""
+	if db != nil {
+		for _, target := range []any{&model.User{}, &model.Department{}, &model.Group{}} {
+			var row struct{ Name string }
+			if err := db.WithContext(ctx).Model(target).Select("name").Where("id = ?", accessorID).Scan(&row).Error; err == nil && row.Name != "" {
+				accessorName = row.Name
+				break
+			}
+		}
+	}
+	roleName := roleNameByID(ctx, db, roleID)
+	if accessorName == "" {
+		accessorName = "grantee"
+	}
+	if roleName == "" {
+		roleName = "role"
+	}
+	return fmt.Sprintf("%s · %s role binding", accessorName, roleName)
 }
 
 func auditDetailTargetID(resource, detail string) string {
