@@ -61,37 +61,6 @@ type EvidenceHandler struct {
 	allowUnauthenticatedQuery  bool
 	publicLifecycleDisabled    bool
 	authorizationScopeResolver iauthorizationscope.Resolver
-	logQueryAudit              func(LogQueryAuditFact)
-}
-
-type LogQueryAuditFact struct {
-	ActorID   string
-	ActorType string
-	Outcome   string
-	Status    int
-	Method    string
-	RequestID string
-}
-
-func (h *EvidenceHandler) SetLogQueryAuditSink(sink func(LogQueryAuditFact)) {
-	h.logQueryAudit = sink
-}
-
-type logQueryStatusWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *logQueryStatusWriter) WriteHeader(status int) {
-	w.status = status
-	w.ResponseWriter.WriteHeader(status)
-}
-
-func (w *logQueryStatusWriter) Write(value []byte) (int, error) {
-	if w.status == 0 {
-		w.status = http.StatusOK
-	}
-	return w.ResponseWriter.Write(value)
 }
 
 type trustedQueryScopeContextKey struct{}
@@ -830,53 +799,16 @@ func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.R
 
 func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var auditWriter *logQueryStatusWriter
-		if h.logQueryAudit != nil && (r.URL.Path == "/api/observability/v1/logs" || strings.HasPrefix(r.URL.Path, "/api/observability/v1/logs/")) {
-			auditWriter = &logQueryStatusWriter{ResponseWriter: w}
-			w = auditWriter
-		}
 		if !h.authorizeQueryGateway(w, r) {
-			h.emitLogQueryAudit(r, auditWriter, nil)
 			return
 		}
 		scope, ok := h.queryScopeFromRequest(w, r, false)
 		if !ok {
-			h.emitLogQueryAudit(r, auditWriter, nil)
 			return
 		}
 		ctx := context.WithValue(r.Context(), trustedQueryScopeContextKey{}, scope)
 		next(w, r.WithContext(ctx))
-		h.emitLogQueryAudit(r, auditWriter, &scope)
 	}
-}
-
-func (h *EvidenceHandler) emitLogQueryAudit(r *http.Request, writer *logQueryStatusWriter, scope *evidencevo.QueryScope) {
-	if writer == nil {
-		return
-	}
-	status := writer.status
-	if status == 0 {
-		status = http.StatusOK
-	}
-	outcome := ""
-	switch {
-	case status >= http.StatusOK && status < http.StatusMultipleChoices:
-		outcome = "success"
-	case status == http.StatusUnauthorized || status == http.StatusForbidden:
-		outcome = "denied"
-	default:
-		return
-	}
-	fact := LogQueryAuditFact{ActorID: "anonymous", ActorType: "anonymous", Outcome: outcome,
-		Status: status, Method: r.Method, RequestID: strings.TrimSpace(r.Header.Get("bkn-request-id"))}
-	if scope != nil {
-		fact.ActorID = scope.AccountID
-		fact.ActorType = "user"
-		if scope.AccountType == "app" || scope.AccountType == "service" || scope.AccountType == "service_account" {
-			fact.ActorType = "service_account"
-		}
-	}
-	h.logQueryAudit(fact)
 }
 
 // RequireTraceEvidenceConfigurationPermission applies the explicit Access

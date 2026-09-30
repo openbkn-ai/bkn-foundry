@@ -22,7 +22,6 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturecontrollersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
@@ -156,62 +155,6 @@ func (s *captureAuditSink) emit(in captureAuditInput) {
 	if disposition := s.publisher.TryPublish(value); disposition != auditpublisher.Accepted {
 		log.Printf("audit coverage_gap: control event not accepted: %s", disposition)
 	}
-}
-
-func (s *captureAuditSink) query(fact httphandler.LogQueryAuditFact) {
-	if s == nil {
-		return
-	}
-	value, err := buildLogQueryAudit(fact, s.environment, time.Now().UTC())
-	if err != nil {
-		log.Printf("audit coverage_gap: invalid log query event: %v", err)
-		return
-	}
-	if disposition := s.publisher.TryPublish(value); disposition != auditpublisher.Accepted {
-		log.Printf("audit coverage_gap: log query event not accepted: %s", disposition)
-	}
-}
-
-func buildLogQueryAudit(fact httphandler.LogQueryAuditFact, environment string, occurredAt time.Time) ([]byte, error) {
-	if fact.ActorID == "" || environment == "" || occurredAt.IsZero() {
-		return nil, errors.New("log query Audit identity, environment and time are required")
-	}
-	eventName, decision, authMethod := "log.query.authorized", "allowed", "oauth"
-	if fact.Outcome == "denied" {
-		eventName, decision = "log.query.denied", "denied"
-	} else if fact.Outcome != "success" {
-		return nil, errors.New("unsupported log query Audit outcome")
-	}
-	if fact.ActorType == "anonymous" {
-		authMethod = "none"
-	}
-	eventID, err := captureAuditEventID()
-	if err != nil {
-		return nil, err
-	}
-	method := fact.Method
-	if len(method) > 16 {
-		method = "OTHER"
-	}
-	event := map[string]any{
-		"schema_version": "1.0", "event_id": eventID, "source_id": "agent-observability",
-		"category": "audit.security", "event_name": eventName,
-		"occurred_at": occurredAt.UTC().Format(time.RFC3339Nano),
-		"actor":       map[string]any{"id": fact.ActorID, "type": fact.ActorType, "auth_method": authMethod, "effective_subject": fact.ActorID},
-		"target":      map[string]any{"type": "log_query", "id": eventID}, "outcome": fact.Outcome,
-		"scope": map[string]any{"business_module": "observability", "environment": environment,
-			"platform_scope": true, "knowledge_network_ids": []string{}},
-		"request_context": map[string]any{"source_channel": "api", "transport": "http", "method": method},
-		"summary":         "log query " + decision, "http_status": fact.Status,
-		"facts": map[string]any{"action": "query", "decision": decision, "resource_scope": "observability_logs"},
-	}
-	if fact.Outcome == "denied" {
-		event["failure_code"] = "LOG_QUERY_DENIED"
-	}
-	if requestID := strings.TrimSpace(fact.RequestID); requestID != "" && len(requestID) <= 128 {
-		event["correlation"] = map[string]any{"request_id": requestID}
-	}
-	return json.Marshal(event)
 }
 
 func (s *captureAuditSink) requested(actorID, actorType string, before, after capturepolicysvc.Snapshot) {
