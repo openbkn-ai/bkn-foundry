@@ -906,7 +906,7 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 			words = append(words, word)
 		}
 
-		dftModel, err := model_factory.GetDefaultModel(ctx, rts.mfs)
+		dftModel, err := rts.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -991,7 +991,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 						berrors.BknBackend_RelationType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := model_factory.GetDefaultModel(ctx, rts.mfs)
+				dftModel, err := rts.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")

@@ -1009,7 +1009,7 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 			words = append(words, word)
 		}
 
-		dftModel, err := model_factory.GetDefaultModel(ctx, ats.mfs)
+		dftModel, err := ats.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -1104,7 +1104,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 						berrors.BknBackend_ActionType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := model_factory.GetDefaultModel(ctx, ats.mfs)
+				dftModel, err := ats.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")

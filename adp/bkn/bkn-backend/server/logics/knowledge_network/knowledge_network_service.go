@@ -158,7 +158,6 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 	}()
 	modelCommitted := false
-	ctx = model_factory.WithDefaultModelCache(ctx)
 	ctx = vega_backend.WithDatasetWriteConcurrency(ctx, vega_backend.ImportDatasetWriteConcurrency)
 	ctx, datasetWriteTracker := vega_backend.WithDatasetWriteTracker(ctx)
 	var isCreate, isUpdate bool
@@ -1724,7 +1723,7 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 		words = append(words, kn.Comment, kn.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := model_factory.GetDefaultModel(ctx, kns.mfs)
+		defaultModel, err := kns.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")

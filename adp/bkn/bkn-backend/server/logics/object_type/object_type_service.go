@@ -1674,7 +1674,7 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			words = append(words, word)
 		}
 
-		dftModel, err := model_factory.GetDefaultModel(ctx, ots.mfs)
+		dftModel, err := ots.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -1773,7 +1773,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := model_factory.GetDefaultModel(ctx, ots.mfs)
+				dftModel, err := ots.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")

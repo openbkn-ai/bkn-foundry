@@ -93,7 +93,7 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 			word := strings.Join(arr, "\n")
 			words = append(words, word)
 		}
-		dftModel, err := model_factory.GetDefaultModel(ctx, ms.mfs)
+		dftModel, err := ms.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -861,7 +861,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 						berrors.BknBackend_Metric_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := model_factory.GetDefaultModel(ctx, ms.mfs)
+				dftModel, err := ms.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_Metric_InternalError).

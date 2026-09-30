@@ -383,7 +383,7 @@ func (cgs *conceptGroupService) InsertDatasetDatas(ctx context.Context,
 			conceptGroup.Tags...), conceptGroup.Comment, conceptGroup.BKNRawContent), "\n"))
 	}
 	if cgs.appSetting.ServerSetting.DefaultSmallModelEnabled {
-		defaultModel, err := model_factory.GetDefaultModel(ctx, cgs.mfs)
+		defaultModel, err := cgs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			return err
 		}
@@ -1404,7 +1404,7 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 		words = append(words, conceptGroup.Comment, conceptGroup.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := model_factory.GetDefaultModel(ctx, cgs.mfs)
+		defaultModel, err := cgs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")

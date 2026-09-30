@@ -590,7 +590,7 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 			words = append(words, word)
 		}
 
-		dftModel, err := model_factory.GetDefaultModel(ctx, rts.mfs)
+		dftModel, err := rts.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -673,7 +673,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 						berrors.BknBackend_RiskType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := model_factory.GetDefaultModel(ctx, rts.mfs)
+				dftModel, err := rts.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
