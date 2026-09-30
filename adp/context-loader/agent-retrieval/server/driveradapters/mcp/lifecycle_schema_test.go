@@ -490,6 +490,14 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if strings.Contains(rendering, `if .Values.observability.lifecycle.core_url`) {
 		t.Fatal("lifecycle enforcement must not have a long-lived disable switch")
 	}
+	// A completed finish cannot close without an answer artifact (#1819), so an
+	// empty endpoint must fail the install rather than every finish after it.
+	if !strings.Contains(rendering, `required "observability.evidence.artifact_endpoint is required"`) {
+		t.Fatal("Helm must reject an empty Artifact endpoint")
+	}
+	if strings.Contains(rendering, `if .Values.observability.evidence.artifact_endpoint`) {
+		t.Fatal("the Artifact endpoint must not be optional at render time")
+	}
 	if strings.Contains(rendering, `BKN_TRACE_QUERY_GATEWAY_TOKEN`) {
 		t.Fatal("Helm must not inject a shared lifecycle token into agent-retrieval")
 	}
