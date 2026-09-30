@@ -102,6 +102,7 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 		if groupRef != nil {
 			if _, exists := groupRefs[groupID]; !exists {
 				ref := *groupRef
+				ref.ObjectTypeIDs = nil
 				ref.ObjectTypes = nil
 				ref.RelationTypes = nil
 				ref.ActionTypes = nil
@@ -220,7 +221,8 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 		if err = groups.add(conceptGroup.CGID, &clone, fingerprint, "concept group"); err != nil {
 			return nil, err
 		}
-		groupRefs[conceptGroup.CGID] = &clone
+		ref := clone
+		groupRefs[conceptGroup.CGID] = &ref
 		for _, objectID := range conceptGroup.ObjectTypeIDs {
 			addMember(conceptGroup.CGID, objectID, conceptGroup)
 		}
@@ -264,8 +266,9 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 
 	for _, conceptGroup := range plan.ConceptGroups {
 		conceptGroup.ObjectTypeIDs = append([]string(nil), plan.GroupMembers[conceptGroup.CGID]...)
-		groupRefs[conceptGroup.CGID] = conceptGroup
 	}
+	// Keep object-side group references separate from full group definitions: the latter
+	// acquire every member ID and would make index documents grow quadratically.
 	groupsByObject := make(map[string][]*interfaces.ConceptGroup, len(plan.ObjectTypes))
 	for _, groupID := range plan.groupOrder {
 		groupRef := groupRefs[groupID]

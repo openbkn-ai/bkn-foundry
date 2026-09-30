@@ -188,18 +188,14 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 		if err = rts.rta.CreateRiskTypes(ctx, tx, createList); err != nil {
 			logger.Errorf("CreateRiskTypes error: %s", err.Error())
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
-				riskType := createList[0]
 				if strings.Contains(constraint, "name") {
-					errDetails := fmt.Sprintf("risk type name '%s' already exists", riskType.RTName)
 					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeNameExisted).
-						WithDescription(map[string]any{"name": riskType.RTName}).
-						WithErrorDetails(errDetails)
+						WithErrorDetails("One or more risk type names already exist")
 				}
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_RiskType_RiskTypeIDExisted).
-					WithErrorDetails(riskTypeInvalidParameterDetail(ctx,
-						"RiskTypeIDAlreadyExists", map[string]any{"riskTypeID": riskType.RTID}))
+					WithErrorDetails("One or more risk type IDs already exist")
 			}
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())

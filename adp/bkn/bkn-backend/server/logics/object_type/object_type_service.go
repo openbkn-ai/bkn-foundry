@@ -325,17 +325,14 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			logger.Errorf("CreateObjectTypes error: %s", err.Error())
 			span.SetStatus(codes.Error, "Batch create object types failed")
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
-				objectType := createObjectTypes[0]
 				if strings.Contains(constraint, "name") {
-					errDetails := fmt.Sprintf("object type name '%s' already exists", objectType.OTName)
 					return []string{}, rest.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
-						WithDescription(map[string]any{"name": objectType.OTName}).
-						WithErrorDetails(errDetails)
+						WithErrorDetails("One or more object type names already exist")
 				}
-				errDetails := fmt.Sprintf("The object type with id [%s] already exists!", objectType.OTID)
 				return []string{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ObjectType_ObjectTypeIDExisted).WithErrorDetails(errDetails)
+					berrors.BknBackend_ObjectType_ObjectTypeIDExisted).
+					WithErrorDetails("One or more object type IDs already exist")
 			}
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).

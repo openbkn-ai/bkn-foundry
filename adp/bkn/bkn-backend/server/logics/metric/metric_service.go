@@ -292,17 +292,14 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 			logger.Errorf("CreateMetrics error: %s", err.Error())
 			span.SetStatus(codes.Error, "Batch create metrics failed")
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
-				metric := creates[0]
 				if strings.Contains(constraint, "name") {
 					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_Metric_Duplicated_Name).
-						WithErrorDetails(metricInvalidParameterDetail(ctx,
-							"MetricNameAlreadyExists", map[string]any{"name": metric.Name}))
+						WithErrorDetails("One or more metric names already exist")
 				}
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_Metric_InvalidParameter).
-					WithErrorDetails(metricInvalidParameterDetail(ctx,
-						"MetricIDAlreadyExists", map[string]any{"id": metric.ID, "name": metric.Name}))
+					WithErrorDetails("One or more metric IDs already exist")
 			}
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())

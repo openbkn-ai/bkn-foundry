@@ -721,6 +721,29 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			So(result, ShouldResemble, []string{"ot1", "ot2"})
 		})
 
+		Convey("Batch name conflict does not blame the first object type\n", func() {
+			objectTypes := []*interfaces.ObjectType{
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "object_type1"},
+					KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "object_type2"},
+					KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+			}
+
+			smock.ExpectBegin()
+			ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"ot1", "ot2"}, []string{"object_type1", "object_type2"}).Return(nil, nil)
+			ota.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), objectTypes).
+				Return(errors.New("Error 1062: Duplicate entry 'object_type2' for key 'uk_object_type_name'"))
+			smock.ExpectRollback()
+
+			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
+			So(result, ShouldBeEmpty)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			assert.NotContains(t, err.Error(), "object_type1")
+		})
+
 		Convey("Failed when object type ID already exists in normal mode\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{
