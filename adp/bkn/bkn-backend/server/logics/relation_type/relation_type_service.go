@@ -207,10 +207,9 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 			logger.Errorf("CreateRelationTypes error: %s", err.Error())
 			span.SetStatus(codes.Error, "Batch create relation types failed")
 			if _, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
-				relationType := createRelationTypes[0]
-				errDetails := fmt.Sprintf("The relation type with id [%s] already exists!", relationType.RTID)
 				return []string{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_RelationType_RelationTypeIDExisted).WithErrorDetails(errDetails)
+					berrors.BknBackend_RelationType_RelationTypeIDExisted).
+					WithErrorDetails("One or more relation type IDs already exist")
 			}
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RelationType_InternalError).

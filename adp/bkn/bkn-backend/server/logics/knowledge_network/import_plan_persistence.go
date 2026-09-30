@@ -84,7 +84,7 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 			return err
 		}
 	}
-	if err = kns.restoreImportGroupMembers(ctx, tx, plan, validGroups, plan.validObjects); err != nil {
+	if err = kns.restoreImportGroupMembers(ctx, tx, plan, mode, validGroups, plan.validObjects); err != nil {
 		return err
 	}
 	span.SetAttributes(
@@ -100,21 +100,22 @@ func (kns *knowledgeNetworkService) prepareNormalizedImportMembers(ctx context.C
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Prepare knowledge network import members")
 	defer span.End()
 	valid := make(map[string]struct{}, len(plan.ObjectTypes))
+	plannedObjects := make(map[string]struct{}, len(plan.ObjectTypes))
 	objectTypesByID := make(map[string]*interfaces.ObjectType, len(plan.ObjectTypes))
 	for _, objectType := range plan.ObjectTypes {
 		if objectType != nil && objectType.OTID != "" {
 			// These definitions are persisted before membership restoration. Any failure to create or
 			// update one aborts the transaction, so it is safe to treat it as a planned valid member.
 			valid[objectType.OTID] = struct{}{}
+			plannedObjects[objectType.OTID] = struct{}{}
 			objectTypesByID[objectType.OTID] = objectType
 		}
 	}
-
 	existingMembers := make(map[string][]string)
 	if preserveExistingMembers && len(plan.ConceptGroups) > 0 {
 		groupIDs := make([]string, 0, len(plan.ConceptGroups))
-		for _, conceptGroup := range plan.ConceptGroups {
-			groupIDs = append(groupIDs, conceptGroup.CGID)
+		for _, group := range plan.ConceptGroups {
+			groupIDs = append(groupIDs, group.CGID)
 		}
 		var err error
 		existingMembers, err = kns.cga.GetConceptIDsGroupedByConceptGroupIDs(ctx,
@@ -146,8 +147,8 @@ func (kns *knowledgeNetworkService) prepareNormalizedImportMembers(ctx context.C
 			collectExistingCandidate(objectID)
 		}
 	}
-	for _, conceptGroup := range plan.ConceptGroups {
-		for _, objectID := range existingMembers[conceptGroup.CGID] {
+	for _, group := range plan.ConceptGroups {
+		for _, objectID := range existingMembers[group.CGID] {
 			collectExistingCandidate(objectID)
 		}
 	}
@@ -170,7 +171,20 @@ func (kns *knowledgeNetworkService) prepareNormalizedImportMembers(ctx context.C
 
 	for _, conceptGroup := range plan.ConceptGroups {
 		requestedMembers, invalid := validImportMembers(plan.GroupMembers[conceptGroup.CGID], valid)
-		conceptGroup.ObjectTypeIDs = mergeImportIDs(existingMembers[conceptGroup.CGID], requestedMembers)
+		requested := make(map[string]struct{}, len(requestedMembers))
+		for _, objectID := range requestedMembers {
+			requested[objectID] = struct{}{}
+		}
+		preserved := make([]string, 0, len(existingMembers[conceptGroup.CGID]))
+		for _, objectID := range existingMembers[conceptGroup.CGID] {
+			if _, updated := plannedObjects[objectID]; updated {
+				if _, keep := requested[objectID]; !keep {
+					continue
+				}
+			}
+			preserved = append(preserved, objectID)
+		}
+		conceptGroup.ObjectTypeIDs = mergeImportIDs(preserved, requestedMembers)
 		bknObjectTypes := make(map[string]*bknsdk.BknObjectType, len(conceptGroup.ObjectTypeIDs))
 		for _, objectID := range conceptGroup.ObjectTypeIDs {
 			if objectType := objectTypesByID[objectID]; objectType != nil {
@@ -261,14 +275,18 @@ func (kns *knowledgeNetworkService) filterValidImportGroupReferences(ctx context
 }
 
 func (kns *knowledgeNetworkService) restoreImportGroupMembers(ctx context.Context, tx *sql.Tx,
-	plan *NormalizedImportPlan, validGroups, validObjects map[string]struct{}) error {
+	plan *NormalizedImportPlan, mode string, validGroups, validObjects map[string]struct{}) error {
 	targetGroupIDs := make([]string, 0, len(plan.groupOrder))
 	validMembersByGroup := make(map[string][]string, len(plan.groupOrder))
-	for _, groupID := range plan.groupOrder {
-		members := plan.GroupMembers[groupID]
+	seenGroups := make(map[string]struct{})
+	collectGroup := func(groupID string) {
 		if _, exists := validGroups[groupID]; !exists {
-			continue
+			return
 		}
+		if _, duplicate := seenGroups[groupID]; duplicate {
+			return
+		}
+		members := plan.GroupMembers[groupID]
 		validMembers := make([]string, 0, len(members))
 		for _, objectID := range members {
 			if _, exists := validObjects[objectID]; !exists {
@@ -277,10 +295,52 @@ func (kns *knowledgeNetworkService) restoreImportGroupMembers(ctx context.Contex
 			validMembers = append(validMembers, objectID)
 		}
 		if len(validMembers) == 0 {
-			continue
+			return
 		}
+		seenGroups[groupID] = struct{}{}
 		targetGroupIDs = append(targetGroupIDs, groupID)
 		validMembersByGroup[groupID] = validMembers
+	}
+	for _, groupID := range plan.groupOrder {
+		collectGroup(groupID)
+	}
+	removedByGroup := make(map[string]map[string]struct{})
+	if mode == interfaces.ImportMode_Overwrite {
+		for start := 0; start < len(plan.ObjectTypes); start += importPlanLookupBatchSize {
+			end := min(start+importPlanLookupBatchSize, len(plan.ObjectTypes))
+			objectIDs := make([]string, 0, end-start)
+			for _, objectType := range plan.ObjectTypes[start:end] {
+				objectIDs = append(objectIDs, objectType.OTID)
+			}
+			oldGroups, lookupErr := kns.cga.GetConceptGroupsByOTIDs(ctx, tx,
+				interfaces.ConceptGroupRelationsQueryParams{
+					KNID: plan.KNID, Branch: plan.Branch,
+					ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, OTIDs: objectIDs,
+				})
+			if lookupErr != nil {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(lookupErr.Error())
+			}
+			for _, objectType := range plan.ObjectTypes[start:end] {
+				wanted := make(map[string]struct{}, len(objectType.ConceptGroups))
+				for _, group := range objectType.ConceptGroups {
+					wanted[group.CGID] = struct{}{}
+				}
+				for _, group := range oldGroups[objectType.OTID] {
+					if _, keep := wanted[group.CGID]; keep {
+						continue
+					}
+					if removedByGroup[group.CGID] == nil {
+						removedByGroup[group.CGID] = make(map[string]struct{})
+					}
+					removedByGroup[group.CGID][objectType.OTID] = struct{}{}
+					if _, seen := seenGroups[group.CGID]; !seen {
+						seenGroups[group.CGID] = struct{}{}
+						targetGroupIDs = append(targetGroupIDs, group.CGID)
+					}
+				}
+			}
+		}
 	}
 	if len(targetGroupIDs) == 0 {
 		return nil
@@ -307,6 +367,22 @@ func (kns *knowledgeNetworkService) restoreImportGroupMembers(ctx context.Contex
 	relations := make([]*interfaces.ConceptGroupRelation, 0)
 	for _, groupID := range targetGroupIDs {
 		existing := make(map[string]struct{}, len(existingMembers[groupID]))
+		removed := make([]string, 0)
+		for _, objectID := range existingMembers[groupID] {
+			if _, remove := removedByGroup[groupID][objectID]; remove {
+				removed = append(removed, objectID)
+			}
+		}
+		if len(removed) > 0 {
+			_, err = kns.cga.DeleteObjectTypesFromGroup(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
+				KNID: plan.KNID, Branch: plan.Branch, CGIDs: []string{groupID},
+				ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, OTIDs: removed,
+			})
+			if err != nil {
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
+			}
+		}
 		for _, objectID := range existingMembers[groupID] {
 			existing[objectID] = struct{}{}
 		}

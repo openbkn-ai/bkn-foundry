@@ -315,17 +315,14 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			logger.Errorf("CreateActionTypes error: %s", err.Error())
 			span.SetStatus(codes.Error, "Batch create action types failed")
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
-				actionType := createActionTypes[0]
 				if strings.Contains(constraint, "name") {
-					errDetails := fmt.Sprintf("action type name '%s' already exists", actionType.ATName)
 					return []string{}, rest.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ActionType_ActionTypeNameExisted).
-						WithDescription(map[string]any{"name": actionType.ATName}).
-						WithErrorDetails(errDetails)
+						WithErrorDetails("One or more action type names already exist")
 				}
-				errDetails := fmt.Sprintf("The action type with id [%s] already exists!", actionType.ATID)
 				return []string{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ActionType_ActionTypeIDExisted).WithErrorDetails(errDetails)
+					berrors.BknBackend_ActionType_ActionTypeIDExisted).
+					WithErrorDetails("One or more action type IDs already exist")
 			}
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).

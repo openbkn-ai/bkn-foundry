@@ -140,6 +140,14 @@ func TestNormalizeImportPlanFlattensNestedDefinitionsAndMemberships(t *testing.T
 		if len(objectType.ConceptGroups) != 1 || objectType.ConceptGroups[0].CGID != "cg-1" {
 			t.Fatalf("object %s normalized groups = %#v", objectType.OTID, objectType.ConceptGroups)
 		}
+		if len(objectType.ConceptGroups[0].ObjectTypeIDs) != 0 ||
+			objectType.ConceptGroups[0] == plan.ConceptGroups[0] {
+			t.Fatalf("object %s retained full group members in index projection", objectType.OTID)
+		}
+	}
+	plan.ConceptGroups[0].ObjectTypeIDs = append(plan.ConceptGroups[0].ObjectTypeIDs, "ot-later")
+	if len(plan.ObjectTypes[0].ConceptGroups[0].ObjectTypeIDs) != 0 {
+		t.Fatal("object group reference changed when membership was prepared")
 	}
 }
 

@@ -310,19 +310,14 @@ func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql
 		if err = cgs.cga.CreateConceptGroups(ctx, tx, createGroups); err != nil {
 			logger.Errorf("CreateConceptGroups error: %s", err.Error())
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
-				conceptGroup := createGroups[0]
 				if strings.Contains(constraint, "name") {
-					errDetails := fmt.Sprintf("concept group name '%s' already exists in knowledge network [%s] branch [%s]",
-						conceptGroup.CGName, conceptGroup.KNID, conceptGroup.Branch)
 					return nil, rest.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ConceptGroup_ConceptGroupNameExisted).
-						WithDescription(map[string]any{"cg_name": conceptGroup.CGName}).
-						WithErrorDetails(errDetails)
+						WithErrorDetails("One or more concept group names already exist")
 				}
-				errDetails := fmt.Sprintf("The concept group with id [%s] already exists in knowledge network [%s] branch [%s]!",
-					conceptGroup.CGID, conceptGroup.KNID, conceptGroup.Branch)
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted).WithErrorDetails(errDetails)
+					berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted).
+					WithErrorDetails("One or more concept group IDs already exist")
 			}
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_CreateConceptGroupFailed).

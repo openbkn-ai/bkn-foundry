@@ -71,6 +71,7 @@ func TestPersistNormalizedImportPlanRestoresOnlyValidMemberships(t *testing.T) {
 		}
 		return []string{"ot-valid"}, nil
 	})
+	cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 	ps.EXPECT().RequirePermissions(gomock.Any(), gomock.Len(1)).Return(nil)
 	cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *sql.Tx, relation *interfaces.ConceptGroupRelation) error {
@@ -117,10 +118,87 @@ func TestRestoreImportGroupMembersBatchesAllGroups(t *testing.T) {
 		})
 
 	ctx := permission.WithKNImportPermissionPrechecked(context.Background())
-	if err := service.restoreImportGroupMembers(ctx, nil, plan, validGroups, validObjects); err != nil {
+	if err := service.restoreImportGroupMembers(ctx, nil, plan, interfaces.ImportMode_Ignore, validGroups, validObjects); err != nil {
 		t.Fatalf("restoreImportGroupMembers() error = %v", err)
 	}
 	if plan.RestoredMemberCount != 2 {
 		t.Fatalf("RestoredMemberCount = %d, want 2", plan.RestoredMemberCount)
+	}
+}
+
+func TestPrepareNormalizedImportMembersExcludesRemovedObjectGroup(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	cga := mock_interfaces.NewMockConceptGroupAccess(ctrl)
+	ota := mock_interfaces.NewMockObjectTypeAccess(ctrl)
+	service := &knowledgeNetworkService{cga: cga, ota: ota}
+	group := &interfaces.ConceptGroup{CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}
+	plan := &NormalizedImportPlan{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		ConceptGroups: []*interfaces.ConceptGroup{group},
+		ObjectTypes: []*interfaces.ObjectType{{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-removed"},
+		}},
+		GroupMembers: map[string][]string{},
+	}
+	cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"cg-1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{
+		"cg-1": {"ot-removed", "ot-preserved"},
+	}, nil)
+	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"ot-preserved"}).Return([]*interfaces.ObjectType{{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-preserved"},
+	}}, nil)
+	if err := service.prepareNormalizedImportMembers(context.Background(), plan, true); err != nil {
+		t.Fatalf("prepareNormalizedImportMembers() error = %v", err)
+	}
+	if !sameImportIDs(group.ObjectTypeIDs, []string{"ot-preserved"}) {
+		t.Fatalf("prepared group members = %v, want [ot-preserved]", group.ObjectTypeIDs)
+	}
+}
+
+func TestRestoreImportGroupMembersOverwritePreservesUnmentionedGroupMembers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	cga := mock_interfaces.NewMockConceptGroupAccess(ctrl)
+	service := &knowledgeNetworkService{cga: cga}
+	plan := &NormalizedImportPlan{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		ConceptGroups: []*interfaces.ConceptGroup{{CGID: "cg-1"}},
+		GroupMembers:  map[string][]string{},
+	}
+	ctx := permission.WithKNImportPermissionPrechecked(context.Background())
+	if err := service.restoreImportGroupMembers(ctx, nil, plan, interfaces.ImportMode_Overwrite,
+		map[string]struct{}{"cg-1": {}}, nil); err != nil {
+		t.Fatalf("restoreImportGroupMembers() error = %v", err)
+	}
+}
+
+func TestRestoreImportGroupMembersOverwriteReplacesObjectGroups(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	cga := mock_interfaces.NewMockConceptGroupAccess(ctrl)
+	service := &knowledgeNetworkService{cga: cga}
+	plan := &NormalizedImportPlan{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		ObjectTypes: []*interfaces.ObjectType{{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"},
+		}},
+		GroupMembers: map[string][]string{},
+	}
+	cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+		map[string][]*interfaces.ConceptGroup{"ot-1": {{CGID: "cg-old"}}}, nil)
+	cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"cg-old"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{
+		"cg-old": {"ot-1", "ot-other"},
+	}, nil)
+	cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, query interfaces.ConceptGroupRelationsQueryParams) (int64, error) {
+			if !sameImportIDs(query.CGIDs, []string{"cg-old"}) || !sameImportIDs(query.OTIDs, []string{"ot-1"}) {
+				t.Fatalf("deleted relations = %#v", query)
+			}
+			return 1, nil
+		})
+	ctx := permission.WithKNImportPermissionPrechecked(context.Background())
+	if err := service.restoreImportGroupMembers(ctx, nil, plan, interfaces.ImportMode_Overwrite,
+		nil, map[string]struct{}{"ot-1": {}}); err != nil {
+		t.Fatalf("restoreImportGroupMembers() error = %v", err)
 	}
 }
