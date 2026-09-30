@@ -40,9 +40,14 @@ const (
 var (
 	ErrFeatureNotInstalled      = errors.New("BKN Trace Core URL is not configured")
 	ErrMissingFinishCorrelation = errors.New("current request and OTel trace context are required")
-	// ErrEvidenceArtifactURLNotConfigured means no artifact endpoint could be
-	// derived from the evidence ingest URL, which has to end in /events.
-	ErrEvidenceArtifactURLNotConfigured = errors.New("BKN Trace artifact URL is not configured")
+	// ErrEvidenceArtifactURLNotConfigured means BKN_TRACE_ARTIFACT_ENDPOINT is
+	// unset. The endpoint is configured on its own and is never derived from
+	// BKN_TRACE_EVIDENCE_INGEST_URL. Starting an interaction tolerates its
+	// absence (the question artifact is optional), but a completed finish
+	// cannot build a closure without an answer artifact.
+	ErrEvidenceArtifactURLNotConfigured = errors.New(
+		"BKN Trace artifact endpoint is not configured (BKN_TRACE_ARTIFACT_ENDPOINT)",
+	)
 )
 
 type APIError struct {

@@ -184,8 +184,10 @@ observability:
     # on public port 8080; existing custom values must migrate to this URL.
     core_url: "http://agent-observability-internal:8081"
   evidence:
-    # Core-backed Artifact persistence; standalone installations without Core
-    # should clear both artifact_endpoint and artifact_secret_name.
+    # Core-backed Artifact persistence, rendered as BKN_TRACE_ARTIFACT_ENDPOINT.
+    # Required: a completed bkn_finish_interaction needs an answer artifact, so
+    # clearing this makes every completed finish fail with
+    # evidence_capture_failed. It is not derived from the Evidence ingest URL.
     artifact_endpoint: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
     # Artifact has its own endpoint/token env contract; existing Core installs
     # provide the credential through the standard Evidence token Secret.
