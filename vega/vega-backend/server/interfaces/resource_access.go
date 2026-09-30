@@ -9,7 +9,10 @@ package interfaces
 import (
 	"context"
 	"database/sql"
+	"errors"
 )
+
+var ErrResourceDeleteConditionNotMet = errors.New("resource delete condition not met")
 
 // ResourceAccess defines resource data access interface.
 //
@@ -48,8 +51,8 @@ type ResourceAccess interface {
 	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.
 	UpdateDiscoverStatus(ctx context.Context, id string, status string) error
-	// DeleteByIDs deletes Resources by IDs.
-	DeleteByIDs(ctx context.Context, ids []string) error
+	// DeleteByIDs deletes Resources by IDs; onlyIfStale requires every row to be stale and missing.
+	DeleteByIDs(ctx context.Context, ids []string, onlyIfStale bool) error
 
 	// ListAuthResourceEntries lists resource authorization entries with filters.
 	ListAuthResourceEntries(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)

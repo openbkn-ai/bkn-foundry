@@ -575,7 +575,7 @@ func Test_ResourceRestHandler_DeleteResources(t *testing.T) {
 
 	t.Run("normalizes duplicate ids before deleting resources", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1", "res-2"}, false).Return(nil)
+		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1", "res-2"}, false, false).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1,res-2,res-1", nil)
 		w := httptest.NewRecorder()
@@ -587,7 +587,7 @@ func Test_ResourceRestHandler_DeleteResources(t *testing.T) {
 
 	t.Run("ignores missing resources when requested", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
-		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1", "missing"}, true).Return(nil)
+		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1", "missing"}, true, false).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1,missing?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
@@ -595,5 +595,38 @@ func Test_ResourceRestHandler_DeleteResources(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("requires missing state for a single resource", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1"}, false, true).Return(nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1?only_if_stale=true", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("applies stale-state guard to a batch", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().DeleteByIDs(gomock.Any(), []string{"res-1", "res-2"}, false, true).Return(nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1,res-2,res-1?only_if_stale=true", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("rejects incompatible missing-state options", func(t *testing.T) {
+		engine, _, _ := setupResourceHandlerTest(t)
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1?only_if_stale=true&ignore_missing=true", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 	})
 }

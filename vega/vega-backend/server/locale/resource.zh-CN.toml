@@ -152,3 +152,8 @@ ErrorLink = ""
 Description = "资源在读取后已被更新"
 Solution = "请重新加载资源后再提交修改"
 ErrorLink = ""
+
+[VegaBackend.Resource.DeleteConflict]
+Description = "资源已不再处于失效且探查缺失状态"
+Solution = "请重新加载资源后再删除"
+ErrorLink = ""

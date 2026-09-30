@@ -453,8 +453,16 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
+	onlyIfStale := strings.EqualFold(c.Query("only_if_stale"), "true")
+	if onlyIfStale && ignoreMissing {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("only_if_stale cannot be combined with ignore_missing")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
-	if err := r.rs.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
+	if err := r.rs.DeleteByIDs(ctx, ids, ignoreMissing, onlyIfStale); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

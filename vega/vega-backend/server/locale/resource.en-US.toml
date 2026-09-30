@@ -152,3 +152,8 @@ ErrorLink = ""
 Description = "The resource was updated after it was read"
 Solution = "Reload the resource and retry the update"
 ErrorLink = ""
+
+[VegaBackend.Resource.DeleteConflict]
+Description = "The resource is no longer stale and missing"
+Solution = "Reload the resource before deleting it"
+ErrorLink = ""
