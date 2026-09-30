@@ -222,14 +222,9 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionValue)
 		}
 
-		if cfg.ValueFrom == "" {
-			cfg.ValueFrom = interfaces.ValueFrom_Const
-		}
-		if condFactory.NeedConstValue() {
-			// The value of the filter field cannot be empty
-			if cfg.ValueFrom != interfaces.ValueFrom_Const {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom)
-			}
+		if err := filter_condition.NormalizeValueFrom(cfg); err != nil {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom).
+				WithErrorDetails(err.Error())
 		}
 
 		if condFactory.IsSingleValue() {

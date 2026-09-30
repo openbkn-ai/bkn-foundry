@@ -39,6 +39,37 @@ func NewFilterCondition(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	return cond, nil
 }
 
+// NormalizeValueFrom applies the default value source and rejects sources that
+// the condition converters cannot execute. It also walks nested conditions.
+func NormalizeValueFrom(cfg *interfaces.FilterCondCfg) error {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.Name == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
+		return nil
+	}
+	factory, ok := OperationMap[cfg.Operation]
+	if !ok {
+		return fmt.Errorf("unsupported operation: %s", cfg.Operation)
+	}
+	for _, child := range cfg.SubConds {
+		if err := NormalizeValueFrom(child); err != nil {
+			return err
+		}
+	}
+	if !factory.NeedValue() {
+		return nil
+	}
+	if cfg.ValueFrom == "" {
+		cfg.ValueFrom = interfaces.ValueFrom_Const
+	}
+	if cfg.ValueFrom != interfaces.ValueFrom_Const &&
+		(factory.NeedConstValue() || cfg.ValueFrom != interfaces.ValueFrom_Field) {
+		return fmt.Errorf("operation %q does not support value_from %q", cfg.Operation, cfg.ValueFrom)
+	}
+	return nil
+}
+
 func IsSlice(i any) bool {
 	kind := reflect.ValueOf(i).Kind()
 	return kind == reflect.Slice || kind == reflect.Array
