@@ -1220,7 +1220,8 @@ func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFu
 			return
 		}
 		if result, ok := revokeObjectGrantIDs(c, e, db, req.GrantIDs); ok {
-			setAuditOutcomeRecords(c, result.auditRecords)
+			setAuditOperation(c, "revoke", "object-grant-batch", fmt.Sprintf("%d 项授权", len(result.sources)))
+			setAuditOutcome(c, map[string]any{"grant_count": len(result.sources), "removed_count": result.removed})
 			c.Status(http.StatusNoContent)
 		}
 	}
@@ -1230,14 +1231,8 @@ func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFu
 // rows are deleted. Request bodies contain only opaque stable IDs, so the
 // audit middleware cannot reconstruct the source once RevokePolicies commits.
 type objectGrantRevokeResult struct {
-	sources      []gin.H
-	auditRecords []auditOutcomeRecord
-	removed      int
-}
-
-type objectGrantRevokeAuditChoices struct {
-	kept    auditOutcomeRecord
-	removed auditOutcomeRecord
+	sources []gin.H
+	removed int
 }
 
 func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantIDs []string) (objectGrantRevokeResult, bool) {
@@ -1298,40 +1293,17 @@ func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantI
 		source["removed"] = false
 		result.sources = append(result.sources, source)
 	}
-	auditChoices := make(map[string]objectGrantRevokeAuditChoices, len(result.sources))
-	for _, source := range result.sources {
-		grantID, _ := source["grant_id"].(string)
-		source["removed"] = false
-		keptRecord, ok := newAuditOutcomeRecord(grantID, source)
-		if !ok {
-			serverError(c, fmt.Errorf("object grant audit detail exceeds storage limit for grant %q", grantID))
-			return objectGrantRevokeResult{}, false
-		}
-		source["removed"] = true
-		removedRecord, ok := newAuditOutcomeRecord(grantID, source)
-		if !ok {
-			serverError(c, fmt.Errorf("object grant audit detail exceeds storage limit for grant %q", grantID))
-			return objectGrantRevokeResult{}, false
-		}
-		source["removed"] = false
-		auditChoices[grantID] = objectGrantRevokeAuditChoices{kept: keptRecord, removed: removedRecord}
-	}
-
 	removedByID, err := e.RevokePolicies(normalized)
 	if err != nil {
 		serverError(c, err)
 		return objectGrantRevokeResult{}, false
 	}
-	result.auditRecords = make([]auditOutcomeRecord, 0, len(result.sources))
 	for _, source := range result.sources {
 		grantID, _ := source["grant_id"].(string)
 		removed := removedByID[grantID]
 		source["removed"] = removed
 		if removed {
 			result.removed++
-			result.auditRecords = append(result.auditRecords, auditChoices[grantID].removed)
-		} else {
-			result.auditRecords = append(result.auditRecords, auditChoices[grantID].kept)
 		}
 	}
 	return result, true

@@ -60,9 +60,31 @@ type UserLookup interface {
 	SetPassword(ctx context.Context, userID, password string) error
 }
 
+type accountLookup interface {
+	ByAccount(context.Context, string) (*model.User, error)
+}
+
 // NewProvider wires the provider.
 func NewProvider(auth Authenticator, hydra *HydraAdmin, users UserLookup) *Provider {
 	return &Provider{auth: auth, hydra: hydra, users: users}
+}
+
+// AccessActor resolves a known account only for the private access-fact
+// producer. Unknown accounts intentionally return nil so they cannot become an
+// anonymous user-visible log record.
+func (p *Provider) AccessActor(ctx context.Context, account string) *model.User {
+	if p == nil || p.users == nil {
+		return nil
+	}
+	lookup, ok := p.users.(accountLookup)
+	if !ok {
+		return nil
+	}
+	user, err := lookup.ByAccount(ctx, account)
+	if err != nil {
+		return nil
+	}
+	return user
 }
 
 // Login verifies credentials and accepts the hydra login, returning hydra's

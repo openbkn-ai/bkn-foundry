@@ -392,7 +392,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore accesslog.Recorder) {
 			return
 		}
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
-			recordLogin(c, accessStore, nil, account, "failure", loginFailureCode(err))
+			recordLogin(c, p, accessStore, nil, account, "failure", loginFailureCode(err))
 			// Re-render the login form with an inline error instead of a bare
 			// error page, keeping the entered account and the same challenge.
 			data := loginAuthPageData(c, challenge)
@@ -412,7 +412,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore accesslog.Recorder) {
 		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 		return
 	}
-	recordLogin(c, accessStore, user, account, "success", "")
+	recordLogin(c, p, accessStore, user, account, "success", "")
 	redirectToHydra(c, redirectTo)
 }
 
@@ -459,7 +459,7 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore accesslog.Re
 	redirectTo, user, err := p.ChangePassword(c.Request.Context(), challenge, account, oldPw, newPw, false)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
-			recordLogin(c, accessStore, nil, account, "failure", loginFailureCode(err))
+			recordLogin(c, p, accessStore, nil, account, "failure", loginFailureCode(err))
 			reRender("CurrentPasswordInvalid")
 			return
 		}
@@ -472,13 +472,19 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore accesslog.Re
 		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 		return
 	}
-	recordLogin(c, accessStore, user, account, "success", "")
+	recordLogin(c, p, accessStore, user, account, "success", "")
 	clearChangePasswordAccount(c)
 	redirectToHydra(c, redirectTo)
 }
 
-func recordLogin(c *gin.Context, store accesslog.Recorder, user *model.User, account, outcome, failureCode string) {
+func recordLogin(c *gin.Context, provider *auth.Provider, store accesslog.Recorder, user *model.User, account, outcome, failureCode string) {
 	if store == nil {
+		return
+	}
+	if user == nil {
+		user = provider.AccessActor(c.Request.Context(), account)
+	}
+	if user == nil {
 		return
 	}
 	actorID, actorName := "", strings.TrimSpace(account)
