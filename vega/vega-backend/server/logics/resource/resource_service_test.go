@@ -1775,6 +1775,22 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
 
+	t.Run("reports a guarded delete rollback failure as an internal error", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{
+			"r1": {ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable,
+				Status: interfaces.ResourceStatusStale, LastDiscoverStatus: interfaces.DiscoverStatusMissing},
+		}, nil)
+		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, true).
+			Return(errors.New("rollback failed"))
+
+		err := rs.DeleteByIDs(context.Background(), []string{"r1"}, false, true)
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_DeleteFailed)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+	})
+
 	t.Run("deletes a still-missing resource", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")

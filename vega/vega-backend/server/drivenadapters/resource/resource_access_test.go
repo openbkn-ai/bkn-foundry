@@ -781,6 +781,23 @@ func TestResourceAccessDeleteByIDs(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	t.Run("reports a rollback failure instead of a stale-state conflict", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		rollbackErr := errors.New("rollback failed")
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?) AND f_status = ? AND f_last_discover_status = ?")).
+			WithArgs("resource-1", interfaces.ResourceStatusStale, interfaces.DiscoverStatusMissing).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectRollback().WillReturnError(rollbackErr)
+
+		err := access.DeleteByIDs(context.Background(), []string{"resource-1"}, true)
+		require.ErrorIs(t, err, rollbackErr)
+		require.NotErrorIs(t, err, interfaces.ErrResourceDeleteConditionNotMet)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("rolls back when guarded row count fails", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
