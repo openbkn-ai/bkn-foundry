@@ -71,6 +71,13 @@ func recordDecision(c *gin.Context, e decisionlog.Entry) {
 			// before ctxAccessorID is set for downstream handlers.
 			e.VerifiedActorID = c.GetString(ctxAuthnSubject)
 		}
+		if e.VerifiedActorID == "" && (e.Source == decisionSourceCheck || e.Source == decisionSourceFilter) && decisionlog.IsSafeActorID(e.AccessorID) {
+			// The internal authorization face receives the end-user identity as
+			// accessor_id after the calling service resolves its own boundary.
+			// It is the subject whose access was decided, so preserve it as the
+			// audit actor instead of manufacturing an anonymous caller.
+			e.VerifiedActorID = e.AccessorID
+		}
 	}
 	if e.ClientIP == "" {
 		e.ClientIP = c.ClientIP()

@@ -3,7 +3,9 @@ package audit
 import (
 	"log/slog"
 	"strings"
+	"time"
 
+	"github.com/IBM/sarama"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/kafkasender"
 )
@@ -16,7 +18,13 @@ type KafkaRuntime struct {
 	producer  interface{ Close() error }
 }
 
+const kafkaStartupAttempts = 5
+
 func NewKafkaRuntimeFromEnv(getenv func(string) string) *KafkaRuntime {
+	return newKafkaRuntimeFromEnv(getenv, kafkasender.NewProducer, time.Second, kafkaStartupAttempts)
+}
+
+func newKafkaRuntimeFromEnv(getenv func(string) string, newProducer func(kafkasender.Config) (sarama.SyncProducer, error), retryEvery time.Duration, attempts int) *KafkaRuntime {
 	environment := strings.TrimSpace(getenv("BKN_AUDIT_ENVIRONMENT"))
 	telemetry := NewPublishTelemetry()
 	runtime := &KafkaRuntime{Recorder: NewKafkaRecorder(nil, environment, telemetry), Telemetry: telemetry}
@@ -32,9 +40,27 @@ func NewKafkaRuntimeFromEnv(getenv func(string) string) *KafkaRuntime {
 		slog.Error("safe audit coverage gap", "reason", "kafka_not_configured")
 		return runtime
 	}
-	producer, err := kafkasender.NewProducer(kafkasender.Config{Brokers: brokers, Mechanism: "PLAIN", Username: username, Password: password})
+	if attempts < 1 {
+		attempts = 1
+	}
+	if retryEvery <= 0 {
+		retryEvery = time.Second
+	}
+	config := kafkasender.Config{Brokers: brokers, Mechanism: "PLAIN", Username: username, Password: password}
+	var producer sarama.SyncProducer
+	var err error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		producer, err = newProducer(config)
+		if err == nil {
+			break
+		}
+		if attempt < attempts {
+			slog.Error("safe audit coverage gap", "reason", "kafka_init_retry", "attempt", attempt, "error", err)
+			time.Sleep(retryEvery)
+		}
+	}
 	if err != nil {
-		slog.Error("safe audit coverage gap", "reason", "kafka_init_failed", "error", err)
+		slog.Error("safe audit coverage gap", "reason", "kafka_init_failed", "attempts", attempts, "error", err)
 		return runtime
 	}
 	publisher, err := auditpublisher.New(kafkasender.NewAudit(producer), safeDeliveryObserver{telemetry: telemetry})

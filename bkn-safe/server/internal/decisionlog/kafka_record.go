@@ -103,3 +103,10 @@ func safeReference(raw string) string {
 	}
 	return id
 }
+
+// IsSafeActorID reports whether an identity can be retained in an audit actor
+// field. Caller-supplied credential shapes are redacted instead of emitted.
+func IsSafeActorID(raw string) bool {
+	id := strings.TrimSpace(raw)
+	return id != "" && id != "redacted" && safeReference(raw) == id
+}
