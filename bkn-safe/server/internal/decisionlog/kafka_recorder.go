@@ -2,6 +2,7 @@ package decisionlog
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
@@ -27,6 +28,9 @@ func NewKafkaRecorder(publisher KafkaPublisher, environment string, observe func
 }
 
 func (r *KafkaRecorder) Record(entry Entry) {
+	if strings.TrimSpace(entry.VerifiedActorID) == "" {
+		return
+	}
 	if r == nil || r.publisher == nil {
 		r.recordOutcome("dropped_unavailable")
 		slog.Error("safe security coverage gap", "reason", "publisher_unavailable")

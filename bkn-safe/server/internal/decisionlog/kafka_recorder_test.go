@@ -17,7 +17,7 @@ func (p *testPublisher) TryPublish(value []byte) auditpublisher.Disposition {
 }
 
 func TestKafkaRecorderPublishesOnceAndReportsGap(t *testing.T) {
-	entry := Entry{ResourceType: "safe_admin", ResourceID: "console", Decision: DecisionDeny, Method: "GET", Source: "admin"}
+	entry := Entry{VerifiedActorID: "admin-1", ResourceType: "safe_admin", ResourceID: "console", Decision: DecisionDeny, Method: "GET", Source: "admin"}
 	publisher := &testPublisher{disposition: auditpublisher.Accepted}
 	var outcomes []string
 	recorder := NewKafkaRecorder(publisher, "test", func(result string) { outcomes = append(outcomes, result) })
@@ -29,5 +29,21 @@ func TestKafkaRecorderPublishesOnceAndReportsGap(t *testing.T) {
 	recorder.Record(entry)
 	if len(outcomes) != 2 || outcomes[1] != string(auditpublisher.DroppedQueueFull) {
 		t.Fatalf("gap not counted: %v", outcomes)
+	}
+}
+
+func TestKafkaRecorderSkipsDecisionWithoutVerifiedActor(t *testing.T) {
+	publisher := &testPublisher{disposition: auditpublisher.Accepted}
+	var outcomes []string
+	recorder := NewKafkaRecorder(publisher, "test", func(result string) { outcomes = append(outcomes, result) })
+	recorder.Record(Entry{
+		AccessorID: "evaluated-user", ResourceType: "safe_admin", ResourceID: "console",
+		Decision: DecisionAllow, Source: "check", Method: "POST",
+	})
+	if publisher.value != nil {
+		t.Fatalf("decision without a verified actor must not be published: %s", publisher.value)
+	}
+	if len(outcomes) != 0 {
+		t.Fatalf("decision without a verified actor must not emit a publish outcome: %v", outcomes)
 	}
 }
