@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -28,7 +29,10 @@ import (
 )
 
 const (
-	RT_TABLE_NAME = "t_relation_type"
+	RT_TABLE_NAME                      = "t_relation_type"
+	relationTypeIdentityQueryBatchSize = 500
+	relationTypeInsertBatchSize        = 200
+	relationTypeUpdateBatchSize        = 200
 )
 
 var (
@@ -90,6 +94,54 @@ func (rta *relationTypeAccess) CheckRelationTypeExistByID(ctx context.Context, k
 
 	span.SetStatus(codes.Ok, "")
 	return name, true, nil
+}
+
+func (rta *relationTypeAccess) GetRelationTypeIDsByIDs(ctx context.Context, knID string,
+	branch string, rtIDs []string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetRelationTypeIDsByIDs")
+	defer span.End()
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("id_count", len(rtIDs)),
+	)
+
+	result := make([]string, 0)
+	for start := 0; start < len(rtIDs); start += relationTypeIdentityQueryBatchSize {
+		end := min(start+relationTypeIdentityQueryBatchSize, len(rtIDs))
+		sqlStr, vals, err := sq.Select("f_id").From(RT_TABLE_NAME).
+			Where(sq.Eq{"f_kn_id": knID}).
+			Where(sq.Eq{"f_branch": branch}).
+			Where(sq.Eq{"f_id": rtIDs[start:end]}).
+			ToSql()
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to build relation type identity query", err)
+			return nil, err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		rows, err := rta.db.Query(sqlStr, vals...)
+		if err != nil {
+			common.LogSafeError(ctx, "Query relation type identities failed", err)
+			return nil, err
+		}
+		for rows.Next() {
+			var rtID string
+			if err = rows.Scan(&rtID); err != nil {
+				_ = rows.Close()
+				common.LogSafeError(ctx, "Scan relation type identity failed", err)
+				return nil, err
+			}
+			result = append(result, rtID)
+		}
+		if err = rows.Err(); err != nil {
+			_ = rows.Close()
+			common.LogSafeError(ctx, "Iterate relation type identities failed", err)
+			return nil, err
+		}
+		_ = rows.Close()
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 // Create a relation type.
@@ -171,6 +223,62 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (rta *relationTypeAccess) CreateRelationTypes(ctx context.Context, tx *sql.Tx,
+	relationTypes []*interfaces.RelationType) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateRelationTypes")
+	defer span.End()
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("relation_type_count", len(relationTypes)),
+	)
+
+	for start := 0; start < len(relationTypes); start += relationTypeInsertBatchSize {
+		end := min(start+relationTypeInsertBatchSize, len(relationTypes))
+		builder := sq.Insert(RT_TABLE_NAME).Columns(
+			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
+			"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type",
+			"f_mapping_rules", "f_creator", "f_creator_type", "f_create_time", "f_updater",
+			"f_updater_type", "f_update_time",
+		)
+		for _, relationType := range relationTypes[start:end] {
+			values, err := relationTypeInsertValues(relationType)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to marshal relation type for batch insert", err)
+				return err
+			}
+			builder = builder.Values(values...)
+		}
+		sqlStr, vals, err := builder.ToSql()
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to build the sql of batch insert relation types", err)
+			return err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		if _, err = tx.Exec(sqlStr, vals...); err != nil {
+			common.LogSafeError(ctx, "Batch insert relation types failed", err)
+			return err
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func relationTypeInsertValues(relationType *interfaces.RelationType) ([]any, error) {
+	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
+	if err != nil {
+		return nil, err
+	}
+	return []any{
+		relationType.RTID, relationType.RTName, libCommon.TagSlice2TagString(relationType.Tags),
+		relationType.Comment, relationType.Icon, relationType.Color, relationType.BKNRawContent,
+		relationType.KNID, relationType.Branch, relationType.SourceObjectTypeID,
+		relationType.TargetObjectTypeID, relationType.Type, mappingRulesBytes, relationType.Creator.ID,
+		relationType.Creator.Type, relationType.CreateTime, relationType.Updater.ID,
+		relationType.Updater.Type, relationType.UpdateTime,
+	}, nil
 }
 
 // Query current relation types on the main branch.
@@ -750,6 +858,105 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (rta *relationTypeAccess) UpdateRelationTypes(ctx context.Context, tx *sql.Tx,
+	relationTypes []*interfaces.RelationType) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "UpdateRelationTypes")
+	defer span.End()
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("relation_type_count", len(relationTypes)),
+	)
+
+	if len(relationTypes) == 0 {
+		return nil
+	}
+	knID, branch := relationTypes[0].KNID, relationTypes[0].Branch
+	for _, relationType := range relationTypes {
+		if relationType.KNID != knID || relationType.Branch != branch {
+			return fmt.Errorf("batch update relation types must have one knowledge network and branch")
+		}
+	}
+	columns := []string{
+		"f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
+		"f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
+		"f_updater", "f_updater_type", "f_update_time",
+	}
+	for start := 0; start < len(relationTypes); {
+		end := start
+		seenIDs := make(map[string]struct{}, min(relationTypeUpdateBatchSize, len(relationTypes)-start))
+		for end < len(relationTypes) && end-start < relationTypeUpdateBatchSize {
+			if _, duplicate := seenIDs[relationTypes[end].RTID]; duplicate {
+				break
+			}
+			seenIDs[relationTypes[end].RTID] = struct{}{}
+			end++
+		}
+		batch := relationTypes[start:end]
+		serialized := make([][]any, 0, len(batch))
+		for _, relationType := range batch {
+			values, err := relationTypeUpdateValues(relationType)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to marshal relation type for batch update", err)
+				return err
+			}
+			serialized = append(serialized, values)
+		}
+
+		var statement strings.Builder
+		args := make([]any, 0, len(columns)*len(batch)*2+len(batch)+2)
+		statement.WriteString("UPDATE ")
+		statement.WriteString(RT_TABLE_NAME)
+		statement.WriteString(" SET ")
+		for columnIndex, column := range columns {
+			if columnIndex > 0 {
+				statement.WriteString(", ")
+			}
+			statement.WriteString(column)
+			statement.WriteString(" = CASE f_id")
+			for rowIndex, relationType := range batch {
+				statement.WriteString(" WHEN ? THEN ?")
+				args = append(args, relationType.RTID, serialized[rowIndex][columnIndex])
+			}
+			statement.WriteString(" ELSE ")
+			statement.WriteString(column)
+			statement.WriteString(" END")
+		}
+		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
+		args = append(args, knID, branch)
+		for index, relationType := range batch {
+			if index > 0 {
+				statement.WriteByte(',')
+			}
+			statement.WriteByte('?')
+			args = append(args, relationType.RTID)
+		}
+		statement.WriteByte(')')
+		sqlStr := statement.String()
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		if _, err := tx.Exec(sqlStr, args...); err != nil {
+			common.LogSafeError(ctx, "Batch update relation types failed", err)
+			return err
+		}
+		start = end
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func relationTypeUpdateValues(relationType *interfaces.RelationType) ([]any, error) {
+	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
+	if err != nil {
+		return nil, err
+	}
+	return []any{
+		relationType.RTName, libCommon.TagSlice2TagString(relationType.Tags), relationType.Comment,
+		relationType.Icon, relationType.Color, relationType.BKNRawContent, relationType.SourceObjectTypeID,
+		relationType.TargetObjectTypeID, relationType.Type, mappingRulesBytes, relationType.Updater.ID,
+		relationType.Updater.Type, relationType.UpdateTime,
+	}, nil
 }
 
 func (rta *relationTypeAccess) DeleteRelationTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, rtIDs []string) (int64, error) {

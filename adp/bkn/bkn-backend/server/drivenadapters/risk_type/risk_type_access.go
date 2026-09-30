@@ -9,12 +9,16 @@ package risk_type
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
 	"bkn-backend/common"
@@ -22,7 +26,10 @@ import (
 )
 
 const (
-	RT_TABLE_NAME = "t_risk_type"
+	RT_TABLE_NAME                  = "t_risk_type"
+	riskTypeIdentityQueryBatchSize = 500
+	riskTypeInsertBatchSize        = 200
+	riskTypeUpdateBatchSize        = 200
 )
 
 var (
@@ -103,6 +110,67 @@ func (rta *riskTypeAccess) CheckRiskTypeExistByName(ctx context.Context, knID st
 	return rtID, true, nil
 }
 
+func (rta *riskTypeAccess) GetRiskTypeIdentitiesByIDsOrNames(ctx context.Context, knID string,
+	branch string, rtIDs, rtNames []string) ([]*interfaces.RiskType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetRiskTypeIdentitiesByIDsOrNames")
+	defer span.End()
+	span.SetAttributes(
+		attr.Int("id_count", len(rtIDs)),
+		attr.Int("name_count", len(rtNames)),
+	)
+
+	result := make([]*interfaces.RiskType, 0)
+	seen := make(map[string]struct{})
+	requestCount := max(len(rtIDs), len(rtNames))
+	for start := 0; start < requestCount; start += riskTypeIdentityQueryBatchSize {
+		idEnd := min(start+riskTypeIdentityQueryBatchSize, len(rtIDs))
+		nameEnd := min(start+riskTypeIdentityQueryBatchSize, len(rtNames))
+		conditions := sq.Or{}
+		if start < len(rtIDs) {
+			conditions = append(conditions, sq.Eq{"f_id": rtIDs[start:idEnd]})
+		}
+		if start < len(rtNames) {
+			conditions = append(conditions, sq.Eq{"f_name": rtNames[start:nameEnd]})
+		}
+		sqlStr, vals, err := sq.Select("f_id", "f_name").From(RT_TABLE_NAME).
+			Where(sq.Eq{"f_kn_id": knID}).
+			Where(sq.Eq{"f_branch": branch}).
+			Where(conditions).
+			ToSql()
+		if err != nil {
+			span.SetStatus(codes.Error, "Build sql failed")
+			return nil, err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		rows, err := rta.db.Query(sqlStr, vals...)
+		if err != nil {
+			span.SetStatus(codes.Error, "Query data failed")
+			return nil, err
+		}
+		for rows.Next() {
+			riskType := &interfaces.RiskType{ModuleType: interfaces.MODULE_TYPE_RISK_TYPE}
+			if err = rows.Scan(&riskType.RTID, &riskType.RTName); err != nil {
+				_ = rows.Close()
+				span.SetStatus(codes.Error, "Scan data failed")
+				return nil, err
+			}
+			if _, duplicate := seen[riskType.RTID]; duplicate {
+				continue
+			}
+			seen[riskType.RTID] = struct{}{}
+			result = append(result, riskType)
+		}
+		if err = rows.Err(); err != nil {
+			_ = rows.Close()
+			span.SetStatus(codes.Error, "Iterate data failed")
+			return nil, err
+		}
+		_ = rows.Close()
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
+}
+
 func (rta *riskTypeAccess) CreateRiskType(ctx context.Context, tx *sql.Tx, riskType *interfaces.RiskType) error {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "CreateRiskType")
 	defer span.End()
@@ -157,6 +225,46 @@ func (rta *riskTypeAccess) CreateRiskType(ctx context.Context, tx *sql.Tx, riskT
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (rta *riskTypeAccess) CreateRiskTypes(ctx context.Context, tx *sql.Tx,
+	riskTypes []*interfaces.RiskType) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "CreateRiskTypes")
+	defer span.End()
+	span.SetAttributes(attr.Int("risk_type_count", len(riskTypes)))
+
+	for start := 0; start < len(riskTypes); start += riskTypeInsertBatchSize {
+		end := min(start+riskTypeInsertBatchSize, len(riskTypes))
+		builder := sq.Insert(RT_TABLE_NAME).Columns(
+			"f_id", "f_name", "f_comment", "f_tags", "f_icon", "f_color", "f_bkn_raw_content",
+			"f_kn_id", "f_branch", "f_creator", "f_creator_type", "f_create_time", "f_updater",
+			"f_updater_type", "f_update_time",
+		)
+		for _, riskType := range riskTypes[start:end] {
+			builder = builder.Values(riskTypeInsertValues(riskType)...)
+		}
+		sqlStr, vals, err := builder.ToSql()
+		if err != nil {
+			span.SetStatus(codes.Error, "Build sql failed")
+			return err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		if _, err = tx.Exec(sqlStr, vals...); err != nil {
+			span.SetStatus(codes.Error, "Insert data failed")
+			return err
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func riskTypeInsertValues(riskType *interfaces.RiskType) []any {
+	return []any{
+		riskType.RTID, riskType.RTName, riskType.Comment, libCommon.TagSlice2TagString(riskType.Tags),
+		riskType.Icon, riskType.Color, riskType.BKNRawContent, riskType.KNID, riskType.Branch,
+		riskType.Creator.ID, riskType.Creator.Type, riskType.CreateTime, riskType.Updater.ID,
+		riskType.Updater.Type, riskType.UpdateTime,
+	}
 }
 
 func (rta *riskTypeAccess) ListRiskTypes(ctx context.Context, query interfaces.RiskTypesQueryParams) ([]*interfaces.RiskType, error) {
@@ -379,6 +487,89 @@ func (rta *riskTypeAccess) UpdateRiskType(ctx context.Context, tx *sql.Tx, riskT
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (rta *riskTypeAccess) UpdateRiskTypes(ctx context.Context, tx *sql.Tx,
+	riskTypes []*interfaces.RiskType) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "UpdateRiskTypes")
+	defer span.End()
+	span.SetAttributes(attr.Int("risk_type_count", len(riskTypes)))
+
+	if len(riskTypes) == 0 {
+		return nil
+	}
+	knID, branch := riskTypes[0].KNID, riskTypes[0].Branch
+	for _, riskType := range riskTypes {
+		if riskType.KNID != knID || riskType.Branch != branch {
+			return fmt.Errorf("batch update risk types must have one knowledge network and branch")
+		}
+	}
+	columns := []string{
+		"f_name", "f_comment", "f_tags", "f_icon", "f_color", "f_bkn_raw_content",
+		"f_updater", "f_updater_type", "f_update_time",
+	}
+	for start := 0; start < len(riskTypes); {
+		end := start
+		seenIDs := make(map[string]struct{}, min(riskTypeUpdateBatchSize, len(riskTypes)-start))
+		for end < len(riskTypes) && end-start < riskTypeUpdateBatchSize {
+			if _, duplicate := seenIDs[riskTypes[end].RTID]; duplicate {
+				break
+			}
+			seenIDs[riskTypes[end].RTID] = struct{}{}
+			end++
+		}
+		batch := riskTypes[start:end]
+		valuesByRow := make([][]any, 0, len(batch))
+		for _, riskType := range batch {
+			valuesByRow = append(valuesByRow, riskTypeUpdateValues(riskType))
+		}
+		var statement strings.Builder
+		args := make([]any, 0, len(columns)*len(batch)*2+len(batch)+2)
+		statement.WriteString("UPDATE ")
+		statement.WriteString(RT_TABLE_NAME)
+		statement.WriteString(" SET ")
+		for columnIndex, column := range columns {
+			if columnIndex > 0 {
+				statement.WriteString(", ")
+			}
+			statement.WriteString(column)
+			statement.WriteString(" = CASE f_id")
+			for rowIndex, riskType := range batch {
+				statement.WriteString(" WHEN ? THEN ?")
+				args = append(args, riskType.RTID, valuesByRow[rowIndex][columnIndex])
+			}
+			statement.WriteString(" ELSE ")
+			statement.WriteString(column)
+			statement.WriteString(" END")
+		}
+		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
+		args = append(args, knID, branch)
+		for index, riskType := range batch {
+			if index > 0 {
+				statement.WriteByte(',')
+			}
+			statement.WriteByte('?')
+			args = append(args, riskType.RTID)
+		}
+		statement.WriteByte(')')
+		sqlStr := statement.String()
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		if _, err := tx.Exec(sqlStr, args...); err != nil {
+			span.SetStatus(codes.Error, "Update data failed")
+			return err
+		}
+		start = end
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func riskTypeUpdateValues(riskType *interfaces.RiskType) []any {
+	return []any{
+		riskType.RTName, riskType.Comment, libCommon.TagSlice2TagString(riskType.Tags), riskType.Icon,
+		riskType.Color, riskType.BKNRawContent, riskType.Updater.ID, riskType.Updater.Type,
+		riskType.UpdateTime,
+	}
 }
 
 func (rta *riskTypeAccess) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, rtIDs []string) (int64, error) {

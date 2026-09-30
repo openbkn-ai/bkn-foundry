@@ -16,12 +16,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "bkn-backend/bkn-specification/bkn"
@@ -151,7 +151,17 @@ func (kns *knowledgeNetworkService) CheckKNExistByName(ctx context.Context, knNa
 func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces.KN, mode string, strictMode bool) (id string, err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create knowledge network")
 	defer span.End()
+	var transactionStart time.Time
+	defer func() {
+		if !transactionStart.IsZero() {
+			span.SetAttributes(attr.Int64("transaction_duration_ms", time.Since(transactionStart).Milliseconds()))
+		}
+	}()
 	modelCommitted := false
+	ctx = vega_backend.WithDatasetWriteConcurrency(ctx, vega_backend.ImportDatasetWriteConcurrency)
+	ctx, datasetWriteTracker := vega_backend.WithDatasetWriteTracker(ctx)
+	var isCreate, isUpdate bool
+	var overwriteSnapshot *interfaces.KN
 	ctx, parentTracker, trackerOwner := permission.WithResourceParentTracker(ctx)
 	defer func() {
 		if trackerOwner && err != nil && !modelCommitted {
@@ -164,29 +174,14 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			_ = policyTracker.Cleanup(ctx, kns.ps)
 		}
 	}()
-	var createdNewKN bool
-	var datasetWritten bool
 	defer func() {
-		if err == nil || !createdNewKN || modelCommitted {
+		attemptedIDs := datasetWriteTracker.AttemptedDocumentIDs(interfaces.BKN_DATASET_ID)
+		if err == nil || modelCommitted || len(attemptedIDs) == 0 {
 			return
 		}
 		cleanupCtx := context.WithoutCancel(ctx)
-		if datasetWritten {
-			filterCondition := map[string]any{
-				"operation": "and",
-				"sub_conditions": []map[string]any{
-					{
-						"field": "kn_id", "operation": "==", "value": kn.KNID, "value_from": "const",
-					},
-					{
-						"field": "branch", "operation": "==", "value": kn.Branch, "value_from": "const",
-					},
-				},
-			}
-			if cleanupErr := kns.vbs.DeleteDatasetDocumentsByQuery(cleanupCtx,
-				interfaces.BKN_DATASET_ID, filterCondition); cleanupErr != nil {
-				otellog.LogError(cleanupCtx, "CreateKN dataset compensation failed", cleanupErr)
-			}
+		if cleanupErr := kns.compensateDatasetDocuments(cleanupCtx, attemptedIDs, overwriteSnapshot); cleanupErr != nil {
+			otellog.LogError(cleanupCtx, "CreateKN dataset compensation failed", cleanupErr)
 		}
 	}()
 
@@ -208,27 +203,45 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 		kn.KNID = generatedID.String()
 	}
-	for _, conceptGroup := range kn.ConceptGroups {
+	if kn.Branch == "" {
+		kn.Branch = interfaces.MAIN_BRANCH
+	}
+	// Resolve ignore before inspecting child definitions: an existing network is a no-op.
+	isCreate, isUpdate, err = kns.handleKNImportMode(ctx, mode, kn)
+	if err != nil {
+		return "", err
+	}
+	if !isCreate && !isUpdate {
+		return kn.KNID, nil
+	}
+	importPlan, err := normalizeImportPlan(ctx, kn)
+	if err != nil {
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
+	importView := importPlan.knowledgeNetworkView(kn)
+	for _, conceptGroup := range importPlan.ConceptGroups {
 		conceptGroup.KNID = kn.KNID
 		conceptGroup.Branch = kn.Branch
 	}
-	for _, objectType := range kn.ObjectTypes {
+	for _, objectType := range importPlan.ObjectTypes {
 		objectType.KNID = kn.KNID
 		objectType.Branch = kn.Branch
 	}
-	for _, relationType := range kn.RelationTypes {
+	for _, relationType := range importPlan.RelationTypes {
 		relationType.KNID = kn.KNID
 		relationType.Branch = kn.Branch
 	}
-	for _, actionType := range kn.ActionTypes {
+	for _, actionType := range importPlan.ActionTypes {
 		actionType.KNID = kn.KNID
 		actionType.Branch = kn.Branch
 	}
-	for _, riskType := range kn.RiskTypes {
+	for _, riskType := range importPlan.RiskTypes {
 		riskType.KNID = kn.KNID
 		riskType.Branch = kn.Branch
 	}
-	for _, m := range kn.Metrics {
+	for _, m := range importPlan.Metrics {
 		if m == nil {
 			continue
 		}
@@ -249,21 +262,18 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	bknNetwork := logics.ToBKNNetWork(kn)
 	kn.BKNRawContent = bknsdk.SerializeBknNetwork(bknNetwork)
 
-	// Resolve import semantics and perform external proxy preflight before
-	// opening the database transaction. Large models can require many remote
-	// permission checks, so holding an idle connection here can exhaust the pool.
-	isCreate, isUpdate, err := kns.handleKNImportMode(ctx, mode, kn)
-	if err != nil {
-		return "", err
-	}
-	createdNewKN = isCreate
 	if isCreate {
 		ctx = permission.WithKNImportPermissionPrechecked(ctx)
 	}
-
+	if isCreate || isUpdate {
+		if err = kns.prepareNormalizedImportMembers(ctx, importPlan, isUpdate); err != nil {
+			return "", err
+		}
+		span.SetAttributes(attr.Int("invalid_member_count", importPlan.InvalidMemberCount))
+	}
 	var proxyPlan *proxyPublishPlan
 	if isCreate || isUpdate {
-		proxyPlan, err = kns.prepareProxyImport(ctx, kn, isUpdate, mode)
+		proxyPlan, err = kns.prepareProxyImport(ctx, importView, isUpdate, mode)
 		if err != nil {
 			return "", err
 		}
@@ -277,7 +287,23 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			ctx = interfaces.WithVerifiedDependencySources(ctx, proxyPlan.resolvedSources)
 		}
 	}
+	if isUpdate {
+		// Capture committed definitions before any index write. Proxy preflight has
+		// already loaded them when enabled, so reuse that lock-protected snapshot.
+		if proxyPlan != nil {
+			overwriteSnapshot = proxyPlan.baseline
+		}
+		if overwriteSnapshot == nil {
+			overwriteSnapshot, err = kns.loadKNForDatasetSnapshot(ctx, kn.KNID, kn.Branch)
+			if err != nil {
+				otellog.LogError(ctx, "Load overwrite compensation snapshot failed", err)
+				return "", logics.PreserveHTTPError(ctx, err,
+					berrors.BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed)
+			}
+		}
+	}
 
+	transactionStart = time.Now()
 	tx, err := kns.db.Begin()
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
@@ -299,67 +325,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				WithErrorDetails(err.Error())
 		}
 
-		// Import concept groups.
-		if len(kn.ConceptGroups) > 0 {
-			for _, cg := range kn.ConceptGroups {
-				_, err = kns.cgs.CreateConceptGroup(ctx, tx, cg, mode, strictMode)
-				if err != nil {
-					logger.Errorf("CreateObjectTypes error: %s", err.Error())
-					span.SetStatus(codes.Error, "创建业务知识网络概念分组失败")
-					return "", logics.PreserveHTTPError(ctx, err,
-						berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
-				}
-			}
-		}
-
-		if len(kn.ObjectTypes) > 0 {
-			_, err = kns.ots.CreateObjectTypes(ctx, tx, kn.ObjectTypes, mode, true, strictMode)
-			if err != nil {
-				logger.Errorf("CreateObjectTypes error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络对象类失败")
-				return "", logics.PreserveHTTPError(ctx, err,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
-			}
-		}
-
-		if len(kn.RelationTypes) > 0 {
-			_, err = kns.rts.CreateRelationTypes(ctx, tx, kn.RelationTypes, mode, strictMode)
-			if err != nil {
-				logger.Errorf("CreateRelationTypes error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络关系类失败")
-				return "", logics.PreserveHTTPError(ctx, err,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateRelationTypesFailed)
-			}
-		}
-
-		if len(kn.ActionTypes) > 0 {
-			_, err = kns.ats.CreateActionTypes(ctx, tx, kn.ActionTypes, mode, strictMode)
-			if err != nil {
-				logger.Errorf("CreateActionTypes error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络动作类失败")
-				return "", logics.PreserveHTTPError(ctx, err,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateActionTypesFailed)
-			}
-		}
-
-		if len(kn.RiskTypes) > 0 {
-			_, err = kns.riskTypeS.CreateRiskTypes(ctx, tx, kn.RiskTypes, mode)
-			if err != nil {
-				logger.Errorf("CreateRiskTypes error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络风险类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_RiskType_InternalError).
-					WithErrorDetails(err.Error())
-			}
-		}
-
-		if len(kn.Metrics) > 0 {
-			_, err = kns.ms.CreateMetrics(ctx, tx, kn.Metrics, strictMode, mode)
-			if err != nil {
-				logger.Errorf("CreateMetrics error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络指标失败")
-				return "", err
-			}
+		if err = kns.persistNormalizedImportPlan(ctx, tx, importPlan, mode, strictMode); err != nil {
+			return "", err
 		}
 	}
 
@@ -375,66 +342,8 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				WithErrorDetails(err.Error())
 		}
 
-		if len(kn.ConceptGroups) > 0 {
-			for _, cg := range kn.ConceptGroups {
-				_, err = kns.cgs.CreateConceptGroup(ctx, tx, cg, mode, strictMode)
-				if err != nil {
-					logger.Errorf("CreateObjectTypes error: %s", err.Error())
-					span.SetStatus(codes.Error, "创建业务知识网络概念分组失败")
-					return "", logics.PreserveHTTPError(ctx, err,
-						berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
-				}
-			}
-		}
-
-		if len(kn.ObjectTypes) > 0 {
-			_, err = kns.ots.CreateObjectTypes(ctx, tx, kn.ObjectTypes, mode, true, strictMode)
-			if err != nil {
-				logger.Errorf("CreateObjectTypes error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络对象类失败")
-				return "", logics.PreserveHTTPError(ctx, err,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
-			}
-		}
-
-		if len(kn.RelationTypes) > 0 {
-			_, err = kns.rts.CreateRelationTypes(ctx, tx, kn.RelationTypes, mode, strictMode)
-			if err != nil {
-				logger.Errorf("CreateRelationTypes error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络关系类失败")
-				return "", logics.PreserveHTTPError(ctx, err,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateRelationTypesFailed)
-			}
-		}
-
-		if len(kn.ActionTypes) > 0 {
-			_, err = kns.ats.CreateActionTypes(ctx, tx, kn.ActionTypes, mode, strictMode)
-			if err != nil {
-				logger.Errorf("CreateActionTypes error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络动作类失败")
-				return "", logics.PreserveHTTPError(ctx, err,
-					berrors.BknBackend_KnowledgeNetwork_InternalError_CreateActionTypesFailed)
-			}
-		}
-
-		if len(kn.RiskTypes) > 0 {
-			_, err = kns.riskTypeS.CreateRiskTypes(ctx, tx, kn.RiskTypes, mode)
-			if err != nil {
-				logger.Errorf("CreateRiskTypes error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络风险类失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_RiskType_InternalError).
-					WithErrorDetails(err.Error())
-			}
-		}
-
-		if len(kn.Metrics) > 0 {
-			_, err = kns.ms.CreateMetrics(ctx, tx, kn.Metrics, strictMode, mode)
-			if err != nil {
-				logger.Errorf("CreateMetrics error: %s", err.Error())
-				span.SetStatus(codes.Error, "创建业务知识网络指标失败")
-				return "", err
-			}
+		if err = kns.persistNormalizedImportPlan(ctx, tx, importPlan, mode, strictMode); err != nil {
+			return "", err
 		}
 	}
 
@@ -447,9 +356,6 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_InsertOpenSearchDataFailed).
 				WithErrorDetails(err.Error())
-		}
-		if isCreate {
-			datasetWritten = true
 		}
 	}
 
@@ -480,6 +386,12 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		return kn.KNID, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
+	span.SetAttributes(
+		attr.Int64("transaction_duration_ms", time.Since(transactionStart).Milliseconds()),
+		attr.Int("restored_member_count", importPlan.RestoredMemberCount),
+		attr.Int("invalid_member_count", importPlan.InvalidMemberCount),
+	)
+	transactionStart = time.Time{}
 	modelCommitted = true
 	if err = kns.finishProxyPublish(ctx, proxyPlan); err != nil {
 		return kn.KNID, err
@@ -508,40 +420,50 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 	kn.Branch = branch
 
 	// Process import mode.
-	_, _, err := kns.handleKNImportMode(ctx, mode, kn)
+	isCreate, isUpdate, err := kns.handleKNImportMode(ctx, mode, kn)
 	if err != nil {
 		return err
 	}
+	if !isCreate && !isUpdate {
+		return nil
+	}
+	plan, err := normalizeImportPlan(ctx, kn)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
+	view := plan.knowledgeNetworkView(kn)
 
-	batch, err := batchindex.CollectKNFromPayload(kn)
+	batch, err := batchindex.CollectKNFromPayload(view)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
 
-	if len(kn.ConceptGroups) > 0 {
-		if err := kns.cgs.ValidateConceptGroups(ctx, knID, branch, kn.ConceptGroups, strictMode, batch, mode); err != nil {
+	if len(plan.ConceptGroups) > 0 {
+		if err := kns.cgs.ValidateConceptGroups(ctx, knID, branch, plan.ConceptGroups, strictMode, batch, mode); err != nil {
 			return err
 		}
 	}
-	if len(kn.ObjectTypes) > 0 {
-		if err := kns.ots.ValidateObjectTypes(ctx, knID, branch, kn.ObjectTypes, strictMode, batch, mode); err != nil {
+	if len(plan.ObjectTypes) > 0 {
+		if err := kns.ots.ValidateObjectTypes(ctx, knID, branch, plan.ObjectTypes, strictMode, batch, mode); err != nil {
 			return err
 		}
 	}
-	if len(kn.RelationTypes) > 0 {
-		if err := kns.rts.ValidateRelationTypes(ctx, knID, branch, kn.RelationTypes, strictMode, batch, mode); err != nil {
+	if len(plan.RelationTypes) > 0 {
+		if err := kns.rts.ValidateRelationTypes(ctx, knID, branch, plan.RelationTypes, strictMode, batch, mode); err != nil {
 			return err
 		}
 	}
-	if len(kn.ActionTypes) > 0 {
-		if err := kns.ats.ValidateActionTypes(ctx, knID, branch, kn.ActionTypes, strictMode, batch, mode); err != nil {
+	if len(plan.ActionTypes) > 0 {
+		if err := kns.ats.ValidateActionTypes(ctx, knID, branch, plan.ActionTypes, strictMode, batch, mode); err != nil {
 			return err
 		}
 	}
-	if len(kn.Metrics) > 0 {
-		if err := kns.ms.ValidateMetrics(ctx, kn.Metrics, strictMode, mode, batch); err != nil {
+	if len(plan.Metrics) > 0 {
+		if err := kns.ms.ValidateMetrics(ctx, plan.Metrics, strictMode, mode, batch); err != nil {
 			return err
 		}
 	}
@@ -838,7 +760,12 @@ func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, 
 // caller has already been authorized for this exact network by a signed grant,
 // so it must not enter account-based resource filtering or identity enrichment.
 func (kns *knowledgeNetworkService) ExportKNForProjection(ctx context.Context, knID string) (*interfaces.KN, error) {
-	kn, err := kns.getKNByID(ctx, knID, interfaces.MAIN_BRANCH, "", false)
+	return kns.loadKNForDatasetSnapshot(ctx, knID, interfaces.MAIN_BRANCH)
+}
+
+func (kns *knowledgeNetworkService) loadKNForDatasetSnapshot(ctx context.Context,
+	knID, branch string) (*interfaces.KN, error) {
+	kn, err := kns.getKNByID(ctx, knID, branch, "", false)
 	if err != nil {
 		return nil, err
 	}
@@ -1814,25 +1741,12 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 
 	docid := interfaces.GenerateConceptDocuemtnID(kn.KNID, interfaces.MODULE_TYPE_KN, kn.KNID, kn.Branch)
 
-	// Convert to map for dataset
-	docBytes, err := sonic.Marshal(kn)
+	document, err := vega_backend.NewDatasetDocument(docid, kn)
 	if err != nil {
-		logger.Errorf("Failed to marshal KN: %s", err.Error())
-		span.SetStatus(codes.Error, "序列化业务知识网络失败")
 		return err
 	}
-
-	var doc map[string]any
-	if err := sonic.Unmarshal(docBytes, &doc); err != nil {
-		logger.Errorf("Failed to unmarshal KN: %s", err.Error())
-		span.SetStatus(codes.Error, "反序列化业务知识网络失败")
-		return err
-	}
-
-	// Set document ID
-	doc["_id"] = docid
-
-	err = kns.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc)
+	err = vega_backend.WriteDatasetDocuments(ctx, kns.vbs, interfaces.BKN_DATASET_ID,
+		[]vega_backend.DatasetDocument{document})
 	if err != nil {
 		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 		span.SetStatus(codes.Error, "业务知识网络概念索引写入失败")

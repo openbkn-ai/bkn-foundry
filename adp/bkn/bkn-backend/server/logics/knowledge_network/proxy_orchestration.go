@@ -20,6 +20,7 @@ import (
 
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
+	"bkn-backend/logics"
 	"bkn-backend/logics/permission"
 )
 
@@ -31,6 +32,7 @@ const (
 
 type proxyPublishPlan struct {
 	mapping         *interfaces.KNProxyAccount
+	baseline        *interfaces.KN
 	delegatorID     string
 	modelVersion    string
 	resolvedSources []interfaces.ProxyGrantResolvedSource
@@ -95,8 +97,11 @@ func (kns *knowledgeNetworkService) prepareProxyPublishWithBaseline(ctx context.
 	if mergeCurrent {
 		current, loadErr := kns.ExportKNForProjection(ctx, kn.KNID)
 		if loadErr != nil {
-			return nil, loadErr
+			otellog.LogError(ctx, "Load proxy import baseline failed", loadErr)
+			return nil, logics.PreserveHTTPError(ctx, loadErr,
+				berrors.BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed)
 		}
+		plan.baseline = current
 		candidate = mergeProxyMutationChanges(current, kn, mergeMode)
 	}
 	sources, _, err := kns.buildProxyGrantSources(ctx, candidate, nil)

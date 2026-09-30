@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -189,13 +188,30 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 	}
 
 	// 1. Create the model.
-	rtIDs := []string{}
+	rtIDs := make([]string, 0, len(createRelationTypes))
 	for _, relationType := range createRelationTypes {
 		rtIDs = append(rtIDs, relationType.RTID)
-		err = rts.rta.CreateRelationType(ctx, tx, relationType)
+	}
+	if len(createRelationTypes) == 1 {
+		err = rts.rta.CreateRelationType(ctx, tx, createRelationTypes[0])
 		if err != nil {
 			logger.Errorf("CreateRelationType error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建关系类失败")
+			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RelationType_InternalError).
+				WithErrorDetails(err.Error())
+		}
+	} else if len(createRelationTypes) > 1 {
+		err = rts.rta.CreateRelationTypes(ctx, tx, createRelationTypes)
+		if err != nil {
+			logger.Errorf("CreateRelationTypes error: %s", err.Error())
+			span.SetStatus(codes.Error, "Batch create relation types failed")
+			if _, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
+				relationType := createRelationTypes[0]
+				errDetails := fmt.Sprintf("The relation type with id [%s] already exists!", relationType.RTID)
+				return []string{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_RelationType_RelationTypeIDExisted).WithErrorDetails(errDetails)
+			}
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RelationType_InternalError).
 				WithErrorDetails(err.Error())
@@ -210,10 +226,19 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		interfaces.RESOURCE_TYPE_KN, parentItems)
 
 	// Update.
-	for _, relationType := range updateRelationTypes {
-		err = rts.UpdateRelationType(ctx, tx, relationType, strictMode)
+	if len(updateRelationTypes) == 1 {
+		err = rts.UpdateRelationType(ctx, tx, updateRelationTypes[0], strictMode)
 		if err != nil {
 			return []string{}, err
+		}
+	} else if len(updateRelationTypes) > 1 {
+		err = rts.rta.UpdateRelationTypes(ctx, tx, updateRelationTypes)
+		if err != nil {
+			logger.Errorf("UpdateRelationTypes error: %s", err.Error())
+			span.SetStatus(codes.Error, "Batch update relation types failed")
+			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RelationType_InternalError).
+				WithErrorDetails(err.Error())
 		}
 	}
 
@@ -799,13 +824,41 @@ func (rts *relationTypeService) handleRelationTypeImportMode(ctx context.Context
 
 	creates := []*interfaces.RelationType{}
 	updates := []*interfaces.RelationType{}
+	var err error
+	existingIDs := make(map[string]struct{})
+	if len(relationTypes) > 1 {
+		knID, branch := relationTypes[0].KNID, relationTypes[0].Branch
+		requestedIDs := make([]string, 0, len(relationTypes))
+		for _, relationType := range relationTypes {
+			if relationType.KNID != knID || relationType.Branch != branch {
+				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_RelationType_InvalidParameter)
+			}
+			requestedIDs = append(requestedIDs, relationType.RTID)
+		}
+		ids, err := rts.rta.GetRelationTypeIDsByIDs(ctx, knID, branch, requestedIDs)
+		if err != nil {
+			otellog.LogError(ctx, fmt.Sprintf("Batch query relation type IDs in knowledge network [%s] failed", knID), err)
+			return creates, updates, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RelationType_InternalError_CheckRelationTypeIfExistFailed).
+				WithErrorDetails(err.Error())
+		}
+		for _, id := range ids {
+			existingIDs[id] = struct{}{}
+		}
+	}
 
 	// 3. When the submitted model ID is not empty, validate conflicts with existing model IDs.
 	for _, relationType := range relationTypes {
 		creates = append(creates, relationType)
-		_, idExist, err := rts.CheckRelationTypeExistByID(ctx, relationType.KNID, relationType.Branch, relationType.RTID)
-		if err != nil {
-			return creates, updates, err
+		var idExist bool
+		if len(relationTypes) == 1 {
+			_, idExist, err = rts.CheckRelationTypeExistByID(ctx, relationType.KNID, relationType.Branch, relationType.RTID)
+			if err != nil {
+				return creates, updates, err
+			}
+		} else {
+			_, idExist = existingIDs[relationType.RTID]
 		}
 
 		// Handle mode: ignore removes it from results, overwrite updates it, and normal returns an error.
@@ -877,33 +930,22 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 		}
 	}
 
+	documents := make([]vega_backend.DatasetDocument, 0, len(relationTypes))
 	for _, relationType := range relationTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(relationType.KNID, interfaces.MODULE_TYPE_RELATION_TYPE,
 			relationType.RTID, relationType.Branch)
 		relationType.ModuleType = interfaces.MODULE_TYPE_RELATION_TYPE
 
-		// Convert to map for dataset
-		docBytes, err := sonic.Marshal(relationType)
+		document, err := vega_backend.NewDatasetDocument(docid, relationType)
 		if err != nil {
-			logger.Errorf("Failed to marshal RelationType: %s", err.Error())
-			span.SetStatus(codes.Error, "序列化关系类失败")
 			return err
 		}
-
-		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
-			logger.Errorf("Failed to unmarshal RelationType: %s", err.Error())
-			span.SetStatus(codes.Error, "反序列化关系类失败")
-			return err
-		}
-
-		// Set document ID
-		doc["_id"] = docid
-		if err := rts.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
-			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
-			span.SetStatus(codes.Error, "关系类概念索引写入失败")
-			return err
-		}
+		documents = append(documents, document)
+	}
+	if err := vega_backend.WriteDatasetDocuments(ctx, rts.vbs, interfaces.BKN_DATASET_ID, documents); err != nil {
+		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+		span.SetStatus(codes.Error, "关系类概念索引写入失败")
+		return err
 	}
 
 	return nil

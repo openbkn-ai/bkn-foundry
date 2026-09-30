@@ -12,13 +12,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
 	"bkn-backend/common"
@@ -26,7 +29,10 @@ import (
 )
 
 const (
-	METRIC_TABLE_NAME = "t_metric_definition"
+	METRIC_TABLE_NAME            = "t_metric_definition"
+	metricIdentityQueryBatchSize = 500
+	metricInsertBatchSize        = 200
+	metricUpdateBatchSize        = 200
 )
 
 var (
@@ -209,6 +215,55 @@ func (ma *metricAccess) CreateMetric(ctx context.Context, tx *sql.Tx, def *inter
 	return nil
 }
 
+func (ma *metricAccess) CreateMetrics(ctx context.Context, tx *sql.Tx,
+	definitions []*interfaces.MetricDefinition) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateMetrics")
+	defer span.End()
+	span.SetAttributes(attr.Int("metric_count", len(definitions)))
+
+	for start := 0; start < len(definitions); start += metricInsertBatchSize {
+		end := min(start+metricInsertBatchSize, len(definitions))
+		builder := sq.Insert(METRIC_TABLE_NAME).Columns(
+			"f_id", "f_kn_id", "f_branch", "f_name", "f_comment", "f_tags", "f_icon", "f_color",
+			"f_bkn_raw_content", "f_unit_type", "f_unit", "f_metric_type", "f_scope_type", "f_scope_ref",
+			"f_time_dimension", "f_calculation_formula", "f_analysis_dimensions", "f_creator",
+			"f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+		)
+		for _, definition := range definitions[start:end] {
+			builder = builder.Values(metricInsertValues(definition)...)
+		}
+		sqlStr, vals, err := builder.ToSql()
+		if err != nil {
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+			return err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		if tx != nil {
+			_, err = tx.Exec(sqlStr, vals...)
+		} else {
+			_, err = ma.db.Exec(sqlStr, vals...)
+		}
+		if err != nil {
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+			return err
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func metricInsertValues(definition *interfaces.MetricDefinition) []any {
+	return []any{
+		definition.ID, definition.KnID, definition.Branch, definition.Name, definition.Comment,
+		libCommon.TagSlice2TagString(definition.Tags), definition.Icon, definition.Color,
+		definition.BKNRawContent, definition.UnitType, definition.Unit, definition.MetricType,
+		definition.ScopeType, definition.ScopeRef, jsonOrNull(definition.TimeDimension),
+		jsonOrNull(definition.CalculationFormula), jsonOrNull(definition.AnalysisDimensions),
+		definition.Creator.ID, definition.Creator.Type, definition.CreateTime, definition.Updater.ID,
+		definition.Updater.Type, definition.UpdateTime,
+	}
+}
+
 func (ma *metricAccess) CheckMetricExistByID(ctx context.Context, knID string, branch string, metricID string) (string, bool, error) {
 
 	_, span := oteltrace.StartNamedClientSpan(ctx, "CheckMetricExistByID")
@@ -269,6 +324,67 @@ func (ma *metricAccess) CheckMetricExistByName(ctx context.Context, knID string,
 	}
 	span.SetStatus(codes.Ok, "")
 	return id, true, nil
+}
+
+func (ma *metricAccess) GetMetricIdentitiesByIDsOrNames(ctx context.Context, knID, branch string,
+	metricIDs, names []string) ([]*interfaces.MetricDefinition, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetMetricIdentitiesByIDsOrNames")
+	defer span.End()
+	span.SetAttributes(
+		attr.Int("id_count", len(metricIDs)),
+		attr.Int("name_count", len(names)),
+	)
+
+	result := make([]*interfaces.MetricDefinition, 0)
+	seen := make(map[string]struct{})
+	requestCount := max(len(metricIDs), len(names))
+	for start := 0; start < requestCount; start += metricIdentityQueryBatchSize {
+		idEnd := min(start+metricIdentityQueryBatchSize, len(metricIDs))
+		nameEnd := min(start+metricIdentityQueryBatchSize, len(names))
+		conditions := sq.Or{}
+		if start < len(metricIDs) {
+			conditions = append(conditions, sq.Eq{"f_id": metricIDs[start:idEnd]})
+		}
+		if start < len(names) {
+			conditions = append(conditions, sq.Eq{"f_name": names[start:nameEnd]})
+		}
+		sqlStr, vals, err := sq.Select("f_id", "f_name").From(METRIC_TABLE_NAME).
+			Where(sq.Eq{"f_kn_id": knID}).
+			Where(sq.Eq{"f_branch": branch}).
+			Where(conditions).
+			ToSql()
+		if err != nil {
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+			return nil, err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		rows, err := ma.db.Query(sqlStr, vals...)
+		if err != nil {
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+			return nil, err
+		}
+		for rows.Next() {
+			metric := &interfaces.MetricDefinition{ModuleType: interfaces.MODULE_TYPE_METRIC}
+			if err = rows.Scan(&metric.ID, &metric.Name); err != nil {
+				_ = rows.Close()
+				span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+				return nil, err
+			}
+			if _, duplicate := seen[metric.ID]; duplicate {
+				continue
+			}
+			seen[metric.ID] = struct{}{}
+			result = append(result, metric)
+		}
+		if err = rows.Err(); err != nil {
+			_ = rows.Close()
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+			return nil, err
+		}
+		_ = rows.Close()
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 func metricSelectColumns() []string {
@@ -545,6 +661,92 @@ func (ma *metricAccess) UpdateMetric(ctx context.Context, tx *sql.Tx, metric *in
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (ma *metricAccess) UpdateMetrics(ctx context.Context, tx *sql.Tx,
+	definitions []*interfaces.MetricDefinition) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "UpdateMetrics")
+	defer span.End()
+	span.SetAttributes(attr.Int("metric_count", len(definitions)))
+
+	if len(definitions) == 0 {
+		return nil
+	}
+	knID, branch := definitions[0].KnID, definitions[0].Branch
+	for _, definition := range definitions {
+		if definition.KnID != knID || definition.Branch != branch {
+			return fmt.Errorf("batch update metrics must have one knowledge network and branch")
+		}
+	}
+	columns := []string{
+		"f_comment", "f_tags", "f_icon", "f_color", "f_bkn_raw_content", "f_unit_type", "f_unit",
+		"f_metric_type", "f_time_dimension", "f_calculation_formula", "f_analysis_dimensions",
+		"f_updater", "f_updater_type", "f_update_time",
+	}
+	for start := 0; start < len(definitions); {
+		end := start
+		seenIDs := make(map[string]struct{}, min(metricUpdateBatchSize, len(definitions)-start))
+		for end < len(definitions) && end-start < metricUpdateBatchSize {
+			if _, duplicate := seenIDs[definitions[end].ID]; duplicate {
+				break
+			}
+			seenIDs[definitions[end].ID] = struct{}{}
+			end++
+		}
+		batch := definitions[start:end]
+		valuesByRow := make([][]any, 0, len(batch))
+		for _, definition := range batch {
+			valuesByRow = append(valuesByRow, metricUpdateValues(definition))
+		}
+		var statement strings.Builder
+		args := make([]any, 0, len(columns)*len(batch)*2+len(batch)+2)
+		statement.WriteString("UPDATE ")
+		statement.WriteString(METRIC_TABLE_NAME)
+		statement.WriteString(" SET ")
+		for columnIndex, column := range columns {
+			if columnIndex > 0 {
+				statement.WriteString(", ")
+			}
+			statement.WriteString(column)
+			statement.WriteString(" = CASE f_id")
+			for rowIndex, definition := range batch {
+				statement.WriteString(" WHEN ? THEN ?")
+				args = append(args, definition.ID, valuesByRow[rowIndex][columnIndex])
+			}
+			statement.WriteString(" ELSE ")
+			statement.WriteString(column)
+			statement.WriteString(" END")
+		}
+		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
+		args = append(args, knID, branch)
+		for index, definition := range batch {
+			if index > 0 {
+				statement.WriteByte(',')
+			}
+			statement.WriteByte('?')
+			args = append(args, definition.ID)
+		}
+		statement.WriteByte(')')
+		sqlStr := statement.String()
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		if _, err := tx.Exec(sqlStr, args...); err != nil {
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
+			return err
+		}
+		start = end
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func metricUpdateValues(definition *interfaces.MetricDefinition) []any {
+	return []any{
+		definition.Comment, libCommon.TagSlice2TagString(definition.Tags), definition.Icon,
+		definition.Color, definition.BKNRawContent, definition.UnitType, definition.Unit,
+		definition.MetricType, jsonOrNull(definition.TimeDimension),
+		jsonOrNull(definition.CalculationFormula), jsonOrNull(definition.AnalysisDimensions),
+		definition.Updater.ID, definition.Updater.Type, definition.UpdateTime,
+	}
 }
 
 func (ma *metricAccess) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knID, branch string, metricIDs []string) error {

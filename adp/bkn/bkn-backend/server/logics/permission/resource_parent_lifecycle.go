@@ -21,7 +21,10 @@ import (
 	"bkn-backend/interfaces"
 )
 
-const authorizationCleanupTimeout = 5 * time.Second
+const (
+	authorizationCleanupTimeout  = 5 * time.Second
+	resourceParentCleanupTimeout = 30 * time.Second
+)
 
 type resourceParentTrackerKey struct{}
 type authorizationCleanupTrackerKey struct{}
@@ -76,7 +79,8 @@ func WithResourceParentTracker(ctx context.Context) (context.Context, *ResourceP
 	return context.WithValue(ctx, resourceParentTrackerKey{}, tracker), tracker, true
 }
 
-// TrackResourceParents adds successfully written parent edges to the active transaction tracker.
+// TrackResourceParents adds parent edges that may have been written to the active transaction
+// tracker. Callers may track before a remote request to cover ambiguous partial success.
 func TrackResourceParents(ctx context.Context, resourceType, parentType string,
 	items []interfaces.PermissionResourceParent) {
 
@@ -100,22 +104,55 @@ func TrackResourceParents(ctx context.Context, resourceType, parentType string,
 // Cleanup removes all tracked parent edges. It is safe to call more than once.
 func (tracker *ResourceParentTracker) Cleanup(ctx context.Context, ps interfaces.PermissionService) error {
 	tracker.mu.Lock()
-	entries := make([]trackedResourceParent, 0, len(tracker.entries))
+	byType := make(map[string][]trackedResourceParent)
 	for _, entry := range tracker.entries {
-		entries = append(entries, entry)
+		byType[entry.resourceType] = append(byType[entry.resourceType], entry)
 	}
-	tracker.entries = map[string]trackedResourceParent{}
 	tracker.mu.Unlock()
 
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authorizationCleanupTimeout)
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
 	defer cancel()
 
+	resourceTypes := make([]string, 0, len(byType))
+	for resourceType := range byType {
+		resourceTypes = append(resourceTypes, resourceType)
+	}
+	sort.Strings(resourceTypes)
+
 	var cleanupErrs []error
-	for _, entry := range entries {
-		if err := ps.DeleteResourceParents(cleanupCtx, entry.resourceType, []string{entry.resourceID}); err != nil {
-			logAuthorizationCleanupFailure("resource_parent", entry.resourceType, entry.resourceID,
-				entry.parentType, entry.parentID, err)
-			cleanupErrs = append(cleanupErrs, err)
+	for _, resourceType := range resourceTypes {
+		entries := byType[resourceType]
+		sort.Slice(entries, func(i, j int) bool { return entries[i].resourceID < entries[j].resourceID })
+		for start := 0; start < len(entries); start += safeMutationBatchSize {
+			if err := cleanupCtx.Err(); err != nil {
+				tracker.mu.Lock()
+				remaining := len(tracker.entries)
+				tracker.mu.Unlock()
+				logger.GetLogger().Errorw("resource parent cleanup deadline exceeded",
+					"remaining_count", remaining, "error", err.Error())
+				return errors.Join(append(cleanupErrs, err)...)
+			}
+			batch := entries[start:min(start+safeMutationBatchSize, len(entries))]
+			resourceIDs := make([]string, 0, len(batch))
+			for _, entry := range batch {
+				resourceIDs = append(resourceIDs, entry.resourceID)
+			}
+			if err := ps.DeleteResourceParents(cleanupCtx, resourceType, resourceIDs); err != nil {
+				for _, entry := range batch {
+					logAuthorizationCleanupFailure("resource_parent", resourceType, entry.resourceID,
+						entry.parentType, entry.parentID, err)
+				}
+				cleanupErrs = append(cleanupErrs, err)
+				continue
+			}
+			tracker.mu.Lock()
+			for _, entry := range batch {
+				key := resourceType + "\x00" + entry.resourceID
+				if tracker.entries[key] == entry {
+					delete(tracker.entries, key)
+				}
+			}
+			tracker.mu.Unlock()
 		}
 	}
 	return errors.Join(cleanupErrs...)

@@ -942,3 +942,35 @@ func Test_KnowledgeNetworkRestHandler_DeleteKN_extraCases(t *testing.T) {
 		})
 	})
 }
+
+func TestKnowledgeNetworkMutationSummaryIsBoundedAndDoesNotContainDefinitions(t *testing.T) {
+	secretDefinition := "sensitive-business-definition"
+	summary := knowledgeNetworkMutationSummary(&interfaces.KN{
+		KNID:   "kn-1",
+		KNName: secretDefinition,
+		ObjectTypes: []*interfaces.ObjectType{{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1", OTName: secretDefinition},
+		}},
+		ConceptGroups: []*interfaces.ConceptGroup{{
+			CGID: "cg-1", ObjectTypeIDs: []string{"ot-1", "ot-2"},
+		}},
+	}, interfaces.ImportMode_Overwrite, "preserve", 4096)
+
+	if strings.Contains(summary, secretDefinition) {
+		t.Fatalf("summary leaked a business definition: %s", summary)
+	}
+	for _, expected := range []string{
+		"operation_kind=knowledge_network_import",
+		"kn_id=kn-1",
+		"branch=main",
+		"request_bytes=4096",
+		"import_mode=overwrite",
+		"object_types=1",
+		"concept_groups=1",
+		"member_references=2",
+	} {
+		if !strings.Contains(summary, expected) {
+			t.Fatalf("summary %q does not contain %q", summary, expected)
+		}
+	}
+}

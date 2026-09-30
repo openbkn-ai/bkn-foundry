@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -27,6 +28,30 @@ import (
 )
 
 const projectionGrantHeader = "X-BKN-Projection-Grant"
+
+func knowledgeNetworkMutationSummary(kn *interfaces.KN, mode, bindingPolicy string, requestBytes int64) string {
+	operationKind := "knowledge_network_create"
+	if len(kn.ConceptGroups)+len(kn.ObjectTypes)+len(kn.RelationTypes)+len(kn.ActionTypes)+
+		len(kn.RiskTypes)+len(kn.Metrics) > 0 {
+		operationKind = "knowledge_network_import"
+	}
+	branch := kn.Branch
+	if branch == "" {
+		branch = interfaces.MAIN_BRANCH
+	}
+	memberReferences := 0
+	for _, group := range kn.ConceptGroups {
+		if group != nil {
+			memberReferences += len(group.ObjectTypeIDs) + len(group.ObjectTypes)
+		}
+	}
+	return fmt.Sprintf("Knowledge network mutation: operation_kind=%s kn_id=%s branch=%s request_bytes=%d "+
+		"import_mode=%s binding_policy=%s concept_groups=%d object_types=%d relation_types=%d "+
+		"action_types=%d risk_types=%d metrics=%d member_references=%d",
+		operationKind, kn.KNID, branch, requestBytes, mode, bindingPolicy, len(kn.ConceptGroups),
+		len(kn.ObjectTypes), len(kn.RelationTypes), len(kn.ActionTypes), len(kn.RiskTypes),
+		len(kn.Metrics), memberReferences)
+}
 
 func exportContentDisposition(name, fallback string) string {
 	preferredBase := strings.TrimSpace(name)
@@ -284,7 +309,11 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Bind one knowledge network request object.
 	kn := interfaces.KN{}
+	_, parseSpan := oteltrace.StartNamedInternalSpan(ctx, "Parse knowledge network request")
+	parseStartedAt := time.Now()
 	err = c.ShouldBindJSON(&kn)
+	parseSpan.SetAttributes(attr.Int64("json_parse_duration_ms", time.Since(parseStartedAt).Milliseconds()))
+	parseSpan.End()
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
@@ -298,8 +327,32 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Record API request parameters: c.Request.RequestURI and body.
-	otellog.LogInfo(ctx, fmt.Sprintf("创建业务知识网络请求参数: [%s,%v]", c.Request.RequestURI, kn))
+	// Record bounded metadata only. The full model can be very large and may
+	// contain business definitions that must not be copied into logs.
+	requestBytes := c.Request.ContentLength
+	if requestBytes < 0 {
+		requestBytes = 0
+	}
+	operationKind := "knowledge_network_create"
+	if len(kn.ConceptGroups)+len(kn.ObjectTypes)+len(kn.RelationTypes)+len(kn.ActionTypes)+
+		len(kn.RiskTypes)+len(kn.Metrics) > 0 {
+		operationKind = "knowledge_network_import"
+	}
+	otellog.LogInfo(ctx, knowledgeNetworkMutationSummary(&kn, mode, bindingPolicy, requestBytes))
+	span.SetAttributes(
+		attr.String("operation_kind", operationKind),
+		attr.String("kn_id", kn.KNID),
+		attr.String("branch", kn.Branch),
+		attr.Int64("request_bytes", requestBytes),
+		attr.String("import_mode", mode),
+		attr.String("binding_policy", bindingPolicy),
+		attr.Int("concept_group_count", len(kn.ConceptGroups)),
+		attr.Int("object_type_count", len(kn.ObjectTypes)),
+		attr.Int("relation_type_count", len(kn.RelationTypes)),
+		attr.Int("action_type_count", len(kn.ActionTypes)),
+		attr.Int("risk_type_count", len(kn.RiskTypes)),
+		attr.Int("metric_count", len(kn.Metrics)),
+	)
 
 	// Validate that the imported model is a knowledge network.
 	if kn.ModuleType != "" && kn.ModuleType != interfaces.MODULE_TYPE_KN {
