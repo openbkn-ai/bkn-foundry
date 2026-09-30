@@ -12,6 +12,7 @@ Read this first, then load the rules under [`rules/`](rules/). Before working in
 | Architecture & module boundaries | [rules/ARCHITECTURE.md](rules/ARCHITECTURE.md) |
 | API / HTTP / error conventions | [rules/DEVELOPMENT.md](rules/DEVELOPMENT.md) |
 | Testing conventions | [rules/TESTING.md](rules/TESTING.md) |
+| Logs and Trace review | [rules/OBSERVABILITY_REVIEW.md](rules/OBSERVABILITY_REVIEW.md) |
 | Module owners (review routing) | [.github/CODEOWNERS](.github/CODEOWNERS) |
 | Issue templates (bug / feature / task) | [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) |
 | Pull request template | [.github/pull_request_template.md](.github/pull_request_template.md) |

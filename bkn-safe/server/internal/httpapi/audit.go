@@ -105,6 +105,11 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		if !isAuditedManagementOperation(c.Request.Method, c.FullPath()) {
 			return
 		}
+		// A rejected or failed request did not commit a business operation. Its
+		// HTTP outcome belongs to the caller, not to the business audit stream.
+		if status := c.Writer.Status(); status < http.StatusOK || status >= http.StatusMultipleChoices {
+			return
+		}
 		if requestOperation.Handled() {
 			return
 		}
@@ -182,7 +187,6 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 			)
 			_ = c.Error(err)
 		}
-		c.Set(ctxAuditRecorded, true)
 	}
 }
 

@@ -44,8 +44,8 @@ type Deps struct {
 	HydraBrowserPublicURL string
 	Directory             *directory.Service
 	Users                 *auth.UserStore
-	// Audit records administration attempts and gate refusals. Production
-	// injects the Kafka recorder; historical local Audit HTTP reads are absent.
+	// Audit records committed administration operations. Production injects the
+	// Kafka recorder; historical local Audit HTTP reads are absent.
 	Audit          AuditRecorder
 	AuditTelemetry *audit.PublishTelemetry
 	// AccessLog publishes login/logout facts. Production injects the Kafka
@@ -79,7 +79,6 @@ type Deps struct {
 // New builds the gin engine with all routes mounted.
 type AuditRecorder interface {
 	auditBatchRecorder
-	auditEntryRecorder
 }
 
 func New(deps Deps) *gin.Engine {
@@ -98,14 +97,6 @@ func New(deps Deps) *gin.Engine {
 	if deps.Decisions != nil {
 		r.Use(withDecisionLog(deps.Decisions))
 	}
-	// Authentication and authorization refusals (401/403) at the token gates
-	// are audited too; the recorder runs in front of each gate. Without an
-	// audit store it is a pass-through.
-	gateAudit := func(c *gin.Context) { c.Next() }
-	if recorder != nil {
-		gateAudit = auditAuthFailures(recorder, deps.Directory, newFailureLimiter(failureLimiterWindow))
-	}
-
 	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	if deps.AuditTelemetry != nil {
@@ -169,14 +160,14 @@ func New(deps Deps) *gin.Engine {
 		meVerifier = newCachingVerifier(meVerifier, verifierCacheTTL)
 	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
-		authzExplain := r.Group("/api/safe/v1/authz", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
+		authzExplain := r.Group("/api/safe/v1/authz", sharedrest.PrivateNoCacheMiddleware(),
 			RequireUser(verifier), RequireActiveAccount(deps.DB))
 		if recorder != nil {
 			authzExplain.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 		}
 		registerAuthzExplain(authzExplain, deps.Enforcer, deps.DB)
 
-		admin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
+		admin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		// Audit every mutating admin request. Use() must precede the route
 		// registrations below: gin snapshots the group's handler chain at
 		// register time. The middleware sits after RequireAdmin, so it only runs
@@ -191,7 +182,7 @@ func New(deps Deps) *gin.Engine {
 		// off the `admin` group because gin fixes a group's handler chain at
 		// register time — the relaxation has to be its own group or it would be
 		// no relaxation at all.
-		ownerDirectory := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
+		ownerDirectory := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(),
 			RequireAdminOrResourceOwner(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		if recorder != nil {
 			ownerDirectory.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
@@ -209,7 +200,7 @@ func New(deps Deps) *gin.Engine {
 		}
 		if permobject.ManagementRegistered() {
 			enterpriseObjectGrants := r.Group("/api/safe/v1/admin", permobject.ManagementGate(),
-				sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier), RequireActiveAccount(deps.DB))
+				sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier), RequireActiveAccount(deps.DB))
 			if recorder != nil {
 				enterpriseObjectGrants.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 			}
@@ -227,7 +218,7 @@ func New(deps Deps) *gin.Engine {
 		// identifiable without any credential at all. Audit sits after the gate
 		// for the same reason: a hidden route must not produce a record shaped
 		// differently from a route that does not exist.
-		gatedAdmin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), adminwrite.Gate(), gateAudit, RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
+		gatedAdmin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), adminwrite.Gate(), RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		if recorder != nil {
 			gatedAdmin.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 		}
@@ -240,7 +231,7 @@ func New(deps Deps) *gin.Engine {
 		// gate still runs first, before authentication, so an unavailable paid
 		// surface is indistinguishable from Community's unmounted route.
 		propertyGrantAdmin := r.Group("/api/safe/v1/admin", permdata.ManagementGate(),
-			sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier), RequireActiveAccount(deps.DB))
+			sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier), RequireActiveAccount(deps.DB))
 		if recorder != nil {
 			propertyGrantAdmin.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 		}
@@ -252,7 +243,7 @@ func New(deps Deps) *gin.Engine {
 		}
 		if deps.RowFilterPublishedObjectTypes != nil {
 			rowFilterAdmin := r.Group("/api/safe/v1/admin", rowfiltersocket.ManagementGate(),
-				sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier), RequireActiveAccount(deps.DB))
+				sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier), RequireActiveAccount(deps.DB))
 			if recorder != nil {
 				rowFilterAdmin.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 			}
@@ -315,14 +306,14 @@ func New(deps Deps) *gin.Engine {
 		// Read-only /me (GET "" + GET /permissions): the login burst fires these
 		// two in parallel, so they get the cached, singleflight-deduplicated
 		// verifier.
-		meReads := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(meVerifier))
+		meReads := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
 		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
 		registerMeAuthorizationRegistry(meReads, deps.DB)
 
 		// What this deployment can do, for the frontend's menu. Authn only:
 		// it describes the cluster, not the caller. Enforcement stays at each
 		// gated call site (open-core-gating §2.5).
-		caps := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(meVerifier))
+		caps := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
 		registerCapabilities(caps, deps.License)
 
 		// Voluntary logout only records an access fact before the browser clears
@@ -330,7 +321,7 @@ func New(deps Deps) *gin.Engine {
 		// can still record that explicit action; it does not mutate authorization
 		// state and must not be blocked by the active-account write gate below.
 		if deps.AccessLog != nil {
-			meLogout := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), gateAudit, RequireUser(verifier))
+			meLogout := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier))
 			registerLogout(meLogout, deps.AccessLog, deps.Directory)
 		}
 
@@ -339,9 +330,9 @@ func New(deps Deps) *gin.Engine {
 		// the read cache's TTL window. The local account check separately makes an
 		// administrator disable effective immediately even while Hydra still
 		// considers an already-issued token active.
-		meWrites := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
+		meWrites := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(),
 			RequireUser(verifier), RequireActiveAccount(deps.DB))
-		permissionRequestWrites := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(), gateAudit,
+		permissionRequestWrites := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(),
 			RequireUser(verifier), RequireActiveAccount(deps.DB))
 		if recorder != nil {
 			meWrites.Use(auditMiddleware(recorder, deps.Directory, deps.DB))

@@ -11,7 +11,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-func TestFailedUserCreateAuditKeepsAttemptedBusinessTarget(t *testing.T) {
+func TestFailedUserCreateDoesNotCreateAuditFact(t *testing.T) {
 	router, _, db, _ := newAdminServer(t)
 	body := map[string]any{
 		"account": "duplicate-user", "name": "Duplicate User", "password": "Phase4A-Test-only-123!",
@@ -24,15 +24,12 @@ func TestFailedUserCreateAuditKeepsAttemptedBusinessTarget(t *testing.T) {
 		t.Fatalf("duplicate create must fail, got %d (%s)", response.Code, response.Body.String())
 	}
 
-	var record model.AuditLog
-	if err := db.Where("resource = ? AND status >= ?", "users", http.StatusBadRequest).
-		Order("created_at DESC").First(&record).Error; err != nil {
+	var failedCount int64
+	if err := db.Model(&model.AuditLog{}).Where("resource = ? AND status >= ?", "users", http.StatusBadRequest).
+		Count(&failedCount).Error; err != nil {
 		t.Fatal(err)
 	}
-	if record.Action != "create" || record.TargetID != "duplicate-user" || record.TargetName != "Duplicate User" {
-		t.Fatalf("failed create target is not reproducible: %+v", record)
-	}
-	if record.ActorID == "" || record.RequestID == "" {
-		t.Fatalf("failed create identity and correlation facts are incomplete: %+v", record)
+	if failedCount != 0 {
+		t.Fatalf("failed user create generated %d audit facts, want 0", failedCount)
 	}
 }
