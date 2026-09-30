@@ -47,3 +47,15 @@ func TestKafkaRecorderSkipsDecisionWithoutVerifiedActor(t *testing.T) {
 		t.Fatalf("decision without a verified actor must not emit a publish outcome: %v", outcomes)
 	}
 }
+
+func TestKafkaRecorderSkipsUnsafeVerifiedActor(t *testing.T) {
+	publisher := &testPublisher{disposition: auditpublisher.Accepted}
+	recorder := NewKafkaRecorder(publisher, "test", nil)
+	recorder.Record(Entry{
+		VerifiedActorID: "Bearer abcdefghijklmnop", AccessorID: "Bearer abcdefghijklmnop",
+		ResourceType: "safe_admin", ResourceID: "console", Decision: DecisionAllow, Source: "check", Method: "POST",
+	})
+	if publisher.value != nil {
+		t.Fatalf("unsafe actor must not enter the audit stream: %s", publisher.value)
+	}
+}

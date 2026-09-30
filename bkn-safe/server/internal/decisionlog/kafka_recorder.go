@@ -2,7 +2,6 @@ package decisionlog
 
 import (
 	"log/slog"
-	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
@@ -28,7 +27,7 @@ func NewKafkaRecorder(publisher KafkaPublisher, environment string, observe func
 }
 
 func (r *KafkaRecorder) Record(entry Entry) {
-	if strings.TrimSpace(entry.VerifiedActorID) == "" {
+	if !IsSafeActorID(entry.VerifiedActorID) {
 		return
 	}
 	if r == nil || r.publisher == nil {
