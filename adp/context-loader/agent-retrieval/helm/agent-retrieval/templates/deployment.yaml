@@ -85,10 +85,8 @@ spec:
                 value: {{ printf "http://%s.%s.svc.cluster.local:%v/api/agent-retrieval/v1/mcp/" .Release.Name .Values.namespace .Values.service.sandboxPort | quote }}
               - name: BKN_TRACE_CORE_URL
                 value: {{ required "observability.lifecycle.core_url is required" .Values.observability.lifecycle.core_url | quote }}
-            {{- if .Values.observability.evidence.artifact_endpoint }}
               - name: BKN_TRACE_ARTIFACT_ENDPOINT
-                value: {{ .Values.observability.evidence.artifact_endpoint | quote }}
-            {{- end}}
+                value: {{ required "observability.evidence.artifact_endpoint is required" .Values.observability.evidence.artifact_endpoint | quote }}
             {{- if .Values.observability.evidence.artifact_secret_name }}
               - name: BKN_TRACE_ARTIFACT_TOKEN
                 valueFrom:
