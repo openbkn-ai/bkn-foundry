@@ -19,7 +19,7 @@ receivers:
 
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.148.0
-  - gomod: go.opentelemetry.io/collector/processor/filterprocessor v0.148.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.148.0
   - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.148.0
   # Build the processor from the checked-out source. The gomod/version keeps
   # the generated registration and compatibility checks pinned, while path
