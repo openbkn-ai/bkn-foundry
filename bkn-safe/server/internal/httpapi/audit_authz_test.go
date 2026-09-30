@@ -278,6 +278,9 @@ func TestCheckRecordsDecisionsForActiveInactiveAndUnknownAccessors(t *testing.T)
 		if row.ResourceType != "knowledge_network" || row.ResourceID != "kn-1" || row.Operation != "view_detail" || row.Scope != "effective" {
 			t.Fatalf("check decision target facts: %+v", row)
 		}
+		if row.VerifiedActorID != row.AccessorID {
+			t.Fatalf("check decision actor = %q, want evaluated user %q: %+v", row.VerifiedActorID, row.AccessorID, row)
+		}
 		if row.RequestID != "req-"+row.AccessorID || row.TraceID != "0af7651916cd43dd8448eb211c80319c" || row.ClientIP == "" {
 			t.Fatalf("check decision correlation facts: %+v", row)
 		}
@@ -312,6 +315,9 @@ func TestResourceFilterRecordsOneRowPerCall(t *testing.T) {
 	}
 	if filters[0].ResourceType != "knowledge_network" || filters[0].Operation != "view_detail" || !strings.Contains(filters[0].Detail, `"requested":3`) {
 		t.Fatalf("resource-filter decision facts: %+v", filters[0])
+	}
+	if filters[0].VerifiedActorID != adminSub {
+		t.Fatalf("resource-filter decision actor = %q, want evaluated user %q: %+v", filters[0].VerifiedActorID, adminSub, filters[0])
 	}
 }
 
