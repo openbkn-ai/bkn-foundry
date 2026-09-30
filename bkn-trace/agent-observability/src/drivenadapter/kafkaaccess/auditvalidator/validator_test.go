@@ -46,6 +46,28 @@ func TestUnshippedAgentManagementAuditIsNotAdmitted(t *testing.T) {
 	}
 }
 
+func TestInternalReadAndAuthorizationEventsAreNotAdmitted(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	internalEvents := map[string]struct{}{
+		"authorization.decided": {},
+		"log.query.authorized":  {},
+		"log.query.denied":      {},
+	}
+	for _, rule := range validator.registry.Events {
+		if _, internal := internalEvents[rule.Name]; internal {
+			t.Fatalf("internal event %q must not be admitted", rule.Name)
+		}
+	}
+	for eventName := range internalEvents {
+		if observabilityvo.IsRegisteredEventName(eventName) {
+			t.Fatalf("internal event %q must not appear in public logs", eventName)
+		}
+	}
+}
+
 func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t *testing.T) {
 	validator, err := New()
 	if err != nil {
@@ -53,7 +75,7 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 	}
 	for file, expected := range map[string]string{
 		"schema.json":                   "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f",
-		"registry-runtime-v1.json":      "b8cf27603befc3c745c94572b2f209b741fb8d337a570153cba3de39333993c2",
+		"registry-runtime-v1.json":      "48f3a74e87577bf4f15df59f2eabc9a558b25e07893cdfdca3af4420a3ad77b4",
 		"audit-record-golden.json":      "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3",
 		"audit-kafka-golden.json":       "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -264,44 +286,6 @@ func TestSafeAccessKafkaPayloadIsAdmitted(t *testing.T) {
 	}
 	if _, err := validator.Validate(context.Background(), record); err != nil {
 		t.Fatalf("Safe Access Kafka audit payload rejected: %v", err)
-	}
-}
-
-func TestSafeSecurityDecisionWithoutUnobservablePolicyRevisionIsAdmitted(t *testing.T) {
-	validator, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	content, err := os.ReadFile("assets/audit-record-golden.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var value map[string]any
-	if err := json.Unmarshal(content, &value); err != nil {
-		t.Fatal(err)
-	}
-	value["event_id"] = "0199196f-e7f3-7c7a-91f6-c4ad242d0db8"
-	value["source_id"] = "bkn-safe-security"
-	value["category"] = "audit.security"
-	value["event_name"] = "authorization.decided"
-	value["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
-	value["actor"] = map[string]any{"id": "anonymous", "effective_subject": "anonymous", "type": "anonymous", "auth_method": "unknown"}
-	value["target"] = map[string]any{"type": "authorization_decision", "id": "decision:0199196f-e7f3-7c7a-91f6-c4ad242d0db8"}
-	value["outcome"] = "denied"
-	delete(value, "http_status")
-	value["scope"] = map[string]any{"business_module": "system_management", "environment": "test", "platform_scope": true, "knowledge_network_ids": []string{}}
-	value["request_context"] = map[string]any{"source_channel": "api", "transport": "http", "method": "POST"}
-	value["correlation"] = map[string]any{"request_id": "req-safe-security-test"}
-	value["summary"] = "safe authorization decision"
-	value["facts"] = map[string]any{"action": "check", "decision": "deny", "resource_scope": "knowledge_network:kn-1"}
-	value["failure_code"] = "AUTHZ_DENIED"
-	content, err = json.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	record := auditconsumer.Record{Topic: auditconsumer.Topic, Key: []byte("bkn-safe-security\x1fauthorization_decision\x1fdecision:0199196f-e7f3-7c7a-91f6-c4ad242d0db8"), Value: content, BrokerTime: time.Now().UTC(), Headers: []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}}}
-	if _, err := validator.Validate(context.Background(), record); err != nil {
-		t.Fatalf("Safe Security decision rejected: %v", err)
 	}
 }
 

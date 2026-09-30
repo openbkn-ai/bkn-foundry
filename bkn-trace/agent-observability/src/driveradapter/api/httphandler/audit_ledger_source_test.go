@@ -15,19 +15,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
-func TestSafeSecurityDecisionIsVisibleInOperationAuditProjection(t *testing.T) {
-	record := auditLogRecord(auditsvc.Record{
-		EventID: "evt-safe-security", SourceID: "bkn-safe-security",
-		Category: "audit.security", EventName: "authorization.decided",
-		BusinessModule: "system_management", ActorID: "anonymous",
-		TargetType: "authorization_decision", TargetID: "decision:evt-safe-security",
-		Action: "check", Outcome: "denied", AuthMethod: "unknown", SourceChannel: "api",
-	})
-	if record.Action != "check" || record.Category != observabilityvo.CategoryAuditSecurity {
-		t.Fatalf("Safe Security projection lost operation facts: %+v", record)
-	}
-}
-
 func TestAuditLedgerSourceStatusReturnsDropWindowAsAnUnknownPair(t *testing.T) {
 	payload, err := json.Marshal(NewAuditLedgerSource(nil).Metadata())
 	if err != nil {

@@ -29,7 +29,7 @@ const (
 	SchemaHeader                  = "bkn-audit-schema-version"
 	CanonicalSchemaSHA256         = "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f"
 	CanonicalRegistrySHA256       = "555134f555aa4b802b9a69940a28f5332a136061335284f6a42ba9fbe594cb59"
-	RuntimeRegistrySHA256         = "b8cf27603befc3c745c94572b2f209b741fb8d337a570153cba3de39333993c2"
+	RuntimeRegistrySHA256         = "48f3a74e87577bf4f15df59f2eabc9a558b25e07893cdfdca3af4420a3ad77b4"
 	CanonicalValueFixtureSHA256   = "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3"
 	KafkaFixtureSHA256            = "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f"
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
