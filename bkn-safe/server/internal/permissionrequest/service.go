@@ -266,6 +266,53 @@ func grantIDForOperation(requestID, operation string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// requestGrantSourceExists proves that a granted request's own source still
+// exists. It deliberately does not ask whether the permission is effective:
+// another source may make it effective, while an independently revoked request
+// source must never be recreated by an HTTP retry.
+func requestGrantSourceExists(db *gorm.DB, req *model.PermissionRequest, operations []string) (bool, error) {
+	expected := make(map[string]string, len(operations))
+	for _, operation := range operations {
+		grantID := req.GrantID
+		if len(operations) > 1 {
+			grantID = grantIDForOperation(req.ID, operation)
+		}
+		if grantID == "" {
+			return false, nil
+		}
+		expected[grantID] = operation
+	}
+	var grants []model.AuthorizationGrant
+	if err := db.Where("grant_id IN ?", mapKeys(expected)).Find(&grants).Error; err != nil {
+		return false, err
+	}
+	if len(grants) != len(expected) {
+		return false, nil
+	}
+	policySource := authz.PolicySourceProfessionalRule
+	if !finegrained.Assembled() {
+		policySource = authz.PolicySourceCommunityBundle
+	}
+	for _, grant := range grants {
+		operation, ok := expected[grant.GrantID]
+		if !ok || grant.AccessorID != req.RequesterID || grant.Object != req.ResourceType+":"+req.ResourceID ||
+			grant.Operation != operation || grant.Effect != authz.EffectAllow ||
+			grant.PolicySource != string(policySource) ||
+			grant.AuthoritySource != string(authz.AuthoritySourcePermissionRequest) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func mapKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 // requestFingerprint is the server-owned idempotency identity for a direct
 // permission application. A browser-provided request ID cannot protect users
 // from double-clicks or retries from another client. The reason and display
@@ -1111,16 +1158,27 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 		if req.Status != StatusPending && req.Status != StatusNoReviewer {
 			// A client may retry after the approval transaction has committed but
 			// before it receives the response. The original reviewer's identical
-			// approval is therefore a no-op success. Do not extend this exception
-			// to other reviewers or decisions: those are genuinely closed work.
+			// approval is therefore a no-op success only while this request's own
+			// grant source still exists. Do not extend this exception to other
+			// reviewers, decisions, or independently revoked sources.
 			if req.Status == StatusGranted && in.Decision == "approve" {
 				var prior model.PermissionRequestDecision
 				err := tx.DB().Where("request_id = ? AND reviewer_id = ? AND decision = ?", req.ID, in.ReviewerID, "approve").First(&prior).Error
 				if err == nil {
-					result = req
-					return nil
+					operations, operationsErr := s.requestOperations(ctx, tx.DB(), &req)
+					if operationsErr != nil {
+						return operationsErr
+					}
+					exists, sourceErr := requestGrantSourceExists(tx.DB(), &req, operations)
+					if sourceErr != nil {
+						return sourceErr
+					}
+					if exists {
+						result = req
+						return nil
+					}
 				}
-				if !errors.Is(err, gorm.ErrRecordNotFound) {
+				if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 					return err
 				}
 			}

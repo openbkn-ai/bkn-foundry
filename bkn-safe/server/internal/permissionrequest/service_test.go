@@ -206,6 +206,14 @@ func TestApprovalCreatesOneIndependentGrant(t *testing.T) {
 	if err != nil || len(decisions) != 1 || decisions[0].Decision != "approve" {
 		t.Fatalf("approval replay decisions = %#v, %v; want one approve decision", decisions, err)
 	}
+	for _, input := range []DecisionInput{
+		{ReviewerID: "reviewer", Decision: "reject"},
+		{ReviewerID: "other-reviewer", Decision: "approve"},
+	} {
+		if _, err := service.Decide(t.Context(), created.ID, input); !errors.Is(err, ErrClosed) {
+			t.Fatalf("closed request decision %#v = %v, want ErrClosed", input, err)
+		}
+	}
 	if _, _, err := service.Create(t.Context(), CreateInput{RequesterID: "requester", ResourceType: "knowledge_network", ResourceID: "r-1", Operation: authz.ActFullBusinessAccess, Reason: "access needed again"}); err != ErrPermissionAlreadyGranted {
 		t.Fatalf("Create after granted = %v, want ErrPermissionAlreadyGranted", err)
 	}
@@ -301,6 +309,9 @@ func TestApprovalAddsPermissionRequestSourceWhenPermissionWasGrantedElsewhere(t 
 	}
 	if allowed, err := enforcer.CheckContext(t.Context(), "requester", "catalog", "catalog-1", "resource_manage"); err != nil || allowed {
 		t.Fatalf("permission remained after all sources were revoked: allowed=%v err=%v", allowed, err)
+	}
+	if _, err := service.Decide(t.Context(), request.ID, DecisionInput{ReviewerID: "reviewer", Decision: "approve"}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("approval after request source revocation = %v, want ErrClosed", err)
 	}
 }
 
