@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -275,6 +276,7 @@ func TestValidateFilterCondCfg(t *testing.T) {
 		var httpErr *rest.HTTPError
 		require.ErrorAs(t, validateFilterCondCfg(ctx, cfg), &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.BaseError.ErrorCode)
 	})
 }
 

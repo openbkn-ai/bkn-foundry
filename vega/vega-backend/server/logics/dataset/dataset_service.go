@@ -296,6 +296,11 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("delete-by-query requires a filter condition")
 	}
+	if err := filter_condition.NormalizeValueFrom(params.FilterCondCfg); err != nil {
+		span.SetStatus(codes.Error, "Validate dataset delete condition failed")
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
 	querySchema := local_index.SchemaForQuery(res.SchemaDefinition)
 	fieldMap := make(map[string]*interfaces.Property, len(querySchema))
 	for _, prop := range querySchema {
