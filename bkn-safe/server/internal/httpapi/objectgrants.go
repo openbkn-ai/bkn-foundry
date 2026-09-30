@@ -1220,7 +1220,7 @@ func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFu
 			return
 		}
 		if result, ok := revokeObjectGrantIDs(c, e, db, req.GrantIDs); ok {
-			setAuditOperation(c, "revoke", "object-grant-batch", fmt.Sprintf("%d 项授权", len(result.sources)))
+			setAuditOperation(c, "revoke", "object-grant-batch", fmt.Sprintf("%d object grants", len(result.sources)))
 			setAuditOutcome(c, map[string]any{"grant_count": len(result.sources), "removed_count": result.removed})
 			c.Status(http.StatusNoContent)
 		}
