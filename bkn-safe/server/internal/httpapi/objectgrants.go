@@ -1225,7 +1225,7 @@ func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFu
 		if result, ok := revokeObjectGrantIDs(c, e, db, req.GrantIDs); ok {
 			targetID, targetName := "object-grant-batch", fmt.Sprintf("%d object grants", len(result.sources))
 			if len(result.sources) > 0 {
-				targetID, _ = result.sources[0]["grant_id"].(string)
+				targetID = result.targetID
 				targetName = result.targetName
 			}
 			setAuditOperation(c, "revoke", targetID, targetName)
@@ -1260,6 +1260,7 @@ func compactGrantIDs(sources []gin.H) ([]string, bool) {
 type objectGrantRevokeResult struct {
 	sources    []gin.H
 	removed    int
+	targetID   string
 	targetName string
 }
 
@@ -1309,6 +1310,9 @@ func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantI
 				"removed":  false,
 				"via":      string(authorityAdminAuthz),
 			})
+			if result.targetID == "" {
+				result.targetID = grantID
+			}
 			continue
 		}
 		authority, ok := authorizeObjectGrantRevoke(c, e, db, records[0])
@@ -1318,6 +1322,7 @@ func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, grantI
 		source := objectGrantRevokeAuditSource(records[0], authority)
 		if result.targetName == "" {
 			resourceType, resourceID, _ := strings.Cut(records[0].Object, ":")
+			result.targetID = records[0].GrantID
 			result.targetName = auditObjectGrantName(c.Request.Context(), db, nil, records[0].AccessorID, resourceType, resourceID)
 		}
 		// false is the longer JSON spelling, so this also validates the worst-case
