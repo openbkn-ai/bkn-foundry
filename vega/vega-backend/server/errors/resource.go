@@ -44,6 +44,7 @@ const (
 	VegaBackend_Resource_MetadataUnavailable    = "VegaBackend.Resource.MetadataUnavailable"
 	VegaBackend_Resource_EnabledFieldNotAllowed = "VegaBackend.Resource.EnabledFieldNotAllowed"
 	VegaBackend_Resource_UpdateConflict         = "VegaBackend.Resource.UpdateConflict"
+	VegaBackend_Resource_DeleteConflict         = "VegaBackend.Resource.DeleteConflict"
 
 	// 500 Internal Server Error
 	VegaBackend_Resource_InternalError                       = "VegaBackend.Resource.InternalError"
@@ -92,6 +93,7 @@ var ResourceErrCodeList = []string{
 	VegaBackend_Resource_MetadataUnavailable,
 	VegaBackend_Resource_EnabledFieldNotAllowed,
 	VegaBackend_Resource_UpdateConflict,
+	VegaBackend_Resource_DeleteConflict,
 
 	// 500 Internal Server Error
 	VegaBackend_Resource_InternalError,

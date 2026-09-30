@@ -706,7 +706,7 @@ func TestResourceAccessDeleteByIDs(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		require.NoError(t, access.DeleteByIDs(context.Background(), nil))
+		require.NoError(t, access.DeleteByIDs(context.Background(), nil, false))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -714,13 +714,116 @@ func TestResourceAccessDeleteByIDs(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
+		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?,?)")).
 			WithArgs("resource-1", "resource-2").
 			WillReturnResult(sqlmock.NewResult(0, 2))
+		mock.ExpectCommit()
 
-		err := access.DeleteByIDs(context.Background(), []string{"resource-1", "resource-2"})
+		err := access.DeleteByIDs(context.Background(), []string{"resource-1", "resource-2"}, false)
 
 		require.NoError(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("does not read affected rows without state guard", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?)")).
+			WithArgs("resource-1").
+			WillReturnResult(sqlmock.NewErrorResult(errors.New("rows affected unavailable")))
+		mock.ExpectCommit()
+
+		require.NoError(t, access.DeleteByIDs(context.Background(), []string{"resource-1"}, false))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("rolls back an unguarded delete when execution fails", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?)")).
+			WithArgs("resource-1").
+			WillReturnError(errors.New("delete failed"))
+		mock.ExpectRollback()
+
+		require.Error(t, access.DeleteByIDs(context.Background(), []string{"resource-1"}, false))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("deletes all stale missing resources", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?,?) AND f_status = ? AND f_last_discover_status = ?")).
+			WithArgs("resource-1", "resource-2", interfaces.ResourceStatusStale, interfaces.DiscoverStatusMissing).
+			WillReturnResult(sqlmock.NewResult(0, 2))
+		mock.ExpectCommit()
+
+		err := access.DeleteByIDs(context.Background(), []string{"resource-1", "resource-2"}, true)
+		require.NoError(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rolls back the entire batch when one discovery state changed", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?,?) AND f_status = ? AND f_last_discover_status = ?")).
+			WithArgs("resource-1", "resource-2", interfaces.ResourceStatusStale, interfaces.DiscoverStatusMissing).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectRollback()
+
+		err := access.DeleteByIDs(context.Background(), []string{"resource-1", "resource-2"}, true)
+		require.ErrorIs(t, err, interfaces.ErrResourceDeleteConditionNotMet)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("reports a rollback failure instead of a stale-state conflict", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		rollbackErr := errors.New("rollback failed")
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?) AND f_status = ? AND f_last_discover_status = ?")).
+			WithArgs("resource-1", interfaces.ResourceStatusStale, interfaces.DiscoverStatusMissing).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectRollback().WillReturnError(rollbackErr)
+
+		err := access.DeleteByIDs(context.Background(), []string{"resource-1"}, true)
+		require.ErrorIs(t, err, rollbackErr)
+		require.NotErrorIs(t, err, interfaces.ErrResourceDeleteConditionNotMet)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rolls back when guarded row count fails", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?) AND f_status = ? AND f_last_discover_status = ?")).
+			WithArgs("resource-1", interfaces.ResourceStatusStale, interfaces.DiscoverStatusMissing).
+			WillReturnResult(sqlmock.NewErrorResult(errors.New("rows affected unavailable")))
+		mock.ExpectRollback()
+
+		require.Error(t, access.DeleteByIDs(context.Background(), []string{"resource-1"}, true))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns database errors", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_id IN (?) AND f_status = ? AND f_last_discover_status = ?")).
+			WithArgs("resource-1", interfaces.ResourceStatusStale, interfaces.DiscoverStatusMissing).
+			WillReturnError(errors.New("delete failed"))
+		mock.ExpectRollback()
+
+		err := access.DeleteByIDs(context.Background(), []string{"resource-1"}, true)
+		require.Error(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

@@ -996,26 +996,59 @@ func (ra *resourceAccess) UpdateDiscoverStatus(ctx context.Context, id string, s
 	return nil
 }
 
-func (ra *resourceAccess) DeleteByIDs(ctx context.Context, ids []string) error {
+func (ra *resourceAccess) DeleteByIDs(ctx context.Context, ids []string, onlyIfStale bool) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete resources")
 	defer span.End()
 
-	span.SetAttributes(attr.Key("resource_ids").StringSlice(ids))
+	span.SetAttributes(
+		attr.Key("resource_ids").StringSlice(ids),
+		attr.Key("only_if_stale").Bool(onlyIfStale),
+	)
 
 	if len(ids) == 0 {
 		return nil
 	}
 
-	sqlStr, vals, _ := sq.Delete(RESOURCE_TABLE_NAME).
-		Where(sq.Eq{"f_id": ids}).
-		ToSql()
+	query := sq.Delete(RESOURCE_TABLE_NAME).Where(sq.Eq{"f_id": ids})
+	if onlyIfStale {
+		query = query.Where(sq.Eq{"f_status": interfaces.ResourceStatusStale}).
+			Where(sq.Eq{"f_last_discover_status": interfaces.DiscoverStatusMissing})
+	}
+	sqlStr, vals, err := query.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build delete query failed")
+		return err
+	}
+	tx, err := ra.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Begin delete transaction failed")
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
 
-	_, err := ra.db.ExecContext(ctx, sqlStr, vals...)
+	result, err := tx.ExecContext(ctx, sqlStr, vals...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete failed")
 		return err
 	}
-
+	if onlyIfStale {
+		rows, err := result.RowsAffected()
+		if err != nil {
+			span.SetStatus(codes.Error, "Get deleted row count failed")
+			return err
+		}
+		if rows != int64(len(ids)) {
+			if err := tx.Rollback(); err != nil {
+				span.SetStatus(codes.Error, "Rollback conditional deletion failed")
+				return err
+			}
+			return interfaces.ErrResourceDeleteConditionNotMet
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit resource deletion failed")
+		return err
+	}
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

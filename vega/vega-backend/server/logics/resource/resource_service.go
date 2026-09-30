@@ -271,7 +271,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			span.SetStatus(codes.Error, "failed to register resource parent")
 
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
-			if cleanupErr := rs.ra.DeleteByIDs(cleanupCtx, []string{resource.ID}); cleanupErr != nil {
+			if cleanupErr := rs.ra.DeleteByIDs(cleanupCtx, []string{resource.ID}, false); cleanupErr != nil {
 				logger.Errorf("Delete resource after parent publication failure: resource %s: %v",
 					resource.ID, cleanupErr)
 			}
@@ -1088,10 +1088,14 @@ func (rs *resourceService) UpdateDiscoverStatus(ctx context.Context, id string, 
 }
 
 // DeleteByIDs deletes Resources by IDs.
-func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
+func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing, onlyIfStale bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete resources")
 	defer span.End()
 
+	if ignoreMissing && onlyIfStale {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("only_if_stale cannot be combined with ignore_missing")
+	}
 	if len(ids) == 0 {
 		span.SetStatus(codes.Ok, "")
 		return nil
@@ -1175,6 +1179,13 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 		span.SetStatus(codes.Ok, "")
 		return nil
 	}
+	if onlyIfStale {
+		for _, resource := range resources {
+			if resource.Status != interfaces.ResourceStatusStale || resource.LastDiscoverStatus != interfaces.DiscoverStatusMissing {
+				return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_DeleteConflict)
+			}
+		}
+	}
 
 	for _, resource := range resources {
 		if err := rs.rejectResourceOperationWhenActiveDiscoverTask(ctx, resource.ID); err != nil {
@@ -1187,10 +1198,13 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 		}
 	}
 
-	if err := rs.ra.DeleteByIDs(ctx, existingIDs); err != nil {
+	if err := rs.ra.DeleteByIDs(ctx, existingIDs, onlyIfStale); err != nil {
+		if errors.Is(err, interfaces.ErrResourceDeleteConditionNotMet) {
+			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_DeleteConflict)
+		}
 		span.SetStatus(codes.Error, "Delete resources failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("failed to delete resources")
 	}
 
 	parentIDs := make([]string, 0, len(resources))

@@ -252,6 +252,11 @@ paths:
         `VegaBackend.DiscoverTask.ResourceRefreshInProgress`，整批不删；需等待该任务进入终态。
 
         可选 `?ignore_missing=true`：忽略不存在的 id（视为已删除），其它 id 正常删。
+
+        可选 `?only_if_stale=true`：要求所有资源在删除瞬间仍为
+        `status=stale` 且 `last_discover_status=missing`；否则返回 409
+        `VegaBackend.Resource.DeleteConflict`，事务回滚，整批不删，也不执行删除后的清理。
+        不能与 `ignore_missing=true` 同时使用。默认 false，不改变现有删除语义。
       parameters:
         - name: ignore_missing
           description: 忽略不存在的 id；默认 false
@@ -259,15 +264,27 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: only_if_stale
+          description: 原子校验整批资源的失效且探查缺失状态；默认 false
+          in: query
+          schema:
+            type: boolean
+            default: false
       responses:
         "204":
           description: 删除成功
+        "400":
+          description: only_if_stale 与 ignore_missing 不能同时为 true
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Resource 有 pending/running 元数据刷新任务
+          description: Resource 有 pending/running 元数据刷新任务，或 only_if_stale 条件不满足
           content:
             application/json:
               schema:

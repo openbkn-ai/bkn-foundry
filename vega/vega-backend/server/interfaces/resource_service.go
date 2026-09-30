@@ -33,8 +33,9 @@ type ResourceService interface {
 	// UpdateDiscoverStatus updates a Resource's last discover status.
 	UpdateDiscoverStatus(ctx context.Context, id string, status string) error
 	// DeleteByIDs deletes Resources by IDs. Callers must provide unique IDs;
-	// missing resources are skipped when ignoreMissing is true.
-	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error
+	// missing resources are skipped when ignoreMissing is true, while onlyIfStale
+	// requires every resource to be stale and missing.
+	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing, onlyIfStale bool) error
 
 	// ListAuthResourceEntries lists resource authorization entries with filters.
 	ListAuthResourceEntries(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
