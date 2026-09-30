@@ -323,7 +323,7 @@ func New(deps Deps) *gin.Engine {
 		// state and must not be blocked by the active-account write gate below.
 		if deps.AccessLog != nil {
 			meLogout := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier))
-			registerLogout(meLogout, deps.AccessLog, deps.Directory)
+			registerLogout(meLogout, deps.AccessLog, deps.Directory, deps.Users)
 		}
 
 		// Mutating /me (profile PUT, AppKey issue/revoke, object-grant delegation)

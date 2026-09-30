@@ -365,6 +365,14 @@ func withAuditOutcome(detail string, c *gin.Context) string {
 	}
 	m["_outcome"] = outcome
 	b, err := json.Marshal(m)
+	if (err != nil || len(b) > maxAuditDetail) && m["grant_ids"] != nil {
+		// Batch revoke requests can contain hundreds of opaque IDs. The
+		// handler supplies a bounded ID sample plus the complete count in the
+		// outcome; drop the duplicated request list so that outcome remains
+		// readable and persisted within the audit column limit.
+		delete(m, "grant_ids")
+		b, err = json.Marshal(m)
+	}
 	if err != nil || len(b) > maxAuditDetail {
 		return detail
 	}
@@ -379,7 +387,7 @@ func auditTargetName(
 	targetID string,
 	detail string,
 ) string {
-	if resource == "role-bindings" {
+	if resource == "role-bindings" || resource == "object-grants" || resource == "enterprise-object-grants" {
 		return auditDetailName(ctx, dir, db, resource, detail)
 	}
 	if targetID == "" {
@@ -473,16 +481,7 @@ func auditObjectGrantName(ctx context.Context, db *gorm.DB, dir *directory.Servi
 	if accessorName == "" {
 		accessorName = "grantee"
 	}
-	resourceName := ""
-	if db != nil && resourceType != "" && resourceID != "" {
-		var request model.PermissionRequest
-		if err := db.WithContext(ctx).Select("resource_name").Where("resource_type = ? AND resource_id = ?", resourceType, resourceID).Order("created_at DESC").First(&request).Error; err == nil {
-			resourceName = strings.TrimSpace(request.ResourceName)
-		}
-	}
-	if resourceName == "" {
-		resourceName = fmt.Sprintf("%s %s", resourceType, resourceID)
-	}
+	resourceName := fmt.Sprintf("%s %s", resourceType, resourceID)
 	return fmt.Sprintf("%s · authorization for %s", accessorName, resourceName)
 }
 

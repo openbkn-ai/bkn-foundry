@@ -1223,11 +1223,35 @@ func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFu
 			return
 		}
 		if result, ok := revokeObjectGrantIDs(c, e, db, req.GrantIDs); ok {
-			setAuditOperation(c, "revoke", "object-grant-batch", fmt.Sprintf("%d object grants", len(result.sources)))
-			setAuditOutcome(c, map[string]any{"grant_count": len(result.sources), "removed_count": result.removed})
+			targetID, targetName := "object-grant-batch", fmt.Sprintf("%d object grants", len(result.sources))
+			if len(result.sources) > 0 {
+				targetID, _ = result.sources[0]["grant_id"].(string)
+				targetName = result.targetName
+			}
+			setAuditOperation(c, "revoke", targetID, targetName)
+			grantIDs, truncated := compactGrantIDs(result.sources)
+			setAuditOutcome(c, map[string]any{"grant_count": len(result.sources), "removed_count": result.removed, "grant_ids": grantIDs, "grant_ids_truncated": truncated})
 			c.Status(http.StatusNoContent)
 		}
 	}
+}
+
+func compactGrantIDs(sources []gin.H) ([]string, bool) {
+	// Keep the outcome together with the request snapshot below the audit
+	// detail column limit. The first IDs are enough to correlate the batch;
+	// the count and truncated flag preserve the complete cardinality.
+	const maxIDs = 12
+	ids := make([]string, 0, min(len(sources), maxIDs))
+	for _, source := range sources {
+		id, _ := source["grant_id"].(string)
+		if id != "" {
+			ids = append(ids, id)
+		}
+		if len(ids) == maxIDs {
+			break
+		}
+	}
+	return ids, len(sources) > len(ids)
 }
 
 // objectGrantRevokeResult keeps provenance available for audit after the policy

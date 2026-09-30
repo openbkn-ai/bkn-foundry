@@ -862,7 +862,8 @@ func TestObjectGrantsOwnerBatchRevokeIsAllOrNothing(t *testing.T) {
 		t.Fatalf("owner batch revoke audit rows = %d, want 1", len(rows))
 	}
 	outcome := objectGrantRevokeAuditOutcome(t, rows[0])
-	if rows[0].TargetName != "2 object grants" || outcome["grant_count"] != float64(2) || outcome["removed_count"] != float64(2) {
+	grantIDsValue, _ := outcome["grant_ids"].([]any)
+	if !strings.Contains(rows[0].TargetName, "authorization for") || outcome["grant_count"] != float64(2) || outcome["removed_count"] != float64(2) || len(grantIDsValue) != 2 || outcome["grant_ids_truncated"] != false {
 		t.Fatalf("owner batch revoke audit fact = %+v outcome=%v", rows[0], outcome)
 	}
 	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
@@ -910,7 +911,8 @@ func TestObjectGrantsLargeBatchRevokeCreatesOneAuditFact(t *testing.T) {
 		t.Fatalf("large batch audit rows = %d, want 1", len(rows))
 	}
 	outcome := objectGrantRevokeAuditOutcome(t, rows[0])
-	if rows[0].TargetName != "20 object grants" || outcome["grant_count"] != float64(20) || outcome["removed_count"] != float64(20) {
+	grantIDsValue, _ := outcome["grant_ids"].([]any)
+	if !strings.Contains(rows[0].TargetName, "authorization for") || outcome["grant_count"] != float64(20) || outcome["removed_count"] != float64(20) || len(grantIDsValue) != 12 || outcome["grant_ids_truncated"] != true {
 		t.Fatalf("large batch audit fact = %+v outcome=%v", rows[0], outcome)
 	}
 	remaining, err := e.PolicyRecords(authz.PolicyFilter{

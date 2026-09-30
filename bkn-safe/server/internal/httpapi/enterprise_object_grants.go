@@ -39,11 +39,22 @@ func registerEnterpriseObjectGrants(g *gin.RouterGroup, e *authz.Enforcer) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
+		targetID, targetName := req.GrantID, "enterprise authorization "+req.GrantID
+		if entries, err := permobject.Inventory(c.Request.Context(), time.Now().UTC()); err == nil {
+			for _, entry := range entries {
+				if entry.GrantID == req.GrantID {
+					targetID = entry.ResourceID
+					targetName = auditObjectGrantName(c.Request.Context(), nil, nil, entry.AccessorID, entry.ResourceType, entry.ResourceID)
+					break
+				}
+			}
+		}
 		if err := permobject.Revoke(c.Request.Context(), req.GrantID,
 			c.GetString(ctxAccessorID), req.Reason, time.Now().UTC()); err != nil {
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "revoke", targetID, targetName)
 		setAuditOutcome(c, map[string]any{"grant_id": req.GrantID, "removed": true})
 		c.Status(http.StatusNoContent)
 	})
