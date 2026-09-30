@@ -27,9 +27,121 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/common"
+	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
+	"bkn-backend/logics/permission"
 )
+
+func TestRiskTypeServiceCreateRiskTypesUsesBatchAccess(t *testing.T) {
+	newService := func(t *testing.T) (*riskTypeService, sqlmock.Sqlmock, *bmock.MockRiskTypeAccess,
+		*bmock.MockPermissionService, *bmock.MockVegaBackendService) {
+		t.Helper()
+		ctrl := gomock.NewController(t)
+		db, dbMock, err := sqlmock.New()
+		if err != nil {
+			t.Fatalf("sqlmock.New() error = %v", err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		rta := bmock.NewMockRiskTypeAccess(ctrl)
+		ps := bmock.NewMockPermissionService(ctrl)
+		vbs := bmock.NewMockVegaBackendService(ctrl)
+		return &riskTypeService{appSetting: &common.AppSetting{}, db: db, rta: rta, ps: ps, vbs: vbs},
+			dbMock, rta, ps, vbs
+	}
+	newRiskTypes := func() []*interfaces.RiskType {
+		return []*interfaces.RiskType{
+			{RTID: "risk-1", RTName: "Risk 1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
+			{RTID: "risk-2", RTName: "Risk 2", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
+		}
+	}
+
+	t.Run("creates multiple risk types through batch access", func(t *testing.T) {
+		service, dbMock, rta, ps, vbs := newService(t)
+		riskTypes := newRiskTypes()
+		ctx := permission.WithKNImportPermissionPrechecked(context.Background())
+		dbMock.ExpectBegin()
+		rta.EXPECT().GetRiskTypeIdentitiesByIDsOrNames(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+			[]string{"risk-1", "risk-2"}, []string{"Risk 1", "Risk 2"}).Return(nil, nil)
+		rta.EXPECT().CreateRiskTypes(gomock.Any(), gomock.Any(), riskTypes).Return(nil)
+		ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			interfaces.RESOURCE_TYPE_KN, []interfaces.PermissionResourceParent{
+				{ResourceID: "kn-1/risk-1", ParentID: "kn-1"},
+				{ResourceID: "kn-1/risk-2", ParentID: "kn-1"},
+			}).Return(nil)
+		vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).
+			Return(nil).Times(2)
+		dbMock.ExpectCommit()
+
+		ids, err := service.CreateRiskTypes(ctx, nil, riskTypes, interfaces.ImportMode_Normal)
+
+		if err != nil {
+			t.Fatalf("CreateRiskTypes() error = %v", err)
+		}
+		if !reflect.DeepEqual(ids, []string{"risk-1", "risk-2"}) {
+			t.Fatalf("CreateRiskTypes() ids = %#v", ids)
+		}
+		if err := dbMock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("database expectations were not met: %v", err)
+		}
+	})
+
+	t.Run("overwrites multiple risk types through batch access", func(t *testing.T) {
+		service, dbMock, rta, ps, vbs := newService(t)
+		riskTypes := newRiskTypes()
+		ctx := permission.WithKNImportPermissionPrechecked(context.Background())
+		dbMock.ExpectBegin()
+		rta.EXPECT().GetRiskTypeIdentitiesByIDsOrNames(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+			[]string{"risk-1", "risk-2"}, []string{"Risk 1", "Risk 2"}).Return([]*interfaces.RiskType{
+			{RTID: "risk-1", RTName: "Risk 1"},
+			{RTID: "risk-2", RTName: "Risk 2"},
+		}, nil)
+		ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
+			interfaces.RESOURCE_TYPE_KN, []interfaces.PermissionResourceParent{}).Return(nil)
+		rta.EXPECT().UpdateRiskTypes(gomock.Any(), gomock.Any(), riskTypes).Return(nil)
+		vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).
+			Return(nil).Times(2)
+		dbMock.ExpectCommit()
+
+		ids, err := service.CreateRiskTypes(ctx, nil, riskTypes, interfaces.ImportMode_Overwrite)
+
+		if err != nil {
+			t.Fatalf("CreateRiskTypes() error = %v", err)
+		}
+		if !reflect.DeepEqual(ids, []string{"risk-1", "risk-2"}) {
+			t.Fatalf("CreateRiskTypes() ids = %#v", ids)
+		}
+		if err := dbMock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("database expectations were not met: %v", err)
+		}
+	})
+
+	t.Run("maps a batch name race to the existing domain error", func(t *testing.T) {
+		service, dbMock, rta, _, _ := newService(t)
+		riskTypes := newRiskTypes()
+		ctx := permission.WithKNImportPermissionPrechecked(context.Background())
+		dbMock.ExpectBegin()
+		rta.EXPECT().GetRiskTypeIdentitiesByIDsOrNames(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+			[]string{"risk-1", "risk-2"}, []string{"Risk 1", "Risk 2"}).Return(nil, nil)
+		rta.EXPECT().CreateRiskTypes(gomock.Any(), gomock.Any(), riskTypes).Return(
+			errors.New("Error 1062 (23000): Duplicate entry 'kn-1-main-Risk 2' for key 'uk_risk_type_name'"))
+		dbMock.ExpectRollback()
+
+		ids, err := service.CreateRiskTypes(ctx, nil, riskTypes, interfaces.ImportMode_Normal)
+
+		if len(ids) != 0 || err == nil {
+			t.Fatalf("CreateRiskTypes() = (%v, %v), want empty ids and an error", ids, err)
+		}
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok || httpErr.BaseError.ErrorCode != berrors.BknBackend_RiskType_RiskTypeNameExisted {
+			t.Fatalf("CreateRiskTypes() error = %#v, want %s", err,
+				berrors.BknBackend_RiskType_RiskTypeNameExisted)
+		}
+		if err := dbMock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("database expectations were not met: %v", err)
+		}
+	})
+}
 
 func TestRiskTypeServiceCreateRiskTypesResourceParentLifecycle(t *testing.T) {
 	newRiskType := func() []*interfaces.RiskType {

@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -27,7 +28,10 @@ import (
 )
 
 const (
-	AT_TABLE_NAME = "t_action_type"
+	AT_TABLE_NAME                    = "t_action_type"
+	actionTypeIdentityQueryBatchSize = 500
+	actionTypeInsertBatchSize        = 200
+	actionTypeUpdateBatchSize        = 200
 )
 
 var (
@@ -132,6 +136,69 @@ func (ata *actionTypeAccess) CheckActionTypeExistByName(ctx context.Context, knI
 
 	span.SetStatus(codes.Ok, "")
 	return atID, true, nil
+}
+
+func (ata *actionTypeAccess) GetActionTypeIdentitiesByIDsOrNames(ctx context.Context, knID string,
+	branch string, atIDs, atNames []string) ([]*interfaces.ActionType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetActionTypeIdentitiesByIDsOrNames")
+	defer span.End()
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("id_count", len(atIDs)),
+		attr.Int("name_count", len(atNames)),
+	)
+
+	result := make([]*interfaces.ActionType, 0)
+	seen := make(map[string]struct{})
+	requestCount := max(len(atIDs), len(atNames))
+	for start := 0; start < requestCount; start += actionTypeIdentityQueryBatchSize {
+		idEnd := min(start+actionTypeIdentityQueryBatchSize, len(atIDs))
+		nameEnd := min(start+actionTypeIdentityQueryBatchSize, len(atNames))
+		conditions := sq.Or{}
+		if start < len(atIDs) {
+			conditions = append(conditions, sq.Eq{"f_id": atIDs[start:idEnd]})
+		}
+		if start < len(atNames) {
+			conditions = append(conditions, sq.Eq{"f_name": atNames[start:nameEnd]})
+		}
+		sqlStr, vals, err := sq.Select("f_id", "f_name").From(AT_TABLE_NAME).
+			Where(sq.Eq{"f_kn_id": knID}).
+			Where(sq.Eq{"f_branch": branch}).
+			Where(conditions).
+			ToSql()
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to build action type identity query", err)
+			return nil, err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		rows, err := ata.db.Query(sqlStr, vals...)
+		if err != nil {
+			common.LogSafeError(ctx, "Query action type identities failed", err)
+			return nil, err
+		}
+		for rows.Next() {
+			actionType := &interfaces.ActionType{ModuleType: interfaces.MODULE_TYPE_ACTION_TYPE}
+			if err = rows.Scan(&actionType.ATID, &actionType.ATName); err != nil {
+				_ = rows.Close()
+				common.LogSafeError(ctx, "Scan action type identity failed", err)
+				return nil, err
+			}
+			if _, duplicate := seen[actionType.ATID]; duplicate {
+				continue
+			}
+			seen[actionType.ATID] = struct{}{}
+			result = append(result, actionType)
+		}
+		if err = rows.Err(); err != nil {
+			_ = rows.Close()
+			common.LogSafeError(ctx, "Iterate action type identities failed", err)
+			return nil, err
+		}
+		_ = rows.Close()
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 // Create an action type.
@@ -258,6 +325,96 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (ata *actionTypeAccess) CreateActionTypes(ctx context.Context, tx *sql.Tx,
+	actionTypes []*interfaces.ActionType) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateActionTypes")
+	defer span.End()
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("action_type_count", len(actionTypes)),
+	)
+	for start := 0; start < len(actionTypes); start += actionTypeInsertBatchSize {
+		end := min(start+actionTypeInsertBatchSize, len(actionTypes))
+		builder := sq.Insert(AT_TABLE_NAME).Columns(
+			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
+			"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts",
+			"f_object_type_id", "f_condition", "f_affect", "f_action_source", "f_parameters",
+			"f_schedule", "f_creator", "f_creator_type", "f_create_time", "f_updater",
+			"f_updater_type", "f_update_time",
+		)
+		for _, actionType := range actionTypes[start:end] {
+			values, err := actionTypeInsertValues(actionType)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to marshal action type for batch insert", err)
+				return err
+			}
+			builder = builder.Values(values...)
+		}
+		sqlStr, vals, err := builder.ToSql()
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to build the sql of batch insert action types", err)
+			return err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		if _, err = tx.Exec(sqlStr, vals...); err != nil {
+			common.LogSafeError(ctx, "Batch insert action types failed", err)
+			return err
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func actionTypeInsertValues(actionType *interfaces.ActionType) ([]any, error) {
+	serialized, err := serializeActionTypeFields(actionType)
+	if err != nil {
+		return nil, err
+	}
+	return []any{
+		actionType.ATID, actionType.ATName, libCommon.TagSlice2TagString(actionType.Tags),
+		actionType.Comment, actionType.Icon, actionType.Color, actionType.BKNRawContent,
+		actionType.KNID, actionType.Branch, actionType.ActionType, actionType.ActionIntent,
+		serialized.impactContracts, actionType.ObjectTypeID, serialized.condition, serialized.affect,
+		serialized.actionSource, serialized.parameters, serialized.schedule, actionType.Creator.ID,
+		actionType.Creator.Type, actionType.CreateTime, actionType.Updater.ID, actionType.Updater.Type,
+		actionType.UpdateTime,
+	}, nil
+}
+
+type serializedActionTypeFields struct {
+	condition       []byte
+	affect          []byte
+	actionSource    []byte
+	parameters      []byte
+	schedule        []byte
+	impactContracts []byte
+}
+
+func serializeActionTypeFields(actionType *interfaces.ActionType) (serializedActionTypeFields, error) {
+	var result serializedActionTypeFields
+	var err error
+	if result.condition, err = sonic.Marshal(actionType.Condition); err != nil {
+		return result, err
+	}
+	if result.affect, err = sonic.Marshal(actionType.Affect); err != nil {
+		return result, err
+	}
+	if result.actionSource, err = sonic.Marshal(actionType.ActionSource); err != nil {
+		return result, err
+	}
+	if result.parameters, err = sonic.Marshal(actionType.Parameters); err != nil {
+		return result, err
+	}
+	if result.schedule, err = sonic.Marshal(actionType.Schedule); err != nil {
+		return result, err
+	}
+	if result.impactContracts, err = marshalImpactContractsJSON(actionType); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 // Query current action types on the main branch.
@@ -828,6 +985,106 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (ata *actionTypeAccess) UpdateActionTypes(ctx context.Context, tx *sql.Tx,
+	actionTypes []*interfaces.ActionType) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "UpdateActionTypes")
+	defer span.End()
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("action_type_count", len(actionTypes)),
+	)
+	if len(actionTypes) == 0 {
+		return nil
+	}
+	knID, branch := actionTypes[0].KNID, actionTypes[0].Branch
+	for _, actionType := range actionTypes {
+		if actionType.KNID != knID || actionType.Branch != branch {
+			return fmt.Errorf("batch update action types must have one knowledge network and branch")
+		}
+	}
+	columns := []string{
+		"f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
+		"f_action_type", "f_action_intent", "f_impact_contracts", "f_object_type_id",
+		"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+		"f_updater", "f_updater_type", "f_update_time",
+	}
+	for start := 0; start < len(actionTypes); {
+		end := start
+		seenIDs := make(map[string]struct{}, min(actionTypeUpdateBatchSize, len(actionTypes)-start))
+		for end < len(actionTypes) && end-start < actionTypeUpdateBatchSize {
+			if _, duplicate := seenIDs[actionTypes[end].ATID]; duplicate {
+				break
+			}
+			seenIDs[actionTypes[end].ATID] = struct{}{}
+			end++
+		}
+		batch := actionTypes[start:end]
+		serialized := make([][]any, 0, len(batch))
+		for _, actionType := range batch {
+			values, err := actionTypeUpdateValues(actionType)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to marshal action type for batch update", err)
+				return err
+			}
+			serialized = append(serialized, values)
+		}
+
+		var statement strings.Builder
+		args := make([]any, 0, len(columns)*len(batch)*2+len(batch)+2)
+		statement.WriteString("UPDATE ")
+		statement.WriteString(AT_TABLE_NAME)
+		statement.WriteString(" SET ")
+		for columnIndex, column := range columns {
+			if columnIndex > 0 {
+				statement.WriteString(", ")
+			}
+			statement.WriteString(column)
+			statement.WriteString(" = CASE f_id")
+			for rowIndex, actionType := range batch {
+				statement.WriteString(" WHEN ? THEN ?")
+				args = append(args, actionType.ATID, serialized[rowIndex][columnIndex])
+			}
+			statement.WriteString(" ELSE ")
+			statement.WriteString(column)
+			statement.WriteString(" END")
+		}
+		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
+		args = append(args, knID, branch)
+		for index, actionType := range batch {
+			if index > 0 {
+				statement.WriteByte(',')
+			}
+			statement.WriteByte('?')
+			args = append(args, actionType.ATID)
+		}
+		statement.WriteByte(')')
+		sqlStr := statement.String()
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		if _, err := tx.Exec(sqlStr, args...); err != nil {
+			common.LogSafeError(ctx, "Batch update action types failed", err)
+			return err
+		}
+		start = end
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func actionTypeUpdateValues(actionType *interfaces.ActionType) ([]any, error) {
+	serialized, err := serializeActionTypeFields(actionType)
+	if err != nil {
+		return nil, err
+	}
+	return []any{
+		actionType.ATName, libCommon.TagSlice2TagString(actionType.Tags), actionType.Comment,
+		actionType.Icon, actionType.Color, actionType.BKNRawContent, actionType.ActionType,
+		actionType.ActionIntent, serialized.impactContracts, actionType.ObjectTypeID,
+		serialized.condition, serialized.affect, serialized.actionSource, serialized.parameters,
+		serialized.schedule, actionType.Updater.ID, actionType.Updater.Type, actionType.UpdateTime,
+	}, nil
 }
 
 func (ata *actionTypeAccess) DeleteActionTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, atIDs []string) (int64, error) {

@@ -377,10 +377,21 @@ func TestInsertDatasetDataNeverIndexesTheMarker(t *testing.T) {
 	service := &objectTypeService{appSetting: &common.AppSetting{}, vbs: vbs}
 	objectType := boundObjectType("ot1", "r1", interfaces.MAIN_BRANCH)
 	objectType.DataSourceMetadataUnavailable = true
+	objectType.LogicProperties = []*interfaces.LogicProperty{{
+		Name: "derived", Parameters: []interfaces.Parameter{{Name: "threshold", Type: "integer"}},
+	}}
 	vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _, _ string, document map[string]any) error {
-			if _, ok := document["data_source_metadata_unavailable"]; ok {
+			if _, exists := document["data_source_metadata_unavailable"]; exists {
 				t.Fatalf("indexed document carries the marker: %v", document)
+			}
+			properties, ok := document["logic_properties"].([]any)
+			if !ok || len(properties) != 1 {
+				t.Fatalf("logic properties = %#v", document["logic_properties"])
+			}
+			property := properties[0].(map[string]any)
+			if _, ok := property["parameters"].(string); !ok {
+				t.Fatalf("logic property parameters = %#v, want encoded string", property["parameters"])
 			}
 			return nil
 		})

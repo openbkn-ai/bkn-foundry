@@ -28,6 +28,7 @@ import (
 	bmock "bkn-backend/interfaces/mock"
 	rootlogics "bkn-backend/logics"
 	"bkn-backend/logics/permission"
+	"bkn-backend/logics/vega_backend"
 )
 
 func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
@@ -2480,7 +2481,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit().WillReturnError(errors.New("commit failed"))
 			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn1"}).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID,
+				interfaces.GenerateConceptDocuemtnID("kn1", interfaces.MODULE_TYPE_KN, "kn1", interfaces.MAIN_BRANCH)).Return(nil)
 
 			knID, err := service.CreateKN(ctx, kn, interfaces.ImportMode_Normal, true)
 			So(err, ShouldNotBeNil)
@@ -2547,23 +2549,30 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			So(knID, ShouldNotBeEmpty)
 		})
 
-		Convey("Success with Ignore mode when KN exists\n", func() {
+		Convey("Ignore skips conflicting child definitions when KN exists\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn1",
 				KNName: "kn1",
 				Branch: interfaces.MAIN_BRANCH,
+				ConceptGroups: []*interfaces.ConceptGroup{{
+					CGID: "cg1", ObjectTypes: []*interfaces.ObjectType{{
+						ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "nested"},
+					}},
+				}},
+				ObjectTypes: []*interfaces.ObjectType{{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "top-level"},
+				}},
 			}
 			mode := interfaces.ImportMode_Ignore
 
-			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
-			smock.ExpectCommit()
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldBeNil)
 			So(knID, ShouldEqual, "kn1")
+			So(kn.ObjectTypes[0].OTName, ShouldEqual, "top-level")
 		})
 
 		Convey("Success with Overwrite mode when ID exists\n", func() {
@@ -2581,6 +2590,11 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			rts := bmock.NewMockRelationTypeService(mockCtrl)
 			ats := bmock.NewMockActionTypeService(mockCtrl)
 			cgs := bmock.NewMockConceptGroupService(mockCtrl)
+			cga := bmock.NewMockConceptGroupAccess(mockCtrl)
+			ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+			rta := bmock.NewMockRelationTypeAccess(mockCtrl)
+			ata := bmock.NewMockActionTypeAccess(mockCtrl)
+			ma := bmock.NewMockMetricAccess(mockCtrl)
 
 			service := &knowledgeNetworkService{
 				appSetting: appSetting,
@@ -2592,6 +2606,11 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				rts:        rts,
 				ats:        ats,
 				cgs:        cgs,
+				cga:        cga,
+				ota:        ota,
+				rta:        rta,
+				ata:        ata,
+				ma:         ma,
 			}
 
 			smock.ExpectBegin()
@@ -2599,14 +2618,26 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			// CreateKN handleKNImportMode + UpdateKN(strict) → ValidateKN(..., Overwrite) → handleKNImportMode again
 			kna2.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil).AnyTimes()
 			kna2.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil).AnyTimes()
+			kna2.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(&interfaces.KN{
+				KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+			}, nil)
+			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil)
+			ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(nil, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
 			cgs.EXPECT().ValidateConceptGroups(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
 				kn.ConceptGroups, true, gomock.Any(), interfaces.ImportMode_Overwrite).Return(nil)
 			kna2.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), kn.ConceptGroups[0], interfaces.ImportMode_Overwrite, true).
-				DoAndReturn(func(childCtx context.Context, _ *sql.Tx, _ *interfaces.ConceptGroup,
-					_ string, _ bool) (string, error) {
+			cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{}, nil)
+			cgs.EXPECT().CreateConceptGroups(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, true).
+				DoAndReturn(func(childCtx context.Context, _ *sql.Tx, groups []*interfaces.ConceptGroup,
+					_ string, _ bool) ([]string, error) {
 					So(permission.KNImportPermissionPrechecked(childCtx), ShouldBeFalse)
-					return "cg1", nil
+					So(groups, ShouldHaveLength, 1)
+					So(groups[0].CGID, ShouldEqual, "cg1")
+					return []string{"cg1"}, nil
 				})
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
@@ -2614,6 +2645,60 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			knID, err := service.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldBeNil)
 			So(knID, ShouldEqual, "kn1")
+		})
+
+		Convey("Overwrite stops before mutation when its compensation snapshot fails\n", func() {
+			kn := &interfaces.KN{KNID: "kn1", KNName: "kn1", Branch: interfaces.MAIN_BRANCH}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("kn1", true, nil)
+			kna.EXPECT().CheckKNExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("kn1", true, nil)
+			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
+				Return(nil, errors.New("snapshot unavailable"))
+
+			knID, err := service.CreateKN(ctx, kn, interfaces.ImportMode_Overwrite, true)
+			So(err, ShouldNotBeNil)
+			So(knID, ShouldEqual, "")
+		})
+
+		Convey("Failed overwrite restores the preloaded knowledge network index\n", func() {
+			kn := &interfaces.KN{KNID: "kn1", KNName: "new-name", Branch: interfaces.MAIN_BRANCH}
+			old := &interfaces.KN{KNID: "kn1", KNName: "old-name", Branch: interfaces.MAIN_BRANCH}
+			cga := bmock.NewMockConceptGroupAccess(mockCtrl)
+			ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+			rta := bmock.NewMockRelationTypeAccess(mockCtrl)
+			ata := bmock.NewMockActionTypeAccess(mockCtrl)
+			ma := bmock.NewMockMetricAccess(mockCtrl)
+			serviceWithSnapshot := &knowledgeNetworkService{
+				appSetting: appSetting, kna: kna, ps: ps, vbs: vbs, db: db,
+				cga: cga, ota: ota, rta: rta, ata: ata, ma: ma,
+			}
+
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			kna.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("old-name", true, nil)
+			kna.EXPECT().CheckKNExistByName(gomock.Any(), "new-name", interfaces.MAIN_BRANCH).Return("", false, nil)
+			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(old, nil)
+			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil)
+			ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(nil, nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
+			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
+			smock.ExpectBegin()
+			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _, _ string, document map[string]any) error {
+					So(document["name"], ShouldEqual, "new-name")
+					return errors.New("index write failed")
+				})
+			smock.ExpectRollback()
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _, _ string, document map[string]any) error {
+					So(document["name"], ShouldEqual, "old-name")
+					return nil
+				})
+
+			knID, err := serviceWithSnapshot.CreateKN(ctx, kn, interfaces.ImportMode_Overwrite, false)
+			So(err, ShouldNotBeNil)
+			So(knID, ShouldEqual, "")
 		})
 
 		Convey("Failed when Begin transaction fails\n", func() {
@@ -2692,11 +2777,11 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				DoAndReturn(func(childCtx context.Context, _ *sql.Tx, _ *interfaces.ConceptGroup,
-					_ string, _ bool) (string, error) {
+			cgs.EXPECT().CreateConceptGroups(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(childCtx context.Context, _ *sql.Tx, _ []*interfaces.ConceptGroup,
+					_ string, _ bool) ([]string, error) {
 					So(permission.KNImportPermissionPrechecked(childCtx), ShouldBeTrue)
-					return "", rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
+					return nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
 				})
 			smock.ExpectRollback()
 
@@ -2831,6 +2916,61 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			So(knID, ShouldEqual, "")
 		})
 
+		Convey("A later import stage failure compensates an earlier child dataset write\n", func() {
+			requestCtx, cancelRequest := context.WithCancel(ctx)
+			defer cancelRequest()
+			kn := &interfaces.KN{
+				KNID:   "kn1",
+				KNName: "kn1",
+				Branch: interfaces.MAIN_BRANCH,
+				ActionTypes: []*interfaces.ActionType{{
+					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "at1"},
+				}},
+				RiskTypes: []*interfaces.RiskType{{RTID: "risk1", RTName: "risk1"}},
+			}
+			ats := bmock.NewMockActionTypeService(mockCtrl)
+			riskTypes := bmock.NewMockRiskTypeService(mockCtrl)
+			serviceWithChildren := &knowledgeNetworkService{
+				appSetting: appSetting,
+				kna:        kna,
+				ps:         ps,
+				vbs:        vbs,
+				db:         db,
+				ats:        ats,
+				riskTypeS:  riskTypes,
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, nil)
+			kna.EXPECT().CheckKNExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, nil)
+			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(callCtx context.Context, _ *sql.Tx, _ []*interfaces.ActionType,
+					_ string, _ bool) ([]string, error) {
+					vega_backend.TrackDatasetWriteAttempt(callCtx, interfaces.BKN_DATASET_ID,
+						interfaces.GenerateConceptDocuemtnID("kn1", interfaces.MODULE_TYPE_ACTION_TYPE, "at1", interfaces.MAIN_BRANCH))
+					return []string{"at1"}, nil
+				})
+			riskTypes.EXPECT().CreateRiskTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ *sql.Tx, _ []*interfaces.RiskType,
+					_ string) ([]string, error) {
+					cancelRequest()
+					return nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RiskType_InternalError)
+				})
+			smock.ExpectRollback()
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID,
+				interfaces.GenerateConceptDocuemtnID("kn1", interfaces.MODULE_TYPE_ACTION_TYPE, "at1", interfaces.MAIN_BRANCH)).
+				DoAndReturn(func(cleanupCtx context.Context, _, _ string) error {
+					So(cleanupCtx.Err(), ShouldBeNil)
+					return nil
+				})
+
+			knID, err := serviceWithChildren.CreateKN(requestCtx, kn, interfaces.ImportMode_Normal, true)
+			So(err, ShouldNotBeNil)
+			So(knID, ShouldEqual, "")
+		})
+
 		Convey("Failed when InsertDatasetData fails\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn1",
@@ -2846,6 +2986,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID,
+				interfaces.GenerateConceptDocuemtnID("kn1", interfaces.MODULE_TYPE_KN, "kn1", interfaces.MAIN_BRANCH)).Return(nil)
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldNotBeNil)
@@ -2869,7 +3011,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn1"}).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID,
+				interfaces.GenerateConceptDocuemtnID("kn1", interfaces.MODULE_TYPE_KN, "kn1", interfaces.MAIN_BRANCH)).Return(nil)
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldNotBeNil)
@@ -2877,6 +3020,28 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 		})
 
 	})
+}
+
+func TestValidateKNIgnoresExistingConflictingChildren(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	service := &knowledgeNetworkService{kna: kna}
+	kn := &interfaces.KN{
+		KNID: "kn-1", KNName: "network", Branch: interfaces.MAIN_BRANCH,
+		ConceptGroups: []*interfaces.ConceptGroup{{
+			CGID: "cg-1", ObjectTypes: []*interfaces.ObjectType{{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1", OTName: "nested"},
+			}},
+		}},
+		ObjectTypes: []*interfaces.ObjectType{{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1", OTName: "top-level"},
+		}},
+	}
+	kna.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return("network", true, nil)
+	kna.EXPECT().CheckKNExistByName(gomock.Any(), "network", interfaces.MAIN_BRANCH).Return("kn-1", true, nil)
+	if err := service.ValidateKN(context.Background(), kn, true, interfaces.ImportMode_Ignore); err != nil {
+		t.Fatalf("ValidateKN() error = %v", err)
+	}
 }
 
 func Test_knowledgeNetworkService_ValidateKN_preflightBatch(t *testing.T) {
@@ -2888,6 +3053,7 @@ func Test_knowledgeNetworkService_ValidateKN_preflightBatch(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		cgs := bmock.NewMockConceptGroupService(mockCtrl)
+		ots := bmock.NewMockObjectTypeService(mockCtrl)
 
 		kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 		kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
@@ -2896,6 +3062,7 @@ func Test_knowledgeNetworkService_ValidateKN_preflightBatch(t *testing.T) {
 			appSetting: appSetting,
 			kna:        kna,
 			cgs:        cgs,
+			ots:        ots,
 		}
 
 		kn := &interfaces.KN{
@@ -2911,9 +3078,20 @@ func Test_knowledgeNetworkService_ValidateKN_preflightBatch(t *testing.T) {
 			},
 		}
 
-		cgs.EXPECT().ValidateConceptGroups(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, kn.ConceptGroups, true, gomock.Any(), gomock.Any()).
+		cgs.EXPECT().ValidateConceptGroups(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any(), true, gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, knID, br string, groups []*interfaces.ConceptGroup, sm bool, b *interfaces.BatchIDIndex, mode string) error {
 				if b == nil || b.ObjectTypes["ot_inner"] == nil {
+					return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
+				}
+				if len(groups) != 1 || len(groups[0].ObjectTypes) != 0 {
+					return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
+				}
+				return nil
+			})
+		ots.EXPECT().ValidateObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any(), true, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _, _ string, objects []*interfaces.ObjectType, _ bool,
+				_ *interfaces.BatchIDIndex, _ string) error {
+				if len(objects) != 1 || objects[0].OTID != "ot_inner" {
 					return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
 				}
 				return nil

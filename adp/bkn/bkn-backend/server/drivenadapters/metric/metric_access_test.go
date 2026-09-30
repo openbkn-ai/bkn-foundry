@@ -9,6 +9,7 @@ package metric
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -67,6 +68,26 @@ func TestMetricAccess_CreateMetric(t *testing.T) {
 		err = ma.CreateMetric(context.Background(), tx, def)
 		So(err, ShouldBeNil)
 		err = tx.Commit()
+		So(err, ShouldBeNil)
+		So(mock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func TestMetricAccess_CreateMetrics(t *testing.T) {
+	Convey("CreateMetrics inserts multiple rows", t, func() {
+		ma, mock, cleanup := mockMetricAccess(t)
+		defer cleanup()
+		definitions := []*interfaces.MetricDefinition{
+			{ID: "mid1", Name: "m1", KnID: "kn1", Branch: interfaces.MAIN_BRANCH},
+			{ID: "mid2", Name: "m2", KnID: "kn1", Branch: interfaces.MAIN_BRANCH},
+		}
+		mock.ExpectBegin()
+		mock.ExpectExec("INSERT INTO " + METRIC_TABLE_NAME).WillReturnResult(sqlmock.NewResult(1, 2))
+		tx, err := ma.db.Begin()
+		So(err, ShouldBeNil)
+
+		err = ma.CreateMetrics(context.Background(), tx, definitions)
+
 		So(err, ShouldBeNil)
 		So(mock.ExpectationsWereMet(), ShouldBeNil)
 	})
@@ -190,6 +211,27 @@ func TestMetricAccess_CheckMetricExistByName(t *testing.T) {
 	})
 }
 
+func TestMetricAccess_GetMetricIdentitiesByIDsOrNames(t *testing.T) {
+	Convey("GetMetricIdentitiesByIDsOrNames returns identities", t, func() {
+		ma, mock, cleanup := mockMetricAccess(t)
+		defer cleanup()
+		rows := sqlmock.NewRows([]string{"f_id", "f_name"}).
+			AddRow("mid1", "m1").AddRow("mid2", "m2")
+		mock.ExpectQuery("SELECT f_id, f_name FROM "+METRIC_TABLE_NAME).
+			WithArgs("kn1", interfaces.MAIN_BRANCH, "mid1", "mid2", "m1", "m2").
+			WillReturnRows(rows)
+
+		definitions, err := ma.GetMetricIdentitiesByIDsOrNames(context.Background(), "kn1",
+			interfaces.MAIN_BRANCH, []string{"mid1", "mid2"}, []string{"m1", "m2"})
+
+		So(err, ShouldBeNil)
+		So(definitions, ShouldHaveLength, 2)
+		So(definitions[0].ID, ShouldEqual, "mid1")
+		So(definitions[1].Name, ShouldEqual, "m2")
+		So(mock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 func TestMetricAccess_GetMetricsByIDs(t *testing.T) {
 	Convey("GetMetricsByIDs returns multiple rows", t, func() {
 		ma, mock, cleanup := mockMetricAccess(t)
@@ -257,6 +299,31 @@ func TestMetricAccess_UpdateMetric(t *testing.T) {
 		So(err, ShouldBeNil)
 		mock.ExpectCommit()
 		err = tx.Commit()
+		So(err, ShouldBeNil)
+		So(mock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func TestMetricAccess_UpdateMetrics(t *testing.T) {
+	Convey("UpdateMetrics updates in bounded chunks", t, func() {
+		ma, mock, cleanup := mockMetricAccess(t)
+		defer cleanup()
+		definitions := make([]*interfaces.MetricDefinition, 0, metricUpdateBatchSize+1)
+		for index := 0; index < metricUpdateBatchSize+1; index++ {
+			definitions = append(definitions, &interfaces.MetricDefinition{
+				ID: fmt.Sprintf("mid%d", index), KnID: "kn1", Branch: interfaces.MAIN_BRANCH,
+			})
+		}
+		mock.ExpectBegin()
+		mock.ExpectExec("UPDATE " + METRIC_TABLE_NAME + " SET ").
+			WillReturnResult(sqlmock.NewResult(0, metricUpdateBatchSize))
+		mock.ExpectExec("UPDATE " + METRIC_TABLE_NAME + " SET ").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		tx, err := ma.db.Begin()
+		So(err, ShouldBeNil)
+
+		err = ma.UpdateMetrics(context.Background(), tx, definitions)
+
 		So(err, ShouldBeNil)
 		So(mock.ExpectationsWereMet(), ShouldBeNil)
 	})

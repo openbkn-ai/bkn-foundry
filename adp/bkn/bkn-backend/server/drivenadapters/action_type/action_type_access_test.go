@@ -188,6 +188,27 @@ func Test_ActionTypeAccess_CheckActionTypeExistByName(t *testing.T) {
 	})
 }
 
+func Test_ActionTypeAccess_GetActionTypeIdentitiesByIDsOrNames(t *testing.T) {
+	Convey("batch query action type identities", t, func() {
+		ata, smock := MockNewActionTypeAccess(&common.AppSetting{})
+		sqlStr := "SELECT f_id, f_name FROM t_action_type WHERE f_kn_id = ? AND f_branch = ? " +
+			"AND (f_id IN (?,?) OR f_name IN (?,?))"
+		rows := sqlmock.NewRows([]string{"f_id", "f_name"}).AddRow("at1", "Action Type 1").AddRow("at2", "Action Type 2")
+		smock.ExpectQuery(sqlStr).
+			WithArgs("kn1", interfaces.MAIN_BRANCH, "at1", "at2", "Action Type 1", "Action Type 2").
+			WillReturnRows(rows)
+
+		result, err := ata.GetActionTypeIdentitiesByIDsOrNames(testCtx, "kn1", interfaces.MAIN_BRANCH,
+			[]string{"at1", "at2"}, []string{"Action Type 1", "Action Type 2"})
+
+		So(err, ShouldBeNil)
+		So(result, ShouldHaveLength, 2)
+		So(result[0].ATID, ShouldEqual, "at1")
+		So(result[1].ATName, ShouldEqual, "Action Type 2")
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 func Test_ActionTypeAccess_CreateActionType(t *testing.T) {
 	Convey("test CreateActionType\n", t, func() {
 		appSetting := &common.AppSetting{}
@@ -224,6 +245,29 @@ func Test_ActionTypeAccess_CreateActionType(t *testing.T) {
 				t.Errorf("there were unfulfilled expectations: %s", err)
 			}
 		})
+	})
+}
+
+func Test_ActionTypeAccess_CreateActionTypes(t *testing.T) {
+	Convey("batch create action types", t, func() {
+		ata, smock := MockNewActionTypeAccess(&common.AppSetting{})
+		second := *testActionType
+		second.ATID = "at2"
+		second.ATName = "Action Type 2"
+		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
+			"f_kn_id,f_branch,f_action_type,f_action_intent,f_impact_contracts,f_object_type_id,f_condition,"+
+			"f_affect,f_action_source,f_parameters,f_schedule,f_creator,f_creator_type,f_create_time,f_updater,"+
+			"f_updater_type,f_update_time) VALUES "+
+			"(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", AT_TABLE_NAME)
+		smock.ExpectBegin()
+		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
+		tx, err := ata.db.Begin()
+		So(err, ShouldBeNil)
+
+		err = ata.CreateActionTypes(testCtx, tx, []*interfaces.ActionType{testActionType, &second})
+
+		So(err, ShouldBeNil)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
 
@@ -977,6 +1021,35 @@ func Test_ActionTypeAccess_UpdateActionType(t *testing.T) {
 				t.Errorf("there were unfulfilled expectations: %s", err)
 			}
 		})
+	})
+}
+
+func Test_ActionTypeAccess_UpdateActionTypes(t *testing.T) {
+	Convey("batch update action types in bounded chunks", t, func() {
+		db, smock, err := sqlmock.New()
+		So(err, ShouldBeNil)
+		ata := &actionTypeAccess{appSetting: &common.AppSetting{}, db: db}
+		actionTypes := make([]*interfaces.ActionType, 0, actionTypeUpdateBatchSize+1)
+		for index := 0; index < actionTypeUpdateBatchSize+1; index++ {
+			actionTypes = append(actionTypes, &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID:       fmt.Sprintf("at%d", index),
+					ATName:     fmt.Sprintf("Action Type %d", index),
+					Parameters: []interfaces.Parameter{},
+				},
+				KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+			})
+		}
+		smock.ExpectBegin()
+		smock.ExpectExec("^UPDATE t_action_type SET ").WillReturnResult(sqlmock.NewResult(0, actionTypeUpdateBatchSize))
+		smock.ExpectExec("^UPDATE t_action_type SET ").WillReturnResult(sqlmock.NewResult(0, 1))
+		tx, err := db.Begin()
+		So(err, ShouldBeNil)
+
+		err = ata.UpdateActionTypes(testCtx, tx, actionTypes)
+
+		So(err, ShouldBeNil)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
 

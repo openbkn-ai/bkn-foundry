@@ -1221,6 +1221,29 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			So(len(atIDs), ShouldEqual, 1)
 		})
 
+		Convey("Success creating multiple action types through batch access\n", func() {
+			actionTypes := []*interfaces.ActionType{
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+			}
+
+			smock.ExpectBegin()
+			ata.EXPECT().GetActionTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"at1", "at2"}, []string{"action_type1", "action_type2"}).Return(nil, nil)
+			ata.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), actionTypes).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{
+				{ID: "kn1/at1", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, Name: "action_type1"},
+				{ID: "kn1/at2", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, Name: "action_type2"},
+			}, []string{interfaces.OPERATION_TYPE_EXECUTE}).Return(nil)
+			smock.ExpectCommit()
+
+			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, interfaces.ImportMode_Normal, false)
+
+			So(err, ShouldBeNil)
+			So(atIDs, ShouldResemble, []string{"at1", "at2"})
+		})
+
 		Convey("Safe failure rolls back and compensates partial action type policies\n", func() {
 			actionTypes := []*interfaces.ActionType{{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "at1"},
@@ -1371,6 +1394,29 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldBeNil)
 			So(len(atIDs), ShouldEqual, 0)
+		})
+
+		Convey("Success overwriting multiple action types through batch access\n", func() {
+			actionTypes := []*interfaces.ActionType{
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+			}
+
+			smock.ExpectBegin()
+			ata.EXPECT().GetActionTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"at1", "at2"}, []string{"action_type1", "action_type2"}).
+				Return([]*interfaces.ActionType{
+					{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1"}},
+					{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2"}},
+				}, nil)
+			ata.EXPECT().UpdateActionTypes(gomock.Any(), gomock.Any(), actionTypes).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			smock.ExpectCommit()
+
+			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, interfaces.ImportMode_Overwrite, false)
+
+			So(err, ShouldBeNil)
+			So(atIDs, ShouldHaveLength, 0)
 		})
 
 		Convey("Failed when InsertDatasetData returns error\n", func() {

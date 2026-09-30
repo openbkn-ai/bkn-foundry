@@ -102,6 +102,34 @@ func (mr *MockObjectTypeAccessMockRecorder) CreateObjectTypeStatus(ctx, tx, obje
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateObjectTypeStatus", reflect.TypeOf((*MockObjectTypeAccess)(nil).CreateObjectTypeStatus), ctx, tx, objectType)
 }
 
+// CreateObjectTypeStatuses mocks base method.
+func (m *MockObjectTypeAccess) CreateObjectTypeStatuses(ctx context.Context, tx *sql.Tx, objectTypes []*interfaces.ObjectType) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateObjectTypeStatuses", ctx, tx, objectTypes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateObjectTypeStatuses indicates an expected call of CreateObjectTypeStatuses.
+func (mr *MockObjectTypeAccessMockRecorder) CreateObjectTypeStatuses(ctx, tx, objectTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateObjectTypeStatuses", reflect.TypeOf((*MockObjectTypeAccess)(nil).CreateObjectTypeStatuses), ctx, tx, objectTypes)
+}
+
+// CreateObjectTypes mocks base method.
+func (m *MockObjectTypeAccess) CreateObjectTypes(ctx context.Context, tx *sql.Tx, objectTypes []*interfaces.ObjectType) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateObjectTypes", ctx, tx, objectTypes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateObjectTypes indicates an expected call of CreateObjectTypes.
+func (mr *MockObjectTypeAccessMockRecorder) CreateObjectTypes(ctx, tx, objectTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateObjectTypes", reflect.TypeOf((*MockObjectTypeAccess)(nil).CreateObjectTypes), ctx, tx, objectTypes)
+}
+
 // DeleteObjectTypeStatusByIDs mocks base method.
 func (m *MockObjectTypeAccess) DeleteObjectTypeStatusByIDs(ctx context.Context, tx *sql.Tx, knID, branch string, otIDs []string) (int64, error) {
 	m.ctrl.T.Helper()
@@ -205,6 +233,21 @@ func (m *MockObjectTypeAccess) GetObjectTypeIDsByKnID(ctx context.Context, knID,
 func (mr *MockObjectTypeAccessMockRecorder) GetObjectTypeIDsByKnID(ctx, knID, branch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTypeIDsByKnID", reflect.TypeOf((*MockObjectTypeAccess)(nil).GetObjectTypeIDsByKnID), ctx, knID, branch)
+}
+
+// GetObjectTypeIdentitiesByIDsOrNames mocks base method.
+func (m *MockObjectTypeAccess) GetObjectTypeIdentitiesByIDsOrNames(ctx context.Context, knID, branch string, otIDs, otNames []string) ([]*interfaces.ObjectType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetObjectTypeIdentitiesByIDsOrNames", ctx, knID, branch, otIDs, otNames)
+	ret0, _ := ret[0].([]*interfaces.ObjectType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetObjectTypeIdentitiesByIDsOrNames indicates an expected call of GetObjectTypeIdentitiesByIDsOrNames.
+func (mr *MockObjectTypeAccessMockRecorder) GetObjectTypeIdentitiesByIDsOrNames(ctx, knID, branch, otIDs, otNames any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTypeIdentitiesByIDsOrNames", reflect.TypeOf((*MockObjectTypeAccess)(nil).GetObjectTypeIdentitiesByIDsOrNames), ctx, knID, branch, otIDs, otNames)
 }
 
 // GetObjectTypesByIDs mocks base method.
@@ -322,4 +365,18 @@ func (m *MockObjectTypeAccess) UpdateObjectTypeStatus(ctx context.Context, tx *s
 func (mr *MockObjectTypeAccessMockRecorder) UpdateObjectTypeStatus(ctx, tx, knID, branch, otID, otStatus any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateObjectTypeStatus", reflect.TypeOf((*MockObjectTypeAccess)(nil).UpdateObjectTypeStatus), ctx, tx, knID, branch, otID, otStatus)
+}
+
+// UpdateObjectTypes mocks base method.
+func (m *MockObjectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx, objectTypes []*interfaces.ObjectType) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateObjectTypes", ctx, tx, objectTypes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateObjectTypes indicates an expected call of UpdateObjectTypes.
+func (mr *MockObjectTypeAccessMockRecorder) UpdateObjectTypes(ctx, tx, objectTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateObjectTypes", reflect.TypeOf((*MockObjectTypeAccess)(nil).UpdateObjectTypes), ctx, tx, objectTypes)
 }

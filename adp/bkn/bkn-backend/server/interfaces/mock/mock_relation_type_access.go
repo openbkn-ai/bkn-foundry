@@ -72,6 +72,20 @@ func (mr *MockRelationTypeAccessMockRecorder) CreateRelationType(ctx, tx, relati
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRelationType", reflect.TypeOf((*MockRelationTypeAccess)(nil).CreateRelationType), ctx, tx, relationType)
 }
 
+// CreateRelationTypes mocks base method.
+func (m *MockRelationTypeAccess) CreateRelationTypes(ctx context.Context, tx *sql.Tx, relationTypes []*interfaces.RelationType) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateRelationTypes", ctx, tx, relationTypes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateRelationTypes indicates an expected call of CreateRelationTypes.
+func (mr *MockRelationTypeAccessMockRecorder) CreateRelationTypes(ctx, tx, relationTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRelationTypes", reflect.TypeOf((*MockRelationTypeAccess)(nil).CreateRelationTypes), ctx, tx, relationTypes)
+}
+
 // DeleteRelationTypesByIDs mocks base method.
 func (m *MockRelationTypeAccess) DeleteRelationTypesByIDs(ctx context.Context, tx *sql.Tx, knID, branch string, rtIDs []string) (int64, error) {
 	m.ctrl.T.Helper()
@@ -130,6 +144,21 @@ func (m *MockRelationTypeAccess) GetRelationTypeByID(ctx context.Context, knID, 
 func (mr *MockRelationTypeAccessMockRecorder) GetRelationTypeByID(ctx, knID, branch, rtID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRelationTypeByID", reflect.TypeOf((*MockRelationTypeAccess)(nil).GetRelationTypeByID), ctx, knID, branch, rtID)
+}
+
+// GetRelationTypeIDsByIDs mocks base method.
+func (m *MockRelationTypeAccess) GetRelationTypeIDsByIDs(ctx context.Context, knID, branch string, rtIDs []string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRelationTypeIDsByIDs", ctx, knID, branch, rtIDs)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRelationTypeIDsByIDs indicates an expected call of GetRelationTypeIDsByIDs.
+func (mr *MockRelationTypeAccessMockRecorder) GetRelationTypeIDsByIDs(ctx, knID, branch, rtIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRelationTypeIDsByIDs", reflect.TypeOf((*MockRelationTypeAccess)(nil).GetRelationTypeIDsByIDs), ctx, knID, branch, rtIDs)
 }
 
 // GetRelationTypeIDsByKnID mocks base method.
@@ -219,4 +248,18 @@ func (m *MockRelationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql
 func (mr *MockRelationTypeAccessMockRecorder) UpdateRelationType(ctx, tx, relationType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRelationType", reflect.TypeOf((*MockRelationTypeAccess)(nil).UpdateRelationType), ctx, tx, relationType)
+}
+
+// UpdateRelationTypes mocks base method.
+func (m *MockRelationTypeAccess) UpdateRelationTypes(ctx context.Context, tx *sql.Tx, relationTypes []*interfaces.RelationType) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateRelationTypes", ctx, tx, relationTypes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateRelationTypes indicates an expected call of UpdateRelationTypes.
+func (mr *MockRelationTypeAccessMockRecorder) UpdateRelationTypes(ctx, tx, relationTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRelationTypes", reflect.TypeOf((*MockRelationTypeAccess)(nil).UpdateRelationTypes), ctx, tx, relationTypes)
 }

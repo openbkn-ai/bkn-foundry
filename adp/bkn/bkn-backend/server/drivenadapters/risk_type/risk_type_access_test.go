@@ -169,6 +169,28 @@ func Test_RiskTypeAccess_CheckRiskTypeExistByName(t *testing.T) {
 	})
 }
 
+func Test_RiskTypeAccess_GetRiskTypeIdentitiesByIDsOrNames(t *testing.T) {
+	Convey("batch query risk type identities", t, func() {
+		rta, smock := MockNewRiskTypeAccess(&common.AppSetting{})
+		sqlStr := "SELECT f_id, f_name FROM t_risk_type WHERE f_kn_id = ? AND f_branch = ? " +
+			"AND (f_id IN (?,?) OR f_name IN (?,?))"
+		rows := sqlmock.NewRows([]string{"f_id", "f_name"}).
+			AddRow("rt1", "Risk Type 1").AddRow("rt2", "Risk Type 2")
+		smock.ExpectQuery(sqlStr).
+			WithArgs("kn1", interfaces.MAIN_BRANCH, "rt1", "rt2", "Risk Type 1", "Risk Type 2").
+			WillReturnRows(rows)
+
+		result, err := rta.GetRiskTypeIdentitiesByIDsOrNames(testCtx, "kn1", interfaces.MAIN_BRANCH,
+			[]string{"rt1", "rt2"}, []string{"Risk Type 1", "Risk Type 2"})
+
+		So(err, ShouldBeNil)
+		So(result, ShouldHaveLength, 2)
+		So(result[0].RTID, ShouldEqual, "rt1")
+		So(result[1].RTName, ShouldEqual, "Risk Type 2")
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 // ---- CreateRiskType ----
 
 func Test_RiskTypeAccess_CreateRiskType(t *testing.T) {
@@ -474,6 +496,52 @@ func Test_RiskTypeAccess_UpdateRiskType(t *testing.T) {
 
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
+	})
+}
+
+func Test_RiskTypeAccess_CreateRiskTypes(t *testing.T) {
+	Convey("batch create risk types", t, func() {
+		db, smock, err := sqlmock.New()
+		So(err, ShouldBeNil)
+		rta := &riskTypeAccess{appSetting: &common.AppSetting{}, db: db}
+		riskTypes := []*interfaces.RiskType{
+			{RTID: "rt1", RTName: "Risk Type 1", KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+			{RTID: "rt2", RTName: "Risk Type 2", KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+		}
+		smock.ExpectBegin()
+		smock.ExpectExec("INSERT INTO t_risk_type").WillReturnResult(sqlmock.NewResult(1, 2))
+		tx, err := db.Begin()
+		So(err, ShouldBeNil)
+
+		err = rta.CreateRiskTypes(testCtx, tx, riskTypes)
+
+		So(err, ShouldBeNil)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func Test_RiskTypeAccess_UpdateRiskTypes(t *testing.T) {
+	Convey("batch update risk types in bounded chunks", t, func() {
+		db, smock, err := sqlmock.New()
+		So(err, ShouldBeNil)
+		rta := &riskTypeAccess{appSetting: &common.AppSetting{}, db: db}
+		riskTypes := make([]*interfaces.RiskType, 0, riskTypeUpdateBatchSize+1)
+		for index := 0; index < riskTypeUpdateBatchSize+1; index++ {
+			riskTypes = append(riskTypes, &interfaces.RiskType{
+				RTID: fmt.Sprintf("rt%d", index), RTName: fmt.Sprintf("Risk Type %d", index),
+				KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+			})
+		}
+		smock.ExpectBegin()
+		smock.ExpectExec("UPDATE t_risk_type SET ").WillReturnResult(sqlmock.NewResult(0, riskTypeUpdateBatchSize))
+		smock.ExpectExec("UPDATE t_risk_type SET ").WillReturnResult(sqlmock.NewResult(0, 1))
+		tx, err := db.Begin()
+		So(err, ShouldBeNil)
+
+		err = rta.UpdateRiskTypes(testCtx, tx, riskTypes)
+
+		So(err, ShouldBeNil)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
 

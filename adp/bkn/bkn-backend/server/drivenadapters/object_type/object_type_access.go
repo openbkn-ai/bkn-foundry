@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -31,8 +32,12 @@ import (
 )
 
 const (
-	OT_TABLE_NAME        = "t_object_type"
-	OT_STATUS_TABLE_NAME = "t_object_type_status"
+	OT_TABLE_NAME                    = "t_object_type"
+	OT_STATUS_TABLE_NAME             = "t_object_type_status"
+	objectTypeIdentityQueryBatchSize = 500
+	objectTypeInsertBatchSize        = 200
+	objectTypeStatusInsertBatchSize  = 500
+	objectTypeUpdateBatchSize        = 200
 )
 
 var (
@@ -136,6 +141,69 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByName(ctx context.Context, knI
 
 	span.SetStatus(codes.Ok, "")
 	return otID, true, nil
+}
+
+func (ota *objectTypeAccess) GetObjectTypeIdentitiesByIDsOrNames(ctx context.Context, knID string,
+	branch string, otIDs, otNames []string) ([]*interfaces.ObjectType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetObjectTypeIdentitiesByIDsOrNames")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("id_count", len(otIDs)),
+		attr.Int("name_count", len(otNames)),
+	)
+	result := make([]*interfaces.ObjectType, 0)
+	seen := make(map[string]struct{})
+	requestCount := max(len(otIDs), len(otNames))
+	for start := 0; start < requestCount; start += objectTypeIdentityQueryBatchSize {
+		idEnd := min(start+objectTypeIdentityQueryBatchSize, len(otIDs))
+		nameEnd := min(start+objectTypeIdentityQueryBatchSize, len(otNames))
+		conditions := sq.Or{}
+		if start < len(otIDs) {
+			conditions = append(conditions, sq.Eq{"f_id": otIDs[start:idEnd]})
+		}
+		if start < len(otNames) {
+			conditions = append(conditions, sq.Eq{"f_name": otNames[start:nameEnd]})
+		}
+		builder := sq.Select("f_id", "f_name").From(OT_TABLE_NAME).
+			Where(sq.Eq{"f_kn_id": knID}).
+			Where(sq.Eq{"f_branch": branch}).
+			Where(conditions)
+		sqlStr, vals, err := builder.ToSql()
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to build object type identity query", err)
+			return nil, err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		rows, err := ota.db.Query(sqlStr, vals...)
+		if err != nil {
+			common.LogSafeError(ctx, "Query object type identities failed", err)
+			return nil, err
+		}
+		for rows.Next() {
+			objectType := &interfaces.ObjectType{ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE}
+			if err = rows.Scan(&objectType.OTID, &objectType.OTName); err != nil {
+				_ = rows.Close()
+				common.LogSafeError(ctx, "Scan object type identity failed", err)
+				return nil, err
+			}
+			if _, duplicate := seen[objectType.OTID]; duplicate {
+				continue
+			}
+			seen[objectType.OTID] = struct{}{}
+			result = append(result, objectType)
+		}
+		if err = rows.Err(); err != nil {
+			_ = rows.Close()
+			common.LogSafeError(ctx, "Iterate object type identities failed", err)
+			return nil, err
+		}
+		_ = rows.Close()
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 // Create an object type.
@@ -245,6 +313,78 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 	return nil
 }
 
+func (ota *objectTypeAccess) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
+	objectTypes []*interfaces.ObjectType) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateObjectTypes")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("object_type_count", len(objectTypes)),
+	)
+	for start := 0; start < len(objectTypes); start += objectTypeInsertBatchSize {
+		end := min(start+objectTypeInsertBatchSize, len(objectTypes))
+		builder := sq.Insert(OT_TABLE_NAME).Columns(
+			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
+			"f_kn_id", "f_branch", "f_data_source", "f_data_properties", "f_logic_properties",
+			"f_primary_keys", "f_display_key", "f_incremental_key", "f_creator", "f_creator_type",
+			"f_create_time", "f_updater", "f_updater_type", "f_update_time",
+		)
+		for _, objectType := range objectTypes[start:end] {
+			values, err := objectTypeInsertValues(objectType)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to marshal object type for batch insert", err)
+				return err
+			}
+			builder = builder.Values(values...)
+		}
+		sqlStr, vals, err := builder.ToSql()
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to build the sql of batch insert object types", err)
+			return err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		if tx != nil {
+			_, err = tx.Exec(sqlStr, vals...)
+		} else {
+			_, err = ota.db.Exec(sqlStr, vals...)
+		}
+		if err != nil {
+			common.LogSafeError(ctx, "Batch insert object types failed", err)
+			return err
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
+	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
+	if err != nil {
+		return nil, err
+	}
+	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
+	if err != nil {
+		return nil, err
+	}
+	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
+	if err != nil {
+		return nil, err
+	}
+	primaryKeysBytes, err := sonic.Marshal(objectType.PrimaryKeys)
+	if err != nil {
+		return nil, err
+	}
+	return []any{
+		objectType.OTID, objectType.OTName, libCommon.TagSlice2TagString(objectType.Tags), objectType.Comment,
+		objectType.Icon, objectType.Color, objectType.BKNRawContent, objectType.KNID, objectType.Branch,
+		dataSourceBytes, dataPropertiesBytes, logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey,
+		objectType.IncrementalKey, objectType.Creator.ID, objectType.Creator.Type, objectType.CreateTime,
+		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime,
+	}, nil
+}
+
 // Object type creation status.
 func (ota *objectTypeAccess) CreateObjectTypeStatus(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateObjectTypeStatus")
@@ -288,6 +428,47 @@ func (ota *objectTypeAccess) CreateObjectTypeStatus(ctx context.Context, tx *sql
 		return err
 	}
 
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func (ota *objectTypeAccess) CreateObjectTypeStatuses(ctx context.Context, tx *sql.Tx,
+	objectTypes []*interfaces.ObjectType) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateObjectTypeStatuses")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("object_type_count", len(objectTypes)),
+	)
+	for start := 0; start < len(objectTypes); start += objectTypeStatusInsertBatchSize {
+		end := min(start+objectTypeStatusInsertBatchSize, len(objectTypes))
+		builder := sq.Insert(OT_STATUS_TABLE_NAME).Columns(
+			"f_id", "f_kn_id", "f_branch", "f_incremental_key", "f_update_time",
+		)
+		for _, objectType := range objectTypes[start:end] {
+			builder = builder.Values(
+				objectType.OTID, objectType.KNID, objectType.Branch,
+				objectType.IncrementalKey, objectType.UpdateTime,
+			)
+		}
+		sqlStr, vals, err := builder.ToSql()
+		if err != nil {
+			common.LogSafeError(ctx, "Failed to build the sql of batch insert object type statuses", err)
+			return err
+		}
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		if tx != nil {
+			_, err = tx.Exec(sqlStr, vals...)
+		} else {
+			_, err = ota.db.Exec(sqlStr, vals...)
+		}
+		if err != nil {
+			common.LogSafeError(ctx, "Batch insert object type statuses failed", err)
+			return err
+		}
+	}
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
@@ -1075,6 +1256,125 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
+	objectTypes []*interfaces.ObjectType) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "UpdateObjectTypes")
+	defer span.End()
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+		attr.Int("object_type_count", len(objectTypes)),
+	)
+
+	if len(objectTypes) == 0 {
+		return nil
+	}
+	knID, branch := objectTypes[0].KNID, objectTypes[0].Branch
+	for _, objectType := range objectTypes {
+		if objectType.KNID != knID || objectType.Branch != branch {
+			return fmt.Errorf("batch update object types must have one knowledge network and branch")
+		}
+	}
+
+	columns := []string{
+		"f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
+		"f_data_source", "f_data_properties", "f_logic_properties", "f_primary_keys",
+		"f_display_key", "f_incremental_key", "f_updater", "f_updater_type", "f_update_time",
+	}
+	for start := 0; start < len(objectTypes); {
+		end := start
+		seenIDs := make(map[string]struct{}, min(objectTypeUpdateBatchSize, len(objectTypes)-start))
+		for end < len(objectTypes) && end-start < objectTypeUpdateBatchSize {
+			if _, duplicate := seenIDs[objectTypes[end].OTID]; duplicate {
+				break
+			}
+			seenIDs[objectTypes[end].OTID] = struct{}{}
+			end++
+		}
+		batch := objectTypes[start:end]
+		serialized := make([][]any, 0, len(batch))
+		for _, objectType := range batch {
+			values, err := objectTypeUpdateValues(objectType)
+			if err != nil {
+				common.LogSafeError(ctx, "Failed to marshal object type for batch update", err)
+				return err
+			}
+			serialized = append(serialized, values)
+		}
+
+		var statement strings.Builder
+		args := make([]any, 0, len(columns)*len(batch)*2+len(batch)+2)
+		statement.WriteString("UPDATE ")
+		statement.WriteString(OT_TABLE_NAME)
+		statement.WriteString(" SET ")
+		for columnIndex, column := range columns {
+			if columnIndex > 0 {
+				statement.WriteString(", ")
+			}
+			statement.WriteString(column)
+			statement.WriteString(" = CASE f_id")
+			for rowIndex, objectType := range batch {
+				statement.WriteString(" WHEN ? THEN ?")
+				args = append(args, objectType.OTID, serialized[rowIndex][columnIndex])
+			}
+			statement.WriteString(" ELSE ")
+			statement.WriteString(column)
+			statement.WriteString(" END")
+		}
+		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
+		args = append(args, knID, branch)
+		for index, objectType := range batch {
+			if index > 0 {
+				statement.WriteByte(',')
+			}
+			statement.WriteByte('?')
+			args = append(args, objectType.OTID)
+		}
+		statement.WriteByte(')')
+
+		sqlStr := statement.String()
+		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		var err error
+		if tx != nil {
+			_, err = tx.Exec(sqlStr, args...)
+		} else {
+			_, err = ota.db.Exec(sqlStr, args...)
+		}
+		if err != nil {
+			common.LogSafeError(ctx, "Batch update object types failed", err)
+			return err
+		}
+		start = end
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func objectTypeUpdateValues(objectType *interfaces.ObjectType) ([]any, error) {
+	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
+	if err != nil {
+		return nil, err
+	}
+	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
+	if err != nil {
+		return nil, err
+	}
+	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
+	if err != nil {
+		return nil, err
+	}
+	primaryKeysBytes, err := sonic.Marshal(objectType.PrimaryKeys)
+	if err != nil {
+		return nil, err
+	}
+	return []any{
+		objectType.OTName, libCommon.TagSlice2TagString(objectType.Tags), objectType.Comment,
+		objectType.Icon, objectType.Color, objectType.BKNRawContent, dataSourceBytes, dataPropertiesBytes,
+		logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey, objectType.IncrementalKey,
+		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime,
+	}, nil
 }
 
 func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType) error {

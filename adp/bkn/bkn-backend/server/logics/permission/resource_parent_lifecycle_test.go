@@ -7,6 +7,7 @@ package permission
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -65,6 +66,33 @@ func TestResourceParentTrackerCompensatesNestedWrites(t *testing.T) {
 		[]string{"kn-1/ot-1"}).Return(nil)
 	if err := tracker.Cleanup(ctx, ps); err != nil {
 		t.Fatalf("Cleanup() error = %v", err)
+	}
+}
+
+func TestResourceParentTrackerCleanupBatchesAndRetainsFailedEdges(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ctx, tracker, _ := WithResourceParentTracker(context.Background())
+	items := make([]interfaces.PermissionResourceParent, safeMutationBatchSize+1)
+	firstBatchIDs := make([]string, safeMutationBatchSize)
+	for i := range items {
+		id := fmt.Sprintf("kn-1/ot-%03d", i)
+		items[i] = interfaces.PermissionResourceParent{ResourceID: id, ParentID: "kn-1"}
+		if i < safeMutationBatchSize {
+			firstBatchIDs[i] = id
+		}
+	}
+	TrackResourceParents(ctx, interfaces.RESOURCE_TYPE_OBJECT_TYPE, interfaces.RESOURCE_TYPE_KN, items)
+	failedID := items[safeMutationBatchSize].ResourceID
+	cleanupErr := errors.New("safe unavailable")
+	ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, firstBatchIDs).Return(nil)
+	ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{failedID}).Return(cleanupErr)
+	if err := tracker.Cleanup(ctx, ps); !errors.Is(err, cleanupErr) {
+		t.Fatalf("Cleanup() error = %v, want %v", err, cleanupErr)
+	}
+	ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{failedID}).Return(nil)
+	if err := tracker.Cleanup(ctx, ps); err != nil {
+		t.Fatalf("second Cleanup() error = %v", err)
 	}
 }
 

@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -173,13 +172,35 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 		}
 	}
 
-	rtIDs := []string{}
-	createdIDs := []string{}
+	rtIDs := make([]string, 0, len(createList)+len(updateList))
+	createdIDs := make([]string, 0, len(createList))
 	for _, rt := range createList {
 		rtIDs = append(rtIDs, rt.RTID)
 		createdIDs = append(createdIDs, rt.RTID)
-		if err = rts.rta.CreateRiskType(ctx, tx, rt); err != nil {
+	}
+	if len(createList) == 1 {
+		if err = rts.rta.CreateRiskType(ctx, tx, createList[0]); err != nil {
 			logger.Errorf("CreateRiskType error: %s", err.Error())
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
+		}
+	} else if len(createList) > 1 {
+		if err = rts.rta.CreateRiskTypes(ctx, tx, createList); err != nil {
+			logger.Errorf("CreateRiskTypes error: %s", err.Error())
+			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
+				riskType := createList[0]
+				if strings.Contains(constraint, "name") {
+					errDetails := fmt.Sprintf("risk type name '%s' already exists", riskType.RTName)
+					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+						berrors.BknBackend_RiskType_RiskTypeNameExisted).
+						WithDescription(map[string]any{"name": riskType.RTName}).
+						WithErrorDetails(errDetails)
+				}
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_RiskType_RiskTypeIDExisted).
+					WithErrorDetails(riskTypeInvalidParameterDetail(ctx,
+						"RiskTypeIDAlreadyExists", map[string]any{"riskTypeID": riskType.RTID}))
+			}
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
@@ -193,8 +214,16 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 		interfaces.RESOURCE_TYPE_KN, parentItems)
 	for _, rt := range updateList {
 		rtIDs = append(rtIDs, rt.RTID)
-		if err = rts.UpdateRiskType(ctx, tx, rt); err != nil {
+	}
+	if len(updateList) == 1 {
+		if err = rts.UpdateRiskType(ctx, tx, updateList[0]); err != nil {
 			return nil, err
+		}
+	} else if len(updateList) > 1 {
+		if err = rts.rta.UpdateRiskTypes(ctx, tx, updateList); err != nil {
+			logger.Errorf("UpdateRiskTypes error: %s", err.Error())
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
 
@@ -226,20 +255,51 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 
 	creates := []*interfaces.RiskType{}
 	updates := []*interfaces.RiskType{}
+	existingNamesByID := map[string]string{}
+	existingIDsByName := map[string]string{}
+	if len(riskTypes) > 1 {
+		knID, branch := riskTypes[0].KNID, riskTypes[0].Branch
+		ids := make([]string, 0, len(riskTypes))
+		names := make([]string, 0, len(riskTypes))
+		for _, riskType := range riskTypes {
+			if riskType.KNID != knID || riskType.Branch != branch {
+				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_RiskType_InvalidParameter)
+			}
+			ids = append(ids, riskType.RTID)
+			names = append(names, riskType.RTName)
+		}
+		existing, queryErr := rts.rta.GetRiskTypeIdentitiesByIDsOrNames(ctx, knID, branch, ids, names)
+		if queryErr != nil {
+			return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).
+				WithErrorDetails(queryErr.Error())
+		}
+		for _, riskType := range existing {
+			existingNamesByID[riskType.RTID] = riskType.RTName
+			existingIDsByName[riskType.RTName] = riskType.RTID
+		}
+	}
 
 	for _, rt := range riskTypes {
 		creates = append(creates, rt)
+		var idExist, nameExist bool
+		var existID string
+		if len(riskTypes) == 1 {
+			_, idExist, err = rts.rta.CheckRiskTypeExistByID(ctx, rt.KNID, rt.Branch, rt.RTID)
+			if err != nil {
+				return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).WithErrorDetails(err.Error())
+			}
 
-		_, idExist, e := rts.rta.CheckRiskTypeExistByID(ctx, rt.KNID, rt.Branch, rt.RTID)
-		if e != nil {
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).WithErrorDetails(e.Error())
-		}
-
-		existID, nameExist, e := rts.rta.CheckRiskTypeExistByName(ctx, rt.KNID, rt.Branch, rt.RTName)
-		if e != nil {
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).WithErrorDetails(e.Error())
+			existID, nameExist, err = rts.rta.CheckRiskTypeExistByName(ctx, rt.KNID, rt.Branch, rt.RTName)
+			if err != nil {
+				return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).WithErrorDetails(err.Error())
+			}
+		} else {
+			_, idExist = existingNamesByID[rt.RTID]
+			existID, nameExist = existingIDsByName[rt.RTName]
 		}
 
 		if idExist || nameExist {
@@ -530,7 +590,7 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 			words = append(words, word)
 		}
 
-		dftModel, err := rts.mfs.GetDefaultModel(ctx)
+		dftModel, err := model_factory.GetDefaultModel(ctx, rts.mfs)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -554,31 +614,22 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 		}
 	}
 
+	documents := make([]vega_backend.DatasetDocument, 0, len(riskTypes))
 	for _, riskType := range riskTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(riskType.KNID, interfaces.MODULE_TYPE_RISK_TYPE,
 			riskType.RTID, riskType.Branch)
 		riskType.ModuleType = interfaces.MODULE_TYPE_RISK_TYPE
 
-		docBytes, err := sonic.Marshal(riskType)
+		document, err := vega_backend.NewDatasetDocument(docid, riskType)
 		if err != nil {
-			logger.Errorf("Failed to marshal RiskType: %s", err.Error())
-			span.SetStatus(codes.Error, "序列化风险类失败")
 			return err
 		}
-
-		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
-			logger.Errorf("Failed to unmarshal RiskType: %s", err.Error())
-			span.SetStatus(codes.Error, "反序列化风险类失败")
-			return err
-		}
-
-		doc["_id"] = docid
-		if err := rts.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
-			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
-			span.SetStatus(codes.Error, "风险类概念索引写入失败")
-			return err
-		}
+		documents = append(documents, document)
+	}
+	if err := vega_backend.WriteDatasetDocuments(ctx, rts.vbs, interfaces.BKN_DATASET_ID, documents); err != nil {
+		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+		span.SetStatus(codes.Error, "风险类概念索引写入失败")
+		return err
 	}
 
 	return nil
@@ -622,7 +673,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 						berrors.BknBackend_RiskType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := rts.mfs.GetDefaultModel(ctx)
+				dftModel, err := model_factory.GetDefaultModel(ctx, rts.mfs)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")

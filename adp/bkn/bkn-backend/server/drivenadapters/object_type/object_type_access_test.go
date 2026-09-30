@@ -189,6 +189,29 @@ func Test_objectTypeAccess_CheckObjectTypeExistByName(t *testing.T) {
 	})
 }
 
+func Test_objectTypeAccess_GetObjectTypeIdentitiesByIDsOrNames(t *testing.T) {
+	Convey("batch query object type identities", t, func() {
+		ota, smock := MockNewObjectTypeAccess(&common.AppSetting{})
+		sqlStr := "SELECT f_id, f_name FROM t_object_type WHERE f_kn_id = ? AND f_branch = ? " +
+			"AND (f_id IN (?,?) OR f_name IN (?,?))"
+		rows := sqlmock.NewRows([]string{"f_id", "f_name"}).
+			AddRow("ot1", "Object Type 1").
+			AddRow("ot2", "Object Type 2")
+		smock.ExpectQuery(sqlStr).
+			WithArgs("kn1", interfaces.MAIN_BRANCH, "ot1", "ot2", "Object Type 1", "Object Type 2").
+			WillReturnRows(rows)
+
+		result, err := ota.GetObjectTypeIdentitiesByIDsOrNames(testCtx, "kn1", interfaces.MAIN_BRANCH,
+			[]string{"ot1", "ot2"}, []string{"Object Type 1", "Object Type 2"})
+
+		So(err, ShouldBeNil)
+		So(result, ShouldHaveLength, 2)
+		So(result[0].OTID, ShouldEqual, "ot1")
+		So(result[1].OTName, ShouldEqual, "Object Type 2")
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 	Convey("test CreateObjectType\n", t, func() {
 		appSetting := &common.AppSetting{}
@@ -401,6 +424,28 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 	})
 }
 
+func Test_objectTypeAccess_CreateObjectTypes(t *testing.T) {
+	Convey("batch create object types", t, func() {
+		ota, smock := MockNewObjectTypeAccess(&common.AppSetting{})
+		second := *testObjectType
+		second.OTID = "ot2"
+		second.OTName = "Object Type 2"
+		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
+			"f_kn_id,f_branch,f_data_source,f_data_properties,f_logic_properties,f_primary_keys,"+
+			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
+		smock.ExpectBegin()
+		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
+		tx, err := ota.db.Begin()
+		So(err, ShouldBeNil)
+
+		err = ota.CreateObjectTypes(testCtx, tx, []*interfaces.ObjectType{testObjectType, &second})
+
+		So(err, ShouldBeNil)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 // Test_NewObjectTypeAccess is skipped because NewObjectTypeAccess requires a real database connection.
 // Unit tests use MockNewObjectTypeAccess instead.
 // func Test_NewObjectTypeAccess(t *testing.T) {
@@ -461,6 +506,68 @@ func Test_objectTypeAccess_CreateObjectTypeStatus(t *testing.T) {
 			}
 		})
 	})
+}
+
+func Test_objectTypeAccess_CreateObjectTypeStatuses(t *testing.T) {
+	Convey("batch create object type statuses", t, func() {
+		ota, smock := MockNewObjectTypeAccess(&common.AppSetting{})
+		second := *testObjectType
+		second.OTID = "ot2"
+		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_kn_id,f_branch,f_incremental_key,f_update_time) "+
+			"VALUES (?,?,?,?,?),(?,?,?,?,?)", OT_STATUS_TABLE_NAME)
+		smock.ExpectBegin()
+		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
+		tx, err := ota.db.Begin()
+		So(err, ShouldBeNil)
+
+		err = ota.CreateObjectTypeStatuses(testCtx, tx, []*interfaces.ObjectType{testObjectType, &second})
+
+		So(err, ShouldBeNil)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func Test_objectTypeAccess_UpdateObjectTypes(t *testing.T) {
+	Convey("batch update object types in bounded chunks", t, func() {
+		db, smock, err := sqlmock.New()
+		So(err, ShouldBeNil)
+		ota := &objectTypeAccess{appSetting: &common.AppSetting{}, db: db}
+		objectTypes := make([]*interfaces.ObjectType, 0, objectTypeUpdateBatchSize+1)
+		for index := 0; index < objectTypeUpdateBatchSize+1; index++ {
+			objectTypes = append(objectTypes, &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:            fmt.Sprintf("ot%d", index),
+					OTName:          fmt.Sprintf("Object Type %d", index),
+					DataSource:      &interfaces.ResourceInfo{},
+					DataProperties:  []*interfaces.DataProperty{},
+					LogicProperties: []*interfaces.LogicProperty{},
+					PrimaryKeys:     []string{"id"},
+				},
+				KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+			})
+		}
+		smock.ExpectBegin()
+		smock.ExpectExec("^UPDATE t_object_type SET ").WillReturnResult(sqlmock.NewResult(0, objectTypeUpdateBatchSize))
+		smock.ExpectExec("^UPDATE t_object_type SET ").WillReturnResult(sqlmock.NewResult(0, 1))
+		tx, err := db.Begin()
+		So(err, ShouldBeNil)
+
+		err = ota.UpdateObjectTypes(testCtx, tx, objectTypes)
+
+		So(err, ShouldBeNil)
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func TestUpdateObjectTypesRejectsMixedKnowledgeNetworkBatch(t *testing.T) {
+	ota := &objectTypeAccess{}
+	err := ota.UpdateObjectTypes(context.Background(), nil, []*interfaces.ObjectType{
+		{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
+		{KNID: "kn-2", Branch: interfaces.MAIN_BRANCH},
+	})
+	if err == nil {
+		t.Fatal("mixed knowledge network batch should be rejected before any SQL write")
+	}
 }
 
 func Test_objectTypeAccess_ListObjectTypes(t *testing.T) {

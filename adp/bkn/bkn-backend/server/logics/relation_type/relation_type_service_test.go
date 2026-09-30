@@ -718,6 +718,25 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			So(result[0], ShouldEqual, "rt1")
 		})
 
+		Convey("Success creating multiple relation types through batch access\n", func() {
+			relationTypes := []*interfaces.RelationType{
+				{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1", RTName: "relation_type1"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt2", RTName: "relation_type2"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+			}
+
+			smock.ExpectBegin()
+			rta.EXPECT().GetRelationTypeIDsByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"rt1", "rt2"}).Return(nil, nil)
+			rta.EXPECT().CreateRelationTypes(gomock.Any(), gomock.Any(), relationTypes).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			smock.ExpectCommit()
+
+			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Normal, true)
+
+			So(err, ShouldBeNil)
+			So(result, ShouldResemble, []string{"rt1", "rt2"})
+		})
+
 		Convey("Failed when relation type ID already exists in normal mode\n", func() {
 			relationTypes := []*interfaces.RelationType{
 				{
@@ -812,6 +831,25 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Overwrite, true)
 			So(err, ShouldBeNil)
 			So(len(result), ShouldEqual, 0)
+		})
+
+		Convey("Success overwriting multiple relation types through batch access\n", func() {
+			relationTypes := []*interfaces.RelationType{
+				{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1", RTName: "relation_type1"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt2", RTName: "relation_type2"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+			}
+
+			smock.ExpectBegin()
+			rta.EXPECT().GetRelationTypeIDsByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"rt1", "rt2"}).Return([]string{"rt1", "rt2"}, nil)
+			rta.EXPECT().UpdateRelationTypes(gomock.Any(), gomock.Any(), relationTypes).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			smock.ExpectCommit()
+
+			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Overwrite, true)
+
+			So(err, ShouldBeNil)
+			So(result, ShouldHaveLength, 0)
 		})
 
 		Convey("Success with Overwrite mode when same name but different ID - creates new record\n", func() {

@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -41,6 +40,8 @@ var (
 	metricServiceOnce sync.Once
 	metricServiceInst interfaces.MetricService
 )
+
+const metricBatchDependencyQuerySize = 500
 
 type metricService struct {
 	appSetting *common.AppSetting
@@ -92,7 +93,7 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 			word := strings.Join(arr, "\n")
 			words = append(words, word)
 		}
-		dftModel, err := ms.mfs.GetDefaultModel(ctx)
+		dftModel, err := model_factory.GetDefaultModel(ctx, ms.mfs)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -112,24 +113,21 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 		}
 	}
 
+	documents := make([]vega_backend.DatasetDocument, 0, len(metrics))
 	for _, def := range metrics {
 		docid := interfaces.GenerateConceptDocuemtnID(def.KnID, interfaces.MODULE_TYPE_METRIC, def.ID, def.Branch)
 		def.ModuleType = interfaces.MODULE_TYPE_METRIC
 
-		docBytes, err := sonic.Marshal(def)
+		document, err := vega_backend.NewDatasetDocument(docid, def)
 		if err != nil {
 			return err
 		}
-		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
-			return err
-		}
-		doc["_id"] = docid
-		if err := ms.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
-			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
-			span.SetStatus(codes.Error, "指标概念索引写入失败")
-			return err
-		}
+		documents = append(documents, document)
+	}
+	if err := vega_backend.WriteDatasetDocuments(ctx, ms.vbs, interfaces.BKN_DATASET_ID, documents); err != nil {
+		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+		span.SetStatus(codes.Error, "指标概念索引写入失败")
+		return err
 	}
 	return nil
 }
@@ -254,10 +252,26 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 	ids = make([]string, 0, len(creates)+len(updates))
 
 	for _, def := range updates {
-		if err := ms.UpdateMetric(ctx, tx, def, strictMode); err != nil {
+		ids = append(ids, def.ID)
+	}
+	if len(updates) == 1 {
+		if err := ms.UpdateMetric(ctx, tx, updates[0], strictMode); err != nil {
 			return nil, err
 		}
-		ids = append(ids, def.ID)
+	} else if len(updates) > 1 {
+		if err = ms.prepareMetricBatchUpdates(ctx, tx, updates); err != nil {
+			return nil, err
+		}
+		if err = ms.ma.UpdateMetrics(ctx, tx, updates); err != nil {
+			logger.Errorf("UpdateMetrics error: %s", err.Error())
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+		}
+		if err = ms.InsertDatasetData(ctx, updates); err != nil {
+			logger.Errorf("InsertDatasetData after batch update: %s", err.Error())
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 
 	if len(creates) == 0 {
@@ -265,13 +279,36 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 		return ids, nil
 	}
 
-	for _, def := range creates {
-		err = ms.ma.CreateMetric(ctx, tx, def)
+	if len(creates) == 1 {
+		err = ms.ma.CreateMetric(ctx, tx, creates[0])
 		if err != nil {
 			logger.Errorf("CreateMetric error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建指标失败")
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
 		}
+	} else {
+		err = ms.ma.CreateMetrics(ctx, tx, creates)
+		if err != nil {
+			logger.Errorf("CreateMetrics error: %s", err.Error())
+			span.SetStatus(codes.Error, "批量创建指标失败")
+			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
+				metric := creates[0]
+				if strings.Contains(constraint, "name") {
+					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+						berrors.BknBackend_Metric_Duplicated_Name).
+						WithErrorDetails(metricInvalidParameterDetail(ctx,
+							"MetricNameAlreadyExists", map[string]any{"name": metric.Name}))
+				}
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_Metric_InvalidParameter).
+					WithErrorDetails(metricInvalidParameterDetail(ctx,
+						"MetricIDAlreadyExists", map[string]any{"id": metric.ID, "name": metric.Name}))
+			}
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+		}
+	}
+	for _, def := range creates {
 		ids = append(ids, def.ID)
 	}
 	createdIDs := make([]string, 0, len(creates))
@@ -297,10 +334,81 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 	return ids, nil
 }
 
+func (ms *metricService) prepareMetricBatchUpdates(ctx context.Context, tx *sql.Tx,
+	updates []*interfaces.MetricDefinition) error {
+	if permission.KNImportPermissionPrechecked(ctx) {
+		return nil
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	knID, branch := updates[0].KnID, updates[0].Branch
+	ids := make([]string, 0, len(updates))
+	for _, definition := range updates {
+		if definition.KnID != knID || definition.Branch != branch {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+				berrors.BknBackend_Metric_InvalidParameter)
+		}
+		ids = append(ids, definition.ID)
+	}
+	previousByID := make(map[string]*interfaces.MetricDefinition, len(updates))
+	for start := 0; start < len(ids); start += metricBatchDependencyQuerySize {
+		end := min(start+metricBatchDependencyQuerySize, len(ids))
+		previousDefinitions, err := ms.ma.GetMetricsByIDs(ctx, knID, branch, ids[start:end])
+		if err != nil {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+		}
+		for _, previous := range previousDefinitions {
+			previousByID[previous.ID] = previous
+		}
+	}
+	for _, definition := range updates {
+		previous := previousByID[definition.ID]
+		if previous == nil {
+			err := fmt.Errorf("metric %s not found while preparing batch update", definition.ID)
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+		}
+		if metricDependenciesChanged(previous, definition) {
+			if err := ms.authorizeMetricDependencies(ctx, tx, definition); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // handleMetricImportMode splits metrics into creates and updates by import_mode (overwrite aligned with object types).
 func (ms *metricService) handleMetricImportMode(ctx context.Context, mode string, metrics []*interfaces.MetricDefinition) ([]*interfaces.MetricDefinition, []*interfaces.MetricDefinition, error) {
 	creates := make([]*interfaces.MetricDefinition, 0, len(metrics))
 	updates := make([]*interfaces.MetricDefinition, 0)
+	existingNamesByID := map[string]string{}
+	existingIDsByName := map[string]string{}
+	if len(metrics) > 1 {
+		knID, branch := metrics[0].KnID, metrics[0].Branch
+		ids := make([]string, 0, len(metrics))
+		names := make([]string, 0, len(metrics))
+		for _, metric := range metrics {
+			if metric.KnID != knID || metric.Branch != branch {
+				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_Metric_InvalidParameter)
+			}
+			if id := strings.TrimSpace(metric.ID); id != "" {
+				ids = append(ids, id)
+			}
+			names = append(names, metric.Name)
+		}
+		existing, err := ms.ma.GetMetricIdentitiesByIDsOrNames(ctx, knID, branch, ids, names)
+		if err != nil {
+			return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_Metric_InternalError_CheckMetricIfExistFailed).WithErrorDetails(err.Error())
+		}
+		for _, metric := range existing {
+			existingNamesByID[metric.ID] = metric.Name
+			existingIDsByName[metric.Name] = metric.ID
+		}
+	}
 
 	for _, m := range metrics {
 		knID, branch := m.KnID, m.Branch
@@ -309,17 +417,22 @@ func (ms *metricService) handleMetricImportMode(ctx context.Context, mode string
 		var idExist, nameExist bool
 		var existNameByID, existIDByName string
 		var qerr error
-		if id != "" {
-			existNameByID, idExist, qerr = ms.ma.CheckMetricExistByID(ctx, knID, branch, id)
+		if len(metrics) == 1 {
+			if id != "" {
+				existNameByID, idExist, qerr = ms.ma.CheckMetricExistByID(ctx, knID, branch, id)
+				if qerr != nil {
+					return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+						berrors.BknBackend_Metric_InternalError_CheckMetricIfExistFailed).WithErrorDetails(qerr.Error())
+				}
+			}
+			existIDByName, nameExist, qerr = ms.ma.CheckMetricExistByName(ctx, knID, branch, m.Name)
 			if qerr != nil {
 				return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_Metric_InternalError_CheckMetricIfExistFailed).WithErrorDetails(qerr.Error())
 			}
-		}
-		existIDByName, nameExist, qerr = ms.ma.CheckMetricExistByName(ctx, knID, branch, m.Name)
-		if qerr != nil {
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_Metric_InternalError_CheckMetricIfExistFailed).WithErrorDetails(qerr.Error())
+		} else {
+			existNameByID, idExist = existingNamesByID[id]
+			existIDByName, nameExist = existingIDsByName[m.Name]
 		}
 
 		if idExist || nameExist {
@@ -748,7 +861,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 						berrors.BknBackend_Metric_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := ms.mfs.GetDefaultModel(ctx)
+				dftModel, err := model_factory.GetDefaultModel(ctx, ms.mfs)
 				if err != nil {
 					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_Metric_InternalError).

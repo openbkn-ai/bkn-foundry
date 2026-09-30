@@ -296,10 +296,12 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	}
 
 	// Create.
-	otIDs := []string{}
+	otIDs := make([]string, 0, len(createObjectTypes))
 	for _, objectType := range createObjectTypes {
 		otIDs = append(otIDs, objectType.OTID)
-		err = ots.ota.CreateObjectType(ctx, tx, objectType)
+	}
+	if len(createObjectTypes) == 1 {
+		err = ots.ota.CreateObjectType(ctx, tx, createObjectTypes[0])
 		if err != nil {
 			logger.Errorf("CreateObjectType error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建对象类失败")
@@ -308,8 +310,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
-
-		err = ots.ota.CreateObjectTypeStatus(ctx, tx, objectType)
+		err = ots.ota.CreateObjectTypeStatus(ctx, tx, createObjectTypes[0])
 		if err != nil {
 			logger.Errorf("CreateObjectTypeStatus error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建对象类状态失败")
@@ -318,7 +319,39 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
+	} else if len(createObjectTypes) > 1 {
+		err = ots.ota.CreateObjectTypes(ctx, tx, createObjectTypes)
+		if err != nil {
+			logger.Errorf("CreateObjectTypes error: %s", err.Error())
+			span.SetStatus(codes.Error, "批量创建对象类失败")
+			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
+				objectType := createObjectTypes[0]
+				if strings.Contains(constraint, "name") {
+					errDetails := fmt.Sprintf("object type name '%s' already exists", objectType.OTName)
+					return []string{}, rest.NewHTTPError(ctx, http.StatusForbidden,
+						berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
+						WithDescription(map[string]any{"name": objectType.OTName}).
+						WithErrorDetails(errDetails)
+				}
+				errDetails := fmt.Sprintf("The object type with id [%s] already exists!", objectType.OTID)
+				return []string{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_ObjectType_ObjectTypeIDExisted).WithErrorDetails(errDetails)
+			}
+			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).
+				WithErrorDetails(err.Error())
+		}
+		err = ots.ota.CreateObjectTypeStatuses(ctx, tx, createObjectTypes)
+		if err != nil {
+			logger.Errorf("CreateObjectTypeStatuses error: %s", err.Error())
+			span.SetStatus(codes.Error, "批量创建对象类状态失败")
+			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).
+				WithErrorDetails(err.Error())
+		}
+	}
 
+	for _, objectType := range createObjectTypes {
 		// Create object type-to-group relationships as needed.
 		if needCreateConceptGroupRelation {
 			// Create missing object type-to-group relationships after retrieving existing bindings.
@@ -340,10 +373,27 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		interfaces.RESOURCE_TYPE_KN, parentItems)
 
 	// Update.
-	for _, objectType := range updateObjectTypes {
-		err = ots.UpdateObjectType(ctx, tx, objectType, strictMode)
+	if len(updateObjectTypes) == 1 {
+		err = ots.updateObjectType(ctx, tx, updateObjectTypes[0], strictMode,
+			needCreateConceptGroupRelation)
 		if err != nil {
 			return []string{}, err
+		}
+	} else if len(updateObjectTypes) > 1 {
+		err = ots.ota.UpdateObjectTypes(ctx, tx, updateObjectTypes)
+		if err != nil {
+			logger.Errorf("UpdateObjectTypes error: %s", err.Error())
+			span.SetStatus(codes.Error, "批量修改对象类失败")
+			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).
+				WithErrorDetails(err.Error())
+		}
+		if needCreateConceptGroupRelation {
+			for _, objectType := range updateObjectTypes {
+				if err = ots.syncObjectGroups(ctx, tx, *objectType, currentTime, strictMode); err != nil {
+					return []string{}, err
+				}
+			}
 		}
 	}
 
@@ -1046,6 +1096,11 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 
 // Update object types.
 func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType, strictMode bool) error {
+	return ots.updateObjectType(ctx, tx, objectType, strictMode, true)
+}
+
+func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
+	objectType *interfaces.ObjectType, strictMode bool, syncConceptGroupRelations bool) error {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()
@@ -1126,9 +1181,12 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 			WithErrorDetails(err.Error())
 	}
 
-	// 4. Synchronize group relationships by full replacement.
-	if err := ots.syncObjectGroups(ctx, tx, *objectType, currentTime, strictMode); err != nil {
-		return err
+	// Standalone object updates retain full-replacement group semantics. Whole-network import
+	// defers relationships to its normalized additive membership plan.
+	if syncConceptGroupRelations {
+		if err := ots.syncObjectGroups(ctx, tx, *objectType, currentTime, strictMode); err != nil {
+			return err
+		}
 	}
 
 	err = ots.InsertDatasetData(ctx, []*interfaces.ObjectType{objectType})
@@ -1437,20 +1495,53 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 
 	creates := []*interfaces.ObjectType{}
 	updates := []*interfaces.ObjectType{}
+	var err error
+	existingNamesByID := map[string]string{}
+	existingIDsByName := map[string]string{}
+	if len(objectTypes) > 1 {
+		knID, branch := objectTypes[0].KNID, objectTypes[0].Branch
+		ids := make([]string, 0, len(objectTypes))
+		names := make([]string, 0, len(objectTypes))
+		for _, objectType := range objectTypes {
+			if objectType.KNID != knID || objectType.Branch != branch {
+				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_ObjectType_InvalidParameter)
+			}
+			ids = append(ids, objectType.OTID)
+			names = append(names, objectType.OTName)
+		}
+		existing, err := ots.ota.GetObjectTypeIdentitiesByIDsOrNames(ctx, knID, branch, ids, names)
+		if err != nil {
+			otellog.LogError(ctx, fmt.Sprintf("在业务知识网络[%s]下批量查询对象类标识失败", knID), err)
+			return creates, updates, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed).
+				WithErrorDetails(err.Error())
+		}
+		for _, objectType := range existing {
+			existingNamesByID[objectType.OTID] = objectType.OTName
+			existingIDsByName[objectType.OTName] = objectType.OTID
+		}
+	}
 
 	// 3. When the submitted model ID is not empty, validate conflicts with existing model IDs.
 	for _, objectType := range objectTypes {
 		creates = append(creates, objectType)
-		idExist := false
-		_, idExist, err := ots.CheckObjectTypeExistByID(ctx, objectType.KNID, objectType.Branch, objectType.OTID)
-		if err != nil {
-			return creates, updates, err
-		}
+		var idExist, nameExist bool
+		var existID string
+		if len(objectTypes) == 1 {
+			_, idExist, err = ots.CheckObjectTypeExistByID(ctx, objectType.KNID, objectType.Branch, objectType.OTID)
+			if err != nil {
+				return creates, updates, err
+			}
 
-		// Validate conflicts between the request and existing model names.
-		existID, nameExist, err := ots.CheckObjectTypeExistByName(ctx, objectType.KNID, objectType.Branch, objectType.OTName)
-		if err != nil {
-			return creates, updates, err
+			// Validate conflicts between the request and existing model names.
+			existID, nameExist, err = ots.CheckObjectTypeExistByName(ctx, objectType.KNID, objectType.Branch, objectType.OTName)
+			if err != nil {
+				return creates, updates, err
+			}
+		} else {
+			_, idExist = existingNamesByID[objectType.OTID]
+			existID, nameExist = existingIDsByName[objectType.OTName]
 		}
 
 		// Handle mode: ignore removes it from results, overwrite updates it, and normal returns an error.
@@ -1583,7 +1674,7 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			words = append(words, word)
 		}
 
-		dftModel, err := ots.mfs.GetDefaultModel(ctx)
+		dftModel, err := model_factory.GetDefaultModel(ctx, ots.mfs)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -1607,52 +1698,38 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 		}
 	}
 
+	documents := make([]vega_backend.DatasetDocument, 0, len(objectTypes))
 	for _, objectType := range objectTypes {
 		docid := interfaces.GenerateConceptDocuemtnID(objectType.KNID, interfaces.MODULE_TYPE_OBJECT_TYPE,
 			objectType.OTID, objectType.Branch)
 		objectType.ModuleType = interfaces.MODULE_TYPE_OBJECT_TYPE
 
-		// Convert to map for dataset
-		docBytes, err := sonic.Marshal(objectType)
+		document, err := vega_backend.NewDatasetDocument(docid, objectType)
 		if err != nil {
-			logger.Errorf("Failed to marshal ObjectType: %s", err.Error())
-			span.SetStatus(codes.Error, "序列化对象类失败")
+			logger.Errorf("Failed to build object type index document: %s", err.Error())
+			span.SetStatus(codes.Error, "序列化对象类索引失败")
 			return err
 		}
-
-		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
-			logger.Errorf("Failed to unmarshal ObjectType: %s", err.Error())
-			span.SetStatus(codes.Error, "反序列化对象类失败")
-			return err
-		}
-		// A per-response marker, never part of the indexed definition.
-		delete(doc, "data_source_metadata_unavailable")
-
-		// Serialize logic_properties[].parameters to JSON string
-		if logicProps, ok := doc["logic_properties"].([]any); ok {
-			for _, lp := range logicProps {
-				if lpMap, ok := lp.(map[string]any); ok {
-					if params, exists := lpMap["parameters"]; exists {
-						paramsBytes, err := sonic.Marshal(params)
+		delete(document.Document, "data_source_metadata_unavailable")
+		if properties, ok := document.Document["logic_properties"].([]any); ok {
+			for _, property := range properties {
+				if value, ok := property.(map[string]any); ok {
+					if parameters, exists := value["parameters"]; exists {
+						encoded, err := sonic.Marshal(parameters)
 						if err != nil {
-							logger.Errorf("Failed to marshal logic_properties parameters: %s", err.Error())
-							span.SetStatus(codes.Error, "序列化逻辑属性参数失败")
 							return err
 						}
-						lpMap["parameters"] = string(paramsBytes)
+						value["parameters"] = string(encoded)
 					}
 				}
 			}
 		}
-
-		// Set document ID
-		doc["_id"] = docid
-		if err := ots.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc); err != nil {
-			logger.Errorf("WriteDatasetDocument error: %s", err.Error())
-			span.SetStatus(codes.Error, "对象类概念索引写入失败")
-			return err
-		}
+		documents = append(documents, document)
+	}
+	if err := vega_backend.WriteDatasetDocuments(ctx, ots.vbs, interfaces.BKN_DATASET_ID, documents); err != nil {
+		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
+		span.SetStatus(codes.Error, "对象类概念索引写入失败")
+		return err
 	}
 
 	return nil
@@ -1696,7 +1773,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := ots.mfs.GetDefaultModel(ctx)
+				dftModel, err := model_factory.GetDefaultModel(ctx, ots.mfs)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")

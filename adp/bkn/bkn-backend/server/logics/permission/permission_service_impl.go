@@ -32,6 +32,8 @@ const maxPropertyLevelsPerRequest = 200
 
 const maxRowFilterObjectTypesPerRequest = 100
 
+const safeMutationBatchSize = 200
+
 func localizedPermissionDetail(ctx context.Context, key string) string {
 	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail."+key, nil)
 }
@@ -453,12 +455,15 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 		})
 	}
 
-	err := ps.pa.CreateResources(ctx, policies)
-	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err.Error())
-		otellog.LogError(ctx, "CreateResources failed", httpErr)
-		return httpErr
+	for start := 0; start < len(policies); start += safeMutationBatchSize {
+		end := min(start+safeMutationBatchSize, len(policies))
+		TrackCreatedPolicies(ctx, resources[start:end])
+		if err := ps.pa.CreateResources(ctx, policies[start:end]); err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err.Error())
+			otellog.LogError(ctx, "CreateResources failed", httpErr)
+			return httpErr
+		}
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -483,12 +488,14 @@ func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceTy
 		})
 	}
 
-	err := ps.pa.DeleteResources(ctx, resources)
-	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
-		otellog.LogError(ctx, "DeleteResources failed", httpErr)
-		return httpErr
+	for start := 0; start < len(resources); start += safeMutationBatchSize {
+		end := min(start+safeMutationBatchSize, len(resources))
+		if err := ps.pa.DeleteResources(ctx, resources[start:end]); err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
+			otellog.LogError(ctx, "DeleteResources failed", httpErr)
+			return httpErr
+		}
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -504,11 +511,18 @@ func (ps *PermissionServiceImpl) UpsertResourceParents(ctx context.Context, reso
 		span.SetStatus(codes.Ok, "")
 		return nil
 	}
-	if err := ps.pa.UpsertResourceParents(ctx, resourceType, parentType, items); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err)
-		otellog.LogError(ctx, "UpsertResourceParents failed", httpErr)
-		return httpErr
+	for start := 0; start < len(items); start += safeMutationBatchSize {
+		end := min(start+safeMutationBatchSize, len(items))
+		batch := items[start:end]
+		// Track before the remote call because an error response can still be
+		// ambiguous after Safe has accepted part of the request.
+		TrackResourceParents(ctx, resourceType, parentType, batch)
+		if err := ps.pa.UpsertResourceParents(ctx, resourceType, parentType, batch); err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err)
+			otellog.LogError(ctx, "UpsertResourceParents failed", httpErr)
+			return httpErr
+		}
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -524,11 +538,14 @@ func (ps *PermissionServiceImpl) DeleteResourceParents(ctx context.Context, reso
 		span.SetStatus(codes.Ok, "")
 		return nil
 	}
-	if err := ps.pa.DeleteResourceParents(ctx, resourceType, resourceIDs); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
-		otellog.LogError(ctx, "DeleteResourceParents failed", httpErr)
-		return httpErr
+	for start := 0; start < len(resourceIDs); start += safeMutationBatchSize {
+		end := min(start+safeMutationBatchSize, len(resourceIDs))
+		if err := ps.pa.DeleteResourceParents(ctx, resourceType, resourceIDs[start:end]); err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
+			otellog.LogError(ctx, "DeleteResourceParents failed", httpErr)
+			return httpErr
+		}
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil

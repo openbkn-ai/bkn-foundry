@@ -1948,7 +1948,7 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 			smock.ExpectBegin()
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, 2, nil)
 			cga.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any(), gomock.Any()).Return([]interfaces.ConceptGroupRelation{}, nil)
-			cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			cga.EXPECT().CreateConceptGroupRelations(gomock.Any(), gomock.Any(), gomock.Len(2)).Return(nil)
 			smock.ExpectCommit()
 
 			cgrIDs, err := service.AddObjectTypesToConceptGroup(ctx, nil, knID, branch, cgID, otIDs, importMode, true)

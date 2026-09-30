@@ -537,6 +537,9 @@ func TestPrepareProxyImportPreflightsRelationAgainstExistingBoundObject(t *testi
 		t.Fatal(err)
 	}
 	defer service.releaseProxyLock(t.Context(), plan)
+	if plan.baseline == nil || len(plan.baseline.ObjectTypes) != 1 || plan.baseline.ObjectTypes[0] != boundObject {
+		t.Fatal("overwrite preflight did not retain the committed index snapshot")
+	}
 	if len(mpa.checked) != 3 {
 		t.Fatalf("import preflight sources = %#v, want complete candidate source set", mpa.checked)
 	}

@@ -15,11 +15,14 @@ import (
 type ConceptGroupAccess interface {
 	CheckConceptGroupExistByID(ctx context.Context, knID string, branch string, cgID string) (string, bool, error)
 	CheckConceptGroupExistByName(ctx context.Context, knID string, branch string, cgName string) (string, bool, error)
+	GetConceptGroupIdentitiesByIDsOrNames(ctx context.Context, knID string, branch string, cgIDs, cgNames []string) ([]*ConceptGroup, error)
 	CreateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *ConceptGroup) error
+	CreateConceptGroups(ctx context.Context, tx *sql.Tx, conceptGroups []*ConceptGroup) error
 	ListConceptGroups(ctx context.Context, query ConceptGroupsQueryParams) ([]*ConceptGroup, error)
 	ListConceptGroupTags(ctx context.Context, query ConceptGroupsQueryParams) ([]string, error)
 	GetConceptGroupByID(ctx context.Context, knID string, branch string, cgID string) (*ConceptGroup, error)
 	UpdateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *ConceptGroup) error
+	UpdateConceptGroups(ctx context.Context, tx *sql.Tx, conceptGroups []*ConceptGroup) error
 	UpdateConceptGroupDetail(ctx context.Context, knID string, branch string, cgID string, detail string) error
 	DeleteConceptGroupByID(ctx context.Context, tx *sql.Tx, knID string, branch string, cgID string) (int64, error)
 
@@ -32,6 +35,7 @@ type ConceptGroupAccess interface {
 
 	ListConceptGroupRelations(ctx context.Context, tx *sql.Tx, query ConceptGroupRelationsQueryParams) ([]ConceptGroupRelation, error)
 	CreateConceptGroupRelation(ctx context.Context, tx *sql.Tx, kn *ConceptGroupRelation) error
+	CreateConceptGroupRelations(ctx context.Context, tx *sql.Tx, relations []*ConceptGroupRelation) error
 	DeleteObjectTypesFromGroup(ctx context.Context, tx *sql.Tx, query ConceptGroupRelationsQueryParams) (int64, error)
 	// DeleteObjectTypesFromGroup(ctx context.Context, tx *sql.Tx, knID string, branch string, cgID string, otIDs []string) (int64, error)
 

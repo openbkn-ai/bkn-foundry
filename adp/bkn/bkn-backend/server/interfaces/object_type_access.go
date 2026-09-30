@@ -15,9 +15,13 @@ import (
 type ObjectTypeAccess interface {
 	CheckObjectTypeExistByID(ctx context.Context, knID string, branch string, otID string) (string, bool, error)
 	CheckObjectTypeExistByName(ctx context.Context, knID string, branch string, otName string) (string, bool, error)
+	GetObjectTypeIdentitiesByIDsOrNames(ctx context.Context, knID string, branch string,
+		otIDs, otNames []string) ([]*ObjectType, error)
 
 	CreateObjectType(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
 	CreateObjectTypeStatus(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
+	CreateObjectTypes(ctx context.Context, tx *sql.Tx, objectTypes []*ObjectType) error
+	CreateObjectTypeStatuses(ctx context.Context, tx *sql.Tx, objectTypes []*ObjectType) error
 	ListObjectTypes(ctx context.Context, tx *sql.Tx, query ObjectTypesQueryParams) ([]*ObjectType, error)
 	ListObjectTypeSummaries(ctx context.Context, tx *sql.Tx, query ObjectTypesQueryParams) ([]*ObjectType, error)
 	ListObjectTypeLogicProperties(ctx context.Context, query ObjectTypesQueryParams) ([]*ObjectType, error)
@@ -25,6 +29,7 @@ type ObjectTypeAccess interface {
 	GetObjectTypeByID(ctx context.Context, tx *sql.Tx, knID string, branch string, otID string) (*ObjectType, error)
 	GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) ([]*ObjectType, error)
 	UpdateObjectType(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
+	UpdateObjectTypes(ctx context.Context, tx *sql.Tx, objectTypes []*ObjectType) error
 	DeleteObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) (int64, error)
 	DeleteObjectTypeStatusByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, otIDs []string) (int64, error)
 	DeleteObjectTypesByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) (int64, error)

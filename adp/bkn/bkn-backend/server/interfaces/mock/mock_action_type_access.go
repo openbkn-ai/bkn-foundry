@@ -88,6 +88,20 @@ func (mr *MockActionTypeAccessMockRecorder) CreateActionType(ctx, tx, actionType
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateActionType", reflect.TypeOf((*MockActionTypeAccess)(nil).CreateActionType), ctx, tx, actionType)
 }
 
+// CreateActionTypes mocks base method.
+func (m *MockActionTypeAccess) CreateActionTypes(ctx context.Context, tx *sql.Tx, actionTypes []*interfaces.ActionType) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateActionTypes", ctx, tx, actionTypes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateActionTypes indicates an expected call of CreateActionTypes.
+func (mr *MockActionTypeAccessMockRecorder) CreateActionTypes(ctx, tx, actionTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateActionTypes", reflect.TypeOf((*MockActionTypeAccess)(nil).CreateActionTypes), ctx, tx, actionTypes)
+}
+
 // DeleteActionTypesByIDs mocks base method.
 func (m *MockActionTypeAccess) DeleteActionTypesByIDs(ctx context.Context, tx *sql.Tx, knID, branch string, atIDs []string) (int64, error) {
 	m.ctrl.T.Helper()
@@ -131,6 +145,21 @@ func (m *MockActionTypeAccess) GetActionTypeIDsByKnID(ctx context.Context, knID,
 func (mr *MockActionTypeAccessMockRecorder) GetActionTypeIDsByKnID(ctx, knID, branch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActionTypeIDsByKnID", reflect.TypeOf((*MockActionTypeAccess)(nil).GetActionTypeIDsByKnID), ctx, knID, branch)
+}
+
+// GetActionTypeIdentitiesByIDsOrNames mocks base method.
+func (m *MockActionTypeAccess) GetActionTypeIdentitiesByIDsOrNames(ctx context.Context, knID, branch string, atIDs, atNames []string) ([]*interfaces.ActionType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetActionTypeIdentitiesByIDsOrNames", ctx, knID, branch, atIDs, atNames)
+	ret0, _ := ret[0].([]*interfaces.ActionType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetActionTypeIdentitiesByIDsOrNames indicates an expected call of GetActionTypeIdentitiesByIDsOrNames.
+func (mr *MockActionTypeAccessMockRecorder) GetActionTypeIdentitiesByIDsOrNames(ctx, knID, branch, atIDs, atNames any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActionTypeIdentitiesByIDsOrNames", reflect.TypeOf((*MockActionTypeAccess)(nil).GetActionTypeIdentitiesByIDsOrNames), ctx, knID, branch, atIDs, atNames)
 }
 
 // GetActionTypesByIDs mocks base method.
@@ -220,4 +249,18 @@ func (m *MockActionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx,
 func (mr *MockActionTypeAccessMockRecorder) UpdateActionType(ctx, tx, actionType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateActionType", reflect.TypeOf((*MockActionTypeAccess)(nil).UpdateActionType), ctx, tx, actionType)
+}
+
+// UpdateActionTypes mocks base method.
+func (m *MockActionTypeAccess) UpdateActionTypes(ctx context.Context, tx *sql.Tx, actionTypes []*interfaces.ActionType) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateActionTypes", ctx, tx, actionTypes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateActionTypes indicates an expected call of UpdateActionTypes.
+func (mr *MockActionTypeAccessMockRecorder) UpdateActionTypes(ctx, tx, actionTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateActionTypes", reflect.TypeOf((*MockActionTypeAccess)(nil).UpdateActionTypes), ctx, tx, actionTypes)
 }

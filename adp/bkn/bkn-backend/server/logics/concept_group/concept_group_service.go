@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -58,6 +57,77 @@ type conceptGroupService struct {
 	rts        interfaces.RelationTypeService
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
+}
+
+type conceptGroupIdentityCacheContextKey struct{}
+
+type conceptGroupIdentityKey struct {
+	knID   string
+	branch string
+	value  string
+}
+
+type conceptGroupIdentityCache struct {
+	byID   map[conceptGroupIdentityKey]string
+	byName map[conceptGroupIdentityKey]string
+}
+
+func newConceptGroupIdentityCache() *conceptGroupIdentityCache {
+	return &conceptGroupIdentityCache{
+		byID:   make(map[conceptGroupIdentityKey]string),
+		byName: make(map[conceptGroupIdentityKey]string),
+	}
+}
+
+func (cache *conceptGroupIdentityCache) record(conceptGroup *interfaces.ConceptGroup) {
+	idKey := conceptGroupIdentityKey{knID: conceptGroup.KNID, branch: conceptGroup.Branch, value: conceptGroup.CGID}
+	if oldName, exists := cache.byID[idKey]; exists && oldName != conceptGroup.CGName {
+		oldNameKey := conceptGroupIdentityKey{knID: conceptGroup.KNID, branch: conceptGroup.Branch, value: oldName}
+		if cache.byName[oldNameKey] == conceptGroup.CGID {
+			delete(cache.byName, oldNameKey)
+		}
+	}
+	cache.byID[idKey] = conceptGroup.CGName
+	cache.byName[conceptGroupIdentityKey{
+		knID: conceptGroup.KNID, branch: conceptGroup.Branch, value: conceptGroup.CGName,
+	}] = conceptGroup.CGID
+}
+
+type conceptGroupIdentityRequest struct {
+	ids   []string
+	names []string
+}
+
+func (cgs *conceptGroupService) withConceptGroupIdentityCache(ctx context.Context,
+	conceptGroups []*interfaces.ConceptGroup) (context.Context, error) {
+	requests := make(map[conceptGroupIdentityKey]*conceptGroupIdentityRequest)
+	for _, conceptGroup := range conceptGroups {
+		scope := conceptGroupIdentityKey{knID: conceptGroup.KNID, branch: conceptGroup.Branch}
+		request := requests[scope]
+		if request == nil {
+			request = &conceptGroupIdentityRequest{}
+			requests[scope] = request
+		}
+		request.ids = append(request.ids, conceptGroup.CGID)
+		request.names = append(request.names, conceptGroup.CGName)
+	}
+
+	cache := newConceptGroupIdentityCache()
+	for scope, request := range requests {
+		identities, err := cgs.cga.GetConceptGroupIdentitiesByIDsOrNames(
+			ctx, scope.knID, scope.branch, request.ids, request.names)
+		if err != nil {
+			return ctx, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed).
+				WithErrorDetails(err.Error())
+		}
+		for _, identity := range identities {
+			identity.KNID = scope.knID
+			identity.Branch = scope.branch
+			cache.record(identity)
+		}
+	}
+	return context.WithValue(ctx, conceptGroupIdentityCacheContextKey{}, cache), nil
 }
 
 func NewConceptGroupService(appSetting *common.AppSetting) interfaces.ConceptGroupService {
@@ -112,6 +182,230 @@ func (cgs *conceptGroupService) CheckConceptGroupExistByName(ctx context.Context
 
 	span.SetStatus(codes.Ok, "")
 	return cgID, exist, nil
+}
+
+// CreateConceptGroups persists normalized import groups as one bounded workflow. Inputs that still
+// contain nested definitions retain the standalone behavior; normalized whole-network imports batch
+// conflict decisions, base records, Safe parents, vector generation, and Vega dispatch.
+func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql.Tx,
+	conceptGroups []*interfaces.ConceptGroup, mode string, strictMode bool) (ids []string, err error) {
+	if len(conceptGroups) == 0 {
+		return []string{}, nil
+	}
+	useStandalonePath := false
+	for _, conceptGroup := range conceptGroups {
+		if len(conceptGroup.ObjectTypes)+len(conceptGroup.RelationTypes)+len(conceptGroup.ActionTypes) > 0 {
+			useStandalonePath = true
+			break
+		}
+	}
+	if useStandalonePath {
+		ids = make([]string, 0, len(conceptGroups))
+		for _, conceptGroup := range conceptGroups {
+			id, createErr := cgs.CreateConceptGroup(ctx, tx, conceptGroup, mode, strictMode)
+			if createErr != nil {
+				return nil, createErr
+			}
+			ids = append(ids, id)
+		}
+		return ids, nil
+	}
+
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CreateConceptGroups")
+	defer span.End()
+	ctx, parentTracker, trackerOwner := permission.WithResourceParentTracker(ctx)
+	defer func() {
+		if trackerOwner && err != nil {
+			_ = parentTracker.Cleanup(ctx, cgs.ps)
+		}
+	}()
+
+	if tx == nil {
+		tx, err = cgs.db.Begin()
+		if err != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
+				WithErrorDetails(err.Error())
+		}
+		defer func() {
+			if err == nil {
+				err = tx.Commit()
+				return
+			}
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				otellog.LogError(ctx, "CreateConceptGroups transaction rollback failed", rollbackErr)
+			}
+		}()
+	}
+
+	if !permission.KNImportPermissionPrechecked(ctx) {
+		if err = cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: interfaces.RESOURCE_TYPE_KN,
+			ID:   conceptGroups[0].KNID,
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+			return nil, err
+		}
+	}
+
+	currentTime := time.Now().UnixMilli()
+	accountInfo := interfaces.AccountInfo{}
+	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	}
+	for _, conceptGroup := range conceptGroups {
+		conceptGroup.CGID, err = permission.PrepareKNChildResourceID(ctx, conceptGroup.CGID)
+		if err != nil {
+			return nil, err
+		}
+		if err = permission.ValidateKNChildAuthorizationIDs(ctx, conceptGroup.KNID,
+			[]string{conceptGroup.CGID}); err != nil {
+			return nil, err
+		}
+		conceptGroup.Creator = accountInfo
+		conceptGroup.Updater = accountInfo
+		conceptGroup.CreateTime = currentTime
+		conceptGroup.UpdateTime = currentTime
+		if conceptGroup.BKNRawContent == "" {
+			conceptGroup.BKNRawContent = bknsdk.SerializeConceptGroup(
+				logics.ToBKNConceptGroup(conceptGroup), nil)
+		}
+	}
+
+	ctx, err = cgs.withConceptGroupIdentityCache(ctx, conceptGroups)
+	if err != nil {
+		return nil, err
+	}
+	cache := ctx.Value(conceptGroupIdentityCacheContextKey{}).(*conceptGroupIdentityCache)
+	createGroups := make([]*interfaces.ConceptGroup, 0, len(conceptGroups))
+	updateGroups := make([]*interfaces.ConceptGroup, 0, len(conceptGroups))
+	ids = make([]string, 0, len(conceptGroups))
+	for _, conceptGroup := range conceptGroups {
+		isCreate, isUpdate, modeErr := cgs.handleConceptGroupImportMode(ctx, mode, conceptGroup)
+		if modeErr != nil {
+			return nil, modeErr
+		}
+		if isCreate {
+			createGroups = append(createGroups, conceptGroup)
+		}
+		if isUpdate {
+			updateGroups = append(updateGroups, conceptGroup)
+		}
+		if isCreate || isUpdate {
+			cache.record(conceptGroup)
+		}
+		ids = append(ids, conceptGroup.CGID)
+	}
+
+	updateIDs := make([]string, 0, len(updateGroups))
+	for _, conceptGroup := range updateGroups {
+		updateIDs = append(updateIDs, conceptGroup.CGID)
+	}
+	if err = permission.CheckKNChildBatchPermission(ctx, cgs.ps,
+		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, conceptGroups[0].KNID, updateIDs,
+		interfaces.OPERATION_TYPE_MODIFY); err != nil {
+		return nil, err
+	}
+
+	if len(createGroups) > 0 {
+		if err = cgs.cga.CreateConceptGroups(ctx, tx, createGroups); err != nil {
+			logger.Errorf("CreateConceptGroups error: %s", err.Error())
+			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
+				conceptGroup := createGroups[0]
+				if strings.Contains(constraint, "name") {
+					errDetails := fmt.Sprintf("concept group name '%s' already exists in knowledge network [%s] branch [%s]",
+						conceptGroup.CGName, conceptGroup.KNID, conceptGroup.Branch)
+					return nil, rest.NewHTTPError(ctx, http.StatusForbidden,
+						berrors.BknBackend_ConceptGroup_ConceptGroupNameExisted).
+						WithDescription(map[string]any{"cg_name": conceptGroup.CGName}).
+						WithErrorDetails(errDetails)
+				}
+				errDetails := fmt.Sprintf("The concept group with id [%s] already exists in knowledge network [%s] branch [%s]!",
+					conceptGroup.CGID, conceptGroup.KNID, conceptGroup.Branch)
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted).WithErrorDetails(errDetails)
+			}
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ConceptGroup_InternalError_CreateConceptGroupFailed).
+				WithErrorDetails(err.Error())
+		}
+		createIDs := make([]string, 0, len(createGroups))
+		for _, conceptGroup := range createGroups {
+			createIDs = append(createIDs, conceptGroup.CGID)
+		}
+		parentItems := interfaces.KNChildResourceParents(conceptGroups[0].KNID, createIDs)
+		if err = cgs.ps.UpsertResourceParents(ctx, interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+			interfaces.RESOURCE_TYPE_KN, parentItems); err != nil {
+			return nil, err
+		}
+		permission.TrackResourceParents(ctx, interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+			interfaces.RESOURCE_TYPE_KN, parentItems)
+	}
+	if len(updateGroups) > 0 {
+		if err = cgs.cga.UpdateConceptGroups(ctx, tx, updateGroups); err != nil {
+			logger.Errorf("UpdateConceptGroups error: %s", err.Error())
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ConceptGroup_InternalError_UpdateConceptGroupFailed).
+				WithErrorDetails(err.Error())
+		}
+	}
+
+	changedGroups := append(append(make([]*interfaces.ConceptGroup, 0,
+		len(createGroups)+len(updateGroups)), createGroups...), updateGroups...)
+	if err = cgs.InsertDatasetDatas(ctx, changedGroups); err != nil {
+		logger.Errorf("InsertDatasetDatas error: %s", err.Error())
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ConceptGroup_InternalError_InsertOpenSearchDataFailed).
+			WithErrorDetails(err.Error())
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return ids, nil
+}
+
+// InsertDatasetDatas builds all concept-group vectors in one model call and then
+// hands the documents to the import-scoped bounded Vega writer.
+func (cgs *conceptGroupService) InsertDatasetDatas(ctx context.Context,
+	conceptGroups []*interfaces.ConceptGroup) error {
+	if len(conceptGroups) == 0 {
+		return nil
+	}
+	indexGroups := make([]*interfaces.ConceptGroup, 0, len(conceptGroups))
+	words := make([]string, 0, len(conceptGroups))
+	for _, original := range conceptGroups {
+		conceptGroup := &interfaces.ConceptGroup{
+			CGID: original.CGID, CGName: original.CGName, CommonInfo: original.CommonInfo,
+			KNID: original.KNID, Branch: original.Branch, Creator: original.Creator,
+			CreateTime: original.CreateTime, Updater: original.Updater, UpdateTime: original.UpdateTime,
+			ModuleType: interfaces.MODULE_TYPE_CONCEPT_GROUP,
+		}
+		indexGroups = append(indexGroups, conceptGroup)
+		words = append(words, strings.Join(append(append([]string{conceptGroup.CGName},
+			conceptGroup.Tags...), conceptGroup.Comment, conceptGroup.BKNRawContent), "\n"))
+	}
+	if cgs.appSetting.ServerSetting.DefaultSmallModelEnabled {
+		defaultModel, err := model_factory.GetDefaultModel(ctx, cgs.mfs)
+		if err != nil {
+			return err
+		}
+		vectors, err := cgs.mfs.GetVector(ctx, defaultModel, words)
+		if err != nil {
+			return err
+		}
+		for index, vector := range vectors {
+			indexGroups[index].Vector = vector.Vector
+		}
+	}
+	documents := make([]vega_backend.DatasetDocument, 0, len(indexGroups))
+	for _, conceptGroup := range indexGroups {
+		docID := interfaces.GenerateConceptDocuemtnID(conceptGroup.KNID,
+			interfaces.MODULE_TYPE_CONCEPT_GROUP, conceptGroup.CGID, conceptGroup.Branch)
+		document, err := vega_backend.NewDatasetDocument(docID, conceptGroup)
+		if err != nil {
+			return err
+		}
+		documents = append(documents, document)
+	}
+	return vega_backend.WriteDatasetDocuments(ctx, cgs.vbs, interfaces.BKN_DATASET_ID, documents)
 }
 
 // Create concept groups.
@@ -342,6 +636,9 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 				berrors.BknBackend_ConceptGroup_InternalError_InsertOpenSearchDataFailed).
 				WithErrorDetails(err.Error())
 		}
+		if cache, ok := ctx.Value(conceptGroupIdentityCacheContextKey{}).(*conceptGroupIdentityCache); ok {
+			cache.record(conceptGroup)
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -367,6 +664,16 @@ func (cgs *conceptGroupService) ValidateConceptGroups(ctx context.Context, knID 
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
+	}
+	if len(conceptGroups) > 1 {
+		for _, conceptGroup := range conceptGroups {
+			conceptGroup.KNID = knID
+			conceptGroup.Branch = branch
+		}
+		ctx, err = cgs.withConceptGroupIdentityCache(ctx, conceptGroups)
+		if err != nil {
+			return err
+		}
 	}
 
 	return cgs.validateConceptGroupDependencies(ctx, knID, branch, conceptGroups, strictMode, parentBatch, mode)
@@ -977,17 +1284,28 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 	isCreate = false
 	isUpdate = false
 
-	// Validate import mode for a single ConceptGroup.
+	// Validate import mode for a single ConceptGroup. Whole-KN import supplies a shared
+	// identity snapshot; standalone calls retain the original point-query behavior.
 	idExist := false
-	_, idExist, err = cgs.CheckConceptGroupExistByID(ctx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID)
-	if err != nil {
-		return false, false, err
-	}
+	nameExist := false
+	existID := ""
+	if cache, ok := ctx.Value(conceptGroupIdentityCacheContextKey{}).(*conceptGroupIdentityCache); ok {
+		_, idExist = cache.byID[conceptGroupIdentityKey{
+			knID: conceptGroup.KNID, branch: conceptGroup.Branch, value: conceptGroup.CGID,
+		}]
+		existID, nameExist = cache.byName[conceptGroupIdentityKey{
+			knID: conceptGroup.KNID, branch: conceptGroup.Branch, value: conceptGroup.CGName,
+		}]
+	} else {
+		_, idExist, err = cgs.CheckConceptGroupExistByID(ctx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID)
+		if err != nil {
+			return false, false, err
+		}
 
-	// Validate conflicts between the request and existing model names.
-	existID, nameExist, err := cgs.CheckConceptGroupExistByName(ctx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGName)
-	if err != nil {
-		return false, false, err
+		existID, nameExist, err = cgs.CheckConceptGroupExistByName(ctx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGName)
+		if err != nil {
+			return false, false, err
+		}
 	}
 
 	// Handle mode: ignore removes it from results, overwrite updates it, and normal returns an error.
@@ -1086,7 +1404,7 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 		words = append(words, conceptGroup.Comment, conceptGroup.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := cgs.mfs.GetDefaultModel(ctx)
+		defaultModel, err := model_factory.GetDefaultModel(ctx, cgs.mfs)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
@@ -1104,25 +1422,12 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 
 	docid := interfaces.GenerateConceptDocuemtnID(conceptGroup.KNID, interfaces.MODULE_TYPE_CONCEPT_GROUP, conceptGroup.CGID, conceptGroup.Branch)
 
-	// Convert to map for dataset
-	docBytes, err := sonic.Marshal(conceptGroup)
+	document, err := vega_backend.NewDatasetDocument(docid, conceptGroup)
 	if err != nil {
-		logger.Errorf("Failed to marshal ConceptGroup: %s", err.Error())
-		span.SetStatus(codes.Error, "序列化概念分组失败")
 		return err
 	}
-
-	var doc map[string]any
-	if err := sonic.Unmarshal(docBytes, &doc); err != nil {
-		logger.Errorf("Failed to unmarshal ConceptGroup: %s", err.Error())
-		span.SetStatus(codes.Error, "反序列化概念分组失败")
-		return err
-	}
-
-	// Set document ID
-	doc["_id"] = docid
-
-	err = cgs.vbs.WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, docid, doc)
+	err = vega_backend.WriteDatasetDocuments(ctx, cgs.vbs, interfaces.BKN_DATASET_ID,
+		[]vega_backend.DatasetDocument{document})
 	if err != nil {
 		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
 		span.SetStatus(codes.Error, "概念分组概念索引写入失败")
@@ -1138,9 +1443,11 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, []string{cgID}); err != nil {
 		return nil, err
 	}
-	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID)
-	if err := cgs.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
-		return nil, err
+	if !permission.KNImportPermissionPrechecked(ctx) {
+		resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID)
+		if err := cgs.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+			return nil, err
+		}
 	}
 	return cgs.addObjectTypesToConceptGroup(ctx, tx, knID, branch, cgID, otIDs, importMode, strictMode)
 }
@@ -1272,15 +1579,15 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 	}
 
 	// 3. Build and persist relationship records.
-	otCGIDs := []string{}
+	otCGIDs := make([]string, 0, len(groupsToAdd))
+	relations := make([]*interfaces.ConceptGroupRelation, 0, len(groupsToAdd))
 	for _, otID := range groupsToAdd {
 		generatedID, generateErr := uuid.NewV7()
 		if generateErr != nil {
 			return nil, fmt.Errorf("generate concept group relation UUIDv7: %w", generateErr)
 		}
 		cgRelationID := generatedID.String()
-
-		err = cgs.cga.CreateConceptGroupRelation(ctx, tx, &interfaces.ConceptGroupRelation{
+		relations = append(relations, &interfaces.ConceptGroupRelation{
 			ID:          cgRelationID,
 			KNID:        knID,
 			Branch:      branch,
@@ -1289,17 +1596,23 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 			ConceptID:   otID,
 			CreateTime:  currentTime,
 		})
-		if err != nil {
-			errStr := fmt.Sprintf("CreateConceptGroupRelation failed, the concept group is [%s], knowledge network is [%s], branch is [%s], object type is [%s]",
-				cgID, knID, branch, otID)
-			logger.Errorf(errStr)
-			span.SetStatus(codes.Error, errStr)
-
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_ConceptGroup_InternalError_CreateConceptGroupRelationFailed).
-				WithErrorDetails(err.Error())
-		}
 		otCGIDs = append(otCGIDs, cgRelationID)
+	}
+
+	if len(relations) == 1 {
+		err = cgs.cga.CreateConceptGroupRelation(ctx, tx, relations[0])
+	} else if len(relations) > 1 {
+		err = cgs.cga.CreateConceptGroupRelations(ctx, tx, relations)
+	}
+	if err != nil {
+		errStr := fmt.Sprintf("CreateConceptGroupRelations failed, the concept group is [%s], knowledge network is [%s], branch is [%s], object types are [%v]",
+			cgID, knID, branch, groupsToAdd)
+		logger.Errorf(errStr)
+		span.SetStatus(codes.Error, errStr)
+
+		return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ConceptGroup_InternalError_CreateConceptGroupRelationFailed).
+			WithErrorDetails(err.Error())
 	}
 
 	return otCGIDs, nil

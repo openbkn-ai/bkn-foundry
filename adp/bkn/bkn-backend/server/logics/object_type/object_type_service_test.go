@@ -695,6 +695,32 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			So(result[0], ShouldEqual, "ot1")
 		})
 
+		Convey("Success creating multiple object types through batch access\n", func() {
+			objectTypes := []*interfaces.ObjectType{
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "object_type1"},
+					KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
+				},
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "object_type2"},
+					KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
+				},
+			}
+
+			smock.ExpectBegin()
+			ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"ot1", "ot2"}, []string{"object_type1", "object_type2"}).Return(nil, nil)
+			ota.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), objectTypes).Return(nil)
+			ota.EXPECT().CreateObjectTypeStatuses(gomock.Any(), gomock.Any(), objectTypes).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			smock.ExpectCommit()
+
+			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
+
+			So(err, ShouldBeNil)
+			So(result, ShouldResemble, []string{"ot1", "ot2"})
+		})
+
 		Convey("Failed when object type ID already exists in normal mode\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{
@@ -741,7 +767,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			So(len(result), ShouldEqual, 0)
 		})
 
-		Convey("Success with Overwrite mode when ID exists\n", func() {
+		Convey("Success with Overwrite mode when ID exists and relation sync is deferred\n", func() {
 			ot := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:   "ot1",
@@ -753,7 +779,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			objectTypes := []*interfaces.ObjectType{ot}
 
 			smock.ExpectBegin()
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil).AnyTimes()
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).Times(2)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -763,6 +788,35 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Overwrite, false, true)
 			So(err, ShouldBeNil)
 			So(len(result), ShouldEqual, 0)
+		})
+
+		Convey("Success overwriting multiple object types through batch access with relation sync deferred\n", func() {
+			objectTypes := []*interfaces.ObjectType{
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "object_type1"},
+					KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
+				},
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "object_type2"},
+					KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
+				},
+			}
+
+			smock.ExpectBegin()
+			ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"ot1", "ot2"}, []string{"object_type1", "object_type2"}).
+				Return([]*interfaces.ObjectType{
+					{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "object_type1"}},
+					{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "object_type2"}},
+				}, nil)
+			ota.EXPECT().UpdateObjectTypes(gomock.Any(), gomock.Any(), objectTypes).Return(nil)
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			smock.ExpectCommit()
+
+			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Overwrite, false, true)
+
+			So(err, ShouldBeNil)
+			So(result, ShouldHaveLength, 0)
 		})
 
 		Convey("Success with empty OTID generates new ID\n", func() {
@@ -3259,6 +3313,53 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
+		})
+
+		Convey("Batch query preserves overwrite create and update order\n", func() {
+			objectTypes := []*interfaces.ObjectType{
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "Object Type 1"},
+					KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
+				},
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "Object Type 2"},
+					KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
+				},
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot3", OTName: "Object Type 3"},
+					KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
+				},
+			}
+			ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
+				[]string{"ot1", "ot2", "ot3"}, []string{"Object Type 1", "Object Type 2", "Object Type 3"}).
+				Return([]*interfaces.ObjectType{
+					{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "Object Type 1"}},
+					{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot3", OTName: "Object Type 3"}},
+				}, nil)
+
+			creates, updates, err := service.handleObjectTypeImportMode(ctx, interfaces.ImportMode_Overwrite, objectTypes)
+
+			So(err, ShouldBeNil)
+			So(creates, ShouldResemble, []*interfaces.ObjectType{objectTypes[1]})
+			So(updates, ShouldResemble, []*interfaces.ObjectType{objectTypes[0], objectTypes[2]})
+		})
+
+		Convey("Batch query failure uses the existing conflict-check error\n", func() {
+			objectTypes := []*interfaces.ObjectType{
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "ot1"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "ot2"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+			}
+			ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, errors.New("query failed"))
+
+			creates, updates, err := service.handleObjectTypeImportMode(ctx, interfaces.ImportMode_Normal, objectTypes)
+
+			So(creates, ShouldHaveLength, 0)
+			So(updates, ShouldHaveLength, 0)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual,
+				berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
 		})
 	})
 }
