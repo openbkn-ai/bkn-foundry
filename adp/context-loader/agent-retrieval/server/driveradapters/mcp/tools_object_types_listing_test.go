@@ -193,3 +193,51 @@ func TestListedPageCostsNothingPerObjectType(t *testing.T) {
 		t.Fatalf("an index entry without an id is not one: %v", first)
 	}
 }
+
+// metricCountingBknBackend is the by-id backend that also counts metric reads,
+// so a drill-down's whole downstream bill can be read off one test.
+type metricCountingBknBackend struct {
+	listingBknBackend
+	metricCalls int
+}
+
+func (s *metricCountingBknBackend) ListMetricsByObjectTypes(_ context.Context, _ string, _ []string) ([]*interfaces.RelatedMetric, error) {
+	s.metricCalls++
+	return nil, nil
+}
+
+// The drill-down #1908 measured at about a second per object type. What
+// get_object_types itself owes per object type is one property-plan read and
+// nothing more: the definitions and the metrics are one batched read each, however
+// many ids are named. The seconds were spent inside that one read -- in bkn-safe's
+// proxy authorization behind Vega's resource schema (#1906) -- so this pins the
+// count that makes the call's cost the price of a read, not a multiple of it.
+func TestGetObjectTypesByIDCostsOneSchemaReadPerObjectType(t *testing.T) {
+	for _, n := range []int{1, 10, 50} {
+		bkn := &metricCountingBknBackend{}
+		access := &countingSchemaAccess{}
+		handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), access)
+		ids := make([]any, n)
+		for i := range ids {
+			ids[i] = fmt.Sprintf("ot-%04d", i)
+		}
+		result, err := handler(context.Background(), mcpReq(map[string]any{
+			"kn_id": "kn-001", "ids": ids, "response_format": "json",
+		}))
+		if err != nil || result.IsError {
+			t.Fatalf("%d ids: unexpected failure: %v %+v", n, err, result)
+		}
+		if bkn.byIDCalls != 1 || bkn.listCalls != 0 {
+			t.Fatalf("%d ids: definition reads byID=%d list=%d, want one batched read", n, bkn.byIDCalls, bkn.listCalls)
+		}
+		if bkn.metricCalls != 1 {
+			t.Fatalf("%d ids: %d metric reads, want one batched read", n, bkn.metricCalls)
+		}
+		if got := access.calls.Load(); got != int64(n) {
+			t.Fatalf("%d ids: %d schema reads, want exactly one per object type", n, got)
+		}
+		if got, _ := resultToMap(t, result)["object_types"].([]any); len(got) != n {
+			t.Fatalf("%d ids: got %d object types back", n, len(got))
+		}
+	}
+}
