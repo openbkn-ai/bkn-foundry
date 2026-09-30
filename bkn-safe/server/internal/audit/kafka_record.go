@@ -32,6 +32,15 @@ var safeAdminResourceTypes = map[string]string{
 	"profile":                  "user",
 }
 
+func boundedAuditDisplayName(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
 // BuildKafkaAdminRecord projects a committed Safe administration fact into a
 // bounded Audit v1 event. Request Detail is intentionally never serialized:
 // the old redacted JSON was a local troubleshooting aid, not an approved
@@ -100,6 +109,14 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 	if entry.RequestID != "" {
 		correlation["request_id"] = entry.RequestID
 	}
+	target := map[string]any{"type": targetType, "id": targetID}
+	if targetName := boundedAuditDisplayName(entry.TargetName, 512); targetName != "" {
+		target["name"] = targetName
+	}
+	actor := map[string]any{"id": actorID, "effective_subject": actorID, "type": actorType, "auth_method": authMethod}
+	if actorName := boundedAuditDisplayName(entry.ActorNameSnapshot, 256); actorName != "" {
+		actor["display_name_snapshot"] = actorName
+	}
 	record := map[string]any{
 		"schema_version":  auditpublisher.SchemaVersion,
 		"event_id":        eventID.String(),
@@ -107,8 +124,8 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 		"category":        "audit.admin",
 		"event_name":      "safe.admin.operation.observed",
 		"occurred_at":     time.Now().UTC().Format(time.RFC3339Nano),
-		"actor":           map[string]any{"id": actorID, "effective_subject": actorID, "type": actorType, "auth_method": authMethod},
-		"target":          map[string]any{"type": targetType, "id": targetID},
+		"actor":           actor,
+		"target":          target,
 		"outcome":         outcome,
 		"scope":           map[string]any{"business_module": "system_management", "environment": environment, "platform_scope": true, "knowledge_network_ids": []string{}},
 		"request_context": map[string]any{"source_channel": channel, "transport": transport, "method": strings.ToUpper(entry.Method)},

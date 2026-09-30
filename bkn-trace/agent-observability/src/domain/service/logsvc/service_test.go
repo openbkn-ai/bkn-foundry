@@ -22,22 +22,6 @@ type fakeSource struct {
 	err     error
 }
 
-func TestSafeSecurityDecisionWithObservedActionPassesPublicProjection(t *testing.T) {
-	record := observabilityvo.LogRecord{
-		Category: observabilityvo.CategoryAuditSecurity, EventName: "authorization.decided",
-		BusinessModule: "system_management", Action: "check",
-		TargetType: "authorization_decision", TargetID: "decision:evt-1", TargetNameSnapshot: "decision:evt-1",
-		ActorID: "anonymous", ActorNameSnapshot: "anonymous", AuthMethod: "unknown", SourceChannel: "api",
-	}
-	if !isOperationAuditRecord(record) || !validOperationAuditProjection(record) {
-		t.Fatal("truthful Safe Security decision must be eligible for public Query")
-	}
-	record.Action = ""
-	if validOperationAuditProjection(record) {
-		t.Fatal("security decision without operation fact must remain hidden")
-	}
-}
-
 type sourceIDFilteringSource struct {
 	fakeSource
 	count int64

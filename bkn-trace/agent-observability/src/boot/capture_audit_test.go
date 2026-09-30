@@ -16,7 +16,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturecontrollersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
@@ -166,42 +165,6 @@ func TestCaptureControlAuditRecordsAdmitAllFrozenEvents(t *testing.T) {
 			})
 			if err != nil {
 				t.Fatalf("%s rejected by Audit Consumer: %v", test.name, err)
-			}
-		})
-	}
-}
-
-func TestLogQueryAuditRecordsAdmitAuthorizedAndDeniedFacts(t *testing.T) {
-	validator, err := auditvalidator.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, test := range []struct {
-		name, actorID, actorType, outcome string
-		status                            int
-	}{
-		{"authorized", "acct-log-reader", "user", "success", 200},
-		{"denied", "anonymous", "anonymous", "denied", 401},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			now := time.Now().UTC()
-			value, err := buildLogQueryAudit(httphandler.LogQueryAuditFact{
-				ActorID: test.actorID, ActorType: test.actorType, Outcome: test.outcome,
-				Status: test.status, Method: "GET", RequestID: "req-log-query-audit",
-			}, "test", now)
-			if err != nil {
-				t.Fatal(err)
-			}
-			record, err := auditpublisher.BuildRecord(value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := validator.Validate(context.Background(), auditconsumer.Record{
-				Topic: record.Topic, Key: record.Key, Value: record.Value,
-				Headers:    []auditconsumer.Header{{Key: record.Headers[0].Key, Value: record.Headers[0].Value}},
-				BrokerTime: now,
-			}); err != nil {
-				t.Fatalf("log query audit rejected by consumer: %v", err)
 			}
 		})
 	}

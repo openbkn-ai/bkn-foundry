@@ -8,7 +8,7 @@ import (
 
 func TestBuildKafkaAdminRecordPreservesCommittedTargetWithoutDetail(t *testing.T) {
 	entry := Entry{
-		ActorID: "verified-admin", ActorType: "user", AuthMethod: "oauth",
+		ActorID: "verified-admin", ActorNameSnapshot: "Administrator", ActorType: "user", AuthMethod: "oauth",
 		RequestID: "req-safe-role-1", SourceChannel: "api", Method: "PUT",
 		Resource: "roles", Action: "update", TargetID: "role-1", TargetName: "Operators",
 		Status: 200, Detail: `{"password":"never-publish","requested_permission":"write"}`,
@@ -27,9 +27,16 @@ func TestBuildKafkaAdminRecordPreservesCommittedTargetWithoutDetail(t *testing.T
 	if record["source_id"] != "bkn-safe-admin" || record["event_name"] != "safe.admin.operation.observed" || record["outcome"] != "success" {
 		t.Fatalf("wrong committed admin event: %+v", record)
 	}
+	actor := record["actor"].(map[string]any)
+	if actor["display_name_snapshot"] != "Administrator" {
+		t.Fatalf("actor name snapshot = %+v", actor)
+	}
 	target := record["target"].(map[string]any)
 	if target["type"] != "role" || target["id"] != "role-1" {
 		t.Fatalf("committed target = %+v", target)
+	}
+	if target["name"] != "Operators" {
+		t.Fatalf("target name snapshot = %+v", target)
 	}
 	facts := record["facts"].(map[string]any)
 	if facts["action"] != "update" || facts["decision"] != "allowed" {
@@ -37,6 +44,30 @@ func TestBuildKafkaAdminRecordPreservesCommittedTargetWithoutDetail(t *testing.T
 	}
 	if _, exists := facts["changed_fields"]; exists {
 		t.Fatalf("request body is not a committed field diff: %+v", facts)
+	}
+}
+
+func TestBuildKafkaAdminRecordBoundsDisplaySnapshots(t *testing.T) {
+	entry := Entry{
+		ActorID: "verified-admin", ActorNameSnapshot: strings.Repeat("操", 300), ActorType: "user", AuthMethod: "oauth",
+		RequestID: "req-safe-role-long-name", SourceChannel: "api", Method: "PUT",
+		Resource: "roles", Action: "update", TargetID: "role-1", TargetName: strings.Repeat("作", 600), Status: 200,
+	}
+	value, err := BuildKafkaAdminRecord(entry, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(value, &record); err != nil {
+		t.Fatal(err)
+	}
+	actor := record["actor"].(map[string]any)
+	if got := []rune(actor["display_name_snapshot"].(string)); len(got) != 256 {
+		t.Fatalf("actor display snapshot length=%d, want 256", len(got))
+	}
+	target := record["target"].(map[string]any)
+	if got := []rune(target["name"].(string)); len(got) != 512 {
+		t.Fatalf("target name snapshot length=%d, want 512", len(got))
 	}
 }
 
