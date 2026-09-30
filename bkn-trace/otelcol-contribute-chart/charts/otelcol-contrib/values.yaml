@@ -166,6 +166,14 @@ config:
       check_interval: 1s
       limit_mib: 512
       spike_limit_mib: 128
+    filter/log-principal:
+      error_mode: ignore
+      logs:
+        log_record:
+          - 'attributes["actor_id"] == nil'
+          - 'attributes["actor_id"] == ""'
+          - 'attributes["actor_id"] == "anonymous"'
+          - 'attributes["actor_id"] == "anonymous-user"'
     batch:
       timeout: 1s
       send_batch_size: 512
@@ -205,7 +213,7 @@ config:
         exporters: [opensearch]
       logs:
         receivers: [otlp]
-        processors: [memory_limiter, batch]
+        processors: [memory_limiter, filter/log-principal, batch]
         exporters: [opensearch]
 
 extraArgs: []

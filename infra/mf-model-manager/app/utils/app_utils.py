@@ -135,10 +135,10 @@ async def auth_middleware(request: Request, call_next):
                         res = await response.text()
                         result = json.loads(res)
                         activate = result.get("active", False)
-                        user_id = result.get("sub", "")
+                        user_id = str(result.get("sub") or "").strip()
                         client_id = result.get("client_id", "")
                         role = "user" if client_id != user_id else "app"
-                    if activate:
+                    if activate and user_id and user_id.lower() not in {"anonymous", "anonymous-user"}:
                         _set_trusted_identity(request, user_id, role)
                     else:
                         return JSONResponse(

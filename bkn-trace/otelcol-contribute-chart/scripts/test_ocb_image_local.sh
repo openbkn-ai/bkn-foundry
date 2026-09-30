@@ -27,6 +27,7 @@ docker image inspect "${image}" >/dev/null || {
 
 components="$(docker run --rm --entrypoint /otelcol-openbkn "${image}" components)"
 grep -Eq '^    - name: traceadmission$' <<<"${components}"
+grep -Eq '^    - name: filter$' <<<"${components}"
 grep -Eq '^    - name: opensearch$' <<<"${components}"
 grep -Eq '^    - name: otlp$' <<<"${components}"
 

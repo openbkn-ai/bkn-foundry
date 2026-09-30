@@ -101,6 +101,18 @@ class TestAuthMiddlewareIdentity(unittest.IsolatedAsyncioTestCase):
         # The identity the handlers read is the token subject, not the forged header.
         self.assertEqual(_first_identity(request), ("real-sub-123", "user"))
 
+    async def test_hydra_branch_rejects_missing_subject(self):
+        request = _Request(dict_headers={"Authorization": "Bearer missing_subject"})
+
+        async def call_next(_req):
+            return "unexpected"
+
+        session_cm = self._hydra_session('{"active": true, "sub": "", "client_id": "cli"}')
+        with mock.patch("app.utils.app_utils.aiohttp.ClientSession", return_value=session_cm):
+            result = await auth_middleware(request, call_next)
+
+        self.assertEqual(result.status_code, 401)
+
 
 if __name__ == "__main__":
     unittest.main()

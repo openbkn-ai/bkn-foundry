@@ -186,6 +186,26 @@ class TestAuthMiddleware:
             response = await auth_middleware(mock_request, mock_call_next)
             assert response.status_code == 401
 
+    @pytest.mark.asyncio
+    async def test_active_token_without_subject(self, mock_request, mock_call_next):
+        """An active token without a subject must not enter the request chain."""
+        mock_request.url.path = "/api/v1/test"
+        mock_request.headers = {"Authorization": "Bearer missing_subject"}
+        session_cm, _ = self._mock_session(200, '{"active": true, "sub": "", "client_id": "client123"}')
+        with patch('app.utils.app_utils.aiohttp.ClientSession', return_value=session_cm):
+            response = await auth_middleware(mock_request, mock_call_next)
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_active_token_with_anonymous_subject(self, mock_request, mock_call_next):
+        """The anonymous sentinel is not a valid principal."""
+        mock_request.url.path = "/api/v1/test"
+        mock_request.headers = {"Authorization": "Bearer anonymous_subject"}
+        session_cm, _ = self._mock_session(200, '{"active": true, "sub": "anonymous", "client_id": "client123"}')
+        with patch('app.utils.app_utils.aiohttp.ClientSession', return_value=session_cm):
+            response = await auth_middleware(mock_request, mock_call_next)
+        assert response.status_code == 401
+
     @staticmethod
     def _mock_session(status, body):
         """Test mock session."""
@@ -249,6 +269,17 @@ class TestAuthMiddleware:
                 patch.dict('os.environ', {"BKN_SAFE_URL": "http://safe:8080"}):
             response = await auth_middleware(mock_request, mock_call_next)
             assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_appkey_without_subject(self, mock_request, mock_call_next):
+        """An active AppKey without a subject must be rejected."""
+        mock_request.url.path = "/api/v1/test"
+        mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
+        session_cm, _ = self._mock_session(200, '{"active": true, "sub": "", "account_type": "app"}')
+        with patch('app.utils.app_utils.aiohttp.ClientSession', return_value=session_cm), \
+                patch.dict('os.environ', {"BKN_SAFE_URL": "http://safe:8080"}):
+            response = await auth_middleware(mock_request, mock_call_next)
+        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_appkey_without_bkn_safe_url(self, mock_request, mock_call_next):
@@ -363,4 +394,3 @@ class TestCreateApp:
                     mock_log.assert_called_once()
                     mock_conf.assert_called_once()
                     mock_router.assert_called_once()
-
