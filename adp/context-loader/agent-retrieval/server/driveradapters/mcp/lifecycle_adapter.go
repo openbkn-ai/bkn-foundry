@@ -319,6 +319,17 @@ func handleLifecycleTool(
 				if err != nil {
 					return lifecycleUnavailable(ctx, name, "answer_artifact", err), nil
 				}
+				// No artifact endpoint means no answer artifact, and Core refuses a
+				// completed closure without one as closure_manifest_invalid. That
+				// names neither the cause nor the service at fault, and a model told
+				// to fix its manifest retries the same call until its turn budget
+				// runs out. Fail here instead, as the non-retryable deployment defect
+				// it is, and leave Core uncalled.
+				if artifactRef == "" {
+					return lifecycleUnavailable(
+						ctx, name, "answer_artifact", bkntrace.ErrEvidenceArtifactURLNotConfigured,
+					), nil
+				}
 				args["answer_artifact_ref"] = artifactRef
 			}
 		}

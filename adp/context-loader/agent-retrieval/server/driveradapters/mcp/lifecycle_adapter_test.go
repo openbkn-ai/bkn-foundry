@@ -444,6 +444,78 @@ func TestStartInteractionDoesNotDeriveArtifactEndpointFromLegacyEvidenceURL(t *t
 	}
 }
 
+func TestFinishInteractionWithoutArtifactEndpointFailsWithoutCallingCore(t *testing.T) {
+	finishCalls := 0
+	evidenceCalls := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agent-observability/v1/interactions/int-1":
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "active", EvidenceStatus: "assembling",
+				LeaseToken: "lease-1", LeaseEpoch: 1,
+				UpdatedAt: time.Date(2026, 9, 21, 10, 0, 0, 0, time.UTC),
+			})
+		case strings.HasPrefix(r.URL.Path, "/api/agent-observability/v1/evidence/"):
+			evidenceCalls++
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/agent-observability/v1/interactions/int-1/finish":
+			finishCalls++
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+				"code": "closure_manifest_invalid", "message": "completed outcome requires answer_artifact_ref",
+				"required_action": "fix_closure_manifest",
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer backend.Close()
+	// Env inherited from a 0.1.5 deployment: an Evidence ingest URL, but no
+	// Artifact endpoint.
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", "")
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
+	t.Setenv("BKN_TRACE_ARTIFACT_TOKEN", "artifact-token")
+
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		RequestID: "req-artifact-url-missing-finish-1"})
+	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},
+	})
+	result, err := handleLifecycleTool(
+		bkntrace.NewLifecycleClient(backend.URL, backend.Client()),
+		"bkn_finish_interaction",
+	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
+		"interaction_id": "int-1", "outcome": "completed",
+		"answer": "BOM 查询完成",
+	}}})
+	if err != nil || result == nil || !result.IsError {
+		t.Fatalf("finish without an Artifact endpoint must fail: result=%#v err=%v", result, err)
+	}
+	if finishCalls != 0 {
+		t.Fatalf("Core finish calls = %d, want 0: a closure without an answer artifact must not be sent", finishCalls)
+	}
+	if evidenceCalls != 0 {
+		t.Fatalf("evidence calls = %d, want 0: the legacy ingest URL must not stand in for the Artifact endpoint", evidenceCalls)
+	}
+	var envelope struct {
+		Error lifecycleError `json:"error"`
+	}
+	text, ok := result.Content[0].(mcpsdk.TextContent)
+	if !ok {
+		t.Fatalf("finish error content = %#v, want text", result.Content)
+	}
+	if err := json.Unmarshal([]byte(text.Text), &envelope); err != nil {
+		t.Fatalf("decode finish error %q: %v", text.Text, err)
+	}
+	if envelope.Error.Code != "evidence_capture_failed" ||
+		envelope.Error.RequiredAction != "contact_platform_operator" || envelope.Error.Retryable ||
+		!strings.Contains(envelope.Error.Message, "BKN_TRACE_ARTIFACT_ENDPOINT") {
+		t.Fatalf("missing Artifact endpoint must be a non-retryable deployment defect naming the setting: %#v", envelope.Error)
+	}
+}
+
 func TestFinishInteractionUsesCoreUpdatedAtForServerOwnedResultEvidence(t *testing.T) {
 	updatedAt := time.Date(2026, 8, 3, 6, 32, 0, 789000000, time.UTC)
 	var artifact map[string]any
