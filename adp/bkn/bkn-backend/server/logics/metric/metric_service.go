@@ -290,7 +290,7 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 		err = ms.ma.CreateMetrics(ctx, tx, creates)
 		if err != nil {
 			logger.Errorf("CreateMetrics error: %s", err.Error())
-			span.SetStatus(codes.Error, "批量创建指标失败")
+			span.SetStatus(codes.Error, "Batch create metrics failed")
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
 				metric := creates[0]
 				if strings.Contains(constraint, "name") {

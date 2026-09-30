@@ -205,7 +205,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		err = rts.rta.CreateRelationTypes(ctx, tx, createRelationTypes)
 		if err != nil {
 			logger.Errorf("CreateRelationTypes error: %s", err.Error())
-			span.SetStatus(codes.Error, "批量创建关系类失败")
+			span.SetStatus(codes.Error, "Batch create relation types failed")
 			if _, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
 				relationType := createRelationTypes[0]
 				errDetails := fmt.Sprintf("The relation type with id [%s] already exists!", relationType.RTID)
@@ -235,7 +235,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		err = rts.rta.UpdateRelationTypes(ctx, tx, updateRelationTypes)
 		if err != nil {
 			logger.Errorf("UpdateRelationTypes error: %s", err.Error())
-			span.SetStatus(codes.Error, "批量修改关系类失败")
+			span.SetStatus(codes.Error, "Batch update relation types failed")
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RelationType_InternalError).
 				WithErrorDetails(err.Error())
@@ -838,7 +838,7 @@ func (rts *relationTypeService) handleRelationTypeImportMode(ctx context.Context
 		}
 		ids, err := rts.rta.GetRelationTypeIDsByIDs(ctx, knID, branch, requestedIDs)
 		if err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("在业务知识网络[%s]下批量查询关系类标识失败", knID), err)
+			otellog.LogError(ctx, fmt.Sprintf("Batch query relation type IDs in knowledge network [%s] failed", knID), err)
 			return creates, updates, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RelationType_InternalError_CheckRelationTypeIfExistFailed).
 				WithErrorDetails(err.Error())

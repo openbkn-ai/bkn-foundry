@@ -313,7 +313,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		err = ats.ata.CreateActionTypes(ctx, tx, createActionTypes)
 		if err != nil {
 			logger.Errorf("CreateActionTypes error: %s", err.Error())
-			span.SetStatus(codes.Error, "批量创建行动类失败")
+			span.SetStatus(codes.Error, "Batch create action types failed")
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
 				actionType := createActionTypes[0]
 				if strings.Contains(constraint, "name") {
@@ -350,7 +350,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		err = ats.ata.UpdateActionTypes(ctx, tx, updateActionTypes)
 		if err != nil {
 			logger.Errorf("UpdateActionTypes error: %s", err.Error())
-			span.SetStatus(codes.Error, "批量修改行动类失败")
+			span.SetStatus(codes.Error, "Batch update action types failed")
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).
 				WithErrorDetails(err.Error())
@@ -885,7 +885,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 		}
 		existing, err := ats.ata.GetActionTypeIdentitiesByIDsOrNames(ctx, knID, branch, ids, names)
 		if err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("在业务知识网络[%s]下批量查询行动类标识失败", knID), err)
+			otellog.LogError(ctx, fmt.Sprintf("Batch query action type IDs in knowledge network [%s] failed", knID), err)
 			return creates, updates, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed).
 				WithErrorDetails(err.Error())
@@ -1042,7 +1042,7 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 		document, err := vega_backend.NewDatasetDocument(docid, actionType)
 		if err != nil {
 			logger.Errorf("Failed to build action type index document: %s", err.Error())
-			span.SetStatus(codes.Error, "序列化行动类索引失败")
+			span.SetStatus(codes.Error, "Serialize action type index failed")
 			return err
 		}
 		if parameters, exists := document.Document["parameters"]; exists {

@@ -323,7 +323,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		err = ots.ota.CreateObjectTypes(ctx, tx, createObjectTypes)
 		if err != nil {
 			logger.Errorf("CreateObjectTypes error: %s", err.Error())
-			span.SetStatus(codes.Error, "批量创建对象类失败")
+			span.SetStatus(codes.Error, "Batch create object types failed")
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
 				objectType := createObjectTypes[0]
 				if strings.Contains(constraint, "name") {
@@ -344,7 +344,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		err = ots.ota.CreateObjectTypeStatuses(ctx, tx, createObjectTypes)
 		if err != nil {
 			logger.Errorf("CreateObjectTypeStatuses error: %s", err.Error())
-			span.SetStatus(codes.Error, "批量创建对象类状态失败")
+			span.SetStatus(codes.Error, "Batch create object type statuses failed")
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
@@ -383,7 +383,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		err = ots.ota.UpdateObjectTypes(ctx, tx, updateObjectTypes)
 		if err != nil {
 			logger.Errorf("UpdateObjectTypes error: %s", err.Error())
-			span.SetStatus(codes.Error, "批量修改对象类失败")
+			span.SetStatus(codes.Error, "Batch update object types failed")
 			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
@@ -1512,7 +1512,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 		}
 		existing, err := ots.ota.GetObjectTypeIdentitiesByIDsOrNames(ctx, knID, branch, ids, names)
 		if err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("在业务知识网络[%s]下批量查询对象类标识失败", knID), err)
+			otellog.LogError(ctx, fmt.Sprintf("Batch query object type IDs in knowledge network [%s] failed", knID), err)
 			return creates, updates, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed).
 				WithErrorDetails(err.Error())
@@ -1707,7 +1707,7 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 		document, err := vega_backend.NewDatasetDocument(docid, objectType)
 		if err != nil {
 			logger.Errorf("Failed to build object type index document: %s", err.Error())
-			span.SetStatus(codes.Error, "序列化对象类索引失败")
+			span.SetStatus(codes.Error, "Serialize object type index failed")
 			return err
 		}
 		delete(document.Document, "data_source_metadata_unavailable")
