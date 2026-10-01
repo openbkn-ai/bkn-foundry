@@ -596,6 +596,31 @@ func TestSourcesDoesNotProbeSourcesWhileListingIntegrations(t *testing.T) {
 	}
 }
 
+func TestSourceInventoryProbesSourcesForInternalQueryStatus(t *testing.T) {
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var active atomic.Int32
+	var peak atomic.Int32
+	service := NewWithOptions([]Source{
+		&blockingSource{id: "slow", started: started, release: release, active: &active, peak: &peak},
+		&categorizedSource{id: "healthy", categories: []string{observabilityvo.CategoryRuntimeBusiness}},
+	}, Options{CursorKey: []byte("test-cursor-key"), SourceTimeout: 20 * time.Millisecond, MaxConcurrentSources: 2})
+
+	statuses, err := service.SourceInventory(context.Background(), activeProfile("admin-a", "super_admin"))
+	if err != nil || len(statuses) != 2 {
+		t.Fatalf("source inventory failed: statuses=%+v err=%v", statuses, err)
+	}
+	for _, status := range statuses {
+		if status.SourceID == "slow" {
+			if status.Status != "unavailable" || status.Reason != "source_timeout" {
+				t.Fatalf("inventory must report the timed-out source: %+v", status)
+			}
+			return
+		}
+	}
+	t.Fatal("inventory omitted the timed-out source")
+}
+
 func TestSourcesListsIntegrationWithoutProbingSources(t *testing.T) {
 	source := &categorizedSource{
 		id: "vega", categories: []string{observabilityvo.CategoryAuditAdmin},

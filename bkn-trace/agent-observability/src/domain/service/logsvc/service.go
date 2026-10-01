@@ -578,6 +578,23 @@ func (service *Service) Sources(ctx context.Context, profile evidencevo.AccessPr
 	return statuses, nil
 }
 
+// SourceInventory returns the current query result for each visible source.
+// It is intentionally separate from Sources, whose response is the declared
+// integration contract presented in product settings.
+func (service *Service) SourceInventory(ctx context.Context, profile evidencevo.AccessProfile) ([]observabilityvo.SourceStatus, error) {
+	capabilities := observabilityvo.CapabilitiesFor(profile)
+	if !capabilities.GlobalLogSearch {
+		return nil, ErrAccessDenied
+	}
+	visibleSources := service.visibleSources(capabilities.AllowedLogCategories)
+	results := service.searchSources(ctx, visibleSources, observabilityvo.LogQuery{Limit: 1}, nil)
+	statuses := make([]observabilityvo.SourceStatus, 0, len(results))
+	for _, result := range results {
+		statuses = append(statuses, result.status)
+	}
+	return statuses, nil
+}
+
 func (service *Service) Policies(profile evidencevo.AccessProfile) ([]observabilityvo.LogPolicy, error) {
 	capabilities := observabilityvo.CapabilitiesFor(profile)
 	if !capabilities.LogPolicyRead {
