@@ -1,7 +1,8 @@
-name: Claude Code Review
+name: DeepSeek Code Review
 
-# 由 Claude 对 PR 做代码评审：开启、重开、从 draft 转 ready、每次推送新提交时各跑
+# 由 DeepSeek 对 PR 做代码评审：开启、重开、从 draft 转 ready、每次推送新提交时各跑
 # 一次；此外可在评论里写 `/review` 或 `@claude` 手动要一轮。
+# 执行器仍是 claude-code-action，模型请求发到 DeepSeek 的 Anthropic 兼容接口。
 #
 # 覆盖每次推送而非只审首版，是因为评审之后追加的提交往往是「按意见快速改一下」，
 # 恰恰最容易引入新问题；只审首版会让这部分完全不过审。
@@ -96,7 +97,15 @@ jobs:
       statuses: read
       id-token: write
     env:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # 只放 DeepSeek Key。claude-code-action 在未传 oauth 输入时仍会读作业环境里的
+      # CLAUDE_CODE_OAUTH_TOKEN；留着它，请求会继续打到 Anthropic。
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
+      # claude-opus* 在 DeepSeek 侧映射到 deepseek-v4-pro；这里写明，避免动作
+      # 用内置别名把评审降到 flash。子代理用 flash。
+      ANTHROPIC_DEFAULT_OPUS_MODEL: deepseek-v4-pro
+      ANTHROPIC_DEFAULT_SONNET_MODEL: deepseek-flash
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-flash
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
     steps:
       - name: Checkout repository
@@ -116,11 +125,23 @@ jobs:
           gh pr checkout "$PR_NUMBER"
           echo "已切到 PR #$PR_NUMBER: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
 
-      - name: Claude review
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+      - name: DeepSeek review
+        if: env.DEEPSEEK_API_KEY != ''
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+          # 收尾的评论分类会再打一次模型，且该步骤不转发 ANTHROPIC_BASE_URL，
+          # 会把 DeepSeek Key 送到 Anthropic。关掉后，行内评论在评审过程中直接发出。
+          classify_inline_comments: "false"
+          # 「Fix this」链接会打开 Claude Code，和当前后端不一致。
+          include_fix_links: "false"
+          settings: |
+            {
+              "env": {
+                "CLAUDE_CODE_EFFORT_LEVEL": "max",
+                "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-flash"
+              }
+            }
           # track_progress 只支持 pull_request / issues / issue_comment /
           # pull_request_review(_comment) 事件，在 workflow_dispatch 下会直接
           # 报错退出——手动触发那条路径因此从未可用。按事件类型开关。
@@ -217,18 +238,18 @@ jobs:
 
             批准以 github-actions[bot] 身份提交，只表态、不合并。人工仍需自行 merge。
 
-          # 48 文件 / 28 commit 这种大 PR，只给 gh pr diff 不够：Claude 需要进
+          # 48 文件 / 28 commit 这种大 PR，只给 gh pr diff 不够：评审需要进
           # 文件看上下文、比对具体 commit，会伸手 Read/Grep/git diff 等未授权工具而被拒。
           # 之前一次评审因此连撞 12 次 permission denial、耗尽轮次、评论冻在「进行中」。
           # 补齐只读检视工具（Read/Grep/Glob/LS + git diff/log/show）与 PR review/checks/api
           # 并放宽轮次上限。
+          # deepseek-v4-pro 对应原先的 opus 档。--effort 是 Claude 档位，DeepSeek 不认。
           claude_args: |
-            --model claude-opus-5
-            --effort xhigh
+            --model deepseek-v4-pro
             --max-turns 60
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,LS,Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
 
       - name: Warn when credential missing
-        if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
+        if: env.DEEPSEEK_API_KEY == ''
         run: |
-          echo "::warning::Secret CLAUDE_CODE_OAUTH_TOKEN not set — skipping Claude review."
+          echo "::warning::Secret DEEPSEEK_API_KEY not set — skipping DeepSeek review."
