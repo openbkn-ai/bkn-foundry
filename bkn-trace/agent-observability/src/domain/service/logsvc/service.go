@@ -664,7 +664,7 @@ func isOperationAuditCategory(category string) bool {
 
 func isOperationAuditRecord(record observabilityvo.LogRecord) bool {
 	return isOperationAuditCategory(record.Category) ||
-		(record.Category == observabilityvo.CategoryRuntimeBusiness && (record.EventName == "conversation.created" || record.EventName == "operation.executed"))
+		(record.Category == observabilityvo.CategoryRuntimeBusiness && record.EventName == "conversation.created")
 }
 
 func validOperationAuditProjection(record observabilityvo.LogRecord) bool {
@@ -687,7 +687,7 @@ func operationAuditSources(sources []Source) []Source {
 			observabilityvo.CategoryAccessUser,
 			observabilityvo.CategoryAuditAdmin,
 			observabilityvo.CategoryAuditSecurity,
-		}) || source.ID() == "bkn-trace-core" || source.ID() == "bkn-trace-runtime" {
+		}) || source.ID() == "bkn-trace-core" {
 			result = append(result, source)
 		}
 	}
