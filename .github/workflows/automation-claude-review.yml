@@ -1,8 +1,7 @@
-name: DeepSeek Code Review
+name: Claude Code Review
 
-# 由 DeepSeek 对 PR 做代码评审：开启、重开、从 draft 转 ready、每次推送新提交时各跑
+# 由 Claude 对 PR 做代码评审：开启、重开、从 draft 转 ready、每次推送新提交时各跑
 # 一次；此外可在评论里写 `/review` 或 `@claude` 手动要一轮。
-# 执行器仍是 claude-code-action，请求发到 DeepSeek 的 Anthropic 兼容接口。
 #
 # 覆盖每次推送而非只审首版，是因为评审之后追加的提交往往是「按意见快速改一下」，
 # 恰恰最容易引入新问题；只审首版会让这部分完全不过审。
@@ -558,13 +557,7 @@ jobs:
       checks: read
       statuses: read
     env:
-      # 不放 CLAUDE_CODE_OAUTH_TOKEN。action 在未传 oauth 输入时仍会读这个环境变量，
-      # 留着它，请求会继续打到 Anthropic。
-      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
-      ANTHROPIC_DEFAULT_OPUS_MODEL: deepseek-v4-pro
-      ANTHROPIC_DEFAULT_SONNET_MODEL: deepseek-flash
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-flash
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
       HEAD_SHA: ${{ needs.plan.outputs.head_sha }}
       BASE_SHA: ${{ needs.plan.outputs.base_sha }}
@@ -672,19 +665,18 @@ jobs:
           } > prior-comments.json || echo '{"issue_comments":[],"review_comments":[],"prior_verdicts":[]}' \
             > prior-comments.json
 
-      - name: DeepSeek review
-        if: env.DEEPSEEK_API_KEY != '' && steps.prbranch.outputs.skip != 'true'
+      - name: Claude review
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != '' && steps.prbranch.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
-          # 收尾分类不转发 ANTHROPIC_BASE_URL，会把 Key 送到 Anthropic。本 job 的评论由 verdict 发。
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 本 job 只产出评审文件，评论由 verdict 统一发布。
           classify_inline_comments: "false"
           include_fix_links: "false"
           settings: |
             {
               "env": {
-                "CLAUDE_CODE_EFFORT_LEVEL": "max",
-                "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-flash"
+                "CLAUDE_CODE_EFFORT_LEVEL": "max"
               }
             }
           # 给了 github_token，action 就不走 OIDC 换 Claude App token，job 也就不需要
@@ -958,7 +950,7 @@ jobs:
           # 保持 xhigh；模块片做的是「读 diff 找问题」，high 足够，而 xhigh 每轮多生成的
           # 思考 token 是实打实的成本。低风险片只做一致性核对，25 轮绰绰有余。
           claude_args: |
-            --model deepseek-v4-pro
+            --model opus
             --max-turns 200
             --allowedTools "Read,Grep,Glob,LS,Write,Bash(gh pr view:*),Bash(gh pr checks:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
 
@@ -1013,9 +1005,9 @@ jobs:
           retention-days: 7
 
       - name: Warn when credential missing
-        if: env.DEEPSEEK_API_KEY == ''
+        if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
         run: |
-          echo "::warning::Secret DEEPSEEK_API_KEY not set — skipping DeepSeek review."
+          echo "::warning::Secret CLAUDE_CODE_OAUTH_TOKEN not set — skipping Claude review."
 
   # 每片跑完把自己那行打勾，让那条唯一的进度评论真的动起来。粒度是「每片一次」，
   # 不是 track_progress 那种每步一更——后者在分片下会变成 N 条评论各自转圈。
@@ -1122,11 +1114,7 @@ jobs:
       contents: read
       pull-requests: read
     env:
-      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
-      ANTHROPIC_DEFAULT_OPUS_MODEL: deepseek-v4-pro
-      ANTHROPIC_DEFAULT_SONNET_MODEL: deepseek-flash
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-flash
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
       HEAD_SHA: ${{ needs.plan.outputs.head_sha }}
       BASE_SHA: ${{ needs.plan.outputs.base_sha }}
@@ -1275,18 +1263,17 @@ jobs:
             > author-replies.json
 
       - name: Verify blockers
-        if: steps.collect.outputs.count != '0' && env.DEEPSEEK_API_KEY != ''
+        if: steps.collect.outputs.count != '0' && env.CLAUDE_CODE_OAUTH_TOKEN != ''
           && steps.prbranch.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           classify_inline_comments: "false"
           include_fix_links: "false"
           settings: |
             {
               "env": {
-                "CLAUDE_CODE_EFFORT_LEVEL": "max",
-                "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-flash"
+                "CLAUDE_CODE_EFFORT_LEVEL": "max"
               }
             }
           github_token: ${{ github.token }}
@@ -1378,7 +1365,7 @@ jobs:
             `reason` **一律用中文**。它会原样进 verdict 正文，与骨架和评审给的文字
             并排显示，语言不一致会读成两份东西。
           claude_args: |
-            --model deepseek-v4-pro
+            --model opus
             --max-turns 80
             --allowedTools "Read,Grep,Glob,LS,Write,Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
 
