@@ -7,6 +7,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -47,7 +48,11 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		// as the attempted business target so the operation audit remains
 		// diagnosable and satisfies the strict public projection contract. A
 		// successful create replaces it with the authoritative generated ID below.
-		setAuditOperation(c, "create", req.Account, req.Name)
+		targetName := strings.TrimSpace(req.Name)
+		if targetName == "" {
+			targetName = req.Account
+		}
+		setAuditOperation(c, "create", req.Account, targetName)
 		ctx := c.Request.Context()
 		// Validate departments BEFORE creating the user, so an unknown id fails
 		// the request without leaving an orphaned user behind.
@@ -88,7 +93,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 				return
 			}
 		}
-		setAuditOperation(c, "create", u.ID, u.Name)
+		setAuditOperation(c, "create", u.ID, targetName)
 		resp := gin.H{"id": u.ID}
 		if initialPassword != "" {
 			resp["initial_password"] = initialPassword

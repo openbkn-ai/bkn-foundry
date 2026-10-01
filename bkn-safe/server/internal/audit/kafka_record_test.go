@@ -87,6 +87,20 @@ func TestBuildKafkaAdminRecordRejectsMissingActor(t *testing.T) {
 	}
 }
 
+func TestBuildKafkaAdminRecordRejectsMissingActorSnapshot(t *testing.T) {
+	entry := Entry{ActorID: "verified-admin", ActorType: "user", AuthMethod: "oauth", RequestID: "req-safe-missing-actor-name", SourceChannel: "api", Method: "POST", Resource: "users", Action: "create", TargetID: "user-1", TargetName: "用户 A", Status: 201}
+	if _, err := BuildKafkaAdminRecord(entry, "test"); err == nil {
+		t.Fatal("admin fact without an actor snapshot must not enter the business audit stream")
+	}
+}
+
+func TestBuildKafkaAdminRecordRejectsMissingTargetSnapshot(t *testing.T) {
+	entry := Entry{ActorID: "verified-admin", ActorNameSnapshot: "Administrator", ActorType: "user", AuthMethod: "oauth", RequestID: "req-safe-missing-target-name", SourceChannel: "api", Method: "POST", Resource: "users", Action: "create", TargetID: "user-1", Status: 201}
+	if _, err := BuildKafkaAdminRecord(entry, "test"); err == nil {
+		t.Fatal("admin fact without a target snapshot must not enter the business audit stream")
+	}
+}
+
 func TestBuildKafkaAdminRecordCoversSafeManagementResources(t *testing.T) {
 	resources := map[string]string{
 		"users": "user", "roles": "role", "departments": "department",
@@ -100,9 +114,9 @@ func TestBuildKafkaAdminRecordCoversSafeManagementResources(t *testing.T) {
 	}
 	for resource, targetType := range resources {
 		t.Run(resource, func(t *testing.T) {
-			entry := Entry{ActorID: "verified-admin", ActorType: "user", AuthMethod: "oauth",
+			entry := Entry{ActorID: "verified-admin", ActorNameSnapshot: "Administrator", ActorType: "user", AuthMethod: "oauth",
 				RequestID: "req-safe-management", SourceChannel: "api", Method: "POST",
-				Resource: resource, Action: "create", Status: 201}
+				Resource: resource, Action: "create", TargetName: "business target", Status: 201}
 			value, err := BuildKafkaAdminRecord(entry, "test")
 			if err != nil {
 				t.Fatal(err)

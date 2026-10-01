@@ -7,6 +7,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -90,6 +91,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
+		setAuditOperation(c, "add_redirect_uri", id, fmt.Sprintf("%s redirect URI %s", id, req.RedirectURI))
 		var uris []string
 		var err error
 		if id == "openbkn-studio" && origins != nil {
@@ -127,6 +129,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 		if !bind(c, &req) {
 			return
 		}
+		setAuditOperation(c, "remove_redirect_uri", id, fmt.Sprintf("%s redirect URI %s", id, req.RedirectURI))
 		var uris []string
 		var err error
 		if id == "openbkn-studio" && origins != nil {

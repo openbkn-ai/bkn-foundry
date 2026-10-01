@@ -74,6 +74,10 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 	if actorID == "" {
 		return nil, errors.New("safe audit actor is missing")
 	}
+	actorName := boundedAuditDisplayName(entry.ActorNameSnapshot, 256)
+	if !systemEvent && actorName == "" {
+		return nil, errors.New("safe audit actor snapshot is missing")
+	}
 	if strings.HasPrefix(actorID, "system:") || (entry.ActorType != "" && entry.ActorType != "user") {
 		actorType = "service_account"
 	}
@@ -113,12 +117,16 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 	if entry.RequestID != "" {
 		correlation["request_id"] = entry.RequestID
 	}
+	targetName := boundedAuditDisplayName(entry.TargetName, 512)
+	if !systemEvent && targetName == "" {
+		return nil, errors.New("safe audit target snapshot is missing")
+	}
 	target := map[string]any{"type": targetType, "id": targetID}
-	if targetName := boundedAuditDisplayName(entry.TargetName, 512); targetName != "" {
+	if targetName != "" {
 		target["name"] = targetName
 	}
 	actor := map[string]any{"id": actorID, "effective_subject": actorID, "type": actorType, "auth_method": authMethod}
-	if actorName := boundedAuditDisplayName(entry.ActorNameSnapshot, 256); actorName != "" {
+	if actorName != "" {
 		actor["display_name_snapshot"] = actorName
 	}
 	record := map[string]any{

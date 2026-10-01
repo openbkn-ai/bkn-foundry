@@ -22,7 +22,7 @@ func (s *auditPublisherStub) TryPublish(value []byte) auditpublisher.Disposition
 func TestKafkaRecorderPublishesCommittedSafeFact(t *testing.T) {
 	publisher := &auditPublisherStub{disposition: auditpublisher.Accepted}
 	recorder := NewKafkaRecorder(publisher, "test")
-	entry := Entry{ActorID: "verified-admin", ActorType: "user", AuthMethod: "oauth", RequestID: "req-safe-1", SourceChannel: "api", Method: "POST", Resource: "users", Action: "create", TargetID: "user-1", Status: 201}
+	entry := Entry{ActorID: "verified-admin", ActorNameSnapshot: "Administrator", ActorType: "user", AuthMethod: "oauth", RequestID: "req-safe-1", SourceChannel: "api", Method: "POST", Resource: "users", Action: "create", TargetID: "user-1", TargetName: "User One", Status: 201}
 	if err := recorder.Record(context.Background(), entry); err != nil {
 		t.Fatal(err)
 	}

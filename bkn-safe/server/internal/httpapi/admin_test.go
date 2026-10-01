@@ -973,6 +973,16 @@ func TestAuditTrail(t *testing.T) {
 	if deleteDept == nil || deleteDept.TargetName != "Renamed" {
 		t.Errorf("delete department target snapshot = %+v, want target_name Renamed", deleteDept)
 	}
+	var createDept *model.AuditLog
+	for i := range depts {
+		if depts[i].Method == http.MethodPost {
+			createDept = &depts[i]
+			break
+		}
+	}
+	if createDept == nil || createDept.TargetID != "d-1" || createDept.TargetName != "Root" {
+		t.Errorf("create department target snapshot = %+v, want d-1/Root", createDept)
+	}
 
 	failed, count, err := store.List(t.Context(), audit.Filter{FailedOnly: true})
 	if err != nil || count != 0 || len(failed) != 0 {

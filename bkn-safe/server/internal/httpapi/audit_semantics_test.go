@@ -11,8 +11,12 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
+	"gorm.io/gorm"
 )
 
 type safeAuditPublisherStub struct{ values [][]byte }
@@ -24,10 +28,23 @@ func (p *safeAuditPublisherStub) TryPublish(value []byte) auditpublisher.Disposi
 
 func TestSafeAdminMiddlewarePublishesKafkaWithoutLegacyStore(t *testing.T) {
 	publisher := &safeAuditPublisherStub{}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.User{}, &model.ManagedProxyAccount{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "verified-admin", Name: "Administrator", Account: "administrator", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set(ctxAccessorID, "verified-admin"); c.Next() })
-	router.Use(auditMiddleware(audit.NewKafkaRecorder(publisher, "test"), nil, nil))
-	router.POST("/api/safe/v1/admin/users", func(c *gin.Context) { c.Status(http.StatusCreated) })
+	router.Use(auditMiddleware(audit.NewKafkaRecorder(publisher, "test"), directory.New(db), db))
+	router.POST("/api/safe/v1/admin/users", func(c *gin.Context) {
+		setAuditOperation(c, "create", "user-1", "用户 A")
+		c.Status(http.StatusCreated)
+	})
 	request := httptest.NewRequest(http.MethodPost, "/api/safe/v1/admin/users", nil)
 	request.Header.Set("x-request-id", "req-safe-kafka-user")
 	response := httptest.NewRecorder()
@@ -84,13 +101,27 @@ func TestAuditActionUsesStableBusinessSemantics(t *testing.T) {
 		{http.MethodPost, "/api/safe/v1/admin/license/activate", "activate"},
 		{http.MethodDelete, "/api/safe/v1/admin/license", "remove"},
 		{http.MethodPost, "/api/safe/v1/admin/oauth/access-origins", "add_access_origin"},
+		{http.MethodPost, "/api/safe/v1/admin/oauth/access-origins/reconcile", "reconcile_access_origins"},
 		{http.MethodDelete, "/api/safe/v1/admin/oauth/access-origins/:id", "remove_access_origin"},
+		{http.MethodPost, "/api/safe/v1/me/permission-requests/:id/cancel", "cancel"},
+		{http.MethodPost, "/api/safe/v1/me/permission-requests/:id/decision", "decide"},
 		{http.MethodPut, "/api/safe/v1/me", "update_profile"},
 	}
 	for _, test := range tests {
 		if got := auditAction(test.method, test.path); got != test.want {
 			t.Errorf("%s %s: action=%q, want %q", test.method, test.path, got, test.want)
 		}
+	}
+}
+
+func TestPermissionRequestAuditNameKeepsBusinessSnapshot(t *testing.T) {
+	request := &model.PermissionRequest{ResourceType: "object_type", ResourceID: "orders", ResourceName: "Orders"}
+	if got := permissionRequestAuditName(request); got != "Orders" {
+		t.Fatalf("named permission request snapshot = %q", got)
+	}
+	request.ResourceName = ""
+	if got := permissionRequestAuditName(request); got != "" {
+		t.Fatalf("fallback permission request snapshot = %q", got)
 	}
 }
 

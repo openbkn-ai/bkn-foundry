@@ -63,6 +63,7 @@ func registerLicenseAdmin(g *gin.RouterGroup, svc *license.Service, e *authz.Enf
 			return
 		}
 		_ = snap
+		setAuditOperation(c, "activate", "license:cluster", "cluster license")
 		c.JSON(http.StatusOK, licenseDetail(svc))
 	})
 
@@ -95,6 +96,7 @@ func registerLicenseAdmin(g *gin.RouterGroup, svc *license.Service, e *authz.Enf
 			replyPublicError(c, http.StatusInternalServerError)
 			return
 		}
+		setAuditOperation(c, "remove", "license:cluster", "cluster license")
 		c.Status(http.StatusNoContent)
 	})
 }
@@ -128,6 +130,7 @@ func importLicense(c *gin.Context, svc *license.Service) {
 		c.JSON(status, gin.H{"stored": true, "error": actErr.Error(), "license": licenseDetail(svc)})
 		return
 	}
+	setAuditOperation(c, "", "license:cluster", "cluster license")
 	c.JSON(http.StatusOK, licenseDetail(svc))
 }
 

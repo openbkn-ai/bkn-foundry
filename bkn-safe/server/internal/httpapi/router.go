@@ -205,7 +205,7 @@ func New(deps Deps) *gin.Engine {
 			if recorder != nil {
 				enterpriseObjectGrants.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 			}
-			registerEnterpriseObjectGrants(enterpriseObjectGrants, deps.Enforcer)
+			registerEnterpriseObjectGrants(enterpriseObjectGrants, deps.Enforcer, deps.DB, deps.Directory)
 		}
 		// rbac_basic write routes (custom role create/update/delete + role
 		// permission grant/revoke) are mounted by the enterprise build through

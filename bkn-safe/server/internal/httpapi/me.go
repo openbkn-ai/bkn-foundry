@@ -273,7 +273,24 @@ func registerMeProfile(g *gin.RouterGroup, users *auth.UserStore) {
 			return
 		}
 		sub := c.GetString(ctxAccessorID)
-		err := users.UpdateUser(c.Request.Context(), sub, fields)
+		current, err := users.ByID(c.Request.Context(), sub)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			replyPublicError(c, http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		targetName := current.Name
+		if strings.TrimSpace(targetName) == "" {
+			targetName = current.Account
+		}
+		if req.Name != nil {
+			targetName = strings.TrimSpace(*req.Name)
+		}
+		setAuditOperation(c, "update_profile", sub, targetName)
+		err = users.UpdateUser(c.Request.Context(), sub, fields)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			replyPublicError(c, http.StatusNotFound)
 			return

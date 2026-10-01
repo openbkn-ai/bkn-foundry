@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 )
 
-func registerEnterpriseObjectGrants(g *gin.RouterGroup, e *authz.Enforcer) {
+func registerEnterpriseObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service) {
 	g.GET("/enterprise-object-grants", RequirePermission(e, "admin-authz", "view"), func(c *gin.Context) {
 		entries, err := permobject.Inventory(c.Request.Context(), time.Now().UTC())
 		if err != nil {
@@ -39,12 +41,12 @@ func registerEnterpriseObjectGrants(g *gin.RouterGroup, e *authz.Enforcer) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		targetID, targetName := req.GrantID, "enterprise authorization "+req.GrantID
+		var targetID, targetName string
 		if entries, err := permobject.Inventory(c.Request.Context(), time.Now().UTC()); err == nil {
 			for _, entry := range entries {
 				if entry.GrantID == req.GrantID {
 					targetID = entry.ResourceID
-					targetName = auditObjectGrantName(c.Request.Context(), nil, nil, entry.AccessorID, entry.ResourceType, entry.ResourceID)
+					targetName = auditObjectGrantName(c.Request.Context(), db, dir, entry.AccessorID, entry.ResourceType, entry.ResourceID)
 					break
 				}
 			}

@@ -473,13 +473,16 @@ func auditDetailName(
 func auditObjectGrantName(ctx context.Context, db *gorm.DB, dir *directory.Service, accessorID, resourceType, resourceID string) string {
 	accessorName := accessorNameByID(ctx, dir, accessorID)
 	if accessorName == "" && db != nil && accessorID != "" {
-		var user model.User
-		if err := db.WithContext(ctx).Select("name").First(&user, "id = ?", accessorID).Error; err == nil {
-			accessorName = user.Name
+		for _, target := range []any{&model.User{}, &model.Department{}, &model.Group{}, &model.Role{}} {
+			var row struct{ Name string }
+			if err := db.WithContext(ctx).Model(target).Select("name").Where("id = ?", accessorID).Scan(&row).Error; err == nil && row.Name != "" {
+				accessorName = row.Name
+				break
+			}
 		}
 	}
-	if accessorName == "" {
-		accessorName = "grantee"
+	if accessorName == "" || resourceType == "" || resourceID == "" {
+		return ""
 	}
 	resourceName := fmt.Sprintf("%s %s", resourceType, resourceID)
 	return fmt.Sprintf("%s · authorization for %s", accessorName, resourceName)
@@ -497,11 +500,8 @@ func auditBindingTargetName(ctx context.Context, db *gorm.DB, accessorID, roleID
 		}
 	}
 	roleName := roleNameByID(ctx, db, roleID)
-	if accessorName == "" {
-		accessorName = "grantee"
-	}
-	if roleName == "" {
-		roleName = "role"
+	if accessorName == "" || roleName == "" {
+		return ""
 	}
 	return fmt.Sprintf("%s · %s role binding", accessorName, roleName)
 }
@@ -668,8 +668,14 @@ func auditAction(method, fullPath string) string {
 		return "add_redirect_uri"
 	case "/api/safe/v1/admin/oauth/access-origins":
 		return "add_access_origin"
+	case "/api/safe/v1/admin/oauth/access-origins/reconcile":
+		return "reconcile_access_origins"
 	case "/api/safe/v1/admin/oauth/access-origins/:id":
 		return "remove_access_origin"
+	case "/api/safe/v1/me/permission-requests/:id/cancel":
+		return "cancel"
+	case "/api/safe/v1/me/permission-requests/:id/decision":
+		return "decide"
 	case "/api/safe/v1/me":
 		return "update_profile"
 	}
