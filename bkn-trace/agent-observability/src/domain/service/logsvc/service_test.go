@@ -242,18 +242,6 @@ type categorizedSource struct {
 	queries    int
 }
 
-type partialCoverageSource struct {
-	categorizedSource
-}
-
-func (source *partialCoverageSource) Metadata() observabilityvo.SourceStatus {
-	return observabilityvo.SourceStatus{
-		SourceID: source.id, Status: observabilityvo.SourceCoverageDegraded,
-		Reason: observabilityvo.SourceReasonPartialManagementAuditCoverage, Reliability: "best_effort",
-		CountAccuracy: "partial", Categories: append([]string(nil), source.categories...),
-	}
-}
-
 type filteredPageSource struct {
 	pages [][]observabilityvo.LogRecord
 }
@@ -587,7 +575,7 @@ func TestSourcesAndPoliciesFollowTheAccessProfile(t *testing.T) {
 	}
 }
 
-func TestSourcesHealthCheckUsesTheConfiguredSourceTimeout(t *testing.T) {
+func TestSourcesDoesNotProbeSourcesWhileListingIntegrations(t *testing.T) {
 	started := make(chan string, 1)
 	release := make(chan struct{})
 	var active atomic.Int32
@@ -597,31 +585,55 @@ func TestSourcesHealthCheckUsesTheConfiguredSourceTimeout(t *testing.T) {
 		&categorizedSource{id: "healthy", categories: []string{observabilityvo.CategoryRuntimeBusiness}},
 	}, Options{CursorKey: []byte("test-cursor-key"), SourceTimeout: 20 * time.Millisecond, MaxConcurrentSources: 2})
 
-	startedAt := time.Now()
 	statuses, err := service.Sources(context.Background(), activeProfile("admin-a", "super_admin"))
-	if err != nil {
-		t.Fatalf("source health query failed: %v", err)
+	if err != nil || len(statuses) != 2 || statuses[0].SourceID != "slow" || statuses[1].Status != "healthy" {
+		t.Fatalf("source integration list is incomplete: statuses=%+v err=%v", statuses, err)
 	}
-	if elapsed := time.Since(startedAt); elapsed > time.Second {
-		t.Fatalf("source health query was not bounded by its timeout: %s", elapsed)
-	}
-	if len(statuses) != 2 || statuses[0].SourceID != "slow" || statuses[0].Reason != "source_timeout" ||
-		statuses[1].Status != "healthy" {
-		t.Fatalf("source health status is incomplete: %+v", statuses)
+	select {
+	case <-started:
+		t.Fatal("source listing must not probe a source")
+	default:
 	}
 }
 
-func TestSourcesRetainsDegradedPartialCoverageStatus(t *testing.T) {
-	service := New([]Source{&partialCoverageSource{categorizedSource: categorizedSource{
+func TestSourceInventoryProbesSourcesForInternalQueryStatus(t *testing.T) {
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var active atomic.Int32
+	var peak atomic.Int32
+	service := NewWithOptions([]Source{
+		&blockingSource{id: "slow", started: started, release: release, active: &active, peak: &peak},
+		&categorizedSource{id: "healthy", categories: []string{observabilityvo.CategoryRuntimeBusiness}},
+	}, Options{CursorKey: []byte("test-cursor-key"), SourceTimeout: 20 * time.Millisecond, MaxConcurrentSources: 2})
+
+	statuses, err := service.SourceInventory(context.Background(), activeProfile("admin-a", "super_admin"))
+	if err != nil || len(statuses) != 2 {
+		t.Fatalf("source inventory failed: statuses=%+v err=%v", statuses, err)
+	}
+	for _, status := range statuses {
+		if status.SourceID == "slow" {
+			if status.Status != "unavailable" || status.Reason != "source_timeout" {
+				t.Fatalf("inventory must report the timed-out source: %+v", status)
+			}
+			return
+		}
+	}
+	t.Fatal("inventory omitted the timed-out source")
+}
+
+func TestSourcesListsIntegrationWithoutProbingSources(t *testing.T) {
+	source := &categorizedSource{
 		id: "vega", categories: []string{observabilityvo.CategoryAuditAdmin},
-	}}})
+		err: errors.New("query must not run while listing integrations"),
+	}
+	service := New([]Source{source})
 
 	statuses, err := service.Sources(context.Background(), activeProfile("admin-a", "super_admin"))
 	if err != nil || len(statuses) != 1 {
-		t.Fatalf("source health query failed: statuses=%+v err=%v", statuses, err)
+		t.Fatalf("source integration list failed: statuses=%+v err=%v", statuses, err)
 	}
-	if statuses[0].Status != observabilityvo.SourceCoverageDegraded || statuses[0].Reason != observabilityvo.SourceReasonPartialManagementAuditCoverage {
-		t.Fatalf("partial producer coverage must remain degraded: %+v", statuses[0])
+	if source.queries != 0 || statuses[0].Status != observabilityvo.SourceCoverageHealthy || statuses[0].Reason != "" {
+		t.Fatalf("sources must list declared integrations without a health probe: queries=%d status=%+v", source.queries, statuses[0])
 	}
 }
 

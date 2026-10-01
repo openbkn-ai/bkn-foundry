@@ -566,25 +566,31 @@ func (service *Service) Sources(ctx context.Context, profile evidencevo.AccessPr
 	}
 	visibleSources := service.visibleSources(capabilities.AllowedLogCategories)
 	statuses := make([]observabilityvo.SourceStatus, 0, len(visibleSources))
-	now := time.Now().UTC()
-	from := now.Add(-time.Hour)
-	query := observabilityvo.LogQuery{
-		Limit:                         1,
-		TimeFrom:                      &from,
-		TimeTo:                        &now,
-		ObservedBefore:                &now,
-		AuthorizedSubjectID:           profile.EffectiveSubjectID,
-		AuthorizedApplicationID:       profile.ApplicationPrincipalID,
-		AuthorizedCategories:          append([]string(nil), capabilities.AllowedLogCategories...),
-		AuthorizedKnowledgeNetworkIDs: append([]string(nil), profile.ManagedKnowledgeNetworkIDs...),
-		RequireRecordScope:            hasRole(profile, "network_builder") && !hasRole(profile, "admin", "super_admin"),
-	}
-	for _, result := range service.searchSources(ctx, visibleSources, query, nil) {
-		status := result.status
-		if result.err != nil && status.Reason != "source_timeout" {
-			status.Reason = "source_health_check_failed"
+	for _, source := range visibleSources {
+		status := observabilityvo.SourceStatus{
+			SourceID: source.ID(), Reliability: "best_effort", CountAccuracy: "exact",
+		}
+		if metadata, ok := source.(metadataSource); ok {
+			status = metadata.Metadata()
 		}
 		statuses = append(statuses, status)
+	}
+	return statuses, nil
+}
+
+// SourceInventory returns the current query result for each visible source.
+// It is intentionally separate from Sources, whose response is the declared
+// integration contract presented in product settings.
+func (service *Service) SourceInventory(ctx context.Context, profile evidencevo.AccessProfile) ([]observabilityvo.SourceStatus, error) {
+	capabilities := observabilityvo.CapabilitiesFor(profile)
+	if !capabilities.GlobalLogSearch {
+		return nil, ErrAccessDenied
+	}
+	visibleSources := service.visibleSources(capabilities.AllowedLogCategories)
+	results := service.searchSources(ctx, visibleSources, observabilityvo.LogQuery{Limit: 1}, nil)
+	statuses := make([]observabilityvo.SourceStatus, 0, len(results))
+	for _, result := range results {
+		statuses = append(statuses, result.status)
 	}
 	return statuses, nil
 }

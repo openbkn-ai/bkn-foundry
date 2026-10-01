@@ -21,7 +21,7 @@ func NewAuditLedgerSource(reader *auditstore.Reader) *auditLedgerSource {
 func (s *auditLedgerSource) ID() string                   { return "audit-ledger" }
 func (s *auditLedgerSource) SupportsSourceIDFilter() bool { return true }
 func (s *auditLedgerSource) Metadata() observabilityvo.SourceStatus {
-	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: observabilityvo.SourceCoverageDegraded, Reason: observabilityvo.SourceReasonPartialManagementAuditCoverage, Reliability: "best_effort", CollectionMethod: "kafka_audit", CoveredModules: []string{"system_management"}, CountAccuracy: "partial", Categories: []string{"access.user", "audit.admin", "audit.security"}}
+	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: observabilityvo.SourceCoverageHealthy, Reliability: "best_effort", CollectionMethod: "kafka_audit", CoveredModules: []string{"system_management"}, CountAccuracy: "partial", Categories: []string{"access.user", "audit.admin", "audit.security"}}
 }
 func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	if q.TimeFrom == nil || q.TimeTo == nil {

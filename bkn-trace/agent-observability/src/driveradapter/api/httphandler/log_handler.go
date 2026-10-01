@@ -191,7 +191,7 @@ func (handler *LogHandler) ListLogSourceInventory(w http.ResponseWriter, r *http
 	}
 	queryStatus := make(map[string]observabilityvo.SourceStatus)
 	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
-	queryable, queryErr := handler.service.Sources(sourceContext, profile)
+	queryable, queryErr := handler.service.SourceInventory(sourceContext, profile)
 	if queryErr == nil {
 		for _, source := range queryable {
 			queryStatus[source.SourceID] = source
