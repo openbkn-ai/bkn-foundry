@@ -61,6 +61,48 @@ func TestSafeAdminMiddlewarePublishesKafkaWithoutLegacyStore(t *testing.T) {
 	}
 }
 
+func TestSafeAdminMiddlewareUsesManagedProxyAccountSnapshotWhenDirectoryOmitsIt(t *testing.T) {
+	publisher := &safeAuditPublisherStub{}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.User{}, &model.ManagedProxyAccount{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "managed-proxy", Account: "bkn-proxy-catalog", Name: "Catalog proxy", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ManagedProxyAccount{ProxyAccountID: "managed-proxy", ManagedBy: "bkn", ManagedResourceType: "catalog", ManagedResourceID: "catalog-1", LifecycleStatus: "active"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set(ctxAccessorID, "managed-proxy"); c.Next() })
+	router.Use(auditMiddleware(audit.NewKafkaRecorder(publisher, "test"), directory.New(db), db))
+	router.POST("/api/safe/v1/admin/users", func(c *gin.Context) {
+		setAuditOperation(c, "create", "user-1", "User One")
+		c.Status(http.StatusCreated)
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/safe/v1/admin/users", nil)
+	request.Header.Set("x-request-id", "req-managed-proxy-audit")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || len(publisher.values) != 1 {
+		t.Fatalf("business status=%d, Kafka records=%d", response.Code, len(publisher.values))
+	}
+	var record struct {
+		Actor struct {
+			DisplayNameSnapshot string `json:"display_name_snapshot"`
+		} `json:"actor"`
+	}
+	if err := json.Unmarshal(publisher.values[0], &record); err != nil {
+		t.Fatal(err)
+	}
+	if record.Actor.DisplayNameSnapshot != "Catalog proxy" {
+		t.Fatalf("managed proxy actor snapshot=%q", record.Actor.DisplayNameSnapshot)
+	}
+}
+
 func TestSafeAuditRuntimeDoesNotMountHistoricalQueryRoute(t *testing.T) {
 	publisher := &safeAuditPublisherStub{}
 	kafka := audit.NewKafkaRecorder(publisher, "test")

@@ -14,10 +14,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
-func TestAuditLedgerSourceReportsIntegratedKafkaAuditStatus(t *testing.T) {
+func TestAuditLedgerSourceReportsPartialManagementCoverage(t *testing.T) {
 	status := NewAuditLedgerSource(nil).Metadata()
-	if status.Status != observabilityvo.SourceCoverageHealthy || status.Reason != "" {
-		t.Fatalf("audit ledger status=%+v, want healthy without a development-coverage warning", status)
+	if status.Status != observabilityvo.SourceCoverageDegraded || status.Reason != observabilityvo.SourceReasonPartialManagementAuditCoverage {
+		t.Fatalf("audit ledger status=%+v, want degraded partial-management coverage", status)
 	}
 	if status.CollectionMethod != "kafka_audit" || status.CountAccuracy != "partial" {
 		t.Fatalf("audit ledger integration metadata=%+v", status)

@@ -89,9 +89,10 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		}
 		beforeName := auditTargetName(c.Request.Context(), dir, db, resource, targetID, detail)
 		actorID := c.GetString(ctxAccessorID)
+		actorName := auditActorName(c.Request.Context(), dir, db, actorID)
 		actorType, authMethod, sourceChannel := "user", "oauth", "api"
 		operationEntry := audit.Entry{
-			ActorID: actorID, ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
+			ActorID: actorID, ActorNameSnapshot: actorName,
 			ActorType: actorType, AuthMethod: authMethod, RequestID: requestID, SourceChannel: sourceChannel,
 			Method: c.Request.Method, Resource: resource, Action: action, TargetID: targetID, TargetName: beforeName,
 			Detail: detail, ClientIP: c.ClientIP(),
@@ -143,7 +144,7 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		defer cancelRecord()
 		baseEntry := audit.Entry{
 			ActorID:           actorID,
-			ActorNameSnapshot: auditActorName(recordCtx, dir, actorID),
+			ActorNameSnapshot: actorName,
 			ActorType:         actorType,
 			AuthMethod:        authMethod,
 			RequestID:         requestID,
@@ -178,15 +179,27 @@ func validAuditRequestID(value string) bool {
 	})
 }
 
-func auditActorName(ctx context.Context, dir *directory.Service, actorID string) string {
-	if dir == nil || actorID == "" {
+func auditActorName(ctx context.Context, dir *directory.Service, db *gorm.DB, actorID string) string {
+	if actorID == "" {
 		return ""
 	}
-	names, err := dir.ResolveUserNames(ctx, []string{actorID})
-	if err != nil || len(names) == 0 {
+	if dir != nil {
+		names, err := dir.ResolveUserNames(ctx, []string{actorID})
+		if err == nil && len(names) > 0 && strings.TrimSpace(names[0].Name) != "" {
+			return names[0].Name
+		}
+	}
+	if db == nil {
 		return ""
 	}
-	return names[0].Name
+	var user model.User
+	if err := db.WithContext(ctx).Select("name", "account").Where("id = ?", actorID).First(&user).Error; err != nil {
+		return ""
+	}
+	if name := strings.TrimSpace(user.Name); name != "" {
+		return name
+	}
+	return strings.TrimSpace(user.Account)
 }
 
 // isMutating reports whether the method is a write the audit trail records.
