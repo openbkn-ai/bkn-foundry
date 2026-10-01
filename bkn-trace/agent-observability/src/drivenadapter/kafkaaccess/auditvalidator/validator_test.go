@@ -75,7 +75,7 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 	}
 	for file, expected := range map[string]string{
 		"schema.json":                   "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f",
-		"registry-runtime-v1.json":      "48f3a74e87577bf4f15df59f2eabc9a558b25e07893cdfdca3af4420a3ad77b4",
+		"registry-runtime-v1.json":      "1026e55ae58e27c70644b46b9cc7f84781ab54ba726df861dfad4f4bdf4b30fd",
 		"audit-record-golden.json":      "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3",
 		"audit-kafka-golden.json":       "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -264,8 +264,8 @@ func TestSafeAccessKafkaPayloadIsAdmitted(t *testing.T) {
 	value["category"] = "access.user"
 	value["event_name"] = "login.failed"
 	value["occurred_at"] = time.Now().UTC().Format(time.RFC3339Nano)
-	value["actor"] = map[string]any{"id": "anonymous", "effective_subject": "anonymous", "type": "anonymous", "auth_method": "password"}
-	value["target"] = map[string]any{"type": "session", "id": "session:0199196f-e7f3-7c7a-91f6-c4ad242d0db7"}
+	value["actor"] = map[string]any{"id": "user-123", "effective_subject": "user-123", "display_name_snapshot": "Test User", "type": "user", "auth_method": "password"}
+	value["target"] = map[string]any{"type": "user", "id": "user-123", "name": "Test User"}
 	value["outcome"] = "failure"
 	value["scope"] = map[string]any{"business_module": "system_management", "environment": "test", "platform_scope": true, "knowledge_network_ids": []string{}}
 	value["request_context"] = map[string]any{"source_channel": "unknown", "transport": "http", "method": "POST"}
@@ -279,13 +279,32 @@ func TestSafeAccessKafkaPayloadIsAdmitted(t *testing.T) {
 	}
 	record := auditconsumer.Record{
 		Topic:      auditconsumer.Topic,
-		Key:        []byte("bkn-safe-access\x1fsession\x1fsession:0199196f-e7f3-7c7a-91f6-c4ad242d0db7"),
+		Key:        []byte("bkn-safe-access\x1fuser\x1fuser-123"),
 		Value:      content,
 		Headers:    []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}},
 		BrokerTime: time.Now().UTC(),
 	}
 	if _, err := validator.Validate(context.Background(), record); err != nil {
 		t.Fatalf("Safe Access Kafka audit payload rejected: %v", err)
+	}
+	actor := value["actor"].(map[string]any)
+	delete(actor, "display_name_snapshot")
+	record.Value, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "registry_snapshot_rejected") {
+		t.Fatalf("Safe Access payload without an actor snapshot must be rejected: %v", err)
+	}
+	actor["display_name_snapshot"] = "Test User"
+	target := value["target"].(map[string]any)
+	delete(target, "name")
+	record.Value, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validator.Validate(context.Background(), record); !IsPermanentReason(err, "registry_snapshot_rejected") {
+		t.Fatalf("Safe Access payload without a target snapshot must be rejected: %v", err)
 	}
 }
 

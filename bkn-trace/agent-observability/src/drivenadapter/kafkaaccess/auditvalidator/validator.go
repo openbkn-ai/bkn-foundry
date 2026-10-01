@@ -28,8 +28,8 @@ const (
 	SchemaVersion                 = "1.0"
 	SchemaHeader                  = "bkn-audit-schema-version"
 	CanonicalSchemaSHA256         = "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f"
-	CanonicalRegistrySHA256       = "555134f555aa4b802b9a69940a28f5332a136061335284f6a42ba9fbe594cb59"
-	RuntimeRegistrySHA256         = "48f3a74e87577bf4f15df59f2eabc9a558b25e07893cdfdca3af4420a3ad77b4"
+	CanonicalRegistrySHA256       = "3dc1565656d8ed15c8bc5bf46b67100a0da30e45b9b224ad745e26bb22cfdf58"
+	RuntimeRegistrySHA256         = "1026e55ae58e27c70644b46b9cc7f84781ab54ba726df861dfad4f4bdf4b30fd"
 	CanonicalValueFixtureSHA256   = "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3"
 	KafkaFixtureSHA256            = "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f"
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
@@ -105,6 +105,8 @@ type eventRule struct {
 	Category            string         `json:"log_category"`
 	AllowedSourceIDs    []string       `json:"allowed_source_ids"`
 	ResourceTypes       []string       `json:"resource_types"`
+	RequiredActorFields []string       `json:"required_actor_fields"`
+	RequiredTargetFields []string      `json:"required_target_fields"`
 	RequiredAttributes  []string       `json:"required_attributes"`
 	AllowedAttributes   []string       `json:"allowed_attributes"`
 	SensitiveAttributes []string       `json:"sensitive_attributes"`
@@ -249,6 +251,9 @@ func validateRegistry(value map[string]any, rules registry) error {
 	if !contains(event.ResourceTypes, mapString(value["target"], "type")) {
 		return permanent("registry_mapping_rejected")
 	}
+	if !hasRequiredSnapshotFields(value["actor"], event.RequiredActorFields) || !hasRequiredSnapshotFields(value["target"], event.RequiredTargetFields) {
+		return permanent("registry_snapshot_rejected")
+	}
 	if !contains(source.AllowedEnvironments, mapString(value["scope"], "environment")) {
 		return permanent("source_environment_rejected")
 	}
@@ -291,6 +296,15 @@ func mapString(value any, key string) string {
 		return result
 	}
 	return ""
+}
+
+func hasRequiredSnapshotFields(value any, fields []string) bool {
+	for _, field := range fields {
+		if mapString(value, field) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func contains(values []string, target string) bool {
