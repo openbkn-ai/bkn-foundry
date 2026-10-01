@@ -22,7 +22,7 @@ func (s *auditPublisherStub) TryPublish(value []byte) auditpublisher.Disposition
 func TestKafkaRecorderPublishesCommittedSafeFact(t *testing.T) {
 	publisher := &auditPublisherStub{disposition: auditpublisher.Accepted}
 	recorder := NewKafkaRecorder(publisher, "test")
-	entry := Entry{ActorID: "verified-admin", ActorType: "user", AuthMethod: "oauth", RequestID: "req-safe-1", SourceChannel: "api", Method: "POST", Resource: "users", Action: "create", TargetID: "user-1", Status: 201}
+	entry := Entry{ActorID: "verified-admin", ActorNameSnapshot: "Administrator", ActorType: "user", AuthMethod: "oauth", RequestID: "req-safe-1", SourceChannel: "api", Method: "POST", Resource: "users", Action: "create", TargetID: "user-1", TargetName: "User One", Status: 201}
 	if err := recorder.Record(context.Background(), entry); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestKafkaRecorderCountsAcceptedAndDroppedWithoutPayload(t *testing.T) {
 	telemetry := NewPublishTelemetry()
 	publisher := &auditPublisherStub{disposition: auditpublisher.Accepted}
 	recorder := NewKafkaRecorder(publisher, "test", telemetry)
-	entry := Entry{RequestID: "req-safe-metrics-secret", Method: "POST", Resource: "roles", Action: "create", Status: 201, TargetID: "role-metrics-secret"}
+	entry := Entry{ActorID: "admin-1", ActorNameSnapshot: "Administrator", RequestID: "req-safe-metrics-secret", Method: "POST", Resource: "roles", Action: "create", Status: 201, TargetID: "role-metrics-secret", TargetName: "运营角色"}
 	if err := recorder.Record(context.Background(), entry); err != nil {
 		t.Fatal(err)
 	}

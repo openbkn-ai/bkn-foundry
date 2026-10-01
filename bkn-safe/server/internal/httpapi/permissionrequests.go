@@ -14,6 +14,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permissionproposal"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
 )
 
@@ -117,6 +118,7 @@ func registerPermissionRequests(g *gin.RouterGroup, service *permissionrequest.S
 		if writePermissionRequestError(c, err) {
 			return
 		}
+		setAuditOperation(c, "cancel", result.ID, permissionRequestAuditName(result))
 		c.JSON(http.StatusOK, result)
 	})
 	group.POST("/:id/decision", func(c *gin.Context) {
@@ -134,8 +136,16 @@ func registerPermissionRequests(g *gin.RouterGroup, service *permissionrequest.S
 		if writePermissionRequestError(c, err) {
 			return
 		}
+		setAuditOperation(c, "decide", result.ID, permissionRequestAuditName(result))
 		c.JSON(http.StatusOK, result)
 	})
+}
+
+func permissionRequestAuditName(request *model.PermissionRequest) string {
+	if request == nil {
+		return ""
+	}
+	return strings.TrimSpace(request.ResourceName)
 }
 
 func permissionRequestPageOptions(c *gin.Context) permissionrequest.PageOptions {

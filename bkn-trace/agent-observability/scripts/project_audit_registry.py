@@ -24,10 +24,14 @@ SOURCE_FIELDS = (
 )
 EVENT_FIELDS = (
     "event_name", "log_category", "allowed_source_ids", "resource_types",
+    "required_actor_fields", "required_target_fields",
     "required_attributes", "allowed_attributes", "sensitive_attributes",
     "outcome_mapping", "schema_version", "allow_unknown",
 )
 AUDIT_CATEGORIES = {"access.user", "audit.admin", "audit.security"}
+# These describe internal authorization or read decisions. They remain in the
+# canonical registry for contract documentation but are never user-facing logs.
+INTERNAL_EVENTS = {"authorization.decided", "log.query.authorized", "log.query.denied"}
 
 
 def project(raw: bytes) -> bytes:
@@ -40,7 +44,7 @@ def project(raw: bytes) -> bytes:
         "events": [
             pick(event, EVENT_FIELDS)
             for event in registry["events"]
-            if event["log_category"] in AUDIT_CATEGORIES
+            if event["log_category"] in AUDIT_CATEGORIES and event["event_name"] not in INTERNAL_EVENTS
         ],
     }
     return json.dumps(projected, ensure_ascii=False, separators=(",", ":")).encode() + b"\n"

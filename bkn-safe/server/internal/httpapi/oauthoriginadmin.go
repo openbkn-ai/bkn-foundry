@@ -7,6 +7,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -54,6 +55,7 @@ func registerOAuthAccessOriginAdmin(g *gin.RouterGroup, manager accessOriginMana
 			}
 			return
 		}
+		setAuditOperation(c, "add_access_origin", entry.ID, fmt.Sprintf("OAuth access origin %s", entry.Origin))
 		status := http.StatusCreated
 		if entry.SyncState != "synced" {
 			status = http.StatusAccepted
@@ -71,6 +73,7 @@ func registerOAuthAccessOriginAdmin(g *gin.RouterGroup, manager accessOriginMana
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "reconcile_access_origins", "oauth-access-origins", "OAuth access origins")
 		status := http.StatusOK
 		if reconcileErr != nil {
 			status = http.StatusAccepted
@@ -95,6 +98,7 @@ func registerOAuthAccessOriginAdmin(g *gin.RouterGroup, manager accessOriginMana
 			c.JSON(http.StatusAccepted, gin.H{"id": c.Param("id"), "desired_state": "deleting", "sync_state": "error"})
 			return
 		}
+		setAuditOperation(c, "remove_access_origin", c.Param("id"), fmt.Sprintf("OAuth access origin %s", c.Param("id")))
 		c.Status(http.StatusNoContent)
 	})
 }

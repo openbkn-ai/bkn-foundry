@@ -491,6 +491,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "create", d.ID, d.Name)
 		c.JSON(http.StatusCreated, gin.H{"id": d.ID})
 	})
 

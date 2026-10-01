@@ -205,7 +205,7 @@ func New(deps Deps) *gin.Engine {
 			if recorder != nil {
 				enterpriseObjectGrants.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 			}
-			registerEnterpriseObjectGrants(enterpriseObjectGrants, deps.Enforcer)
+			registerEnterpriseObjectGrants(enterpriseObjectGrants, deps.Enforcer, deps.DB, deps.Directory)
 		}
 		// rbac_basic write routes (custom role create/update/delete + role
 		// permission grant/revoke) are mounted by the enterprise build through
@@ -323,7 +323,7 @@ func New(deps Deps) *gin.Engine {
 		// state and must not be blocked by the active-account write gate below.
 		if deps.AccessLog != nil {
 			meLogout := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier))
-			registerLogout(meLogout, deps.AccessLog, deps.Directory)
+			registerLogout(meLogout, deps.AccessLog, deps.Directory, deps.Users)
 		}
 
 		// Mutating /me (profile PUT, AppKey issue/revoke, object-grant delegation)

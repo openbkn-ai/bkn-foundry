@@ -469,7 +469,7 @@ func (service *Service) searchSources(
 				results[index].status.CountAccuracy = "unavailable"
 				return
 			}
-			if results[index].status.Status != observabilityvo.SourceCoverageDegraded || results[index].status.Reason == observabilityvo.SourceReasonPartialManagementAuditCoverage {
+			if results[index].status.Status != observabilityvo.SourceCoverageDegraded {
 				results[index].status.Status = "healthy"
 				results[index].status.CountAccuracy = normalizedAccuracy(page.CountAccuracy)
 			}

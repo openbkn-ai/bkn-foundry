@@ -611,7 +611,7 @@ func TestSourcesHealthCheckUsesTheConfiguredSourceTimeout(t *testing.T) {
 	}
 }
 
-func TestSourcesReportsReachablePartialCoverageSourceAsHealthy(t *testing.T) {
+func TestSourcesRetainsDegradedPartialCoverageStatus(t *testing.T) {
 	service := New([]Source{&partialCoverageSource{categorizedSource: categorizedSource{
 		id: "vega", categories: []string{observabilityvo.CategoryAuditAdmin},
 	}}})
@@ -620,8 +620,8 @@ func TestSourcesReportsReachablePartialCoverageSourceAsHealthy(t *testing.T) {
 	if err != nil || len(statuses) != 1 {
 		t.Fatalf("source health query failed: statuses=%+v err=%v", statuses, err)
 	}
-	if statuses[0].Status != "healthy" || statuses[0].Reason != observabilityvo.SourceReasonPartialManagementAuditCoverage {
-		t.Fatalf("reachable source must be healthy while retaining its partial coverage note: %+v", statuses[0])
+	if statuses[0].Status != observabilityvo.SourceCoverageDegraded || statuses[0].Reason != observabilityvo.SourceReasonPartialManagementAuditCoverage {
+		t.Fatalf("partial producer coverage must remain degraded: %+v", statuses[0])
 	}
 }
 

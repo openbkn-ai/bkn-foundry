@@ -6,7 +6,6 @@
 package httphandler
 
 import (
-	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -15,20 +14,16 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
-func TestAuditLedgerSourceStatusReturnsDropWindowAsAnUnknownPair(t *testing.T) {
-	payload, err := json.Marshal(NewAuditLedgerSource(nil).Metadata())
-	if err != nil {
-		t.Fatal(err)
+func TestAuditLedgerSourceReportsPartialManagementCoverage(t *testing.T) {
+	status := NewAuditLedgerSource(nil).Metadata()
+	if status.Status != observabilityvo.SourceCoverageDegraded || status.Reason != observabilityvo.SourceReasonPartialManagementAuditCoverage {
+		t.Fatalf("audit ledger status=%+v, want degraded partial-management coverage", status)
 	}
-	var status map[string]any
-	if err := json.Unmarshal(payload, &status); err != nil {
-		t.Fatal(err)
+	if status.CollectionMethod != "kafka_audit" || status.CountAccuracy != "partial" {
+		t.Fatalf("audit ledger integration metadata=%+v", status)
 	}
-	if _, ok := status["dropped_records"]; !ok || status["dropped_records"] != nil {
-		t.Fatalf("dropped_records must be present and null while producer coverage is unknown: %s", payload)
-	}
-	if _, ok := status["dropped_records_since"]; !ok || status["dropped_records_since"] != nil {
-		t.Fatalf("dropped_records_since must be present and null while producer coverage is unknown: %s", payload)
+	if !reflect.DeepEqual(status.CoveredModules, []string{"system_management"}) {
+		t.Fatalf("audit ledger covered modules=%v", status.CoveredModules)
 	}
 }
 
@@ -55,7 +50,7 @@ func TestAuditQueryCategoriesUsesAuthorizedDefaultAndIntersection(t *testing.T) 
 	}
 }
 
-func TestAuditLogRecordUsesCanonicalIdentityAndSafeDisplayFallbacks(t *testing.T) {
+func TestAuditLogRecordDoesNotInventDisplayNamesForIncompleteProducerFacts(t *testing.T) {
 	when := time.Date(2026, 9, 25, 9, 30, 0, 0, time.UTC)
 	brokerReceivedAt := when.Add(2 * time.Second)
 	recordedAt := when.Add(3 * time.Second)
@@ -75,8 +70,8 @@ func TestAuditLogRecordUsesCanonicalIdentityAndSafeDisplayFallbacks(t *testing.T
 	if record.LogID != "evt-1" || record.SourceLogID != "evt-1" {
 		t.Fatalf("unexpected canonical ids: log=%q source=%q", record.LogID, record.SourceLogID)
 	}
-	if record.ActorNameSnapshot != "user-1" || record.TargetNameSnapshot != "box-1" {
-		t.Fatalf("safe display fallbacks were not applied: actor=%q target=%q", record.ActorNameSnapshot, record.TargetNameSnapshot)
+	if record.ActorNameSnapshot != "" || record.TargetNameSnapshot != "" {
+		t.Fatalf("consumer must not turn opaque identifiers into business display names: actor=%q target=%q", record.ActorNameSnapshot, record.TargetNameSnapshot)
 	}
 	if record.ResourceRef == nil || record.ResourceRef.ResourceType != "toolbox" || record.ResourceRef.ResourceID != "box-1" {
 		t.Fatalf("target resource ref=%#v", record.ResourceRef)

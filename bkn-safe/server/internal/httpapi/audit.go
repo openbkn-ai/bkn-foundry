@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -88,9 +89,10 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		}
 		beforeName := auditTargetName(c.Request.Context(), dir, db, resource, targetID, detail)
 		actorID := c.GetString(ctxAccessorID)
+		actorName := auditActorName(c.Request.Context(), dir, db, actorID)
 		actorType, authMethod, sourceChannel := "user", "oauth", "api"
 		operationEntry := audit.Entry{
-			ActorID: actorID, ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
+			ActorID: actorID, ActorNameSnapshot: actorName,
 			ActorType: actorType, AuthMethod: authMethod, RequestID: requestID, SourceChannel: sourceChannel,
 			Method: c.Request.Method, Resource: resource, Action: action, TargetID: targetID, TargetName: beforeName,
 			Detail: detail, ClientIP: c.ClientIP(),
@@ -142,7 +144,7 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		defer cancelRecord()
 		baseEntry := audit.Entry{
 			ActorID:           actorID,
-			ActorNameSnapshot: auditActorName(recordCtx, dir, actorID),
+			ActorNameSnapshot: actorName,
 			ActorType:         actorType,
 			AuthMethod:        authMethod,
 			RequestID:         requestID,
@@ -155,25 +157,12 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 			Status:            c.Writer.Status(),
 			ClientIP:          c.ClientIP(),
 		}
-		entries := []audit.Entry{baseEntry}
-		if records := auditOutcomeRecords(c); len(records) > 0 {
-			entries = make([]audit.Entry, 0, len(records))
-			for _, record := range records {
-				entry := baseEntry
-				entry.TargetID = record.targetID
-				entry.TargetName = ""
-				entry.Detail = withAuditGate(record.detail, c)
-				entries = append(entries, entry)
-			}
-		} else {
-			entries[0].Detail = withAuditGate(withAuditOutcome(detail, c), c)
-		}
-		if err := store.RecordBatch(recordCtx, entries); err != nil {
+		baseEntry.Detail = withAuditGate(withAuditOutcome(detail, c), c)
+		if err := store.RecordBatch(recordCtx, []audit.Entry{baseEntry}); err != nil {
 			slog.Error("failed to persist operation audit record",
 				"request_id", requestID,
 				"resource", resource,
 				"action", action,
-				"records", len(entries),
 				"error", err,
 			)
 			_ = c.Error(err)
@@ -190,15 +179,27 @@ func validAuditRequestID(value string) bool {
 	})
 }
 
-func auditActorName(ctx context.Context, dir *directory.Service, actorID string) string {
-	if dir == nil || actorID == "" {
+func auditActorName(ctx context.Context, dir *directory.Service, db *gorm.DB, actorID string) string {
+	if actorID == "" {
 		return ""
 	}
-	names, err := dir.ResolveUserNames(ctx, []string{actorID})
-	if err != nil || len(names) == 0 {
+	if dir != nil {
+		names, err := dir.ResolveUserNames(ctx, []string{actorID})
+		if err == nil && len(names) > 0 && strings.TrimSpace(names[0].Name) != "" {
+			return names[0].Name
+		}
+	}
+	if db == nil {
 		return ""
 	}
-	return names[0].Name
+	var user model.User
+	if err := db.WithContext(ctx).Select("name", "account").Where("id = ?", actorID).First(&user).Error; err != nil {
+		return ""
+	}
+	if name := strings.TrimSpace(user.Name); name != "" {
+		return name
+	}
+	return strings.TrimSpace(user.Account)
 }
 
 // isMutating reports whether the method is a write the audit trail records.
@@ -305,22 +306,12 @@ func auditDetailFromPrefix(raw []byte) string {
 // does not say, e.g. how many grants a revoke actually removed.
 const ctxAuditOutcome = "audit_outcome"
 
-const ctxAuditOutcomeRecords = "audit_outcome_records"
-
 const ctxAuditOperation = "audit_operation"
 
 type auditOperation struct {
 	Action     string
 	TargetID   string
 	TargetName string
-}
-
-// auditOutcomeRecord is one independently queryable audit row produced by a
-// batch mutation. detail is pre-encoded and size-checked before the mutation is
-// committed, so the middleware cannot silently discard its provenance.
-type auditOutcomeRecord struct {
-	targetID string
-	detail   string
 }
 
 func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
@@ -332,36 +323,6 @@ func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
 // read): the value is then simply never consumed.
 func setAuditOutcome(c *gin.Context, outcome map[string]any) {
 	c.Set(ctxAuditOutcome, outcome)
-}
-
-func newAuditOutcomeRecord(targetID string, outcome map[string]any) (auditOutcomeRecord, bool) {
-	targetID = strings.TrimSpace(targetID)
-	if targetID == "" || len(outcome) == 0 {
-		return auditOutcomeRecord{}, false
-	}
-	detail, err := json.Marshal(map[string]any{
-		"grant_id": targetID,
-		"_outcome": outcome,
-	})
-	if err != nil || len(detail) > maxAuditDetail {
-		return auditOutcomeRecord{}, false
-	}
-	return auditOutcomeRecord{targetID: targetID, detail: string(detail)}, true
-}
-
-func setAuditOutcomeRecords(c *gin.Context, records []auditOutcomeRecord) {
-	if len(records) > 0 {
-		c.Set(ctxAuditOutcomeRecords, records)
-	}
-}
-
-func auditOutcomeRecords(c *gin.Context) []auditOutcomeRecord {
-	raw, ok := c.Get(ctxAuditOutcomeRecords)
-	if !ok {
-		return nil
-	}
-	records, _ := raw.([]auditOutcomeRecord)
-	return records
 }
 
 // withAuditGate notes in Detail which gate refused a mutating request that a
@@ -417,6 +378,14 @@ func withAuditOutcome(detail string, c *gin.Context) string {
 	}
 	m["_outcome"] = outcome
 	b, err := json.Marshal(m)
+	if (err != nil || len(b) > maxAuditDetail) && m["grant_ids"] != nil {
+		// Batch revoke requests can contain hundreds of opaque IDs. The
+		// handler supplies a bounded ID sample plus the complete count in the
+		// outcome; drop the duplicated request list so that outcome remains
+		// readable and persisted within the audit column limit.
+		delete(m, "grant_ids")
+		b, err = json.Marshal(m)
+	}
 	if err != nil || len(b) > maxAuditDetail {
 		return detail
 	}
@@ -431,6 +400,9 @@ func auditTargetName(
 	targetID string,
 	detail string,
 ) string {
+	if resource == "role-bindings" || resource == "object-grants" || resource == "enterprise-object-grants" {
+		return auditDetailName(ctx, dir, db, resource, detail)
+	}
 	if targetID == "" {
 		return auditDetailName(ctx, dir, db, resource, detail)
 	}
@@ -488,6 +460,13 @@ func auditDetailName(
 	if name, ok := body["name"].(string); ok && name != "" {
 		return name
 	}
+	if resource == "object-grants" || resource == "enterprise-object-grants" {
+		accessorID, _ := body["accessor_id"].(string)
+		ref, _ := body["resource"].(map[string]any)
+		resourceType, _ := ref["type"].(string)
+		resourceID, _ := ref["id"].(string)
+		return auditObjectGrantName(ctx, db, dir, accessorID, resourceType, resourceID)
+	}
 	if resource == "role-bindings" {
 		roleID, _ := body["role_id"].(string)
 		accessorID, _ := body["accessor_id"].(string)
@@ -502,6 +481,42 @@ func auditDetailName(
 		return accessorName
 	}
 	return ""
+}
+
+func auditObjectGrantName(ctx context.Context, db *gorm.DB, dir *directory.Service, accessorID, resourceType, resourceID string) string {
+	accessorName := accessorNameByID(ctx, dir, accessorID)
+	if accessorName == "" && db != nil && accessorID != "" {
+		for _, target := range []any{&model.User{}, &model.Department{}, &model.Group{}, &model.Role{}} {
+			var row struct{ Name string }
+			if err := db.WithContext(ctx).Model(target).Select("name").Where("id = ?", accessorID).Scan(&row).Error; err == nil && row.Name != "" {
+				accessorName = row.Name
+				break
+			}
+		}
+	}
+	if accessorName == "" || resourceType == "" || resourceID == "" {
+		return ""
+	}
+	resourceName := fmt.Sprintf("%s %s", resourceType, resourceID)
+	return fmt.Sprintf("%s · authorization for %s", accessorName, resourceName)
+}
+
+func auditBindingTargetName(ctx context.Context, db *gorm.DB, accessorID, roleID string) string {
+	accessorName := ""
+	if db != nil {
+		for _, target := range []any{&model.User{}, &model.Department{}, &model.Group{}} {
+			var row struct{ Name string }
+			if err := db.WithContext(ctx).Model(target).Select("name").Where("id = ?", accessorID).Scan(&row).Error; err == nil && row.Name != "" {
+				accessorName = row.Name
+				break
+			}
+		}
+	}
+	roleName := roleNameByID(ctx, db, roleID)
+	if accessorName == "" || roleName == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s · %s role binding", accessorName, roleName)
 }
 
 func auditDetailTargetID(resource, detail string) string {
@@ -666,8 +681,14 @@ func auditAction(method, fullPath string) string {
 		return "add_redirect_uri"
 	case "/api/safe/v1/admin/oauth/access-origins":
 		return "add_access_origin"
+	case "/api/safe/v1/admin/oauth/access-origins/reconcile":
+		return "reconcile_access_origins"
 	case "/api/safe/v1/admin/oauth/access-origins/:id":
 		return "remove_access_origin"
+	case "/api/safe/v1/me/permission-requests/:id/cancel":
+		return "cancel"
+	case "/api/safe/v1/me/permission-requests/:id/decision":
+		return "decide"
 	case "/api/safe/v1/me":
 		return "update_profile"
 	}

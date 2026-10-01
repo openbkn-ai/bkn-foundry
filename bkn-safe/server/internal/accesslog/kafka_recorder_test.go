@@ -24,7 +24,7 @@ func TestKafkaRecorderPublishesExistingAccessFactFailOpen(t *testing.T) {
 		outcomes = append(outcomes, outcome)
 	})
 	if err := recorder.Record(context.Background(), Entry{
-		ActorID: "user-1", AuthMethod: "password", SourceChannel: "web",
+		ActorID: "user-1", ActorNameSnapshot: "用户 A", AuthMethod: "password", SourceChannel: "web",
 		Action: "login", Outcome: "success", RequestID: "req-safe-access-success",
 	}); err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestKafkaRecorderPublishesExistingAccessFactFailOpen(t *testing.T) {
 	}
 	publisher.disposition = auditpublisher.DroppedQueueFull
 	if err := recorder.Record(context.Background(), Entry{
-		Action: "logout", Outcome: "success", RequestID: "req-safe-access-drop",
+		ActorID: "user-1", ActorNameSnapshot: "用户 A", Action: "logout", Outcome: "success", RequestID: "req-safe-access-drop",
 	}); err == nil {
 		t.Fatal("dropped publisher must be reported without failing caller semantics")
 	}

@@ -57,6 +57,9 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 	if (!systemEvent && entry.RequestID == "") || entry.Action == "" || entry.Status < 100 || entry.Status > 599 {
 		return nil, errors.New("incomplete Safe Audit request fact")
 	}
+	if !systemEvent && (entry.Status < http.StatusOK || entry.Status >= http.StatusMultipleChoices) {
+		return nil, errors.New("uncommitted Safe Audit request")
+	}
 	targetID := strings.TrimSpace(entry.TargetID)
 	if targetID == "" {
 		if systemEvent && entry.Resource == "license" {
@@ -69,8 +72,13 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 	}
 	actorID, actorType := strings.TrimSpace(entry.ActorID), "user"
 	if actorID == "" {
-		actorID, actorType = "anonymous", "anonymous"
-	} else if strings.HasPrefix(actorID, "system:") || (entry.ActorType != "" && entry.ActorType != "user") {
+		return nil, errors.New("safe audit actor is missing")
+	}
+	actorName := boundedAuditDisplayName(entry.ActorNameSnapshot, 256)
+	if !systemEvent && actorName == "" {
+		return nil, errors.New("safe audit actor snapshot is missing")
+	}
+	if strings.HasPrefix(actorID, "system:") || (entry.ActorType != "" && entry.ActorType != "user") {
 		actorType = "service_account"
 	}
 	authMethod := entry.AuthMethod
@@ -109,12 +117,16 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 	if entry.RequestID != "" {
 		correlation["request_id"] = entry.RequestID
 	}
+	targetName := boundedAuditDisplayName(entry.TargetName, 512)
+	if !systemEvent && targetName == "" {
+		return nil, errors.New("safe audit target snapshot is missing")
+	}
 	target := map[string]any{"type": targetType, "id": targetID}
-	if targetName := boundedAuditDisplayName(entry.TargetName, 512); targetName != "" {
+	if targetName != "" {
 		target["name"] = targetName
 	}
 	actor := map[string]any{"id": actorID, "effective_subject": actorID, "type": actorType, "auth_method": authMethod}
-	if actorName := boundedAuditDisplayName(entry.ActorNameSnapshot, 256); actorName != "" {
+	if actorName != "" {
 		actor["display_name_snapshot"] = actorName
 	}
 	record := map[string]any{

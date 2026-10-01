@@ -78,7 +78,7 @@ func TestKafkaRuntimeReconnectsAfterInitialBrokerFailure(t *testing.T) {
 	}
 	access := accesslog.NewKafkaRecorder(runtime.Publisher(), "test")
 	if err := access.Record(context.Background(), accesslog.Entry{
-		ActorID: "user-1", Action: "login", Outcome: "success", RequestID: "req-reconnect",
+		ActorID: "user-1", ActorNameSnapshot: "用户 A", Action: "login", Outcome: "success", RequestID: "req-reconnect",
 	}); err != nil {
 		t.Fatalf("access recorder did not receive the initialized publisher: %v", err)
 	}
