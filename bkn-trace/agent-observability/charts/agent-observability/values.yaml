@@ -93,13 +93,17 @@ core:
   store: memory
   autoMigrate: true
   abandonInterval: 30s
+  evidenceAssemblyTimeout: 5m
   oneShotIdleTTL: 15m
   evidenceCollectionState: enabled
   projection:
     enabled: false
     index: bkn-trace-core
     interval: 1s
-    rebuildVersion: bkn-trace-core-v013
+    # Projection documents gained the managed-operation input contract in v014.
+    # Keep this immutable so an upgrade rebuilds into a fresh index before the
+    # alias changes, rather than reusing older document versions.
+    rebuildVersion: bkn-trace-core-v014
   mariadb:
     existingSecret: bkn-trace-core-mariadb
     dsnKey: dsn

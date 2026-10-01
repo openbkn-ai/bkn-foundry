@@ -187,6 +187,18 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		convey.So(first[HeaderBKNAttempt], convey.ShouldEqual, "2")
 	})
 
+	convey.Convey("child operation identity distinguishes concrete downstream queries but replays the same query", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID: "req_01JZVALIDREQUESTID000000008", InteractionID: "interaction-1",
+			OperationID: "parent-operation", CausationEventID: "parent-event", Attempt: 2,
+		})
+		first := GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", "sha256:query-a")
+		replay := GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", "sha256:query-a")
+		second := GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", "sha256:query-b")
+		convey.So(first[HeaderBKNOperationID], convey.ShouldEqual, replay[HeaderBKNOperationID])
+		convey.So(first[HeaderBKNOperationID], convey.ShouldNotEqual, second[HeaderBKNOperationID])
+	})
+
 	convey.Convey("invalid inbound business causality is removed at the boundary", t, func() {
 		headers := map[string]string{
 			HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000006",

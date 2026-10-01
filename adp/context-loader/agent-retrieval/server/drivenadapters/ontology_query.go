@@ -8,6 +8,7 @@ package drivenadapters
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,7 +102,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 
 	uri := fmt.Sprintf(queryObjectInstancesURI, req.KnID, req.OtID, req.IncludeTypeInfo, req.IncludeLogicParams)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
-	header := common.GetHeaderForChildOperation(ctx, "ontology.object.query", 1)
+	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", objectQueryIdentity(req))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	_, respBody, err := o.httpClient.Post(ctx, url, header, req)
@@ -119,6 +120,14 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 		return
 	}
 	return
+}
+
+func objectQueryIdentity(req *interfaces.QueryObjectInstancesReq) string {
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		return "marshal-error"
+	}
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(encoded))
 }
 
 // classifyQueryError re-classifies a downstream client error (4xx) from

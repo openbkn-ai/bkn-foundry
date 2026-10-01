@@ -538,6 +538,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess) func(ctx context.Cont
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		matched, missing := detail.FilterObjectTypes(args.IDs)
+		bkntrace.EmitSchemaDefinitionEvents(ctx, nil, "object", knID, args.IDs, len(matched))
 		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched, Missing: missing}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
@@ -572,6 +573,7 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		matched, missing := detail.FilterRelationTypes(args.IDs)
+		bkntrace.EmitSchemaDefinitionEvents(ctx, nil, "relation", knID, args.IDs, len(matched))
 		resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched, Missing: missing}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {

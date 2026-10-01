@@ -39,3 +39,12 @@ func TestCoreConfigParsesOneShotIdleTTL(t *testing.T) {
 		t.Fatalf("unexpected one-shot idle TTL: %s", config.OneShotIdleTTL)
 	}
 }
+
+func TestCoreConfigParsesEvidenceAssemblyTimeout(t *testing.T) {
+	t.Setenv("BKN_TRACE_CORE_EVIDENCE_ASSEMBLY_TIMEOUT", "90s")
+
+	config := NewCoreConfig()
+	if config.AssemblyTimeout != 90*time.Second {
+		t.Fatalf("unexpected evidence assembly timeout: %s", config.AssemblyTimeout)
+	}
+}

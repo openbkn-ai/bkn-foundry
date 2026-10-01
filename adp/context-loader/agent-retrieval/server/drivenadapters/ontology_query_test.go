@@ -59,6 +59,18 @@ func TestQueryObjectInstances_Success(t *testing.T) {
 	})
 }
 
+func TestObjectQueryIdentityIsStablePerConcreteQuery(t *testing.T) {
+	first := &interfaces.QueryObjectInstancesReq{KnID: "kn-1", OtID: "customer", Limit: 10}
+	replay := &interfaces.QueryObjectInstancesReq{KnID: "kn-1", OtID: "customer", Limit: 10}
+	different := &interfaces.QueryObjectInstancesReq{KnID: "kn-1", OtID: "order", Limit: 10}
+	if objectQueryIdentity(first) != objectQueryIdentity(replay) {
+		t.Fatal("equivalent object queries must have a stable identity")
+	}
+	if objectQueryIdentity(first) == objectQueryIdentity(different) {
+		t.Fatal("different object queries must not share an identity")
+	}
+}
+
 // TestQueryObjectInstances_HTTPError 测试 QueryObjectInstances HTTP 错误
 func TestQueryObjectInstances_HTTPError(t *testing.T) {
 	convey.Convey("TestQueryObjectInstances_HTTPError", t, func() {

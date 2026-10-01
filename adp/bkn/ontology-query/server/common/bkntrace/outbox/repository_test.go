@@ -7,12 +7,120 @@ package outbox
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
+
+func TestEnqueueReturnsExistingEventForIdenticalEvidenceReplay(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("new sql mock: %v", err)
+	}
+	defer db.Close()
+	repository := &Repository{db: db, config: Config{ProducerID: "bkn-ontology", ProducerStreamID: "ontology-query"}, dialect: dialectMariaDB}
+	now := time.Now().UTC()
+	owner := Owner{TenantID: "t1", BusinessDomainID: "d1", ApplicationPrincipalID: "ontology-query", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"}
+	event := Event{EventID: "evt-replay", EventType: "data.query.observed", ConversationID: "c1", InteractionID: "i1", StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`)}
+	coreEnvelope, err := json.Marshal(struct {
+		Event json.RawMessage `json:"event"`
+		Owner Owner           `json:"owner"`
+	}{Event: event.Envelope, Owner: owner})
+	if err != nil {
+		t.Fatalf("marshal core envelope: %v", err)
+	}
+	payloadHash := CanonicalHash(coreEnvelope)
+	existing := event
+	existing.PayloadHash = payloadHash
+	existing.Envelope = coreEnvelope
+	existing.ProducerID, existing.ProducerStreamID, existing.ProducerEpoch, existing.ProducerSequence = "bkn-ontology", "ontology-query", 3, 7
+	stored, err := json.Marshal(struct {
+		Event Event `json:"event"`
+		Owner Owner `json:"owner"`
+	}{Event: existing, Owner: owner})
+	if err != nil {
+		t.Fatalf("marshal stored evidence: %v", err)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).
+		WithArgs("evt-replay").WillReturnRows(sqlmock.NewRows([]string{"payload_hash", "envelope"}).AddRow(payloadHash, string(stored)))
+
+	got, err := repository.Enqueue(context.Background(), event, owner)
+	if err != nil {
+		t.Fatalf("Enqueue() replay error = %v", err)
+	}
+	if got.ProducerSequence != 7 || got.ProducerEpoch != 3 {
+		t.Fatalf("Enqueue() replay = epoch %d sequence %d, want 3/7", got.ProducerEpoch, got.ProducerSequence)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnqueueRejectsConflictingEvidenceEventID(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("new sql mock: %v", err)
+	}
+	defer db.Close()
+	repository := &Repository{db: db, config: Config{ProducerID: "bkn-ontology", ProducerStreamID: "ontology-query"}, dialect: dialectMariaDB}
+	now := time.Now().UTC()
+	owner := Owner{TenantID: "t1", BusinessDomainID: "d1", ApplicationPrincipalID: "ontology-query", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"}
+	event := Event{EventID: "evt-conflict", EventType: "data.query.observed", ConversationID: "c1", InteractionID: "i1", StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`)}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).
+		WithArgs("evt-conflict").WillReturnRows(sqlmock.NewRows([]string{"payload_hash", "envelope"}).AddRow("different", `{"event":{},"owner":{}}`))
+
+	_, err = repository.Enqueue(context.Background(), event, owner)
+	if !errors.Is(err, ErrEventIDConflict) {
+		t.Fatalf("Enqueue() conflict error = %v, want ErrEventIDConflict", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnqueueReReadsAfterDuplicateKeyRace(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("new sql mock: %v", err)
+	}
+	defer db.Close()
+	repository := &Repository{db: db, config: Config{ProducerID: "bkn-ontology", ProducerStreamID: "ontology-query"}, dialect: dialectMariaDB}
+	now := time.Now().UTC()
+	owner := Owner{TenantID: "t1", BusinessDomainID: "d1", ApplicationPrincipalID: "ontology-query", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"}
+	event := Event{EventID: "evt-race", EventType: "data.query.observed", ConversationID: "c1", InteractionID: "i1", StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`)}
+	core, _ := json.Marshal(struct {
+		Event json.RawMessage `json:"event"`
+		Owner Owner           `json:"owner"`
+	}{Event: event.Envelope, Owner: owner})
+	hash := CanonicalHash(core)
+	existing := event
+	existing.Envelope, existing.PayloadHash = core, hash
+	existing.ProducerID, existing.ProducerStreamID, existing.ProducerEpoch, existing.ProducerSequence = "bkn-ontology", "ontology-query", 1, 1
+	stored, _ := json.Marshal(struct {
+		Event Event `json:"event"`
+		Owner Owner `json:"owner"`
+	}{Event: existing, Owner: owner})
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).WithArgs("evt-race").WillReturnError(sql.ErrNoRows)
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT current_epoch, next_sequence FROM "+tableStream+" WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE")).WithArgs("bkn-ontology", "ontology-query").WillReturnRows(sqlmock.NewRows([]string{"current_epoch", "next_sequence"}).AddRow(uint64(1), uint64(1)))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE "+tableStream+" SET next_sequence = ?, updated_at = ? WHERE producer_id = ? AND producer_stream_id = ?")).WithArgs(uint64(2), sqlmock.AnyArg(), "bkn-ontology", "ontology-query").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO " + tableOutbox)).WillReturnError(errors.New("Error 1062: Duplicate entry"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).WithArgs("evt-race").WillReturnRows(sqlmock.NewRows([]string{"payload_hash", "envelope"}).AddRow(hash, string(stored)))
+	mock.ExpectRollback()
+
+	got, err := repository.Enqueue(context.Background(), event, owner)
+	if err != nil || got.ProducerSequence != 1 {
+		t.Fatalf("Enqueue() duplicate-key replay = %#v, %v", got, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -39,6 +147,8 @@ func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 		StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`),
 	}
 
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).
+		WithArgs("evt-1").WillReturnError(sql.ErrNoRows)
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT current_epoch, next_sequence FROM "+tableStream+" WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE")).
 		WithArgs("bkn-ontology", "ontology-query").
@@ -78,6 +188,8 @@ func TestEnqueueRejectsZeroEpoch(t *testing.T) {
 		dialect: dialectMariaDB,
 	}
 	now := time.Now().UTC()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).
+		WithArgs("evt-zero").WillReturnError(sql.ErrNoRows)
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT current_epoch, next_sequence FROM "+tableStream+" WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE")).
 		WithArgs("bkn-ontology", "ontology-query").

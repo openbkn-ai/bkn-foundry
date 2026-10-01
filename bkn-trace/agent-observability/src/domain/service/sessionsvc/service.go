@@ -23,12 +23,14 @@ const (
 	maxOperationsPerInteraction   = 128
 	maxClaimsPerInteraction       = 32
 	maxEvidenceRefsPerInteraction = 2048
+	defaultAssemblyTimeout        = 5 * time.Minute
 )
 
 type Options struct {
 	Now                     func() time.Time
 	NewID                   func(prefix string) string
 	EvidenceCollectionState func() string
+	AssemblyTimeout         time.Duration
 	Metrics                 icoremetrics.Recorder
 }
 
@@ -37,6 +39,7 @@ type Service struct {
 	now                     func() time.Time
 	newID                   func(string) string
 	evidenceCollectionState func() string
+	assemblyTimeout         time.Duration
 	metrics                 icoremetrics.Recorder
 }
 
@@ -57,9 +60,14 @@ func New(store isessionstore.Store, options Options) *Service {
 	if metrics == nil {
 		metrics = icoremetrics.Noop{}
 	}
+	assemblyTimeout := options.AssemblyTimeout
+	if assemblyTimeout <= 0 {
+		assemblyTimeout = defaultAssemblyTimeout
+	}
 	return &Service{
 		store: store, now: now, newID: newID,
 		evidenceCollectionState: evidenceCollectionState,
+		assemblyTimeout:         assemblyTimeout,
 		metrics:                 metrics,
 	}
 }
@@ -566,6 +574,10 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			command.LeaseToken = interaction.LeaseToken
 			command.LeaseEpoch = interaction.LeaseEpoch
 			command.Manifest = deriveClosureManifest(tx, interaction.ID, command.Manifest)
+			if len(command.Manifest.ExpectedReceipts) > 0 {
+				deadline := tx.Now().Add(s.assemblyTimeout)
+				command.Manifest.AssemblerDeadline = &deadline
+			}
 		}
 		payloadHash := hashValue(struct {
 			Status   sessionvo.InteractionStatus
@@ -1163,15 +1175,32 @@ func (s *Service) AbandonExpiredInteractions(ctx context.Context, limit int) ([]
 				continue
 			}
 			now := tx.Now()
+			manifest := deriveClosureManifest(tx, current.ID, sessionvo.ClosureManifest{
+				Version:          "1",
+				CompletionReason: "interaction_abandoned",
+			})
+			if len(manifest.ExpectedReceipts) > 0 {
+				// The caller can no longer close this Interaction. Treat any still-pending
+				// receipt as incomplete now, while allowing a late durable receipt to revise it.
+				manifest.AssemblerDeadline = &now
+			}
 			current.ExecutionStatus = sessionvo.InteractionAbandoned
-			current.EvidenceStatus = evidenceStatusAtTermination(tx, sessionvo.ClosureManifest{})
+			current.EvidenceStatus = evidenceStatusAtTermination(tx, manifest)
 			current.TerminalIdempotencyKey = "lease-expired:" + current.LeaseToken
 			current.TerminalPayloadHash = hashValue(current.LeaseVersion)
+			current.ClosureManifest = &manifest
 			current.RowVersion++
 			current.LeaseVersion++
 			current.UpdatedAt = now
 			current.TerminalAt = &now
 			tx.SaveInteraction(current)
+			if current.EvidenceStatus == sessionvo.EvidenceComplete ||
+				current.EvidenceStatus == sessionvo.EvidencePartial ||
+				current.EvidenceStatus == sessionvo.EvidenceFailed {
+				if err := s.freezeAssemblyRevision(tx, current, manifest, "lease_expired"); err != nil {
+					return err
+				}
+			}
 			if err := s.appendProjection(tx, "interaction", current.ID, "interaction.abandoned", current); err != nil {
 				return err
 			}

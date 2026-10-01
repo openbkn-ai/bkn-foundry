@@ -115,8 +115,8 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 		case "/api/agent-observability/v1/operations/op-1/attempts/1:fail":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if body["evidence_durability"] != "failed" {
-				t.Errorf("failed attempt must report failed evidence durability: %#v", body)
+			if body["evidence_durability"] != "durable" {
+				t.Errorf("failed attempt must preserve durable lifecycle evidence: %#v", body)
 			}
 			_ = json.NewEncoder(w).Encode(OperationResult{
 				Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "failed"},

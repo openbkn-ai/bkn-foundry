@@ -51,6 +51,8 @@ spec:
               value: {{ ternary "true" "false" .Values.core.autoMigrate | quote }}
             - name: BKN_TRACE_CORE_ABANDON_INTERVAL
               value: {{ .Values.core.abandonInterval | quote }}
+            - name: BKN_TRACE_CORE_EVIDENCE_ASSEMBLY_TIMEOUT
+              value: {{ .Values.core.evidenceAssemblyTimeout | quote }}
             - name: BKN_TRACE_CORE_ONE_SHOT_IDLE_TTL
               value: {{ .Values.core.oneShotIdleTTL | quote }}
             - name: BKN_TRACE_EVIDENCE_COLLECTION_STATE

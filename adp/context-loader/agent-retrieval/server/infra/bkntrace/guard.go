@@ -151,7 +151,10 @@ func (g *Guard) Finish(
 	// not a by-product of evidence delivery. Keep them in the receipt even while
 	// observed evidence is still awaiting a durable acknowledgement.
 	input.BusinessRefs = declaredBusinessRefsFromContext(ctx)
-	if durable, evidenceRefs, businessRefs := snapshotEvidenceOutcome(ctx); durable {
+	if failed {
+		// A rejected operation is still durably represented by its lifecycle receipt.
+		input.EvidenceDurability = "durable"
+	} else if durable, evidenceRefs, businessRefs := snapshotEvidenceOutcome(ctx); durable {
 		input.EvidenceDurability = "durable"
 		input.ObservedEvidenceRefs = evidenceRefs
 		input.BusinessRefs = mergeBusinessRefs(input.BusinessRefs, businessRefs)

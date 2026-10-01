@@ -110,6 +110,13 @@ CREATE TABLE IF NOT EXISTS bkn_trace_operations (
     INDEX idx_bkn_trace_operation_conversation (conversation_id, interaction_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
+-- CREATE TABLE IF NOT EXISTS does not upgrade databases created before the
+-- operation input contract was introduced. Keep the upgrade additive so an
+-- existing Trace store can rebuild its read model without losing operations.
+ALTER TABLE bkn_trace_operations
+    ADD COLUMN IF NOT EXISTS normalized_input_hash VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT ''
+    AFTER tool_name;
+
 CREATE TABLE IF NOT EXISTS bkn_trace_receipts (
     receipt_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     schema_version VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -146,6 +153,14 @@ CREATE TABLE IF NOT EXISTS bkn_trace_receipts (
     CONSTRAINT uq_bkn_trace_receipt_attempt UNIQUE (operation_id, attempt_no),
     INDEX idx_bkn_trace_receipt_interaction (interaction_id, issued_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+ALTER TABLE bkn_trace_receipts
+    ADD COLUMN IF NOT EXISTS normalized_input_hash VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT ''
+    AFTER tool_name;
+
+ALTER TABLE bkn_trace_receipts
+    ADD COLUMN IF NOT EXISTS payload_hash VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NULL
+    AFTER terminal_at;
 
 CREATE TABLE IF NOT EXISTS bkn_trace_evidence_event_ledger (
     ingest_sequence BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

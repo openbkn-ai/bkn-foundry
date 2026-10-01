@@ -105,6 +105,9 @@ func TestRecordInteractionArtifactSeparatesApplicationDisplayFromPrincipal(t *te
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if r.URL.Path == "/api/agent-observability/v1/evidence/artifacts" {
+			if got := r.Header.Get("X-BKN-Trace-Ingest-Token"); got != "test-ingest-token" {
+				t.Errorf("artifact ingest token = %q, want shared ingest token", got)
+			}
 			_ = json.Unmarshal(body, &artifactBody)
 			w.WriteHeader(http.StatusCreated)
 			return
@@ -205,6 +208,27 @@ func TestBuildSearchSchemaEventsReplayIsStable(t *testing.T) {
 	second := BuildSearchSchemaEvents(ctx, req, resp)
 	if first[0]["event_id"] != second[0]["event_id"] || first[0]["observed_at"] != second[0]["observed_at"] {
 		t.Fatalf("replay changed identity or observed time: %#v != %#v", first[0], second[0])
+	}
+}
+
+func TestBuildSchemaDefinitionEventsUsesKnowledgeNetworkAndSchemaRefs(t *testing.T) {
+	events := BuildSchemaDefinitionEvents(testTraceContext(), "object", "supplychain_hd0202", []string{"forecast", "material"}, 2)
+	if len(events) != 1 {
+		t.Fatalf("len(events)=%d, want 1", len(events))
+	}
+	if events[0]["event_type"] != "retrieval.completed" || events[0]["bkn.operation.name"] != "context.get_object_types" {
+		t.Fatalf("unexpected schema retrieval event: %#v", events[0])
+	}
+	payload, ok := events[0]["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("event payload missing: %#v", events[0])
+	}
+	refs, ok := payload["source_refs"].([]map[string]any)
+	if !ok || len(refs) != 3 {
+		t.Fatalf("source refs=%#v, want knowledge network plus two object refs", payload["source_refs"])
+	}
+	if refs[0]["ref_id"] != "kn:supplychain_hd0202" || refs[1]["ref_id"] != "object:supplychain_hd0202:forecast" {
+		t.Fatalf("unexpected schema refs: %#v", refs)
 	}
 }
 

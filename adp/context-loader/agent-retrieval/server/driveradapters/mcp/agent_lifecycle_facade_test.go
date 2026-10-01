@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -54,6 +55,60 @@ func TestStartInteractionSchemaExposesQuestionConversationAndOptionalAgentName(t
 	sort.Strings(got)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("start properties = %v, want %v", got, want)
+	}
+}
+
+func TestLifecycleSchemasGiveAgentsImperativeParameterGuidance(t *testing.T) {
+	startInput, startOutput := loadToolSchemas("bkn_start_interaction")
+	finishInput, finishOutput := loadToolSchemas("bkn_finish_interaction")
+
+	assertSchemaDescriptions(t, startInput, map[string]string{
+		"conversation_id": "Never invent an ID.",
+		"question":        "Start one Interaction",
+		"agent_name":      "first interaction",
+	})
+	assertSchemaDescriptions(t, finishInput, map[string]string{
+		"interaction_id": "Copy exactly",
+		"outcome":        "Use completed",
+		"answer":         "Required when outcome is completed.",
+		"reason":         "state the concise reason",
+	})
+	assertSchemaDescriptions(t, startOutput, map[string]string{
+		"conversation_id": "Authoritative ID",
+		"interaction_id":  "Authoritative ID",
+	})
+	assertSchemaDescriptions(t, finishOutput, map[string]string{
+		"conversation_id": "remains available for later turns",
+		"evidence_status": "independent of the Interaction outcome",
+	})
+
+	businessInput, _ := loadToolSchemas("search_schema")
+	var business struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(businessInput, &business); err != nil {
+		t.Fatal(err)
+	}
+	assertSchemaDescriptions(t, business.Properties["bkn_context"], map[string]string{
+		"conversation_id": "Never invent an ID.",
+		"interaction_id":  "Never invent an ID.",
+	})
+}
+
+func assertSchemaDescriptions(t *testing.T, raw json.RawMessage, want map[string]string) {
+	t.Helper()
+	var schema struct {
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	for field, substring := range want {
+		if got := schema.Properties[field].Description; !strings.Contains(got, substring) {
+			t.Fatalf("%s description = %q, want substring %q", field, got, substring)
+		}
 	}
 }
 

@@ -349,11 +349,28 @@ func GetHeaderForChildOperation(ctx context.Context, operationName string, callO
 	return GetHeaderFromCtx(SetTraceContextToCtx(ctx, traceContext))
 }
 
+// GetHeaderForChildOperationIdentity derives a child operation for one
+// concrete downstream operation. The identity must be deterministic across a
+// transport retry and must not be derived from a transient trace span.
+func GetHeaderForChildOperationIdentity(ctx context.Context, operationName, identity string) map[string]string {
+	traceContext, ok := GetTraceContextFromCtx(ctx)
+	if !ok {
+		return GetHeaderFromCtx(ctx)
+	}
+	traceContext.OperationID = childOperationIDForIdentity(traceContext.OperationID, operationName, traceContext.Attempt, identity)
+	return GetHeaderFromCtx(SetTraceContextToCtx(ctx, traceContext))
+}
+
 func childOperationID(parentOperationID, operationName string, attempt, callOrdinal int) string {
 	if callOrdinal < 1 {
 		callOrdinal = 1
 	}
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%d", parentOperationID, strings.TrimSpace(operationName), attempt, callOrdinal)))
+	return "op_" + hex.EncodeToString(sum[:])
+}
+
+func childOperationIDForIdentity(parentOperationID, operationName string, attempt int, identity string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%s", parentOperationID, strings.TrimSpace(operationName), attempt, strings.TrimSpace(identity))))
 	return "op_" + hex.EncodeToString(sum[:])
 }
 

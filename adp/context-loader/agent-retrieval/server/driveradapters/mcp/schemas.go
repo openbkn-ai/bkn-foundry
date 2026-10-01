@@ -74,26 +74,27 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 	}
 	properties := map[string]any{}
 	required := []string{}
-	addString := func(name string, isRequired bool) {
-		properties[name] = map[string]any{"type": "string"}
+	addString := func(name, description string, isRequired bool) {
+		properties[name] = map[string]any{"type": "string", "description": description}
 		if isRequired {
 			required = append(required, name)
 		}
 	}
 	switch toolKey {
 	case "bkn_start_interaction":
-		addString("conversation_id", false)
-		addString("question", true)
+		addString("conversation_id", "Omit on the first turn. On later turns, copy the conversation_id returned by bkn_start_interaction. Never invent an ID.", false)
+		addString("question", "The user's current question. Start one Interaction for this question.", true)
 		properties["agent_name"] = map[string]any{
 			"type": "string", "maxLength": 128,
 			"description": "Optional display name declared on the first interaction; later turns omit it or reuse the same value.",
 		}
 	case "bkn_finish_interaction":
-		addString("interaction_id", true)
+		addString("interaction_id", "Copy exactly from bkn_start_interaction for the Interaction being finished.", true)
 		properties["outcome"] = enumSchema("completed", "failed", "cancelled", "handed_off")
+		properties["outcome"].(map[string]any)["description"] = "Use completed when an answer is ready; failed when work cannot continue; cancelled when the user cancels; handed_off when another person or system takes over."
 		required = append(required, "outcome")
-		addString("answer", false)
-		addString("reason", false)
+		addString("answer", "Required when outcome is completed. Provide the final user-facing answer for this turn.", false)
+		addString("reason", "For failed, cancelled, or handed_off, state the concise reason.", false)
 	}
 	input, _ := json.Marshal(map[string]any{
 		"type": "object", "properties": properties, "required": required,
@@ -107,16 +108,16 @@ func lifecycleOutputSchema(toolKey string) map[string]any {
 	switch toolKey {
 	case "bkn_start_interaction":
 		return closedSchema(map[string]any{
-			"interaction_id":   stringSchema(),
-			"conversation_id":  stringSchema(),
-			"execution_status": enumSchema("active"),
+			"interaction_id":   describedStringSchema("Authoritative ID for this active Interaction. Copy it unchanged into bkn_context for every business tool call in this turn."),
+			"conversation_id":  describedStringSchema("Authoritative ID for this Conversation. Reuse it unchanged when starting a later turn in the same business conversation."),
+			"execution_status": describedEnumSchema("The Interaction state after this call.", "active"),
 		}, []string{"interaction_id", "conversation_id", "execution_status"})
 	case "bkn_finish_interaction":
 		return closedSchema(map[string]any{
-			"interaction_id":   stringSchema(),
-			"conversation_id":  stringSchema(),
-			"execution_status": enumSchema("completed", "failed", "canceled", "handed_off", "abandoned"),
-			"evidence_status":  enumSchema("not_applicable", "assembling", "complete", "partial", "failed"),
+			"interaction_id":   describedStringSchema("The Interaction that was finished."),
+			"conversation_id":  describedStringSchema("The Conversation remains available for later turns."),
+			"execution_status": describedEnumSchema("The final Interaction state.", "completed", "failed", "canceled", "handed_off", "abandoned"),
+			"evidence_status":  describedEnumSchema("The evidence assembly state. It is independent of the Interaction outcome.", "not_applicable", "assembling", "complete", "partial", "failed"),
 		}, []string{"interaction_id", "conversation_id", "execution_status", "evidence_status"})
 	case "bkn_get_operation":
 		return operationOutputSchema()
@@ -295,7 +296,10 @@ func closedSchema(properties map[string]any, required []string) map[string]any {
 	}
 }
 
-func stringSchema() map[string]any  { return map[string]any{"type": "string"} }
+func stringSchema() map[string]any { return map[string]any{"type": "string"} }
+func describedStringSchema(description string) map[string]any {
+	return map[string]any{"type": "string", "description": description}
+}
 func integerSchema() map[string]any { return map[string]any{"type": "integer"} }
 func booleanSchema() map[string]any { return map[string]any{"type": "boolean"} }
 func dateTimeSchema() map[string]any {
@@ -306,6 +310,9 @@ func stringArraySchema() map[string]any {
 }
 func enumSchema(values ...string) map[string]any {
 	return map[string]any{"type": "string", "enum": values}
+}
+func describedEnumSchema(description string, values ...string) map[string]any {
+	return map[string]any{"type": "string", "enum": values, "description": description}
 }
 
 func expectedResourceSchema(idField string) map[string]any {
@@ -359,8 +366,8 @@ func bknContextInputSchema() map[string]any {
 		"type":        "object",
 		"description": "BKN Trace managed context. Use only IDs returned by lifecycle tools.",
 		"properties": map[string]any{
-			"conversation_id":     stringSchema(),
-			"interaction_id":      stringSchema(),
+			"conversation_id":     describedStringSchema("Copy exactly from bkn_start_interaction. Never invent an ID."),
+			"interaction_id":      describedStringSchema("Copy exactly from bkn_start_interaction for the active turn. Never invent an ID."),
 			"parent_operation_id": stringSchema(),
 			"causation_event_ids": map[string]any{
 				"type": "array", "maxItems": 64, "items": stringSchema(),

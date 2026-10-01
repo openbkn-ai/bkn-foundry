@@ -12,6 +12,7 @@ type CoreConfig struct {
 	MariaDBDSN               string
 	AutoMigrate              bool
 	AbandonInterval          time.Duration
+	AssemblyTimeout          time.Duration
 	OneShotIdleTTL           time.Duration
 	ProjectionEnabled        bool
 	ProjectionIndex          string
@@ -37,6 +38,12 @@ func NewCoreConfig() CoreConfig {
 			oneShotIdleTTL = parsed
 		}
 	}
+	assemblyTimeout := 5 * time.Minute
+	if configured := strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_EVIDENCE_ASSEMBLY_TIMEOUT")); configured != "" {
+		if parsed, err := time.ParseDuration(configured); err == nil && parsed > 0 {
+			assemblyTimeout = parsed
+		}
+	}
 	autoMigrate, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_AUTO_MIGRATE")))
 	projectionEnabled, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_ENABLED")))
 	projectionInterval := time.Second
@@ -55,7 +62,7 @@ func NewCoreConfig() CoreConfig {
 	}
 	return CoreConfig{
 		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),
-		AutoMigrate: autoMigrate, AbandonInterval: interval, OneShotIdleTTL: oneShotIdleTTL,
+		AutoMigrate: autoMigrate, AbandonInterval: interval, AssemblyTimeout: assemblyTimeout, OneShotIdleTTL: oneShotIdleTTL,
 		ProjectionEnabled: projectionEnabled, ProjectionIndex: projectionIndex,
 		ProjectionInterval:       projectionInterval,
 		ProjectionRebuildVersion: projectionRebuildVersion,

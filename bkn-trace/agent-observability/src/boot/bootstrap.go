@@ -135,6 +135,7 @@ func NewApp() (*App, error) {
 		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
 	}), evidenceHandler)
 	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
+		AssemblyTimeout: coreConfig.AssemblyTimeout,
 		EvidenceCollectionState: func() string {
 			if coreConfig.EvidenceCollectionState == "" {
 				return "enabled"

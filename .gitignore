@@ -96,3 +96,6 @@ docs/api/_generated/
 go.work
 go.work.sum
 ref
+
+# Isolated local worktrees
+.worktrees/

@@ -248,6 +248,16 @@ func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string,
 	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunSQLEvents(ctx, sql, resourceIDs, resp))
 }
 
+// EmitSchemaDefinitionEvents records an observed schema drill-down. Object and
+// relation definition reads are evidence-bearing operations just like schema
+// search; without this event their receipts cannot become durable.
+func EmitSchemaDefinitionEvents(ctx context.Context, logger interfaces.Logger, kind, knID string, ids []string, matched int) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, nil, BuildSchemaDefinitionEvents(ctx, kind, knID, ids, matched))
+}
+
 func submitAndReturnFirstEventID(ctx context.Context, logger interfaces.Logger, req any, events []Event) string {
 	_ = SubmitEvents(ctx, logger, req, events)
 	if len(events) == 0 {
@@ -345,6 +355,46 @@ func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, re
 		HashValue(strings.TrimSpace(sql)),
 		count,
 		truncated,
+		refs,
+	)
+}
+
+func BuildSchemaDefinitionEvents(ctx context.Context, kind, knID string, ids []string, matched int) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok || strings.TrimSpace(knID) == "" {
+		return nil
+	}
+	refType := ""
+	switch kind {
+	case "object":
+		refType = "object"
+	case "relation":
+		refType = "relation"
+	default:
+		return nil
+	}
+	refs := []map[string]any{{
+		"ref_id": "kn:" + knID, "ref_type": "knowledge_network",
+		"source_system": ModuleName, "validity": "observed",
+		"version_status": "unversioned", "visibility": "visible",
+	}}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		refs = append(refs, map[string]any{
+			"ref_id": kind + ":" + knID + ":" + id, "ref_type": refType,
+			"source_system": ModuleName, "validity": "observed",
+			"version_status": "unversioned", "visibility": "visible",
+		})
+	}
+	return buildRetrievalEvents(
+		ec,
+		"context.get_"+kind+"_types",
+		HashValue(strings.Join(ids, "\x00")),
+		matched,
+		false,
 		refs,
 	)
 }
