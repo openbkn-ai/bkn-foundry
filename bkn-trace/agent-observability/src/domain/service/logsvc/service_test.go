@@ -299,8 +299,8 @@ func (source *categorizedSource) Search(
 	}, nil
 }
 
-func TestOperationAuditModeQueriesReceiptRuntimeSource(t *testing.T) {
-	source := &categorizedSource{
+func TestOperationAuditModeExcludesTraceRuntimeSource(t *testing.T) {
+	runtimeSource := &categorizedSource{
 		id: "bkn-trace-runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness},
 		records: []observabilityvo.LogRecord{{
 			LogID:          "bkn-trace-runtime:receipt-a",
@@ -310,13 +310,20 @@ func TestOperationAuditModeQueriesReceiptRuntimeSource(t *testing.T) {
 			EventTimestamp: time.Now().UTC(),
 		}},
 	}
-	service := NewWithOptions([]Source{source}, Options{OperationAuditOnly: true, CursorKey: []byte("runtime-source-test")})
-	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{TraceID: "trace-a"})
+	conversationSource := &categorizedSource{
+		id: "bkn-trace-core", categories: []string{observabilityvo.CategoryRuntimeBusiness},
+		records: []observabilityvo.LogRecord{{
+			LogID: "bkn-trace-core:conversation-a", Category: observabilityvo.CategoryRuntimeBusiness,
+			EventName: "conversation.created", EventTimestamp: time.Now().UTC(),
+		}},
+	}
+	service := NewWithOptions([]Source{conversationSource, runtimeSource}, Options{OperationAuditOnly: true, CursorKey: []byte("runtime-source-test")})
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if source.queries != 1 || len(result.Records) != 1 {
-		t.Fatalf("receipt runtime source was not reachable: queries=%d result=%+v", source.queries, result)
+	if conversationSource.queries != 1 || runtimeSource.queries != 0 || len(result.Records) != 1 {
+		t.Fatalf("only the user-started conversation must be projected: conversation queries=%d runtime queries=%d result=%+v", conversationSource.queries, runtimeSource.queries, result)
 	}
 }
 
