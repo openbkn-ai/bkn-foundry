@@ -225,6 +225,9 @@ func (h *toolBoxHandler) DeleteToolBox(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	if resp != nil && resp.BoxName != "" {
+		c.Set(operationaudit.TargetNameContextKey, resp.BoxName)
+	}
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 

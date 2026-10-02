@@ -169,6 +169,7 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 			},
 		})
 	}()
+	resp = &interfaces.DeleteBoxResp{BoxID: toolBox.BoxID, BoxName: toolBox.Name}
 	return
 }
 

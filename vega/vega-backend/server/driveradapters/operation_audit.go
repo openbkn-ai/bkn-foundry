@@ -67,6 +67,11 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			logger.Errorf("operation audit fact rejected: action=%s target_type=%s missing verified actor", rule.Action, rule.TargetType)
 			return
 		}
+		actorName := r.operationAuditActorName(c.Request.Context(), actor)
+		if actorName == "" {
+			logger.Errorf("operation audit fact rejected: action=%s target_type=%s actor=%s missing readable actor", rule.Action, rule.TargetType, actor.ID)
+			return
+		}
 		requestID, err := operationAuditRequestID(c)
 		if err != nil {
 			logger.Errorf("operation audit request ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
@@ -85,7 +90,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			EventTime:      now,
 			RecordedAt:     now,
 			ActorID:        actor.ID,
-			ActorName:      actor.ID,
+			ActorName:      actorName,
 			ActorType:      firstNonEmpty(string(actor.Type), "user"),
 			AuthMethod:     operationAuditAuthMethod(c.FullPath(), c.GetHeader("Authorization")),
 			RequestID:      operationAuditCorrelationID(requestID),
@@ -105,6 +110,21 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			logger.Errorf("operation audit persistence failed: request_id=%s action=%s target_type=%s error=%v", requestID, rule.Action, rule.TargetType, err)
 		}
 	}
+}
+
+func (r *restHandler) operationAuditActorName(ctx context.Context, actor hydra.Visitor) string {
+	if r == nil || r.ums == nil {
+		return ""
+	}
+	account := &interfaces.AccountInfo{ID: actor.ID, Type: string(actor.Type)}
+	if err := r.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{account}); err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(account.Name)
+	if name == "" || name == "-" || name == actor.ID {
+		return ""
+	}
+	return name
 }
 
 func operationAuditChangedFields(request map[string]any) []string {

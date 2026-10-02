@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/operationaudit"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 func TestCaptureOperationAuditRequestRestoresOversizedBody(t *testing.T) {
@@ -43,6 +44,44 @@ func TestCaptureOperationAuditRequestRestoresOversizedBody(t *testing.T) {
 
 type capturedOperationAuditRecorder struct{ entries []operationaudit.Entry }
 
+type operationAuditUserMgmtStub struct{}
+
+func (operationAuditUserMgmtStub) GetAccountNames(_ context.Context, accounts []*interfaces.AccountInfo) error {
+	for _, account := range accounts {
+		account.Name = "User " + account.ID
+	}
+	return nil
+}
+
+type unresolvedOperationAuditUserMgmtStub struct{}
+
+func (unresolvedOperationAuditUserMgmtStub) GetAccountNames(_ context.Context, accounts []*interfaces.AccountInfo) error {
+	for _, account := range accounts {
+		account.Name = "-"
+	}
+	return nil
+}
+
+func newOperationAuditTestHandler(recorder operationAuditRecorder) *restHandler {
+	return &restHandler{auditRecorder: recorder, ums: operationAuditUserMgmtStub{}}
+}
+
+func TestOperationAuditRejectsUnresolvedActorName(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+	recorder := &capturedOperationAuditRecorder{}
+	handler := &restHandler{auditRecorder: recorder, ums: unresolvedOperationAuditUserMgmtStub{}}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
+		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+		c.Status(http.StatusCreated)
+	})
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/catalogs", strings.NewReader(`{"name":"catalog"}`)))
+	require.Empty(t, recorder.entries)
+}
+
 func TestNormalizeDisabledOperationAuditRecorder(t *testing.T) {
 	var disabled *operationaudit.KafkaRecorder
 	if normalized := normalizeOperationAuditRecorder(disabled); normalized != nil {
@@ -62,7 +101,7 @@ func TestOperationAuditRequestIDFailureDoesNotChangeBusinessResponse(t *testing.
 	defer uuid.SetRand(nil)
 
 	recorder := &capturedOperationAuditRecorder{}
-	handler := &restHandler{auditRecorder: recorder}
+	handler := newOperationAuditTestHandler(recorder)
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
@@ -82,7 +121,7 @@ func TestOperationAuditRecordsBoundedManagementFact(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 	recorder := &capturedOperationAuditRecorder{}
-	handler := &restHandler{auditRecorder: recorder}
+	handler := newOperationAuditTestHandler(recorder)
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
@@ -110,7 +149,7 @@ func TestOperationAuditReusedClientRequestIDCreatesDistinctEvents(t *testing.T) 
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 	recorder := &capturedOperationAuditRecorder{}
-	handler := &restHandler{auditRecorder: recorder}
+	handler := newOperationAuditTestHandler(recorder)
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
@@ -133,7 +172,7 @@ func TestOperationAuditUsesCreatedResourceID(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 	recorder := &capturedOperationAuditRecorder{}
-	handler := &restHandler{auditRecorder: recorder}
+	handler := newOperationAuditTestHandler(recorder)
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
@@ -162,7 +201,7 @@ func TestOperationAuditNormalizesOversizedRequestID(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 	recorder := &capturedOperationAuditRecorder{}
-	handler := &restHandler{auditRecorder: recorder}
+	handler := newOperationAuditTestHandler(recorder)
 	engine := gin.New()
 	engine.Use(handler.TraceContextMiddleware(), handler.OperationAudit())
 	engine.PUT("/api/vega-backend/v1/catalogs/:id", func(c *gin.Context) {
@@ -198,7 +237,7 @@ func TestOperationAuditRecordsInternalManagementActor(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 	recorder := &capturedOperationAuditRecorder{}
-	handler := &restHandler{auditRecorder: recorder}
+	handler := newOperationAuditTestHandler(recorder)
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/vega-backend/in/v1/catalogs/:id", func(c *gin.Context) {
@@ -268,7 +307,7 @@ func TestOperationAuditDoesNotFetchDisplayNameDuringBusinessRequest(t *testing.T
 	defer safe.Close()
 	t.Setenv("BKN_SAFE_URL", safe.URL)
 	recorder := &capturedOperationAuditRecorder{}
-	handler := &restHandler{auditRecorder: recorder}
+	handler := newOperationAuditTestHandler(recorder)
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/vega-backend/v1/catalogs/:id", func(c *gin.Context) {

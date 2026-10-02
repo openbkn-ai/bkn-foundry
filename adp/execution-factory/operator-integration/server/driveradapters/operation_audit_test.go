@@ -39,6 +39,30 @@ func TestExecutionAuditTargetUsesRegisteredToolboxName(t *testing.T) {
 	}
 }
 
+func TestOperationAuditUsesProducerResolvedTargetName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := &capturedExecutionAuditRecorder{}
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(infra.SetAccountAuthContextToCtx(c.Request.Context(), &interfaces.AccountAuthContext{
+			AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+			TokenInfo: &interfaces.TokenInfo{VisitorName: "Operator"},
+		}))
+		c.Next()
+	})
+	engine.Use(OperationAudit(recorder))
+	engine.DELETE("/api/agent-operator-integration/v1/tool-box/:box_id", func(c *gin.Context) {
+		c.Set(operationaudit.TargetNameContextKey, "可读工具箱")
+		c.Status(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodDelete, "/api/agent-operator-integration/v1/tool-box/box-1", nil)
+	request.Header.Set(infra.HeaderBKNRequestID, "req-delete-1")
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+	if len(recorder.entries) != 1 || recorder.entries[0].TargetName != "可读工具箱" {
+		t.Fatalf("target name = %+v, want producer-resolved name", recorder.entries)
+	}
+}
+
 func TestConvertOperatorToToolAuditUsesReturnedToolID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := &capturedExecutionAuditRecorder{}
