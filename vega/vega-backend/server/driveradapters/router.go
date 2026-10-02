@@ -40,6 +40,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource_data"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/semantic_understanding_task"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/user_mgmt"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/version"
 )
 
@@ -67,6 +68,7 @@ type restHandler struct {
 	rs                 interfaces.ResourceService
 	pas                interfaces.ProxyAuthorizationService
 	suts               interfaces.SemanticUnderstandingTaskService
+	ums                interfaces.UserMgmtService
 	ready              atomic.Bool
 }
 
@@ -86,6 +88,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditRecorder operationAuditR
 	pas := proxy_authorization.NewProxyAuthorizationService(logics.PAA)
 	bts := build_task.NewBuildTaskService(appSetting, rs)
 	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
+	ums := user_mgmt.NewUserMgmtService(appSetting)
 
 	handler := &restHandler{
 		appSetting:     appSetting,
@@ -104,6 +107,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditRecorder operationAuditR
 		rs:             rs,
 		pas:            pas,
 		suts:           suts,
+		ums:            ums,
 	}
 	handler.SetReady(true)
 	return handler

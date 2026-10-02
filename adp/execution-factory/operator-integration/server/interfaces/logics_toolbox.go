@@ -128,6 +128,9 @@ type DeleteBoxReq struct {
 // DeleteBoxResp Delete toolbox returns results.
 type DeleteBoxResp struct {
 	BoxID string `json:"box_id"` // Toolbox ID.
+	// BoxName is producer-owned audit metadata and is intentionally omitted from
+	// the public deletion response.
+	BoxName string `json:"-"`
 }
 
 // QueryToolBoxListReq Get toolbox list request.

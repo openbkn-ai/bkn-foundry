@@ -88,6 +88,9 @@ func operationAuditForSurface(recorder interface {
 		targetID, targetName := rule.TargetType+":"+requestID, ""
 		if verifiedActor {
 			targetID, targetName = executionAuditTarget(c, rule.TargetType, body, requestID)
+			if producerName := strings.TrimSpace(c.GetString(operationaudit.TargetNameContextKey)); producerName != "" {
+				targetName = producerName
+			}
 		}
 		if rule.TargetType == "import_batch" || rule.TargetType == "capability_bundle" {
 			// These requests may touch multiple child resources; no single child ID
