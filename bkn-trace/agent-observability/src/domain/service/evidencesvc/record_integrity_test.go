@@ -430,3 +430,89 @@ func TestRecordIntegrityArtifactBudgetIsSharedAcrossRounds(t *testing.T) {
 		t.Fatalf("budget exhaustion must stop further artifact reads: %d", reads)
 	}
 }
+
+func TestIntegrityBudgetChecksNewestCandidateDeterministically(t *testing.T) {
+	for _, kind := range []string{"conversation", "interaction"} {
+		for _, order := range [][]string{{"a", "b"}, {"b", "a"}} {
+			t.Run(kind+order[0], func(t *testing.T) {
+				_, owner, now := integrityFixture()
+				store := &integritySnapshotStore{Store: memorystore.New(), snapshots: map[string]sessionvo.EvidenceSnapshot{}}
+				artifacts := &integrityArtifactMap{byID: map[string]evidencevo.EvidenceArtifact{}}
+				ctx := context.WithValue(context.Background(), recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{reads: 127})
+				var conversations []evidencevo.ConversationSummary
+				var interactions []evidencevo.InteractionListSummary
+				for _, id := range order {
+					snapshot, _, _ := integrityFixture()
+					created := now
+					if id == "b" {
+						created = now.Add(time.Hour)
+					}
+					convID, intID := "conv_"+id, "int_"+id
+					snapshot.Interaction.ID, snapshot.Interaction.ConversationID = intID, convID
+					snapshot.Operations[0].InteractionID, snapshot.Operations[0].ConversationID = intID, convID
+					snapshot.CallFacts[0].InteractionID, snapshot.CallFacts[0].ConversationID = intID, convID
+					snapshot.Receipts[0].InteractionID, snapshot.Receipts[0].ConversationID = intID, convID
+					snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:" + id}
+					store.snapshots[intID] = snapshot
+					artifact := captureFixture(id, "rows")
+					artifact.InteractionID, artifact.OperationID, artifact.RequestID, artifact.TraceID = intID, "op", "req", "trace"
+					artifact.ArtifactType = evidencevo.ArtifactTypeDataResult
+					artifacts.byID[id] = artifact
+					if err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+						tx.SaveConversation(sessionvo.Conversation{ID: convID, Owner: owner, CreatedAt: created})
+						tx.SaveInteraction(sessionvo.Interaction{ID: intID, ConversationID: convID, Ordinal: 1, ExecutionStatus: sessionvo.InteractionCompleted, CreatedAt: created})
+						return nil
+					}); err != nil {
+						t.Fatal(err)
+					}
+					conversations = append(conversations, evidencevo.ConversationSummary{ConversationID: convID, StartedAt: created.Format(time.RFC3339Nano)})
+					interactions = append(interactions, evidencevo.InteractionListSummary{InteractionID: intID, StartedAt: created.Format(time.RFC3339Nano)})
+				}
+				service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
+				service.artifactStore = artifacts
+				scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
+				if kind == "conversation" {
+					if err := service.applyConversationRecordIntegrity(ctx, conversations, scope); err != nil {
+						t.Fatal(err)
+					}
+					for i, e := range conversations {
+						if e.ConversationID != "conv_"+order[i] {
+							t.Fatalf("check reordered conversation page: %+v", conversations)
+						}
+						if e.ConversationID == "conv_b" && (e.CurrentRecordIntegrity == nil || e.RecordIntegrityCheckFailed) {
+							t.Fatalf("newest candidate lost budget: %+v", e)
+						}
+						if e.ConversationID == "conv_a" && (e.CurrentRecordIntegrity != nil || !e.RecordIntegrityCheckFailed) {
+							t.Fatalf("older candidate took budget: %+v", e)
+						}
+					}
+				} else {
+					if err := service.applyInteractionRecordIntegrity(ctx, interactions, scope); err != nil {
+						t.Fatal(err)
+					}
+					for i, e := range interactions {
+						if e.InteractionID != "int_"+order[i] {
+							t.Fatalf("check reordered round page: %+v", interactions)
+						}
+						if e.InteractionID == "int_b" && (e.CurrentRecordIntegrity == nil || e.RecordIntegrityCheckFailed) {
+							t.Fatalf("newest round lost budget: %+v", e)
+						}
+						if e.InteractionID == "int_a" && (e.CurrentRecordIntegrity != nil || !e.RecordIntegrityCheckFailed) {
+							t.Fatalf("older round took budget: %+v", e)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+type integrityArtifactMap struct {
+	iartifactstore.ArtifactStorePort
+	byID map[string]evidencevo.EvidenceArtifact
+}
+
+func (a integrityArtifactMap) ReadArtifactForCapture(_ context.Context, id string, _ evidencevo.QueryScope, _ int64) (iartifactstore.CaptureReadResult, error) {
+	artifact, found := a.byID[id]
+	return iartifactstore.CaptureReadResult{Artifact: artifact, Found: found, Exists: found, ReadBytes: 20}, nil
+}

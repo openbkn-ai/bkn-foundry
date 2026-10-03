@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -421,7 +422,20 @@ func (s *Service) applyInteractionRecordIntegrity(ctx context.Context, entries [
 	if !s.currentRecordIntegrity {
 		return nil
 	}
-	for i := range entries {
+	// Use the list's stable timestamp/ID order for shared-budget consumption,
+	// without changing a conversation's separately ordered round page.
+	order := make([]int, len(entries))
+	for i := range order {
+		order[i] = i
+	}
+	sort.Slice(order, func(i, j int) bool {
+		a, b := entries[order[i]], entries[order[j]]
+		if a.StartedAt == b.StartedAt {
+			return a.InteractionID < b.InteractionID
+		}
+		return a.StartedAt > b.StartedAt
+	})
+	for _, i := range order {
 		report, err := s.inspectRecordIntegrity(ctx, entries[i].InteractionID, scope)
 		if err != nil {
 			entries[i].RecordIntegrityCheckFailed = true
@@ -437,7 +451,20 @@ func (s *Service) applyConversationRecordIntegrity(ctx context.Context, entries 
 	if !s.currentRecordIntegrity {
 		return nil
 	}
-	for i := range entries {
+	// Use the list's stable timestamp/ID order for shared-budget consumption,
+	// without changing a conversation's separately ordered round page.
+	order := make([]int, len(entries))
+	for i := range order {
+		order[i] = i
+	}
+	sort.Slice(order, func(i, j int) bool {
+		a, b := entries[order[i]], entries[order[j]]
+		if a.StartedAt == b.StartedAt {
+			return a.ConversationID < b.ConversationID
+		}
+		return a.StartedAt > b.StartedAt
+	})
+	for _, i := range order {
 		var interactions []sessionvo.Interaction
 		if err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 			c, found := tx.PeekConversation(entries[i].ConversationID)
