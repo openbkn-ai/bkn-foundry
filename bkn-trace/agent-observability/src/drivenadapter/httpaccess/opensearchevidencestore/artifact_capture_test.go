@@ -106,7 +106,9 @@ func TestReadArtifactForCaptureBudgetMissingScopeAndIdentity(t *testing.T) {
 					t.Fatal(e)
 				}
 			} else if tc.wantErr != nil {
-				if !errors.Is(e, tc.wantErr) {
+				if tc.name == "scope" && !r.Exists {t.Fatal("inaccessible content must be distinguished from an absent document")}
+ if tc.name == "missing" && r.Exists {t.Fatal("404 must be an authoritative absence")}
+ if !errors.Is(e, tc.wantErr) {
 					t.Fatalf("err=%v", e)
 				}
 			} else if e == nil {

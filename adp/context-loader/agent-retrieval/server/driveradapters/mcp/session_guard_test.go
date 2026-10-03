@@ -23,6 +23,17 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
+func TestSessionGuardRecordsObjectQueryTargetBeforeDownstreamFailure(t *testing.T) {
+ var refs []bkntrace.BusinessRef
+ guarded := guardBusinessToolCall(func(_ context.Context,intent operationIntent)(*operationResult,*lifecycleError,error){refs=intent.Context.BusinessRefs;return nil,nil,nil},
+  func(context.Context,mcpsdk.CallToolRequest)(*mcpsdk.CallToolResult,error){return mcpsdk.NewToolResultError("row-filters returned status 503"),nil})
+ _,err:=guarded(context.Background(),mcpsdk.CallToolRequest{Params:mcpsdk.CallToolParams{Name:toolKeyQueryObjectInstance,Arguments:map[string]any{"kn_id":"supply","ot_id":"bom","bkn_context":map[string]any{"conversation_id":"conv","interaction_id":"int"}}}})
+ if err!=nil {t.Fatal(err)}
+ if len(refs)!=2 || refs[0].RefID!="kn:supply" || refs[1].RefID!="object:supply:bom" || refs[1].RefType!="object_type" {t.Fatalf("failed object query lost its known request target: %+v",refs)}
+ if refs:=derivedToolBusinessRefs(toolKeyQueryObjectInstance,map[string]any{"kn_id":"other","ot_id":"bom"},"supply");len(refs)!=0 {t.Fatal("foreign target must not be derived")}
+ if refs:=derivedToolBusinessRefs(toolKeyQueryObjectInstance,map[string]any{},"supply");len(refs)!=0 {t.Fatal("missing object target must not be invented")}
+}
+
 func TestSessionGuardMissingConversationFailsClosed(t *testing.T) {
 	coreCalls := 0
 	downstreamCalls := 0

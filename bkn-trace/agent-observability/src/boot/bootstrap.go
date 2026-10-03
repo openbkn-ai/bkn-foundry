@@ -387,6 +387,7 @@ func NewApp() (*App, error) {
 	}
 	evidenceOptions := []evidencesvc.Option{
 		evidencesvc.WithSessionStore(sessionStore),
+		evidencesvc.WithCurrentRecordIntegrity(),
 		evidencesvc.WithTraceStatsSource(traceQueryService),
 	}
 	if resolver != nil {

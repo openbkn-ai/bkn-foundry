@@ -81,14 +81,15 @@ type Store interface {
 }
 
 type SummaryPageQuery struct {
-	Scope              evidencevo.QueryScope
-	From               time.Time
-	To                 time.Time
-	ExcludeAgentOrApps []string
-	Limit              int
-	Offset             int
-	AfterStartedAt     string
-	AfterID            string
+	IncludeRegisteredCalls bool
+	Scope                  evidencevo.QueryScope
+	From                   time.Time
+	To                     time.Time
+	ExcludeAgentOrApps     []string
+	Limit                  int
+	Offset                 int
+	AfterStartedAt         string
+	AfterID                string
 }
 
 type SummaryIdentity struct{ ID, StartedAt string }

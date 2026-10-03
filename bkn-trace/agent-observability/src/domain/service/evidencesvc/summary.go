@@ -127,8 +127,26 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	for conversationID, group := range grouped {
 		entries = append(entries, buildConversationSummary(conversationID, group))
 	}
+	entries, err = s.appendRegisteredConversationCandidates(ctx, entries, grouped, options, &metadata)
+	if err != nil {
+		return evidencevo.ConversationSummaryPage{}, err
+	}
 	if err := s.applyCanonicalConversationState(ctx, entries, grouped); err != nil {
 		return evidencevo.ConversationSummaryPage{}, err
+	}
+	if options.RecordIntegrity != "" {
+		if err := s.applyConversationRecordIntegrity(ctx, entries, options.Scope); err != nil {
+			return evidencevo.ConversationSummaryPage{}, err
+		}
+	}
+	if options.RecordIntegrity != "" {
+		for _, entry := range entries {
+			if entry.RecordIntegrityCheckFailed {
+				metadata.Truncated = true
+				metadata.PartialReasons = appendUniqueSummaryReason(metadata.PartialReasons, "record_integrity_check_failed")
+				break
+			}
+		}
 	}
 	entries = filterConversationSummaries(entries, options)
 	sort.Slice(entries, func(i, j int) bool {
@@ -152,6 +170,11 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 		Entries: append([]evidencevo.ConversationSummary{}, entries[start:end]...),
 		Total:   len(entries), Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit), Truncated: metadata.Truncated, Partial: metadata.Truncated,
 		PartialReasons: append([]string{}, metadata.PartialReasons...),
+	}
+	if options.RecordIntegrity == "" {
+		if err := s.applyConversationRecordIntegrity(ctx, page.Entries, options.Scope); err != nil {
+			return evidencevo.ConversationSummaryPage{}, err
+		}
 	}
 	if end < len(entries) && len(page.Entries) > 0 {
 		last := page.Entries[len(page.Entries)-1]
@@ -199,6 +222,20 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 	if err := s.applyCanonicalInteractionState(ctx, entries); err != nil {
 		return evidencevo.InteractionSummaryPage{}, err
 	}
+	if options.RecordIntegrity != "" {
+		if err := s.applyInteractionRecordIntegrity(ctx, entries, options.Scope); err != nil {
+			return evidencevo.InteractionSummaryPage{}, err
+		}
+	}
+	if options.RecordIntegrity != "" {
+		for _, entry := range entries {
+			if entry.RecordIntegrityCheckFailed {
+				metadata.Truncated = true
+				metadata.PartialReasons = appendUniqueSummaryReason(metadata.PartialReasons, "record_integrity_check_failed")
+				break
+			}
+		}
+	}
 	assignInteractionRoundNumbers(entries)
 	entries = filterInteractionSummaries(entries, options)
 	sort.Slice(entries, func(i, j int) bool {
@@ -222,6 +259,11 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 		Entries: append([]evidencevo.InteractionListSummary{}, entries[start:end]...),
 		Total:   len(entries), Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit), Truncated: metadata.Truncated, Partial: metadata.Truncated,
 		PartialReasons: append([]string{}, metadata.PartialReasons...),
+	}
+	if options.RecordIntegrity == "" {
+		if err := s.applyInteractionRecordIntegrity(ctx, page.Entries, options.Scope); err != nil {
+			return evidencevo.InteractionSummaryPage{}, err
+		}
 	}
 	if end < len(entries) && len(page.Entries) > 0 {
 		last := page.Entries[len(page.Entries)-1]
@@ -295,6 +337,9 @@ func (s *Service) listCanonicalConversationInteractions(
 	if err := s.applyCanonicalInteractionState(ctx, entries); err != nil {
 		return evidencevo.InteractionSummaryPage{}, false, err
 	}
+	if err := s.applyInteractionRecordIntegrity(ctx, entries, options.Scope); err != nil {
+		return evidencevo.InteractionSummaryPage{}, true, err
+	}
 	page := evidencevo.InteractionSummaryPage{
 		Entries: append([]evidencevo.InteractionListSummary{}, entries...),
 		Total:   selection.Total, Page: normalizeSummaryPage(options.Page), PageSize: limit,
@@ -318,7 +363,7 @@ func (s *Service) canPageCanonicalConversation(options evidencevo.SummaryQueryOp
 	return options.InteractionID == "" && options.TraceID == "" && options.Status == "" &&
 		options.AgentOrApp == "" && options.ExcludeAgentOrApp == "" && len(options.ExcludeAgentOrApps) == 0 && options.Service == "" &&
 		options.Tool == "" && options.ErrorKeyword == "" && options.KnowledgeNetwork == "" &&
-		options.EvidenceCompleteness == "" && options.Keyword == "" && options.From.IsZero() && options.To.IsZero()
+		options.RecordIntegrity == "" && options.EvidenceCompleteness == "" && options.Keyword == "" && options.From.IsZero() && options.To.IsZero()
 }
 
 func canonicalInteractionListSummary(
@@ -481,6 +526,9 @@ func filterConversationSummaries(
 ) []evidencevo.ConversationSummary {
 	filtered := make([]evidencevo.ConversationSummary, 0, len(entries))
 	for _, entry := range entries {
+		if options.RecordIntegrity != "" && (entry.CurrentRecordIntegrity == nil || entry.CurrentRecordIntegrity.Status != options.RecordIntegrity) {
+			continue
+		}
 		if options.Status != "" && entry.Status != options.Status {
 			continue
 		}
@@ -510,6 +558,9 @@ func matchesInteractionSummaryFilters(
 	entry evidencevo.InteractionListSummary,
 	options evidencevo.SummaryQueryOptions,
 ) bool {
+	if options.RecordIntegrity != "" && (entry.CurrentRecordIntegrity == nil || entry.CurrentRecordIntegrity.Status != options.RecordIntegrity) {
+		return false
+	}
 	if options.ConversationID != "" && entry.ConversationID != options.ConversationID {
 		return false
 	}
@@ -1335,6 +1386,10 @@ func (s *Service) GetInteractionSummary(
 			}
 		}
 	}
+	summary.CurrentRecordIntegrity, err = s.inspectRecordIntegrity(ctx, interactionID, scope)
+	if err != nil {
+		summary.RecordIntegrityCheckFailed = true
+	}
 	return summary, true, nil
 }
 
@@ -1546,6 +1601,7 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 		query.Offset = 0
 		query.AfterStartedAt, query.AfterID = cursor.StartedAt, cursor.ID
 	}
+	query.IncludeRegisteredCalls = s.currentRecordIntegrity
 	identityPage, err := pageStore.ListConversationSummaryIdentities(ctx, query)
 	if err != nil {
 		return evidencevo.ConversationSummaryPage{}, true, err
@@ -1598,6 +1654,9 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 				entriesForCanonical[index].ResultPreview = preview.ResultPreview
 			}
 		}
+	}
+	if err := s.applyConversationRecordIntegrity(ctx, entriesForCanonical, options.Scope); err != nil {
+		return evidencevo.ConversationSummaryPage{}, true, err
 	}
 	for _, entry := range entriesForCanonical {
 		byID[entry.ConversationID] = entry
@@ -1742,7 +1801,7 @@ func summaryScopeMatchesProfile(scope evidencevo.QueryScope) bool {
 func hasSummaryContentFilters(options evidencevo.SummaryQueryOptions) bool {
 	return options.Status != "" || options.AgentOrApp != "" ||
 		options.Service != "" || options.Tool != "" || options.ErrorKeyword != "" ||
-		options.KnowledgeNetwork != "" || options.EvidenceCompleteness != "" || options.Keyword != ""
+		options.RecordIntegrity != "" || options.KnowledgeNetwork != "" || options.EvidenceCompleteness != "" || options.Keyword != ""
 }
 
 func matchesAnyExcludedAgent(request evidencevo.RequestSummary, options evidencevo.SummaryQueryOptions) bool {

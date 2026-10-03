@@ -220,12 +220,13 @@ var visibilityStates = map[string]struct{}{
 }
 
 type Service struct {
-	store            ievidencestore.EvidenceStorePort
-	artifactStore    iartifactstore.ArtifactStorePort
-	projectionSource iprojectionsource.ProjectionSourcePort
-	businessResolver ibusinessresolver.BusinessResolverPort
-	sessionStore     isessionstore.Store
-	traceStatsSource itracestats.Source
+	currentRecordIntegrity bool
+	store                  ievidencestore.EvidenceStorePort
+	artifactStore          iartifactstore.ArtifactStorePort
+	projectionSource       iprojectionsource.ProjectionSourcePort
+	businessResolver       ibusinessresolver.BusinessResolverPort
+	sessionStore           isessionstore.Store
+	traceStatsSource       itracestats.Source
 }
 
 type Option func(*Service)
@@ -237,6 +238,8 @@ func WithProjectionSource(source iprojectionsource.ProjectionSourcePort) Option 
 func WithBusinessResolver(resolver ibusinessresolver.BusinessResolverPort) Option {
 	return func(service *Service) { service.businessResolver = resolver }
 }
+
+func WithCurrentRecordIntegrity() Option { return func(s *Service) { s.currentRecordIntegrity = true } }
 
 func WithSessionStore(store isessionstore.Store) Option {
 	return func(service *Service) { service.sessionStore = store }

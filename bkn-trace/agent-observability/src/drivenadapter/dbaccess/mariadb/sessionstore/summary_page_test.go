@@ -184,3 +184,16 @@ func TestConversationSummaryExcludedAgentPredicateOmitsASCIIColumnsForNonASCIIOn
 		t.Fatalf("args=%v", args)
 	}
 }
+
+func TestConversationIntegrityCandidatesSurviveReceiptLoss(t *testing.T) {
+	from := time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC)
+	clause, args := conversationSummaryReceiptExists(isessionstore.SummaryPageQuery{IncludeRegisteredCalls: true, From: from})
+	for _, required := range []string{"bkn_trace_operations", "o.conversation_id=c.conversation_id", "o.attempt_no>0", "o.attempt_status<>'ready'", "o.created_at>=?", "bkn_trace_operation_call_facts", "f.conversation_id=c.conversation_id", "f.started_at>=?"} {
+		if !strings.Contains(clause, required) {
+			t.Fatalf("missing registered candidate %q: %s", required, clause)
+		}
+	}
+	if !reflect.DeepEqual(args, []any{from, from, from}) {
+		t.Fatalf("date boundary must apply to every source: %v", args)
+	}
+}

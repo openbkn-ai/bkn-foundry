@@ -321,6 +321,12 @@ func derivedToolBusinessRefs(toolName string, arguments map[string]any, currentK
 		{RefType: "knowledge_network", RefID: "kn:" + currentKnID, Version: "unversioned"},
 	}
 	switch toolName {
+	case toolKeyQueryObjectInstance:
+		objectID := stringValue(arguments["ot_id"])
+		if objectID == "" {
+			return nil
+		}
+		return append(refs, bkntrace.BusinessRef{RefType: "object_type", RefID: "object:" + currentKnID + ":" + objectID, Version: "unversioned"})
 	case toolKeyGetKnDetail:
 		return refs
 	case toolKeyGetObjectTypes, toolKeyGetRelationTypes:
