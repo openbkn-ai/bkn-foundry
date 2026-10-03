@@ -702,20 +702,31 @@ func splitGrantOps(value string) []string {
 	return strings.Split(value, ",")
 }
 
-// isUserAccessor reports whether id is a known user row (real user or app
-// account; both are model.User distinguished by account_type).
+// isUserAccessor reports whether id is an enabled directory user. Object-grant
+// writes perform the managed-proxy check separately so the protected identity
+// case keeps its explicit forbidden response.
 func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
-	return grantSubjectExists(c.Request.Context(), db, "user", id)
+	var n int64
+	err := db.WithContext(c.Request.Context()).Model(&model.User{}).
+		Where("id = ? AND enabled = ?", id, true).
+		Count(&n).Error
+	return n > 0, err
 }
 
+// grantSubjectExists validates subjects accepted by the shared object-grant,
+// row-filter and property-grant management surfaces. Only custom roles are
+// mutable through those surfaces; seeded system/business roles remain owned by
+// their seed definitions.
 func grantSubjectExists(ctx context.Context, db *gorm.DB, subjectType, id string) (bool, error) {
 	var n int64
 	query := db.WithContext(ctx)
 	switch subjectType {
 	case "user":
-		query = query.Model(&model.User{}).Where("id = ? AND enabled = ?", id, true)
+		query = query.Model(&model.User{}).
+			Where("id = ? AND enabled = ?", id, true).
+			Where("NOT EXISTS (SELECT 1 FROM managed_proxy_accounts mpa WHERE mpa.proxy_account_id = users.id)")
 	case "role":
-		query = query.Model(&model.Role{}).Where("id = ?", id)
+		query = query.Model(&model.Role{}).Where("id = ? AND source = ?", id, model.RoleSourceCustom)
 	default:
 		return false, nil
 	}
@@ -903,7 +914,8 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 			}
 		}
 		search := strings.TrimSpace(c.Query("search"))
-		query := db.WithContext(c.Request.Context()).Model(&model.Role{})
+		query := db.WithContext(c.Request.Context()).Model(&model.Role{}).
+			Where("source = ?", model.RoleSourceCustom)
 		if search != "" {
 			like := "%" + strings.ToLower(search) + "%"
 			query = query.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", like, like)

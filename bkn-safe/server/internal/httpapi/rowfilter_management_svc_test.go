@@ -44,7 +44,20 @@ func TestRowFilterManagementAuthorityUsesKnowledgeNetworkRoot(t *testing.T) {
 	if err := db.Create(&model.User{ID: "disabled-user", Account: "disabled-user", Enabled: false}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Create(&model.User{ID: "managed-proxy", Account: "managed-proxy", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ManagedProxyAccount{
+		ProxyAccountID: "managed-proxy", ManagedBy: "bkn",
+		ManagedResourceType: "knowledge_network", ManagedResourceID: "kn-proxy",
+		LifecycleStatus: "active",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&model.Role{ID: "existing-role", Name: "Existing role", Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Role{ID: "builtin-role", Name: "Built-in role", Source: model.RoleSourceBusiness}).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, subject := range []struct {
@@ -54,7 +67,9 @@ func TestRowFilterManagementAuthorityUsesKnowledgeNetworkRoot(t *testing.T) {
 	}{
 		{typeName: "user", id: "enabled-user", want: true},
 		{typeName: "user", id: "disabled-user", want: false},
+		{typeName: "user", id: "managed-proxy", want: false},
 		{typeName: "role", id: "existing-role", want: true},
+		{typeName: "role", id: "builtin-role", want: false},
 		{typeName: "role", id: "missing-role", want: false},
 	} {
 		exists, existsErr := services.GrantSubjectExists(t.Context(), subject.typeName, subject.id)

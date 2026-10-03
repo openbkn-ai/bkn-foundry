@@ -1450,7 +1450,7 @@ func TestObjectGrantsOwnerRolePickerAndWrite(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &picker); err != nil {
 		t.Fatal(err)
 	}
-	if len(picker.Roles) != 2 || picker.Roles[0].Name != "Analysts" || picker.Roles[0].Members != nil {
+	if len(picker.Roles) != 1 || picker.Roles[0].Name != "Analysts" || picker.Roles[0].Members != nil {
 		t.Fatalf("role picker returned unexpected or privileged data: %+v", picker.Roles)
 	}
 
@@ -1462,8 +1462,8 @@ func TestObjectGrantsOwnerRolePickerAndWrite(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &picker); err != nil {
 		t.Fatal(err)
 	}
-	if len(picker.Roles) != 1 || picker.Roles[0].ID != "role-builders" {
-		t.Fatalf("search=build should match Builders, got %+v", picker.Roles)
+	if len(picker.Roles) != 0 {
+		t.Fatalf("search=build exposed immutable business roles: %+v", picker.Roles)
 	}
 	if w := tokReq(t, r, http.MethodGet, base+"/grantable-roles?resource_type=knowledge_network&resource_id=kn-mine", nil, "u-stranger"); w.Code != http.StatusForbidden {
 		t.Fatalf("non-owner role picker: want 403, got %d", w.Code)
@@ -1493,6 +1493,29 @@ func TestObjectGrantsOwnerRolePickerAndWrite(t *testing.T) {
 	if allowed, _ := e.Check("u-mate", "knowledge_network", "kn-other", "view_detail"); allowed {
 		t.Fatal("resource-scoped role grant leaked to another network")
 	}
+	roleGrants, err := e.RolePermissions("role-analysts")
+	if err != nil || len(roleGrants) != 1 {
+		t.Fatalf("role permission view = %+v, %v, want owner grant", roleGrants, err)
+	}
+	if err := (&adminWriteServices{e: e, db: db}).RevokeRolePermissions(
+		t.Context(), "role-analysts", "knowledge_network", "kn-mine", []string{"view_detail"},
+	); err != nil {
+		t.Fatalf("platform role revoke of owner grant: %v", err)
+	}
+	if allowed, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); allowed {
+		t.Fatal("platform role revoke returned successfully but owner grant remained effective")
+	}
+	// Recreate the same owner grant so the source-scoped self-service revoke is
+	// covered independently below.
+	w = tokReq(t, r, http.MethodPost, base+"/object-grants", map[string]any{
+		"accessor_id":   "role-analysts",
+		"accessor_type": "role",
+		"resource":      map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":    []string{"view_detail"},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("owner role re-grant: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
 	grantID := oneGrantID(t, e, authz.PolicyFilter{
 		AccessorID: "role-analysts", Object: "knowledge_network:kn-mine", Operation: "view_detail",
 		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceOwnerDelegate,
@@ -1513,6 +1536,14 @@ func TestObjectGrantsOwnerRolePickerAndWrite(t *testing.T) {
 		"operations":    []string{"view_detail"},
 	}, "u-owner"); w.Code != http.StatusBadRequest {
 		t.Fatalf("unknown role grant: want 400, got %d", w.Code)
+	}
+	if w := tokReq(t, r, http.MethodPost, base+"/object-grants", map[string]any{
+		"accessor_id":   "role-builders",
+		"accessor_type": "role",
+		"resource":      map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":    []string{"view_detail"},
+	}, "u-owner"); w.Code != http.StatusBadRequest {
+		t.Fatalf("immutable business role grant: want 400, got %d", w.Code)
 	}
 }
 
