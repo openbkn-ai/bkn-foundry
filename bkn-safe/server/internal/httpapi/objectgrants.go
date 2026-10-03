@@ -24,8 +24,8 @@ import (
 
 // registerObjectGrants mounts the object-level authorization management API
 // under /admin (admin-only). It manages the "grant a specific object to a
-// specific user" matrix that sits ON TOP of role-based RBAC: each grant binds
-// one user accessor to concrete ops on one concrete resource instance
+// specific user or role" matrix that sits ON TOP of role-based RBAC: each grant
+// binds one accessor to concrete ops on one concrete resource instance
 // (catalog/operator/knowledge_network/…).
 //
 // This is the gateway-exposed, audited management surface for object grants.
@@ -34,10 +34,10 @@ import (
 // validated (known user, concrete resource, catalog-registered ops) so the UI
 // can't mint dead policies.
 //
-// Grantees are USERS only. Departments are intentionally unsupported: casbin
-// holds no user→department membership rules, so a department grant would be a
-// dead policy that never matches at enforce time (see RolePermissions path for
-// the role-based alternative).
+// Grantees are users or existing roles. Departments are intentionally
+// unsupported: casbin holds no user→department membership rules, so a
+// department grant would be a dead policy that never matches at enforce time
+// (see RolePermissions path for the role-based alternative).
 // isConcreteResourceID reports whether an id names ONE instance.
 //
 // Rejecting only the literal "*" is not enough: the casbin matcher is keyMatch,
@@ -67,9 +67,10 @@ func isModelAuthorizationResourceType(resourceType string) bool {
 // network is the sole authorization root.
 const opAuthorize = "authorize"
 
-// grantableUserPageSize caps the owner-facing account picker. Deliberately not
-// caller-tunable: see the Limit comment in the handler.
-const grantableUserPageSize = 20
+// grantableSubjectPageSize caps the owner-facing user and role pickers.
+// Deliberately not caller-tunable: a picker should narrow its search rather
+// than ask the directory to allocate an arbitrary number of rows.
+const grantableSubjectPageSize = 50
 
 // grantAuthority is how a caller earned the right to write grants on one object.
 // It is recorded in the audit trail because "the security administrator opened
@@ -136,40 +137,12 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, db *gorm.DB, admin
 		replyPublicError(c, http.StatusForbidden)
 		return "", false
 	}
-	root, ok, err := grantAuthorizationRoot(c.Request.Context(), db, ref)
-	if err != nil {
-		serverError(c, err)
-		return "", false
-	}
-	if !ok {
-		replyPublicError(c, http.StatusForbidden)
-		return "", false
-	}
-	authorized, err := e.CheckContext(c.Request.Context(), sub, root.Type, root.ID, opAuthorize)
+	root, authorized, err := authorizeDelegatedResourceManagement(c.Request.Context(), e, db, sub, ref)
 	if err != nil {
 		serverError(c, err)
 		return "", false
 	}
 	if !authorized {
-		replyPublicError(c, http.StatusForbidden)
-		return "", false
-	}
-
-	// Holding authorize on the knowledge-network root is necessary but does not
-	// reveal a child the caller cannot otherwise see. Reading or changing that
-	// child's grant configuration therefore also requires its catalog-declared
-	// view operation through the final operation decision (including requires).
-	viewOp, err := resourceViewOperation(c.Request.Context(), db, ref.Type)
-	if err != nil {
-		serverError(c, err)
-		return "", false
-	}
-	visible, err := e.CheckContext(c.Request.Context(), sub, ref.Type, ref.ID, viewOp)
-	if err != nil {
-		serverError(c, err)
-		return "", false
-	}
-	if !visible {
 		replyPublicError(c, http.StatusForbidden)
 		return "", false
 	}
@@ -190,6 +163,33 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, db *gorm.DB, admin
 		}
 	}
 	return authorityTypeAuthorize, true
+}
+
+// authorizeDelegatedResourceManagement applies the common non-administrator
+// boundary for every per-resource authorization surface. BKN child resources
+// are managed from their knowledge-network root, while other resource families
+// keep the concrete resource as their root. Root-level authorize never reveals
+// an otherwise hidden child: the caller must also hold the child's registered
+// view operation through the final authorization decision.
+func authorizeDelegatedResourceManagement(ctx context.Context, enforcer *authz.Enforcer, db *gorm.DB,
+	operatorID string, ref resourceRef) (resourceRef, bool, error) {
+	if operatorID == "" || !isConcreteResourceID(ref.ID) {
+		return resourceRef{}, false, nil
+	}
+	root, ok, err := grantAuthorizationRoot(ctx, db, ref)
+	if err != nil || !ok {
+		return resourceRef{}, false, err
+	}
+	authorized, err := enforcer.CheckContext(ctx, operatorID, root.Type, root.ID, opAuthorize)
+	if err != nil || !authorized {
+		return root, authorized, err
+	}
+	viewOp, err := resourceViewOperation(ctx, db, ref.Type)
+	if err != nil {
+		return root, false, err
+	}
+	visible, err := enforcer.CheckContext(ctx, operatorID, ref.Type, ref.ID, viewOp)
+	return root, visible, err
 }
 
 // grantAuthorizationRoot applies the BKN boundary: a knowledge-network is the
@@ -705,9 +705,21 @@ func splitGrantOps(value string) []string {
 // isUserAccessor reports whether id is a known user row (real user or app
 // account; both are model.User distinguished by account_type).
 func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
+	return grantSubjectExists(c.Request.Context(), db, "user", id)
+}
+
+func grantSubjectExists(ctx context.Context, db *gorm.DB, subjectType, id string) (bool, error) {
 	var n int64
-	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
-		Where("id = ? AND enabled = ?", id, true).Count(&n).Error; err != nil {
+	query := db.WithContext(ctx)
+	switch subjectType {
+	case "user":
+		query = query.Model(&model.User{}).Where("id = ? AND enabled = ?", id, true)
+	case "role":
+		query = query.Model(&model.Role{}).Where("id = ?", id)
+	default:
+		return false, nil
+	}
+	if err := query.Count(&n).Error; err != nil {
 		return false, err
 	}
 	return n > 0, nil
@@ -824,7 +836,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
 	})
 
-	// GET /grantable-users?resource_type=&resource_id=&search=&limit= — the people
+	// GET /grantable-users?resource_type=&resource_id=&search= — the people
 	// an owner may pick when sharing ONE object.
 	//
 	// The platform user directory is admin-only, which left the owner surface
@@ -841,15 +853,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		// Search is mandatory. Holding `authorize` on one object says nothing about
-		// being allowed to page through the platform's accounts, and an empty
-		// search turned this into exactly that — the per-object gate below is not
-		// a bound on WHO is listed, only on who may ask.
 		search := strings.TrimSpace(c.Query("search"))
-		if search == "" {
-			replyPublicError(c, http.StatusBadRequest)
-			return
-		}
 		if _, ok := resolveGrantAuthority(c, e, db, "view", ref); !ok {
 			return
 		}
@@ -864,7 +868,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 			// pre-allocation inside ListUsers is a memory-exhaustion path for the
 			// sake of nothing (CodeQL go/uncontrolled-allocation-size). Narrow the
 			// search instead of asking for more rows.
-			Limit: grantableUserPageSize,
+			Limit: grantableSubjectPageSize,
 		})
 		if err != nil {
 			serverError(c, err)
@@ -875,6 +879,45 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 			out = append(out, gin.H{"id": user.ID, "account": user.Account, "name": user.Name})
 		}
 		c.JSON(http.StatusOK, gin.H{"users": out})
+	})
+	// GET /grantable-roles?resource_type=&resource_id=&search= — existing roles
+	// that may receive a grant on ONE object. This deliberately exposes only
+	// role identity metadata, never role membership or platform permissions.
+	g.GET("/grantable-roles", func(c *gin.Context) {
+		ref := resourceRef{
+			Type: objectGrantQueryParam(c, "resource_type", "obj_type"),
+			ID:   objectGrantQueryParam(c, "resource_id", "obj_id"),
+		}
+		if ref.Type == "" || ref.ID == "" {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		roleAdmin, err := e.CheckContext(c.Request.Context(), c.GetString(ctxAccessorID), "admin-role", "*", "view")
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if !roleAdmin {
+			if _, ok := resolveGrantAuthority(c, e, db, "view", ref); !ok {
+				return
+			}
+		}
+		search := strings.TrimSpace(c.Query("search"))
+		query := db.WithContext(c.Request.Context()).Model(&model.Role{})
+		if search != "" {
+			like := "%" + strings.ToLower(search) + "%"
+			query = query.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", like, like)
+		}
+		var roles []model.Role
+		if err := query.Order("name ASC, id ASC").Limit(grantableSubjectPageSize).Find(&roles).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+		out := make([]gin.H, 0, len(roles))
+		for _, role := range roles {
+			out = append(out, gin.H{"id": role.ID, "name": role.Name, "description": role.Description})
+		}
+		c.JSON(http.StatusOK, gin.H{"roles": out})
 	})
 	g.POST("/object-grants", setObjectGrantHandler(e, db, reviewerSync))
 	g.POST("/object-grants/revoke", revokeObjectGrantBatchHandler(e, db))
@@ -976,15 +1019,6 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, reviewerSync reviewer
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
-		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		if managed {
-			replyPublicError(c, http.StatusForbidden)
-			return
-		}
 		authority, ok := resolveGrantAuthority(c, e, db, "grant", req.Resource)
 		if !ok {
 			return
@@ -993,16 +1027,37 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, reviewerSync reviewer
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
-		ok, err = isUserAccessor(c, db, req.AccessorID)
+		accessorType := req.AccessorType
+		if accessorType == "" {
+			accessorType = "user"
+		}
+		var accessorExists bool
+		var err error
+		switch accessorType {
+		case "user":
+			accessorExists, err = isUserAccessor(c, db, req.AccessorID)
+			if err == nil && accessorExists {
+				var managed bool
+				managed, err = managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
+				if err == nil && managed {
+					replyPublicError(c, http.StatusForbidden)
+					return
+				}
+			}
+		case "role":
+			accessorExists, err = grantSubjectExists(c.Request.Context(), db, accessorType, req.AccessorID)
+		default:
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		if !ok {
+		if !accessorExists {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-
 		authoritySource := authz.AuthoritySourceAdminAuthz
 		if authority != authorityAdminAuthz {
 			authoritySource = authz.AuthoritySourceOwnerDelegate
@@ -1080,7 +1135,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, reviewerSync reviewer
 			return
 		}
 		setAuditOperation(c, "grant", req.Resource.ID, auditObjectGrantName(c.Request.Context(), db, nil, req.AccessorID, req.Resource.Type, req.Resource.ID))
-		if reviewerSync != nil {
+		if reviewerSync != nil && accessorType == "user" {
 			if err := reviewerSync.SyncReviewerInbox(c.Request.Context(), req.AccessorID); err != nil {
 				slog.Error("refresh permission-request reviewer inbox after object grant", "accessor_id", req.AccessorID, "error", err)
 			}
@@ -1090,8 +1145,9 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, reviewerSync reviewer
 }
 
 type objectGrantWriteRequest struct {
-	AccessorID string      `json:"accessor_id" binding:"required"`
-	Resource   resourceRef `json:"resource" binding:"required"`
+	AccessorID   string      `json:"accessor_id" binding:"required"`
+	AccessorType string      `json:"accessor_type"`
+	Resource     resourceRef `json:"resource" binding:"required"`
 	// Operations is a pointer so an omitted field (Community shape) can be
 	// distinguished from an explicitly empty Professional set.
 	Operations *[]string `json:"operations"`

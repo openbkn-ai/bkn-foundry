@@ -25,7 +25,11 @@ func (managementServicesStub) AuthorizeUserGrants(context.Context, string, strin
 	return UserGrantAuthority{Allowed: true, Unrestricted: true}, nil
 }
 
-func (managementServicesStub) AuthorizePlatformRoleGrants(context.Context, string) (bool, error) {
+func (managementServicesStub) AuthorizeRoleGrants(context.Context, string, string) (UserGrantAuthority, error) {
+	return UserGrantAuthority{Allowed: true, Unrestricted: true}, nil
+}
+
+func (managementServicesStub) GrantSubjectExists(context.Context, string, string) (bool, error) {
 	return true, nil
 }
 

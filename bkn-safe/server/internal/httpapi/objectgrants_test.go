@@ -1417,10 +1417,102 @@ func TestObjectGrantsOwnerDirectoryLookups(t *testing.T) {
 	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network&search=team", nil, "u-owner"); w.Code != http.StatusBadRequest {
 		t.Fatalf("picker without an object: want 400, got %d", w.Code)
 	}
-	// Holding authorize on one object is not a licence to page through the
-	// directory, so an empty search is refused rather than answered with a page.
-	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network&resource_id=kn-mine", nil, "u-owner"); w.Code != http.StatusBadRequest {
-		t.Fatalf("picker without a search term: want 400, got %d", w.Code)
+	// Opening the picker returns a bounded first page; typing narrows it through
+	// the same exact-resource-scoped endpoint.
+	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network&resource_id=kn-mine", nil, "u-owner"); w.Code != http.StatusOK {
+		t.Fatalf("picker first page: want 200, got %d", w.Code)
+	}
+}
+
+func TestObjectGrantsOwnerRolePickerAndWrite(t *testing.T) {
+	r, e, db := ownerGrantFixtureWithDB(t)
+	roles := []model.Role{
+		{ID: "role-analysts", Name: "Analysts", Description: "Reads business data", Source: model.RoleSourceCustom},
+		{ID: "role-builders", Name: "Builders", Description: "Builds networks", Source: model.RoleSourceBusiness},
+	}
+	if err := db.Create(&roles).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const base = "/api/safe/v1/me"
+	w := tokReq(t, r, http.MethodGet, base+"/grantable-roles?resource_type=knowledge_network&resource_id=kn-mine", nil, "u-owner")
+	if w.Code != http.StatusOK {
+		t.Fatalf("role picker first page: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var picker struct {
+		Roles []struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Members     any    `json:"members"`
+		} `json:"roles"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &picker); err != nil {
+		t.Fatal(err)
+	}
+	if len(picker.Roles) != 2 || picker.Roles[0].Name != "Analysts" || picker.Roles[0].Members != nil {
+		t.Fatalf("role picker returned unexpected or privileged data: %+v", picker.Roles)
+	}
+
+	w = tokReq(t, r, http.MethodGet, base+"/grantable-roles?resource_type=knowledge_network&resource_id=kn-mine&search=build", nil, "u-owner")
+	if w.Code != http.StatusOK {
+		t.Fatalf("searched role picker: want 200, got %d", w.Code)
+	}
+	picker.Roles = nil
+	if err := json.Unmarshal(w.Body.Bytes(), &picker); err != nil {
+		t.Fatal(err)
+	}
+	if len(picker.Roles) != 1 || picker.Roles[0].ID != "role-builders" {
+		t.Fatalf("search=build should match Builders, got %+v", picker.Roles)
+	}
+	if w := tokReq(t, r, http.MethodGet, base+"/grantable-roles?resource_type=knowledge_network&resource_id=kn-mine", nil, "u-stranger"); w.Code != http.StatusForbidden {
+		t.Fatalf("non-owner role picker: want 403, got %d", w.Code)
+	}
+	if err := e.GrantObjectPermission("u-mate", "admin-role", "*", "view"); err != nil {
+		t.Fatal(err)
+	}
+	if w := tokReq(t, r, http.MethodGet, base+"/grantable-roles?resource_type=knowledge_network&resource_id=kn-other", nil, "u-mate"); w.Code != http.StatusOK {
+		t.Fatalf("platform role viewer picker: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+
+	w = tokReq(t, r, http.MethodPost, base+"/object-grants", map[string]any{
+		"accessor_id":   "role-analysts",
+		"accessor_type": "role",
+		"resource":      map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":    []string{"view_detail"},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("owner role grant: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if err := e.AssignRole("u-mate", "role-analysts"); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); err != nil || !allowed {
+		t.Fatalf("role member effective permission = (%t, %v), want allowed", allowed, err)
+	}
+	if allowed, _ := e.Check("u-mate", "knowledge_network", "kn-other", "view_detail"); allowed {
+		t.Fatal("resource-scoped role grant leaked to another network")
+	}
+	grantID := oneGrantID(t, e, authz.PolicyFilter{
+		AccessorID: "role-analysts", Object: "knowledge_network:kn-mine", Operation: "view_detail",
+		PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceOwnerDelegate,
+	})
+	if w := tokReq(t, r, http.MethodDelete, base+"/object-grants", map[string]any{
+		"grant_id": grantID,
+	}, "u-owner"); w.Code != http.StatusNoContent {
+		t.Fatalf("owner role revoke: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if allowed, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); allowed {
+		t.Fatal("revoked role grant remained effective")
+	}
+
+	if w := tokReq(t, r, http.MethodPost, base+"/object-grants", map[string]any{
+		"accessor_id":   "role-missing",
+		"accessor_type": "role",
+		"resource":      map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":    []string{"view_detail"},
+	}, "u-owner"); w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown role grant: want 400, got %d", w.Code)
 	}
 }
 

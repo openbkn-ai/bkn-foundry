@@ -19,16 +19,22 @@ import (
 
 type managementServicesStub struct{}
 
-func (managementServicesStub) AuthorizeUserRead(context.Context, string) (bool, error) {
+func (managementServicesStub) AuthorizeUserRead(context.Context, string, string) (bool, error) {
 	return true, nil
 }
-func (managementServicesStub) AuthorizeUserWrite(context.Context, string) (bool, error) {
+func (managementServicesStub) AuthorizeUserWrite(context.Context, string, string) (bool, error) {
 	return true, nil
 }
-func (managementServicesStub) AuthorizeRoleRead(context.Context, string) (bool, error) {
+func (managementServicesStub) AuthorizeRoleRead(context.Context, string, string) (bool, error) {
 	return true, nil
 }
-func (managementServicesStub) AuthorizeRoleWrite(context.Context, string) (bool, error) {
+func (managementServicesStub) AuthorizeRoleWrite(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+func (managementServicesStub) CanInspectRoleMembership(context.Context, string) (bool, error) {
+	return false, nil
+}
+func (managementServicesStub) GrantSubjectExists(context.Context, string, string) (bool, error) {
 	return true, nil
 }
 func (managementServicesStub) ResolveCaller(context.Context, string) (Caller, error) {
