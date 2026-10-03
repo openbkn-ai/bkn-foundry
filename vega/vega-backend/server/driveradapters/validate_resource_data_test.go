@@ -8,8 +8,11 @@ package driveradapters
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -264,6 +267,16 @@ func TestValidateFilterCondCfg(t *testing.T) {
 		}
 
 		require.NoError(t, validateFilterCondCfg(ctx, cfg))
+		assert.Equal(t, interfaces.ValueFrom_Const, cfg.SubConds[0].ValueFrom)
+	})
+
+	t.Run("rejects unsupported value source before querying", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{Name: "age", Operation: filter_condition.OperationGt,
+			ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "unknown", Value: 1}}
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, validateFilterCondCfg(ctx, cfg), &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.BaseError.ErrorCode)
 	})
 }
 

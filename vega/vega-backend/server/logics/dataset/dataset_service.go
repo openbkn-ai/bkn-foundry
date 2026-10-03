@@ -3,6 +3,7 @@ package dataset
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -295,6 +296,18 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 		span.SetStatus(codes.Error, "Delete dataset documents rejected without filter")
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("delete-by-query requires a filter condition")
+	}
+	if err := filter_condition.NormalizeValueFrom(params.FilterCondCfg); err != nil {
+		span.SetStatus(codes.Error, "Validate dataset delete condition failed")
+		errorCode := verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom
+		switch {
+		case errors.Is(err, filter_condition.ErrMissingOperation):
+			errorCode = verrors.VegaBackend_NullParameter_FilterConditionOperation
+		case errors.Is(err, filter_condition.ErrUnsupportedOperation):
+			errorCode = verrors.VegaBackend_UnsupportFilterConditionOperation
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
+			WithErrorDetails(err.Error())
 	}
 	querySchema := local_index.SchemaForQuery(res.SchemaDefinition)
 	fieldMap := make(map[string]*interfaces.Property, len(querySchema))

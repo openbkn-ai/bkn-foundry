@@ -267,6 +267,86 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Contains(t, err.Error(), "delete failed")
 	})
 
+	t.Run("delete by query defaults nested value sources before index access", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{
+			ID: "dataset-1", LocalIndexName: "dataset-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_String}},
+		}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
+			Operation: filter_condition.OperationAnd,
+			SubConds: []*interfaces.FilterCondCfg{{
+				Name: "title", Operation: filter_condition.OperationLike,
+				ValueOptCfg: interfaces.ValueOptCfg{Value: "old"},
+			}},
+		}}
+		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", resource, params).
+			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, got *interfaces.ResourceDataQueryParams) error {
+				assert.Equal(t, interfaces.ValueFrom_Const, got.FilterCondCfg.SubConds[0].ValueFrom)
+				require.NotNil(t, got.ActualFilterCond)
+				return nil
+			})
+
+		require.NoError(t, ds.DeleteDocumentsByQuery(ctx, resource, params))
+	})
+
+	t.Run("delete by query distinguishes invalid operations before index access", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			operation string
+			nested    bool
+			code      string
+		}{
+			{"unsupported root", "unknown", false, verrors.VegaBackend_UnsupportFilterConditionOperation},
+			{"unsupported child", "unknown", true, verrors.VegaBackend_UnsupportFilterConditionOperation},
+			{"missing root", "", false, verrors.VegaBackend_NullParameter_FilterConditionOperation},
+			{"missing child", "", true, verrors.VegaBackend_NullParameter_FilterConditionOperation},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ds, _ := newDatasetServiceMock(t)
+				resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1"}
+				condition := &interfaces.FilterCondCfg{
+					Name: "title", Operation: tc.operation,
+					ValueOptCfg: interfaces.ValueOptCfg{Value: "old"},
+				}
+				if tc.nested {
+					condition = &interfaces.FilterCondCfg{
+						Operation: filter_condition.OperationAnd, SubConds: []*interfaces.FilterCondCfg{condition},
+					}
+				}
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: condition}
+
+				err := ds.DeleteDocumentsByQuery(ctx, resource, params)
+
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+				assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+				assert.Nil(t, params.ActualFilterCond)
+			})
+		}
+	})
+
+	t.Run("delete by query rejects unsupported value source before index access", func(t *testing.T) {
+		ds, _ := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{
+			ID: "dataset-1", LocalIndexName: "dataset-1",
+			SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_String}},
+		}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
+			Name: "title", Operation: filter_condition.OperationEqual,
+			ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "unknown", Value: "old"},
+		}}
+
+		err := ds.DeleteDocumentsByQuery(ctx, resource, params)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "value_from")
+		assert.Nil(t, params.ActualFilterCond)
+	})
+
 	t.Run("delete by query rejects an empty filter without calling the index", func(t *testing.T) {
 		ds, _ := newDatasetServiceMock(t)
 

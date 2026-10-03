@@ -42,6 +42,52 @@ func constCfg(name, op string, value any) *interfaces.FilterCondCfg {
 	}
 }
 
+func TestNormalizeValueFrom(t *testing.T) {
+	require.NoError(t, NormalizeValueFrom(nil))
+	require.NoError(t, NormalizeValueFrom(&interfaces.FilterCondCfg{}))
+	condition := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{
+		{Name: "age", Operation: OperationGt, ValueOptCfg: interfaces.ValueOptCfg{Value: 0}},
+		{Operation: OperationOr, SubConds: []*interfaces.FilterCondCfg{
+			{Name: "age", Operation: OperationEqual, ValueOptCfg: interfaces.ValueOptCfg{Value: 1}},
+			{Name: "age", Operation: OperationEqual, ValueOptCfg: interfaces.ValueOptCfg{Value: 2}},
+		}},
+	}}
+	require.NoError(t, NormalizeValueFrom(condition))
+	assert.Equal(t, interfaces.ValueFrom_Const, condition.SubConds[0].ValueFrom)
+	for _, child := range condition.SubConds[1].SubConds {
+		assert.Equal(t, interfaces.ValueFrom_Const, child.ValueFrom)
+	}
+
+	field := constCfg("age", OperationGt, "score")
+	field.ValueFrom = interfaces.ValueFrom_Field
+	require.NoError(t, NormalizeValueFrom(field))
+	assert.Equal(t, interfaces.ValueFrom_Field, field.ValueFrom)
+
+	invalid := constCfg("age", OperationEqual, 1)
+	invalid.ValueFrom = "unknown"
+	require.ErrorContains(t, NormalizeValueFrom(invalid), "value_from")
+
+	constOnly := constCfg("name", OperationLike, "a")
+	constOnly.ValueFrom = interfaces.ValueFrom_Field
+	require.ErrorContains(t, NormalizeValueFrom(constOnly), "value_from")
+
+	for _, tc := range []struct {
+		name      string
+		operation string
+		want      error
+	}{
+		{"missing operation", "", ErrMissingOperation},
+		{"unsupported operation", "unknown", ErrUnsupportedOperation},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			child := constCfg("age", tc.operation, 1)
+			require.ErrorIs(t, NormalizeValueFrom(child), tc.want)
+			nested := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{child}}
+			require.ErrorIs(t, NormalizeValueFrom(nested), tc.want)
+		})
+	}
+}
+
 func TestFilterConditionFactory(t *testing.T) {
 	t.Run("returns nil for nil config", func(t *testing.T) {
 		cond, err := NewFilterCondition(context.Background(), nil, testFieldsMap())

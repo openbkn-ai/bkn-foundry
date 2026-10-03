@@ -8,10 +8,18 @@ package filter_condition
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+)
+
+var (
+	// ErrMissingOperation 表示非空过滤条件缺少算子。
+	ErrMissingOperation = errors.New("missing operation")
+	// ErrUnsupportedOperation 表示过滤条件使用了不支持的算子。
+	ErrUnsupportedOperation = errors.New("unsupported operation")
 )
 
 // Concatenate the filter conditions to the query section of the dsl request
@@ -37,6 +45,40 @@ func NewFilterCondition(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, err
 	}
 	return cond, nil
+}
+
+// NormalizeValueFrom applies the default value source and rejects sources that
+// the condition converters cannot execute. It also walks nested conditions.
+func NormalizeValueFrom(cfg *interfaces.FilterCondCfg) error {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.Name == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
+		return nil
+	}
+	if cfg.Operation == "" {
+		return ErrMissingOperation
+	}
+	factory, ok := OperationMap[cfg.Operation]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrUnsupportedOperation, cfg.Operation)
+	}
+	for _, child := range cfg.SubConds {
+		if err := NormalizeValueFrom(child); err != nil {
+			return err
+		}
+	}
+	if !factory.NeedValue() {
+		return nil
+	}
+	if cfg.ValueFrom == "" {
+		cfg.ValueFrom = interfaces.ValueFrom_Const
+	}
+	if cfg.ValueFrom != interfaces.ValueFrom_Const &&
+		(factory.NeedConstValue() || cfg.ValueFrom != interfaces.ValueFrom_Field) {
+		return fmt.Errorf("operation %q does not support value_from %q", cfg.Operation, cfg.ValueFrom)
+	}
+	return nil
 }
 
 func IsSlice(i any) bool {
