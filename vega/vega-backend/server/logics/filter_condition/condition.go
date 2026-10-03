@@ -8,10 +8,18 @@ package filter_condition
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+)
+
+var (
+	// ErrMissingOperation 表示非空过滤条件缺少算子。
+	ErrMissingOperation = errors.New("missing operation")
+	// ErrUnsupportedOperation 表示过滤条件使用了不支持的算子。
+	ErrUnsupportedOperation = errors.New("unsupported operation")
 )
 
 // Concatenate the filter conditions to the query section of the dsl request
@@ -48,9 +56,12 @@ func NormalizeValueFrom(cfg *interfaces.FilterCondCfg) error {
 	if cfg.Name == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
 		return nil
 	}
+	if cfg.Operation == "" {
+		return ErrMissingOperation
+	}
 	factory, ok := OperationMap[cfg.Operation]
 	if !ok {
-		return fmt.Errorf("unsupported operation: %s", cfg.Operation)
+		return fmt.Errorf("%w: %s", ErrUnsupportedOperation, cfg.Operation)
 	}
 	for _, child := range cfg.SubConds {
 		if err := NormalizeValueFrom(child); err != nil {

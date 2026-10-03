@@ -70,6 +70,22 @@ func TestNormalizeValueFrom(t *testing.T) {
 	constOnly := constCfg("name", OperationLike, "a")
 	constOnly.ValueFrom = interfaces.ValueFrom_Field
 	require.ErrorContains(t, NormalizeValueFrom(constOnly), "value_from")
+
+	for _, tc := range []struct {
+		name      string
+		operation string
+		want      error
+	}{
+		{"missing operation", "", ErrMissingOperation},
+		{"unsupported operation", "unknown", ErrUnsupportedOperation},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			child := constCfg("age", tc.operation, 1)
+			require.ErrorIs(t, NormalizeValueFrom(child), tc.want)
+			nested := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{child}}
+			require.ErrorIs(t, NormalizeValueFrom(nested), tc.want)
+		})
+	}
 }
 
 func TestFilterConditionFactory(t *testing.T) {
