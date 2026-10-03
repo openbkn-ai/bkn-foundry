@@ -22,9 +22,9 @@ info:
     resource's authorization-management root. For a knowledge-network child,
     that root is its knowledge network; the caller must also be able to view the
     concrete object type. A resource authorizer may configure policies for users
-    or existing roles only within that boundary; this does not grant role
+    or custom roles only within that boundary; this does not grant role
     membership access or authority over another knowledge network. Creating or
-    replacing a policy requires an enabled user or existing role; deletion
+    replacing a policy requires an enabled user or custom role; deletion
     remains available for stale subjects. Updates use optimistic locking;
     clients must read the current `revision`, submit it as `expected_revision`,
     and handle `409 revision_conflict` without automatically overwriting the

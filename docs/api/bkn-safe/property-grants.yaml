@@ -15,12 +15,12 @@ info:
     property ceiling, and a platform role-permission administrator may manage
     role grants without a property ceiling. A caller holding `authorize` on the
     resource's authorization-management root may manage grants for users or
-    existing roles only within that boundary and only up to the caller's own
+    custom roles only within that boundary and only up to the caller's own
     effective, base-clamped level. For a knowledge-network child, that root is
     its knowledge network and the caller must also be able to view the concrete
     object type. Resource authorization never grants role membership management
     or access to another knowledge network. New or replacement rows require an enabled
-    user or existing role; deletion remains available for stale subjects. The
+    user or custom role; deletion remains available for stale subjects. The
     stable level value `masked` means Column Masking: the configured rule is
     applied to that property's query result and never modifies source data.
 servers:

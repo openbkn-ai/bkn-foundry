@@ -78,7 +78,9 @@ paths:
       operationId: setObjectGrant
       summary: Atomically set one trusted source slice
       description: |
-        Community shape uses `bundle` and omits `operations` and `effect`.
+        Community shape is user-only: it uses `bundle` and omits `operations`,
+        `effect`, and `accessor_type`. Role targets require the fine-grained
+        shape because role permissions are independently revocable operations.
         Fine-grained shape uses `operations` and optional `effect`. A request
         carrying a paid shape while the capability is absent or unavailable
         returns the exact edition-neutral `unsupported_grant_shape` response.
@@ -240,7 +242,7 @@ paths:
         The caller must have a final `authorize` decision on the management
         root, a final view decision on the target resource, and every requested
         operation including its direct runtime requirements. The target may be
-        an enabled user or an existing role. Delegates cannot write deny or
+        an enabled user or a custom role. Delegates cannot write deny or
         authorize, target the public accessor, or change admin, system, legacy,
         bundle, or an owner-delegated source created by a different user.
         Revoking the caller's later authority prevents new writes but leaves
@@ -333,7 +335,7 @@ paths:
   /me/grantable-roles:
     get:
       operationId: listGrantableRoles
-      summary: List or search existing role targets for one authorized resource
+      summary: List or search custom role targets for one authorized resource
       description: |
         Returns role identity metadata only. Role members and platform
         permissions are never exposed. The caller must hold `admin-role:view`
@@ -391,10 +393,10 @@ components:
       description: |
         Source and authority metadata are server-derived. If an older client
         sends such fields, the server ignores them; they cannot select the
-        stored source.
+        stored source. Community bundles target users only.
       properties:
         accessor_id: {type: string, minLength: 1}
-        accessor_type: {type: string, enum: [user, role], default: user}
+        accessor_type: {type: string, enum: [user], default: user}
         resource: {$ref: '#/components/schemas/ResourceRef'}
         bundle: {$ref: '#/components/schemas/CommunityBundle'}
     FineGrainedGrantRequest:
@@ -403,7 +405,7 @@ components:
       description: |
         Source and authority metadata are server-derived. If an older client
         sends such fields, the server ignores them; they cannot select the
-        stored source.
+        stored source. A role target must be a custom role.
       properties:
         accessor_id: {type: string, minLength: 1}
         accessor_type: {type: string, enum: [user, role], default: user}

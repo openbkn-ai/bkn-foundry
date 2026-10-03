@@ -34,7 +34,7 @@ import (
 // validated (known user, concrete resource, catalog-registered ops) so the UI
 // can't mint dead policies.
 //
-// Grantees are users or existing roles. Departments are intentionally
+// Grantees are users or custom roles. Departments are intentionally
 // unsupported: casbin holds no user→department membership rules, so a
 // department grant would be a dead policy that never matches at enforce time
 // (see RolePermissions path for the role-based alternative).
@@ -891,7 +891,7 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		}
 		c.JSON(http.StatusOK, gin.H{"users": out})
 	})
-	// GET /grantable-roles?resource_type=&resource_id=&search= — existing roles
+	// GET /grantable-roles?resource_type=&resource_id=&search= — custom roles
 	// that may receive a grant on ONE object. This deliberately exposes only
 	// role identity metadata, never role membership or platform permissions.
 	g.GET("/grantable-roles", func(c *gin.Context) {
@@ -1042,6 +1042,14 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, reviewerSync reviewer
 		accessorType := req.AccessorType
 		if accessorType == "" {
 			accessorType = "user"
+		}
+		// Community bundles are atomic compatibility grants. Role permissions are
+		// edited as individual operations, so expanding a bundle in the role editor
+		// would make a single displayed operation impossible to revoke faithfully.
+		// Roles therefore use only the fine-grained Professional shape.
+		if accessorType == "role" && communityShape {
+			replyPublicError(c, http.StatusBadRequest)
+			return
 		}
 		var accessorExists bool
 		var err error

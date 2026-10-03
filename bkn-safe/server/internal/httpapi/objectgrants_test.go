@@ -1545,6 +1545,14 @@ func TestObjectGrantsOwnerRolePickerAndWrite(t *testing.T) {
 	}, "u-owner"); w.Code != http.StatusBadRequest {
 		t.Fatalf("immutable business role grant: want 400, got %d", w.Code)
 	}
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id":   "role-analysts",
+		"accessor_type": "role",
+		"resource":      map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"bundle":        authz.ActFullBusinessAccess,
+	}); w.Code != http.StatusBadRequest {
+		t.Fatalf("role community bundle grant: want 400, got %d", w.Code)
+	}
 }
 
 func TestObjectGrantsOwnerPolicyReadIdentifiesRoleSubjects(t *testing.T) {
