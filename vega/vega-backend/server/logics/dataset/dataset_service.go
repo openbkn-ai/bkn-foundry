@@ -298,7 +298,7 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	}
 	if err := filter_condition.NormalizeValueFrom(params.FilterCondCfg); err != nil {
 		span.SetStatus(codes.Error, "Validate dataset delete condition failed")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom).
 			WithErrorDetails(err.Error())
 	}
 	querySchema := local_index.SchemaForQuery(res.SchemaDefinition)

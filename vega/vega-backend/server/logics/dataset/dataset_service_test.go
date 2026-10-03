@@ -305,6 +305,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		var httpErr *rest.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.BaseError.ErrorCode)
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "value_from")
 		assert.Nil(t, params.ActualFilterCond)
 	})
