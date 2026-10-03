@@ -48,6 +48,7 @@ func (s *Store) ReadArtifactForCapture(ctx context.Context, artifactID string, s
 	if artifact.ArtifactID != artifactID {
 		return result, iartifactstore.ErrCaptureIdentityMismatch
 	}
+	result.Exists = true
 	if !evidencevo.MatchesArtifactScope(artifact, scope) {
 		return result, nil
 	}

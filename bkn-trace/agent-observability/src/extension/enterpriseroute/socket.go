@@ -34,12 +34,13 @@ type InteractionFacts struct {
 // ListQuery is the deliberately narrow filter surface used by EE's existing
 // business-session list. Core owns the record scope; EE may not supply one.
 type ListQuery struct {
-	ConversationID string
-	Page           int
-	PageSize       int
-	Keyword        string
-	Status         string
-	AgentOrApp     string
+	RecordIntegrity string
+	ConversationID  string
+	Page            int
+	PageSize        int
+	Keyword         string
+	Status          string
+	AgentOrApp      string
 	// ExcludeAgentOrApp is supplied only by the assembled EE module. It is
 	// intentionally absent from the public HTTP query surface.
 	ExcludeAgentOrApp    string

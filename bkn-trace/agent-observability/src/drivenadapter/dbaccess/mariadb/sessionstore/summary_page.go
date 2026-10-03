@@ -170,7 +170,35 @@ func conversationSummaryReceiptExists(query isessionstore.SummaryPageQuery) (str
 	if !query.To.IsZero() {
 		where, args = append(where, "r.issued_at<=?"), append(args, query.To.UTC())
 	}
-	return "EXISTS (SELECT 1 FROM bkn_trace_receipts r WHERE " + strings.Join(where, " AND ") + ")", args
+	receipt := "EXISTS (SELECT 1 FROM bkn_trace_receipts r WHERE " + strings.Join(where, " AND ") + ")"
+	if !query.IncludeRegisteredCalls {
+		return receipt, args
+	}
+	alternatives := []string{receipt}
+	for _, source := range []struct{ table, alias, timestamp string }{
+		{"bkn_trace_operations", "o", "created_at"},
+		{"bkn_trace_operation_call_facts", "f", "started_at"},
+	} {
+		predicates := []string{source.alias + ".conversation_id=c.conversation_id"}
+		if source.alias == "o" {
+			predicates = append(predicates, "o.attempt_no>0", "(o.attempt_status<>'ready' OR o.attempt_no>1)")
+		}
+		if !query.From.IsZero() {
+			predicates = append(predicates, source.alias+"."+source.timestamp+">=?")
+			args = append(args, query.From.UTC())
+		}
+		if !query.To.IsZero() {
+			predicates = append(predicates, source.alias+"."+source.timestamp+"<=?")
+			args = append(args, query.To.UTC())
+		}
+		from := source.table + " " + source.alias
+		if source.alias == "f" {
+			from += " JOIN bkn_trace_interactions i ON i.interaction_id=f.interaction_id"
+			predicates = append(predicates, "i.conversation_id=c.conversation_id")
+		}
+		alternatives = append(alternatives, "EXISTS (SELECT 1 FROM "+from+" WHERE "+strings.Join(predicates, " AND ")+")")
+	}
+	return "(" + strings.Join(alternatives, " OR ") + ")", args
 }
 
 func usableSummaryReceiptPredicates(alias string) []string {

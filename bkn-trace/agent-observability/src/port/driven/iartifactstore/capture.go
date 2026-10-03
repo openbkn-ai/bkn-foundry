@@ -19,8 +19,10 @@ var ErrInvalidCaptureBudget = errors.New("BKN_TRACE_INVALID_CAPTURE_READ_BUDGET"
 // CaptureReadResult counts response bytes consumed, including probe bytes and error bodies.
 // An error or inaccessible document never returns artifact content.
 type CaptureReadResult struct {
-	Artifact  evidencevo.EvidenceArtifact
-	Found     bool
+	Artifact evidencevo.EvidenceArtifact
+	Found    bool
+	// Exists distinguishes a stored but inaccessible document from authoritative absence.
+	Exists    bool
 	ReadBytes int64
 }
 

@@ -77,17 +77,18 @@ type TraceSummary struct {
 }
 
 type SummaryQueryOptions struct {
-	Limit          int
-	Page           int
-	Cursor         string
-	TraceID        string
-	ConversationID string
-	InteractionID  string
-	Scope          QueryScope
-	From           time.Time
-	To             time.Time
-	Status         string
-	AgentOrApp     string
+	RecordIntegrity string
+	Limit           int
+	Page            int
+	Cursor          string
+	TraceID         string
+	ConversationID  string
+	InteractionID   string
+	Scope           QueryScope
+	From            time.Time
+	To              time.Time
+	Status          string
+	AgentOrApp      string
 	// ExcludeAgentOrApp is an internal product-view boundary. Public Trace
 	// query handlers never populate it; an assembled EE view may use it to
 	// keep its own analysis Agent conversations in technical Trace only.
@@ -124,48 +125,52 @@ type TraceSummaryPage struct {
 }
 
 type ConversationSummary struct {
-	ConversationID         string   `json:"conversation_id"`
-	StartedAt              string   `json:"started_at,omitempty"`
-	CompletedAt            string   `json:"completed_at,omitempty"`
-	Initiator              string   `json:"initiator,omitempty"`
-	AgentOrApp             string   `json:"agent_or_app,omitempty"`
-	AgentName              string   `json:"agent_name,omitempty"`
-	ApplicationPrincipalID string   `json:"application_principal_id,omitempty"`
-	EffectiveSubjectID     string   `json:"effective_subject_id,omitempty"`
-	KnowledgeNetworks      []string `json:"knowledge_networks,omitempty"`
-	QuestionPreview        string   `json:"question_preview,omitempty"`
-	ResultPreview          string   `json:"result_preview,omitempty"`
-	Status                 string   `json:"status"`
-	EvidenceCompleteness   string   `json:"evidence_completeness"`
-	PartialReasons         []string `json:"partial_reasons,omitempty"`
-	InteractionCount       int      `json:"interaction_count"`
-	RequestCount           int      `json:"request_count,omitempty"`
-	TraceCount             int      `json:"trace_count,omitempty"`
-	DurationMS             int64    `json:"duration_ms,omitempty"`
-	ErrorSummary           string   `json:"error_summary,omitempty"`
+	RecordIntegrityCheckFailed bool             `json:"record_integrity_check_failed,omitempty"`
+	CurrentRecordIntegrity     *RecordIntegrity `json:"current_record_integrity,omitempty"`
+	ConversationID             string           `json:"conversation_id"`
+	StartedAt                  string           `json:"started_at,omitempty"`
+	CompletedAt                string           `json:"completed_at,omitempty"`
+	Initiator                  string           `json:"initiator,omitempty"`
+	AgentOrApp                 string           `json:"agent_or_app,omitempty"`
+	AgentName                  string           `json:"agent_name,omitempty"`
+	ApplicationPrincipalID     string           `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID         string           `json:"effective_subject_id,omitempty"`
+	KnowledgeNetworks          []string         `json:"knowledge_networks,omitempty"`
+	QuestionPreview            string           `json:"question_preview,omitempty"`
+	ResultPreview              string           `json:"result_preview,omitempty"`
+	Status                     string           `json:"status"`
+	EvidenceCompleteness       string           `json:"evidence_completeness"`
+	PartialReasons             []string         `json:"partial_reasons,omitempty"`
+	InteractionCount           int              `json:"interaction_count"`
+	RequestCount               int              `json:"request_count,omitempty"`
+	TraceCount                 int              `json:"trace_count,omitempty"`
+	DurationMS                 int64            `json:"duration_ms,omitempty"`
+	ErrorSummary               string           `json:"error_summary,omitempty"`
 }
 
 type InteractionListSummary struct {
-	InteractionID          string   `json:"interaction_id"`
-	ConversationID         string   `json:"conversation_id,omitempty"`
-	RoundNumber            int      `json:"round_number,omitempty"`
-	StartedAt              string   `json:"started_at,omitempty"`
-	CompletedAt            string   `json:"completed_at,omitempty"`
-	Initiator              string   `json:"initiator,omitempty"`
-	AgentOrApp             string   `json:"agent_or_app,omitempty"`
-	AgentName              string   `json:"agent_name,omitempty"`
-	ApplicationPrincipalID string   `json:"application_principal_id,omitempty"`
-	EffectiveSubjectID     string   `json:"effective_subject_id,omitempty"`
-	KnowledgeNetworks      []string `json:"knowledge_networks,omitempty"`
-	QuestionPreview        string   `json:"question_preview,omitempty"`
-	ResultPreview          string   `json:"result_preview,omitempty"`
-	Status                 string   `json:"status"`
-	EvidenceCompleteness   string   `json:"evidence_completeness"`
-	PartialReasons         []string `json:"partial_reasons,omitempty"`
-	RequestCount           int      `json:"request_count"`
-	TraceCount             int      `json:"trace_count"`
-	DurationMS             int64    `json:"duration_ms,omitempty"`
-	ErrorSummary           string   `json:"error_summary,omitempty"`
+	RecordIntegrityCheckFailed bool             `json:"record_integrity_check_failed,omitempty"`
+	CurrentRecordIntegrity     *RecordIntegrity `json:"current_record_integrity,omitempty"`
+	InteractionID              string           `json:"interaction_id"`
+	ConversationID             string           `json:"conversation_id,omitempty"`
+	RoundNumber                int              `json:"round_number,omitempty"`
+	StartedAt                  string           `json:"started_at,omitempty"`
+	CompletedAt                string           `json:"completed_at,omitempty"`
+	Initiator                  string           `json:"initiator,omitempty"`
+	AgentOrApp                 string           `json:"agent_or_app,omitempty"`
+	AgentName                  string           `json:"agent_name,omitempty"`
+	ApplicationPrincipalID     string           `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID         string           `json:"effective_subject_id,omitempty"`
+	KnowledgeNetworks          []string         `json:"knowledge_networks,omitempty"`
+	QuestionPreview            string           `json:"question_preview,omitempty"`
+	ResultPreview              string           `json:"result_preview,omitempty"`
+	Status                     string           `json:"status"`
+	EvidenceCompleteness       string           `json:"evidence_completeness"`
+	PartialReasons             []string         `json:"partial_reasons,omitempty"`
+	RequestCount               int              `json:"request_count"`
+	TraceCount                 int              `json:"trace_count"`
+	DurationMS                 int64            `json:"duration_ms,omitempty"`
+	ErrorSummary               string           `json:"error_summary,omitempty"`
 }
 
 type ConversationSummaryPage struct {
@@ -191,24 +196,26 @@ type InteractionSummaryPage struct {
 }
 
 type InteractionSummary struct {
-	InteractionID          string           `json:"interaction_id"`
-	ConversationID         string           `json:"conversation_id,omitempty"`
-	AgentName              string           `json:"agent_name,omitempty"`
-	ApplicationPrincipalID string           `json:"application_principal_id,omitempty"`
-	EffectiveSubjectID     string           `json:"effective_subject_id,omitempty"`
-	StartedAt              string           `json:"started_at,omitempty"`
-	CompletedAt            string           `json:"completed_at,omitempty"`
-	QuestionPreview        string           `json:"question_preview,omitempty"`
-	QuestionArtifactRef    string           `json:"question_artifact_ref,omitempty"`
-	ResultPreview          string           `json:"result_preview,omitempty"`
-	ResultArtifactRef      string           `json:"result_artifact_ref,omitempty"`
-	Status                 string           `json:"status"`
-	EvidenceCompleteness   string           `json:"evidence_completeness"`
-	PartialReasons         []string         `json:"partial_reasons,omitempty"`
-	ErrorSummary           string           `json:"error_summary,omitempty"`
-	DurationMS             int64            `json:"duration_ms,omitempty"`
-	Requests               []RequestSummary `json:"requests"`
-	Traces                 []TraceSummary   `json:"traces"`
+	RecordIntegrityCheckFailed bool             `json:"record_integrity_check_failed,omitempty"`
+	CurrentRecordIntegrity     *RecordIntegrity `json:"current_record_integrity,omitempty"`
+	InteractionID              string           `json:"interaction_id"`
+	ConversationID             string           `json:"conversation_id,omitempty"`
+	AgentName                  string           `json:"agent_name,omitempty"`
+	ApplicationPrincipalID     string           `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID         string           `json:"effective_subject_id,omitempty"`
+	StartedAt                  string           `json:"started_at,omitempty"`
+	CompletedAt                string           `json:"completed_at,omitempty"`
+	QuestionPreview            string           `json:"question_preview,omitempty"`
+	QuestionArtifactRef        string           `json:"question_artifact_ref,omitempty"`
+	ResultPreview              string           `json:"result_preview,omitempty"`
+	ResultArtifactRef          string           `json:"result_artifact_ref,omitempty"`
+	Status                     string           `json:"status"`
+	EvidenceCompleteness       string           `json:"evidence_completeness"`
+	PartialReasons             []string         `json:"partial_reasons,omitempty"`
+	ErrorSummary               string           `json:"error_summary,omitempty"`
+	DurationMS                 int64            `json:"duration_ms,omitempty"`
+	Requests                   []RequestSummary `json:"requests"`
+	Traces                     []TraceSummary   `json:"traces"`
 	// InteractionQuestion and InteractionResult are available only to an
 	// already-authorized in-process reader. Public summaries retain previews.
 	InteractionQuestion string `json:"-"`
