@@ -30,7 +30,8 @@ type UserGrantAuthority struct {
 // would let a delegated caller grant more than they hold.
 type ManagementServices interface {
 	AuthorizeUserGrants(ctx context.Context, operatorID, objectTypeRef string) (UserGrantAuthority, error)
-	AuthorizePlatformRoleGrants(ctx context.Context, operatorID string) (bool, error)
+	AuthorizeRoleGrants(ctx context.Context, operatorID, objectTypeRef string) (UserGrantAuthority, error)
+	GrantSubjectExists(ctx context.Context, subjectType, subjectID string) (bool, error)
 	EffectivePropertyLevels(ctx context.Context, operatorID, objectTypeRef string, propertyNames []string) (map[string]propertyaccess.Level, error)
 }
 

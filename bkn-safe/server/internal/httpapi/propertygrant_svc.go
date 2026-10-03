@@ -10,18 +10,20 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permdata"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/propertyaccess"
+	"gorm.io/gorm"
 )
 
 type propertyGrantManagementServices struct {
 	enforcer *authz.Enforcer
+	db       *gorm.DB
 }
 
-func newPropertyGrantManagementServices(enforcer *authz.Enforcer) permdata.ManagementServices {
-	return &propertyGrantManagementServices{enforcer: enforcer}
+func newPropertyGrantManagementServices(enforcer *authz.Enforcer, db *gorm.DB) permdata.ManagementServices {
+	return &propertyGrantManagementServices{enforcer: enforcer, db: db}
 }
 
 // AuthorizeUserGrants gives platform authorization administrators an
-// unrestricted path and object-type authorizers a delegated, ceiling-limited
+// unrestricted path and resource-root authorizers a delegated, ceiling-limited
 // path. The EE manager applies that ceiling before changing any row.
 func (services *propertyGrantManagementServices) AuthorizeUserGrants(
 	ctx context.Context,
@@ -38,21 +40,37 @@ func (services *propertyGrantManagementServices) AuthorizeUserGrants(
 	if canGrant && canRevoke {
 		return permdata.UserGrantAuthority{Allowed: true, Unrestricted: true}, nil
 	}
-	allowed, err := services.enforcer.CheckContext(ctx, operatorID, "object_type", objectTypeRef, opAuthorize)
+	_, allowed, err := authorizeDelegatedResourceManagement(ctx, services.enforcer, services.db, operatorID,
+		resourceRef{Type: "object_type", ID: objectTypeRef})
 	if err != nil {
 		return permdata.UserGrantAuthority{}, err
 	}
 	return permdata.UserGrantAuthority{Allowed: allowed}, nil
 }
 
-// AuthorizePlatformRoleGrants requires the platform role-permission point.
-// Object-level authorize is intentionally insufficient because changing a role
-// can affect users outside the current object owner's delegation scope.
-func (services *propertyGrantManagementServices) AuthorizePlatformRoleGrants(
+// AuthorizeRoleGrants applies the same authorization-root boundary and property-level
+// ceiling as user grants. It authorizes a role as the subject of this one
+// object-type policy; it does not expose or modify role membership or the
+// role's platform-wide permission set.
+func (services *propertyGrantManagementServices) AuthorizeRoleGrants(
 	ctx context.Context,
-	operatorID string,
+	operatorID, objectTypeRef string,
+) (permdata.UserGrantAuthority, error) {
+	platformRoleAdmin, err := services.enforcer.CheckContext(ctx, operatorID, "admin-role", "*", "permissions")
+	if err != nil {
+		return permdata.UserGrantAuthority{}, err
+	}
+	if platformRoleAdmin {
+		return permdata.UserGrantAuthority{Allowed: true, Unrestricted: true}, nil
+	}
+	return services.AuthorizeUserGrants(ctx, operatorID, objectTypeRef)
+}
+
+func (services *propertyGrantManagementServices) GrantSubjectExists(
+	ctx context.Context,
+	subjectType, subjectID string,
 ) (bool, error) {
-	return services.enforcer.CheckContext(ctx, operatorID, "admin-role", "*", "permissions")
+	return grantSubjectExists(ctx, services.db, subjectType, subjectID)
 }
 
 // EffectivePropertyLevels resolves the operator through the same base-level

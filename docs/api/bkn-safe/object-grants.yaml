@@ -78,7 +78,9 @@ paths:
       operationId: setObjectGrant
       summary: Atomically set one trusted source slice
       description: |
-        Community shape uses `bundle` and omits `operations` and `effect`.
+        Community shape is user-only: it uses `bundle` and omits `operations`,
+        `effect`, and `accessor_type`. Role targets require the fine-grained
+        shape because role permissions are independently revocable operations.
         Fine-grained shape uses `operations` and optional `effect`. A request
         carrying a paid shape while the capability is absent or unavailable
         returns the exact edition-neutral `unsupported_grant_shape` response.
@@ -239,12 +241,12 @@ paths:
       description: |
         The caller must have a final `authorize` decision on the management
         root, a final view decision on the target resource, and every requested
-        operation including its direct runtime requirements. The target must be
-        an enabled user. Delegates cannot write deny or authorize, target a
-        role/public accessor, or change admin, system, legacy, bundle, or an
-        owner-delegated source created by a different user. Revoking the
-        caller's later authority prevents new writes but leaves previously
-        issued grants effective.
+        operation including its direct runtime requirements. The target may be
+        an enabled user or a custom role. Delegates cannot write deny or
+        authorize, target the public accessor, or change admin, system, legacy,
+        bundle, or an owner-delegated source created by a different user.
+        Revoking the caller's later authority prevents new writes but leaves
+        previously issued grants effective.
       requestBody:
         required: true
         content:
@@ -293,8 +295,8 @@ paths:
         '500': {$ref: '#/components/responses/InternalError'}
   /me/grantable-users:
     get:
-      operationId: searchGrantableUsers
-      summary: Search enabled user targets for one authorized resource
+      operationId: listGrantableUsers
+      summary: List or search enabled user targets for one authorized resource
       parameters:
         - name: resource_type
           in: query
@@ -306,11 +308,11 @@ paths:
           schema: {type: string, minLength: 1}
         - name: search
           in: query
-          required: true
-          schema: {type: string, minLength: 1}
+          required: false
+          schema: {type: string}
       responses:
         '200':
-          description: At most 20 matching enabled users
+          description: At most 50 matching enabled users; an empty search returns the first page
           content:
             application/json:
               schema:
@@ -326,6 +328,49 @@ paths:
                         id: {type: string}
                         account: {type: string}
                         name: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Missing or invalid bearer token}
+        '403': {description: Caller cannot view or authorize the selected resource}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /me/grantable-roles:
+    get:
+      operationId: listGrantableRoles
+      summary: List or search custom role targets for one authorized resource
+      description: |
+        Returns role identity metadata only. Role members and platform
+        permissions are never exposed. The caller must hold `admin-role:view`
+        or authorization-management authority on the exact resource.
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: resource_id
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: search
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        '200':
+          description: At most 50 matching roles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [roles]
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, description]
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+                        description: {type: string}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {description: Missing or invalid bearer token}
         '403': {description: Caller cannot view or authorize the selected resource}
@@ -348,9 +393,10 @@ components:
       description: |
         Source and authority metadata are server-derived. If an older client
         sends such fields, the server ignores them; they cannot select the
-        stored source.
+        stored source. Community bundles target users only.
       properties:
         accessor_id: {type: string, minLength: 1}
+        accessor_type: {type: string, enum: [user], default: user}
         resource: {$ref: '#/components/schemas/ResourceRef'}
         bundle: {$ref: '#/components/schemas/CommunityBundle'}
     FineGrainedGrantRequest:
@@ -359,9 +405,10 @@ components:
       description: |
         Source and authority metadata are server-derived. If an older client
         sends such fields, the server ignores them; they cannot select the
-        stored source.
+        stored source. A role target must be a custom role.
       properties:
         accessor_id: {type: string, minLength: 1}
+        accessor_type: {type: string, enum: [user, role], default: user}
         resource: {$ref: '#/components/schemas/ResourceRef'}
         operations:
           type: array

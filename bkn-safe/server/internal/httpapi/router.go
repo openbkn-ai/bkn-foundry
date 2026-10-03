@@ -236,7 +236,7 @@ func New(deps Deps) *gin.Engine {
 		if recorder != nil {
 			propertyGrantAdmin.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 		}
-		if permdata.MountManagement(propertyGrantAdmin, newPropertyGrantManagementServices(deps.Enforcer), func(c *gin.Context) (string, bool) {
+		if permdata.MountManagement(propertyGrantAdmin, newPropertyGrantManagementServices(deps.Enforcer, deps.DB), func(c *gin.Context) (string, bool) {
 			operatorID := c.GetString(ctxAccessorID)
 			return operatorID, operatorID != ""
 		}) {
@@ -249,7 +249,7 @@ func New(deps Deps) *gin.Engine {
 				rowFilterAdmin.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 			}
 			if rowfiltersocket.MountManagement(rowFilterAdmin, newRowFilterManagementServices(
-				deps.Enforcer, deps.Directory, deps.RowFilterPublishedObjectTypes,
+				deps.Enforcer, deps.DB, deps.Directory, deps.RowFilterPublishedObjectTypes,
 			), func(c *gin.Context) (string, bool) {
 				operatorID := c.GetString(ctxAccessorID)
 				return operatorID, operatorID != ""

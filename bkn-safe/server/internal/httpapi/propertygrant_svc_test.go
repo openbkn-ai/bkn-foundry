@@ -15,6 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permdata"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/propertyaccess"
 )
@@ -32,11 +33,46 @@ func newPropertyGrantServicesForTest(t *testing.T) (*propertyGrantManagementServ
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &propertyGrantManagementServices{enforcer: enforcer}, enforcer
+	return &propertyGrantManagementServices{enforcer: enforcer, db: db}, enforcer
+}
+
+func seedKnowledgeNetworkObjectAuthority(t *testing.T, db *gorm.DB, enforcer *authz.Enforcer) {
+	t.Helper()
+	if err := db.Create(&model.ResourceType{ID: "knowledge_network", Name: "Knowledge network"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ResourceType{
+		ID: "object_type", Name: "Object type", ParentTypeID: "knowledge_network",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Operation{
+		ResourceTypeID: "object_type", ID: "view_detail", Name: "View detail",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, parent := range []model.ResourceParent{
+		{ResourceTypeID: "object_type", ResourceID: "kn-1/customer", ParentTypeID: "knowledge_network", ParentID: "kn-1"},
+		{ResourceTypeID: "object_type", ResourceID: "kn-1/hidden", ParentTypeID: "knowledge_network", ParentID: "kn-1"},
+		{ResourceTypeID: "object_type", ResourceID: "kn-2/order", ParentTypeID: "knowledge_network", ParentID: "kn-2"},
+	} {
+		if err := db.Create(&parent).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := enforcer.GrantObjectPermission("owner", "knowledge_network", "kn-1", opAuthorize); err != nil {
+		t.Fatal(err)
+	}
+	for _, objectTypeRef := range []string{"kn-1/customer", "kn-2/order"} {
+		if err := enforcer.GrantObjectPermission("owner", "object_type", objectTypeRef, "view_detail"); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestPropertyGrantManagementAuthoritySeparatesPlatformAndObjectScopes(t *testing.T) {
 	services, enforcer := newPropertyGrantServicesForTest(t)
+	seedKnowledgeNetworkObjectAuthority(t, services.db, enforcer)
 	if err := enforcer.GrantObjectPermission("security-admin", "admin-authz", "*", "grant"); err != nil {
 		t.Fatal(err)
 	}
@@ -44,9 +80,6 @@ func TestPropertyGrantManagementAuthoritySeparatesPlatformAndObjectScopes(t *tes
 		t.Fatal(err)
 	}
 	if err := enforcer.GrantObjectPermission("grant-only", "admin-authz", "*", "grant"); err != nil {
-		t.Fatal(err)
-	}
-	if err := enforcer.GrantObjectPermission("owner", "object_type", "kn-1/customer", opAuthorize); err != nil {
 		t.Fatal(err)
 	}
 	if err := enforcer.GrantObjectPermission("role-admin", "admin-role", "*", "permissions"); err != nil {
@@ -65,17 +98,25 @@ func TestPropertyGrantManagementAuthoritySeparatesPlatformAndObjectScopes(t *tes
 	if err != nil || !owner.Allowed || owner.Unrestricted {
 		t.Fatalf("owner authority = %+v, err=%v", owner, err)
 	}
-	other, err := services.AuthorizeUserGrants(t.Context(), "owner", "kn-1/order")
+	other, err := services.AuthorizeUserGrants(t.Context(), "owner", "kn-2/order")
 	if err != nil || other.Allowed {
 		t.Fatalf("other-object authority = %+v, err=%v", other, err)
 	}
-	roleAllowed, err := services.AuthorizePlatformRoleGrants(t.Context(), "role-admin")
-	if err != nil || !roleAllowed {
-		t.Fatalf("role admin allowed = %v, err=%v", roleAllowed, err)
+	hidden, err := services.AuthorizeUserGrants(t.Context(), "owner", "kn-1/hidden")
+	if err != nil || hidden.Allowed {
+		t.Fatalf("hidden child authority = %+v, err=%v", hidden, err)
 	}
-	ownerRoleAllowed, err := services.AuthorizePlatformRoleGrants(t.Context(), "owner")
-	if err != nil || ownerRoleAllowed {
-		t.Fatalf("object owner role authority = %v, err=%v", ownerRoleAllowed, err)
+	roleAuthority, err := services.AuthorizeRoleGrants(t.Context(), "role-admin", "kn-1/customer")
+	if err != nil || !roleAuthority.Allowed || !roleAuthority.Unrestricted {
+		t.Fatalf("role admin authority = %+v, err=%v", roleAuthority, err)
+	}
+	ownerRoleAuthority, err := services.AuthorizeRoleGrants(t.Context(), "owner", "kn-1/customer")
+	if err != nil || !ownerRoleAuthority.Allowed || ownerRoleAuthority.Unrestricted {
+		t.Fatalf("object owner role authority = %+v, err=%v", ownerRoleAuthority, err)
+	}
+	otherRoleAuthority, err := services.AuthorizeRoleGrants(t.Context(), "owner", "kn-2/order")
+	if err != nil || otherRoleAuthority.Allowed {
+		t.Fatalf("other-object role authority = %+v, err=%v", otherRoleAuthority, err)
 	}
 }
 

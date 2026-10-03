@@ -17,8 +17,15 @@ info:
     regular expressions, nested Boolean groups, or legacy policy migration.
 
     The API is available only when the Enterprise row-filter capability is
-    assembled and licensed. Reads and writes additionally require the matching
-    user- or role-administration permission. Updates use optimistic locking;
+    assembled and licensed. Reads and writes require either the matching
+    platform user- or role-administration permission, or `authorize` on the
+    resource's authorization-management root. For a knowledge-network child,
+    that root is its knowledge network; the caller must also be able to view the
+    concrete object type. A resource authorizer may configure policies for users
+    or custom roles only within that boundary; this does not grant role
+    membership access or authority over another knowledge network. Creating or
+    replacing a policy requires an enabled user or custom role; deletion
+    remains available for stale subjects. Updates use optimistic locking;
     clients must read the current `revision`, submit it as `expected_revision`,
     and handle `409 revision_conflict` without automatically overwriting the
     newer policy.
@@ -126,9 +133,12 @@ paths:
       operationId: explainRowFilterPolicy
       summary: Explain the row-filter rules currently applicable to a subject
       description: |
-        For a user, returns the direct policy, matching role policies, and the
-        normalized effective predicate. Complete user/role policies are ORed;
-        conditions inside each policy retain that policy's AND or OR relation.
+        For a user, returns the direct policy and normalized effective
+        predicate. Matching role policies are included only for callers holding
+        platform `admin-role:view`; resource-root authorizers receive the same
+        effective predicate without role-membership sources. Complete user/role
+        policies are ORed; conditions inside each policy retain that policy's
+        AND or OR relation.
         For a role, `role_policy_only` is true and no user-effective predicate is
         calculated because a role alone does not identify a concrete user's full
         role membership. The response never includes filtered object instances.

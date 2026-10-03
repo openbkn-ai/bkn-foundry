@@ -35,10 +35,12 @@ type PublishedObjectType struct {
 // authorization, caller expansion and published-model capability resolution
 // happen here; the EE handler never accepts any of them from client input.
 type ManagementServices interface {
-	AuthorizeUserRead(context.Context, string) (bool, error)
-	AuthorizeUserWrite(context.Context, string) (bool, error)
-	AuthorizeRoleRead(context.Context, string) (bool, error)
-	AuthorizeRoleWrite(context.Context, string) (bool, error)
+	AuthorizeUserRead(ctx context.Context, operatorID, objectTypeRef string) (bool, error)
+	AuthorizeUserWrite(ctx context.Context, operatorID, objectTypeRef string) (bool, error)
+	AuthorizeRoleRead(ctx context.Context, operatorID, objectTypeRef string) (bool, error)
+	AuthorizeRoleWrite(ctx context.Context, operatorID, objectTypeRef string) (bool, error)
+	CanInspectRoleMembership(ctx context.Context, operatorID string) (bool, error)
+	GrantSubjectExists(ctx context.Context, subjectType, subjectID string) (bool, error)
 	ResolveCaller(context.Context, string) (Caller, error)
 	ResolvePublishedObjectType(ctx context.Context, operatorID, objectTypeRef string) (PublishedObjectType, error)
 }
