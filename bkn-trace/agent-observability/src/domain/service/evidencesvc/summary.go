@@ -1250,11 +1250,17 @@ func summaryStringSet(groups ...[]string) map[string]struct{} {
 	return result
 }
 
-func (s *Service) GetInteractionSummary(
-	ctx context.Context,
-	interactionID string,
-	scope evidencevo.QueryScope,
-) (evidencevo.InteractionSummary, bool, error) {
+func (s *Service) GetInteractionSummary(ctx context.Context, interactionID string, scope evidencevo.QueryScope) (evidencevo.InteractionSummary, bool, error) {
+	return s.getInteractionSummary(ctx, interactionID, scope, true)
+}
+
+// GetInteractionSummaryWithoutRecordIntegrity retains identical authorization
+// and summary semantics for probes that do not display current call content.
+func (s *Service) GetInteractionSummaryWithoutRecordIntegrity(ctx context.Context, interactionID string, scope evidencevo.QueryScope) (evidencevo.InteractionSummary, bool, error) {
+	return s.getInteractionSummary(ctx, interactionID, scope, false)
+}
+
+func (s *Service) getInteractionSummary(ctx context.Context, interactionID string, scope evidencevo.QueryScope, checkIntegrity bool) (evidencevo.InteractionSummary, bool, error) {
 	interactionID = strings.TrimSpace(interactionID)
 	if interactionID == "" || !trustedQueryScope(scope) {
 		return evidencevo.InteractionSummary{}, false, nil
@@ -1386,9 +1392,11 @@ func (s *Service) GetInteractionSummary(
 			}
 		}
 	}
-	summary.CurrentRecordIntegrity, err = s.inspectRecordIntegrity(ctx, interactionID, scope)
-	if err != nil {
-		summary.RecordIntegrityCheckFailed = true
+	if checkIntegrity {
+		summary.CurrentRecordIntegrity, err = s.inspectRecordIntegrity(ctx, interactionID, scope)
+		if err != nil {
+			summary.RecordIntegrityCheckFailed = true
+		}
 	}
 	return summary, true, nil
 }

@@ -21,6 +21,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
+type recordIntegrityBudgetKey struct{}
+type recordIntegrityReadBudget struct {
+	reads int
+	bytes int64
+}
+
+func withRecordIntegrityReadBudget(ctx context.Context) context.Context {
+	if _, ok := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget); ok {
+		return ctx
+	}
+	return context.WithValue(ctx, recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{})
+}
+
 type payloadVerifier func(sessionvo.OperationCallFact, string, sessionvo.PayloadEnvelope) (json.RawMessage, error)
 
 func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionvo.Owner, now time.Time, verify payloadVerifier) (*evidencevo.RecordIntegrity, error) {
@@ -31,9 +44,10 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 	if interaction.ClosureManifest != nil && slices.Contains(interaction.ClosureManifest.SystemPartialReasons, "not_collected_due_to_license") {
 		return nil, nil
 	}
-	if len(snapshot.Operations) == 0 && len(snapshot.CallFacts) == 0 && (interaction.ClosureManifest == nil || (len(interaction.ClosureManifest.ExpectedOperations) == 0 && len(interaction.ClosureManifest.ExpectedReceipts) == 0)) {
+	if !hasRecordIntegrityCalls(snapshot) {
 		return nil, nil
 	}
+
 	report := &evidencevo.RecordIntegrity{Status: "complete", CheckedAt: now.UTC(), Scope: "registered_call_records", Missing: []evidencevo.MissingRecord{}}
 	add := func(f sessionvo.OperationCallFact, reason, field string) {
 		report.Missing = append(report.Missing, evidencevo.MissingRecord{OperationID: f.OperationID, Attempt: f.Attempt, ToolName: f.ToolName, Reason: reason, Field: field})
@@ -288,13 +302,30 @@ func integrityEventType(contract string) string {
 	}
 }
 
+func hasRecordIntegrityCalls(snapshot sessionvo.EvidenceSnapshot) bool {
+	if len(snapshot.CallFacts) > 0 {
+		return true
+	}
+	for _, operation := range snapshot.Operations {
+		if operation.Attempt > 0 && (operation.AttemptStatus != sessionvo.AttemptReady || operation.Attempt > 1) {
+			return true
+		}
+	}
+	manifest := snapshot.Interaction.ClosureManifest
+	return manifest != nil && (len(manifest.ExpectedOperations) > 0 || len(manifest.ExpectedReceipts) > 0 || slices.Contains(manifest.SystemPartialReasons, "not_collected_due_to_license"))
+}
 func (s *Service) inspectRecordIntegrity(ctx context.Context, id string, scope evidencevo.QueryScope) (*evidencevo.RecordIntegrity, error) {
+	report, _, err := s.inspectRecordIntegrityWithScope(ctx, id, scope)
+	return report, err
+}
+
+func (s *Service) inspectRecordIntegrityWithScope(ctx context.Context, id string, scope evidencevo.QueryScope) (*evidencevo.RecordIntegrity, bool, error) {
 	if !s.currentRecordIntegrity {
-		return nil, nil
+		return nil, false, nil
 	}
 	reader, ok := s.sessionStore.(isessionstore.EvidenceSnapshotReader)
 	if !ok {
-		return nil, errors.New("record integrity snapshot source unavailable")
+		return nil, false, errors.New("record integrity snapshot source unavailable")
 	}
 	var owner sessionvo.Owner
 	authorized := false
@@ -311,21 +342,25 @@ func (s *Service) inspectRecordIntegrity(ctx context.Context, id string, scope e
 		authorized = true
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !authorized {
-		return nil, nil
+		return nil, false, nil
 	}
 	snapshot, found, err := reader.ReadEvidenceSnapshot(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !found {
-		return nil, errors.New("registered interaction disappeared during integrity check")
+		return nil, false, errors.New("registered interaction disappeared during integrity check")
+	}
+	if !hasRecordIntegrityCalls(snapshot) {
+		return nil, false, nil
 	}
 	// Artifact misses through a caller-filtered store are not authoritative
 	// absence: do not turn authorization or unsupported external reads into gaps.
-	reads, bytes := 0, int64(0)
+	ctx = withRecordIntegrityReadBudget(ctx)
+	budget := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget)
 	verify := func(f sessionvo.OperationCallFact, field string, p sessionvo.PayloadEnvelope) (json.RawMessage, error) {
 		id, valid := evidencevo.ArtifactIDFromReference(p.Ref)
 		if !valid {
@@ -335,12 +370,12 @@ func (s *Service) inspectRecordIntegrity(ctx context.Context, id string, scope e
 		if !ok {
 			return nil, errors.New("authoritative bounded artifact source unavailable")
 		}
-		if reads >= 128 || bytes >= 32<<20 {
+		if budget.reads >= 128 || budget.bytes >= 32<<20 {
 			return nil, errors.New("integrity artifact read budget exceeded")
 		}
-		reads++
-		result, err := reader.ReadArtifactForCapture(ctx, id, scope, min(8<<20, (32<<20)-bytes))
-		bytes += result.ReadBytes
+		budget.reads++
+		result, err := reader.ReadArtifactForCapture(ctx, id, scope, min(8<<20, (32<<20)-budget.bytes))
+		budget.bytes += result.ReadBytes
 		if err != nil {
 			return nil, err
 		}
@@ -377,10 +412,12 @@ func (s *Service) inspectRecordIntegrity(ctx context.Context, id string, scope e
 		}
 		return content.CanonicalJSON, nil
 	}
-	return evaluateRecordIntegrity(snapshot, owner, time.Now(), verify)
+	report, err := evaluateRecordIntegrity(snapshot, owner, time.Now(), verify)
+	return report, true, err
 }
 
 func (s *Service) applyInteractionRecordIntegrity(ctx context.Context, entries []evidencevo.InteractionListSummary, scope evidencevo.QueryScope) error {
+	ctx = withRecordIntegrityReadBudget(ctx)
 	if !s.currentRecordIntegrity {
 		return nil
 	}
@@ -396,6 +433,7 @@ func (s *Service) applyInteractionRecordIntegrity(ctx context.Context, entries [
 }
 
 func (s *Service) applyConversationRecordIntegrity(ctx context.Context, entries []evidencevo.ConversationSummary, scope evidencevo.QueryScope) error {
+	ctx = withRecordIntegrityReadBudget(ctx)
 	if !s.currentRecordIntegrity {
 		return nil
 	}
@@ -416,23 +454,28 @@ func (s *Service) applyConversationRecordIntegrity(ctx context.Context, entries 
 		}
 		aggregate := &evidencevo.RecordIntegrity{Status: "complete", CheckedAt: time.Now().UTC(), Scope: "registered_call_records", Missing: []evidencevo.MissingRecord{}}
 		unfinished := false
+		checked := false
 		for _, interaction := range interactions {
-			report, err := s.inspectRecordIntegrity(ctx, interaction.ID, scope)
+			report, applicable, err := s.inspectRecordIntegrityWithScope(ctx, interaction.ID, scope)
 			if err != nil {
 				entries[i].RecordIntegrityCheckFailed = true
 				unfinished = true
+				continue
+			}
+			if !applicable {
 				continue
 			}
 			if report == nil {
 				unfinished = true
 				continue
 			}
+			checked = true
 			aggregate.Missing = append(aggregate.Missing, report.Missing...)
 			if report.Status == "missing" {
 				aggregate.Status = "missing"
 			}
 		}
-		if entries[i].RecordIntegrityCheckFailed || (unfinished && aggregate.Status == "complete") {
+		if !checked || entries[i].RecordIntegrityCheckFailed || (unfinished && aggregate.Status == "complete") {
 			continue
 		}
 		entries[i].CurrentRecordIntegrity = aggregate

@@ -191,7 +191,12 @@ func conversationSummaryReceiptExists(query isessionstore.SummaryPageQuery) (str
 			predicates = append(predicates, source.alias+"."+source.timestamp+"<=?")
 			args = append(args, query.To.UTC())
 		}
-		alternatives = append(alternatives, "EXISTS (SELECT 1 FROM "+source.table+" "+source.alias+" WHERE "+strings.Join(predicates, " AND ")+")")
+		from := source.table + " " + source.alias
+		if source.alias == "f" {
+			from += " JOIN bkn_trace_interactions i ON i.interaction_id=f.interaction_id"
+			predicates = append(predicates, "i.conversation_id=c.conversation_id")
+		}
+		alternatives = append(alternatives, "EXISTS (SELECT 1 FROM "+from+" WHERE "+strings.Join(predicates, " AND ")+")")
 	}
 	return "(" + strings.Join(alternatives, " OR ") + ")", args
 }

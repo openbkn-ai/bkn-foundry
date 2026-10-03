@@ -116,11 +116,17 @@ func TestRecordIntegrityConvergenceAndReadErrors(t *testing.T) {
 
 type integritySnapshotStore struct {
 	*memorystore.Store
-	snapshot sessionvo.EvidenceSnapshot
-	readErr  error
+	snapshot  sessionvo.EvidenceSnapshot
+	readErr   error
+	snapshots map[string]sessionvo.EvidenceSnapshot
+	reads     int
 }
 
-func (s *integritySnapshotStore) ReadEvidenceSnapshot(context.Context, string) (sessionvo.EvidenceSnapshot, bool, error) {
+func (s *integritySnapshotStore) ReadEvidenceSnapshot(_ context.Context, id string) (sessionvo.EvidenceSnapshot, bool, error) {
+	s.reads++
+	if snapshot, ok := s.snapshots[id]; ok {
+		return snapshot, true, s.readErr
+	}
 	return s.snapshot, true, s.readErr
 }
 func TestRecordIntegritySummaryUsesCurrentCheckWithoutRewritingAssembly(t *testing.T) {
@@ -137,6 +143,11 @@ func TestRecordIntegritySummaryUsesCurrentCheckWithoutRewritingAssembly(t *testi
 	}
 	service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
 	scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
+	probe, found, err := service.GetInteractionSummaryWithoutRecordIntegrity(ctx, "int", scope)
+	if err != nil || !found || probe.CurrentRecordIntegrity != nil || probe.RecordIntegrityCheckFailed || store.reads != 0 {
+		t.Fatalf("authorization summary must retain entry without reading call snapshot: %+v %v reads=%d", probe, err, store.reads)
+	}
+
 	summary, found, err := service.GetInteractionSummary(ctx, "int", scope)
 	if err != nil || !found || summary.CurrentRecordIntegrity == nil || summary.CurrentRecordIntegrity.Status != "complete" {
 		t.Fatalf("summary must include independent current result: %+v %v", summary, err)
@@ -356,5 +367,66 @@ func TestRecordIntegrityListSurvivesAllReceiptAndProjectionLoss(t *testing.T) {
 	page, err = service.ListConversations(ctx, evidencevo.SummaryQueryOptions{Scope: evidencevo.QueryScope{AccountID: "user", AccountType: "user"}, RecordIntegrity: "missing", Tool: "query_object_instance"})
 	if err != nil || len(page.Entries) != 0 {
 		t.Fatalf("missing projection cannot prove tool filter: %+v %v", page, err)
+	}
+}
+
+func TestConversationIntegrityIgnoresRoundsWithNoRegisteredCalls(t *testing.T) {
+	snapshot, owner, now := integrityFixture()
+	empty := sessionvo.EvidenceSnapshot{Interaction: sessionvo.EvidenceInteraction{ID: "empty", ConversationID: "conv", ExecutionStatus: sessionvo.InteractionCompleted}}
+	store := &integritySnapshotStore{Store: memorystore.New(), snapshot: snapshot, snapshots: map[string]sessionvo.EvidenceSnapshot{"empty": empty}}
+	ctx := context.Background()
+	if err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{ID: "conv", Owner: owner})
+		for _, id := range []string{"int", "empty"} {
+			tx.SaveInteraction(sessionvo.Interaction{ID: id, ConversationID: "conv", ExecutionStatus: sessionvo.InteractionCompleted, CreatedAt: now})
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
+	entries := []evidencevo.ConversationSummary{{ConversationID: "conv"}}
+	if err := service.applyConversationRecordIntegrity(ctx, entries, evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err != nil || entries[0].CurrentRecordIntegrity == nil || entries[0].CurrentRecordIntegrity.Status != "complete" {
+		t.Fatalf("empty round must not prevent complete call records: %+v %v", entries, err)
+	}
+}
+func TestInitialReadyOperationHasNoIntegrityVerdict(t *testing.T) {
+	snapshot, owner, now := integrityFixture()
+	snapshot.CallFacts, snapshot.Receipts = nil, nil
+	snapshot.Operations[0].AttemptStatus = sessionvo.AttemptReady
+	report, err := evaluateRecordIntegrity(snapshot, owner, now, nil)
+	if err != nil || report != nil {
+		t.Fatalf("unclaimed initial attempt has no call record scope: %+v %v", report, err)
+	}
+}
+
+func TestRecordIntegrityArtifactBudgetIsSharedAcrossRounds(t *testing.T) {
+	snapshot, owner, now := integrityFixture()
+	snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a"}
+	store := &integritySnapshotStore{Store: memorystore.New(), snapshot: snapshot}
+	ctx := context.WithValue(context.Background(), recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{reads: 127})
+	if err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{ID: "conv", Owner: owner})
+		tx.SaveInteraction(sessionvo.Interaction{ID: "int", ConversationID: "conv", ExecutionStatus: sessionvo.InteractionCompleted, CreatedAt: now})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	artifact := captureFixture("a", "rows")
+	artifact.InteractionID, artifact.OperationID, artifact.RequestID, artifact.TraceID = "int", "op", "req", "trace"
+	artifact.ArtifactType = evidencevo.ArtifactTypeDataResult
+	service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
+	service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}}
+	scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
+	first, found, err := service.GetInteractionSummary(ctx, "int", scope)
+	if err != nil || !found || first.CurrentRecordIntegrity == nil {
+		t.Fatalf("last permitted content read must succeed: %+v %v", first, err)
+	}
+	second, found, err := service.GetInteractionSummary(ctx, "int", scope)
+	if err != nil || !found || second.CurrentRecordIntegrity != nil || !second.RecordIntegrityCheckFailed {
+		t.Fatalf("exhausted request budget must retain facts without verdict: %+v %v", second, err)
+	}
+	if reads := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget).reads; reads != 128 {
+		t.Fatalf("budget exhaustion must stop further artifact reads: %d", reads)
 	}
 }

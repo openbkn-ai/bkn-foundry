@@ -202,7 +202,7 @@ func (r enterpriseInteractionFactsReader) ReadExplanationCapture(ctx context.Con
 		return nil, "", false, nil
 	}
 	scope.View = evidencevo.AccessViewTechnical
-	_, found, err := r.summaries.GetInteractionSummary(ctx, id, scope)
+	_, found, err := r.summaryForAuthorization(ctx, id, scope)
 	if err != nil || !found {
 		return nil, "", found, err
 	}
@@ -220,7 +220,7 @@ func (r enterpriseInteractionFactsReader) AuthorizeExplanationInteraction(ctx co
 		return false, nil
 	}
 	scope.View = evidencevo.AccessViewTechnical
-	_, found, err := r.summaries.GetInteractionSummary(ctx, id, scope)
+	_, found, err := r.summaryForAuthorization(ctx, id, scope)
 	return found, err
 }
 
@@ -233,4 +233,13 @@ func (r enterpriseInteractionFactsReader) ExplanationScopeFingerprint(ctx contex
 		return "", false
 	}
 	return scope.AccessProfile.Fingerprint, true
+}
+
+func (r enterpriseInteractionFactsReader) summaryForAuthorization(ctx context.Context, id string, scope evidencevo.QueryScope) (evidencevo.InteractionSummary, bool, error) {
+	if source, ok := r.summaries.(interface {
+		GetInteractionSummaryWithoutRecordIntegrity(context.Context, string, evidencevo.QueryScope) (evidencevo.InteractionSummary, bool, error)
+	}); ok {
+		return source.GetInteractionSummaryWithoutRecordIntegrity(ctx, id, scope)
+	}
+	return r.summaries.GetInteractionSummary(ctx, id, scope)
 }
