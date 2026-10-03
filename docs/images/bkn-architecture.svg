@@ -1,106 +1,112 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 800" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
-  <rect width="760" height="800" fill="#020617" rx="12"/>
-        <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
-          </marker>
-          <marker id="arrowstart" markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto">
-            <polygon points="10 0, 0 3.5, 10 7" fill="#64748b" />
-          </marker>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
-
-        <!-- ===== Arrows (drawn first, behind boxes) ===== -->
-        <!-- 接入层 -> BKN Engine -->
-        <line x1="235" y1="124" x2="235" y2="206" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <line x1="444" y1="124" x2="444" y2="150" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <line x1="444" y1="194" x2="444" y2="206" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <line x1="235" y1="254" x2="235" y2="300" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <line x1="444" y1="254" x2="444" y2="300" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <!-- Context Loader -> BKN -->
-        <line x1="380" y1="448" x2="380" y2="466" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <!-- 映射 BKN -> VEGA / Exec Factory -->
-        <line x1="235" y1="592" x2="235" y2="636" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <line x1="444" y1="592" x2="444" y2="636" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <!-- 执行层 -> 底层数据 -->
-        <line x1="235" y1="700" x2="235" y2="744" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <line x1="444" y1="700" x2="444" y2="744" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-
-        <!-- ===== 接入层 ===== -->
-        <!-- 用户 -->
-        <rect x="138" y="80" width="195" height="44" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
-        <text x="235" y="107" fill="white" font-size="12" font-weight="600" text-anchor="middle">User</text>
-        <!-- 应用 / Agent -->
-        <rect x="347" y="80" width="195" height="44" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
-        <text x="444" y="107" fill="white" font-size="12" font-weight="600" text-anchor="middle">App / Agent</text>
-        <!-- BKN Skill -->
-        <rect x="347" y="150" width="195" height="44" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="444" y="170" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Skill</text>
-        <text x="444" y="185" fill="#94a3b8" font-size="8" text-anchor="middle">Platform-level · wraps SDK capabilities</text>
-        <!-- BKN Studio -->
-        <rect x="138" y="206" width="195" height="48" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-        <text x="235" y="227" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Studio</text>
-        <text x="235" y="242" fill="#94a3b8" font-size="8" text-anchor="middle">User-facing entry point</text>
-        <!-- BKN SDK / CLI -->
-        <rect x="347" y="206" width="195" height="48" rx="6" fill="rgba(244, 114, 182, 0.2)" stroke="#f472b6" stroke-width="1.5"/>
-        <text x="444" y="227" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN SDK / CLI</text>
-        <text x="444" y="242" fill="#94a3b8" font-size="8" text-anchor="middle">Unified access interface</text>
-
-        <!-- ===== 两侧贯穿条 ===== -->
-        <rect x="20" y="300" width="68" height="462" rx="10" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
-        <text x="48" y="531" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 48 531)">BKN Safe</text>
-        <text x="66" y="531" fill="#94a3b8" font-size="8" text-anchor="middle" transform="rotate(-90 66 531)">Access control</text>
-
-        <rect x="672" y="300" width="68" height="462" rx="10" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-        <text x="700" y="531" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 700 531)">BKN Trace</text>
-        <text x="718" y="531" fill="#94a3b8" font-size="8" text-anchor="middle" transform="rotate(-90 718 531)">Evidence chain</text>
-
-        <!-- ===== BKN Engine 大框 ===== -->
-        <rect x="108" y="300" width="544" height="298" rx="12" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-        <text x="128" y="326" fill="white" font-size="13" font-weight="700">BKN Engine</text>
-        <text x="128" y="343" fill="#cbb6f7" font-size="9">Business Knowledge Network Engine</text>
-
-        <!-- Context Loader -->
-        <rect x="128" y="360" width="504" height="88" rx="8" fill="#0f172a"/>
-        <rect x="128" y="360" width="504" height="88" rx="8" fill="rgba(8, 51, 68, 0.55)" stroke="#22d3ee" stroke-width="1.5"/>
-        <text x="148" y="384" fill="white" font-size="12" font-weight="600">Context Loader</text>
-        <text x="148" y="400" fill="#94a3b8" font-size="9">Retrieval capability</text>
-        <rect x="386" y="392" width="110" height="42" rx="6" fill="rgba(6, 78, 59, 0.5)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="441" y="418" fill="white" font-size="11" font-weight="600" text-anchor="middle">Retrieval</text>
-        <rect x="506" y="392" width="110" height="42" rx="6" fill="rgba(6, 78, 59, 0.5)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="561" y="418" fill="white" font-size="11" font-weight="600" text-anchor="middle">Ranker</text>
-
-        <!-- BKN -->
-        <rect x="128" y="466" width="504" height="120" rx="8" fill="#0f172a"/>
-        <rect x="128" y="466" width="504" height="120" rx="8" fill="rgba(6, 78, 59, 0.45)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="380" y="492" fill="white" font-size="13" font-weight="700" text-anchor="middle">BKN</text>
-        <text x="380" y="509" fill="#9fe6c8" font-size="9" text-anchor="middle">Business Knowledge Network</text>
-        <rect x="162" y="528" width="96" height="42" rx="6" fill="rgba(120, 53, 15, 0.4)" stroke="#fbbf24" stroke-width="1.5"/>
-        <text x="210" y="554" fill="white" font-size="11" font-weight="600" text-anchor="middle">Data</text>
-        <rect x="270" y="528" width="96" height="42" rx="6" fill="rgba(120, 53, 15, 0.4)" stroke="#fbbf24" stroke-width="1.5"/>
-        <text x="318" y="554" fill="white" font-size="11" font-weight="600" text-anchor="middle">Logic</text>
-        <rect x="394" y="528" width="96" height="42" rx="6" fill="rgba(120, 53, 15, 0.4)" stroke="#fbbf24" stroke-width="1.5"/>
-        <text x="442" y="554" fill="white" font-size="11" font-weight="600" text-anchor="middle">Risk</text>
-        <rect x="502" y="528" width="96" height="42" rx="6" fill="rgba(120, 53, 15, 0.4)" stroke="#fbbf24" stroke-width="1.5"/>
-        <text x="550" y="554" fill="white" font-size="11" font-weight="600" text-anchor="middle">Action</text>
-
-        <!-- 映射 标注 -->
-        <text x="196" y="620" fill="#94a3b8" font-size="9" text-anchor="middle">mapping</text>
-
-        <!-- ===== 执行层 ===== -->
-        <!-- VEGA -->
-        <rect x="148" y="636" width="174" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="235" y="660" fill="white" font-size="12" font-weight="600" text-anchor="middle">VEGA</text>
-        <text x="235" y="676" fill="#94a3b8" font-size="9" text-anchor="middle">Data virtualization</text>
-        <!-- Exec Factory -->
-        <rect x="357" y="636" width="174" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-        <text x="444" y="660" fill="white" font-size="12" font-weight="600" text-anchor="middle">Exec Factory</text>
-        <text x="444" y="676" fill="#94a3b8" font-size="9" text-anchor="middle">Tools · MCP · Skills</text>
-
-        <!-- ===== 底层数据 ===== -->
-        <rect x="148" y="744" width="472" height="36" rx="6" fill="rgba(30, 41, 59, 0.6)" stroke="#94a3b8" stroke-width="1.5"/>
-        <text x="384" y="766" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="middle">Multi-source &amp; multi-modal data</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 968" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+<rect width="960" height="968" fill="#020617" rx="12"/>
+<defs>
+  <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+    <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+  </marker>
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+  </pattern>
+</defs>
+<rect width="100%" height="100%" fill="url(#grid)"/>
+<text x="480.0" y="34" fill="white" font-size="14" font-weight="700" text-anchor="middle">BKN Foundry · a production-grade ontology platform for AI app developers</text>
+<rect x="240" y="56" width="200" height="44" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+<text x="340.0" y="76.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">Developer</text>
+<text x="340.0" y="91.0" fill="#94a3b8" font-size="9" text-anchor="middle">AI application developer</text>
+<rect x="520" y="56" width="200" height="44" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+<text x="620.0" y="76.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">App / Agent</text>
+<text x="620.0" y="91.0" fill="#94a3b8" font-size="9" text-anchor="middle">AI apps built on the ontology</text>
+<rect x="20" y="122" width="920" height="716" rx="14" fill="none" stroke="#475569" stroke-width="1.2" stroke-dasharray="6 5"/>
+<text x="36" y="140" fill="#cbd5e1" font-size="11" font-weight="700" text-anchor="start">BKN Foundry family</text>
+<line x1="340" y1="100" x2="230" y2="162" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="340" y1="100" x2="440" y2="162" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="620" y1="100" x2="540" y2="162" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="620" y1="100" x2="760" y2="162" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="40" y="162" width="288" height="48" rx="6" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5"/>
+<text x="184.0" y="184.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Studio</text>
+<text x="184.0" y="199.0" fill="#94a3b8" font-size="9" text-anchor="middle">Web console · separate repo</text>
+<rect x="338" y="162" width="288" height="48" rx="6" fill="rgba(244, 114, 182, 0.2)" stroke="#f472b6" stroke-width="1.5"/>
+<text x="482.0" y="184.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN SDK / CLI</text>
+<text x="482.0" y="199.0" fill="#94a3b8" font-size="9" text-anchor="middle">Unified access interface</text>
+<rect x="636" y="162" width="288" height="48" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+<text x="780.0" y="184.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Skill</text>
+<text x="780.0" y="199.0" fill="#94a3b8" font-size="9" text-anchor="middle">Platform-level · wraps the SDK</text>
+<rect x="40" y="236" width="56" height="578" rx="10" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+<text x="64" y="525.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 64 525.0)">BKN Safe</text>
+<text x="82" y="525.0" fill="#94a3b8" font-size="9" text-anchor="middle" transform="rotate(-90 82 525.0)">Access control</text>
+<rect x="804" y="236" width="56" height="578" rx="10" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+<text x="836" y="525.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 836 525.0)">BKN Agent</text>
+<rect x="868" y="236" width="56" height="578" rx="10" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="892" y="525.0" fill="white" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 892 525.0)">BKN Trace</text>
+<text x="910" y="525.0" fill="#94a3b8" font-size="9" text-anchor="middle" transform="rotate(-90 910 525.0)">Evidence chain</text>
+<line x1="184" y1="210" x2="184" y2="236" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="450" y1="210" x2="450" y2="236" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="716" y1="210" x2="716" y2="236" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="112" y="236" width="676" height="280" rx="12" fill="rgba(30, 58, 138, 0.4)" stroke="#60a5fa" stroke-width="1.5"/>
+<text x="132" y="260" fill="white" font-size="13" font-weight="700" text-anchor="start">BKN Dev</text>
+<text x="132" y="276" fill="#bfdbfe" font-size="9" text-anchor="start">Develop, evaluate, and apply the knowledge network</text>
+<rect x="132" y="290" width="636" height="62" rx="8" fill="#0f172a"/>
+<rect x="132" y="290" width="636" height="62" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="450" y="316" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Project</text>
+<text x="450" y="336" fill="#67e8f9" font-size="9.5" text-anchor="middle">Ontology building</text>
+<line x1="560" y1="352" x2="560" y2="392" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<text x="660" y="376" fill="#94a3b8" font-size="9" text-anchor="middle">Creates and releases the BKN</text>
+<path d="M 300 392 L 300 352" fill="none" stroke="#67e8f9" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrowhead)"/>
+<text x="220" y="376" fill="#67e8f9" font-size="9" text-anchor="middle">Quality report feeds back</text>
+<rect x="132" y="392" width="308" height="96" rx="8" fill="#0f172a"/>
+<rect x="132" y="392" width="308" height="96" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="286.0" y="420" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Eval</text>
+<text x="286.0" y="440" fill="#67e8f9" font-size="9.5" text-anchor="middle">Quality &amp; test evaluation</text>
+<text x="286.0" y="464" fill="#e2e8f0" font-size="9" text-anchor="middle">Data / ontology / agent checks · benchmarks</text>
+<rect x="460" y="392" width="308" height="96" rx="8" fill="#0f172a"/>
+<rect x="460" y="392" width="308" height="96" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="614.0" y="420" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Workshop</text>
+<text x="614.0" y="440" fill="#67e8f9" font-size="9.5" text-anchor="middle">Business application development</text>
+<text x="614.0" y="464" fill="#e2e8f0" font-size="9" text-anchor="middle">Metrics · functions · graph widgets · AI apps</text>
+<text x="450" y="504" fill="#94a3b8" font-size="9" text-anchor="middle">Eval and Workshop open inside a given BKN · peers</text>
+<line x1="450" y1="516" x2="450" y2="536" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="112" y="536" width="676" height="188" rx="12" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+<text x="132" y="558" fill="white" font-size="13" font-weight="700" text-anchor="start">BKN Engine</text>
+<text x="132" y="573" fill="#cbb6f7" font-size="9" text-anchor="start">Business Knowledge Network engine</text>
+<rect x="132" y="584" width="636" height="50" rx="8" fill="#0f172a"/>
+<rect x="132" y="584" width="636" height="50" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5"/>
+<text x="152" y="605" fill="white" font-size="12" font-weight="600" text-anchor="start">Context Loader</text>
+<text x="152" y="621" fill="#94a3b8" font-size="9" text-anchor="start">Retrieval capability</text>
+<rect x="518" y="591" width="110" height="36" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="573" y="614" fill="white" font-size="11" font-weight="600" text-anchor="middle">Retrieval</text>
+<rect x="638" y="591" width="110" height="36" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="693" y="614" fill="white" font-size="11" font-weight="600" text-anchor="middle">Reranker</text>
+<line x1="450" y1="634" x2="450" y2="646" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="132" y="646" width="636" height="66" rx="8" fill="#0f172a"/>
+<rect x="132" y="646" width="636" height="66" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="152" y="668" fill="white" font-size="13" font-weight="700" text-anchor="start">BKN</text>
+<text x="152" y="684" fill="#9fe6c8" font-size="9" text-anchor="start">Business Knowledge Network</text>
+<rect x="362" y="660" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="406" y="684" fill="white" font-size="11" font-weight="600" text-anchor="middle">Data</text>
+<rect x="462" y="660" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="506" y="684" fill="white" font-size="11" font-weight="600" text-anchor="middle">Logic</text>
+<rect x="562" y="660" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="606" y="684" fill="white" font-size="11" font-weight="600" text-anchor="middle">Risk</text>
+<rect x="662" y="660" width="88" height="38" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="706" y="684" fill="white" font-size="11" font-weight="600" text-anchor="middle">Action</text>
+<line x1="230" y1="724" x2="230" y2="748" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="462" y1="724" x2="462" y2="748" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="694" y1="724" x2="694" y2="748" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<text x="120" y="740" fill="#94a3b8" font-size="9" text-anchor="start">mapping</text>
+<rect x="124" y="748" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="230.0" y="773.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">VEGA</text>
+<text x="230.0" y="788.0" fill="#94a3b8" font-size="9" text-anchor="middle">Data virtualization · data quality</text>
+<rect x="356" y="748" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="462.0" y="773.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">Operator layer</text>
+<text x="462.0" y="788.0" fill="#94a3b8" font-size="9" text-anchor="middle">Operators · functions</text>
+<rect x="588" y="748" width="212" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="694.0" y="773.0" fill="white" font-size="12" font-weight="600" text-anchor="middle">Exec Factory</text>
+<text x="694.0" y="788.0" fill="#94a3b8" font-size="9" text-anchor="middle">APIs · tools · MCP · Skill</text>
+<line x1="230" y1="802" x2="230" y2="854" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<line x1="462" y1="802" x2="462" y2="854" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+<rect x="112" y="854" width="676" height="38" rx="6" fill="rgba(30, 41, 59, 0.6)" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="450" y="878" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="middle">Multi-source &amp; multi-modal data · structured / unstructured</text>
+<rect x="112" y="920" width="26" height="16" rx="3" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="146" y="932" fill="#cbd5e1" font-size="9.5" text-anchor="start">Being built in Q4</text>
+<text x="112" y="962" fill="#94a3b8" font-size="9.5" text-anchor="start">Modules are not services: new modules live in existing backends</text>
 </svg>
