@@ -75,3 +75,18 @@ def test_business_provenance_agent_prompt_matches_the_runtime_output_contract():
     assert '"verification"' not in prompt
     assert "资源 ID 不是知识网络 ID" in prompt
     assert "不得把 Markdown 中“资源”字段的值作为 kn_id" in prompt
+
+
+def test_optimizer_prompt_constrains_skill_identity_scope_and_recovery():
+    prompt = _agent_package()["prompt"]["content"]
+    for required in (
+        "Agent 名称/ID 不是 Skill ID",
+        "先调用 list_skills",
+        "全局可发现不代表已在知识网络挂载",
+        "search_scope",
+        "至少启用一类概念",
+        "不得静默扩大显式范围",
+        "同一拒绝不得重复调用",
+        "not_evaluable",
+    ):
+        assert required in prompt
