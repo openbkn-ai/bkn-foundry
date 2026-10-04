@@ -242,6 +242,9 @@ async def test_model(model_config, userId, language):
                 return JSONResponse(status_code=400, content=LLMTestError)
             config_str = info[0]["f_model_config"]
             model_config_old = json.loads(config_str.replace("'", '"'))
+            if model_config_new.get("api_key") and is_credential_digest(
+                    model_config_new["api_key"], model_config_old.get("api_key", "")):
+                change = False
             if not model_config_new:
                 config = model_config_old
                 series = info[0]["f_model_series"]
@@ -270,7 +273,7 @@ async def test_model(model_config, userId, language):
         StandLogger.error(str(e))
         error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
         error_dict["description"] = "The model service URL is not reachable."
-        error_dict["detail"] = str(e)
+        error_dict["detail"] = "Model service test failed; check the model configuration."
         return JSONResponse(status_code=400, content=error_dict)
 
 
@@ -315,6 +318,9 @@ async def edit_model(model_para, userId, language, role=""):
                 quota = model_para.get("quota", old_quota)
                 config_old = json.loads(info[0]["f_model_config"])
                 config_new = model_para['model_config']
+                if config_new.get("api_key") and is_credential_digest(
+                        config_new["api_key"], config_old.get("api_key", "")):
+                    change = False
                 if not change:
                     if 'api_key' in config_new:
                         config_new["api_key"] = config_old.get("api_key","")
