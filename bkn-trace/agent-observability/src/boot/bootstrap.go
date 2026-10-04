@@ -517,8 +517,8 @@ func NewApp() (*App, error) {
 			Technical: opensearchtraceaccess.NewArchiveStore(openSearchClient, openSearchConfig.TraceIndex),
 		}
 	}
-	if coreConfig.ProjectionEnabled {
-		archiveSource.Log = opensearchconversationaudit.NewArchiveSource(openSearchClient, coreConfig.ProjectionIndex)
+	if openSearchConfig.LogIndex != "" {
+		archiveSource.Log = opensearchconversationaudit.NewArchiveSource(openSearchClient, openSearchConfig.LogIndex)
 	}
 	archiveHandler := httphandler.NewArchiveHandler(archivesvc.New(archiveStore, archiveSource, archiveObjectStore, archivesvc.Options{}), evidenceHandler)
 	traceHandler := httphandler.NewTraceHandlerWithTechnicalSources(
