@@ -8,10 +8,11 @@ FROM ${BUILD_IMAGE} AS builder
 ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
 
-WORKDIR /src
-COPY . .
+COPY comm-go /workspace/comm-go
+COPY adp/context-loader/agent-retrieval /workspace/adp/context-loader/agent-retrieval
 
 RUN set -ex; \
+    cd /workspace/adp/context-loader/agent-retrieval; \
     go mod download; \
     go build -ldflags '-s -w -checklinkname=0' -o /out/agent-retrieval ./server/main.go
 
