@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -23,15 +24,118 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
+func TestAttachTraceAvailabilityPublishesDegradedDiagnosticInContent(t *testing.T) {
+	ctx := bkntrace.WithTraceAvailability(context.Background())
+	bkntrace.MergeTracePartialReasons(ctx, []string{"trace_call_unrecorded:execute_tool:req_nested_1"})
+	result := mcpsdk.NewToolResultStructured(map[string]any{"answer": "business"}, `{"answer":"business"}`)
+	attachTraceAvailability(result, ctx)
+	attachTraceAvailability(result, ctx)
+	bkntrace.MergeTracePartialReasons(ctx, []string{"trace_call_unrecorded:run_code:req_nested_2"})
+	attachTraceAvailability(result, ctx)
+
+	if result.StructuredContent == nil || result.IsError {
+		t.Fatalf("business result was changed: %#v", result)
+	}
+	if len(result.Content) != 2 {
+		t.Fatalf("diagnostic should be appended once, content=%#v", result.Content)
+	}
+	text, ok := mcpsdk.AsTextContent(result.Content[1])
+	if !ok {
+		t.Fatalf("diagnostic is not text content: %#v", result.Content[1])
+	}
+	var diagnostic map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(text.Text, traceAvailabilityDiagnosticPrefix)), &diagnostic); err != nil {
+		t.Fatalf("diagnostic is not JSON: %v", err)
+	}
+	trace, ok := diagnostic["bkn_trace"].(map[string]any)
+	if !ok || trace["recorded"] != false {
+		t.Fatalf("diagnostic=%#v", diagnostic)
+	}
+	if !strings.Contains(text.Text, "trace_call_unrecorded:execute_tool:req_nested_1") {
+		t.Fatalf("diagnostic omitted partial reason: %q", text.Text)
+	}
+	if !strings.Contains(text.Text, "trace_call_unrecorded:run_code:req_nested_2") {
+		t.Fatalf("updated diagnostic omitted partial reason: %q", text.Text)
+	}
+}
+
 func TestSessionGuardRecordsObjectQueryTargetBeforeDownstreamFailure(t *testing.T) {
- var refs []bkntrace.BusinessRef
- guarded := guardBusinessToolCall(func(_ context.Context,intent operationIntent)(*operationResult,*lifecycleError,error){refs=intent.Context.BusinessRefs;return nil,nil,nil},
-  func(context.Context,mcpsdk.CallToolRequest)(*mcpsdk.CallToolResult,error){return mcpsdk.NewToolResultError("row-filters returned status 503"),nil})
- _,err:=guarded(context.Background(),mcpsdk.CallToolRequest{Params:mcpsdk.CallToolParams{Name:toolKeyQueryObjectInstance,Arguments:map[string]any{"kn_id":"supply","ot_id":"bom","bkn_context":map[string]any{"conversation_id":"conv","interaction_id":"int"}}}})
- if err!=nil {t.Fatal(err)}
- if len(refs)!=2 || refs[0].RefID!="kn:supply" || refs[1].RefID!="object:supply:bom" || refs[1].RefType!="object_type" {t.Fatalf("failed object query lost its known request target: %+v",refs)}
- if refs:=derivedToolBusinessRefs(toolKeyQueryObjectInstance,map[string]any{"kn_id":"other","ot_id":"bom"},"supply");len(refs)!=0 {t.Fatal("foreign target must not be derived")}
- if refs:=derivedToolBusinessRefs(toolKeyQueryObjectInstance,map[string]any{},"supply");len(refs)!=0 {t.Fatal("missing object target must not be invented")}
+	var refs []bkntrace.BusinessRef
+	guarded := guardBusinessToolCall(func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+		refs = intent.Context.BusinessRefs
+		return nil, nil, nil
+	},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultError("row-filters returned status 503"), nil
+		})
+	_, err := guarded(context.Background(), mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Name: toolKeyQueryObjectInstance, Arguments: map[string]any{"kn_id": "supply", "ot_id": "bom", "bkn_context": map[string]any{"conversation_id": "conv", "interaction_id": "int"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 || refs[0].RefID != "kn:supply" || refs[1].RefID != "object:supply:bom" || refs[1].RefType != "object_type" {
+		t.Fatalf("failed object query lost its known request target: %+v", refs)
+	}
+	if refs := derivedToolBusinessRefs(toolKeyQueryObjectInstance, map[string]any{"kn_id": "other", "ot_id": "bom"}, "supply"); len(refs) != 0 {
+		t.Fatal("foreign target must not be derived")
+	}
+	if refs := derivedToolBusinessRefs(toolKeyQueryObjectInstance, map[string]any{}, "supply"); len(refs) != 0 {
+		t.Fatal("missing object target must not be invented")
+	}
+}
+
+func TestSessionGuardRecordsCypherNetworkBeforeEvidenceFailure(t *testing.T) {
+	var refs []bkntrace.BusinessRef
+	guarded := guardBusinessToolCall(
+		func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+			refs = intent.Context.BusinessRefs
+			return nil, nil, nil
+		},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultText(`{"entries":[]}`), nil
+		},
+	)
+	_, err := guarded(context.Background(), mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
+		Name:      toolKeyRunCypher,
+		Arguments: map[string]any{"kn_id": "supply", "query": "RETURN 1", "bkn_context": map[string]any{"conversation_id": "conv", "interaction_id": "int"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].RefID != "kn:supply" {
+		t.Fatalf("Cypher operation lost its known network: %#v", refs)
+	}
+	if refs := derivedToolBusinessRefs(toolKeyRunCypher, map[string]any{"kn_id": "other"}, "supply"); len(refs) != 0 {
+		t.Fatalf("conflicting network must not be derived: %#v", refs)
+	}
+}
+
+func TestSessionGuardRecordsExplorationSourceBeforeDownstreamFailure(t *testing.T) {
+	var refs []bkntrace.BusinessRef
+	guarded := guardBusinessToolCall(
+		func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+			refs = intent.Context.BusinessRefs
+			return nil, nil, nil
+		},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultError("dependency unavailable"), nil
+		},
+	)
+	_, err := guarded(context.Background(), mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
+		Name:      toolKeyExploreSubgraph,
+		Arguments: map[string]any{"kn_id": "supply", "source_object_type_id": "bom", "bkn_context": map[string]any{"conversation_id": "conv", "interaction_id": "int"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 || refs[0].RefID != "kn:supply" || refs[1].RefID != "object:supply:bom" {
+		t.Fatalf("failed exploration lost its known source: %#v", refs)
+	}
+	if refs := derivedToolBusinessRefs(toolKeyExploreSubgraph, map[string]any{"kn_id": "other", "source_object_type_id": "bom"}, "supply"); len(refs) != 0 {
+		t.Fatalf("conflicting network must not be derived: %#v", refs)
+	}
+	if refs := derivedToolBusinessRefs(toolKeyExploreSubgraph, map[string]any{}, "supply"); len(refs) != 0 {
+		t.Fatalf("missing source must not be invented: %#v", refs)
+	}
 }
 
 func TestSessionGuardMissingConversationFailsClosed(t *testing.T) {
@@ -218,7 +322,7 @@ func TestSessionGuardDistinguishesUninstalledAndUnavailableCore(t *testing.T) {
 		{
 			name: "runtime unavailable",
 			ensure: func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
-				return nil, nil, errors.New("connection refused")
+				return nil, nil, syscall.ECONNREFUSED
 			},
 			wantCode: "trace_core_unavailable", wantAction: "retry_later", wantRetryable: true,
 		},
@@ -236,12 +340,11 @@ func TestSessionGuardDistinguishesUninstalledAndUnavailableCore(t *testing.T) {
 			if err != nil {
 				t.Fatalf("guard returned protocol error: %v", err)
 			}
-			if downstreamCalls != 0 {
-				t.Fatalf("Core failure must keep downstream at zero")
+			if downstreamCalls != 1 || result.IsError {
+				t.Fatalf("Core outage must permit exactly one business call: calls=%d result=%#v", downstreamCalls, result)
 			}
-			value := lifecycleErrorFromResult(t, result)
-			if value["code"] != test.wantCode || value["required_action"] != test.wantAction ||
-				value["retryable"] != test.wantRetryable {
+			value, _ := result.Meta.AdditionalFields[traceAvailabilityMetaKey].(map[string]any)
+			if value["code"] != test.wantCode || value["recorded"] != false {
 				t.Fatalf("wrong Core availability semantics: %#v", value)
 			}
 		})

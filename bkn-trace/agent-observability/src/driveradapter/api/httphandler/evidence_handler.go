@@ -160,10 +160,14 @@ func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Re
 
 	response, validationErrors, err := h.evidenceService.Ingest(r.Context(), body)
 	if err != nil {
-		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
-			Code:    "INGEST_FAILED",
-			Message: "failed to ingest evidence events",
-		})
+		status, code, message := http.StatusInternalServerError, "INGEST_FAILED", "failed to ingest evidence events"
+		if errors.Is(err, evidencesvc.ErrCaptureDisabled) {
+			status, code, message = http.StatusConflict, "CAPTURE_DISABLED", "capture admission is disabled"
+		}
+		if errors.Is(err, evidencesvc.ErrCaptureUnavailable) {
+			status, code, message = http.StatusServiceUnavailable, "TRACE_CORE_UNAVAILABLE", "capture policy is unavailable"
+		}
+		writeJSON(w, r, status, rdto.ErrorResponse{Code: code, Message: message})
 		return
 	}
 	if len(validationErrors) > 0 {
@@ -212,7 +216,14 @@ func (h *EvidenceHandler) IngestEvidenceArtifact(w http.ResponseWriter, r *http.
 	}
 	response, validationErrors, err := h.evidenceService.IngestArtifact(r.Context(), body)
 	if err != nil {
-		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "INGEST_FAILED", Message: "failed to ingest evidence artifact"})
+		status, code, message := http.StatusInternalServerError, "INGEST_FAILED", "failed to ingest evidence artifact"
+		if errors.Is(err, evidencesvc.ErrCaptureDisabled) {
+			status, code, message = http.StatusConflict, "CAPTURE_DISABLED", "capture admission is disabled"
+		}
+		if errors.Is(err, evidencesvc.ErrCaptureUnavailable) {
+			status, code, message = http.StatusServiceUnavailable, "TRACE_CORE_UNAVAILABLE", "capture policy is unavailable"
+		}
+		writeJSON(w, r, status, rdto.ErrorResponse{Code: code, Message: message})
 		return
 	}
 	if len(validationErrors) > 0 {

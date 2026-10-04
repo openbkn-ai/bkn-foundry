@@ -6,14 +6,19 @@
 package evidencesvc
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	memorystore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,6 +77,74 @@ func TestRecordIntegrityFailedCallNeedsErrorNotSuccessEvidence(t *testing.T) {
 	report, err = evaluateRecordIntegrity(snapshot, owner, now, nil)
 	if err != nil || report.Status != "missing" || report.Missing[0].Reason != "business_target_missing" {
 		t.Fatalf("BOM request target was not recorded: %+v %v", report, err)
+	}
+}
+
+func TestPolicyOmissionDoesNotHideHistoricalArtifactLoss(t *testing.T) {
+	snapshot, owner, now := integrityFixture()
+	snapshot.Receipts[0].PartialReasons = []string{"not_collected_due_to_policy"}
+	snapshot.CallFacts[0].Output = nil
+	report, err := evaluateRecordIntegrity(snapshot, owner, now, nil)
+	if err != nil || report == nil || report.Status != "complete" {
+		t.Fatalf("policy-only omitted output should not be missing: %#v %v", report, err)
+	}
+	snapshot.Receipts[0].ArtifactRefs = []string{"artifact:historical-result"}
+	verify := func(sessionvo.OperationCallFact, string, sessionvo.PayloadEnvelope) (json.RawMessage, error) {
+		return nil, nil
+	}
+	report, err = evaluateRecordIntegrity(snapshot, owner, now, verify)
+	if err != nil || report == nil || report.Status != "missing" {
+		t.Fatalf("historical artifact loss was hidden: %#v %v", report, err)
+	}
+}
+
+func TestPolicyOmissionStillChecksHistoricalReferencedOutputAndError(t *testing.T) {
+	for _, status := range []sessionvo.AttemptStatus{sessionvo.AttemptCompleted, sessionvo.AttemptFailed} {
+		snapshot, owner, now := integrityFixture()
+		snapshot.Receipts[0].PartialReasons = []string{"not_collected_due_to_policy"}
+		ref := sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:historical-payload"}
+		if status == sessionvo.AttemptCompleted {
+			snapshot.CallFacts[0].Output = &ref
+		} else {
+			snapshot.CallFacts[0].Status = sessionvo.AttemptFailed
+			snapshot.CallFacts[0].Output = nil
+			snapshot.CallFacts[0].Error = &ref
+			snapshot.Receipts[0].Status = sessionvo.ReceiptFailed
+		}
+		report, err := evaluateRecordIntegrity(snapshot, owner, now, func(sessionvo.OperationCallFact, string, sessionvo.PayloadEnvelope) (json.RawMessage, error) {
+			return nil, nil
+		})
+		if err != nil || report == nil || report.Status != "missing" {
+			t.Fatalf("status %q historical referenced payload was hidden: %#v %v", status, report, err)
+		}
+	}
+}
+
+func TestPolicyOmissionOnlySkipsNewResultLedger(t *testing.T) {
+	base, owner, now := integrityFixture()
+	base.Receipts[0].PartialReasons = []string{"not_collected_due_to_policy"}
+	base.CallFacts[0].CapabilityProfile = &sessionvo.CapabilityProfile{Resolution: "matched", EvidenceContract: "ontology_result/v1", RequiredTraceFields: []string{"result_completeness"}}
+	base.CallFacts[0].Output = nil
+	report, err := evaluateRecordIntegrity(base, owner, now, nil)
+	if err != nil || report == nil || report.Status != "complete" {
+		t.Fatalf("policy-only result omission = %#v %v", report, err)
+	}
+
+	withReference := base
+	withReference.Receipts = append([]sessionvo.Receipt(nil), base.Receipts...)
+	withReference.Receipts[0].ObservedEvidenceRefs = []string{"evt-old"}
+	report, err = evaluateRecordIntegrity(withReference, owner, now, nil)
+	if err != nil || report == nil || report.Status != "missing" {
+		t.Fatalf("missing referenced ledger event was hidden: %#v %v", report, err)
+	}
+
+	withOutput := base
+	withOutput.CallFacts = append([]sessionvo.OperationCallFact(nil), base.CallFacts...)
+	output, _ := sessionvo.InlineJSONPayload(json.RawMessage(`{"rows":[]}`))
+	withOutput.CallFacts[0].Output = &output
+	report, err = evaluateRecordIntegrity(withOutput, owner, now, nil)
+	if err != nil || report == nil || report.Status != "missing" {
+		t.Fatalf("non-empty historical output missing ledger was hidden: %#v %v", report, err)
 	}
 }
 
@@ -217,6 +290,58 @@ func TestRecordIntegrityManagedFunctionUsesRecordedExecution(t *testing.T) {
 	r, err := evaluateRecordIntegrity(s, o, n, nil)
 	if err != nil || r.Status != "complete" {
 		t.Fatalf("function contract must not require a query event: %+v %v", r, err)
+	}
+}
+
+func TestRecordIntegrityManagedFunctionRequiresCanonicalTarget(t *testing.T) {
+	for _, status := range []sessionvo.AttemptStatus{sessionvo.AttemptCompleted, sessionvo.AttemptFailed} {
+		for _, test := range []struct {
+			name string
+			ref  sessionvo.BusinessRef
+			want string
+		}{
+			{"matching function", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefFunction, RefID: "function:supply:bom_function", Version: "unversioned"}, "complete"},
+			{"other network", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefFunction, RefID: "function:other:bom_function", Version: "unversioned"}, "missing"},
+			{"other function", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefFunction, RefID: "function:supply:inventory_function", Version: "unversioned"}, "missing"},
+			{"network only", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefKnowledgeNetwork, RefID: "kn:supply", Version: "unversioned"}, "missing"},
+			{"invalid legacy shape", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefFunction, RefID: "function:supply:box:bom_function", Version: "unversioned"}, "missing"},
+		} {
+			t.Run(string(status)+"/"+test.name, func(t *testing.T) {
+				s, owner, now := integrityFixture()
+				f := &s.CallFacts[0]
+				f.ToolName = "bom_function"
+				f.Input, _ = sessionvo.InlineJSONPayload(json.RawMessage(`{"kn_id":"supply","toolbox_id":"box","tool_id":"bom_function","arguments":{"product":"382-000005"}}`))
+				f.Status = status
+				f.CapabilityProfile = &sessionvo.CapabilityProfile{Resolution: "matched", EvidenceContract: "managed_function_execution/v1", RequiredTraceFields: []string{"business_refs", "result_completeness"}}
+				s.Receipts[0].Status = sessionvo.ReceiptStatus(status)
+				s.Receipts[0].BusinessRefs = []sessionvo.BusinessRef{test.ref}
+				if status == sessionvo.AttemptFailed {
+					f.Error, f.Output = f.Output, nil
+				}
+				report, err := evaluateRecordIntegrity(s, owner, now, nil)
+				if err != nil || report == nil || report.Status != test.want {
+					t.Fatalf("recorded %s function target %q: report=%+v err=%v", status, test.ref.RefID, report, err)
+				}
+				if test.want == "missing" && (len(report.Missing) != 1 || report.Missing[0].Reason != "business_target_missing") {
+					t.Fatalf("only the unmatched target is missing: %+v", report.Missing)
+				}
+			})
+		}
+	}
+}
+
+func TestRecordIntegrityManagedFunctionObservedTargetRequiresScope(t *testing.T) {
+	s, owner, now := integrityFixture()
+	f := &s.CallFacts[0]
+	f.ToolName = "bom_function"
+	f.Input, _ = sessionvo.InlineJSONPayload(json.RawMessage(`{"tool_id":"bom_function"}`))
+	f.CapabilityProfile = &sessionvo.CapabilityProfile{Resolution: "matched", EvidenceContract: "managed_function_execution/v1", RequiredTraceFields: []string{"business_refs"}}
+	event := ledgervo.Event{EventID: "evt", Owner: owner, ConversationID: "conv", InteractionID: "int", OperationID: "op", Attempt: 1, RequestID: "req", TraceID: "trace", Envelope: json.RawMessage(`{"payload":{"source_refs":[{"ref_id":"function::bom_function"}]}}`)}
+	raw, _ := json.Marshal(event)
+	s.Ledger.Events = []sessionvo.EvidenceLedgerRecord{{EventID: "evt", Envelope: raw}}
+	report, err := evaluateRecordIntegrity(s, owner, now, nil)
+	if err != nil || report == nil || report.Status != "missing" || len(report.Missing) != 1 || report.Missing[0].Reason != "business_target_missing" {
+		t.Fatalf("a missing request KN must not accept an unscoped observed function: report=%+v err=%v", report, err)
 	}
 }
 
@@ -510,6 +635,217 @@ func TestIntegrityBudgetChecksNewestCandidateDeterministically(t *testing.T) {
 type integrityArtifactMap struct {
 	iartifactstore.ArtifactStorePort
 	byID map[string]evidencevo.EvidenceArtifact
+}
+
+func integrityArtifactWithContent(t *testing.T, id string, content any) (evidencevo.EvidenceArtifact, int, int) {
+	t.Helper()
+	var b bytes.Buffer
+	encoder := json.NewEncoder(&b)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(content); err != nil {
+		t.Fatal(err)
+	}
+	canonical := bytes.TrimSuffix(b.Bytes(), []byte("\n"))
+	sum := sha256.Sum256(canonical)
+	legacy, err := json.Marshal(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact := captureFixture(id, "rows")
+	artifact.InteractionID, artifact.OperationID, artifact.RequestID, artifact.TraceID = "int", "op", "req", "trace"
+	artifact.ArtifactType, artifact.Content, artifact.ContentHash = evidencevo.ArtifactTypeDataResult, content, "sha256:"+hex.EncodeToString(sum[:])
+	return artifact, len(canonical), len(legacy)
+}
+
+func integrityServiceForSnapshot(t *testing.T, snapshot sessionvo.EvidenceSnapshot) *Service {
+	t.Helper()
+	_, owner, now := integrityFixture()
+	store := &integritySnapshotStore{Store: memorystore.New(), snapshot: snapshot}
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{ID: "conv", Owner: owner})
+		tx.SaveInteraction(sessionvo.Interaction{ID: "int", ConversationID: "conv", ExecutionStatus: sessionvo.InteractionCompleted, CreatedAt: now})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
+}
+
+func TestRecordIntegrityAcceptsOnlyExactVerifiedPayloadLengths(t *testing.T) {
+	for _, tc := range []struct{ name, text string }{
+		{"HTML", "<stock>&supplier"},
+		{"Unicode", "物料😀\u2028next\u2029line"},
+		{"precise numbers", "precise &"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			content := map[string]any{"text": tc.text, "number": json.Number("9007199254740993"), "decimal": json.Number("1.234567890123456789")}
+			artifact, canonicalLength, legacyLength := integrityArtifactWithContent(t, "a", content)
+			for _, length := range []int{canonicalLength, legacyLength, canonicalLength + 1, legacyLength + 1} {
+				snapshot, _, _ := integrityFixture()
+				snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a", ByteLength: length}
+				service := integrityServiceForSnapshot(t, snapshot)
+				service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}}
+				report, err := service.inspectRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+				valid := length == canonicalLength || length == legacyLength
+				if valid && (err != nil || report == nil || report.Status != "complete") {
+					t.Fatalf("verified length=%d canonical=%d legacy=%d: %+v %v", length, canonicalLength, legacyLength, report, err)
+				}
+				if !valid && (err == nil || report != nil) {
+					t.Fatalf("arbitrary length=%d must fail: %+v %v", length, report, err)
+				}
+			}
+		})
+	}
+}
+
+func TestRecordIntegrityPayloadLengthCompatibilityPreservesVerification(t *testing.T) {
+	for _, mutation := range []string{"hash", "artifact identity", "operation", "request", "trace", "type"} {
+		t.Run(mutation, func(t *testing.T) {
+			artifact, canonicalLength, legacyLength := integrityArtifactWithContent(t, "a", map[string]any{"text": "<stock>&"})
+			switch mutation {
+			case "hash":
+				artifact.ContentHash = "sha256:" + strings.Repeat("0", 64)
+			case "artifact identity":
+				artifact.ArtifactID = "wrong"
+			case "operation":
+				artifact.OperationID = "wrong"
+			case "request":
+				artifact.RequestID = "wrong"
+			case "trace":
+				artifact.TraceID = "wrong"
+			case "type":
+				artifact.ArtifactType = evidencevo.ArtifactTypeQuery
+			}
+			snapshot, _, _ := integrityFixture()
+			length := canonicalLength
+			if mutation == "hash" {
+				length = legacyLength
+			}
+			snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a", ByteLength: length}
+			service := integrityServiceForSnapshot(t, snapshot)
+			service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}}
+			if report, err := service.inspectRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err == nil || report != nil {
+				t.Fatalf("invalid %s must fail: %+v %v", mutation, report, err)
+			}
+		})
+	}
+}
+
+func TestRecordIntegrityRepeatedReceiptArtifactsUseOneBoundedRead(t *testing.T) {
+	snapshot, _, _ := integrityFixture()
+	fact, receipt, operation := snapshot.CallFacts[0], snapshot.Receipts[0], snapshot.Operations[0]
+	snapshot.CallFacts, snapshot.Receipts, snapshot.Operations = nil, nil, nil
+	reader := &integrityCountingArtifacts{captureArtifactReader: captureArtifactReader{records: map[string]evidencevo.EvidenceArtifact{}}}
+	for i := 0; i < 12; i++ {
+		id, opID := fmt.Sprintf("a%d", i), fmt.Sprintf("op%d", i)
+		artifact, canonicalLength, _ := integrityArtifactWithContent(t, id, map[string]any{"text": strings.Repeat("x", 1430000)})
+		artifact.OperationID = opID
+		reader.records[id] = artifact
+		f, r, op := fact, receipt, operation
+		f.OperationID, r.OperationID, op.ID = opID, opID, opID
+		f.ReceiptID, r.ID = "receipt"+id, "receipt"+id
+		f.Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:" + id, ByteLength: canonicalLength}
+		r.ArtifactRefs = []string{"artifact:" + id}
+		snapshot.CallFacts = append(snapshot.CallFacts, f)
+		snapshot.Receipts = append(snapshot.Receipts, r)
+		snapshot.Operations = append(snapshot.Operations, op)
+	}
+	reader.hook = func(id string) (iartifactstore.CaptureReadResult, error) {
+		if reader.budgets[len(reader.budgets)-1] < 1430000 {
+			return iartifactstore.CaptureReadResult{}, errors.New("artifact exceeds remaining read budget")
+		}
+		return iartifactstore.CaptureReadResult{Artifact: reader.records[id], Found: true, Exists: true, ReadBytes: 1430000}, nil
+	}
+	service := integrityServiceForSnapshot(t, snapshot)
+	service.artifactStore = reader
+	ctx := withRecordIntegrityReadBudget(context.Background())
+	report, err := service.inspectRecordIntegrity(ctx, "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+	if err != nil || report == nil || report.Status != "complete" {
+		t.Fatalf("12 complete repeated artifacts must fit budget: %+v %v", report, err)
+	}
+	budget := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget)
+	if len(reader.ids) != 12 || budget.reads != 12 || budget.bytes != 12*1430000 {
+		t.Fatalf("duplicate refs incurred I/O: ids=%v budget=%+v", reader.ids, budget)
+	}
+	t.Logf("12 artifacts + 12 receipt references: reads=%d bytes=%d (32MiB limit=%d)", budget.reads, budget.bytes, 32<<20)
+}
+
+type integrityCountingArtifacts struct {
+	iartifactstore.ArtifactStorePort
+	captureArtifactReader
+}
+
+func TestRecordIntegrityCachedArtifactStillChecksEveryCallReference(t *testing.T) {
+	for _, mutation := range []string{"operation", "request", "trace", "length", "type"} {
+		t.Run(mutation, func(t *testing.T) {
+			artifact, length, _ := integrityArtifactWithContent(t, "a", map[string]any{"text": "<stock>&"})
+			snapshot, _, _ := integrityFixture()
+			snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a", ByteLength: length}
+			f, r := snapshot.CallFacts[0], snapshot.Receipts[0]
+			f.Attempt, r.Attempt, snapshot.Operations[0].Attempt = 2, 2, 2
+			f.ReceiptID, r.ID = "rcpt2", "rcpt2"
+			switch mutation {
+			case "operation":
+				f.OperationID, r.OperationID = "wrong", "wrong"
+			case "request":
+				f.RequestID, r.RequestID = "wrong", "wrong"
+			case "trace":
+				f.TraceID, r.TraceID = "wrong", "wrong"
+			case "length":
+				f.Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a", ByteLength: length + 1}
+			case "type":
+				f.Input = *f.Output
+			}
+			snapshot.CallFacts = append(snapshot.CallFacts, f)
+			snapshot.Receipts = append(snapshot.Receipts, r)
+			service := integrityServiceForSnapshot(t, snapshot)
+			service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}}
+			if report, err := service.inspectRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err == nil || report != nil {
+				t.Fatalf("cached artifact accepted invalid %s: %+v %v", mutation, report, err)
+			}
+		})
+	}
+}
+
+func TestRecordIntegrityReceiptReuseDoesNotExtendSharedByteBudget(t *testing.T) {
+	artifact, length, _ := integrityArtifactWithContent(t, "a", map[string]any{"text": "rows"})
+	snapshot, _, _ := integrityFixture()
+	snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a", ByteLength: length}
+	snapshot.Receipts[0].ArtifactRefs = []string{"artifact:a"}
+	service := integrityServiceForSnapshot(t, snapshot)
+	service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true, ReadBytes: int64(length)}}
+	ctx := context.WithValue(context.Background(), recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{bytes: (32 << 20) - int64(length)})
+	scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
+	if report, err := service.inspectRecordIntegrity(ctx, "int", scope); err != nil || report == nil || report.Status != "complete" {
+		t.Fatalf("receipt reuse must fit last allowed read: %+v %v", report, err)
+	}
+	if report, err := service.inspectRecordIntegrity(ctx, "int", scope); err == nil || report != nil {
+		t.Fatalf("new inspection must still fail exhausted budget: %+v %v", report, err)
+	}
+	budget := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget)
+	if budget.reads != 1 || budget.bytes != 32<<20 {
+		t.Fatalf("shared budget changed: %+v", budget)
+	}
+}
+
+func TestRecordIntegrityCachedReceiptChecksCurrentSource(t *testing.T) {
+	artifact, _, _ := integrityArtifactWithContent(t, "a", map[string]any{"text": "rows"})
+	artifact.InteractionID = ""
+	snapshot, _, _ := integrityFixture()
+	snapshot.Receipts[0].ArtifactRefs = []string{"artifact:a"}
+	second := snapshot.Receipts[0]
+	second.ID, second.Attempt, second.RequestID = "rcpt2", 2, "wrong"
+	snapshot.Receipts = append(snapshot.Receipts, second)
+	reader := &integrityCountingArtifacts{captureArtifactReader: captureArtifactReader{records: map[string]evidencevo.EvidenceArtifact{"a": artifact}}}
+	service := integrityServiceForSnapshot(t, snapshot)
+	service.artifactStore = reader
+	report, err := service.inspectRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+	if err == nil || report != nil || !strings.Contains(err.Error(), "unverified_source_scope") {
+		t.Fatalf("cached receipt must recheck its request source: %+v %v", report, err)
+	}
+	if len(reader.ids) != 1 {
+		t.Fatalf("source recheck must not reread content: %v", reader.ids)
+	}
 }
 
 func (a integrityArtifactMap) ReadArtifactForCapture(_ context.Context, id string, _ evidencevo.QueryScope, _ int64) (iartifactstore.CaptureReadResult, error) {

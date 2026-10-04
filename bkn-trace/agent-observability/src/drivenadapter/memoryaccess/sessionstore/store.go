@@ -12,12 +12,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
 type Store struct {
+	evidenceReader func([]string) ([]ledgervo.Event, error)
 	mu             sync.Mutex
 	now            func() time.Time
 	conversations  map[string]sessionvo.Conversation
@@ -285,6 +287,7 @@ func (tx memoryTransaction) FindOperationCallFact(
 	attempt uint32,
 ) (sessionvo.OperationCallFact, bool) {
 	fact, found := tx.s.operationCalls[operationCallFactKey(operationID, attempt)]
+	fact.EvidenceCompletion = sessionvo.CopyEvidenceCompletion(fact.EvidenceCompletion)
 	return fact, found
 }
 
@@ -378,6 +381,7 @@ func sortOperationCallFacts(result []sessionvo.OperationCallFact) {
 }
 
 func (tx memoryTransaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
+	fact.EvidenceCompletion = sessionvo.CopyEvidenceCompletion(fact.EvidenceCompletion)
 	tx.s.operationCalls[operationCallFactKey(fact.OperationID, fact.Attempt)] = fact
 }
 

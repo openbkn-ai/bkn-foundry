@@ -178,3 +178,15 @@ func TestSubmitEventsContinuesAfterIndividualDrop(t *testing.T) {
 		t.Fatalf("mixed batch outcome=%#v, want attempted and partially accepted", outcome)
 	}
 }
+
+func TestSubmitEventsNilPublisherRecordsAttempt(t *testing.T) {
+	SetEvidencePublisher(nil)
+	ctx := withEvidenceOutcome(testTraceContext())
+	if err := SubmitEvents(ctx, nil, nil, []Event{{"event_id": "evt-unavailable", "event_type": "retrieval.completed"}}); err != nil {
+		t.Fatal(err)
+	}
+	attempted, accepted := snapshotEvidenceOutcome(ctx)
+	if !attempted || accepted {
+		t.Fatalf("nil publisher attempted=%v accepted=%v; planned event must be recorded as dropped", attempted, accepted)
+	}
+}

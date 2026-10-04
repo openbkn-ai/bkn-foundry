@@ -80,6 +80,7 @@ func CopyEvidenceSnapshot(interaction Interaction, operations []Operation, recei
 	result.CallFacts = make([]OperationCallFact, len(facts))
 	for i, fact := range facts {
 		result.CallFacts[i] = fact
+		result.CallFacts[i].EvidenceCompletion = CopyEvidenceCompletion(fact.EvidenceCompletion)
 		result.CallFacts[i].Input.Inline = bytes.Clone(fact.Input.Inline)
 		result.CallFacts[i].Output = copyEvidencePayload(fact.Output)
 		result.CallFacts[i].Error = copyEvidencePayload(fact.Error)

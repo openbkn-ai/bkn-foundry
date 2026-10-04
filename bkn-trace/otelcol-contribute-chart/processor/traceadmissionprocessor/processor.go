@@ -29,6 +29,7 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor"
+	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -45,20 +46,22 @@ func NewFactory() processor.Factory {
 	)
 }
 
-func createTraces(_ context.Context, _ processor.Settings, cfg component.Config, next consumer.Traces) (processor.Traces, error) {
+func createTraces(_ context.Context, settings processor.Settings, cfg component.Config, next consumer.Traces) (processor.Traces, error) {
 	configuration, ok := cfg.(*Config)
 	if !ok {
 		return nil, errors.New("traceadmission config must be *Config")
 	}
-	return newProcessor(*configuration, next)
+	return newProcessorWithLogger(*configuration, next, settings.Logger)
 }
 
 type traceAdmissionProcessor struct {
-	next    consumer.Traces
-	client  *http.Client
-	config  Config
-	gateway *traceadmissionsvc.Gateway
-	now     func() time.Time
+	next          consumer.Traces
+	client        *http.Client
+	config        Config
+	logger        *zap.Logger
+	refreshFailed bool
+	gateway       *traceadmissionsvc.Gateway
+	now           func() time.Time
 
 	mu              sync.Mutex
 	etag            string
@@ -71,10 +74,18 @@ type traceAdmissionProcessor struct {
 }
 
 func newProcessor(config Config, next consumer.Traces) (*traceAdmissionProcessor, error) {
-	return newProcessorWithClient(config, next, http.DefaultClient)
+	return newProcessorWithLogger(config, next, nil)
 }
 
 func newProcessorWithClient(config Config, next consumer.Traces, baseClient *http.Client) (*traceAdmissionProcessor, error) {
+	return newProcessorWithClientAndLogger(config, next, baseClient, nil)
+}
+
+func newProcessorWithLogger(config Config, next consumer.Traces, logger *zap.Logger) (*traceAdmissionProcessor, error) {
+	return newProcessorWithClientAndLogger(config, next, http.DefaultClient, logger)
+}
+
+func newProcessorWithClientAndLogger(config Config, next consumer.Traces, baseClient *http.Client, logger *zap.Logger) (*traceAdmissionProcessor, error) {
 	if next == nil {
 		return nil, errors.New("traceadmission next consumer is required")
 	}
@@ -111,7 +122,7 @@ func newProcessorWithClient(config Config, next consumer.Traces, baseClient *htt
 	oauthContext := context.WithValue(context.Background(), oauth2.HTTPClient, &clientCopy)
 	client := oauthConfig.Client(oauthContext)
 	return &traceAdmissionProcessor{
-		next: next, client: client, config: config, now: now,
+		next: next, client: client, config: config, logger: logger, now: now,
 		gateway: traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{
 			Audience: config.Audience, CurrentKeyID: config.CurrentKeyID, CurrentKey: ed25519.PublicKey(current),
 			PreviousKeyID: config.PreviousKeyID, PreviousKey: ed25519.PublicKey(previous), Now: now,
@@ -181,10 +192,10 @@ func (p *traceAdmissionProcessor) Capabilities() consumer.Capabilities {
 func (p *traceAdmissionProcessor) refresh(ctx context.Context) error {
 	snapshot, err := p.pullPolicy(ctx)
 	if err != nil {
-		return err
+		return p.controlFailure("policy", err)
 	}
 	if err := p.gateway.Apply(snapshot); err != nil {
-		return err
+		return p.controlFailure("policy", err)
 	}
 	p.mu.Lock()
 	p.currentRevision = snapshot.Revision
@@ -192,19 +203,22 @@ func (p *traceAdmissionProcessor) refresh(ctx context.Context) error {
 	p.mu.Unlock()
 	operationID, err := p.pullActiveOperation(ctx, snapshot.Revision)
 	if err != nil {
-		return err
+		return p.controlFailure("configuration", err)
 	}
 	p.mu.Lock()
 	p.activeOpID = operationID
 	p.mu.Unlock()
 	if p.config.HeartbeatURL != "" {
 		if err := p.sendHeartbeat(ctx, snapshot.Revision); err != nil {
-			return err
+			return p.controlFailure("heartbeat", err)
 		}
 	}
 	if operationID != "" && p.config.AckURLBase != "" {
-		return p.sendAcknowledgement(ctx, operationID, snapshot)
+		if err := p.sendAcknowledgement(ctx, operationID, snapshot); err != nil {
+			return p.controlFailure("ack", err)
+		}
 	}
+	p.controlRecovered()
 	return nil
 }
 
@@ -232,7 +246,7 @@ func (p *traceAdmissionProcessor) pullPolicy(ctx context.Context) (traceadmissio
 		return *p.cached, nil
 	}
 	if response.StatusCode != http.StatusOK {
-		return traceadmissionsvc.SignedSnapshot{}, fmt.Errorf("policy endpoint returned %s", response.Status)
+		return traceadmissionsvc.SignedSnapshot{}, &controlError{status: response.StatusCode, err: fmt.Errorf("policy endpoint returned %s", response.Status)}
 	}
 	var snapshot traceadmissionsvc.SignedSnapshot
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
@@ -286,7 +300,7 @@ func (p *traceAdmissionProcessor) pullActiveOperation(ctx context.Context, revis
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("configuration endpoint returned %s", response.Status)
+		return "", &controlError{status: response.StatusCode, err: fmt.Errorf("configuration endpoint returned %s", response.Status)}
 	}
 	var model configurationReadModel
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
@@ -337,7 +351,7 @@ type heartbeatRequest struct {
 }
 
 func (p *traceAdmissionProcessor) sendHeartbeat(ctx context.Context, revision uint64) error {
-	return p.postJSON(ctx, p.config.HeartbeatURL, heartbeatRequest{
+	return p.postJSON(ctx, p.config.HeartbeatURL, "heartbeat", heartbeatRequest{
 		InstanceID: p.config.WorkloadIdentity + "#" + p.config.ProcessBootID, ProcessBootID: p.config.ProcessBootID,
 		ObservedRevision: revision, Ready: p.gateway.ReadyFor(revision),
 	})
@@ -374,10 +388,10 @@ func (p *traceAdmissionProcessor) sendAcknowledgement(ctx context.Context, opera
 		WorkloadIdentity: p.config.WorkloadIdentity, ProcessBootID: p.config.ProcessBootID, CapturePolicyRevision: snapshot.Revision,
 		AdmissionState: state, Ready: p.gateway.ReadyFor(snapshot.Revision), AcknowledgedAt: p.now().UTC(), QueueDisposition: disposition,
 	}
-	return p.postJSON(ctx, strings.TrimRight(p.config.AckURLBase, "/")+"/"+url.PathEscape(operationID)+":ack", ack)
+	return p.postJSON(ctx, strings.TrimRight(p.config.AckURLBase, "/")+"/"+url.PathEscape(operationID)+":ack", "ack", ack)
 }
 
-func (p *traceAdmissionProcessor) postJSON(ctx context.Context, endpoint string, payload any) error {
+func (p *traceAdmissionProcessor) postJSON(ctx context.Context, endpoint, _ string, payload any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -393,9 +407,72 @@ func (p *traceAdmissionProcessor) postJSON(ctx context.Context, endpoint string,
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("internal control endpoint returned %s", response.Status)
+		return &controlError{status: response.StatusCode, err: fmt.Errorf("internal control endpoint returned %s", response.Status)}
 	}
 	return nil
+}
+
+type controlError struct {
+	status int
+	err    error
+}
+
+func (e *controlError) Error() string { return e.err.Error() }
+func (e *controlError) Unwrap() error { return e.err }
+
+func (p *traceAdmissionProcessor) controlFailure(stage string, err error) error {
+	p.mu.Lock()
+	p.refreshFailed = true
+	p.mu.Unlock()
+	if p.logger != nil {
+		status := 0
+		logStage := stage
+		var endpointErr *controlError
+		if errors.As(err, &endpointErr) {
+			status = endpointErr.status
+		}
+		var tokenErr *oauth2.RetrieveError
+		if errors.As(err, &tokenErr) {
+			logStage = "token"
+			if tokenErr.Response != nil {
+				status = tokenErr.Response.StatusCode
+			}
+		}
+		var requestErr *url.Error
+		if errors.As(err, &requestErr) && requestErr.URL == p.config.TokenURL {
+			logStage = "token"
+		}
+		p.logger.Warn("trace admission control refresh failed", zap.String("stage", logStage), zap.Int("status", status), zap.String("error_code", controlErrorCode(err)))
+	}
+	return err
+}
+
+func (p *traceAdmissionProcessor) controlRecovered() {
+	p.mu.Lock()
+	recovered := p.refreshFailed
+	p.refreshFailed = false
+	p.mu.Unlock()
+	if recovered && p.logger != nil {
+		p.logger.Info("trace admission control refresh recovered")
+	}
+}
+
+func controlErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	var endpointErr *controlError
+	if errors.As(err, &endpointErr) {
+		return "http_status"
+	}
+	var tokenErr *oauth2.RetrieveError
+	if errors.As(err, &tokenErr) {
+		if tokenErr.ErrorCode != "" {
+			return tokenErr.ErrorCode
+		}
+		return "http_status"
+	}
+	return "request_failed"
 }
 
 func (p *traceAdmissionProcessor) operationID() string {

@@ -59,14 +59,16 @@ type Store interface {
 }
 
 type Controller struct {
-	store       Store
-	targets     []Target
-	workerID    string
-	lease       time.Duration
-	convergence time.Duration
-	now         func() time.Time
-	id          func() (string, error)
-	onTerminal  func(context.Context, TerminalEvent)
+	store                 Store
+	targets               []Target
+	workerID              string
+	lease                 time.Duration
+	convergence           time.Duration
+	now                   func() time.Time
+	id                    func() (string, error)
+	onTerminal            func(context.Context, TerminalEvent)
+	onState               func(icapturepolicy.ControlState)
+	requiredEndpointKinds map[string]struct{}
 }
 
 // TerminalEvent is emitted only after the durable terminal transition commits.
@@ -81,14 +83,16 @@ type TerminalEvent struct {
 }
 
 type Options struct {
-	Store       Store
-	Targets     []Target
-	WorkerID    string
-	Lease       time.Duration
-	Convergence time.Duration
-	Now         func() time.Time
-	OperationID func() (string, error)
-	OnTerminal  func(context.Context, TerminalEvent)
+	Store                 Store
+	Targets               []Target
+	WorkerID              string
+	Lease                 time.Duration
+	Convergence           time.Duration
+	Now                   func() time.Time
+	OperationID           func() (string, error)
+	OnTerminal            func(context.Context, TerminalEvent)
+	OnState               func(icapturepolicy.ControlState)
+	RequiredEndpointKinds []string
 }
 
 func New(options Options) (*Controller, error) {
@@ -112,7 +116,13 @@ func New(options Options) (*Controller, error) {
 	if options.OperationID == nil {
 		options.OperationID = newOperationID
 	}
-	return &Controller{store: options.Store, targets: append([]Target(nil), options.Targets...), workerID: options.WorkerID, lease: options.Lease, convergence: options.Convergence, now: options.Now, id: options.OperationID, onTerminal: options.OnTerminal}, nil
+	required := make(map[string]struct{}, len(options.RequiredEndpointKinds))
+	for _, kind := range options.RequiredEndpointKinds {
+		if kind != "" {
+			required[kind] = struct{}{}
+		}
+	}
+	return &Controller{store: options.Store, targets: append([]Target(nil), options.Targets...), workerID: options.WorkerID, lease: options.Lease, convergence: options.Convergence, now: options.Now, id: options.OperationID, onTerminal: options.OnTerminal, onState: options.OnState, requiredEndpointKinds: required}, nil
 }
 
 // Request is the Commander used by the API. The revision and expected ACK
@@ -138,9 +148,23 @@ func (c *Controller) Request(ctx context.Context, request capturepolicysvc.Chang
 	if len(targets) == 0 {
 		return capturepolicysvc.Snapshot{}, ErrTargetSet
 	}
+	if len(c.requiredEndpointKinds) > 0 {
+		seen := make(map[string]struct{}, len(targets))
+		for _, target := range targets {
+			seen[target.EndpointKind] = struct{}{}
+		}
+		for kind := range c.requiredEndpointKinds {
+			if _, ok := seen[kind]; !ok {
+				return capturepolicysvc.Snapshot{}, ErrTargetSet
+			}
+		}
+	}
 	state, err := c.store.ReadControlState(ctx)
 	if err != nil {
 		return capturepolicysvc.Snapshot{}, err
+	}
+	if c.onState != nil {
+		c.onState(state)
 	}
 	if state.CurrentRevision != request.ExpectedRevision {
 		return capturepolicysvc.Snapshot{}, capturepolicysvc.ErrRevisionConflict
@@ -184,8 +208,14 @@ func (c *Controller) Reconcile(ctx context.Context) (bool, error) {
 	}
 	now := c.now().UTC()
 	op, claimed, err := c.store.ClaimCapturePolicyOperation(ctx, c.workerID, c.lease, now)
-	if err != nil || !claimed {
+	if err != nil {
 		return claimed, err
+	}
+	if c.onState != nil && op.CurrentRevision != 0 && op.EffectiveState != "" {
+		c.onState(icapturepolicy.ControlState{CurrentRevision: op.CurrentRevision, DesiredState: op.DesiredState, EffectiveState: op.EffectiveState})
+	}
+	if !claimed {
+		return false, nil
 	}
 	ackRevision := op.PolicyRevision
 	if op.Phase == icapturepolicy.PhaseRollingBack && op.CompensationRevision > 0 {

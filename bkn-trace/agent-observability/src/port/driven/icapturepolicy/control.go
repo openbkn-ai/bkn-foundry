@@ -82,6 +82,11 @@ type Operation struct {
 	TerminalAt           *time.Time
 	CompensationRevision uint64
 	RestoredState        string
+	// Control view captured by the controller's claim SELECT. These fields
+	// avoid a second policy read on the business request path.
+	CurrentRevision uint64
+	DesiredState    string
+	EffectiveState  string
 }
 
 type EndpointLease struct {

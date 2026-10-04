@@ -1,9 +1,9 @@
-Context Loader compact entry: the knowledge network toolset, loaded on demand. Common query tools are published directly; everything else goes through the on-demand tools.
+Context Loader: common queries are direct; other tools load on demand.
 
 Managed lifecycle, for each new user question:
 1. Call bkn_start_interaction with the whole question, the Agent name and conversation_mode: new for the first question (no conversation_id), continue with the previous conversation_id afterwards.
-2. Pass bkn_context: { conversation_id, interaction_id } to every other call, copied from step 1.
-3. Before replying, call bkn_finish_interaction: outcome=completed with the final answer, or failed, cancelled or handed_off with an optional reason.
+2. Copy returned IDs into bkn_context. If trace_recorded=false, omit context; never retry business for Trace.
+3. Before replying, finish: completed with answer, else failed/cancelled/handed_off. Copy _meta trace partial_reasons to finish; if _meta is dropped, read the separate degraded-trace content block. Omit interaction_id if start gave none.
 
 Exploring and querying:
 - Without a kn_id, call list_knowledge_networks. get_kn_detail gives an overview; search_schema finds object types, relation types and metrics. Query with the IDs they return; never guess IDs from names.

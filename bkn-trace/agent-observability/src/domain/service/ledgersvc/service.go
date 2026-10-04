@@ -37,8 +37,14 @@ func IsCode(err error, code ErrorCode) bool {
 }
 
 type Service struct {
-	store   ievidenceledger.Store
-	metrics icoremetrics.Recorder
+	store           ievidenceledger.Store
+	metrics         icoremetrics.Recorder
+	durableObserver func(context.Context, ledgervo.Event) error
+}
+
+// SetDurableObserver binds the internal confirmation path before serving starts.
+func (s *Service) SetDurableObserver(observer func(context.Context, ledgervo.Event) error) {
+	s.durableObserver = observer
 }
 
 func New(store ievidenceledger.Store) *Service {
@@ -77,6 +83,11 @@ func (s *Service) Ingest(ctx context.Context, event ledgervo.Event) (ledgervo.Du
 		return ledgervo.DurableAck{}, err
 	default:
 		s.metrics.Increment(icoremetrics.EvidenceIngestTotal)
+		if ack.Durable && s.durableObserver != nil {
+			if err := s.durableObserver(ctx, event); err != nil {
+				return ack, err
+			}
+		}
 		return ack, nil
 	}
 }
@@ -103,6 +114,11 @@ func (s *Service) IngestKafka(ctx context.Context, event ledgervo.Event, coordin
 	}
 	if result.Decision == ievidenceledger.KafkaAccepted {
 		s.metrics.Increment(icoremetrics.EvidenceIngestTotal)
+	}
+	if (result.Decision == ievidenceledger.KafkaAccepted || result.Decision == ievidenceledger.KafkaDeduplicated) && result.Ack.Durable && s.durableObserver != nil {
+		if err := s.durableObserver(ctx, event); err != nil {
+			return result, err
+		}
 	}
 	return result, nil
 }

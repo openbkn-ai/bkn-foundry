@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	finishTimeout       = 5 * time.Second
 	finishRetryAttempts = 3
 	finishRetryBase     = 20 * time.Millisecond
 )
@@ -55,8 +54,9 @@ type GuardIntent struct {
 }
 
 type GuardState struct {
-	Result       OperationResult
-	ArtifactRefs []string
+	CaptureDisabled bool
+	Result          OperationResult
+	ArtifactRefs    []string
 }
 
 type GuardDisposition string
@@ -80,11 +80,16 @@ func (g *Guard) Begin(
 	ctx context.Context,
 	intent GuardIntent,
 ) (context.Context, GuardState, GuardDisposition, *APIError, error) {
+	if CaptureDisabled() {
+		return ClearManagedTraceContext(ctx), GuardState{CaptureDisabled: true}, GuardExecute, nil, nil
+	}
+	ctx = WithTraceAvailability(ctx)
 	ctx, err := EnsureTraceCorrelation(ctx)
 	if err != nil {
 		return ctx, GuardState{}, "", nil, err
 	}
-	result, apiErr, err := g.client.EnsureOperation(ctx, EnsureOperationInput{
+	ioctx, release := TraceIOContext(ctx, "pre")
+	result, apiErr, err := g.client.EnsureOperation(ioctx, EnsureOperationInput{
 		ConversationID:    intent.Context.ConversationID,
 		InteractionID:     intent.Context.InteractionID,
 		OperationKey:      intent.Context.OperationKey,
@@ -96,6 +101,10 @@ func (g *Guard) Begin(
 		CausationEventIDs: intent.Context.CausationEventIDs,
 		CapabilityProfile: intent.CapabilityProfile,
 	})
+	release()
+	if IsCaptureDisabledError(apiErr) {
+		return ClearManagedTraceContext(ctx), GuardState{CaptureDisabled: true}, GuardExecute, nil, nil
+	}
 	if err != nil || apiErr != nil {
 		return ctx, GuardState{}, "", apiErr, err
 	}
@@ -149,6 +158,9 @@ func (g *Guard) Finish(
 	failed bool,
 	retryable bool,
 ) (OperationResult, *APIError, error) {
+	if state.CaptureDisabled {
+		return state.Result, nil, nil
+	}
 	ctx, err := EnsureTraceCorrelation(ctx)
 	if err != nil {
 		return OperationResult{}, nil, err
@@ -199,7 +211,19 @@ func (g *Guard) Finish(
 			input.EvidenceDurability = "pending"
 		}
 	}
-	finishContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+	input.EvidenceExpectation = freezeEvidenceExpectation(ctx)
+	if input.EvidenceExpectation != nil {
+		// A planned set determines enqueue durability. An empty set keeps the
+		// conservative receipt-only policy above; Core validates its profile.
+		if len(input.EvidenceExpectation.Events) > 0 || !input.EvidenceExpectation.Closed {
+			input.EvidenceDurability = evidenceExpectationDurability(input.EvidenceExpectation)
+		}
+		if reason := evidenceExpectationFailureReason(ctx); reason != "" {
+			input.PartialReasons = append(input.PartialReasons, reason)
+		}
+	}
+	input.PartialReasons = append(input.PartialReasons, TracePartialReasons(ctx)...)
+	finishContext, cancel := TraceIOContext(WithTraceAvailability(context.WithoutCancel(ctx)), "post")
 	defer cancel()
 
 	lastResult := state.Result

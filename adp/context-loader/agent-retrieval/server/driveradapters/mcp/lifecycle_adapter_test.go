@@ -490,7 +490,7 @@ func TestFinishInteractionWithoutArtifactEndpointFailsWithoutCallingCore(t *test
 		"interaction_id": "int-1", "outcome": "completed",
 		"answer": "BOM 查询完成",
 	}}})
-	if err != nil || result == nil || !result.IsError {
+	if err != nil || result == nil || result.IsError {
 		t.Fatalf("finish without an Artifact endpoint must fail: result=%#v err=%v", result, err)
 	}
 	if finishCalls != 0 {
@@ -499,9 +499,7 @@ func TestFinishInteractionWithoutArtifactEndpointFailsWithoutCallingCore(t *test
 	if evidenceCalls != 0 {
 		t.Fatalf("evidence calls = %d, want 0: the legacy ingest URL must not stand in for the Artifact endpoint", evidenceCalls)
 	}
-	var envelope struct {
-		Error lifecycleError `json:"error"`
-	}
+	var envelope map[string]any
 	text, ok := result.Content[0].(mcpsdk.TextContent)
 	if !ok {
 		t.Fatalf("finish error content = %#v, want text", result.Content)
@@ -509,10 +507,8 @@ func TestFinishInteractionWithoutArtifactEndpointFailsWithoutCallingCore(t *test
 	if err := json.Unmarshal([]byte(text.Text), &envelope); err != nil {
 		t.Fatalf("decode finish error %q: %v", text.Text, err)
 	}
-	if envelope.Error.Code != "evidence_capture_failed" ||
-		envelope.Error.RequiredAction != "contact_platform_operator" || envelope.Error.Retryable ||
-		!strings.Contains(envelope.Error.Message, "BKN_TRACE_ARTIFACT_ENDPOINT") {
-		t.Fatalf("missing Artifact endpoint must be a non-retryable deployment defect naming the setting: %#v", envelope.Error)
+	if envelope["code"] != "evidence_capture_failed" || envelope["trace_recorded"] != false {
+		t.Fatalf("missing endpoint not disclosed: %#v", envelope)
 	}
 }
 

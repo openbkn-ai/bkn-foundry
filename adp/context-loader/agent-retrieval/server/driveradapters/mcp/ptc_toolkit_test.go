@@ -235,7 +235,7 @@ func TestPTCStubIsolatesWorkdirPerConversation(t *testing.T) {
 		`conversation_id`,          // The origin of the directory name.
 		`c if c in _SAFE else "-"`, // Normalization rules must be consistent with the Go side ptcWorkdir.
 		`[:64]`,                    // Cut off length, same as above.
-		`"conv-" + safe if safe else "shared"`,
+		`"conv-" + safe if safe else "adhoc-" + uuid.uuid4().hex`,
 		`candidate.mkdir(`,
 		`os.chdir(candidate)`,
 	} {
@@ -244,7 +244,7 @@ func TestPTCStubIsolatesWorkdirPerConversation(t *testing.T) {
 		}
 	}
 	// When the conversation_id cannot be obtained or the directory cannot be created, it must be returned to the available state and the entire script cannot fail.
-	if !strings.Contains(stub, `"shared"`) || !strings.Contains(stub, "except OSError:") {
+	if strings.Contains(stub, `else "shared"`) || !strings.Contains(stub, "except OSError as error:") || !strings.Contains(stub, "workspace_scope") {
 		t.Fatalf("stub 的工作目录缺少兜底分支:\n%s", stub)
 	}
 }

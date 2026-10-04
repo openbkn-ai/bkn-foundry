@@ -268,8 +268,8 @@ func TestGatewayToolsAreDefinedInEveryLocale(t *testing.T) {
 			if err := json.Unmarshal(input, &schema); err != nil {
 				t.Fatalf("%s %s: %v", locale, name, err)
 			}
-			if _, ok := schema.Properties["bkn_context"]; !ok || !slices.Contains(schema.Required, "bkn_context") {
-				t.Errorf("%s %s: bkn_context is not required", locale, name)
+			if _, ok := schema.Properties["bkn_context"]; !ok || slices.Contains(schema.Required, "bkn_context") {
+				t.Errorf("%s %s: bkn_context must be optional", locale, name)
 			}
 			if _, ok := schema.Properties["response_format"]; ok {
 				t.Errorf("%s %s: offers response_format", locale, name)

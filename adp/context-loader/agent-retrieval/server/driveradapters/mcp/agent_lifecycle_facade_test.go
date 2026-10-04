@@ -98,7 +98,7 @@ func TestFinishInteractionSchemaHidesCoreConcurrencyAndClosureFields(t *testing.
 	if err := json.Unmarshal(input, &schema); err != nil {
 		t.Fatal(err)
 	}
-	if !sameStringSet(schema.Required, []string{"interaction_id", "outcome"}) {
+	if !sameStringSet(schema.Required, []string{"outcome"}) {
 		t.Fatalf("finish required fields = %v", schema.Required)
 	}
 	for _, field := range []string{

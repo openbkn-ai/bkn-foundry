@@ -109,12 +109,12 @@ components:
     KnSearchCompatRequest:
       type: object
       required:
-        - bkn_context
         - query
         - kn_id
       properties:
         bkn_context:
           $ref: '#/components/schemas/BKNContext'
+          description: 可选业务溯源上下文；提供时须有真实会话和交互 ID。Trace 不可用时可省略，业务调用继续执行并返回未记录标头。
         query:
           type: string
           description: 用户查询问题或关键词

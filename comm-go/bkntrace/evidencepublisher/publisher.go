@@ -67,10 +67,6 @@ func (p *Publisher) TryPublishForPolicyRevision(event Event, capturePolicyRevisi
 		p.metrics.Dropped(ReasonInvalidEvent)
 		return PublishResult{Disposition: Dropped, Reason: ReasonInvalidEvent}
 	}
-	if p.closed {
-		p.metrics.Dropped(ReasonPublisherClosing)
-		return PublishResult{Disposition: Dropped, Reason: ReasonPublisherClosing}
-	}
 	if event.EventID == "" || event.EventType == "" || len(event.Envelope) == 0 {
 		p.metrics.Dropped(ReasonInvalidEvent)
 		return PublishResult{Disposition: Dropped, Reason: ReasonInvalidEvent}
@@ -79,6 +75,15 @@ func (p *Publisher) TryPublishForPolicyRevision(event Event, capturePolicyRevisi
 	if err != nil {
 		p.metrics.Dropped(ReasonInvalidEvent)
 		return PublishResult{EventID: event.EventID, Disposition: Dropped, Reason: ReasonInvalidEvent}
+	}
+	if prior, ok := p.previousDecision(event, payloadHash); ok {
+		// Reuse the first admission decision after validating the current payload
+		// with the existing hash pass. No new sequence or second queued Record.
+		return prior
+	}
+	if p.closed {
+		p.metrics.Dropped(ReasonPublisherClosing)
+		return PublishResult{Disposition: Dropped, Reason: ReasonPublisherClosing}
 	}
 	sequence := p.sequence + 1
 	value := map[string]any{
@@ -114,15 +119,15 @@ func (p *Publisher) TryPublishForPolicyRevision(event Event, capturePolicyRevisi
 	bytes, err := json.Marshal(value)
 	if err != nil {
 		p.metrics.Dropped(ReasonSerialization)
-		return PublishResult{EventID: event.EventID, Disposition: Dropped, Reason: ReasonSerialization}
+		return PublishResult{EventID: event.EventID, EventType: event.EventType, PayloadHash: payloadHash, ProducerID: p.config.ProducerID, Disposition: Dropped, Reason: ReasonSerialization}
 	}
 	if len(bytes) > p.config.MaxRecordBytes {
 		p.metrics.Dropped(ReasonMessageTooLarge)
-		return PublishResult{EventID: event.EventID, Disposition: Dropped, Reason: ReasonMessageTooLarge}
+		return PublishResult{EventID: event.EventID, EventType: event.EventType, PayloadHash: payloadHash, ProducerID: p.config.ProducerID, Disposition: Dropped, Reason: ReasonMessageTooLarge}
 	}
 	if len(p.queue) >= p.config.QueueMaxRecords || p.queueBytes+len(bytes) > p.config.QueueMaxBytes {
 		p.metrics.Dropped(ReasonQueueFull)
-		return PublishResult{EventID: event.EventID, Disposition: Dropped, Reason: ReasonQueueFull}
+		return PublishResult{EventID: event.EventID, EventType: event.EventType, PayloadHash: payloadHash, ProducerID: p.config.ProducerID, Disposition: Dropped, Reason: ReasonQueueFull}
 	}
 	record := Record{
 		Key:   p.config.BaseStreamID + ":" + p.config.ProcessBootID,
@@ -139,7 +144,27 @@ func (p *Publisher) TryPublishForPolicyRevision(event Event, capturePolicyRevisi
 	p.queueBytes += len(bytes)
 	p.sequence = sequence
 	p.metrics.Accepted()
-	return PublishResult{EventID: event.EventID, Disposition: Accepted}
+	return PublishResult{EventID: event.EventID, EventType: event.EventType, PayloadHash: payloadHash, ProducerID: p.config.ProducerID, Disposition: Accepted}
+}
+
+func (p *Publisher) previousDecision(event Event, payloadHash string) (PublishResult, bool) {
+	prior := event.PreviousResult
+	if prior != nil && prior.EventID == event.EventID && prior.EventType == event.EventType && prior.PayloadHash == payloadHash && prior.ProducerID == p.config.ProducerID && (prior.Disposition == Accepted || (prior.Disposition == Dropped && prior.Reason != "")) {
+		return *prior, true
+	}
+	return PublishResult{}, false
+}
+
+// Replay only verifies a local prior decision; it cannot admit a new Record.
+func (p *Publisher) replayAdmission(event Event) (PublishResult, bool) {
+	if event.PreviousResult == nil || event.EventID == "" || event.EventType == "" || len(event.Envelope) == 0 {
+		return PublishResult{}, false
+	}
+	payloadHash, err := canonicalPayloadHash(event.Envelope)
+	if err != nil {
+		return PublishResult{}, false
+	}
+	return p.previousDecision(event, payloadHash)
 }
 
 func (p *Publisher) SnapshotQueue() []Record {

@@ -286,3 +286,20 @@ func TestPublisherFlushConcurrentCallsAreSafe(t *testing.T) {
 		t.Fatalf("records=%d, want 1", len(sender.records))
 	}
 }
+
+func TestPublishResultReturnsExactFrozenIdentity(t *testing.T) {
+	cfg := publisherTestConfig()
+	cfg.ProducerID = "producer-override"
+	p, err := New(cfg, &fakeSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := p.TryPublish(publisherTestEvent())
+	var row map[string]any
+	if err = json.Unmarshal(p.SnapshotQueue()[0].Value, &row); err != nil {
+		t.Fatal(err)
+	}
+	if result.PayloadHash != row["payload_hash"] || result.ProducerID != row["producer_id"] {
+		t.Fatalf("result %+v disagrees with frozen record", result)
+	}
+}

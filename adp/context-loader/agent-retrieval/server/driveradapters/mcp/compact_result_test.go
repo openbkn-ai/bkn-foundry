@@ -39,6 +39,30 @@ func TestProjectionKeepsTheTextAndMovesTheReceipt(t *testing.T) {
 	}
 }
 
+func TestProjectionKeepsDegradedTraceDiagnosticContent(t *testing.T) {
+	result := mcpsdk.NewToolResultStructured(
+		map[string]any{"answer": "business", "bkn_receipt": testReceipt},
+		`{"answer":"business"}`,
+	)
+	result.Meta = &mcpsdk.Meta{AdditionalFields: map[string]any{
+		traceAvailabilityMetaKey: map[string]any{
+			"available": false, "recorded": false, "stage": "context", "code": "trace_core_unavailable",
+		},
+	}}
+	result.Content = append(result.Content, mcpsdk.NewTextContent(`[BKN_TRACE]{"bkn_trace":{"available":false,"recorded":false}}`))
+
+	got := projectCompactResult(result)
+	if got.StructuredContent != nil || len(got.Content) != 2 {
+		t.Fatalf("compact projection dropped business or diagnostic content: %#v", got)
+	}
+	if receiptInMeta(got) == nil || got.Meta.AdditionalFields[traceAvailabilityMetaKey] == nil {
+		t.Fatalf("compact projection dropped receipt or trace metadata: %#v", got.Meta)
+	}
+	if text, ok := mcpsdk.AsTextContent(got.Content[1]); !ok || !strings.Contains(text.Text, `"bkn_trace"`) {
+		t.Fatalf("compact projection dropped trace diagnostic: %#v", got.Content)
+	}
+}
+
 func TestProjectionOfATextOnlyResult(t *testing.T) {
 	result := mcpsdk.NewToolResultText(`{"candidates":[]}`)
 	result.StructuredContent = map[string]any{"result": nil, "bkn_receipt": testReceipt}

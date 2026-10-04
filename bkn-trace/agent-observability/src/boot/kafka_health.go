@@ -32,11 +32,15 @@ func (h *kafkaHealth) serveHTTP(w http.ResponseWriter, _ *http.Request) {
 	h.mu.RLock()
 	states := make(map[string]kafkaruntime.State, len(h.consumers))
 	ready := true
+	consumersReady := true
 	for name, runtime := range h.consumers {
 		state := runtime.State()
 		states[name] = state
-		if state.Enabled && !state.Ready {
+		if state.Enabled && !state.Running {
 			ready = false
+		}
+		if state.Enabled && !state.Ready {
+			consumersReady = false
 		}
 	}
 	h.mu.RUnlock()
@@ -44,7 +48,9 @@ func (h *kafkaHealth) serveHTTP(w http.ResponseWriter, _ *http.Request) {
 	if !ready {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"ready": ready, "consumers": states})
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ready": ready, "consumers_ready": consumersReady, "consumers": states,
+	})
 }
 
 func (h *kafkaHealth) serveLiveHTTP(w http.ResponseWriter, _ *http.Request) {
@@ -52,7 +58,7 @@ func (h *kafkaHealth) serveLiveHTTP(w http.ResponseWriter, _ *http.Request) {
 	live := true
 	for _, runtime := range h.consumers {
 		state := runtime.State()
-		if state.Enabled && (state.Reason == "fetch_failed" || state.Reason == "ledger_decision_pending" || state.Reason == "offset_commit_failed") {
+		if state.Enabled && !state.Running {
 			live = false
 		}
 	}

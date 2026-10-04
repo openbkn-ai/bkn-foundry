@@ -117,15 +117,15 @@ func TestCompactProfileRefusesUnpublishedToolsLikeUnknownOnes(t *testing.T) {
 func TestCompactProfileKeepsTheLifecycleGuard(t *testing.T) {
 	srv := compactServer(t, "zh-CN")
 	got := rpc(t, srv, "tools/call", map[string]any{
-		"name":      toolKeySearchSchema,
-		"arguments": map[string]any{"kn_id": "kn-1", "query": "orders"},
+		"name":      toolKeyQueryObjectInstance,
+		"arguments": map[string]any{},
 	})
 	raw, err := json.Marshal(got)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "conversation_required") {
-		t.Fatalf("a business tool without bkn_context must be refused as on /mcp, got %s", raw)
+	if strings.Contains(string(raw), "conversation_required") || !strings.Contains(string(raw), "trace_context_absent") || !strings.Contains(string(raw), "kn_id and ot_id are required") {
+		t.Fatalf("Trace must not block a business tool; original business argument checks must remain, got %s", raw)
 	}
 }
 

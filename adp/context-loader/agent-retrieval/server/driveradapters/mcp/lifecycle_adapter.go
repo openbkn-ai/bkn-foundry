@@ -236,6 +236,10 @@ func handleLifecycleTool(
 ) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		var err error
+		ctx = bkntrace.WithTraceAvailability(ctx)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		ctx, err = bkntrace.EnsureTraceCorrelation(ctx)
 		if err != nil {
 			return lifecycleUnavailable(ctx, name, "trace_correlation", err), nil
@@ -251,6 +255,22 @@ func handleLifecycleTool(
 		if validationErr := validateLifecycleArguments(name, args); validationErr != nil {
 			return lifecycleToolError(*validationErr), nil
 		}
+		if bkntrace.CaptureDisabled() && name == "bkn_retry_operation" {
+			return lifecycleToolError(lifecycleError{Code: "capture_disabled", Message: "Capture is disabled; continue business calls without managed Trace context", RequiredAction: "continue_without_bkn_context"}), nil
+		}
+		if bkntrace.CaptureDisabled() && (name == toolKeyStartInteraction || (name == toolKeyFinishInteraction && stringValue(args["interaction_id"]) == "")) {
+			return lifecycleCaptureDisabledResult(), nil
+		}
+		if name == toolKeyFinishInteraction && stringValue(args["interaction_id"]) == "" {
+			return lifecycleUnrecordedResult(ctx, name, "finish_interaction", "interaction_not_registered"), nil
+		}
+		phase := "pre"
+		if name == toolKeyFinishInteraction {
+			phase = "post"
+		}
+		ioContext, release := bkntrace.TraceIOContext(ctx, phase)
+		defer release()
+		ctx = ioContext
 		ensureLifecycleIdempotency(ctx, name, args, hints)
 		if name == "bkn_start_interaction" {
 			args["request_hash"] = strings.TrimPrefix(hashBytes([]byte(stringValue(args["question"]))), "sha256:")
@@ -299,7 +319,7 @@ func handleLifecycleTool(
 				return lifecycleUnavailable(ctx, name, "read_interaction", err), nil
 			}
 			if apiErr != nil {
-				return lifecycleToolError(lifecycleError(*apiErr)), nil
+				return lifecycleAPIResult(ctx, name, "core_call", *apiErr), nil
 			}
 			if current.ExecutionStatus != "active" && current.ExecutionStatus != "completed" {
 				return lifecycleToolError(lifecycleError{
@@ -310,13 +330,13 @@ func handleLifecycleTool(
 			if current.ExecutionStatus == "completed" && current.ClosureManifest != nil &&
 				current.ClosureManifest.AnswerArtifactRef != "" {
 				args["answer_artifact_ref"] = current.ClosureManifest.AnswerArtifactRef
-			} else {
+			} else if !bkntrace.CaptureDisabled() {
 				ctx = common.SetAuthoritativeObservedAtIfMissing(ctx, current.UpdatedAt)
 				artifactRef, err := bkntrace.RecordInteractionArtifact(
 					ctx, current.ConversationID, current.InteractionID,
 					bkntrace.InteractionArtifactResult, args["answer"],
 				)
-				if err != nil {
+				if err != nil && !bkntrace.IsCaptureDisabledEvidenceError(err) {
 					return lifecycleUnavailable(ctx, name, "answer_artifact", err), nil
 				}
 				// No artifact endpoint means no answer artifact, and Core refuses a
@@ -325,12 +345,14 @@ func handleLifecycleTool(
 				// to fix its manifest retries the same call until its turn budget
 				// runs out. Fail here instead, as the non-retryable deployment defect
 				// it is, and leave Core uncalled.
-				if artifactRef == "" {
+				if artifactRef == "" && err == nil && !bkntrace.CaptureDisabled() {
 					return lifecycleUnavailable(
 						ctx, name, "answer_artifact", bkntrace.ErrEvidenceArtifactURLNotConfigured,
 					), nil
 				}
-				args["answer_artifact_ref"] = artifactRef
+				if artifactRef != "" {
+					args["answer_artifact_ref"] = artifactRef
+				}
 			}
 		}
 		method, path, body := lifecycleRequest(name, args)
@@ -340,34 +362,41 @@ func handleLifecycleTool(
 			return lifecycleUnavailable(ctx, name, "core_call", err), nil
 		}
 		if apiErr != nil {
-			return lifecycleToolError(lifecycleError(*apiErr)), nil
+			return lifecycleAPIResult(ctx, name, "core_call", *apiErr), nil
 		}
 		if name == "bkn_start_interaction" {
 			ctx = common.SetAuthoritativeObservedAtIfMissing(ctx, target.CreatedAt)
-			if _, err := bkntrace.RecordInteractionArtifact(
+			artifactRef, artifactErr := bkntrace.RecordInteractionArtifact(
 				ctx, target.ConversationID, target.InteractionID,
 				bkntrace.InteractionArtifactQuestion, args["question"],
-			); err != nil {
+			)
+			if artifactErr == nil && artifactRef == "" && !bkntrace.CaptureDisabled() {
+				artifactErr = bkntrace.ErrEvidenceArtifactURLNotConfigured
+			}
+			if err := artifactErr; err != nil && !bkntrace.IsCaptureDisabledEvidenceError(err) {
 				// Core has already committed the interaction, so failing here hands the
 				// caller an error about an interaction it holds no id for. Its retry
 				// mints a fresh idempotency key: a continued conversation is then
 				// refused with interaction_in_progress, and a new one leaves this
-				// interaction active until its lease lapses. A transient evidence-store
-				// fault costs only the question text in the evidence summary - nothing
-				// in the lifecycle reads it - so the ids go back and the fault is
-				// logged. A non-retryable fault is a deployment defect the operator
-				// has to see, and still fails the call.
+				// interaction active until its lease lapses. Question artifact faults
+				// affect evidence capture, not the committed lifecycle state. Return
+				// Core's ids/status and log every fault, including deployment and
+				// authorization defects, without fabricating an artifact reference.
 				value := lifecycleAvailabilityError(err)
-				if !value.Retryable {
-					return lifecycleUnavailable(ctx, name, "question_artifact", err), nil
-				}
+				bkntrace.MarkTraceUnavailable(ctx, "question_artifact", "", value.Code)
 				logger.DefaultLogger().WithContext(ctx).Warnf(
 					"[BKN Trace] lifecycle degraded: tool=%s stage=question_artifact code=%s interaction_id=%s: %v",
 					name, value.Code, target.InteractionID, err,
 				)
 			}
 		}
-		return lifecycleSuccessResult(agentLifecycleView(name, target))
+		result, resultErr := lifecycleSuccessResult(agentLifecycleView(name, target))
+		availability := bkntrace.TraceAvailabilityFromContext(ctx)
+		if availability != nil {
+			availability["lifecycle_recorded"] = true
+		}
+		attachTraceAvailabilityValue(result, availability)
+		return result, resultErr
 	}
 }
 
@@ -393,7 +422,7 @@ func ensureManagedConversation(
 		return bkntrace.Conversation{}, lifecycleUnavailable(ctx, toolKeyStartInteraction, "ensure_conversation", err)
 	}
 	if apiErr != nil {
-		return bkntrace.Conversation{}, lifecycleToolError(lifecycleError(*apiErr))
+		return bkntrace.Conversation{}, lifecycleAPIResult(ctx, toolKeyStartInteraction, "ensure_conversation", *apiErr)
 	}
 	return conversation, nil
 }
@@ -504,7 +533,7 @@ func lifecycleRequest(name string, args map[string]any) (string, string, map[str
 	case "bkn_finish_interaction":
 		interactionID := url.PathEscape(stringValue(args["interaction_id"]))
 		return http.MethodPost, "/interactions/" + interactionID + "/finish",
-			copyArgs(args, "outcome", "idempotency_key", "answer_artifact_ref", "reason")
+			copyArgs(args, "outcome", "idempotency_key", "answer_artifact_ref", "reason", "partial_reasons")
 	default:
 		return "", "", nil
 	}

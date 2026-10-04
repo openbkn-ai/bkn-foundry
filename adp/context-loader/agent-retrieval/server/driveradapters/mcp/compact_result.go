@@ -8,7 +8,9 @@ package mcp
 
 import (
 	"context"
+	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -61,7 +63,7 @@ func projectCompactResult(result *mcp.CallToolResult) *mcp.CallToolResult {
 	}
 	projected := *result
 	projected.StructuredContent = nil
-	if !hasText(result) {
+	if !hasBusinessText(result) {
 		// Nothing rendered the payload: render it here rather than send a
 		// result with no content.
 		body := any(result.StructuredContent)
@@ -74,6 +76,11 @@ func projectCompactResult(result *mcp.CallToolResult) *mcp.CallToolResult {
 			return result
 		}
 		projected.Content = []mcp.Content{mcp.NewTextContent(string(text))}
+		for _, content := range result.Content {
+			if isTraceAvailabilityDiagnostic(content) {
+				projected.Content = append(projected.Content, content)
+			}
+		}
 	}
 	if hasReceipt {
 		meta := &mcp.Meta{AdditionalFields: map[string]any{}}
@@ -103,11 +110,24 @@ func onlyReceipt(payload map[string]any) bool {
 	return true
 }
 
-func hasText(result *mcp.CallToolResult) bool {
+func hasBusinessText(result *mcp.CallToolResult) bool {
 	for _, content := range result.Content {
-		if text, ok := content.(mcp.TextContent); ok && text.Text != "" {
+		if text, ok := content.(mcp.TextContent); ok && text.Text != "" && !isTraceAvailabilityDiagnostic(content) {
 			return true
 		}
 	}
 	return false
+}
+
+func isTraceAvailabilityDiagnostic(content mcp.Content) bool {
+	text, ok := content.(mcp.TextContent)
+	if !ok || !strings.HasPrefix(text.Text, traceAvailabilityDiagnosticPrefix) {
+		return false
+	}
+	var envelope map[string]any
+	if sonic.Unmarshal([]byte(strings.TrimPrefix(text.Text, traceAvailabilityDiagnosticPrefix)), &envelope) != nil {
+		return false
+	}
+	trace, ok := envelope["bkn_trace"].(map[string]any)
+	return len(envelope) == 1 && ok && trace != nil
 }

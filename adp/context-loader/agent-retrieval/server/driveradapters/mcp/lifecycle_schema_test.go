@@ -18,7 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestBusinessToolSchemasRequireManagedBKNContext(t *testing.T) {
+func TestBusinessToolSchemasOfferOptionalManagedBKNContext(t *testing.T) {
 	rawMeta, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		t.Fatalf("read registered tool metadata: %v", err)
@@ -45,8 +45,8 @@ func TestBusinessToolSchemasRequireManagedBKNContext(t *testing.T) {
 			if _, ok := schema.Properties["bkn_context"]; !ok {
 				t.Fatalf("%s must advertise bkn_context", toolKey)
 			}
-			if !containsString(schema.Required, "bkn_context") {
-				t.Fatalf("%s must require bkn_context", toolKey)
+			if containsString(schema.Required, "bkn_context") {
+				t.Fatalf("%s cannot require Trace for business execution", toolKey)
 			}
 
 			var contextSchema struct {
@@ -93,7 +93,7 @@ func TestBusinessToolSchemasRequireManagedBKNContext(t *testing.T) {
 	}
 }
 
-func TestModuleOpenAPIRequiresManagedBKNContext(t *testing.T) {
+func TestModuleOpenAPIOffersOptionalManagedBKNContext(t *testing.T) {
 	documents := map[string]string{
 		"api_private/kn_search.yaml":                   "KnSearchCompatRequest",
 		"api_private/search_schema.yaml":               "SearchSchemaRequest",
@@ -131,8 +131,8 @@ func TestModuleOpenAPIRequiresManagedBKNContext(t *testing.T) {
 				t.Fatalf("BKNContext must document optional business_refs: %#v", contextSchema)
 			}
 			request, ok := document.Components.Schemas[requestSchema]
-			if !ok || !containsString(request.Required, "bkn_context") {
-				t.Fatalf("%s must require bkn_context: %#v", requestSchema, request)
+			if !ok || containsString(request.Required, "bkn_context") {
+				t.Fatalf("%s must offer optional bkn_context: %#v", requestSchema, request)
 			}
 			property, ok := request.Properties["bkn_context"]
 			if !ok || property["$ref"] != "#/components/schemas/BKNContext" {
@@ -188,8 +188,8 @@ func TestLifecycleToolsExposeExactCoreOutputSchemas(t *testing.T) {
 			t.Fatalf("%s output must be a closed object: %s", tool, output)
 		}
 		for _, field := range required {
-			if _, ok := schema.Properties[field]; !ok || !containsString(schema.Required, field) {
-				t.Fatalf("%s output must require Core field %s: %s", tool, field, output)
+			if _, ok := schema.Properties[field]; !ok {
+				t.Fatalf("%s output must declare healthy Core field %s: %s", tool, field, output)
 			}
 		}
 	}
@@ -446,7 +446,7 @@ func TestLifecycleSwaggerPathsRequestsAndResponsesAreStructurallyFrozen(t *testi
 func TestLifecycleMCPInputRequiredFieldsFollowAgentFacadeContract(t *testing.T) {
 	expected := map[string][]string{
 		"bkn_start_interaction":  {"question", "agent_name", "conversation_mode"},
-		"bkn_finish_interaction": {"interaction_id", "outcome"},
+		"bkn_finish_interaction": {"outcome"},
 	}
 	for tool, want := range expected {
 		input, _ := loadToolSchemas(tool)
