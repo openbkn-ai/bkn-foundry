@@ -2,6 +2,8 @@ module github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval
 
 go 1.25.5
 
+replace github.com/openbkn-ai/bkn-foundry/comm-go => ../../../comm-go
+
 require (
 	github.com/bytedance/sonic v1.15.4
 	github.com/creasty/defaults v1.10.0
