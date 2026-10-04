@@ -15,14 +15,26 @@ type View struct {
 	revision uint64
 	state    string
 	known    bool
+	stable   bool
 	updated  time.Time
 }
 
 func New(revision uint64, state string) *View {
+	return newView(revision, state, false)
+}
+
+// NewStable creates a process-local view whose policy store is authoritative
+// for the lifetime of the process. It is used by the memory fallback, where
+// there is no external controller heartbeat to refresh a time-based view.
+func NewStable(revision uint64, state string) *View {
+	return newView(revision, state, true)
+}
+
+func newView(revision uint64, state string, stable bool) *View {
 	if state == "" {
 		state = "enabled"
 	}
-	return &View{revision: revision, state: state, known: revision > 0 && (state == "enabled" || state == "disabled"), updated: time.Now()}
+	return &View{revision: revision, state: state, known: revision > 0 && (state == "enabled" || state == "disabled"), stable: stable, updated: time.Now()}
 }
 
 func (v *View) Update(revision uint64, state string) {
@@ -64,7 +76,7 @@ func (v *View) Known() bool {
 	}
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return v.known && time.Since(v.updated) <= 30*time.Second
+	return v.known && (v.stable || time.Since(v.updated) <= 30*time.Second)
 }
 
 func (v *View) Disabled() bool {

@@ -43,3 +43,11 @@ func TestViewSameRevisionUpdateRefreshesVerifiedState(t *testing.T) {
 		t.Fatal("same-revision verified controller refresh did not restore freshness")
 	}
 }
+
+func TestStableViewRemainsKnownAfterFreshnessWindow(t *testing.T) {
+	v := NewStable(1, "enabled")
+	v.updated = time.Now().Add(-time.Minute)
+	if !v.Known() || !v.AllowsNewRecords() {
+		t.Fatal("stable process-local admission view expired")
+	}
+}

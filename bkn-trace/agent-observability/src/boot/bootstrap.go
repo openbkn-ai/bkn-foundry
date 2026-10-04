@@ -188,7 +188,7 @@ func NewApp() (*App, error) {
 		// The memory fallback has no controller callback. Seed the local view and
 		// mirror subsequent requests so development/test mode follows the same
 		// admission boundary as the durable store.
-		captureAdmission.Update(1, string(capturepolicysvc.StateEnabled))
+		captureAdmission = captureadmission.NewStable(1, string(capturepolicysvc.StateEnabled))
 		capturePolicyCommander = memoryCapturePolicyCommander{store: memoryCapturePolicyStore, admission: captureAdmission}
 	}
 	var capturePolicyHandler *httphandler.CapturePolicyHandler
