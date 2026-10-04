@@ -181,6 +181,9 @@ def _bind_context(tool: Any, session: ContextLoaderSession) -> Any:
         # contract through the context-injection wrapper so LangChain emits the
         # same ToolMessage content the evidence receipt was hashed against.
         response_format=getattr(tool, "response_format", "content"),
+        # Preserve the adapter's narrow MCP isError -> failed ToolMessage policy.
+        # Transport/session errors still raise; binding context must not erase it.
+        handle_tool_error=getattr(tool, "handle_tool_error", False),
         metadata={
             **(getattr(tool, "metadata", None) or {}),
             "bkn_context_loader": True,

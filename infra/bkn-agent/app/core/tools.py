@@ -391,7 +391,12 @@ def apply_tool_call_cap(
 
         tool_name = getattr(t, "name", None)
 
-        async def _guarded(__inner=inner, __tool_name=tool_name, **kwargs) -> str:
+        async def _guarded(
+            __inner=inner,
+            __tool_name=tool_name,
+            __response_format=getattr(t, "response_format", "content"),
+            **kwargs,
+        ):
             if budget["left"] <= 0:
                 if not budget["exhausted_emitted"]:
                     budget["exhausted_emitted"] = True
@@ -407,11 +412,13 @@ def apply_tool_call_cap(
                 # This steers how the model should answer next, so it follows
                 # the system-prompt boundary rather than the tool-description
                 # one above; see the note in core/skills.py and #826.
-                return (
+                notice = (
                     f"tool call budget exhausted: 已用完本次执行的工具调用配额"
                     f"（max_tool_calls={max_tool_calls}）。禁止再调用任何工具——"
                     f"任何后续工具调用都会被拒绝。请立即用已获取的信息给出最终答案。"
                 )
+                # MCP tools expect a (content, artifact) pair, even for a local notice.
+                return (notice, None) if __response_format == "content_and_artifact" else notice
             budget["left"] -= 1
             return await __inner(**kwargs)
 

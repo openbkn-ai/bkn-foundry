@@ -101,9 +101,13 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 		return page, err
 	}
 	candidateLimit := summaryCandidateLimit(options)
+	if options.ConversationID != "" {
+		// The selector bounds this read to one conversation, independently of page size.
+		candidateLimit = MaxSummaryScanEntries
+	}
 	loadOptions := options
 	loadOptions.Status = ""
-	requests, _, metadata, err := s.loadExecutionSummariesWithCandidateLimit(ctx, loadOptions, candidateLimit)
+	requests, _, metadata, err := s.loadConversationExecutionSummaries(ctx, loadOptions, candidateLimit)
 	if err != nil {
 		return evidencevo.ConversationSummaryPage{}, err
 	}
@@ -112,6 +116,8 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	childOptions := options
 	childOptions.Status = ""
 	childOptions.EvidenceCompleteness = ""
+	// Terminal previews and canonical identity must be available before keyword matching.
+	childOptions.Keyword = ""
 	for _, request := range requests {
 		if request.ConversationID != "" && matchesAnyExcludedAgent(request, options) {
 			excludedConversations[request.ConversationID] = struct{}{}
@@ -133,6 +139,18 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	}
 	if err := s.applyCanonicalConversationState(ctx, entries, grouped); err != nil {
 		return evidencevo.ConversationSummaryPage{}, err
+	}
+	if err := s.applyConversationTerminalPreviews(ctx, entries, options.Scope, &metadata); err != nil {
+		return evidencevo.ConversationSummaryPage{}, err
+	}
+	if keyword := strings.TrimSpace(options.Keyword); keyword != "" {
+		matched := entries[:0]
+		for _, entry := range entries {
+			if matchesConversationKeyword(entry, grouped[entry.ConversationID], keyword) {
+				matched = append(matched, entry)
+			}
+		}
+		entries = matched
 	}
 	if options.RecordIntegrity != "" {
 		if err := s.applyConversationRecordIntegrity(ctx, entries, options.Scope); err != nil {
@@ -182,6 +200,83 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 		page.NextCursor = &next
 	}
 	return page, nil
+}
+
+// Preserve execution facts used by legacy business-reference and network filters.
+// First-turn previews are loaded independently so operation artifacts cannot hide them.
+func (s *Service) loadConversationExecutionSummaries(ctx context.Context, options evidencevo.SummaryQueryOptions, limit int) ([]evidencevo.RequestSummary, []evidencevo.TraceSummary, summaryLoadMetadata, error) {
+	if !trustedQueryScope(options.Scope) {
+		return []evidencevo.RequestSummary{}, []evidencevo.TraceSummary{}, summaryLoadMetadata{}, nil
+	}
+	if s.projectionSource == nil {
+		return nil, nil, summaryLoadMetadata{}, errors.New("execution summary projection source is not configured")
+	}
+	query := iprojectionsource.Query{
+		Scope: options.Scope, From: options.From, To: options.To,
+		TraceID: options.TraceID, InteractionID: options.InteractionID,
+		Limit: limit,
+	}
+	if options.ConversationID != "" {
+		query.ConversationIDs = []string{options.ConversationID}
+	}
+	return s.loadProjectedExecutionSummaries(ctx, query, summaryLoadMetadata{})
+}
+
+// Reuse the same authorized, first-turn artifact read as the ordinary list.
+// This is one bounded batch per candidate set, never a read per operation.
+func (s *Service) applyConversationTerminalPreviews(ctx context.Context, entries []evidencevo.ConversationSummary, scope evidencevo.QueryScope, metadata *summaryLoadMetadata) error {
+	source, ok := s.projectionSource.(iprojectionsource.ArtifactProjectionSourcePort)
+	if !ok || s.sessionStore == nil || len(entries) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		ids = append(ids, entry.ConversationID)
+	}
+	_, byConversation, err := s.listCanonicalInteractionIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	firstIDs := firstCanonicalInteractionIDs(byConversation)
+	if len(firstIDs) == 0 {
+		return nil
+	}
+	result, err := source.LoadArtifactProjection(ctx, iprojectionsource.Query{
+		Scope: scope, InteractionIDs: firstIDs,
+		ArtifactTypes: []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult},
+		Limit:         selectedSummaryCandidateLimit(len(firstIDs)),
+	})
+	if err != nil {
+		return err
+	}
+	if result.Truncated {
+		metadata.addReason("artifact_projection_scan_cap_reached")
+	}
+	previews := evidencevo.BuildInteractionTerminalPreviews(result.Artifacts)
+	for index := range entries {
+		if first, found := firstCanonicalInteraction(byConversation[entries[index].ConversationID]); found {
+			preview := previews[first.ID]
+			entries[index].QuestionPreview = preview.QuestionPreview
+			entries[index].ResultPreview = preview.ResultPreview
+		}
+	}
+	return nil
+}
+
+func matchesConversationKeyword(entry evidencevo.ConversationSummary, requests []evidencevo.RequestSummary, keyword string) bool {
+	keyword = strings.ToLower(keyword)
+	haystack := strings.ToLower(strings.Join([]string{entry.ConversationID, entry.QuestionPreview, entry.ResultPreview, entry.AgentOrApp, entry.AgentName, entry.ApplicationPrincipalID, entry.EffectiveSubjectID}, "\n"))
+	if strings.Contains(haystack, keyword) {
+		return true
+	}
+	// Preserve existing request/interaction ID, business reference and error
+	// keyword matches without discarding other rounds before aggregation.
+	for _, request := range requests {
+		if matchesRequestFilters(request, evidencevo.SummaryQueryOptions{Keyword: keyword}) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) ListInteractions(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.InteractionSummaryPage, error) {
