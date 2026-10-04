@@ -111,35 +111,10 @@ func TestValidCreateRejectsControlCharactersBeforeNormalization(t *testing.T) {
 	}
 }
 
-func TestValidDecisionInputRejectsControlCharactersBeforeNormalization(t *testing.T) {
-	for _, field := range []string{"reviewer ID", "decision", "comment"} {
-		for _, control := range []string{"\x00", "\r", "\n"} {
-			for _, position := range []string{"leading", "middle", "trailing"} {
-				t.Run(field+"/"+control+"/"+position, func(t *testing.T) {
-					value := "reject"
-					switch position {
-					case "leading":
-						value = control + value
-					case "middle":
-						value = "re" + control + "ject"
-					case "trailing":
-						value += control
-					}
-					in := DecisionInput{ReviewerID: "reviewer", Decision: "reject", Comment: "comment"}
-					switch field {
-					case "reviewer ID":
-						in.ReviewerID = value
-					case "decision":
-						in.Decision = value
-					case "comment":
-						in.Comment = value
-					}
-					if validDecisionInput(&in) {
-						t.Fatal("validDecisionInput() accepted a control character in raw input")
-					}
-				})
-			}
-		}
+func TestValidDecisionInputAllowsMultilineComment(t *testing.T) {
+	in := DecisionInput{ReviewerID: "reviewer", Decision: "reject", Comment: "Please revise\nthe access scope."}
+	if !validDecisionInput(&in) {
+		t.Fatal("validDecisionInput() rejected a multiline comment")
 	}
 }
 

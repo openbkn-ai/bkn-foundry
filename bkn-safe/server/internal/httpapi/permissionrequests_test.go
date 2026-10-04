@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
 )
+
+type permissionRequestLivenessRecorder struct{ calls int }
+
+func (r *permissionRequestLivenessRecorder) Exists(context.Context, string, string) (bool, error) {
+	r.calls++
+	return false, nil
+}
 
 func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -85,11 +93,15 @@ func TestCreatePermissionRequestRejectsResourceControlCharacters(t *testing.T) {
 
 					router := gin.New()
 					router.Use(func(c *gin.Context) { c.Set(ctxAccessorID, "requester") })
-					registerPublicPermissionRequests(router.Group("/api/safe/v1"), permissionrequest.New(nil, nil))
+					liveness := &permissionRequestLivenessRecorder{}
+					registerPublicPermissionRequests(router.Group("/api/safe/v1"), permissionrequest.New(nil, nil, liveness))
 					response := httptest.NewRecorder()
 					router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/safe/v1/permission-requests", bytes.NewReader(payload)))
 					if response.Code != http.StatusBadRequest {
 						t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusBadRequest, response.Body.String())
+					}
+					if liveness.calls != 0 {
+						t.Fatalf("resource liveness checks = %d, want 0", liveness.calls)
 					}
 				})
 			}

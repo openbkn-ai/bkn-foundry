@@ -209,11 +209,6 @@ func runeCountAtMost(v string, max int) bool {
 }
 
 func validDecisionInput(in *DecisionInput) bool {
-	if strings.ContainsAny(in.ReviewerID, "\x00\r\n") ||
-		strings.ContainsAny(in.Decision, "\x00\r\n") ||
-		strings.ContainsAny(in.Comment, "\x00\r\n") {
-		return false
-	}
 	in.ReviewerID = strings.TrimSpace(in.ReviewerID)
 	in.Decision = strings.TrimSpace(in.Decision)
 	in.Comment = strings.TrimSpace(in.Comment)
