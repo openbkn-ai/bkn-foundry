@@ -647,6 +647,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	var args map[string]any
 	_ = json.Unmarshal(input, &args)
 	kn, _ := args["kn_id"].(string)
+	toolbox, _ := args["toolbox_id"].(string)
 	ot, _ := args["ot_id"].(string)
 	metric, _ := args["metric_id"].(string)
 	// Header-resolved network may not be repeated in the raw input. A known
@@ -693,7 +694,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	}
 	if f.CapabilityProfile != nil && f.CapabilityProfile.EvidenceContract == "managed_function_execution/v1" {
 		for ref := range refs {
-			if matchesFunctionBusinessRef(ref, kn, f.ToolName) {
+			if matchesFunctionBusinessRef(ref, kn, toolbox, f.ToolName) {
 				return true, nil
 			}
 		}
@@ -721,12 +722,12 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 // the historical four-segment contract written by older managed-function
 // producers. The compatibility is read-only: new producers still emit the
 // canonical function:<kn_id>:<tool_id> form.
-func matchesFunctionBusinessRef(ref, kn, tool string) bool {
+func matchesFunctionBusinessRef(ref, kn, toolbox, tool string) bool {
 	parts := strings.Split(ref, ":")
 	if len(parts) == 3 && parts[0] == "function" && parts[1] != "" && parts[2] == tool {
 		return kn == "" || parts[1] == kn
 	}
-	return len(parts) == 4 && parts[0] == "function" && parts[1] != "" && parts[2] != "" && parts[3] == tool && (kn == "" || parts[1] == kn)
+	return len(parts) == 4 && parts[0] == "function" && parts[1] != "" && parts[2] != "" && parts[3] == tool && kn != "" && toolbox != "" && parts[1] == kn && parts[2] == toolbox
 }
 
 func historicalFunctionRefShape(ref sessionvo.BusinessRef) bool {
