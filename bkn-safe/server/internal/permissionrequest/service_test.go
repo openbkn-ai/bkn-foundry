@@ -80,6 +80,17 @@ func TestPermissionRequestTextUnicodeBoundaries(t *testing.T) {
 	}
 }
 
+func TestRequestPageOrderDoesNotUseClientSortText(t *testing.T) {
+	page := normalizePage(PageOptions{
+		Sort:      "created_at DESC; DROP TABLE permission_request",
+		Direction: "DESC; DROP TABLE permission_request",
+	})
+	order := requestPageOrder("permission_request", page)
+	if order.Column.Table != "permission_request" || order.Column.Name != "created_at" || !order.Desc {
+		t.Fatalf("unexpected structural order: %#v", order)
+	}
+}
+
 func TestValidCreateRejectsControlCharactersBeforeNormalization(t *testing.T) {
 	for _, field := range []string{"resource type", "resource ID", "resource name"} {
 		for _, control := range []string{"\x00", "\r", "\n"} {

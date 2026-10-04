@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
 )
@@ -47,16 +48,16 @@ func NewHTTPResourceLivenessResolver(bknBackend, executionFactory, vegaBackend c
 	if err := resolver.add(bknBackend, "bkn backend", "knowledge_network", "/api/bkn-backend/in/v1/knowledge-networks/"); err != nil {
 		return nil, err
 	}
-	base, err := url.ParseRequestURI(bknBackend.BaseURL)
-	if err != nil || base.Scheme == "" || base.Host == "" {
-		return nil, fmt.Errorf("invalid bkn backend base URL")
+	base, err := internalBaseURL(bknBackend.BaseURL, "bkn backend")
+	if err != nil {
+		return nil, err
 	}
 	if bknBackend.Timeout <= 0 {
 		return nil, fmt.Errorf("bkn backend timeout must be positive")
 	}
 	base.Path = strings.TrimRight(base.Path, "/") + "/api/bkn-backend/in/v1/authorization-resources"
 	resolver.authorizationURL = base.String()
-	resolver.authorizationClient = &http.Client{Timeout: bknBackend.Timeout}
+	resolver.authorizationClient = internalHTTPClient(bknBackend.Timeout)
 	if err := resolver.add(vegaBackend, "vega backend", "catalog", "/api/vega-backend/in/v1/catalogs/"); err != nil {
 		return nil, err
 	}
@@ -69,31 +70,64 @@ func NewHTTPResourceLivenessResolver(bknBackend, executionFactory, vegaBackend c
 	if err := resolver.add(executionFactory, "execution factory", "mcp", "/api/agent-operator-integration/internal-v1/mcp/"); err != nil {
 		return nil, err
 	}
-	executionBase, err := url.ParseRequestURI(executionFactory.BaseURL)
-	if err != nil || executionBase.Scheme == "" || executionBase.Host == "" {
-		return nil, fmt.Errorf("invalid execution factory base URL")
+	executionBase, err := internalBaseURL(executionFactory.BaseURL, "execution factory")
+	if err != nil {
+		return nil, err
 	}
 	if executionFactory.Timeout <= 0 {
 		return nil, fmt.Errorf("execution factory timeout must be positive")
 	}
 	executionBase.Path = strings.TrimRight(executionBase.Path, "/") + "/api/agent-operator-integration/internal-v1/authorization-resources"
 	resolver.executionAuthorizationURL = executionBase.String()
-	resolver.executionAuthorizationClient = &http.Client{Timeout: executionFactory.Timeout}
+	resolver.executionAuthorizationClient = internalHTTPClient(executionFactory.Timeout)
 	return resolver, nil
 }
 
 func (r *httpResourceLivenessResolver) add(upstream config.UpstreamConfig, service, resourceType, path string) error {
-	base, err := url.ParseRequestURI(upstream.BaseURL)
-	if err != nil || base.Scheme == "" || base.Host == "" {
-		return fmt.Errorf("invalid %s base URL", service)
+	base, err := internalBaseURL(upstream.BaseURL, service)
+	if err != nil {
+		return err
 	}
 	if upstream.Timeout <= 0 {
 		return fmt.Errorf("%s timeout must be positive", service)
 	}
 	base.Path = strings.TrimRight(base.Path, "/") + path
 	r.endpoints[resourceType] = base.String()
-	r.clients[resourceType] = &http.Client{Timeout: upstream.Timeout}
+	r.clients[resourceType] = internalHTTPClient(upstream.Timeout)
 	return nil
+}
+
+// internalBaseURL accepts a deployment-owned upstream origin only. Resource
+// identifiers are appended later as one escaped path segment and can never
+// select a scheme, host, query, or fragment.
+func internalBaseURL(raw, service string) (*url.URL, error) {
+	base, err := url.ParseRequestURI(raw)
+	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+		return nil, fmt.Errorf("invalid %s base URL", service)
+	}
+	return base, nil
+}
+
+// Internal liveness checks never follow redirects. A resource identifier may
+// choose only the final path segment on the configured upstream origin.
+func internalHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+func livenessRequest(ctx context.Context, endpoint, resourceID string) (*http.Request, error) {
+	base, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	escapedBasePath := base.EscapedPath()
+	base.Path += resourceID
+	base.RawPath = escapedBasePath + url.PathEscape(resourceID)
+	return http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
 }
 
 func (r *httpResourceLivenessResolver) Exists(ctx context.Context, resourceType, resourceID string) (bool, error) {
@@ -107,7 +141,7 @@ func (r *httpResourceLivenessResolver) Exists(ctx context.Context, resourceType,
 	if !ok {
 		return false, ErrUnsupportedResourceType
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+url.PathEscape(resourceID), nil)
+	request, err := livenessRequest(ctx, endpoint, resourceID)
 	if err != nil {
 		return false, err
 	}
