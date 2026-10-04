@@ -991,6 +991,17 @@ func (s *Service) syncAllReviewers(ctx context.Context, db *gorm.DB, req *model.
 // to enumerate requests: when a user opens the todo list, all active requests
 // are refreshed for that user.
 func (s *Service) syncReviewerInbox(ctx context.Context, reviewerID string) error {
+	eligibleAccount, err := s.isEligibleReviewerAccount(ctx, s.db, reviewerID)
+	if err != nil {
+		return err
+	}
+	if !eligibleAccount {
+		// Keep an old materialized row for audit, but make it non-actionable if
+		// the account was disabled or changed to a non-person account type.
+		return s.db.WithContext(ctx).Model(&model.PermissionRequestReviewer{}).
+			Where("reviewer_id = ? AND eligibility_status = ?", reviewerID, ReviewerActive).
+			Update("eligibility_status", ReviewerRevoked).Error
+	}
 	var requests []model.PermissionRequest
 	if err := s.db.WithContext(ctx).Where("status IN ? AND requester_id <> ?", []string{StatusPending, StatusNoReviewer}, reviewerID).Find(&requests).Error; err != nil {
 		return err
@@ -1025,9 +1036,33 @@ func (s *Service) SyncReviewerInbox(ctx context.Context, reviewerID string) erro
 	return s.syncReviewerInbox(ctx, reviewerID)
 }
 
+// isEligibleReviewerAccount verifies the directory identity that is behind a
+// reviewer ID. Authorization alone is insufficient here: application and
+// contact accounts may hold resource permissions, but are never people who
+// can participate in an approval workflow.
+func (s *Service) isEligibleReviewerAccount(ctx context.Context, db *gorm.DB, reviewerID string) (bool, error) {
+	reviewerID = strings.TrimSpace(reviewerID)
+	if reviewerID == "" || len(reviewerID) > 64 {
+		return false, nil
+	}
+	var user model.User
+	err := db.WithContext(ctx).First(&user, "id = ?", reviewerID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return user.Enabled && user.AccountType != model.AccountTypeApp && user.AccountType != model.AccountTypeContactor, nil
+}
+
 func (s *Service) canReview(ctx context.Context, reviewer string, req *model.PermissionRequest) (bool, error) {
 	if reviewer == "" || reviewer == req.RequesterID {
 		return false, nil
+	}
+	eligibleAccount, err := s.isEligibleReviewerAccount(ctx, s.db, reviewer)
+	if err != nil || !eligibleAccount {
+		return false, err
 	}
 	admin, err := s.enforcer.CheckContext(ctx, reviewer, "admin-authz", "*", "grant")
 	if err != nil || admin {
@@ -1595,8 +1630,15 @@ func (s *Service) GetTodoSummary(ctx context.Context, reviewer string) (TodoSumm
 	if reviewer == "" || len(reviewer) > 64 {
 		return TodoSummary{}, ErrInvalidRequest
 	}
+	eligibleAccount, err := s.isEligibleReviewerAccount(ctx, s.db, reviewer)
+	if err != nil {
+		return TodoSummary{}, err
+	}
+	if !eligibleAccount {
+		return TodoSummary{}, nil
+	}
 	var result TodoSummary
-	err := s.db.WithContext(ctx).Model(&model.PermissionRequest{}).
+	err = s.db.WithContext(ctx).Model(&model.PermissionRequest{}).
 		Select("COUNT(*) AS pending_count").
 		Joins("JOIN permission_request_reviewer r ON r.request_id = permission_request.id").
 		Where("r.reviewer_id = ? AND r.eligibility_status = ? AND permission_request.status = ?", reviewer, ReviewerActive, StatusPending).
@@ -1610,8 +1652,15 @@ func (s *Service) GetTodoSummary(ctx context.Context, reviewer string) (TodoSumm
 // authorization so a revoked grant cannot leave a stale actionable todo.
 func (s *Service) ListTodoPage(ctx context.Context, reviewer string, page PageOptions) (RequestPage, error) {
 	page = normalizePage(page)
+	eligibleAccount, err := s.isEligibleReviewerAccount(ctx, s.db, reviewer)
+	if err != nil {
+		return RequestPage{}, err
+	}
 	if err := s.syncReviewerInbox(ctx, reviewer); err != nil {
 		return RequestPage{}, err
+	}
+	if !eligibleAccount {
+		return RequestPage{}, nil
 	}
 	q := s.db.WithContext(ctx).Model(&model.PermissionRequest{}).
 		Joins("JOIN permission_request_reviewer r ON r.request_id = permission_request.id").
@@ -1622,7 +1671,7 @@ func (s *Service) ListTodoPage(ctx context.Context, reviewer string, page PageOp
 	if err := q.Count(&result.TotalCount).Error; err != nil {
 		return result, err
 	}
-	err := q.Order("permission_request." + page.Sort + " " + page.Direction).Limit(page.Limit).Offset(page.Offset).Find(&result.Entries).Error
+	err = q.Order("permission_request." + page.Sort + " " + page.Direction).Limit(page.Limit).Offset(page.Offset).Find(&result.Entries).Error
 	if err != nil {
 		return result, err
 	}

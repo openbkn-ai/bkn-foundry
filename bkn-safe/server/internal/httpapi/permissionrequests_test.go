@@ -29,11 +29,13 @@ func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 	for _, testCase := range []struct {
 		name   string
 		err    error
+		status int
 		reason string
 	}{
-		{name: "permission already granted", err: permissionrequest.ErrPermissionAlreadyGranted, reason: "permission_already_granted"},
-		{name: "missing prerequisite", err: permissionrequest.ErrPrerequisiteMissing, reason: "missing_prerequisite"},
-		{name: "resource deleted", err: permissionrequest.ErrResourceDeleted, reason: "resource_deleted"},
+		{name: "permission already granted", err: permissionrequest.ErrPermissionAlreadyGranted, status: http.StatusConflict, reason: "permission_already_granted"},
+		{name: "missing prerequisite", err: permissionrequest.ErrPrerequisiteMissing, status: http.StatusConflict, reason: "missing_prerequisite"},
+		{name: "resource deleted", err: permissionrequest.ErrResourceDeleted, status: http.StatusConflict, reason: "resource_deleted"},
+		{name: "forbidden reviewer", err: permissionrequest.ErrForbidden, status: http.StatusForbidden},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			router := gin.New()
@@ -45,22 +47,28 @@ func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/permission-requests", nil))
-			if response.Code != http.StatusConflict {
-				t.Fatalf("status = %d, want %d", response.Code, http.StatusConflict)
+			if response.Code != testCase.status {
+				t.Fatalf("status = %d, want %d", response.Code, testCase.status)
 			}
 
 			var body struct {
-				ErrorCode    string         `json:"error_code"`
-				ErrorDetails map[string]any `json:"error_details"`
+				ErrorCode    string          `json:"error_code"`
+				ErrorDetails json.RawMessage `json:"error_details"`
 			}
 			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 				t.Fatalf("decode response: %v", err)
 			}
-			if body.ErrorCode != "BknSafe.Conflict" {
+			if testCase.status == http.StatusConflict && body.ErrorCode != "BknSafe.Conflict" {
 				t.Errorf("error_code = %q, want BknSafe.Conflict", body.ErrorCode)
 			}
-			if body.ErrorDetails["reason"] != testCase.reason {
-				t.Errorf("error_details.reason = %q, want %q", body.ErrorDetails["reason"], testCase.reason)
+			if testCase.reason != "" {
+				var details map[string]any
+				if err := json.Unmarshal(body.ErrorDetails, &details); err != nil {
+					t.Fatalf("decode error details: %v", err)
+				}
+				if details["reason"] != testCase.reason {
+					t.Errorf("error_details.reason = %q, want %q", details["reason"], testCase.reason)
+				}
 			}
 		})
 	}
