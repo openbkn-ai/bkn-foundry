@@ -90,8 +90,12 @@ func newConfirmationFixture(t *testing.T, overrides ...*sessionvo.CapabilityProf
 	if len(overrides) > 0 {
 		profile = overrides[0]
 	}
+	toolName := "list_knowledge_networks"
+	if profile != nil {
+		toolName = profile.CanonicalToolName
+	}
 	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
-		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID, OperationKey: "confirmation-call", ToolName: profile.CanonicalToolName,
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID, OperationKey: "confirmation-call", ToolName: toolName,
 		Input: operationInput("confirmation"), Required: true, CapabilityProfile: profile, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -692,6 +696,41 @@ func TestReceiptOnlyContractsAllowClosedEmptySet(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestUnprofiledManagedRESTCallAllowsClosedEmptyEvidenceSet(t *testing.T) {
+	f := newConfirmationFixture(t, nil)
+	command := withConfirmationExpectation(t, f.finish)
+	command.EvidenceDurability = sessionvo.DurabilityDurable
+	if _, _, err := f.service.CompleteOperationAttempt(context.Background(), command); err != nil {
+		t.Fatal(err)
+	}
+	receipt := confirmationReceipt(t, f)
+	if receipt.Status != sessionvo.ReceiptCompleted || receipt.EvidenceDurability != sessionvo.DurabilityDurable || len(receipt.PartialReasons) != 0 {
+		t.Fatalf("unprofiled REST success falsely rejected: %#v", receipt)
+	}
+}
+
+func TestUnprofiledManagedRESTCallStillConfirmsPlannedEvents(t *testing.T) {
+	for _, stored := range []bool{false, true} {
+		t.Run(map[bool]string{false: "missing", true: "stored"}[stored], func(t *testing.T) {
+			f := newConfirmationFixture(t, nil)
+			event := f.event(t, "rest-planned-event")
+			want := sessionvo.DurabilityPending
+			if stored {
+				f.store.events[event.EventID] = event
+				want = sessionvo.DurabilityDurable
+			}
+			command := withConfirmationExpectation(t, f.finish, expectedConfirmationEvent(event, "accepted"))
+			command.EvidenceDurability = sessionvo.DurabilityDurable
+			if _, _, err := f.service.CompleteOperationAttempt(context.Background(), command); err != nil {
+				t.Fatal(err)
+			}
+			if receipt := confirmationReceipt(t, f); receipt.EvidenceDurability != want {
+				t.Fatalf("unprofiled planned evidence bypassed confirmation: %#v", receipt)
+			}
+		})
 	}
 }
 func TestFailedDataContractEmptySetSelfRecordsFailure(t *testing.T) {

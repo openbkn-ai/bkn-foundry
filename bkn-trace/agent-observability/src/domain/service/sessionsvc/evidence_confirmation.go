@@ -52,6 +52,12 @@ func invalidEvidenceExpectation(expectation *sessionvo.EvidenceExpectation, fact
 		return "evidence_expectation_invalid"
 	}
 	if len(expectation.Events) == 0 {
+		// Managed REST calls have no registered capability profile. Their
+		// closed empty set adds no event requirement to the durable receipt.
+		// Nonempty sets still go through the same Ledger confirmation below.
+		if fact.CapabilityProfile == nil {
+			return ""
+		}
 		if receiptOnlyEvidenceContract(fact.CapabilityProfile) {
 			return ""
 		}
