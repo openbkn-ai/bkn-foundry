@@ -1,8 +1,8 @@
 name: release-infra-model-factory-base
 
 # Shared base image for mf-model-api / mf-model-manager.
-# Tagged with a stable tag (v2), not the repo VERSION: the two service Dockerfiles
-# pin `FROM ghcr.io/<owner>/model-factory-base:v2`. Rebuilt only when its files change.
+# Tagged with a stable tag (v3), not the repo VERSION. Service consumers remain
+# on v2 until a separate consumer-image update. Rebuilt only when its files change.
 
 on:
   push:
@@ -32,5 +32,5 @@ jobs:
       dockerfile: Dockerfile
       context: '.'
       image-name: model-factory-base
-      version: v2
+      version: v3
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
