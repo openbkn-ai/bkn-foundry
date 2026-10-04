@@ -4,6 +4,20 @@ import re
 from app.commons.get_user_info import get_userid_by_search, get_username_by_ids
 from app.dao.llm_model_dao import llm_model_dao
 import hashlib
+import hmac
+import os
+
+
+_CREDENTIAL_DIGEST_KEY = os.environ.get("BKN_CREDENTIAL_DIGEST_KEY", "")
+
+
+def _credential_digest(value):
+    """Return a stable keyed digest for a credential displayed to clients."""
+    if not _CREDENTIAL_DIGEST_KEY:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+    return hmac.new(
+        _CREDENTIAL_DIGEST_KEY.encode("utf-8"), value.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
 async def reshape_source(result, total):
@@ -53,13 +67,9 @@ def reshape_check(result):
     if result["model_parameters"] is None:
         result.pop("model_parameters")
     if "api_key" in result["model_config"].keys() and result["model_config"]["api_key"] != "":
-        m = hashlib.new("md5")
-        m.update(bytes(result["model_config"]["api_key"], encoding="utf8"))
-        result["model_config"]["api_key"] = m.hexdigest()
+        result["model_config"]["api_key"] = _credential_digest(result["model_config"]["api_key"])
     if "secret_key" in result["model_config"].keys() and result["model_config"]["secret_key"] != "":
-        m = hashlib.new("md5")
-        m.update(bytes(result["model_config"]["secret_key"], encoding="utf8"))
-        result["model_config"]["secret_key"] = m.hexdigest()
+        result["model_config"]["secret_key"] = _credential_digest(result["model_config"]["secret_key"])
     return result
 
 
