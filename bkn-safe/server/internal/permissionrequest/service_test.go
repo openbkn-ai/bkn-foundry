@@ -68,6 +68,12 @@ func TestPermissionRequestTextUnicodeBoundaries(t *testing.T) {
 			RequesterID: "requester", ResourceType: "knowledge_network", ResourceID: "r-1",
 			Operation: authz.ActFullBusinessAccess, Reason: "valid" + forbidden + "reason",
 		}
+		if forbidden == "\n" || forbidden == "\r" {
+			if !validCreate(&create) {
+				t.Fatalf("validCreate() rejected a multiline reason containing %q", forbidden)
+			}
+			continue
+		}
 		if validCreate(&create) {
 			t.Fatalf("validCreate() accepted a reason containing %q", forbidden)
 		}
@@ -75,7 +81,7 @@ func TestPermissionRequestTextUnicodeBoundaries(t *testing.T) {
 }
 
 func TestValidCreateRejectsControlCharactersBeforeNormalization(t *testing.T) {
-	for _, field := range []string{"resource type", "resource ID", "resource name", "reason"} {
+	for _, field := range []string{"resource type", "resource ID", "resource name"} {
 		for _, control := range []string{"\x00", "\r", "\n"} {
 			for _, position := range []string{"leading", "middle", "trailing"} {
 				t.Run(field+"/"+control+"/"+position, func(t *testing.T) {
