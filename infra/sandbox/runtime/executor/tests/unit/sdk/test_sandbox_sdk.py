@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 import sandbox_sdk  # noqa: E402
 from sandbox_sdk import Context, tool  # noqa: E402
+from sandbox_sdk import _bkn_tools  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -177,6 +178,119 @@ class TestDispatch:
             return {"msg": greeting + ", " + ctx.user_name, "uid": ctx.user_id}
 
         assert sandbox_sdk.dispatch({"greeting": "hi"}) == {"msg": "hi, cx", "uid": "u_1"}
+
+
+class TestBknToolsMcpDecoding:
+    @pytest.fixture(autouse=True)
+    def clean_trace_gaps(self):
+        _bkn_tools._TRACE_GAPS.clear()
+        yield
+        _bkn_tools._TRACE_GAPS.clear()
+
+    def test_trace_diagnostic_content_does_not_break_business_json(self, monkeypatch):
+        """Regression fixture from the real Core-down run_cypher response."""
+        business_text = (
+            '{"columns":[{"name":"product_count","type":"integer"}],'
+            '"entries":[{"product_count":30}]}'
+        )
+        diagnostic_text = (
+            '[BKN_TRACE]{"bkn_trace":{"available":false,"recorded":false,'
+            '"stage":"ensure_operation","code":"trace_core_unavailable",'
+            '"required_action":"continue_business_without_trace_retry",'
+            '"partial_reasons":["trace_call_unrecorded:run_cypher:'
+            'req_92343e69-c464-49e9-86b8-a3cc2aba92d9"]}}'
+        )
+        response = {
+            "result": {
+                "content": [
+                    {"type": "text", "text": business_text},
+                    {"type": "text", "text": diagnostic_text},
+                ]
+            }
+        }
+        monkeypatch.setattr(_bkn_tools, "_ensure_session", lambda: None)
+        monkeypatch.setattr(_bkn_tools, "_rpc", lambda *args, **kwargs: response)
+
+        assert _bkn_tools._call("run_cypher", {}) == {
+            "columns": [{"name": "product_count", "type": "integer"}],
+            "entries": [{"product_count": 30}],
+        }
+
+    def test_trace_diagnostic_preserves_bounded_partial_reason_marker(self, monkeypatch, capsys):
+        diagnostic_text = (
+            '[BKN_TRACE]{"bkn_trace":{"partial_reasons":['
+            '"trace_call_unrecorded:run_cypher:req_1", "bad reason"]}}'
+        )
+        response = {
+            "result": {
+                "content": [
+                    {"type": "text", "text": '{"ok":true}'},
+                    {"type": "text", "text": diagnostic_text},
+                ]
+            }
+        }
+        monkeypatch.setattr(_bkn_tools, "_ensure_session", lambda: None)
+        monkeypatch.setattr(_bkn_tools, "_rpc", lambda *args, **kwargs: response)
+
+        assert _bkn_tools._call("run_cypher", {}) == {"ok": True}
+        marker = '[BKN_TRACE_GAP]{"partial_reason":"trace_call_unrecorded:run_cypher:req_1"}'
+        assert marker in capsys.readouterr().err
+
+    def test_trace_diagnostic_does_not_hide_business_error(self, monkeypatch):
+        response = {
+            "result": {
+                "isError": True,
+                "content": [
+                    {"type": "text", "text": '{"error":"business failed"}'},
+                    {"type": "text", "text": '[BKN_TRACE]{"bkn_trace":{"partial_reasons":[]}}'},
+                ],
+            }
+        }
+        monkeypatch.setattr(_bkn_tools, "_ensure_session", lambda: None)
+        monkeypatch.setattr(_bkn_tools, "_rpc", lambda *args, **kwargs: response)
+
+        with pytest.raises(_bkn_tools.ToolError, match="business failed"):
+            _bkn_tools._call("run_cypher", {})
+
+    def test_trace_diagnostic_keeps_toon_business_text(self, monkeypatch):
+        response = {
+            "result": {
+                "content": [
+                    {"type": "text", "text": "product_count\t30\n"},
+                    {"type": "text", "text": '[BKN_TRACE]{"bkn_trace":{}}'},
+                ]
+            }
+        }
+        monkeypatch.setattr(_bkn_tools, "_ensure_session", lambda: None)
+        monkeypatch.setattr(_bkn_tools, "_rpc", lambda *args, **kwargs: response)
+
+        assert _bkn_tools._call("run_cypher", {}) == "product_count\t30\n"
+
+    def test_malformed_trace_diagnostic_remains_business_text(self, monkeypatch):
+        response = {
+            "result": {
+                "content": [
+                    {"type": "text", "text": '{"ok":true}'},
+                    {"type": "text", "text": "[BKN_TRACE]{bad}"},
+                ]
+            }
+        }
+        monkeypatch.setattr(_bkn_tools, "_ensure_session", lambda: None)
+        monkeypatch.setattr(_bkn_tools, "_rpc", lambda *args, **kwargs: response)
+
+        assert _bkn_tools._call("run_cypher", {}) == '{"ok":true}[BKN_TRACE]{bad}'
+
+    def test_configure_starts_each_execution_with_fresh_trace_gap_state(
+        self, tmp_path, monkeypatch
+    ):
+        _bkn_tools._TRACE_GAPS.add("trace_call_unrecorded:run_cypher:req_old")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(_bkn_tools.pathlib.Path, "mkdir", lambda *args, **kwargs: None)
+        monkeypatch.setattr(_bkn_tools.os, "chdir", lambda *_args: None)
+
+        _bkn_tools._configure({"bkn": {"conversation_id": "conv_new"}})
+
+        assert _bkn_tools._TRACE_GAPS == set()
 
 
 pydantic = pytest.importorskip("pydantic")

@@ -26,7 +26,156 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
+
+func TestRefreshLogsPolicyFailureWithoutSensitiveDetails(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &scriptedTransport{responses: map[string]scriptedResponse{
+		"https://safe.internal/policy": {status: http.StatusBadGateway, body: []byte(`{"token":"must-not-log"}`)},
+		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
+	}}
+	p, _ := newTestProcessor(t, Config{
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
+		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
+		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+	}, transport)
+	core, logs := observer.New(zap.InfoLevel)
+	setTestLogger(p, zap.New(core))
+	if err := p.refresh(context.Background()); err == nil {
+		t.Fatal("refresh unexpectedly succeeded")
+	}
+	entries := logs.All()
+	var policyLog *observer.LoggedEntry
+	for i := range entries {
+		if entries[i].ContextMap()["stage"] == "policy" {
+			policyLog = &entries[i]
+		}
+	}
+	if policyLog == nil || len(policyLog.Context) < 2 || policyLog.Context[1].Integer != http.StatusBadGateway {
+		t.Fatalf("unexpected control failure log: %+v", entries)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Message, "must-not-log") || strings.Contains(entry.Message, "secret") {
+			t.Fatalf("sensitive detail leaked into log: %+v", entry)
+		}
+	}
+}
+
+func TestRefreshLogsTokenFailure(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &scriptedTransport{responses: map[string]scriptedResponse{
+		"https://safe.internal/token": {status: http.StatusBadGateway, body: []byte(`{"access_token":"must-not-log"}`)},
+	}}
+	p, _ := newTestProcessor(t, Config{
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
+		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
+		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+	}, transport)
+	core, logs := observer.New(zap.InfoLevel)
+	setTestLogger(p, zap.New(core))
+	if err := p.refresh(context.Background()); err == nil {
+		t.Fatal("refresh unexpectedly succeeded")
+	}
+	entries := logs.All()
+	if len(entries) == 0 || entries[0].ContextMap()["stage"] != "token" || entries[0].Context[1].Integer != http.StatusBadGateway {
+		t.Fatalf("unexpected token failure log: %+v", entries)
+	}
+}
+
+func TestRefreshLogsHeartbeatAndAckFailures(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+		Revision: 42, TraceAdmission: traceadmissionsvc.ModeDisabled, EvidenceAdmission: traceadmissionsvc.ModeDisabled,
+		IssuedAt: time.Date(2026, 9, 25, 7, 59, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC), KeyID: "k1", Audience: "cluster-a",
+	}, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, heartbeatURL, ackURL string
+		wantStage                  string
+	}{
+		{name: "heartbeat", heartbeatURL: "https://safe.internal/heartbeat", wantStage: "heartbeat"},
+		{name: "ack", ackURL: "https://safe.internal/operations/", wantStage: "ack"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &scriptedTransport{responses: map[string]scriptedResponse{
+				"https://safe.internal/token":                {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
+				"https://safe.internal/policy":               {status: http.StatusOK, body: mustJSON(snapshot)},
+				"https://safe.internal/config":               {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
+				"https://safe.internal/heartbeat":            {status: http.StatusServiceUnavailable},
+				"https://safe.internal/operations/op-42:ack": {status: http.StatusServiceUnavailable},
+			}}
+			config := Config{
+				PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
+				HeartbeatURL: test.heartbeatURL, AckURLBase: test.ackURL,
+				ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
+				CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+			}
+			p, _ := newTestProcessor(t, config, transport)
+			core, logs := observer.New(zap.InfoLevel)
+			setTestLogger(p, zap.New(core))
+			if err := p.refresh(context.Background()); err == nil {
+				t.Fatal("refresh unexpectedly succeeded")
+			}
+			var found bool
+			for _, entry := range logs.All() {
+				if entry.ContextMap()["stage"] == test.wantStage && entry.Context[1].Integer == http.StatusServiceUnavailable {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("missing %s failure log: %+v", test.wantStage, logs.All())
+			}
+		})
+	}
+}
+
+func TestProcessorAutoAuthFallbackDoesNotWarnOnBasicProbe(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+		Revision: 42, TraceAdmission: traceadmissionsvc.ModeDisabled, EvidenceAdmission: traceadmissionsvc.ModeDisabled,
+		IssuedAt: time.Date(2026, 9, 25, 7, 59, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC), KeyID: "k1", Audience: "cluster-a",
+	}, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &scriptedTransport{rejectBasicToken: true, responses: map[string]scriptedResponse{
+		"https://safe.internal/policy": {status: http.StatusOK, body: mustJSON(snapshot)},
+		"https://safe.internal/config": {status: http.StatusOK, body: frozenConfigurationBody(42, "")},
+		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
+	}}
+	p, _ := newTestProcessor(t, Config{
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
+		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
+		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+	}, transport)
+	core, logs := observer.New(zap.InfoLevel)
+	setTestLogger(p, zap.New(core))
+	if err := p.refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(logs.All()) != 0 {
+		t.Fatalf("normal auth-style fallback emitted failure logs: %+v", logs.All())
+	}
+	if len(transport.requests) != 4 {
+		t.Fatalf("request count = %d, want Basic token probe + POST token + policy + config", len(transport.requests))
+	}
+}
 
 func TestProcessorUsesFrozenPolicySnapshotAndFailsClosedForLegacyField(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -339,6 +488,10 @@ func newTestProcessor(t *testing.T, config Config, transport *scriptedTransport)
 	return p, &forwarded
 }
 
+func setTestLogger(p *traceAdmissionProcessor, logger *zap.Logger) {
+	p.logger = logger
+}
+
 func testTraces(spans int) ptrace.Traces {
 	traces := ptrace.NewTraces()
 	ss := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty()
@@ -354,9 +507,10 @@ type scriptedResponse struct {
 }
 
 type scriptedTransport struct {
-	responses map[string]scriptedResponse
-	requests  []*http.Request
-	bodies    map[string][]byte
+	responses        map[string]scriptedResponse
+	rejectBasicToken bool
+	requests         []*http.Request
+	bodies           map[string][]byte
 }
 
 func (s *scriptedTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -369,6 +523,9 @@ func (s *scriptedTransport) RoundTrip(request *http.Request) (*http.Response, er
 		body, _ = io.ReadAll(request.Body)
 	}
 	s.bodies[request.URL.Path] = body
+	if s.rejectBasicToken && request.URL.Path == "/token" && request.Header.Get("Authorization") != "" {
+		return &http.Response{StatusCode: http.StatusUnauthorized, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader([]byte(`{"error":"invalid_client"}`))), Request: request}, nil
+	}
 	response, ok := s.responses[request.URL.String()]
 	if !ok {
 		response = s.responses[request.URL.Scheme+"://"+request.URL.Host+request.URL.Path]

@@ -74,8 +74,7 @@ func TestPTCWorkdirMatchesStubRule(t *testing.T) {
 		want         string
 	}{
 		{"conv_3767f54b17db900b31e554d2e9103cb6", "/workspace/conv-conv_3767f54b17db900b31e554d2e9103cb6"},
-		{"", "/workspace/shared"},
-		{"  ", "/workspace/shared"},
+
 		// Normalization: The path separator and other characters must be replaced by -, and conversation_id cannot escape from the directory.
 		{"../../etc/passwd", "/workspace/conv-------etc-passwd"},
 		{"a/b", "/workspace/conv-a-b"},
@@ -98,8 +97,8 @@ func TestPTCWorkdirMatchesStubRule(t *testing.T) {
 	}
 
 	// When you cannot get bkn_context, you cannot panic and retreat to the shared directory.
-	if got := ptcWorkdir(nil); got != "/workspace/shared" {
-		t.Fatalf("空上下文应退到 shared，得到 %s", got)
+	if got := ptcWorkdir(nil); !strings.HasPrefix(got, "/workspace/adhoc-") {
+		t.Fatalf("空上下文必须隔离，得到 %s", got)
 	}
 }
 
@@ -334,11 +333,11 @@ func TestPTCSchemaRequiresBusinessContext(t *testing.T) {
 				found = true
 			}
 		}
-		if !found {
-			t.Fatalf("%s: bkn_context 应为必填，required=%v", tool.Name, required)
+		if found {
+			t.Fatalf("%s: bkn_context 不得阻止业务，required=%v", tool.Name, required)
 		}
 		// The original required fields cannot be deleted.
-		if tool.Name == "run_code" && len(required) < 2 {
+		if tool.Name == "run_code" && (len(required) != 1 || required[0] != "code") {
 			t.Fatalf("run_code 的 code 必填项丢了: %v", required)
 		}
 	}

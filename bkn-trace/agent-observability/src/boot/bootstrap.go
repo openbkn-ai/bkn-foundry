@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/captureadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturecontrollersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysnapshot"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
@@ -149,15 +150,25 @@ func NewApp() (*App, error) {
 	var capturePolicyReader capturepolicysvc.Reader
 	var capturePolicyCommander capturepolicysvc.Commander
 	var captureController *capturecontrollersvc.Controller
+	// Durable policy must be read successfully before Core admits a new write.
+	// The memory fallback below explicitly opens the local development store.
+	captureAdmission := captureadmission.New(0, string(capturepolicysvc.StateDisabled))
 	if durable, ok := sessionStore.(interface {
 		ReadCapturePolicySnapshot(context.Context) (capturepolicysvc.Snapshot, error)
 	}); ok {
 		capturePolicyReader = capturepolicysvc.ReaderFunc(durable.ReadCapturePolicySnapshot)
+		if snapshot, readErr := capturePolicyReader.Read(context.Background()); readErr == nil {
+			captureAdmission.Update(snapshot.Revision, string(snapshot.DesiredState))
+		}
 		if maria, ok := sessionStore.(*mariadbsessionstore.Store); ok {
 			captureController, err = capturecontrollersvc.New(capturecontrollersvc.Options{
 				Store: maria, WorkerID: "agent-observability-control-controller",
 				Lease: 30 * time.Second, Convergence: 10 * time.Minute,
 				OnTerminal: func(_ context.Context, event capturecontrollersvc.TerminalEvent) { captureAudit.terminal(event) },
+				OnState: func(state icapturepolicy.ControlState) {
+					captureAdmission.Update(state.CurrentRevision, state.DesiredState)
+				},
+				RequiredEndpointKinds: []string{icapturepolicy.EndpointTraceGateway, icapturepolicy.EndpointEvidencePublisher},
 			})
 			if err != nil {
 				if closeDatabase != nil {
@@ -174,7 +185,11 @@ func NewApp() (*App, error) {
 			Operation: capturepolicysvc.Operation{ID: "bootstrap", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled, ExpectedRevision: 1},
 		})
 		capturePolicyReader = memoryCapturePolicyStore
-		capturePolicyCommander = memoryCapturePolicyStore
+		// The memory fallback has no controller callback. Seed the local view and
+		// mirror subsequent requests so development/test mode follows the same
+		// admission boundary as the durable store.
+		captureAdmission = captureadmission.NewStable(1, string(capturepolicysvc.StateEnabled))
+		capturePolicyCommander = memoryCapturePolicyCommander{store: memoryCapturePolicyStore, admission: captureAdmission}
 	}
 	var capturePolicyHandler *httphandler.CapturePolicyHandler
 	var capturePolicyWriter interface {
@@ -389,6 +404,7 @@ func NewApp() (*App, error) {
 		evidencesvc.WithSessionStore(sessionStore),
 		evidencesvc.WithCurrentRecordIntegrity(),
 		evidencesvc.WithTraceStatsSource(traceQueryService),
+		evidencesvc.WithCaptureAdmission(captureAdmission),
 	}
 	if resolver != nil {
 		evidenceOptions = append(evidenceOptions, evidencesvc.WithBusinessResolver(resolver))
@@ -469,7 +485,8 @@ func NewApp() (*App, error) {
 			}
 			return coreConfig.EvidenceCollectionState
 		},
-		Metrics: metrics,
+		CaptureAdmission: captureAdmission,
+		Metrics:          metrics,
 	}
 	if historicalProvenanceEnabled {
 		if len(coreConfig.ProjectionGrantPrivateKey) == 0 {
@@ -484,6 +501,7 @@ func NewApp() (*App, error) {
 		}
 	}
 	sessionService := sessionsvc.New(sessionStore, sessionOptions)
+	ledgerService.SetDurableObserver(sessionService.ReconcileEvidence)
 	archiveStore := archivesvc.NewMemoryStore()
 	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok {
 		archiveStore = archivestore.New(databaseStore.Database())
@@ -634,6 +652,19 @@ func NewApp() (*App, error) {
 	return app, nil
 }
 
+type memoryCapturePolicyCommander struct {
+	store     *capturepolicystore.Store
+	admission *captureadmission.View
+}
+
+func (c memoryCapturePolicyCommander) Request(ctx context.Context, request capturepolicysvc.ChangeRequest) (capturepolicysvc.Snapshot, error) {
+	snapshot, err := c.store.Request(ctx, request)
+	if err == nil {
+		c.admission.Update(snapshot.Revision, string(snapshot.DesiredState))
+	}
+	return snapshot, err
+}
+
 func assembleLogSources(runtimeSources []logsvc.Source, centerAuditSource logsvc.Source) []logsvc.Source {
 	sources := make([]logsvc.Source, 0, len(runtimeSources)+1)
 	if centerAuditSource != nil {
@@ -645,7 +676,9 @@ func assembleLogSources(runtimeSources []logsvc.Source, centerAuditSource logsvc
 
 func newCoreStores(config conf.CoreConfig) (isessionstore.Store, ievidenceledger.Store, func() error, error) {
 	if !strings.EqualFold(config.Store, "mariadb") {
-		return memorysessionstore.New(), ledgerstore.New(), nil, nil
+		sessions, ledger := memorysessionstore.New(), ledgerstore.New()
+		sessions.SetEvidenceReader(ledger.ReadEvidenceEventsByIDs)
+		return sessions, ledger, nil, nil
 	}
 	if config.MariaDBDSN == "" {
 		return nil, nil, nil, errors.New("BKN_TRACE_CORE_MARIADB_DSN is required when BKN_TRACE_CORE_STORE=mariadb")

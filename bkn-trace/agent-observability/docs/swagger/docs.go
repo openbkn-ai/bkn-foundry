@@ -3856,6 +3856,9 @@ const docTemplate = `{
                 "evidence_durability": {
                     "$ref": "#/definitions/sessionvo.EvidenceDurability"
                 },
+                "evidence_expectation": {
+                    "$ref": "#/definitions/sessionvo.EvidenceExpectation"
+                },
                 "observed_evidence_refs": {
                     "type": "array",
                     "items": {
@@ -4013,6 +4016,12 @@ const docTemplate = `{
                 },
                 "outcome": {
                     "type": "string"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "reason": {
                     "type": "string"
@@ -4793,6 +4802,35 @@ const docTemplate = `{
                 "ConversationExpired"
             ]
         },
+        "sessionvo.EvidenceCompletion": {
+            "type": "object",
+            "properties": {
+                "expectation": {
+                    "$ref": "#/definitions/sessionvo.EvidenceExpectation"
+                },
+                "original_durability": {
+                    "$ref": "#/definitions/sessionvo.EvidenceDurability"
+                },
+                "original_observed_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "original_partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "rejected_expectation_hash": {
+                    "type": "string"
+                },
+                "rejection_reason": {
+                    "type": "string"
+                }
+            }
+        },
         "sessionvo.EvidenceDurability": {
             "type": "string",
             "enum": [
@@ -4805,6 +4843,23 @@ const docTemplate = `{
                 "DurabilityDurable",
                 "DurabilityFailed"
             ]
+        },
+        "sessionvo.EvidenceExpectation": {
+            "type": "object",
+            "properties": {
+                "closed": {
+                    "type": "boolean"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ExpectedEvidenceEvent"
+                    }
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
         },
         "sessionvo.EvidenceRef": {
             "type": "object",
@@ -4882,6 +4937,29 @@ const docTemplate = `{
                 "EvidencePartial",
                 "EvidenceFailed"
             ]
+        },
+        "sessionvo.ExpectedEvidenceEvent": {
+            "type": "object",
+            "properties": {
+                "drop_reason": {
+                    "type": "string"
+                },
+                "event_id": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "payload_hash": {
+                    "type": "string"
+                },
+                "producer_id": {
+                    "type": "string"
+                },
+                "publish_disposition": {
+                    "type": "string"
+                }
+            }
         },
         "sessionvo.ExpectedOperation": {
             "type": "object",
@@ -5115,6 +5193,9 @@ const docTemplate = `{
                 },
                 "error": {
                     "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
+                "evidence_completion": {
+                    "$ref": "#/definitions/sessionvo.EvidenceCompletion"
                 },
                 "finished_at": {
                     "type": "string"

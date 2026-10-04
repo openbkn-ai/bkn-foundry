@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"reflect"
@@ -31,6 +32,44 @@ func managedFunctionJSONResponse(status int, value any) *http.Response {
 	return &http.Response{
 		StatusCode: status, Header: make(http.Header),
 		Body: io.NopCloser(bytes.NewReader(raw)),
+	}
+}
+
+func TestRunAndCleanTraceGapsPreservesBusinessResult(t *testing.T) {
+	ctx := bkntrace.WithTraceAvailability(context.Background())
+	result, err := runAndCleanTraceGaps(ctx, func(context.Context) (map[string]any, error) {
+		return map[string]any{
+			"status_code": 200,
+			"body": map[string]any{
+				"stderr": "business stderr\n\n[BKN_TRACE_GAP]{\"partial_reason\":\"trace_call_unrecorded:run_cypher:req_92343e69-c464-49e9-86b8-a3cc2aba92d9\"}\n",
+				"result": map[string]any{"value": 30},
+			},
+		}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := result["body"].(map[string]any)
+	if body["stderr"] != "business stderr\n" {
+		t.Fatalf("stderr = %q", body["stderr"])
+	}
+	if body["result"].(map[string]any)["value"] != 30 {
+		t.Fatalf("business result changed: %#v", body["result"])
+	}
+}
+
+func TestRunAndCleanTraceGapsPreservesInvalidMarker(t *testing.T) {
+	ctx := bkntrace.WithTraceAvailability(context.Background())
+	result, err := runAndCleanTraceGaps(ctx, func(context.Context) (map[string]any, error) {
+		return map[string]any{"body": map[string]any{
+			"stderr": "keep [BKN_TRACE_GAP]{bad}\n",
+		}}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result["body"].(map[string]any)["stderr"]; got != "keep [BKN_TRACE_GAP]{bad}\n" {
+		t.Fatalf("invalid marker was removed: %q", got)
 	}
 }
 
@@ -137,8 +176,69 @@ func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 		t.Fatalf("function refs = %#v", refs)
 	}
 	functionRef := refs[1].(map[string]any)
-	if functionRef["ref_id"] != "function:supply:box-1:material_where_used" {
-		t.Fatalf("function ref is not toolbox-scoped: %#v", functionRef)
+	if functionRef["ref_id"] != "function:supply:material_where_used" {
+		t.Fatalf("function ref violates the Trace Core canonical contract: %#v", functionRef)
+	}
+}
+
+func TestManagedFunctionGuardFinalizesExecutionFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		run       func(context.Context) (map[string]any, error)
+		wantError bool
+	}{
+		{"returned error", func(context.Context) (map[string]any, error) { return nil, errors.New("runtime failed") }, true},
+		{"failed result", func(context.Context) (map[string]any, error) { return map[string]any{"status_code": 500}, nil }, false},
+		{"panic", func(context.Context) (map[string]any, error) { panic("must-not-persist") }, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var finish map[string]any
+			finishes := 0
+			client := bkntrace.NewLifecycleClient("http://trace.test", &http.Client{Transport: managedFunctionRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				switch {
+				case r.Method == http.MethodGet:
+					return managedFunctionJSONResponse(200, bkntrace.Interaction{InteractionID: "int-1", ConversationID: "conv-1", ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1}), nil
+				case strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+					return managedFunctionJSONResponse(201, bkntrace.OperationResult{Created: true, Execute: true, Operation: bkntrace.Operation{OperationID: "op-function", ConversationID: "conv-1", InteractionID: "int-1", Attempt: 1, AttemptStatus: "pending", CreatedAt: time.Now().UTC()}, Receipt: bkntrace.Receipt{ReceiptID: "receipt-function", ReceiptStatus: "pending"}}), nil
+				case strings.HasSuffix(r.URL.Path, "/attempts/1:fail"):
+					finishes++
+					if err := json.NewDecoder(r.Body).Decode(&finish); err != nil {
+						t.Fatal(err)
+					}
+					return managedFunctionJSONResponse(200, bkntrace.OperationResult{Operation: bkntrace.Operation{OperationID: "op-function", Attempt: 1, AttemptStatus: "failed"}, Receipt: bkntrace.Receipt{ReceiptID: "receipt-function", ReceiptStatus: "failed"}}), nil
+				default:
+					t.Fatalf("unexpected lifecycle request: %s", r.URL.Path)
+					return nil, nil
+				}
+			})})
+			ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "req_12345678", ConversationID: "conv-1", InteractionID: "int-1", OperationID: "op-outer", Attempt: 1})
+			ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{AccountID: "user-1", AccountType: interfaces.AccessorTypeUser, TokenInfo: &interfaces.TokenInfo{ClientID: "app-1"}})
+			guard := &managedFunctionGuard{guard: bkntrace.NewGuard(client), enabled: true}
+			defer func() {
+				if v := recover(); v != nil {
+					t.Fatalf("panic escaped before recording the function failure: %v", v)
+				}
+			}()
+			_, err := guard.Execute(ctx, ManagedFunctionTraceInput{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "bom"}, test.run)
+			if (err != nil) != test.wantError {
+				t.Fatalf("error = %v", err)
+			}
+			if finishes != 1 {
+				t.Fatalf("failure finishes = %d, want exactly one", finishes)
+			}
+			refs := finish["business_refs"].([]any)
+			if len(refs) != 2 || refs[1].(map[string]any)["ref_id"] != "function:supply:bom" {
+				t.Fatalf("failure refs = %#v", refs)
+			}
+			raw, _ := json.Marshal(finish)
+			if bytes.Contains(raw, []byte("must-not-persist")) {
+				t.Fatal("panic content leaked into receipt")
+			}
+			if finish["error"] == nil {
+				t.Fatal("failure outcome has no error content")
+			}
+		})
 	}
 }
 

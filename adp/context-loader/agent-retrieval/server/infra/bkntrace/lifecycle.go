@@ -51,6 +51,7 @@ var (
 )
 
 type APIError struct {
+	HTTPStatus           int    `json:"-"`
 	Code                 string `json:"code"`
 	Message              string `json:"message"`
 	CurrentStatus        string `json:"current_status,omitempty"`
@@ -203,6 +204,7 @@ type EnsureOperationInput struct {
 }
 
 type FinishAttemptInput struct {
+	EvidenceExpectation  *EvidenceExpectation
 	OperationID          string
 	Attempt              uint32
 	ReceiptID            string
@@ -435,6 +437,9 @@ func (c *LifecycleClient) finishAttempt(
 		"artifact_refs":          input.ArtifactRefs,
 		"partial_reasons":        input.PartialReasons,
 	}
+	if input.EvidenceExpectation != nil {
+		body["evidence_expectation"] = input.EvidenceExpectation
+	}
 	if action == "complete" {
 		payloadContext := withPayloadArtifactScope(ctx, payloadArtifactScope{OperationID: input.OperationID, Attempt: input.Attempt, Direction: "output"})
 		payload, ref, _ := boundedJSONPayloadWithWriter(payloadContext, c.payloadArtifacts, input.Output)
@@ -552,8 +557,12 @@ func (c *LifecycleClient) do(
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var envelope errorEnvelope
 		if err := sonic.ConfigDefault.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
+			if resp.StatusCode >= http.StatusInternalServerError {
+				return &APIError{HTTPStatus: resp.StatusCode, Code: "trace_core_unavailable", Message: "Trace Core returned an unavailable response", Retryable: true}, nil
+			}
 			return nil, fmt.Errorf("decode lifecycle error response: %w", err)
 		}
+		envelope.Error.HTTPStatus = resp.StatusCode
 		return &envelope.Error, nil
 	}
 	if target == nil {

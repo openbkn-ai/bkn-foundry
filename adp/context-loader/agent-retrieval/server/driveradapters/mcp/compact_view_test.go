@@ -63,8 +63,8 @@ func TestCompactProfilePublishesTextOnlyDefinitions(t *testing.T) {
 			if hasOutput := len(tool.OutputSchema) > 0; hasOutput != lifecycle {
 				t.Errorf("%s %s: output schema published = %v, want %v", locale, name, hasOutput, lifecycle)
 			}
-			if !lifecycle && !slices.Contains(required, "bkn_context") {
-				t.Errorf("%s %s: bkn_context is no longer required", locale, name)
+			if !lifecycle && slices.Contains(required, "bkn_context") {
+				t.Errorf("%s %s: bkn_context must be optional", locale, name)
 			}
 		}
 	}

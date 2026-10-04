@@ -118,26 +118,27 @@ func NormalizePayloadEnvelope(payload PayloadEnvelope) (PayloadEnvelope, error) 
 }
 
 type OperationCallFact struct {
-	OperationID       string             `json:"operation_id"`
-	Attempt           uint32             `json:"attempt"`
-	ConversationID    string             `json:"conversation_id"`
-	InteractionID     string             `json:"interaction_id"`
-	ReceiptID         string             `json:"receipt_id,omitempty"`
-	ToolName          string             `json:"tool_name"`
-	Protocol          OperationProtocol  `json:"protocol"`
-	SourceModule      string             `json:"source_module"`
-	ParentOperationID string             `json:"parent_operation_id,omitempty"`
-	CapabilityProfile *CapabilityProfile `json:"capability_profile,omitempty"`
-	Input             PayloadEnvelope    `json:"input"`
-	Output            *PayloadEnvelope   `json:"output,omitempty"`
-	Error             *PayloadEnvelope   `json:"error,omitempty"`
-	RequestID         string             `json:"request_id,omitempty"`
-	TraceID           string             `json:"trace_id,omitempty"`
-	SpanID            string             `json:"span_id,omitempty"`
-	StartedAt         time.Time          `json:"started_at"`
-	FinishedAt        *time.Time         `json:"finished_at,omitempty"`
-	Status            AttemptStatus      `json:"status"`
-	Retryable         bool               `json:"retryable"`
+	OperationID        string              `json:"operation_id"`
+	Attempt            uint32              `json:"attempt"`
+	ConversationID     string              `json:"conversation_id"`
+	InteractionID      string              `json:"interaction_id"`
+	ReceiptID          string              `json:"receipt_id,omitempty"`
+	ToolName           string              `json:"tool_name"`
+	Protocol           OperationProtocol   `json:"protocol"`
+	SourceModule       string              `json:"source_module"`
+	ParentOperationID  string              `json:"parent_operation_id,omitempty"`
+	CapabilityProfile  *CapabilityProfile  `json:"capability_profile,omitempty"`
+	EvidenceCompletion *EvidenceCompletion `json:"evidence_completion,omitempty"`
+	Input              PayloadEnvelope     `json:"input"`
+	Output             *PayloadEnvelope    `json:"output,omitempty"`
+	Error              *PayloadEnvelope    `json:"error,omitempty"`
+	RequestID          string              `json:"request_id,omitempty"`
+	TraceID            string              `json:"trace_id,omitempty"`
+	SpanID             string              `json:"span_id,omitempty"`
+	StartedAt          time.Time           `json:"started_at"`
+	FinishedAt         *time.Time          `json:"finished_at,omitempty"`
+	Status             AttemptStatus       `json:"status"`
+	Retryable          bool                `json:"retryable"`
 }
 
 // CapabilityProfile freezes the internal producer contract selected for an

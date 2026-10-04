@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -28,6 +29,10 @@ import (
 func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 	guard := bkntrace.NewGuard(client)
 	return func(c *gin.Context) {
+		if c.Request.Context().Err() != nil {
+			c.Abort()
+			return
+		}
 		if !isLifecycleBusinessRequest(c.Request) {
 			c.Next()
 			return
@@ -50,25 +55,22 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			})
 			return
 		}
-		// The REST surface is a capability layer. A managed Interaction records one
-		// agent turn - which question was asked, what it read, what it concluded -
-		// and the callers here are not agents: Studio answering a click, a CLI
-		// operator, one service asking another. Minting a conversation and an
-		// interaction to satisfy the guard would produce single-operation records
-		// that dilute the concept rather than document anything, so an absent
-		// bkn_context passes through instead of being refused.
-		//
-		// Naming a session still works and still records, so a caller that had
-		// wired the context up does not silently lose its evidence. The MCP surface,
-		// where an agent actually calls, keeps the requirement: that middleware is
-		// separate and untouched, as is /mcp/proxy/.../call below.
-		if !hasBusinessContext(input) && !isProxyToolCall(c.Request) {
+		// Capability requests may execute without a managed Trace context.
+		// Their business authorization remains in the existing handlers; request
+		// headers alone do not establish registered lifecycle identities.
+		if !hasBusinessContext(input) {
 			// io.ReadAll above drained the body. The managed path rebuilds it after
 			// stripping bkn_context; this path has nothing to strip but still has to
 			// hand the handler something to read, or every request this branch exists
 			// to admit reaches it empty and fails to bind.
 			c.Request.Body = io.NopCloser(bytes.NewReader(raw))
 			c.Request.ContentLength = int64(len(raw))
+			ctx, _ := bkntrace.EnsureTraceCorrelation(bkntrace.WithTraceAvailability(c.Request.Context()))
+			if !bkntrace.CaptureDisabled() {
+				bkntrace.MarkTraceUnavailable(ctx, "context", lifecycleHTTPToolName(c), "trace_context_absent")
+			}
+			c.Request = c.Request.WithContext(bkntrace.ClearManagedTraceContext(ctx))
+			writeTraceAvailabilityHeaders(c, ctx)
 			c.Next()
 			return
 		}
@@ -79,6 +81,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		}
 		delete(input, "bkn_context")
 		toolName := lifecycleHTTPToolName(c)
+		businessContext.BusinessRefs = bkntrace.DeriveToolBusinessRefs(toolName, input, httpKnowledgeNetworkID(c, input))
 		inputHash := normalizedHTTPInputHash(input, businessContext)
 		operationKey, apiErr := managedHTTPOperationKey(c, toolName, businessContext, inputHash)
 		if apiErr != nil {
@@ -90,16 +93,39 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		c.Request.Body = io.NopCloser(bytes.NewReader(downstreamBody))
 		c.Request.ContentLength = int64(len(downstreamBody))
 
-		ctx, state, disposition, coreErr, err := guard.Begin(c.Request.Context(), bkntrace.GuardIntent{
+		ctx, state, disposition, coreErr, err := guard.Begin(bkntrace.WithTraceAvailability(c.Request.Context()), bkntrace.GuardIntent{
 			Context:      businessContext,
 			ToolName:     toolName,
 			Protocol:     "sdk",
 			SourceModule: "context-loader",
 			Input:        downstreamBody,
 		})
-		if err != nil {
-			writeLifecycleHTTPError(c, http.StatusServiceUnavailable, lifecycleUnavailableError(client))
-			return
+		if err != nil || coreErr != nil {
+			if c.Request.Context().Err() != nil {
+				c.Abort()
+				return
+			}
+			if bkntrace.IsCaptureDisabledError(coreErr) {
+				c.Request = c.Request.WithContext(bkntrace.ClearManagedTraceContext(ctx))
+				c.Next()
+				return
+			}
+			if bkntrace.IsTraceInfrastructureFailure(coreErr, err) {
+				code := lifecycleUnavailableError(client).Code
+				if coreErr != nil {
+					code = coreErr.Code
+				}
+				bkntrace.MarkTraceUnavailable(ctx, "ensure_operation", toolName, code)
+				ctx = bkntrace.ClearManagedTraceContext(ctx)
+				c.Request = c.Request.WithContext(ctx)
+				writeTraceAvailabilityHeaders(c, ctx)
+				c.Next()
+				return
+			}
+			if err != nil {
+				writeLifecycleHTTPError(c, http.StatusServiceUnavailable, lifecycleUnavailableError(client))
+				return
+			}
 		}
 		if coreErr != nil {
 			writeLifecycleHTTPError(c, lifecycleHTTPStatus(coreErr.Code), *coreErr)
@@ -127,6 +153,13 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			return
 		}
 
+		// Core may have registered the operation before caller cancellation.
+		// Preserve its actual pending receipt and do not start business or finish
+		// a fabricated execution using a detached cancellation context.
+		if c.Request.Context().Err() != nil || ctx.Err() != nil {
+			c.Abort()
+			return
+		}
 		c.Request = c.Request.WithContext(ctx)
 		originalWriter := c.Writer
 		buffered := &lifecycleResponseWriter{ResponseWriter: originalWriter, status: http.StatusOK}
@@ -154,9 +187,12 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			ctx, state, payload, failed, buffered.status >= http.StatusInternalServerError,
 		)
 		if err != nil || coreErr != nil {
+			bkntrace.MarkTraceUnavailable(ctx, "finish_operation", toolName, "trace_finish_unconfirmed")
+			writeTraceAvailabilityHeaders(c, ctx)
 			writeBufferedLifecycleResponse(c, buffered, state.Result.Receipt)
 			return
 		}
+		writeTraceAvailabilityHeaders(c, ctx)
 		writeBufferedLifecycleResponse(c, buffered, finished.Receipt)
 	}
 }
@@ -181,8 +217,8 @@ func isLifecycleBusinessRequest(request *http.Request) bool {
 }
 
 // isProxyToolCall reports whether this is a tool call proxied over HTTP. It is an
-// agent calling a tool by another name, so the managed context stays mandatory
-// there even though the transport is the same one the /kn/ capability routes use.
+// agent calling a tool by another name. Its optional managed context uses the
+// same validation and nonblocking Trace boundary as the /kn/ capability routes.
 func isProxyToolCall(request *http.Request) bool {
 	return strings.Contains(request.URL.Path, "/mcp/proxy/") &&
 		strings.HasSuffix(request.URL.Path, "/call")
@@ -242,10 +278,8 @@ func parseHTTPBusinessContext(input map[string]any, currentKNID string) (bkntrac
 	if apiErr != nil {
 		return value, apiErr
 	}
-	// Declared, not derived: this path has no request-stage derivation yet, so
-	// a receipt here carries only what evidence observed. Letting the caller's
-	// declaration stand in for that is what let an invented version reach a
-	// receipt; deriving refs on this path is tracked separately.
+	// Caller declarations remain diagnostic input. The middleware derives
+	// authoritative request targets separately from the tool's structured fields.
 	value.DeclaredBusinessRefs = refs
 	return value, nil
 }
@@ -447,4 +481,19 @@ func httpStringSlice(value any) []string {
 		}
 	}
 	return result
+}
+
+func writeTraceAvailabilityHeaders(c *gin.Context, ctx context.Context) {
+	availability := bkntrace.TraceAvailabilityFromContext(ctx)
+	if availability == nil {
+		return
+	}
+	c.Header("X-OpenBKN-Trace-Recorded", "false")
+	if code, ok := availability["code"].(string); ok {
+		c.Header("X-OpenBKN-Trace-Code", code)
+	}
+	if reasons := bkntrace.TracePartialReasons(ctx); len(reasons) > 0 {
+		raw, _ := sonic.Marshal(reasons)
+		c.Header("X-OpenBKN-Trace-Partial-Reasons", string(raw))
+	}
 }

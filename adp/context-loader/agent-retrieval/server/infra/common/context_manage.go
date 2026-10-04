@@ -343,7 +343,7 @@ func sanitizeBusinessTraceID(value string) string {
 // GetHeaderForChildOperation forks a deterministic child operation without changing the direct cause.
 func GetHeaderForChildOperation(ctx context.Context, operationName string, callOrdinal int) map[string]string {
 	traceContext, ok := GetTraceContextFromCtx(ctx)
-	if !ok {
+	if !ok || traceContext.OperationID == "" {
 		return GetHeaderFromCtx(ctx)
 	}
 	parentOperationID := traceContext.OperationID
@@ -356,7 +356,7 @@ func GetHeaderForChildOperation(ctx context.Context, operationName string, callO
 // concrete downstream operation. identity must remain stable across retries.
 func GetHeaderForChildOperationIdentity(ctx context.Context, operationName, identity string) map[string]string {
 	traceContext, ok := GetTraceContextFromCtx(ctx)
-	if !ok {
+	if !ok || traceContext.OperationID == "" {
 		return GetHeaderFromCtx(ctx)
 	}
 	parentOperationID := traceContext.OperationID

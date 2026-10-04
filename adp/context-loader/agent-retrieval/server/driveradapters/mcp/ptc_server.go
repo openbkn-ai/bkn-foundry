@@ -7,6 +7,9 @@ package mcp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -14,7 +17,9 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -71,11 +76,7 @@ func ptcToolInputSchemaWithContext(raw json.RawMessage, contextDescription strin
 		},
 		"required": []any{"conversation_id", "interaction_id"},
 	}
-	if required, ok := schema["required"].([]any); ok {
-		schema["required"] = append(required, "bkn_context")
-	} else {
-		schema["required"] = []any{"bkn_context"}
-	}
+	// Managed context remains optional when the lifecycle tool could not record the turn.
 	// This schema is advertised to MCP clients and therefore must have the
 	// same stable wire representation as the embedded tool declarations.
 	encoded, err := sonic.ConfigStd.Marshal(schema)
@@ -102,7 +103,16 @@ func handlePTCExecuteForLocale(
 		if timeout > ptcMaxTimeout {
 			timeout = ptcMaxTimeout
 		}
-		businessContext := ptcBusinessContextArg(req)
+		businessContext := maps.Clone(ptcBusinessContextArg(req))
+		if businessContext == nil {
+			businessContext = map[string]any{}
+		}
+		delete(businessContext, "_workspace_scope")
+		scope, scopeErr := ptcWorkspaceScope(ctx, req, businessContext)
+		if scopeErr != nil {
+			return mcp.NewToolResultError(scopeErr.Error()), nil
+		}
+		businessContext["_workspace_scope"] = scope
 		if tool.Wrap == ptcWrapHandler {
 			if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok && traceContext.OperationID != "" {
 				// The guard persisted this run_code operation. Its child MCP calls
@@ -117,7 +127,9 @@ func handlePTCExecuteForLocale(
 			return mcp.NewToolResultError(apiErr), nil
 		}
 
-		event := map[string]any{"bkn": businessContext}
+		callbackContext := maps.Clone(businessContext)
+		delete(callbackContext, "_workspace_scope")
+		event := map[string]any{"bkn": callbackContext, "workspace_scope": scope}
 		if tool.Wrap == ptcWrapHandler {
 			// Only Python calls back to MCP and requires the endpoint and token.
 			token, _ := common.GetRawTokenFromCtx(ctx)
@@ -134,8 +146,10 @@ func handlePTCExecuteForLocale(
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		stderr, reasons := extractPTCTraceGaps(resp.Stderr)
+		bkntrace.MergeTracePartialReasons(ctx, reasons)
 		payload := map[string]any{
-			"stdout": resp.Stdout, "stderr": resp.Stderr, "exit_code": resp.ExitCode,
+			"stdout": resp.Stdout, "stderr": stderr, "exit_code": resp.ExitCode,
 		}
 		// A non-zero exit code is a tool error. Return stderr so the caller can
 		// correct its script instead of blindly retrying.
@@ -146,6 +160,7 @@ func handlePTCExecuteForLocale(
 		if resp.ExitCode != 0 {
 			result.IsError = true
 		}
+		attachTraceAvailability(result, ctx)
 		return result, nil
 	}
 }
@@ -199,6 +214,9 @@ func ptcWorkdir(businessContext map[string]any) string {
 // every execution must state it. Deriving it only inside the executed code leaves
 // the executor scanning the shared workspace root.
 func ptcWorkdirRelative(businessContext map[string]any) string {
+	if scope, _ := businessContext["_workspace_scope"].(string); scope != "" {
+		return scope
+	}
 	conversation, _ := businessContext["conversation_id"].(string)
 	var safe strings.Builder
 	for _, r := range strings.TrimSpace(conversation) {
@@ -213,7 +231,11 @@ func ptcWorkdirRelative(businessContext map[string]any) string {
 		}
 	}
 	if safe.Len() == 0 {
-		return "shared"
+		raw := make([]byte, 16)
+		if _, err := rand.Read(raw); err != nil {
+			panic("cannot create isolated sandbox scope")
+		}
+		return "adhoc-" + hex.EncodeToString(raw)
 	}
 	return "conv-" + safe.String()
 }
@@ -241,4 +263,44 @@ func ptcBusinessContextArg(req mcp.CallToolRequest) map[string]any {
 		return map[string]any{}
 	}
 	return decoded.BusinessContext
+}
+
+// A workspace scope is a file namespace, never an authoritative Trace ID.
+// Read actual server session identity; caller-supplied Mcp-Session-Id alone is
+// not accepted as an authenticated transport session.
+func ptcWorkspaceScope(ctx context.Context, req mcp.CallToolRequest, businessContext map[string]any) (string, error) {
+	if conversation, _ := businessContext["conversation_id"].(string); strings.TrimSpace(conversation) != "" {
+		return ptcWorkdirRelative(businessContext), nil
+	}
+	hints, err := hostLifecycleHintsFromRequest(req)
+	if err != nil {
+		return "", err
+	}
+	key := hints.HostConversationKey
+	if key == "" {
+		if session := server.ClientSessionFromContext(ctx); session != nil {
+			key = session.SessionID()
+		}
+	}
+	if key == "" {
+		raw := make([]byte, 16)
+		if _, err := rand.Read(raw); err != nil {
+			return "", fmt.Errorf("cannot create isolated sandbox scope: %w", err)
+		}
+		return "adhoc-" + hex.EncodeToString(raw), nil
+	}
+	auth, _ := common.GetAccountAuthContextFromCtx(ctx)
+	owner := ""
+	if auth != nil {
+		owner = string(auth.AccountType) + "|" + auth.AccountID
+		if auth.TokenInfo != nil {
+			owner += "|" + auth.TokenInfo.ClientID
+		}
+	}
+	sum := sha256.Sum256([]byte(owner + "|" + key))
+	return "adhoc-" + hex.EncodeToString(sum[:]), nil
+}
+
+func extractPTCTraceGaps(stderr string) (string, []string) {
+	return bkntrace.ExtractTraceGapMarkers(stderr)
 }

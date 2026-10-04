@@ -45,7 +45,7 @@ jobs:
       - name: Build the release image (native arch only)
         uses: docker/build-push-action@v6
         with:
-          context: adp/context-loader/agent-retrieval
+          context: .
           file: adp/context-loader/agent-retrieval/docker/Dockerfile
           platforms: linux/amd64
           load: true
@@ -103,7 +103,7 @@ jobs:
     with:
       service-path: adp/context-loader/agent-retrieval
       dockerfile: docker/Dockerfile
-      context: '.'
+      context: '../../..'
       image-name: agent-retrieval
       version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

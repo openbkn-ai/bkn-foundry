@@ -9,3 +9,5 @@
 BKN 的全部能力——知识网络、对象类、实例查询、SQL——都在 run_code 的沙箱里以函数形式提供，签名清单见 run_code 的工具描述。请把整个问题写成一段脚本，在脚本内完成探查、取数与聚合，只 print 结论；不要一次调用只做一件事。
 
 调用前先 bkn_start_interaction 拿到 conversation_id 与 interaction_id，随后每次调用都带上 bkn_context，结束时 bkn_finish_interaction。
+
+若 start 返回 trace_recorded=false，省略 bkn_context，继续已授权业务调用，不因 Trace 故障重试业务。结束时，将本轮工具 _meta["openbkn.ai/trace"] 中全部 trace_call_unrecorded 的 partial_reasons 原样传入 finish.partial_reasons；宿主丢弃 _meta 时，降级结果可能在独立 content 文本块重复该诊断。若 start 未返回 interaction_id，finish 可以省略该字段并明确未记录。Trace 恢复后的下一轮正常 start。

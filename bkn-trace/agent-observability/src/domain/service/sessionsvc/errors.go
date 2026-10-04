@@ -26,6 +26,8 @@ const (
 	CodeTerminalConflict          ErrorCode = "terminal_conflict"
 	CodeClosureManifestInvalid    ErrorCode = "closure_manifest_invalid"
 	CodeResourceNotDisclosed      ErrorCode = "resource_not_disclosed"
+	CodeCaptureDisabled           ErrorCode = "capture_disabled"
+	CodeCaptureUnavailable        ErrorCode = "trace_core_unavailable"
 )
 
 type DomainError struct {

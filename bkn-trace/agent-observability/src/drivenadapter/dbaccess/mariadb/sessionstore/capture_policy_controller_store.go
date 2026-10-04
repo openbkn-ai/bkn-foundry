@@ -25,14 +25,21 @@ func (s *Store) ClaimCapturePolicyOperation(ctx context.Context, workerID string
 	claimed := false
 	err := s.withSerializableTransaction(ctx, func(tx *sql.Tx) error {
 		var operationID sql.NullString
+		var currentRevision uint64
+		var desiredState, effectiveState sql.NullString
 		if err := tx.QueryRowContext(ctx, `
-			SELECT active_operation_id
+			SELECT active_operation_id, current_revision, desired_state, effective_state
 			FROM bkn_trace_capture_control_state
-			WHERE singleton_id = 1 FOR UPDATE`).Scan(&operationID); errors.Is(err, sql.ErrNoRows) {
+			WHERE singleton_id = 1 FOR UPDATE`).Scan(&operationID, &currentRevision, &desiredState, &effectiveState); errors.Is(err, sql.ErrNoRows) {
 			return icapturepolicy.ErrControlStateNotInitialized
 		} else if err != nil {
 			return err
 		}
+		// Reuse this verified control-state SELECT to refresh the process-local
+		// admission view while the controller is idle.
+		operation.CurrentRevision = currentRevision
+		operation.DesiredState = desiredState.String
+		operation.EffectiveState = effectiveState.String
 		if !operationID.Valid || operationID.String == "" {
 			return nil
 		}
@@ -95,6 +102,7 @@ func (s *Store) ClaimCapturePolicyOperation(ctx context.Context, workerID string
 			ExpectedRevision: expectedRevision, Phase: phase.String, ErrorCode: errorCode.String,
 			LeaseOwner: workerID, LeaseToken: leaseToken, LeaseExpiresAt: &expires,
 			ConvergenceDeadline: convergenceDeadline.Time.UTC(), CreatedAt: createdAt.Time.UTC(), UpdatedAt: now.UTC(),
+			CurrentRevision: currentRevision, DesiredState: desiredState.String, EffectiveState: effectiveState.String,
 		}
 		if terminalAt.Valid {
 			value := terminalAt.Time.UTC()

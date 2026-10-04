@@ -11,11 +11,15 @@ _configure(event) injects credentials and lifecycle context before execution.
 import json
 import os
 import pathlib
+import re
 import sys
 import urllib.request
 
 _CFG = {}
 _SESSION = {}
+_TRACE_GAPS = set()
+_TRACE_DIAGNOSTIC_PREFIX = "[BKN_TRACE]"
+_TRACE_GAP_REASON = re.compile(r"^trace_call_unrecorded:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 # 最近几次调用返回值的形状。脚本抛异常时随 traceback 一并打出——代码模式下调用方
 # 必须先写出取值路径再执行，猜错时 traceback 只说 "NoneType is not iterable"，不说
@@ -43,6 +47,7 @@ def _configure(event):
     global WORKDIR
     _CFG.update(event)
     _SESSION.clear()
+    _TRACE_GAPS.clear()
 
     # Use an ASCII-only normalization instead of a hash. run_shell must derive
     # the same directory outside this stub, and Python's isalnum accepts Unicode
@@ -50,14 +55,22 @@ def _configure(event):
     _SAFE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
     conversation = str((event.get("bkn") or {}).get("conversation_id") or "").strip()
     safe = "".join(c if c in _SAFE else "-" for c in conversation)[:64]
-    candidate = pathlib.Path("/workspace") / ("conv-" + safe if safe else "shared")
+    scope = event.get("workspace_scope")
+    if scope is not None:
+        if not isinstance(scope, str) or not scope or any(c not in _SAFE for c in scope):
+            raise ValueError("invalid sandbox workspace scope")
+    else:
+        # Legacy direct toolkit execution has no server session scope. Isolate
+        # this invocation rather than expose a shared directory.
+        import uuid
+        scope = "conv-" + safe if safe else "adhoc-" + uuid.uuid4().hex
+    candidate = pathlib.Path("/workspace") / scope
     try:
         candidate.mkdir(parents=True, exist_ok=True)
         os.chdir(candidate)
         WORKDIR = candidate
-    except OSError:
-        # Keep the script runnable when the sandbox workdir is not writable.
-        WORKDIR = pathlib.Path(os.getcwd())
+    except OSError as error:
+        raise RuntimeError("cannot prepare isolated sandbox workspace") from error
 
 
 def _rpc(method, params=None, notify=False):
@@ -121,16 +134,61 @@ def _ensure_session():
     _SESSION["ready"] = True
 
 
+def _observe_trace_gaps(result):
+    # This bounded side channel preserves observation gaps from nested MCP
+    # calls. It cannot grant authority or change the business return value.
+    meta = result.get("_meta")
+    trace_meta = meta.get("openbkn.ai/trace") if isinstance(meta, dict) else None
+    reasons = trace_meta.get("partial_reasons") if isinstance(trace_meta, dict) else None
+    _record_trace_gaps(reasons)
+
+def _observe_trace_gap_content(text):
+    if not isinstance(text, str) or not text.startswith(_TRACE_DIAGNOSTIC_PREFIX):
+        return False
+    try:
+        value = json.loads(text[len(_TRACE_DIAGNOSTIC_PREFIX):])
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(value, dict) or set(value) != {"bkn_trace"}:
+        return False
+    trace = value.get("bkn_trace")
+    if not isinstance(trace, dict):
+        return False
+    _record_trace_gaps(trace.get("partial_reasons"))
+    return True
+
+def _record_trace_gaps(reasons):
+    if not isinstance(reasons, list):
+        return
+    for reason in reasons[:64]:
+        if len(_TRACE_GAPS) >= 64:
+            return
+        if not isinstance(reason, str) or len(reason) > 256 or not _TRACE_GAP_REASON.fullmatch(reason) or reason in _TRACE_GAPS:
+            continue
+        _TRACE_GAPS.add(reason)
+        warning = json.dumps({"partial_reason": reason}, ensure_ascii=True, separators=(",", ":"))
+        sys.stderr.write("\n[BKN_TRACE_GAP]" + warning + "\n")
+
+
 def _call(tool, args):
     """Call an MCP tool, omitting None so the server applies schema defaults."""
     _ensure_session()
     payload = {k: v for k, v in args.items() if v is not None}
-    # Business tools require bkn_context, which the caller supplies implicitly.
+    # A successful lifecycle start supplies managed context implicitly. An
+    # unavailable start leaves this empty and business remains callable.
     if _CFG.get("bkn"):
         payload["bkn_context"] = _CFG["bkn"]
 
     result = _rpc("tools/call", {"name": tool, "arguments": payload})["result"]
-    text = "".join(c["text"] for c in result["content"] if c["type"] == "text")
+    _observe_trace_gaps(result)
+    text_parts = []
+    for content in result["content"]:
+        if content["type"] != "text":
+            continue
+        if _observe_trace_gap_content(content.get("text", "")):
+            continue
+        text_parts.append(content["text"])
+    text = "".join(text_parts)
     if result.get("isError") or result.get("is_error"):
         raise ToolError(tool + ": " + text)
     try:

@@ -63,6 +63,15 @@ func NewPublisherRuntime(_ context.Context, config PublisherRuntimeConfig) (*Pub
 	return runtime, nil
 }
 
+// CaptureDisabled reports an intentional, verified policy disable without I/O.
+// A disabled snapshot remains closed until a newer verified snapshot enables it;
+// expiry or transport failure must never silently re-enable capture.
+func (r *PublisherRuntime) CaptureDisabled() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.hasPolicy && r.snapshot.EvidenceAdmission == "disabled"
+}
+
 // TryPublish remains the business-facing non-blocking entrypoint. It only
 // accepts a fresh, verified enabled snapshot and stamps its exact revision on
 // the record before the bounded in-memory queue admission.
@@ -70,6 +79,9 @@ func (r *PublisherRuntime) TryPublish(event Event) PublishResult {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.hasPolicy || !r.admitting || !r.now().Before(r.snapshot.ExpiresAt) {
+		if previous, ok := r.publisher.replayAdmission(event); ok {
+			return previous
+		}
 		if r.hasPolicy && r.snapshot.EvidenceAdmission == "disabled" {
 			return PublishResult{Disposition: Dropped, Reason: ReasonPublisherClosing}
 		}

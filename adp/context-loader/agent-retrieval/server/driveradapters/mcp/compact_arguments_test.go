@@ -64,7 +64,7 @@ func TestFullProfileStillIgnoresUnknownArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	if strings.Contains(text, refusalUnknownArguments) || !strings.Contains(text, "conversation_required") {
+	if strings.Contains(text, refusalUnknownArguments) || !strings.Contains(text, "kn_id and ot_id are required") {
 		t.Fatalf("full profile answered %s", text)
 	}
 }

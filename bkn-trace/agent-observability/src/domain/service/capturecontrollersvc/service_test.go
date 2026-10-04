@@ -6,6 +6,7 @@ package capturecontrollersvc
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -14,9 +15,11 @@ import (
 )
 
 type fakeStore struct {
-	state icapturepolicy.ControlState
-	op    icapturepolicy.Operation
-	acks  []icapturepolicy.ExpectedAcknowledgement
+	state    icapturepolicy.ControlState
+	op       icapturepolicy.Operation
+	acks     []icapturepolicy.ExpectedAcknowledgement
+	leases   []icapturepolicy.EndpointLease
+	claimErr error
 }
 
 func (f *fakeStore) ReadControlState(context.Context) (icapturepolicy.ControlState, error) {
@@ -26,7 +29,7 @@ func (f *fakeStore) NextCapturePolicyRevision(context.Context) (uint64, error) {
 	return f.state.CurrentRevision + 1, nil
 }
 func (f *fakeStore) ListReadyEndpointLeases(context.Context, time.Time) ([]icapturepolicy.EndpointLease, error) {
-	return nil, nil
+	return f.leases, nil
 }
 func (f *fakeStore) StartOperation(_ context.Context, _ icapturepolicy.ControlState, operation icapturepolicy.Operation, expected []icapturepolicy.ExpectedAcknowledgement) error {
 	f.op, f.acks = operation, expected
@@ -34,8 +37,15 @@ func (f *fakeStore) StartOperation(_ context.Context, _ icapturepolicy.ControlSt
 	return nil
 }
 func (f *fakeStore) ClaimCapturePolicyOperation(_ context.Context, workerID string, lease time.Duration, now time.Time) (icapturepolicy.Operation, bool, error) {
+	if f.claimErr != nil {
+		return icapturepolicy.Operation{}, false, f.claimErr
+	}
 	if f.state.ActiveOperationID == "" {
-		return icapturepolicy.Operation{}, false, nil
+		return icapturepolicy.Operation{
+			CurrentRevision: f.state.CurrentRevision,
+			DesiredState:    f.state.DesiredState,
+			EffectiveState:  f.state.EffectiveState,
+		}, false, nil
 	}
 	if f.op.Phase == icapturepolicy.PhasePending {
 		if f.op.RequestedState == icapturepolicy.StateEnabled {
@@ -46,6 +56,53 @@ func (f *fakeStore) ClaimCapturePolicyOperation(_ context.Context, workerID stri
 	}
 	f.op.LeaseOwner, f.op.LeaseToken, f.op.LeaseExpiresAt = workerID, f.op.LeaseToken+1, ptr(now.Add(lease))
 	return f.op, true, nil
+}
+
+func TestReconcileRefreshesIdleControlView(t *testing.T) {
+	now := time.Now().UTC()
+	store := &fakeStore{state: icapturepolicy.ControlState{
+		CurrentRevision: 5, DesiredState: icapturepolicy.StateEnabled,
+		EffectiveState: icapturepolicy.StateEnabled,
+	}}
+	var got icapturepolicy.ControlState
+	controller, err := New(Options{
+		Store: store, WorkerID: "worker", Lease: time.Second,
+		Convergence: time.Minute, Now: func() time.Time { return now },
+		OnState: func(state icapturepolicy.ControlState) { got = state },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		claimed, err := controller.Reconcile(context.Background())
+		if err != nil || claimed {
+			t.Fatalf("idle reconcile claimed=%v err=%v", claimed, err)
+		}
+	}
+	if got.CurrentRevision != 5 || got.DesiredState != icapturepolicy.StateEnabled || got.EffectiveState != icapturepolicy.StateEnabled {
+		t.Fatalf("idle control view was not refreshed: %+v", got)
+	}
+}
+
+func TestReconcileDoesNotRefreshControlViewOnClaimError(t *testing.T) {
+	store := &fakeStore{
+		state:    icapturepolicy.ControlState{CurrentRevision: 5, DesiredState: icapturepolicy.StateEnabled, EffectiveState: icapturepolicy.StateEnabled},
+		claimErr: errors.New("control read failed"),
+	}
+	called := 0
+	controller, err := New(Options{
+		Store: store, WorkerID: "worker", Lease: time.Second,
+		Convergence: time.Minute, OnState: func(icapturepolicy.ControlState) { called++ },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Reconcile(context.Background()); err == nil {
+		t.Fatal("expected claim error")
+	}
+	if called != 0 {
+		t.Fatalf("error path refreshed control view %d times", called)
+	}
 }
 func (f *fakeStore) ReadCapturePolicyAcknowledgements(context.Context, string, uint64) ([]icapturepolicy.ExpectedAcknowledgement, error) {
 	return append([]icapturepolicy.ExpectedAcknowledgement(nil), f.acks...), nil
@@ -74,6 +131,31 @@ func (f *fakeStore) CompleteRollbackFailed(context.Context, string, uint64, time
 }
 
 func ptr(value time.Time) *time.Time { return &value }
+
+func TestRequestRequiredEndpointCoverage(t *testing.T) {
+	base := icapturepolicy.ControlState{CurrentRevision: 1, DesiredState: icapturepolicy.StateEnabled, EffectiveState: icapturepolicy.StateEnabled}
+	newController := func(leases ...string) *Controller {
+		store := &fakeStore{state: base}
+		for i, kind := range leases {
+			store.leases = append(store.leases, icapturepolicy.EndpointLease{EndpointKind: kind, InstanceID: kind, WorkloadIdentity: kind, ProcessBootID: string(rune('a' + i))})
+		}
+		controller, err := New(Options{Store: store, WorkerID: "worker", Lease: time.Minute, Convergence: time.Minute, RequiredEndpointKinds: []string{icapturepolicy.EndpointTraceGateway, icapturepolicy.EndpointEvidencePublisher}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return controller
+	}
+	request := capturepolicysvc.ChangeRequest{ExpectedRevision: 1, DesiredState: capturepolicysvc.StateDisabled}
+	if _, err := newController(icapturepolicy.EndpointEvidencePublisher).Request(context.Background(), request); err != ErrTargetSet {
+		t.Fatalf("publisher-only error = %v", err)
+	}
+	if _, err := newController(icapturepolicy.EndpointTraceGateway).Request(context.Background(), request); err != ErrTargetSet {
+		t.Fatalf("gateway-only error = %v", err)
+	}
+	if _, err := newController(icapturepolicy.EndpointTraceGateway, icapturepolicy.EndpointEvidencePublisher).Request(context.Background(), request); err != nil {
+		t.Fatalf("complete endpoint set error = %v", err)
+	}
+}
 
 func TestControllerRequestAndReconcileUsesFrozenExpectedSet(t *testing.T) {
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)

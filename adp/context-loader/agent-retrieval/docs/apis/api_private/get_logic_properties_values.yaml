@@ -112,7 +112,6 @@ components:
     ResolveLogicPropertiesRequest:
       type: object
       required:
-        - bkn_context
         - kn_id
         - ot_id
         - query
@@ -121,6 +120,7 @@ components:
       properties:
         bkn_context:
           $ref: '#/components/schemas/BKNContext'
+          description: 可选业务溯源上下文；提供时须有真实会话和交互 ID。Trace 不可用时可省略，业务调用继续执行并返回未记录标头。
         kn_id:
           type: string
           description: 知识网络ID。例 kn_medical

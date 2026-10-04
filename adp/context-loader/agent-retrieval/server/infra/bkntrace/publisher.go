@@ -3,6 +3,8 @@ package bkntrace
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
@@ -29,9 +31,13 @@ func currentEvidencePublisher() EvidencePublisher {
 }
 
 func publishEvidenceEvent(event Event, ec eventContext) evidencepublisher.PublishResult {
+	return publishEvidenceEventWithPrevious(event, ec, nil)
+}
+
+func publishEvidenceEventWithPrevious(event Event, ec eventContext, previous *evidencepublisher.PublishResult) evidencepublisher.PublishResult {
 	publisher := currentEvidencePublisher()
 	if publisher == nil {
-		return evidencepublisher.PublishResult{Disposition: evidencepublisher.Dropped, Reason: evidencepublisher.ReasonPublisherClosing}
+		return evidencepublisher.PublishResult{Disposition: evidencepublisher.Dropped, Reason: evidencepublisher.ReasonPublisherUnavailable}
 	}
 	// The Kafka Ledger requires the owner inside the envelope. Derive it from
 	// trusted request context rather than accepting identity from event payload.
@@ -68,7 +74,7 @@ func publishEvidenceEvent(event Event, ec eventContext) evidencepublisher.Publis
 		conversationID = ec.conversationID
 	}
 	attempt, _ := event["attempt"].(int)
-	return publisher.TryPublish(evidencepublisher.Event{EventID: get("event_id"), EventType: get("event_type"), ConversationID: conversationID, InteractionID: get("interaction_id"), OperationID: get("operation_id"), Attempt: attempt, RequestID: get("bkn.request.id"), TraceID: get("trace_id"), SpanID: get("span_id"), StartedAt: startedAt, ObservedAt: observedAt, EmittedAt: emittedAt, Envelope: envelope})
+	return publisher.TryPublish(evidencepublisher.Event{EventID: get("event_id"), EventType: get("event_type"), ConversationID: conversationID, InteractionID: get("interaction_id"), OperationID: get("operation_id"), Attempt: attempt, RequestID: get("bkn.request.id"), TraceID: get("trace_id"), SpanID: get("span_id"), StartedAt: startedAt, ObservedAt: observedAt, EmittedAt: emittedAt, Envelope: envelope, PreviousResult: previous})
 }
 
 func FlushEvidencePublisher(ctx context.Context) evidencepublisher.DrainResult {
@@ -78,4 +84,20 @@ func FlushEvidencePublisher(ctx context.Context) evidencepublisher.DrainResult {
 		return publisher.Flush(ctx)
 	}
 	return evidencepublisher.DrainResult{}
+}
+
+// CaptureDisabled reads the runtime's verified local policy. Legacy publishers
+// without policy state retain their existing behavior.
+func CaptureDisabled() bool {
+	publisher, ok := currentEvidencePublisher().(interface{ CaptureDisabled() bool })
+	return ok && publisher.CaptureDisabled()
+}
+
+func IsCaptureDisabledError(apiErr *APIError) bool {
+	return apiErr != nil && apiErr.Code == "capture_disabled"
+}
+
+func IsCaptureDisabledEvidenceError(err error) bool {
+	var coreErr *CoreHTTPError
+	return errors.As(err, &coreErr) && strings.EqualFold(coreErr.Code, "capture_disabled")
 }

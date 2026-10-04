@@ -12,8 +12,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"runtime/debug"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -54,6 +56,7 @@ type operationResult struct {
 }
 
 type lifecycleError struct {
+	HTTPStatus           int    `json:"-"`
 	Code                 string `json:"code"`
 	Message              string `json:"message"`
 	CurrentStatus        string `json:"current_status,omitempty"`
@@ -87,7 +90,23 @@ func guardBusinessToolCallWithCompletion(
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
 ) func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 	return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+		callerContext := ctx
+		ctx = bkntrace.WithTraceAvailability(ctx)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		var correlationErr error
+		ctx, correlationErr = bkntrace.EnsureTraceCorrelation(ctx)
+		if correlationErr != nil {
+			return nil, correlationErr
+		}
 		arguments := req.GetArguments()
+		if _, supplied := arguments["bkn_context"]; !supplied {
+			if bkntrace.CaptureDisabled() {
+				return executeUntracedBusiness(ctx, req, next, "policy", "capture_disabled")
+			}
+			return executeUntracedBusiness(ctx, req, next, "context", "trace_context_absent")
+		}
 		rawContext, _ := arguments["bkn_context"].(map[string]any)
 		conversationID, _ := rawContext["conversation_id"].(string)
 		if conversationID == "" {
@@ -115,9 +134,6 @@ func guardBusinessToolCallWithCompletion(
 		operationKey := managedOperationKey(
 			ctx, req, conversationID, interactionID, arguments, hints.ClientInvocationID,
 		)
-		if ensure == nil {
-			return nil, fmt.Errorf("lifecycle operation client is not configured")
-		}
 		currentKnID := getStringArg(req, "kn_id", getKnIDFromHeader(req))
 		declaredRefs, validationErr := parseBusinessRefs(
 			rawContext["business_refs"],
@@ -125,6 +141,12 @@ func guardBusinessToolCallWithCompletion(
 		)
 		if validationErr != nil {
 			return lifecycleToolError(*validationErr), nil
+		}
+		if bkntrace.CaptureDisabled() {
+			return executeUntracedBusiness(ctx, req, next, "policy", "capture_disabled")
+		}
+		if ensure == nil {
+			return executeUntracedBusiness(ctx, req, next, "ensure_operation", "feature_not_installed")
 		}
 		intent := operationIntent{
 			Context: bknContext{
@@ -145,10 +167,29 @@ func guardBusinessToolCallWithCompletion(
 			Input:              arguments,
 		}
 		ensured, lifecycleErr, err := ensure(ctx, intent)
-		if err != nil {
+		if err != nil || lifecycleErr != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			var apiErr *bkntrace.APIError
+			if lifecycleErr != nil {
+				value := bkntrace.APIError(*lifecycleErr)
+				apiErr = &value
+			}
+			if bkntrace.IsCaptureDisabledError(apiErr) {
+				return executeUntracedBusiness(ctx, req, next, "policy", "capture_disabled")
+			}
+			if bkntrace.IsTraceInfrastructureFailure(apiErr, err) {
+				code := lifecycleAvailabilityError(err).Code
+				if lifecycleErr != nil {
+					code = lifecycleErr.Code
+				}
+				return executeUntracedBusiness(ctx, req, next, "ensure_operation", code)
+			}
+			if lifecycleErr != nil {
+				return lifecycleToolError(*lifecycleErr), nil
+			}
 			return lifecycleUnavailable(ctx, req.Params.Name, "ensure_operation", err), nil
-		} else if lifecycleErr != nil {
-			return lifecycleToolError(*lifecycleErr), nil
 		}
 		status := ""
 		if ensured != nil {
@@ -172,6 +213,14 @@ func guardBusinessToolCallWithCompletion(
 			traceContext.Attempt = attempt
 			ctx = common.SetTraceContextToCtx(ctx, traceContext)
 		}
+		// Registration may have committed just as the caller cancelled. Leave
+		// that real receipt pending; never claim an execution or retry business.
+		if callerContext.Err() != nil {
+			return nil, callerContext.Err()
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		result, err, failure := callBusinessTool(ctx, req, next)
 		if err != nil {
 			failure = &operationFailure{
@@ -192,17 +241,22 @@ func guardBusinessToolCallWithCompletion(
 			logger.DefaultLogger().WithContext(ctx).Errorf(
 				"[BKN Trace] failed to finalize MCP tool %q: %v", req.Params.Name, err,
 			)
+			bkntrace.MarkTraceUnavailable(ctx, "finish_operation", req.Params.Name, "trace_finish_unconfirmed")
+			attachTraceAvailability(result, ctx)
 			return result, nil
 		}
 		if lifecycleErr != nil {
 			logger.DefaultLogger().WithContext(ctx).Errorf(
 				"[BKN Trace] failed to finalize MCP tool %q: %s", req.Params.Name, lifecycleErr.Code,
 			)
+			bkntrace.MarkTraceUnavailable(ctx, "finish_operation", req.Params.Name, lifecycleErr.Code)
+			attachTraceAvailability(result, ctx)
 			return result, nil
 		}
 		if completed != nil {
 			attachReceipt(result, managedToolReceiptView(req.Params.Name, completed.Receipt))
 		}
+		attachTraceAvailability(result, ctx)
 		return result, nil
 	}
 }
@@ -311,38 +365,7 @@ func parseBusinessRefs(value any, currentKnID string) ([]bkntrace.BusinessRef, *
 // These are the request tier of the reference hierarchy: what evidence
 // observes outranks them, and what the caller declared never does.
 func derivedToolBusinessRefs(toolName string, arguments map[string]any, currentKnID string) []bkntrace.BusinessRef {
-	if currentKnID == "" {
-		return nil
-	}
-	if inputKnID := stringValue(arguments["kn_id"]); inputKnID != "" && inputKnID != currentKnID {
-		return nil
-	}
-	refs := []bkntrace.BusinessRef{
-		{RefType: "knowledge_network", RefID: "kn:" + currentKnID, Version: "unversioned"},
-	}
-	switch toolName {
-	case toolKeyQueryObjectInstance:
-		objectID := stringValue(arguments["ot_id"])
-		if objectID == "" {
-			return nil
-		}
-		return append(refs, bkntrace.BusinessRef{RefType: "object_type", RefID: "object:" + currentKnID + ":" + objectID, Version: "unversioned"})
-	case toolKeyGetKnDetail:
-		return refs
-	case toolKeyGetObjectTypes, toolKeyGetRelationTypes:
-		// These tools accept a display name as well as a canonical ID. The
-		// operation scope records the known network; the schema snapshot records
-		// the actual returned type IDs after lookup and permission filtering.
-		return refs
-	case toolKeyQueryMetric:
-		metricID := stringValue(arguments["metric_id"])
-		if metricID == "" {
-			return nil
-		}
-		return append(refs, bkntrace.BusinessRef{RefType: "metric", RefID: "metric:" + currentKnID + ":" + metricID, Version: "unversioned"})
-	default:
-		return nil
-	}
+	return bkntrace.DeriveToolBusinessRefs(toolName, arguments, currentKnID)
 }
 
 func callBusinessTool(
@@ -389,7 +412,33 @@ func lifecycleUnavailable(ctx context.Context, toolName, stage string, err error
 		"[BKN Trace] lifecycle unavailable: tool=%s stage=%s code=%s: %v",
 		toolName, stage, value.Code, err,
 	)
+	if bkntrace.IsTraceInfrastructureFailure(nil, err) {
+		return lifecycleUnrecordedResult(ctx, toolName, stage, value.Code)
+	}
 	return lifecycleToolError(value)
+}
+
+func lifecycleUnrecordedResult(ctx context.Context, toolName, stage, code string) *mcpsdk.CallToolResult {
+	bkntrace.MarkTraceUnavailable(ctx, stage, "", code)
+	result, _ := lifecycleSuccessResult(map[string]any{
+		"trace_recorded": false, "trace_available": false, "stage": stage, "code": code,
+		"required_action": "continue_without_bkn_context",
+	})
+	attachTraceAvailability(result, ctx)
+	return result
+}
+
+func lifecycleAPIResult(ctx context.Context, toolName, stage string, value bkntrace.APIError) *mcpsdk.CallToolResult {
+	if bkntrace.IsCaptureDisabledError(&value) {
+		if toolName == toolKeyStartInteraction || toolName == toolKeyFinishInteraction {
+			return lifecycleCaptureDisabledResult()
+		}
+		return lifecycleToolError(traceCoreError(value))
+	}
+	if bkntrace.IsTraceInfrastructureFailure(&value, nil) {
+		return lifecycleUnrecordedResult(ctx, toolName, stage, value.Code)
+	}
+	return lifecycleToolError(traceCoreError(value))
 }
 
 func lifecycleAvailabilityError(err error) lifecycleError {
@@ -635,4 +684,79 @@ func lifecycleToolErrorWithDetails(value lifecycleError, details map[string]any)
 	}
 	raw, _ := sonic.Marshal(envelope)
 	return mcpsdk.NewToolResultError(string(raw))
+}
+
+const traceAvailabilityMetaKey = "openbkn.ai/trace"
+const traceAvailabilityDiagnosticPrefix = `[BKN_TRACE]`
+
+func attachTraceAvailability(result *mcpsdk.CallToolResult, ctx context.Context) {
+	attachTraceAvailabilityValue(result, bkntrace.TraceAvailabilityFromContext(ctx))
+}
+
+func attachTraceAvailabilityValue(result *mcpsdk.CallToolResult, value map[string]any) {
+	if result == nil {
+		return
+	}
+	if value == nil {
+		return
+	}
+	if result.Meta == nil {
+		result.Meta = &mcpsdk.Meta{}
+	}
+	result.Meta.AdditionalFields = maps.Clone(result.Meta.AdditionalFields)
+	if result.Meta.AdditionalFields == nil {
+		result.Meta.AdditionalFields = map[string]any{}
+	}
+	result.Meta.AdditionalFields[traceAvailabilityMetaKey] = value
+	diagnostic, err := sonic.Marshal(map[string]any{"bkn_trace": value})
+	if err != nil {
+		return
+	}
+	diagnosticIndex := -1
+	for i, content := range result.Content {
+		text, ok := mcpsdk.AsTextContent(content)
+		if !ok || !strings.HasPrefix(text.Text, traceAvailabilityDiagnosticPrefix) {
+			continue
+		}
+		var existing map[string]any
+		if sonic.Unmarshal([]byte(strings.TrimPrefix(text.Text, traceAvailabilityDiagnosticPrefix)), &existing) == nil {
+			if _, ok := existing["bkn_trace"].(map[string]any); ok {
+				diagnosticIndex = i
+				break
+			}
+		}
+	}
+	if diagnosticIndex >= 0 {
+		result.Content[diagnosticIndex] = mcpsdk.NewTextContent(traceAvailabilityDiagnosticPrefix + string(diagnostic))
+	} else {
+		result.Content = append(result.Content, mcpsdk.NewTextContent(traceAvailabilityDiagnosticPrefix+string(diagnostic)))
+	}
+}
+
+func executeUntracedBusiness(ctx context.Context, req mcpsdk.CallToolRequest, next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error), stage, code string) (*mcpsdk.CallToolResult, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if code != "capture_disabled" {
+		bkntrace.MarkTraceUnavailable(ctx, stage, req.Params.Name, code)
+	}
+	ctx = bkntrace.ClearManagedTraceContext(ctx)
+	arguments := maps.Clone(req.GetArguments())
+	delete(arguments, "bkn_context")
+	req.Params.Arguments = arguments
+	result, err, _ := callBusinessTool(ctx, req, next)
+	if err != nil {
+		result, err = mcpsdk.NewToolResultError(err.Error()), nil
+	}
+	attachTraceAvailability(result, ctx)
+	return result, err
+}
+
+// Intentional policy disable creates no lifecycle identity or failure reason.
+func lifecycleCaptureDisabledResult() *mcpsdk.CallToolResult {
+	result, _ := lifecycleSuccessResult(map[string]any{
+		"trace_recorded": false, "capture_enabled": false, "code": "capture_disabled",
+		"required_action": "continue_without_bkn_context",
+	})
+	return result
 }

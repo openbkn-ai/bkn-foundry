@@ -36,6 +36,91 @@ var businessRefMinSegments = map[string]int{
 	"data_resource":     2,
 }
 
+// DeriveToolBusinessRefs records targets named by structured request fields.
+// MCP and managed HTTP calls share this request tier; observed evidence can
+// provide the resolved versions and schema IDs later. Caller declarations and
+// query text are never used to infer a target.
+func DeriveToolBusinessRefs(toolName string, input map[string]any, currentKNID string) []BusinessRef {
+	if currentKNID == "" {
+		return nil
+	}
+	if inputKNID := businessRefString(input["kn_id"]); inputKNID != "" && inputKNID != currentKNID {
+		return nil
+	}
+	refs := []BusinessRef{{RefType: "knowledge_network", RefID: "kn:" + currentKNID, Version: "unversioned"}}
+	switch toolName {
+	case "search_instance":
+		// Semantic instance search can legitimately return no object type. The
+		// addressed network is still a deterministic request scope.
+		return refs
+	case "query_object_instance", "explore_subgraph":
+		field := "ot_id"
+		if toolName == "explore_subgraph" {
+			field = "source_object_type_id"
+		}
+		objectID := businessRefString(input[field])
+		if objectID == "" {
+			return nil
+		}
+		return append(refs, BusinessRef{RefType: "object_type", RefID: "object:" + currentKNID + ":" + objectID, Version: "unversioned"})
+	case "query_instance_subgraph":
+		// Keep only the fixed, typed path fields. Do not recursively scan query
+		// conditions or infer targets from arbitrary IDs.
+		paths, ok := input["relation_type_paths"].([]any)
+		if !ok {
+			return refs
+		}
+		seen := map[string]bool{"kn:" + currentKNID: true}
+		for _, rawPath := range paths {
+			path, ok := rawPath.(map[string]any)
+			if !ok {
+				continue
+			}
+			if objects, ok := path["object_types"].([]any); ok {
+				for _, rawObject := range objects {
+					object, ok := rawObject.(map[string]any)
+					if !ok {
+						continue
+					}
+					id := businessRefString(object["id"])
+					refID := "object:" + currentKNID + ":" + id
+					if id != "" && !seen[refID] && len(seen) < 65 {
+						seen[refID] = true
+						refs = append(refs, BusinessRef{RefType: "object_type", RefID: refID, Version: "unversioned"})
+					}
+				}
+			}
+			if relations, ok := path["relation_types"].([]any); ok {
+				for _, rawRelation := range relations {
+					relation, ok := rawRelation.(map[string]any)
+					if !ok {
+						continue
+					}
+					id := businessRefString(relation["relation_type_id"])
+					refID := "relation:" + currentKNID + ":" + id
+					if id != "" && !seen[refID] && len(seen) < 65 {
+						seen[refID] = true
+						refs = append(refs, BusinessRef{RefType: "relation_type", RefID: refID, Version: "unversioned"})
+					}
+				}
+			}
+		}
+		return refs
+	case "get_kn_detail", "get_object_types", "get_relation_types", "run_cypher":
+		// Schema lookups may name display names; Cypher resolves model IDs in
+		// the compiler. Only the known network is authoritative at this tier.
+		return refs
+	case "query_metric":
+		metricID := businessRefString(input["metric_id"])
+		if metricID == "" {
+			return nil
+		}
+		return append(refs, BusinessRef{RefType: "metric", RefID: "metric:" + currentKNID + ":" + metricID, Version: "unversioned"})
+	default:
+		return nil
+	}
+}
+
 // ParseBusinessRefs accepts only canonical, bounded declarations that belong
 // to the knowledge network addressed by the current operation. Both MCP and
 // REST call this function so an evidence declaration has one contract.

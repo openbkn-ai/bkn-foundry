@@ -70,12 +70,20 @@ func (m *managedFunctionGuard) Execute(
 	input ManagedFunctionTraceInput,
 	run func(context.Context) (map[string]any, error),
 ) (map[string]any, error) {
-	if m == nil || !m.enabled || m.guard == nil || run == nil {
-		return nil, errors.New("managed function trace is unavailable")
+	if run == nil {
+		return nil, errors.New("managed function callback is unavailable")
+	}
+	ctx = bkntrace.WithTraceAvailability(ctx)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if m == nil || !m.enabled || m.guard == nil {
+		bkntrace.MarkTraceUnavailable(ctx, "function_begin", "execute_tool", "feature_not_installed")
+		return runAndCleanTraceGaps(bkntrace.ClearManagedTraceContext(ctx), run)
 	}
 	traceContext, ok := common.GetTraceContextFromCtx(ctx)
 	if !ok || traceContext.ConversationID == "" || traceContext.InteractionID == "" || traceContext.OperationID == "" {
-		return nil, errors.New("managed function trace requires the outer execute_tool operation")
+		return runAndCleanTraceGaps(bkntrace.ClearManagedTraceContext(ctx), run)
 	}
 	inputPayload := map[string]any{
 		"kn_id": input.KnowledgeNetworkID, "toolbox_id": input.ToolboxID, "tool_id": input.ToolID,
@@ -88,7 +96,7 @@ func (m *managedFunctionGuard) Execute(
 		return nil, fmt.Errorf("serialize managed function input: %w", err)
 	}
 	functionRef := bkntrace.BusinessRef{
-		RefType: "function", RefID: "function:" + input.KnowledgeNetworkID + ":" + input.ToolboxID + ":" + input.ToolID,
+		RefType: "function", RefID: "function:" + input.KnowledgeNetworkID + ":" + input.ToolID,
 		Version: normalizedFunctionVersion(input.Descriptor.Version), DisplayHint: input.Descriptor.Name,
 	}
 	lifecycleContext, state, disposition, apiErr, err := m.guard.Begin(ctx, bkntrace.GuardIntent{
@@ -104,8 +112,21 @@ func (m *managedFunctionGuard) Execute(
 		ToolName: input.ToolID, Protocol: "internal", SourceModule: managedFunctionSourceModule,
 		Input: rawInput, CapabilityProfile: managedFunctionCapabilityProfile(input),
 	})
-	if err != nil {
-		return nil, fmt.Errorf("start managed function trace: %w", err)
+	if err != nil || apiErr != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if bkntrace.IsTraceInfrastructureFailure(apiErr, err) {
+			code := "trace_core_unavailable"
+			if apiErr != nil {
+				code = apiErr.Code
+			}
+			bkntrace.MarkTraceUnavailable(ctx, "function_begin", "execute_tool", code)
+			return runAndCleanTraceGaps(bkntrace.ClearManagedTraceContext(ctx), run)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("start managed function trace: %w", err)
+		}
 	}
 	if apiErr != nil {
 		return nil, fmt.Errorf("start managed function trace: %s: %s", apiErr.Code, apiErr.Message)
@@ -114,7 +135,25 @@ func (m *managedFunctionGuard) Execute(
 		return nil, fmt.Errorf("managed function trace is not executable: %s", disposition)
 	}
 
-	result, runErr := run(lifecycleContext)
+	// The registration is real even if the caller cancelled during Core I/O.
+	// Keep the receipt pending rather than executing or reporting a false result.
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if lifecycleContext.Err() != nil {
+		return nil, lifecycleContext.Err()
+	}
+
+	// Finish the inner function even when the outer MCP panic guard would catch
+	// the callback panic. Keep arbitrary panic content out of persisted errors.
+	result, runErr := func() (result map[string]any, runErr error) {
+		defer func() {
+			if recover() != nil {
+				runErr = errors.New("managed function execution panicked")
+			}
+		}()
+		return runAndCleanTraceGaps(lifecycleContext, run)
+	}()
 	failed := runErr != nil || managedFunctionResultFailed(result)
 	payload := any(redactFunctionPayload(result))
 	if failed {
@@ -122,27 +161,45 @@ func (m *managedFunctionGuard) Execute(
 	}
 	_, finishAPIErr, finishErr := m.guard.Finish(lifecycleContext, state, payload, failed, false)
 	if runErr != nil {
-		if finishErr != nil {
-			return nil, fmt.Errorf("%w; finalize managed function trace: %v", runErr, finishErr)
-		}
-		if finishAPIErr != nil {
-			return nil, fmt.Errorf("%w; finalize managed function trace: %s", runErr, finishAPIErr.Code)
+		if finishErr != nil || finishAPIErr != nil {
+			bkntrace.MarkTraceUnavailable(ctx, "function_finish", "execute_tool", "trace_finish_unconfirmed")
 		}
 		return nil, runErr
 	}
 	if finishErr != nil {
+		bkntrace.MarkTraceUnavailable(ctx, "function_finish", "execute_tool", "trace_finish_unconfirmed")
 		logger.DefaultLogger().WithContext(ctx).Errorf(
 			"[BKN Trace] failed to finalize managed function %q: %v", input.ToolID, finishErr,
 		)
 		return result, nil
 	}
 	if finishAPIErr != nil {
+		bkntrace.MarkTraceUnavailable(ctx, "function_finish", "execute_tool", finishAPIErr.Code)
 		logger.DefaultLogger().WithContext(ctx).Errorf(
 			"[BKN Trace] failed to finalize managed function %q: %s", input.ToolID, finishAPIErr.Code,
 		)
 		return result, nil
 	}
 	return result, nil
+}
+
+func runAndCleanTraceGaps(ctx context.Context, run func(context.Context) (map[string]any, error)) (map[string]any, error) {
+	result, err := run(ctx)
+	if result == nil {
+		return result, err
+	}
+	body, ok := result["body"].(map[string]any)
+	if !ok {
+		return result, err
+	}
+	stderr, ok := body["stderr"].(string)
+	if !ok {
+		return result, err
+	}
+	cleaned, reasons := bkntrace.ExtractTraceGapMarkers(stderr)
+	body["stderr"] = cleaned
+	bkntrace.MergeTracePartialReasons(ctx, reasons)
+	return result, err
 }
 
 func managedFunctionFailurePayload(result map[string]any) map[string]any {

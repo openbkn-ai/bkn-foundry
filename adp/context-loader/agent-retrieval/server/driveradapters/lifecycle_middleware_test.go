@@ -46,7 +46,7 @@ func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
 		{"/api/agent-retrieval/v1/kn/execute_action", 1},
 		{"/api/agent-retrieval/v1/kn/run_sql", 1},
 		{"/api/agent-retrieval/internal-v1/kn/search_schema", 1},
-		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", 0},
+		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -180,7 +180,7 @@ func (h *countingQueryToolsHandler) RunSQL(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func TestRegisteredProxyRouteCannotBypassLifecycle(t *testing.T) {
+func TestRegisteredProxyRouteDoesNotRequireTrace(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	queryTools := &countingQueryToolsHandler{}
 	publicEngine := gin.New()
@@ -240,8 +240,8 @@ func TestRegisteredProxyRouteCannotBypassLifecycle(t *testing.T) {
 	privateRequest.Header.Set(string(interfaces.HeaderXAccountType), string(interfaces.AccessorTypeUser))
 	privateResponse := httptest.NewRecorder()
 	privateEngine.ServeHTTP(privateResponse, privateRequest)
-	if proxy.calls != 0 || privateResponse.Code != http.StatusBadRequest {
-		t.Fatalf("mcpproxy bypassed lifecycle: calls=%d status=%d body=%s",
+	if proxy.calls != 1 || privateResponse.Code != http.StatusNoContent {
+		t.Fatalf("mcpproxy Trace optionality drifted: calls=%d status=%d body=%s",
 			proxy.calls, privateResponse.Code, privateResponse.Body)
 	}
 }

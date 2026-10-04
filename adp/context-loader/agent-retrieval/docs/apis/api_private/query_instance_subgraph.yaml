@@ -856,11 +856,11 @@ components:
       description: 查询请求的顶层结构。用于基于关系类路径查询对象子图。relation_type_paths数组中可以包含多条不同的关系路径，系统会同时查询并返回所有路径的结果。每条路径必须符合严格的顺序和方向要求。
       type: object
       required:
-      - bkn_context
       - relation_type_paths
       properties:
         bkn_context:
           $ref: '#/components/schemas/BKNContext'
+          description: 可选业务溯源上下文；提供时须有真实会话和交互 ID。Trace 不可用时可省略，业务调用继续执行并返回未记录标头。
         relation_type_paths:
           description: 关系类路径集合,数组中可以包含多条不同的关系路径，系统会同时查询并返回所有路径的结果。每条路径必须符合严格的顺序和方向要求。
           type: array

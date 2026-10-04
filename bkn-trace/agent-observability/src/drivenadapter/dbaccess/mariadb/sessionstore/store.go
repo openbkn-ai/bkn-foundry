@@ -436,7 +436,9 @@ func (s *Store) WithinTransaction(ctx context.Context, fn func(isessionstore.Tra
 			return err
 		}
 		callbackErr := fn(adapter)
-		if callbackErr == nil {
+		// Lookup failures can make the callback report a domain-level not-found.
+		// Preserve the storage error so transaction retries see the real cause.
+		if adapter.err != nil {
 			callbackErr = adapter.err
 		}
 		if callbackErr != nil {
@@ -1190,8 +1192,8 @@ func (t *transaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
 	).Scan(&exists)
 	input := marshalJSON(fact.Input)
 	capabilityProfile := marshalOptionalCapabilityProfile(fact.CapabilityProfile)
-	output := marshalOptionalPayload(fact.Output)
-	errorPayload := marshalOptionalPayload(fact.Error)
+	output := marshalTerminalPayload(fact.Output, fact.EvidenceCompletion)
+	errorPayload := marshalTerminalPayload(fact.Error, fact.EvidenceCompletion)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		_, t.err = t.tx.ExecContext(t.ctx, `
@@ -1830,30 +1832,33 @@ func (t *transaction) scanOperationCallFact(row rowScanner) (sessionvo.Operation
 		}
 	}
 	if output != "" {
-		value.Output = &sessionvo.PayloadEnvelope{}
-		if err := json.Unmarshal([]byte(output), value.Output); err != nil {
+		var err error
+		value.Output, value.EvidenceCompletion, err = decodeTerminalPayload(output)
+		if err != nil {
 			t.err = err
 			return sessionvo.OperationCallFact{}, false
 		}
 	}
 	if errorPayload != "" {
-		value.Error = &sessionvo.PayloadEnvelope{}
-		if err := json.Unmarshal([]byte(errorPayload), value.Error); err != nil {
+		var err error
+		var completion *sessionvo.EvidenceCompletion
+		value.Error, completion, err = decodeTerminalPayload(errorPayload)
+		if err != nil {
 			t.err = err
 			return sessionvo.OperationCallFact{}, false
+		}
+		if value.EvidenceCompletion != nil && completion != nil {
+			t.err = errors.New("confirmation metadata appears in both terminal payloads")
+			return sessionvo.OperationCallFact{}, false
+		}
+		if completion != nil {
+			value.EvidenceCompletion = completion
 		}
 	}
 	if finishedAt.Valid {
 		value.FinishedAt = &finishedAt.Time
 	}
 	return value, true
-}
-
-func marshalOptionalPayload(payload *sessionvo.PayloadEnvelope) string {
-	if payload == nil {
-		return ""
-	}
-	return marshalJSON(*payload)
 }
 
 func marshalOptionalCapabilityProfile(profile *sessionvo.CapabilityProfile) string {

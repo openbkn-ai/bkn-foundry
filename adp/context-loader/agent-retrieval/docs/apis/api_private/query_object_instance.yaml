@@ -246,11 +246,10 @@ components:
     ObjectQueryRequest:
       description: 对象实例分页查询请求
       type: object
-      required:
-        - bkn_context
       properties:
         bkn_context:
           $ref: '#/components/schemas/BKNContext'
+          description: 可选业务溯源上下文；提供时须有真实会话和交互 ID。Trace 不可用时可省略，业务调用继续执行并返回未记录标头。
         condition:
           $ref: '#/components/schemas/Condition'
           description: 过滤条件

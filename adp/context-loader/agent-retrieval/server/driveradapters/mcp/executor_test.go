@@ -253,8 +253,8 @@ func TestExecutorAppliesTheServerGuardToTheTarget(t *testing.T) {
 	req.Params.Name = toolKeyExecuteNativeTool
 	req.Params.RawArguments = json.RawMessage(`{"name":"get_object_types","arguments":{"kn_id":"kn_demo","ids":["ot_order"]}}`)
 	result, err := executor.handle(context.Background(), req)
-	if err != nil || ran || !result.IsError || !strings.Contains(resultText(result), "conversation_required") {
-		t.Fatalf("result=%v err=%v ran=%v, want conversation_required before the target", resultText(result), err, ran)
+	if err != nil || !ran || result.IsError || result.Meta == nil || result.Meta.AdditionalFields[traceAvailabilityMetaKey] == nil {
+		t.Fatalf("result=%v err=%v ran=%v, want actual business plus explicit unrecorded Trace metadata", resultText(result), err, ran)
 	}
 }
 
@@ -279,8 +279,8 @@ func TestServerGuardLeavesTheExecutorToItself(t *testing.T) {
 		if name == toolKeyExecuteNativeTool && passed != name {
 			t.Errorf("the executor was guarded at the server level: %s", resultText(result))
 		}
-		if name == toolKeyGetObjectTypes && (passed != "" || !strings.Contains(resultText(result), "conversation_required")) {
-			t.Errorf("get_object_types passed the server guard without bkn_context")
+		if name == toolKeyGetObjectTypes && (passed != name || result.Meta == nil || result.Meta.AdditionalFields[traceAvailabilityMetaKey] == nil) {
+			t.Errorf("get_object_types did not execute with explicit unrecorded metadata")
 		}
 	}
 }

@@ -4,19 +4,19 @@
  * Licensed under the Apache License, Version 2.0.
  * See the LICENSE file in the project root for details.
  */
-ContextLoader 精简入口：按需加载的知识网络工具集。常用查询工具直接公布，其余能力经按需工具使用。
+ContextLoader：常用查询直接调用，其他工具按需加载。
 
 受管交互流程（每个新的用户问题）：
 1. 调用 bkn_start_interaction，传入完整问题、当前 Agent 名称和 conversation_mode。首个问题用 new，不传 conversation_id；后续问题用 continue，并传入上次返回的 conversation_id。
-2. 其余工具调用都传入 bkn_context: { conversation_id, interaction_id }，取值照抄上一步的返回。
-3. 回复用户前调用 bkn_finish_interaction：完成传 outcome=completed 和最终答案；未完成传 failed、cancelled 或 handed_off，可附原因。
+2. 有 IDs 时照抄到 bkn_context；trace_recorded=false 时省略并继续业务，不因 Trace 重试。
+3. 回复前 bkn_finish_interaction：completed 带 answer，否则 failed/cancelled/handed_off。将 _meta trace 的 partial_reasons 传入 finish；宿主丢弃 _meta 时读取独立降级诊断块；无 ID 可省略 interaction_id。
 
 探索与查询：
-- 不知道 kn_id 时先用 list_knowledge_networks。get_kn_detail 看概览；search_schema 找对象类、关系类和指标，用它返回的真实 ID 查询，不要凭名称猜。
+- 不知道 kn_id 时先 list_knowledge_networks；get_kn_detail 看概览，search_schema 找类和指标，用返回的真实 ID 查询。
 - 自然语言召回实例用 search_instance（相关性 Top-K，不是全部）；按条件取数、排序、翻页用 query_object_instance；已建模指标用 query_metric。
 
-其他能力（统计与 Cypher、子图、逻辑属性、行动、技能、挂载函数、沙箱里跑代码或命令等）经按需工具：search_native_tools 说明要做的事，找到工具；它返回 ready 时，里面已经是最佳候选的参数 schema 和调用模板，直接 execute_native_tool，别再调 describe_native_tool；没有 ready 才用 describe_native_tool 取参数 schema。execute_native_tool 执行，name 填目标工具名，arguments 填目标参数，bkn_context 放外层。候选工具不能按名称直接调用。
+- 其他能力经按需工具：search_native_tools 找工具；有 ready 就按其 schema/template 调 execute_native_tool，否则先 describe_native_tool。name 填目标工具，arguments 填参数，bkn_context 放外层；候选不能按名称直调。
 
-业务计算（可售、齐套缺料、产能、交期、替代料、BOM 展开等）：get_kn_detail 显示挂载了函数时，先经 execute_native_tool 调 search_capabilities 找已发布函数，再调 execute_tool 执行，以函数结果为准；不要自己用原始数据推算这些口径，也不要基于分页或预览结果计算统计值。get_kn_detail 顶层的 comment 是网络作者写的说明；写了问答路由、指标或时间基线时，优先按它选择函数、技能和指标，并照它的口径作答。
+- 业务计算（可售、齐套缺料、产能、交期、替代料、BOM 等）：get_kn_detail 有挂载函数时，经 execute_native_tool 调 search_capabilities 找已发布函数，再 execute_tool，以函数结果为准；不要用原始、分页或预览数据自行推算。按顶层 comment 的路由、指标和时间基线作答。
 
 执行行动等会修改数据或调用外部系统的操作，先确认用户的意图。

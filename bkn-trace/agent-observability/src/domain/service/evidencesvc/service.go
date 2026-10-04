@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/captureadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
@@ -28,16 +29,18 @@ import (
 )
 
 var (
-	traceparentRE   = regexp.MustCompile(`^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$`)
-	traceIDRE       = regexp.MustCompile(`^[0-9a-f]{32}$`)
-	spanIDRE        = regexp.MustCompile(`^[0-9a-f]{16}$`)
-	requestIDRE     = regexp.MustCompile(`^req_[0-9A-Za-z_.-]+$`)
-	correlationIDRE = regexp.MustCompile(`^[0-9A-Za-z_.:-]{1,128}$`)
-	timestampRE     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$`)
-	hashRE          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	payloadHashRE   = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	controlledRefRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
-	artifactRefRE   = regexp.MustCompile(`^artifact:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
+	ErrCaptureDisabled    = errors.New("capture_disabled")
+	ErrCaptureUnavailable = errors.New("trace_core_unavailable")
+	traceparentRE         = regexp.MustCompile(`^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$`)
+	traceIDRE             = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	spanIDRE              = regexp.MustCompile(`^[0-9a-f]{16}$`)
+	requestIDRE           = regexp.MustCompile(`^req_[0-9A-Za-z_.-]+$`)
+	correlationIDRE       = regexp.MustCompile(`^[0-9A-Za-z_.:-]{1,128}$`)
+	timestampRE           = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$`)
+	hashRE                = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	payloadHashRE         = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	controlledRefRE       = regexp.MustCompile(`^[a-z][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
+	artifactRefRE         = regexp.MustCompile(`^artifact:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 )
 
 var sensitivePatterns = []*regexp.Regexp{
@@ -227,6 +230,7 @@ type Service struct {
 	businessResolver       ibusinessresolver.BusinessResolverPort
 	sessionStore           isessionstore.Store
 	traceStatsSource       itracestats.Source
+	captureAdmission       *captureadmission.View
 }
 
 type Option func(*Service)
@@ -247,6 +251,10 @@ func WithSessionStore(store isessionstore.Store) Option {
 
 func WithTraceStatsSource(source itracestats.Source) Option {
 	return func(service *Service) { service.traceStatsSource = source }
+}
+
+func WithCaptureAdmission(view *captureadmission.View) Option {
+	return func(service *Service) { service.captureAdmission = view }
 }
 
 const (
@@ -298,6 +306,14 @@ func NewWithBusinessResolverAndProjectionSource(
 }
 
 func (s *Service) IngestArtifact(ctx context.Context, body []byte) (evidencevo.ArtifactIngestResponse, evidencevo.ValidationErrors, error) {
+	if s.captureAdmission != nil {
+		if !s.captureAdmission.Known() {
+			return evidencevo.ArtifactIngestResponse{}, nil, ErrCaptureUnavailable
+		}
+		if !s.captureAdmission.AllowsNewRecords() {
+			return evidencevo.ArtifactIngestResponse{}, nil, ErrCaptureDisabled
+		}
+	}
 	var artifact evidencevo.EvidenceArtifact
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
@@ -397,6 +413,14 @@ func artifactMatchesTrace(artifact evidencevo.EvidenceArtifact, trace evidencevo
 }
 
 func (s *Service) Ingest(ctx context.Context, body []byte) (evidencevo.IngestResponse, evidencevo.ValidationErrors, error) {
+	if s.captureAdmission != nil {
+		if !s.captureAdmission.Known() {
+			return evidencevo.IngestResponse{}, nil, ErrCaptureUnavailable
+		}
+		if !s.captureAdmission.AllowsNewRecords() {
+			return evidencevo.IngestResponse{}, nil, ErrCaptureDisabled
+		}
+	}
 	var raw any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return evidencevo.IngestResponse{}, evidencevo.ValidationErrors{

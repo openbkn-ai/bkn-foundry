@@ -42,9 +42,6 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 	if interaction.ExecutionStatus == sessionvo.InteractionActive {
 		return nil, nil
 	}
-	if interaction.ClosureManifest != nil && slices.Contains(interaction.ClosureManifest.SystemPartialReasons, "not_collected_due_to_license") {
-		return nil, nil
-	}
 	if !hasRecordIntegrityCalls(snapshot) {
 		return nil, nil
 	}
@@ -52,6 +49,15 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 	report := &evidencevo.RecordIntegrity{Status: "complete", CheckedAt: now.UTC(), Scope: "registered_call_records", Missing: []evidencevo.MissingRecord{}}
 	add := func(f sessionvo.OperationCallFact, reason, field string) {
 		report.Missing = append(report.Missing, evidencevo.MissingRecord{OperationID: f.OperationID, Attempt: f.Attempt, ToolName: f.ToolName, Reason: reason, Field: field})
+	}
+	explicitGap := false
+	if interaction.ClosureManifest != nil {
+		for _, reason := range interaction.ClosureManifest.SystemPartialReasons {
+			if tool, requestID, ok := sessionvo.ParseTraceCallGap(reason); ok {
+				explicitGap = true
+				add(sessionvo.OperationCallFact{ToolName: tool}, "call_outcome_missing", "request_id:"+requestID)
+			}
+		}
 	}
 	payloads := map[string]json.RawMessage{}
 	check := func(f sessionvo.OperationCallFact, field string, p *sessionvo.PayloadEnvelope) error {
@@ -139,12 +145,13 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 		if err := check(f, "input", &f.Input); err != nil {
 			return nil, err
 		}
-		if f.Status == sessionvo.AttemptCompleted {
+		policyOmitted := hasReceipt && slices.Contains(r.PartialReasons, "not_collected_due_to_policy")
+		if f.Status == sessionvo.AttemptCompleted && (!policyOmitted || !payloadOmitted(f.Output)) {
 			if err := check(f, "output", f.Output); err != nil {
 				return nil, err
 			}
 		}
-		if f.Status == sessionvo.AttemptFailed {
+		if f.Status == sessionvo.AttemptFailed && (!policyOmitted || !payloadOmitted(f.Error)) {
 			if err := check(f, "error", f.Error); err != nil {
 				return nil, err
 			}
@@ -174,6 +181,12 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 			continue
 		}
 		if profile.EvidenceContract == "managed_function_execution/v1" {
+			continue
+		}
+		// A trusted policy stop may omit this call's new result ledger only when
+		// the result itself was intentionally omitted and no pre-existing event
+		// reference claims that an event should already exist.
+		if policyOmitted && payloadOmitted(f.Output) && (!hasReceipt || len(r.ObservedEvidenceRefs) == 0) {
 			continue
 		}
 		if snapshot.Ledger == nil {
@@ -280,12 +293,16 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 		}
 	}
 	if len(report.Missing) > 0 {
-		if interaction.ClosureManifest != nil && interaction.ClosureManifest.AssemblerDeadline != nil && now.Before(*interaction.ClosureManifest.AssemblerDeadline) {
+		if !explicitGap && interaction.ClosureManifest != nil && interaction.ClosureManifest.AssemblerDeadline != nil && now.Before(*interaction.ClosureManifest.AssemblerDeadline) {
 			return nil, nil
 		}
 		report.Status = "missing"
 	}
 	return report, nil
+}
+
+func payloadOmitted(payload *sessionvo.PayloadEnvelope) bool {
+	return payload == nil || payload.Mode == sessionvo.PayloadOmitted
 }
 
 func integrityEventType(contract string) string {
@@ -313,7 +330,14 @@ func hasRecordIntegrityCalls(snapshot sessionvo.EvidenceSnapshot) bool {
 		}
 	}
 	manifest := snapshot.Interaction.ClosureManifest
-	return manifest != nil && (len(manifest.ExpectedOperations) > 0 || len(manifest.ExpectedReceipts) > 0 || slices.Contains(manifest.SystemPartialReasons, "not_collected_due_to_license"))
+	if manifest != nil {
+		for _, reason := range manifest.SystemPartialReasons {
+			if _, _, ok := sessionvo.ParseTraceCallGap(reason); ok {
+				return true
+			}
+		}
+	}
+	return manifest != nil && (len(manifest.ExpectedOperations) > 0 || len(manifest.ExpectedReceipts) > 0 || slices.Contains(manifest.SystemPartialReasons, "not_collected_due_to_license") || slices.Contains(manifest.SystemPartialReasons, "not_collected_due_to_policy"))
 }
 func (s *Service) inspectRecordIntegrity(ctx context.Context, id string, scope evidencevo.QueryScope) (*evidencevo.RecordIntegrity, error) {
 	report, _, err := s.inspectRecordIntegrityWithScope(ctx, id, scope)
@@ -362,10 +386,51 @@ func (s *Service) inspectRecordIntegrityWithScope(ctx context.Context, id string
 	// absence: do not turn authorization or unsupported external reads into gaps.
 	ctx = withRecordIntegrityReadBudget(ctx)
 	budget := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget)
+	// Reuse verified metadata only within this authorized interaction check.
+	// Output/receipt checks need presence, not the potentially large JSON body.
+	type verifiedArtifact struct {
+		source                             evidencevo.EvidenceArtifact
+		canonicalLength, htmlEscapedLength int
+	}
+	verified := map[string]verifiedArtifact{}
+	operations := captureOperationIDs(snapshot)
+	checkSource := func(id string, artifact evidencevo.EvidenceArtifact, f sessionvo.OperationCallFact, field string) error {
+		if artifact.ArtifactID != id {
+			return errors.New("call payload artifact identity mismatch")
+		}
+		if field == "artifact" {
+			if reason := captureSourceMismatch(id, snapshot.Interaction.ID, artifact, []ArtifactCaptureSource{{RequestID: f.RequestID}}, operations); reason != "" {
+				return fmt.Errorf("evidence artifact source mismatch: %s", reason)
+			}
+		} else if artifact.InteractionID != snapshot.Interaction.ID || artifact.OperationID != f.OperationID || artifact.RequestID != f.RequestID || artifact.TraceID != f.TraceID {
+			return errors.New("call payload artifact source mismatch")
+		}
+		expectedType := map[string]evidencevo.ArtifactType{"input": evidencevo.ArtifactTypeQuery, "output": evidencevo.ArtifactTypeDataResult, "error": evidencevo.ArtifactTypeLogicExecution}[field]
+		if expectedType != "" && artifact.ArtifactType != expectedType {
+			return errors.New("call payload artifact type mismatch")
+		}
+		return nil
+	}
+	checkLength := func(p sessionvo.PayloadEnvelope, metadata verifiedArtifact) error {
+		if p.ByteLength > 0 && p.ByteLength != metadata.canonicalLength && p.ByteLength != metadata.htmlEscapedLength {
+			return errors.New("call payload artifact length mismatch")
+		}
+		return nil
+	}
 	verify := func(f sessionvo.OperationCallFact, field string, p sessionvo.PayloadEnvelope) (json.RawMessage, error) {
 		id, valid := evidencevo.ArtifactIDFromReference(p.Ref)
 		if !valid {
 			return nil, nil
+		}
+		if metadata, found := verified[id]; found && (field == "output" || field == "artifact") {
+			if err := checkSource(id, metadata.source, f, field); err != nil {
+				return nil, err
+			}
+			if err := checkLength(p, metadata); err != nil {
+				return nil, err
+			}
+			// These fields only consume non-nil presence in evaluateRecordIntegrity.
+			return json.RawMessage("null"), nil
 		}
 		reader, ok := s.artifactStore.(iartifactstore.CaptureReader)
 		if !ok {
@@ -387,16 +452,8 @@ func (s *Service) inspectRecordIntegrityWithScope(ctx context.Context, id string
 			return nil, nil
 		}
 		artifact := result.Artifact
-		if field == "artifact" {
-			if reason := captureSourceMismatch(id, snapshot.Interaction.ID, artifact, []ArtifactCaptureSource{{RequestID: f.RequestID}}, captureOperationIDs(snapshot)); reason != "" {
-				return nil, fmt.Errorf("evidence artifact source mismatch: %s", reason)
-			}
-		} else if artifact.InteractionID != snapshot.Interaction.ID || artifact.OperationID != f.OperationID || artifact.RequestID != f.RequestID || artifact.TraceID != f.TraceID {
-			return nil, errors.New("call payload artifact source mismatch")
-		}
-		expectedType := map[string]evidencevo.ArtifactType{"input": evidencevo.ArtifactTypeQuery, "output": evidencevo.ArtifactTypeDataResult, "error": evidencevo.ArtifactTypeLogicExecution}[field]
-		if expectedType != "" && artifact.ArtifactType != expectedType {
-			return nil, errors.New("call payload artifact type mismatch")
+		if err := checkSource(id, artifact, f, field); err != nil {
+			return nil, err
 		}
 		if artifact.Content == nil {
 			if artifact.SnapshotRef == "" {
@@ -408,8 +465,27 @@ func (s *Service) inspectRecordIntegrityWithScope(ctx context.Context, id string
 		if content.State != evidencevo.ArtifactContentCaptured {
 			return nil, fmt.Errorf("call artifact content verification failed: %s", content.Reason)
 		}
-		if p.ByteLength > 0 && len(content.CanonicalJSON) != p.ByteLength {
-			return nil, errors.New("call payload artifact length mismatch")
+		metadata := verifiedArtifact{
+			source: evidencevo.EvidenceArtifact{
+				ArtifactID: artifact.ArtifactID, ArtifactType: artifact.ArtifactType,
+				InteractionID: artifact.InteractionID, OperationID: artifact.OperationID,
+				RequestID: artifact.RequestID, TraceID: artifact.TraceID,
+			},
+			canonicalLength: len(content.CanonicalJSON), htmlEscapedLength: len(content.CanonicalJSON),
+		}
+		// The legacy producer used HTML escaping. In the hash-verified compact
+		// canonical JSON each literal <, > or & becomes exactly six ASCII bytes;
+		// all other bytes (including precise numbers and Unicode) stay unchanged.
+		for _, b := range content.CanonicalJSON {
+			if b == '<' || b == '>' || b == '&' {
+				metadata.htmlEscapedLength += 5
+			}
+		}
+		if err := checkLength(p, metadata); err != nil {
+			return nil, err
+		}
+		if len(verified) < 128 {
+			verified[id] = metadata
 		}
 		return content.CanonicalJSON, nil
 	}
@@ -534,7 +610,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 
 	refs := map[string]bool{}
 	for _, ref := range r.BusinessRefs {
-		if ref.IsCanonical() {
+		if ref.IsCanonical() || historicalFunctionRefShape(ref) {
 			refs[ref.RefID] = true
 		}
 	}
@@ -543,7 +619,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 			continue
 		}
 		for _, ref := range e.BusinessRefs {
-			if ref.IsCanonical() {
+			if ref.IsCanonical() || historicalFunctionRefShape(ref) {
 				refs[ref.RefID] = true
 			}
 		}
@@ -571,6 +647,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	var args map[string]any
 	_ = json.Unmarshal(input, &args)
 	kn, _ := args["kn_id"].(string)
+	toolbox, _ := args["toolbox_id"].(string)
 	ot, _ := args["ot_id"].(string)
 	metric, _ := args["metric_id"].(string)
 	// Header-resolved network may not be repeated in the raw input. A known
@@ -617,8 +694,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	}
 	if f.CapabilityProfile != nil && f.CapabilityProfile.EvidenceContract == "managed_function_execution/v1" {
 		for ref := range refs {
-			parts := strings.Split(ref, ":")
-			if len(parts) == 4 && parts[0] == "function" && parts[3] == f.ToolName {
+			if matchesFunctionBusinessRef(ref, kn, toolbox, f.ToolName) {
 				return true, nil
 			}
 		}
@@ -640,6 +716,26 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	}
 
 	return len(refs) > 0, nil
+}
+
+// matchesFunctionBusinessRef accepts the current three-segment contract and
+// the historical four-segment contract written by older managed-function
+// producers. The compatibility is read-only: new producers still emit the
+// canonical function:<kn_id>:<tool_id> form.
+func matchesFunctionBusinessRef(ref, kn, toolbox, tool string) bool {
+	parts := strings.Split(ref, ":")
+	if len(parts) == 3 && parts[0] == "function" && parts[1] != "" && parts[2] == tool {
+		return kn == "" || parts[1] == kn
+	}
+	return len(parts) == 4 && parts[0] == "function" && parts[1] != "" && parts[2] != "" && parts[3] == tool && kn != "" && toolbox != "" && parts[1] == kn && parts[2] == toolbox
+}
+
+func historicalFunctionRefShape(ref sessionvo.BusinessRef) bool {
+	if ref.RefType != sessionvo.BusinessRefFunction || ref.Version == "" {
+		return false
+	}
+	parts := strings.Split(ref.RefID, ":")
+	return len(parts) == 4 && parts[0] == "function" && parts[1] != "" && parts[2] != "" && parts[3] != ""
 }
 
 // Projection loss must not remove a registered conversation from integrity

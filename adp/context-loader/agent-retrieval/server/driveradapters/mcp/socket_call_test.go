@@ -88,8 +88,8 @@ func TestLicensedEnterpriseToolCallReachesTheLifecycleGuard(t *testing.T) {
 	// A call with no bkn_context now falls back to the MCP session, so the guard
 	// answers about the Core it needs rather than the conversation the client
 	// omitted. Either wording proves the gate handed the call on.
-	if !strings.Contains(got, "conversation") && !strings.Contains(got, "BKN Trace Core") {
-		t.Fatalf("expected the lifecycle guard to answer, got %s", got)
+	if !strings.Contains(got, "probe result") || !strings.Contains(got, "trace_context_absent") {
+		t.Fatalf("expected the licensed handler plus explicit unrecorded Trace metadata, got %s", got)
 	}
 }
 

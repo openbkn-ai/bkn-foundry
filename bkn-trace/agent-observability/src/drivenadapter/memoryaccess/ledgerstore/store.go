@@ -7,6 +7,7 @@ package ledgerstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strconv"
@@ -19,8 +20,9 @@ import (
 )
 
 type ledgerRecord struct {
-	event ledgervo.Event
-	ack   ledgervo.DurableAck
+	event       ledgervo.Event
+	ack         ledgervo.DurableAck
+	storedBytes int
 }
 
 func (s *Store) ListInteractionEvents(ctx context.Context, owner sessionvo.Owner, interactionID string) ([]ledgervo.Event, error) {
@@ -129,11 +131,17 @@ func (s *Store) Commit(ctx context.Context, event ledgervo.Event) (ledgervo.Dura
 	if s.failProjectionWrite {
 		return ledgervo.DurableAck{}, errors.New("projection outbox write failed")
 	}
+	// Match the MariaDB ledger's full stored envelope budget once at commit,
+	// rather than serializing each expected event on every confirmation.
+	storedEnvelope, err := json.Marshal(event)
+	if err != nil {
+		return ledgervo.DurableAck{}, err
+	}
 	s.nextSequence++
 	ack := ledgervo.DurableAck{
 		EventID: event.EventID, Durable: true, IngestSequence: s.nextSequence, IngestedAt: time.Now().UTC(),
 	}
-	s.ledger[event.EventID] = ledgerRecord{event: event, ack: ack}
+	s.ledger[event.EventID] = ledgerRecord{event: event, ack: ack, storedBytes: len(storedEnvelope)}
 	s.streamSequences[streamKey] = event.EventID
 	if event.ProducerEpoch > s.streamEpochs[producerKey] {
 		s.streamEpochs[producerKey] = event.ProducerEpoch

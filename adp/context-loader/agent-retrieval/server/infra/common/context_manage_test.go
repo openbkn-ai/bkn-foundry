@@ -297,3 +297,15 @@ func TestCallerCorrelationIDsAreValidatedWithoutGeneration(t *testing.T) {
 		convey.So(hasInteraction, convey.ShouldBeFalse)
 	})
 }
+
+func TestChildOperationHeadersDoNotInventManagedIdentityWithoutParent(t *testing.T) {
+	ctx := SetTraceContextToCtx(context.Background(), TraceContext{RequestID: "req_unmanaged"})
+	for name, headers := range map[string]map[string]string{"ordinal": GetHeaderForChildOperation(ctx, "business", 1), "identity": GetHeaderForChildOperationIdentity(ctx, "business", "target")} {
+		if headers[HeaderBKNOperationID] != "" || headers[HeaderBKNParentOperationID] != "" {
+			t.Errorf("%s invented unregistered operation: %q", name, headers[HeaderBKNOperationID])
+		}
+		if headers[HeaderBKNRequestID] != "req_unmanaged" {
+			t.Errorf("%s lost request correlation", name)
+		}
+	}
+}

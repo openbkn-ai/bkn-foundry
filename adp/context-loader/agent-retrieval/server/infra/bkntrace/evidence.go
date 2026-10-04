@@ -83,6 +83,12 @@ type evidenceOutcome struct {
 	mu        sync.Mutex
 	attempted bool
 	accepted  bool
+	closed    bool
+	overflow  bool
+	conflict  bool
+	events    []ExpectedEvidenceEvent
+	frozen    *EvidenceExpectation
+	indices   map[string]int
 }
 
 var artifactHTTPClient = &http.Client{}
@@ -155,7 +161,7 @@ func canonicalArtifactContent(value any) ([]byte, error) {
 }
 
 func EvidenceEnabled() bool {
-	return currentEvidencePublisher() != nil
+	return currentEvidencePublisher() != nil && !CaptureDisabled()
 }
 
 func artifactEnabled() bool { return strings.TrimSpace(os.Getenv(envArtifactEndpoint)) != "" }
@@ -167,7 +173,7 @@ func RecordInteractionArtifact(
 	artifactType InteractionArtifactType,
 	content any,
 ) (string, error) {
-	if !artifactEnabled() {
+	if CaptureDisabled() || !artifactEnabled() {
 		return "", nil
 	}
 	ec, ok := baseEventContext(ctx)
@@ -223,7 +229,7 @@ func RecordInteractionArtifact(
 	if ec.applicationName != "" {
 		eventPayload["app_ref"] = ec.applicationName
 	}
-	if err := postArtifactWithRetry(evidenceArtifactURL(), artifactTimeout(), traceBlock, artifact); err != nil {
+	if err := postArtifactWithRetry(ctx, evidenceArtifactURL(), artifactTimeout(), traceBlock, artifact); err != nil {
 		return "", err
 	}
 	event := buildEvent(
@@ -249,6 +255,7 @@ func agentOrApp(ec eventContext) string {
 }
 
 func postArtifactWithRetry(
+	ctx context.Context,
 	url string,
 	timeout time.Duration,
 	traceBlock map[string]any,
@@ -262,7 +269,10 @@ func postArtifactWithRetry(
 		return err
 	}
 	for attempt := 0; attempt < 3; attempt++ {
-		postCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		postCtx, cancel := context.WithTimeout(ctx, timeout)
 		req, requestErr := http.NewRequestWithContext(postCtx, http.MethodPost, url, bytes.NewReader(body))
 		if requestErr != nil {
 			cancel()
@@ -285,7 +295,13 @@ func postArtifactWithRetry(
 			return err
 		}
 		if attempt < 2 {
-			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
+			delay := time.NewTimer(time.Duration(attempt+1) * 20 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				delay.Stop()
+				return ctx.Err()
+			case <-delay.C:
+			}
 		}
 	}
 	return err
@@ -902,6 +918,8 @@ func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidat
 	return []Event{fact}
 }
 
+var ErrEvidenceExpectationClosed = errors.New("BKN Trace evidence expectation is closed")
+
 func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events []Event) error {
 	if len(events) == 0 {
 		return nil
@@ -910,15 +928,47 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 	if !ok || ec.accountID == "" || ec.accountType == "" {
 		return nil
 	}
-	if currentEvidencePublisher() == nil {
-		return nil
+	outcome := evidenceOutcomeFromContext(ctx)
+	if outcome != nil {
+		outcome.mu.Lock()
+		defer outcome.mu.Unlock()
+		if outcome.closed {
+			return ErrEvidenceExpectationClosed
+		}
+		outcome.attempted = true
 	}
-	recordEvidenceAttempt(ctx)
 	for _, event := range events {
 		if stringValue(event["conversation_id"]) == "" && ec.conversationID != "" {
 			event["conversation_id"] = ec.conversationID
 		}
-		if result := publishEvidenceEvent(event, ec); result.Disposition != evidencepublisher.Accepted {
+		var previous *evidencepublisher.PublishResult
+		if outcome != nil {
+			if index, exists := outcome.indices[stringValue(event["event_id"])]; exists {
+				first := outcome.events[index]
+				previous = &evidencepublisher.PublishResult{EventID: first.EventID, EventType: first.EventType, PayloadHash: first.PayloadHash, ProducerID: first.ProducerID, Disposition: evidencepublisher.Disposition(first.PublishDisposition), Reason: first.DropReason}
+			}
+		}
+		result := publishEvidenceEventWithPrevious(event, ec, previous)
+		if outcome != nil {
+			item := ExpectedEvidenceEvent{EventID: stringValue(event["event_id"]), EventType: stringValue(event["event_type"]), PayloadHash: result.PayloadHash, ProducerID: result.ProducerID, PublishDisposition: string(result.Disposition), DropReason: result.Reason}
+			if outcome.indices == nil {
+				outcome.indices = make(map[string]int)
+			}
+			if index, exists := outcome.indices[item.EventID]; exists {
+				if outcome.events[index] != item {
+					outcome.conflict = true
+				}
+			} else if len(outcome.events) < maxExpectedEvidenceEvents {
+				outcome.indices[item.EventID] = len(outcome.events)
+				outcome.events = append(outcome.events, item)
+			} else {
+				outcome.overflow = true
+			}
+			if result.Disposition == evidencepublisher.Accepted {
+				outcome.accepted = true
+			}
+		}
+		if result.Disposition != evidencepublisher.Accepted {
 			if logger != nil {
 				logger.WithContext(ctx).Warnf("BKN Trace Kafka evidence dropped: %s", result.Reason)
 			} else {
@@ -926,15 +976,11 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 			}
 			continue
 		}
-		recordQueuedEvidenceOutcome(ctx)
 	}
 	return nil
 }
 
 func withEvidenceOutcome(ctx context.Context) context.Context {
-	if evidenceOutcomeFromContext(ctx) != nil {
-		return ctx
-	}
 	return context.WithValue(ctx, evidenceOutcomeContextKey{}, &evidenceOutcome{})
 }
 

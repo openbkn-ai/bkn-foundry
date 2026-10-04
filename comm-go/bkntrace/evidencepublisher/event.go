@@ -59,9 +59,15 @@ type Event struct {
 	ObservedAt     string
 	EmittedAt      string
 	Envelope       json.RawMessage
+	// PreviousResult is local admission metadata for an operation-scoped retry.
+	// It is never serialized into a Record or used as a Ledger confirmation.
+	PreviousResult *PublishResult `json:"-"`
 }
 
 type PublishResult struct {
+	EventType   string
+	PayloadHash string
+	ProducerID  string
 	EventID     string
 	Disposition Disposition
 	Reason      string

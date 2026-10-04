@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
@@ -32,6 +33,7 @@ type Processor func(context.Context, kafka.Message) error
 
 type State struct {
 	Enabled bool
+	Running bool
 	Ready   bool
 	Reason  string
 }
@@ -183,43 +185,71 @@ func (r *Runtime) Start(ctx context.Context) error {
 }
 
 func (r *Runtime) run(pollCtx, processCtx context.Context) {
-	defer close(r.done)
+	r.setRunning(true)
+	defer func() {
+		r.setRunning(false)
+		close(r.done)
+	}()
 	r.setState(true, "polling")
-	failureReason := ""
+consume:
 	for pollCtx.Err() == nil {
 		message, err := r.reader.FetchMessage(pollCtx)
 		if err != nil {
 			if pollCtx.Err() != nil {
 				break
 			}
-			failureReason = "fetch_failed"
-			r.setState(false, failureReason)
-			break
+			r.setState(false, "fetch_failed")
+			if !waitForConsumerRetry(pollCtx) {
+				break
+			}
+			continue
 		}
 		if pollCtx.Err() != nil {
 			// FetchMessage may return a buffered record concurrently with stop.
 			// Leave it uncommitted for the next process rather than accepting it.
 			break
 		}
-		if err := r.process(processCtx, message); err != nil {
-			failureReason = "ledger_decision_pending"
-			r.setState(false, failureReason)
-			break
+		for {
+			if err := r.process(processCtx, message); err == nil {
+				break
+			}
+			r.setState(false, "ledger_decision_pending")
+			if !waitForConsumerRetry(pollCtx) {
+				break consume
+			}
 		}
-		if err := r.reader.CommitMessages(processCtx, message); err != nil {
-			failureReason = "offset_commit_failed"
-			r.setState(false, failureReason)
-			break
+		for {
+			if err := r.reader.CommitMessages(processCtx, message); err == nil {
+				break
+			}
+			r.setState(false, "offset_commit_failed")
+			if !waitForConsumerRetry(pollCtx) {
+				break consume
+			}
 		}
+		r.setState(true, "polling")
 		if pollCtx.Err() != nil {
 			break
 		}
 	}
-	if failureReason == "" {
-		r.setState(false, "stopped")
-	}
+	r.setState(false, "stopped")
+	r.setRunning(false)
 	_ = r.reader.Close()
 	r.stopWork()
+}
+
+// Retry the same undecided record without advancing its offset. The processor
+// owns durable deduplication; an offset failure retries only the commit. A
+// fixed pause bounds outage load, while cancellation stops retries promptly.
+func waitForConsumerRetry(ctx context.Context) bool {
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return ctx.Err() == nil
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // Shutdown first interrupts FetchMessage and lets the current processor and
@@ -256,5 +286,11 @@ func (r *Runtime) State() State {
 func (r *Runtime) setState(ready bool, reason string) {
 	r.stateMu.Lock()
 	r.state.Ready, r.state.Reason = ready, reason
+	r.stateMu.Unlock()
+}
+
+func (r *Runtime) setRunning(running bool) {
+	r.stateMu.Lock()
+	r.state.Running = running
 	r.stateMu.Unlock()
 }

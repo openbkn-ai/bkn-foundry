@@ -33,6 +33,9 @@ func withPayloadArtifactScope(ctx context.Context, scope payloadArtifactScope) c
 type evidencePayloadArtifactWriter struct{}
 
 func (evidencePayloadArtifactWriter) Put(ctx context.Context, mediaType string, raw []byte) (string, string, error) {
+	if CaptureDisabled() {
+		return "", "", &CoreHTTPError{StatusCode: 409, Code: "CAPTURE_DISABLED", Message: "Evidence capture is disabled"}
+	}
 	if mediaType != "application/json" || !json.Valid(raw) {
 		return "", "", errors.New("payload artifact requires valid JSON")
 	}
@@ -78,7 +81,7 @@ func (evidencePayloadArtifactWriter) Put(ctx context.Context, mediaType string, 
 		"effective_subject_id": ec.accountID, "application_principal_id": ec.applicationID,
 		"initiator": "account:" + ec.accountID, "agent_or_app": agentOrApp(ec),
 	}
-	if err := postArtifactWithRetry(evidenceArtifactURL(), artifactTimeout(), traceBlockFromEventContext(ec), artifact); err != nil {
+	if err := postArtifactWithRetry(ctx, evidenceArtifactURL(), artifactTimeout(), traceBlockFromEventContext(ec), artifact); err != nil {
 		return "", "", err
 	}
 	return "artifact:" + artifactID, digest, nil

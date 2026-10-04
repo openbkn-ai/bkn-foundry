@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/captureadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
@@ -54,6 +55,7 @@ type Options struct {
 	Now                        func() time.Time
 	NewID                      func(prefix string) string
 	EvidenceCollectionState    func() string
+	CaptureAdmission           *captureadmission.View
 	EnableHistoricalProvenance bool
 	ProjectionGrantIssuer      string
 	ProjectionGrantKeyID       string
@@ -71,6 +73,7 @@ type Service struct {
 	now                        func() time.Time
 	newID                      func(string) string
 	evidenceCollectionState    func() string
+	captureAdmission           *captureadmission.View
 	enableHistoricalProvenance bool
 	projectionGrantIssuer      string
 	projectionGrantKeyID       string
@@ -120,6 +123,7 @@ func New(store isessionstore.Store, options Options) *Service {
 	return &Service{
 		store: store, now: now, newID: newID, revisionSealer: options.RevisionSealer,
 		evidenceCollectionState:    evidenceCollectionState,
+		captureAdmission:           options.CaptureAdmission,
 		enableHistoricalProvenance: options.EnableHistoricalProvenance,
 		projectionGrantIssuer:      strings.TrimSpace(options.ProjectionGrantIssuer),
 		projectionGrantKeyID:       strings.TrimSpace(options.ProjectionGrantKeyID),
@@ -130,6 +134,27 @@ func New(store isessionstore.Store, options Options) *Service {
 		capacity:                   capacity,
 		metrics:                    metrics,
 	}
+}
+
+func (s *Service) captureAllowsNewRecords() bool {
+	return s.captureAdmission == nil || s.captureAdmission.AllowsNewRecords()
+}
+
+func (s *Service) captureAdmissionError() error {
+	if s.captureAdmission == nil || s.captureAdmission.Known() {
+		if !s.captureAllowsNewRecords() {
+			return domainError(CodeCaptureDisabled, "capture admission is disabled")
+		}
+		return nil
+	}
+	return domainError(CodeCaptureUnavailable, "capture policy is unavailable")
+}
+
+// CapturePolicyDisabled reports the trusted process-local policy state. It is
+// used only to permit an already accepted interaction to close without a new
+// answer artifact; callers cannot set this state through a request field.
+func (s *Service) CapturePolicyDisabled() bool {
+	return s.captureAdmission != nil && s.captureAdmission.Disabled()
 }
 
 type EnsureConversationCommand struct {
@@ -206,6 +231,7 @@ type StartAttemptCommand struct {
 }
 
 type FinishAttemptCommand struct {
+	EvidenceExpectation  *sessionvo.EvidenceExpectation
 	Owner                sessionvo.Owner
 	OperationID          string
 	Attempt              uint32
@@ -229,6 +255,9 @@ func (s *Service) EnsureCurrentConversation(ctx context.Context, command EnsureC
 	}
 	if command.ExternalConversationKey == "" {
 		return sessionvo.Conversation{}, domainError(CodeConversationRequired, "external conversation key is required")
+	}
+	if err := s.captureAdmissionError(); err != nil {
+		return sessionvo.Conversation{}, err
 	}
 
 	var result sessionvo.Conversation
@@ -273,6 +302,9 @@ func (s *Service) EnsureCurrentConversation(ctx context.Context, command EnsureC
 
 func (s *Service) CreateNewGeneration(ctx context.Context, command EnsureConversationCommand) (sessionvo.Conversation, error) {
 	if err := validateOwner(command.Owner); err != nil {
+		return sessionvo.Conversation{}, err
+	}
+	if err := s.captureAdmissionError(); err != nil {
 		return sessionvo.Conversation{}, err
 	}
 	if command.ExternalConversationKey == "" {
@@ -685,6 +717,9 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 	if command.IdempotencyKey == "" {
 		return sessionvo.Interaction{}, domainError(CodeInteractionRequired, "idempotency key is required")
 	}
+	if err := s.captureAdmissionError(); err != nil {
+		return sessionvo.Interaction{}, err
+	}
 	agentName := strings.TrimSpace(command.AgentName)
 	if utf8.RuneCountInString(agentName) > 128 {
 		return sessionvo.Interaction{}, domainError(CodeAgentNameInvalid, "agent_name must not exceed 128 characters")
@@ -787,10 +822,9 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 	if command.TerminalIdempotencyKey == "" {
 		return sessionvo.Interaction{}, domainError(CodeIdempotencyConflict, "terminal idempotency key is required")
 	}
-	if s.evidenceCollectionState() == "not_collected_due_to_license" {
-		command.Manifest.SystemPartialReasons = appendUnique(
-			command.Manifest.SystemPartialReasons, "not_collected_due_to_license",
-		)
+	policyClosure := s.CapturePolicyDisabled()
+	if !policyClosure && slices.Contains(command.Manifest.SystemPartialReasons, "not_collected_due_to_policy") {
+		return sessionvo.Interaction{}, domainError(CodeClosureManifestInvalid, "policy partial reason is server-owned")
 	}
 	var result sessionvo.Interaction
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
@@ -815,6 +849,14 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				Code: CodeTerminalConflict, Message: "another terminal transition already won",
 				CurrentStatus: string(interaction.ExecutionStatus),
 			}
+		}
+		// Only an active interaction may receive the server-owned policy reason.
+		// Terminal replay must compare the caller's immutable fields exactly as
+		// committed, regardless of the current capture policy.
+		if policyClosure {
+			command.Manifest.SystemPartialReasons = appendUnique(command.Manifest.SystemPartialReasons, "not_collected_due_to_policy")
+		} else if s.evidenceCollectionState() == "not_collected_due_to_license" {
+			command.Manifest.SystemPartialReasons = appendUnique(command.Manifest.SystemPartialReasons, "not_collected_due_to_license")
 		}
 		if command.DeriveManifest {
 			command.LeaseToken = interaction.LeaseToken
@@ -866,14 +908,14 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		interaction.UpdatedAt = now
 		interaction.TerminalAt = &now
 		tx.SaveInteraction(interaction)
-		if s.enableHistoricalProvenance {
+		if s.enableHistoricalProvenance && !policyClosure {
 			if err := s.appendHistoricalProvenanceBuildRequest(tx, interaction); err != nil {
 				return err
 			}
 		}
-		if interaction.EvidenceStatus == sessionvo.EvidenceComplete ||
+		if !policyClosure && (interaction.EvidenceStatus == sessionvo.EvidenceComplete ||
 			interaction.EvidenceStatus == sessionvo.EvidencePartial ||
-			interaction.EvidenceStatus == sessionvo.EvidenceFailed {
+			interaction.EvidenceStatus == sessionvo.EvidenceFailed) {
 			trigger := "completion"
 			if command.Manifest.AssemblerDeadline != nil && !command.Manifest.AssemblerDeadline.After(tx.Now()) {
 				trigger = "deadline"
@@ -882,10 +924,12 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				return err
 			}
 		}
-		if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction."+string(command.Status), interaction); err != nil {
-			return err
+		if !policyClosure {
+			if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction."+string(command.Status), interaction); err != nil {
+				return err
+			}
 		}
-		if conversation.OneShot {
+		if conversation.OneShot && !policyClosure {
 			conversation.Status = sessionvo.ConversationClosed
 			conversation.RowVersion++
 			conversation.UpdatedAt = now
@@ -914,7 +958,21 @@ func managedTerminalReplayMatches(
 	return committed.Version == command.Manifest.Version &&
 		committed.AnswerArtifactRef == command.Manifest.AnswerArtifactRef &&
 		committed.CompletionReason == command.Manifest.CompletionReason &&
-		sameStrings(committed.Claims, command.Manifest.Claims)
+		sameStrings(committed.Claims, command.Manifest.Claims) &&
+		sameTerminalReasons(committed.SystemPartialReasons, command.Manifest.SystemPartialReasons)
+}
+
+func sameTerminalReasons(committed, requested []string) bool {
+	if sameStrings(committed, requested) {
+		return true
+	}
+	filtered := make([]string, 0, len(committed))
+	for _, reason := range committed {
+		if reason != "not_collected_due_to_policy" {
+			filtered = append(filtered, reason)
+		}
+	}
+	return slices.Contains(committed, "not_collected_due_to_policy") && sameStrings(filtered, requested)
 }
 
 func sameStrings(left, right []string) bool {
@@ -969,6 +1027,9 @@ func (s *Service) EnsureOperationWithDisposition(
 ) (EnsureOperationResult, error) {
 	if command.Protocol == "" {
 		command.Protocol = sessionvo.ProtocolInternal
+	}
+	if err := s.captureAdmissionError(); err != nil {
+		return EnsureOperationResult{}, err
 	}
 	if command.SourceModule == "" && command.Protocol == sessionvo.ProtocolInternal {
 		command.SourceModule = "agent-observability"
@@ -1160,6 +1221,9 @@ func (s *Service) EnsureOperationWithDisposition(
 }
 
 func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemptCommand) (sessionvo.Operation, sessionvo.Receipt, error) {
+	if err := s.captureAdmissionError(); err != nil {
+		return sessionvo.Operation{}, sessionvo.Receipt{}, err
+	}
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
@@ -1256,6 +1320,10 @@ func (s *Service) FailOperationAttempt(ctx context.Context, command FinishAttemp
 }
 
 func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAttemptCommand, status sessionvo.ReceiptStatus) (sessionvo.Operation, sessionvo.Receipt, error) {
+	policyClosure := s.CapturePolicyDisabled()
+	if !policyClosure && slices.Contains(command.PartialReasons, "not_collected_due_to_policy") {
+		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(CodeClosureManifestInvalid, "policy partial reason is server-owned")
+	}
 	var terminalPayload sessionvo.PayloadEnvelope
 	if status == sessionvo.ReceiptCompleted && (command.Output.Mode == "" || command.Error.Mode != "") {
 		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(CodeOperationRequired, "completed attempt requires output only")
@@ -1338,7 +1406,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		}
 		retryable := coreRetryableFailure(current, command, status)
 		if currentReceipt.Status != sessionvo.ReceiptPending {
-			if receiptTerminalMatches(currentReceipt, current, callFact, terminalPayload, command, status, retryable) {
+			if evidenceFinishReplayMatches(currentReceipt, current, callFact, terminalPayload, command, status, retryable) {
 				operation, receipt = current, currentReceipt
 				return nil
 			}
@@ -1361,13 +1429,20 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		currentReceipt.EvidenceDurability = command.EvidenceDurability
 		currentReceipt.RequestID = command.RequestID
 		currentReceipt.TraceID = command.TraceID
-		currentReceipt.ObservedEvidenceRefs = cloneStrings(command.ObservedEvidenceRefs)
-		currentReceipt.BusinessRefs = cloneBusinessRefs(command.BusinessRefs)
-		currentReceipt.ArtifactRefs = effectiveArtifactRefs(command.ArtifactRefs, callFact.Input, terminalPayload)
-		currentReceipt.PartialReasons = effectivePartialReasons(
-			command.PartialReasons, callFact.Input, terminalPayload, command.EvidenceDurability,
-			callFact.CapabilityProfile, command.BusinessRefs,
-		)
+		if policyClosure {
+			// The operation and receipt were accepted before capture stopped. Close
+			// their existing durable rows with the real status, while refusing to
+			// persist newly observed payload, refs, artifacts, or client gaps.
+			currentReceipt.PartialReasons = appendUnique(currentReceipt.PartialReasons, "not_collected_due_to_policy")
+		} else {
+			currentReceipt.ObservedEvidenceRefs = cloneStrings(command.ObservedEvidenceRefs)
+			currentReceipt.BusinessRefs = cloneBusinessRefs(command.BusinessRefs)
+			currentReceipt.ArtifactRefs = effectiveArtifactRefs(command.ArtifactRefs, callFact.Input, terminalPayload)
+			currentReceipt.PartialReasons = effectivePartialReasons(
+				command.PartialReasons, callFact.Input, terminalPayload, command.EvidenceDurability,
+				callFact.CapabilityProfile, command.BusinessRefs,
+			)
+		}
 		currentReceipt.TerminalAt = &now
 		currentReceipt.RowVersion++
 		current.AttemptStatus = sessionvo.AttemptCompleted
@@ -1377,12 +1452,15 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		}
 		current.RowVersion++
 		current.UpdatedAt = now
-		if status == sessionvo.ReceiptCompleted {
+		if status == sessionvo.ReceiptCompleted && !policyClosure {
 			callFact.Output = &terminalPayload
 			callFact.Error = nil
-		} else {
+		} else if status == sessionvo.ReceiptFailed && !policyClosure {
 			callFact.Output = nil
 			callFact.Error = &terminalPayload
+		} else {
+			callFact.Output = nil
+			callFact.Error = nil
 		}
 		callFact.RequestID = command.RequestID
 		callFact.TraceID = command.TraceID
@@ -1390,18 +1468,26 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		callFact.FinishedAt = &now
 		callFact.Status = current.AttemptStatus
 		callFact.Retryable = retryable
+		if command.EvidenceExpectation != nil && !policyClosure {
+			callFact.EvidenceCompletion = freezeEvidenceCompletion(currentReceipt, callFact, command.EvidenceExpectation)
+			if _, _, err := s.confirmReceiptEvidence(tx, &currentReceipt, callFact); err != nil {
+				return err
+			}
+		}
 		tx.SaveOperationCallFact(callFact)
 		tx.SaveOperation(current)
 		tx.SaveReceipt(currentReceipt)
-		if err := s.appendProjection(tx, "operation", current.ID, "operation.attempt."+string(status), current); err != nil {
-			return err
+		if !policyClosure {
+			if err := s.appendProjection(tx, "operation", current.ID, "operation.attempt."+string(status), current); err != nil {
+				return err
+			}
+			if err := s.appendProjection(
+				tx, "receipt", currentReceipt.ID, "receipt."+string(status), currentReceipt,
+			); err != nil {
+				return err
+			}
 		}
-		if err := s.appendProjection(
-			tx, "receipt", currentReceipt.ID, "receipt."+string(status), currentReceipt,
-		); err != nil {
-			return err
-		}
-		if found && interaction.IsTerminal() && interaction.ClosureManifest != nil &&
+		if !policyClosure && found && interaction.IsTerminal() && interaction.ClosureManifest != nil &&
 			manifestContainsReceipt(*interaction.ClosureManifest, currentReceipt.ID) {
 			nextEvidenceStatus := evidenceStatusAtTermination(tx, *interaction.ClosureManifest)
 			if nextEvidenceStatus != sessionvo.EvidenceAssembling {

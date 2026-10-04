@@ -8,7 +8,7 @@ For each new user question:
    For the first managed question in this chat, use conversation_mode=new and omit conversation_id.
    For a later question, use conversation_mode=continue and pass the conversation_id returned previously.
 
-2. This tool returns conversation_id and interaction_id.
+2. When Trace is available, start returns authoritative conversation_id and interaction_id.
    conversation_id remains unchanged throughout the conversation.
    interaction_id remains unchanged from the start of the current user question until the reply is complete.
    Pass bkn_context: { conversation_id, interaction_id } to every other tool call in this turn.
@@ -54,3 +54,5 @@ Tips:
 - Push membership, multi-condition thresholds, sums, counts, and deduplication into run_cypher or a modelled metric. When the user asks for both the total and the detail rows, return both from one recomputable query or use two queries with the same recorded conditions. Do not page data through query_object_instance and then filter, count, or deduplicate it in Agent context; that context calculation cannot form complete, replayable business evidence.
 
 Access limits: when a result or error from query_object_instance or get_logic_properties_values carries permission_guidance, access shaped that call. Relay its message to the user as is (it says which access is missing, how the result is affected and what to do next), and never guess, fill in or infer withheld data. Offer request_permission_url as the "request access" link when it starts with http; when it starts with /, ask the user to open that path in BKN Studio and do not invent a host; without it, ask the user to contact an administrator. A request waits for review: rerun the original task after approval and do not assume access has changed. Without permission_guidance, an empty result or empty value is not a sign of missing access.
+
+If start returns lifecycle_recorded=true in Trace metadata, keep its real IDs despite capture failure. If start returns trace_recorded=false without IDs, omit bkn_context and continue authorized business calls; do not retry business calls for Trace. Before finish, copy every trace_call_unrecorded partial_reasons value from tool _meta["openbkn.ai/trace"] into finish.partial_reasons; degraded results may also expose the same diagnostic in a separate content text block when a host drops _meta. If no interaction_id was returned, finish may omit it and reports unrecorded. Start normally again for the next user question when Trace recovers.
