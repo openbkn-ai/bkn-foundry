@@ -4,6 +4,7 @@ import pytest
 
 from app.utils.http_client import validate_provider_url
 from app.utils.reshape_utils import _credential_digest, is_credential_digest
+from app.utils.external_small_model_utils import InnerClient
 
 
 def test_provider_url_validation_preserves_private_and_bare_hosts():
@@ -22,3 +23,8 @@ def test_credential_digest_accepts_new_and_legacy_placeholders():
     assert _credential_digest(secret) != hashlib.md5(secret.encode(), usedforsecurity=False).hexdigest()
     assert is_credential_digest(_credential_digest(secret), secret)
     assert is_credential_digest(hashlib.md5(secret.encode(), usedforsecurity=False).hexdigest(), secret)
+
+
+def test_adapter_client_does_not_require_provider_url():
+    client = InnerClient("", "adapter-model", adapter=True, adapter_code="async def main(value): return value")
+    assert client.url == "http://"

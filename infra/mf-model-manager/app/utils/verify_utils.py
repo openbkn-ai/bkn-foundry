@@ -58,7 +58,7 @@ def _semantic_model_test_error(detail, fallback, http_status=None):
 async def llm_test(series, config, llm_id, user_id, model_type):
     content = "Connection test failed; check the model configuration."
     if series.lower() != "baidu":
-        config["api_url"] = validate_provider_url(config.get("api_url", ""))
+        validate_provider_url(config.get("api_url", ""))
     # Handle OpenAI and other providers separately.
     if series == 'openai':
         try:

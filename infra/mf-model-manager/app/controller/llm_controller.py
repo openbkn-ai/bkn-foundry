@@ -233,7 +233,15 @@ async def remove_model_by_name(model_names, userId, language):
 async def test_model(model_config, userId, language):
     model_id = model_config.get("model_id", "-")
     change = model_config.get("change", False)
-    model_config_new = model_config.get("model_config",{})
+    model_config_new = model_config.get("model_config", {})
+    if not isinstance(model_config_new, dict):
+        model_config_new = {}
+    if model_id != "-" and model_config_new.get("api_key"):
+        info = llm_model_dao.get_data_from_model_list_by_id(model_id)
+        if info:
+            old_config = json.loads(info[0]["f_model_config"].replace("'", '"'))
+            if is_credential_digest(model_config_new["api_key"], old_config.get("api_key", "")):
+                change = False
     if not change:
         try:
             info = llm_model_dao.get_data_from_model_list_by_id(model_id)
@@ -242,9 +250,6 @@ async def test_model(model_config, userId, language):
                 return JSONResponse(status_code=400, content=LLMTestError)
             config_str = info[0]["f_model_config"]
             model_config_old = json.loads(config_str.replace("'", '"'))
-            if model_config_new.get("api_key") and is_credential_digest(
-                    model_config_new["api_key"], model_config_old.get("api_key", "")):
-                change = False
             if not model_config_new:
                 config = model_config_old
                 series = info[0]["f_model_series"]

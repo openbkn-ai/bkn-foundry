@@ -272,7 +272,9 @@ class InnerClient:
                  embedding_dim=None):
         if not url.startswith(('http://', 'https://')):
             url = f"http://{url}"
-        self.url = validate_provider_url(url)
+        # Adapter-backed models do not call the provider URL. Keep their
+        # existing empty-url behavior while validating ordinary HTTP clients.
+        self.url = url if adapter and adapter_code else validate_provider_url(url)
         self.model_name = model_name
         self.api_key = api_key
         self.headers = {
