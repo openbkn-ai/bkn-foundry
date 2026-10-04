@@ -38,14 +38,14 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 	body, _ := json.Marshal(map[string]any{
 		"size": 10000,
 		"sort": []any{map[string]any{
-			"created_at": map[string]any{"order": "asc"},
+			"@timestamp": map[string]any{"order": "asc"},
 		}},
 		"query": map[string]any{
 			"bool": map[string]any{
 				"filter": []any{
 					map[string]any{
 						"range": map[string]any{
-							"created_at": map[string]any{
+							"@timestamp": map[string]any{
 								"lt": archiveRange.To.Format(time.RFC3339Nano),
 							},
 						},
@@ -72,7 +72,7 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 	candidates := make([]archivesvc.Candidate, 0, len(response.Hits.Hits))
 	for _, hit := range response.Hits.Hits {
 		var value struct {
-			CreatedAt time.Time `json:"created_at"`
+			CreatedAt time.Time `json:"@timestamp"`
 		}
 		if err := json.Unmarshal(hit.Source, &value); err != nil {
 			return nil, err
@@ -80,6 +80,40 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 		candidates = append(candidates, archivesvc.Candidate{ID: hit.ID, OccurredAt: value.CreatedAt, Payload: hit.Source})
 	}
 	return candidates, nil
+}
+
+// Count returns the exact eligible document count without materializing log
+// payloads. The archive query and the count predicate intentionally share the
+// same @timestamp cutoff.
+func (source *ArchiveSource) Count(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) (int, error) {
+	if kind != observabilityvo.ArchiveKindLog {
+		return 0, nil
+	}
+	body, err := json.Marshal(map[string]any{
+		"size":             0,
+		"track_total_hits": true,
+		"query": map[string]any{"bool": map[string]any{"filter": []any{
+			map[string]any{"range": map[string]any{"@timestamp": map[string]any{"lt": archiveRange.To.Format(time.RFC3339Nano)}}},
+		}}},
+	})
+	if err != nil {
+		return 0, err
+	}
+	payload, err := source.backend.Search(ctx, source.index, body)
+	if err != nil {
+		return 0, err
+	}
+	var response struct {
+		Hits struct {
+			Total struct {
+				Value int `json:"value"`
+			} `json:"total"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(payload, &response); err != nil {
+		return 0, err
+	}
+	return response.Hits.Total.Value, nil
 }
 
 func (source *ArchiveSource) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, candidates []archivesvc.Candidate) error {
