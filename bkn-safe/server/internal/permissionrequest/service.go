@@ -155,6 +155,15 @@ func applyRequestFilters(q *gorm.DB, page PageOptions) *gorm.DB {
 	return q
 }
 
+// requestPageOrder keeps list ordering structural. Sort is currently a
+// one-field public contract, so it never needs to be interpolated into SQL.
+func requestPageOrder(table string, page PageOptions) clause.OrderByColumn {
+	return clause.OrderByColumn{
+		Column: clause.Column{Table: table, Name: "created_at"},
+		Desc:   page.Direction == "desc",
+	}
+}
+
 type Service struct {
 	db                        *gorm.DB
 	enforcer                  *authz.Enforcer
@@ -1459,7 +1468,7 @@ func (s *Service) ListRequestedPage(ctx context.Context, requester string, page 
 	if err := q.Count(&result.TotalCount).Error; err != nil {
 		return result, err
 	}
-	err := q.Order(page.Sort + " " + page.Direction).Limit(page.Limit).Offset(page.Offset).Find(&result.Entries).Error
+	err := q.Order(requestPageOrder("", page)).Limit(page.Limit).Offset(page.Offset).Find(&result.Entries).Error
 	if err != nil {
 		return result, err
 	}
@@ -1585,7 +1594,7 @@ func (s *Service) ListReviewedPage(ctx context.Context, reviewer string, page Pa
 	}
 	// "created_at" means the time of the review for this view, rather than
 	// the original submission time.
-	err := q.Order("d." + page.Sort + " " + page.Direction).Limit(page.Limit).Offset(page.Offset).Find(&result.Entries).Error
+	err := q.Order(requestPageOrder("d", page)).Limit(page.Limit).Offset(page.Offset).Find(&result.Entries).Error
 	if err != nil {
 		return result, err
 	}
@@ -1674,7 +1683,7 @@ func (s *Service) ListTodoPage(ctx context.Context, reviewer string, page PageOp
 	if err := q.Count(&result.TotalCount).Error; err != nil {
 		return result, err
 	}
-	err = q.Order("permission_request." + page.Sort + " " + page.Direction).Limit(page.Limit).Offset(page.Offset).Find(&result.Entries).Error
+	err = q.Order(requestPageOrder("permission_request", page)).Limit(page.Limit).Offset(page.Offset).Find(&result.Entries).Error
 	if err != nil {
 		return result, err
 	}
