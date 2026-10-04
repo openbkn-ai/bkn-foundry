@@ -360,7 +360,10 @@ func validCreate(in *CreateInput) bool {
 	if len(in.ResourceName) > 256 {
 		return false
 	}
-	if strings.ContainsAny(in.Reason, "\x00\r\n") {
+	// Reason follows the same multiline text contract as a review comment.
+	// NUL remains invalid because it cannot be represented safely by all
+	// storage and downstream logging integrations.
+	if strings.Contains(in.Reason, "\x00") {
 		return false
 	}
 	in.Reason = strings.TrimSpace(in.Reason)

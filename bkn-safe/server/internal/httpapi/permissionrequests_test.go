@@ -74,10 +74,10 @@ func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 	}
 }
 
-func TestCreatePermissionRequestRejectsResourceControlCharacters(t *testing.T) {
+func TestCreatePermissionRequestRejectsControlCharactersBeforeBusinessValidation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, field := range []string{"id", "name"} {
+	for _, field := range []string{"id", "name", "reason"} {
 		for _, control := range []string{"\x00", "\r", "\n"} {
 			for _, position := range []string{"leading", "middle", "trailing"} {
 				t.Run(field+"/"+control+"/"+position, func(t *testing.T) {
@@ -91,9 +91,17 @@ func TestCreatePermissionRequestRejectsResourceControlCharacters(t *testing.T) {
 						value += control
 					}
 					resource := map[string]string{"type": "resource", "id": "resource-id", "name": "resource name"}
-					resource[field] = value
+					reason := "need access"
+					if field == "reason" {
+						reason = value
+					} else {
+						resource[field] = value
+					}
+					if field == "reason" && (control == "\r" || control == "\n") {
+						return
+					}
 					payload, err := json.Marshal(map[string]any{
-						"resource": resource, "operations": []string{"view_detail"}, "proposal": map[string]string{"kind": "grant"}, "reason": "need access",
+						"resource": resource, "operations": []string{"view_detail"}, "proposal": map[string]string{"kind": "grant"}, "reason": reason,
 					})
 					if err != nil {
 						t.Fatalf("marshal request: %v", err)
@@ -114,5 +122,30 @@ func TestCreatePermissionRequestRejectsResourceControlCharacters(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestCreatePermissionRequestAllowsMultilineReason(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	payload, err := json.Marshal(map[string]any{
+		"resource":   map[string]string{"type": "resource", "id": "resource-id", "name": "resource name"},
+		"operations": []string{"view_detail"}, "proposal": map[string]string{"kind": "grant"},
+		"reason": "222\n123",
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set(ctxAccessorID, "requester") })
+	liveness := &permissionRequestLivenessRecorder{}
+	registerPublicPermissionRequests(router.Group("/api/safe/v1"), permissionrequest.New(nil, nil, liveness))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/safe/v1/permission-requests", bytes.NewReader(payload)))
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusConflict, response.Body.String())
+	}
+	if liveness.calls != 1 {
+		t.Fatalf("resource liveness checks = %d, want 1", liveness.calls)
 	}
 }
