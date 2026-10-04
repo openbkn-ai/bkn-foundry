@@ -427,6 +427,96 @@ func TestRequesterCannotApproveOwnRequest(t *testing.T) {
 	}
 }
 
+func TestNonPersonAccountsCannotReviewPermissionRequests(t *testing.T) {
+	entitlement.ResetForTest()
+	finegrained.ResetForTest()
+	t.Cleanup(func() {
+		finegrained.ResetForTest()
+		entitlement.ResetForTest()
+	})
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Edition: licverify.EditionProfessional}
+	}))
+	finegrained.Register(licverify.EditionProfessional)
+
+	for _, accountType := range []model.AccountType{model.AccountTypeApp, model.AccountTypeContactor} {
+		t.Run(string(accountType), func(t *testing.T) {
+			db, err := gorm.Open(sqlite.Open("file:permission-request-non-person-"+string(accountType)+"?mode=memory&cache=shared"), &gorm.Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := database.Migrate(db); err != nil {
+				t.Fatal(err)
+			}
+			enforcer, err := authz.New(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, user := range []model.User{
+				{ID: "requester", Account: "requester", Enabled: true},
+				{ID: "person-reviewer", Account: "person-reviewer", Enabled: true},
+				{ID: "non-person-reviewer", Account: "non-person-reviewer", Enabled: true, AccountType: accountType},
+			} {
+				if err := db.Create(&user).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := db.Create(&model.ResourceType{ID: "catalog", Name: "Catalog"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			grantable := true
+			if err := db.Create(&[]model.Operation{
+				{ResourceTypeID: "catalog", ID: "view_detail", Name: "View detail", Grantable: &grantable},
+				{ResourceTypeID: "catalog", ID: "authorize", Name: "Authorize", Grantable: &grantable},
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, reviewerID := range []string{"person-reviewer", "non-person-reviewer"} {
+				for _, operation := range []string{"view_detail", "authorize"} {
+					if err := enforcer.GrantObjectPermission(reviewerID, "catalog", "catalog-1", operation); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+
+			service := New(db, enforcer)
+			request, _, err := service.Create(t.Context(), CreateInput{
+				RequesterID: "requester", ResourceType: "catalog", ResourceID: "catalog-1", Operations: []string{"view_detail"}, Reason: "need access",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			todo, err := service.ListTodo(t.Context(), "non-person-reviewer")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(todo) != 0 {
+				t.Fatalf("non-person todo = %#v, want empty", todo)
+			}
+			summary, err := service.GetTodoSummary(t.Context(), "non-person-reviewer")
+			if err != nil || summary.PendingCount != 0 {
+				t.Fatalf("non-person todo summary = %#v, %v; want zero", summary, err)
+			}
+			if _, err := service.Decide(t.Context(), request.ID, DecisionInput{ReviewerID: "non-person-reviewer", Decision: "approve"}); !errors.Is(err, ErrForbidden) {
+				t.Fatalf("non-person approval = %v, want ErrForbidden", err)
+			}
+			var candidateCount, decisionCount, grantCount int64
+			if err := db.Model(&model.PermissionRequestReviewer{}).Where("request_id = ? AND reviewer_id = ?", request.ID, "non-person-reviewer").Count(&candidateCount).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Model(&model.PermissionRequestDecision{}).Where("request_id = ?", request.ID).Count(&decisionCount).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Model(&model.AuthorizationGrant{}).Where("grant_id = ?", request.GrantID).Count(&grantCount).Error; err != nil {
+				t.Fatal(err)
+			}
+			if candidateCount != 0 || decisionCount != 0 || grantCount != 0 {
+				t.Fatalf("non-person reviewer wrote candidate=%d decision=%d grant=%d; want all zero", candidateCount, decisionCount, grantCount)
+			}
+		})
+	}
+}
+
 func TestApprovalInvalidatesRequestWhenPrerequisiteWasRevoked(t *testing.T) {
 	entitlement.ResetForTest()
 	finegrained.ResetForTest()
@@ -671,6 +761,9 @@ func TestTodoSummaryCountsOnlyActiveUnreviewedPendingRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "reviewer", Account: "reviewer", Enabled: true}).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, request := range []model.PermissionRequest{
