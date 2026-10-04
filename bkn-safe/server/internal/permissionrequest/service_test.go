@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -30,6 +31,47 @@ func (emptyOperationProposalHandler) Preview(context.Context, string, string, st
 }
 func (emptyOperationProposalHandler) ApprovalMode() permissionproposal.ApprovalMode {
 	return permissionproposal.ApprovalModeApply
+}
+
+func TestPermissionRequestTextUnicodeBoundaries(t *testing.T) {
+	tests := []struct {
+		name  string
+		text  string
+		valid bool
+	}{
+		{name: "512 ASCII", text: strings.Repeat("a", 512), valid: true},
+		{name: "513 ASCII", text: strings.Repeat("a", 513)},
+		{name: "512 Chinese", text: strings.Repeat("测", 512), valid: true},
+		{name: "513 Chinese", text: strings.Repeat("测", 513)},
+		{name: "512 emoji", text: strings.Repeat("😀", 512), valid: true},
+		{name: "513 emoji", text: strings.Repeat("😀", 513)},
+		{name: "512 combining code points", text: strings.Repeat("e\u0301", 256), valid: true},
+		{name: "514 combining code points", text: strings.Repeat("e\u0301", 257)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			create := CreateInput{
+				RequesterID: "requester", ResourceType: "knowledge_network", ResourceID: "r-1",
+				Operation: authz.ActFullBusinessAccess, Reason: tt.text,
+			}
+			if got := validCreate(&create); got != tt.valid {
+				t.Fatalf("validCreate() = %v, want %v", got, tt.valid)
+			}
+			decision := DecisionInput{ReviewerID: "reviewer", Decision: "reject", Comment: tt.text}
+			if got := validDecisionInput(&decision); got != tt.valid {
+				t.Fatalf("review comment validation = %v, want %v", got, tt.valid)
+			}
+		})
+	}
+	for _, forbidden := range []string{"\x00", "\r", "\n"} {
+		create := CreateInput{
+			RequesterID: "requester", ResourceType: "knowledge_network", ResourceID: "r-1",
+			Operation: authz.ActFullBusinessAccess, Reason: "valid" + forbidden + "reason",
+		}
+		if validCreate(&create) {
+			t.Fatalf("validCreate() accepted a reason containing %q", forbidden)
+		}
+	}
 }
 func TestCreatePolicyProposalDoesNotInsertEmptyOperationRows(t *testing.T) {
 	permissionproposal.Register("test_empty_operation_rows", emptyOperationProposalHandler{})

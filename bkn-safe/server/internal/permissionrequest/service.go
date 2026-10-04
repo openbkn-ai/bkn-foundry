@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -198,6 +199,20 @@ func clean(v string, max int) (string, bool) {
 	return v, v != "" && len(v) <= max && !strings.ContainsAny(v, "\x00\r\n")
 }
 
+// runeCountAtMost applies user-visible text limits by Unicode code point,
+// rather than by UTF-8 byte length, so multibyte input is not rejected early.
+func runeCountAtMost(v string, max int) bool {
+	return utf8.RuneCountInString(v) <= max
+}
+
+func validDecisionInput(in *DecisionInput) bool {
+	in.ReviewerID = strings.TrimSpace(in.ReviewerID)
+	in.Decision = strings.TrimSpace(in.Decision)
+	in.Comment = strings.TrimSpace(in.Comment)
+	return in.ReviewerID != "" && len(in.ReviewerID) <= 64 &&
+		(in.Decision == "approve" || in.Decision == "reject") && runeCountAtMost(in.Comment, 512)
+}
+
 // requireLiveResource asks the resource's owning service instead of inferring
 // liveness from authorization. In particular, admin-authz:grant is global and
 // cannot prove that an individual object still exists.
@@ -340,7 +355,7 @@ func validCreate(in *CreateInput) bool {
 		return false
 	}
 	in.Reason = strings.TrimSpace(in.Reason)
-	if len(in.Reason) > 512 || strings.ContainsAny(in.Reason, "\x00\r\n") {
+	if !runeCountAtMost(in.Reason, 512) || strings.ContainsAny(in.Reason, "\x00\r\n") {
 		return false
 	}
 	in.ProposalKind = strings.TrimSpace(in.ProposalKind)
@@ -1141,10 +1156,7 @@ func (s *Service) hasUnreviewedEligibleReviewer(ctx context.Context, db *gorm.DB
 // grants the requesting user's exact permission tuple. Rejection only removes that reviewer's todo;
 // another currently eligible reviewer may still approve.
 func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput) (*model.PermissionRequest, error) {
-	in.ReviewerID = strings.TrimSpace(in.ReviewerID)
-	in.Decision = strings.TrimSpace(in.Decision)
-	in.Comment = strings.TrimSpace(in.Comment)
-	if in.ReviewerID == "" || len(in.ReviewerID) > 64 || (in.Decision != "approve" && in.Decision != "reject") || len(in.Comment) > 512 {
+	if !validDecisionInput(&in) {
 		return nil, ErrInvalidRequest
 	}
 	var result model.PermissionRequest
