@@ -21,6 +21,10 @@ type fakeSearchClient struct {
 	calls  int
 }
 
+func (client *fakeSearchClient) DeleteByQuery(_ context.Context, _ string, _ []byte) error {
+	return nil
+}
+
 func (client *fakeSearchClient) Search(_ context.Context, index string, body []byte) ([]byte, error) {
 	client.calls++
 	client.index, client.body = index, append([]byte(nil), body...)
