@@ -185,7 +185,11 @@ func NewApp() (*App, error) {
 			Operation: capturepolicysvc.Operation{ID: "bootstrap", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled, ExpectedRevision: 1},
 		})
 		capturePolicyReader = memoryCapturePolicyStore
-		capturePolicyCommander = memoryCapturePolicyStore
+		// The memory fallback has no controller callback. Seed the local view and
+		// mirror subsequent requests so development/test mode follows the same
+		// admission boundary as the durable store.
+		captureAdmission.Update(1, string(capturepolicysvc.StateEnabled))
+		capturePolicyCommander = memoryCapturePolicyCommander{store: memoryCapturePolicyStore, admission: captureAdmission}
 	}
 	var capturePolicyHandler *httphandler.CapturePolicyHandler
 	var capturePolicyWriter interface {
@@ -646,6 +650,19 @@ func NewApp() (*App, error) {
 		}()
 	}
 	return app, nil
+}
+
+type memoryCapturePolicyCommander struct {
+	store     *capturepolicystore.Store
+	admission *captureadmission.View
+}
+
+func (c memoryCapturePolicyCommander) Request(ctx context.Context, request capturepolicysvc.ChangeRequest) (capturepolicysvc.Snapshot, error) {
+	snapshot, err := c.store.Request(ctx, request)
+	if err == nil {
+		c.admission.Update(snapshot.Revision, string(snapshot.DesiredState))
+	}
+	return snapshot, err
 }
 
 func assembleLogSources(runtimeSources []logsvc.Source, centerAuditSource logsvc.Source) []logsvc.Source {

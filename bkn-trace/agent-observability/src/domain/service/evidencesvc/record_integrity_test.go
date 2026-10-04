@@ -304,7 +304,7 @@ func TestRecordIntegrityManagedFunctionRequiresCanonicalTarget(t *testing.T) {
 			{"other network", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefFunction, RefID: "function:other:bom_function", Version: "unversioned"}, "missing"},
 			{"other function", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefFunction, RefID: "function:supply:inventory_function", Version: "unversioned"}, "missing"},
 			{"network only", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefKnowledgeNetwork, RefID: "kn:supply", Version: "unversioned"}, "missing"},
-			{"invalid legacy shape", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefFunction, RefID: "function:supply:box:bom_function", Version: "unversioned"}, "missing"},
+			{"historical four-segment function", sessionvo.BusinessRef{RefType: sessionvo.BusinessRefFunction, RefID: "function:supply:box:bom_function", Version: "unversioned"}, "complete"},
 		} {
 			t.Run(string(status)+"/"+test.name, func(t *testing.T) {
 				s, owner, now := integrityFixture()

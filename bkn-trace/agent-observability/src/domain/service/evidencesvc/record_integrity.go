@@ -610,7 +610,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 
 	refs := map[string]bool{}
 	for _, ref := range r.BusinessRefs {
-		if ref.IsCanonical() {
+		if ref.IsCanonical() || historicalFunctionRefShape(ref) {
 			refs[ref.RefID] = true
 		}
 	}
@@ -619,7 +619,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 			continue
 		}
 		for _, ref := range e.BusinessRefs {
-			if ref.IsCanonical() {
+			if ref.IsCanonical() || historicalFunctionRefShape(ref) {
 				refs[ref.RefID] = true
 			}
 		}
@@ -693,8 +693,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	}
 	if f.CapabilityProfile != nil && f.CapabilityProfile.EvidenceContract == "managed_function_execution/v1" {
 		for ref := range refs {
-			parts := strings.Split(ref, ":")
-			if len(parts) == 3 && parts[0] == "function" && parts[1] != "" && parts[2] == f.ToolName && (kn == "" || parts[1] == kn) {
+			if matchesFunctionBusinessRef(ref, kn, f.ToolName) {
 				return true, nil
 			}
 		}
@@ -716,6 +715,26 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	}
 
 	return len(refs) > 0, nil
+}
+
+// matchesFunctionBusinessRef accepts the current three-segment contract and
+// the historical four-segment contract written by older managed-function
+// producers. The compatibility is read-only: new producers still emit the
+// canonical function:<kn_id>:<tool_id> form.
+func matchesFunctionBusinessRef(ref, kn, tool string) bool {
+	parts := strings.Split(ref, ":")
+	if len(parts) == 3 && parts[0] == "function" && parts[1] != "" && parts[2] == tool {
+		return kn == "" || parts[1] == kn
+	}
+	return len(parts) == 4 && parts[0] == "function" && parts[1] != "" && parts[2] != "" && parts[3] == tool && (kn == "" || parts[1] == kn)
+}
+
+func historicalFunctionRefShape(ref sessionvo.BusinessRef) bool {
+	if ref.RefType != sessionvo.BusinessRefFunction || ref.Version == "" {
+		return false
+	}
+	parts := strings.Split(ref.RefID, ":")
+	return len(parts) == 4 && parts[0] == "function" && parts[1] != "" && parts[2] != "" && parts[3] != ""
 }
 
 // Projection loss must not remove a registered conversation from integrity
