@@ -73,6 +73,51 @@ func TestPermissionRequestTextUnicodeBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestValidCreateRejectsControlCharactersBeforeNormalization(t *testing.T) {
+	for _, field := range []string{"resource type", "resource ID", "resource name", "reason"} {
+		for _, control := range []string{"\x00", "\r", "\n"} {
+			for _, position := range []string{"leading", "middle", "trailing"} {
+				t.Run(field+"/"+control+"/"+position, func(t *testing.T) {
+					value := "valid"
+					switch position {
+					case "leading":
+						value = control + value
+					case "middle":
+						value = "va" + control + "lid"
+					case "trailing":
+						value += control
+					}
+					in := CreateInput{
+						RequesterID: "requester", ResourceType: "knowledge_network", ResourceID: "r-1", ResourceName: "resource",
+						Operation: authz.ActFullBusinessAccess, Reason: "need access",
+					}
+					switch field {
+					case "resource type":
+						in.ResourceType = value
+					case "resource ID":
+						in.ResourceID = value
+					case "resource name":
+						in.ResourceName = value
+					case "reason":
+						in.Reason = value
+					}
+					if validCreate(&in) {
+						t.Fatal("validCreate() accepted a control character in raw input")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestValidDecisionInputAllowsMultilineComment(t *testing.T) {
+	in := DecisionInput{ReviewerID: "reviewer", Decision: "reject", Comment: "Please revise\nthe access scope."}
+	if !validDecisionInput(&in) {
+		t.Fatal("validDecisionInput() rejected a multiline comment")
+	}
+}
+
 func TestCreatePolicyProposalDoesNotInsertEmptyOperationRows(t *testing.T) {
 	permissionproposal.Register("test_empty_operation_rows", emptyOperationProposalHandler{})
 	db, err := gorm.Open(sqlite.Open("file:permission-request-policy-create?mode=memory&cache=shared"), &gorm.Config{})
