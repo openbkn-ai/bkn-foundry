@@ -39,6 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: azure/setup-helm@v4
+
+      - name: Verify health probe chart rendering
+        run: bash adp/context-loader/agent-retrieval/scripts/test_health_probes_chart.sh
+
       - uses: docker/setup-buildx-action@v3
 
       # 只造 runner 原生架构这一份：跨架构产物在这条性质上没有差别，qemu 不值。
