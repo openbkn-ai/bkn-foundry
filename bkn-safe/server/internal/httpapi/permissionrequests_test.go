@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -54,5 +55,44 @@ func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 				t.Errorf("error_details.reason = %q, want %q", body.ErrorDetails["reason"], testCase.reason)
 			}
 		})
+	}
+}
+
+func TestCreatePermissionRequestRejectsResourceControlCharacters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, field := range []string{"id", "name"} {
+		for _, control := range []string{"\x00", "\r", "\n"} {
+			for _, position := range []string{"leading", "middle", "trailing"} {
+				t.Run(field+"/"+control+"/"+position, func(t *testing.T) {
+					value := "resource"
+					switch position {
+					case "leading":
+						value = control + value
+					case "middle":
+						value = "res" + control + "ource"
+					case "trailing":
+						value += control
+					}
+					resource := map[string]string{"type": "resource", "id": "resource-id", "name": "resource name"}
+					resource[field] = value
+					payload, err := json.Marshal(map[string]any{
+						"resource": resource, "operations": []string{"view_detail"}, "proposal": map[string]string{"kind": "grant"}, "reason": "need access",
+					})
+					if err != nil {
+						t.Fatalf("marshal request: %v", err)
+					}
+
+					router := gin.New()
+					router.Use(func(c *gin.Context) { c.Set(ctxAccessorID, "requester") })
+					registerPublicPermissionRequests(router.Group("/api/safe/v1"), permissionrequest.New(nil, nil))
+					response := httptest.NewRecorder()
+					router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/safe/v1/permission-requests", bytes.NewReader(payload)))
+					if response.Code != http.StatusBadRequest {
+						t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusBadRequest, response.Body.String())
+					}
+				})
+			}
+		}
 	}
 }

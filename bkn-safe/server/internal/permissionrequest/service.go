@@ -195,8 +195,11 @@ func (s *Service) normalizeLegacyConfigurationStatuses(ctx context.Context) erro
 }
 
 func clean(v string, max int) (string, bool) {
+	if strings.ContainsAny(v, "\x00\r\n") {
+		return "", false
+	}
 	v = strings.TrimSpace(v)
-	return v, v != "" && len(v) <= max && !strings.ContainsAny(v, "\x00\r\n")
+	return v, v != "" && len(v) <= max
 }
 
 // runeCountAtMost applies user-visible text limits by Unicode code point,
@@ -206,6 +209,11 @@ func runeCountAtMost(v string, max int) bool {
 }
 
 func validDecisionInput(in *DecisionInput) bool {
+	if strings.ContainsAny(in.ReviewerID, "\x00\r\n") ||
+		strings.ContainsAny(in.Decision, "\x00\r\n") ||
+		strings.ContainsAny(in.Comment, "\x00\r\n") {
+		return false
+	}
 	in.ReviewerID = strings.TrimSpace(in.ReviewerID)
 	in.Decision = strings.TrimSpace(in.Decision)
 	in.Comment = strings.TrimSpace(in.Comment)
@@ -350,12 +358,18 @@ func validCreate(in *CreateInput) bool {
 		}
 		*field = v
 	}
+	if strings.ContainsAny(in.ResourceName, "\x00\r\n") {
+		return false
+	}
 	in.ResourceName = strings.TrimSpace(in.ResourceName)
-	if len(in.ResourceName) > 256 || strings.ContainsAny(in.ResourceName, "\x00\r\n") {
+	if len(in.ResourceName) > 256 {
+		return false
+	}
+	if strings.ContainsAny(in.Reason, "\x00\r\n") {
 		return false
 	}
 	in.Reason = strings.TrimSpace(in.Reason)
-	if !runeCountAtMost(in.Reason, 512) || strings.ContainsAny(in.Reason, "\x00\r\n") {
+	if !runeCountAtMost(in.Reason, 512) {
 		return false
 	}
 	in.ProposalKind = strings.TrimSpace(in.ProposalKind)
