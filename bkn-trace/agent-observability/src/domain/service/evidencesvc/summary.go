@@ -1104,6 +1104,7 @@ func (s *Service) applyCanonicalTraceIdentity(ctx context.Context, traces []evid
 		}
 		byConversation := tx.ListConversationsByIDs(conversationIDs)
 		sourceModulesByTraceID := tx.ListFirstOperationSourceModulesByTraceIDs(traceIDs)
+		factsByInteraction := map[string][]sessionvo.OperationCallFact{}
 		for index := range traces {
 			conversationID := traces[index].ConversationID
 			if conversationID != "" {
@@ -1114,12 +1115,79 @@ func (s *Service) applyCanonicalTraceIdentity(ctx context.Context, traces []evid
 					traces[index].EffectiveSubjectID = conversation.Owner.EffectiveSubjectID
 				}
 			}
+			if traces[index].Status == "error" && traces[index].ErrorSummary == "" {
+				summary := &traces[index]
+				var facts []sessionvo.OperationCallFact
+				if summary.InteractionID != "" {
+					var loaded bool
+					facts, loaded = factsByInteraction[summary.InteractionID]
+					if !loaded {
+						facts = tx.ListOperationCallFacts(summary.InteractionID)
+						factsByInteraction[summary.InteractionID] = facts
+					}
+				} else {
+					facts = tx.ListOperationCallFactsByTraceID(summary.TraceID)
+				}
+				for _, fact := range facts {
+					if fact.TraceID == summary.TraceID && fact.ConversationID == summary.ConversationID &&
+						fact.InteractionID == summary.InteractionID && fact.Status == sessionvo.AttemptFailed {
+						summary.ErrorSummary = operationFailureSummary(fact)
+						break
+					}
+				}
+			}
+
 			if sourceModule := sourceModulesByTraceID[traces[index].TraceID]; sourceModule != "" {
 				traces[index].RootService = sourceModule
 			}
 		}
 		return nil
 	})
+}
+
+// Summaries reuse the recorded failure, not unrelated result/debug payloads.
+func operationFailureSummary(fact sessionvo.OperationCallFact) string {
+	if fact.Error != nil && fact.Error.Mode == sessionvo.PayloadInline {
+		var text string
+		if json.Unmarshal(fact.Error.Inline, &text) == nil && strings.TrimSpace(text) != "" {
+			return readableFailureSummary(text)
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(fact.Error.Inline, &fields) == nil {
+			for _, key := range []string{"message", "safe_error_summary", "code"} {
+				var value string
+				if json.Unmarshal(fields[key], &value) == nil && strings.TrimSpace(value) != "" {
+					return readableFailureSummary(value)
+				}
+			}
+		}
+	}
+	return "OpenBKN operation failed"
+}
+
+// Tool execution messages may wrap stderr in a JSON string. Keep the
+// exception at the end of long tracebacks; the recorded payload stays intact.
+func readableFailureSummary(value string) string {
+	var execution struct {
+		Stderr   string `json:"stderr"`
+		ExitCode *int   `json:"exit_code"`
+	}
+	if json.Unmarshal([]byte(value), &execution) == nil && execution.ExitCode != nil && strings.TrimSpace(execution.Stderr) != "" {
+		runes := []rune(strings.TrimSpace(execution.Stderr))
+		if len(runes) > 512 {
+			return "…" + string(runes[len(runes)-512:])
+		}
+		return string(runes)
+	}
+	return boundedFailureSummary(value)
+}
+
+func boundedFailureSummary(value string) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) > 512 {
+		return string(runes[:512]) + "…"
+	}
+	return string(runes)
 }
 
 func evidenceCompletenessRank(value string) int {
