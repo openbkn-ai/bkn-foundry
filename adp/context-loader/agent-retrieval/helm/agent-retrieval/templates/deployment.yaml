@@ -183,6 +183,14 @@ spec:
             periodSeconds: {{ .Values.service.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.service.readinessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.service.readinessProbe.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health/alive
+              port: public-port
+            initialDelaySeconds: {{ .Values.service.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.service.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.service.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.service.livenessProbe.failureThreshold }}
           {{- end}}
           volumeMounts:
             - name: {{ .Release.Name }}-config

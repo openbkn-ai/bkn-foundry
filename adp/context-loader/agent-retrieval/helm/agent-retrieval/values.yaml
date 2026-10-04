@@ -50,7 +50,7 @@ service:
     failureThreshold: 5
   livenessProbe:
     initialDelaySeconds: 0
-    periodSeconds: 5
+    periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 5
   startupProbe:
