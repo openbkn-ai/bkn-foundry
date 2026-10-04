@@ -1104,7 +1104,10 @@ func (s *Service) applyCanonicalTraceIdentity(ctx context.Context, traces []evid
 		}
 		byConversation := tx.ListConversationsByIDs(conversationIDs)
 		sourceModulesByTraceID := tx.ListFirstOperationSourceModulesByTraceIDs(traceIDs)
-		factsByInteraction := map[string][]sessionvo.OperationCallFact{}
+		type traceFailure struct {
+			traceID, conversationID, summary string
+		}
+		failuresByInteraction := map[string][]traceFailure{}
 		for index := range traces {
 			conversationID := traces[index].ConversationID
 			if conversationID != "" {
@@ -1115,23 +1118,21 @@ func (s *Service) applyCanonicalTraceIdentity(ctx context.Context, traces []evid
 					traces[index].EffectiveSubjectID = conversation.Owner.EffectiveSubjectID
 				}
 			}
-			if traces[index].Status == "error" && traces[index].ErrorSummary == "" {
+			if traces[index].Status == "error" && traces[index].ErrorSummary == "" && traces[index].InteractionID != "" {
 				summary := &traces[index]
-				var facts []sessionvo.OperationCallFact
-				if summary.InteractionID != "" {
-					var loaded bool
-					facts, loaded = factsByInteraction[summary.InteractionID]
-					if !loaded {
-						facts = tx.ListOperationCallFacts(summary.InteractionID)
-						factsByInteraction[summary.InteractionID] = facts
+				failures, loaded := failuresByInteraction[summary.InteractionID]
+				if !loaded {
+					for _, fact := range tx.ListOperationCallFacts(summary.InteractionID) {
+						if _, requested := seenTraceIDs[fact.TraceID]; requested && fact.Status == sessionvo.AttemptFailed && fact.InteractionID == summary.InteractionID {
+							failures = append(failures, traceFailure{fact.TraceID, fact.ConversationID, operationFailureSummary(fact)})
+						}
 					}
-				} else {
-					facts = tx.ListOperationCallFactsByTraceID(summary.TraceID)
+					// Retain bounded summaries, not full input/output/error payloads.
+					failuresByInteraction[summary.InteractionID] = failures
 				}
-				for _, fact := range facts {
-					if fact.TraceID == summary.TraceID && fact.ConversationID == summary.ConversationID &&
-						fact.InteractionID == summary.InteractionID && fact.Status == sessionvo.AttemptFailed {
-						summary.ErrorSummary = operationFailureSummary(fact)
+				for _, failure := range failures {
+					if failure.traceID == summary.TraceID && failure.conversationID == summary.ConversationID {
+						summary.ErrorSummary = failure.summary
 						break
 					}
 				}
