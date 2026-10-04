@@ -8,6 +8,7 @@ package evidencesvc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -48,9 +49,9 @@ func conversationPreviewFixture(t *testing.T) (*Service, *capturingProjectionSou
 					selected = append(selected, trace)
 				}
 			}
-			// Thousands of unrelated operation artifacts crowd out terminal content in
-			// the old broad scan. A terminal-only read has no such truncation.
-			return iprojectionsource.Result{Traces: selected, Truncated: len(q.ArtifactTypes) == 0}
+			// The execution projection has no terminal artifacts; previews must be
+			// supplied by the independent first-interaction read.
+			return iprojectionsource.Result{Traces: selected}
 		},
 		artifactResultFor: func(q iprojectionsource.Query) iprojectionsource.ArtifactResult {
 			selected := []evidencevo.EvidenceArtifact{}
@@ -177,5 +178,67 @@ func TestConversationKeywordRetainsRecordedBusinessReferenceAndError(t *testing.
 		if !matchesConversationKeyword(entry, requests, keyword) {
 			t.Fatalf("recorded keyword %q disappeared", keyword)
 		}
+	}
+}
+
+func TestConversationLegacyArtifactOnlyRefsRemainSearchable(t *testing.T) {
+	store := evidencestore.New()
+	trace := pageSummaryTrace("tr", "req", "2026-08-02T09:00:00Z", "acct_demo", "")
+	trace.ConversationID = "conv"
+	trace.Events[0].EventType = "data.query.observed"
+	trace.Events[0].Payload = map[string]any{"result_artifact_ref": "artifact:query-only"}
+	if err := store.StoreEvidence(context.Background(), trace); err != nil {
+		t.Fatal(err)
+	}
+	artifact := summaryServiceArtifact(t, "query-only", evidencevo.ArtifactTypeDataResult, "req", "tr", "", "payload")
+	artifact.BusinessRefs = []string{"object:kn_only_query:unique_target"}
+	if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewWithProjectionSource(store, store)
+	for _, opts := range []evidencevo.SummaryQueryOptions{
+		{Scope: summaryScope("acct_demo"), Keyword: "unique_target", Limit: 20},
+		{Scope: summaryScope("acct_demo"), KnowledgeNetwork: "kn_only_query", Limit: 20},
+	} {
+		old, _, _, err := svc.loadExecutionSummariesWithCandidateLimit(context.Background(), opts, MaxSummaryScanEntries)
+		if err != nil || len(old) != 1 || !matchesRequestFilters(old[0], opts) {
+			t.Fatalf("legacy baseline missing ref: %+v %v", old, err)
+		}
+		page, err := svc.ListConversations(context.Background(), opts)
+		if err != nil || page.Total != 1 {
+			t.Errorf("regression keyword=%q KN=%q page=%+v err=%v", opts.Keyword, opts.KnowledgeNetwork, page, err)
+		}
+	}
+}
+
+func TestExactConversationBudgetIndependentOfPageSize(t *testing.T) {
+	store := evidencestore.New()
+	for i := 0; i < 30; i++ {
+		id := fmt.Sprintf("%02d", i)
+		tr := pageSummaryTrace("tr"+id, "req"+id, "2026-08-02T09:00:00Z", "acct_demo", "")
+		tr.ConversationID = "conv"
+		tr.Events[0].InteractionID = "int" + id
+		if err := store.StoreEvidence(context.Background(), tr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := NewWithProjectionSource(store, store)
+	page, err := svc.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), ConversationID: "conv", Limit: 1})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].RequestCount != 30 || page.Partial {
+		t.Fatalf("exact conv incomplete: page=%+v err=%v", page, err)
+	}
+}
+
+func TestConversationExecutionTruncationDoesNotHideFirstPreview(t *testing.T) {
+	service, source := conversationPreviewFixture(t)
+	original := source.resultFor
+	source.resultFor = func(q iprojectionsource.Query) iprojectionsource.Result {
+		result := original(q)
+		result.Truncated = true
+		return result
+	}
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Keyword: "白酒", Limit: 20})
+	if err != nil || page.Total != 2 || !page.Partial || !containsSummaryValue(page.PartialReasons, "projection_scan_cap_reached") || page.Entries[0].QuestionPreview != "有哪些白酒品牌" {
+		t.Fatalf("bounded execution facts must not hide terminal preview: page=%+v err=%v", page, err)
 	}
 }

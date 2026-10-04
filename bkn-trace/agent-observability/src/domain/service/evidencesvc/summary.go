@@ -101,6 +101,10 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 		return page, err
 	}
 	candidateLimit := summaryCandidateLimit(options)
+	if options.ConversationID != "" {
+		// The selector bounds this read to one conversation, independently of page size.
+		candidateLimit = MaxSummaryScanEntries
+	}
 	loadOptions := options
 	loadOptions.Status = ""
 	requests, _, metadata, err := s.loadConversationExecutionSummaries(ctx, loadOptions, candidateLimit)
@@ -198,8 +202,8 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	return page, nil
 }
 
-// A conversation list needs only terminal question/result artifacts. Operation
-// payloads must not exhaust the same scan budget and hide existing previews.
+// Preserve execution facts used by legacy business-reference and network filters.
+// First-turn previews are loaded independently so operation artifacts cannot hide them.
 func (s *Service) loadConversationExecutionSummaries(ctx context.Context, options evidencevo.SummaryQueryOptions, limit int) ([]evidencevo.RequestSummary, []evidencevo.TraceSummary, summaryLoadMetadata, error) {
 	if !trustedQueryScope(options.Scope) {
 		return []evidencevo.RequestSummary{}, []evidencevo.TraceSummary{}, summaryLoadMetadata{}, nil
@@ -210,8 +214,7 @@ func (s *Service) loadConversationExecutionSummaries(ctx context.Context, option
 	query := iprojectionsource.Query{
 		Scope: options.Scope, From: options.From, To: options.To,
 		TraceID: options.TraceID, InteractionID: options.InteractionID,
-		ArtifactTypes: []evidencevo.ArtifactType{evidencevo.ArtifactTypeQuestion, evidencevo.ArtifactTypeResult},
-		Limit:         limit,
+		Limit: limit,
 	}
 	if options.ConversationID != "" {
 		query.ConversationIDs = []string{options.ConversationID}
