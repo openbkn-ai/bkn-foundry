@@ -560,11 +560,12 @@ func (s *Service) applyConversationRecordIntegrity(ctx context.Context, entries 
 	}
 	for i := range entries {
 		aggregate := &evidencevo.RecordIntegrity{Status: "complete", Scope: "registered_call_records", Missing: []evidencevo.MissingRecord{}}
-		unfinished, checked := false, false
+		unfinished, checked, invalid := false, false, false
 		for _, interaction := range byConversation[entries[i].ConversationID] {
 			report, applicable, err := storedRecordIntegrity(interaction)
 			if err != nil {
 				entries[i].RecordIntegrityCheckFailed = true
+				invalid = true
 				unfinished = true
 				continue
 			}
@@ -585,7 +586,9 @@ func (s *Service) applyConversationRecordIntegrity(ctx context.Context, entries 
 				aggregate.Status = "missing"
 			}
 		}
-		if !checked || entries[i].RecordIntegrityCheckFailed || (unfinished && aggregate.Status == "complete") {
+		// An uncomputed round cannot erase a confirmed gap. Keep partial
+		// coverage visible, but retain strict rejection of invalid stored reports.
+		if !checked || invalid || (unfinished && aggregate.Status == "complete") {
 			continue
 		}
 		entries[i].CurrentRecordIntegrity = aggregate

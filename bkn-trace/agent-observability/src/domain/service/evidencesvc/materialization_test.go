@@ -326,3 +326,47 @@ func TestUnmaterializedIntegrityFilterReportsIncompleteResults(t *testing.T) {
 		t.Fatalf("page performed live verification: %d", store.reads)
 	}
 }
+
+func TestConversationRetainsKnownMissingWithUnmaterializedRound(t *testing.T) {
+	for _, verdict := range []string{"missing", "complete"} {
+		t.Run(verdict, func(t *testing.T) {
+			snapshot, owner, now := integrityFixture()
+			if verdict == "missing" {
+				snapshot.CallFacts[0].Output = nil
+			}
+			store := &integrityCandidateStore{integritySnapshotStore: &integritySnapshotStore{Store: memorystore.New(), snapshot: snapshot}}
+			ctx := context.Background()
+			if err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+				tx.SaveConversation(sessionvo.Conversation{ID: "conv", Owner: owner, Status: sessionvo.ConversationClosed, CreatedAt: now})
+				tx.SaveInteraction(sessionvo.Interaction{ID: "int", ConversationID: "conv", ExecutionStatus: sessionvo.InteractionCompleted, CreatedAt: now, TerminalAt: &now})
+				tx.SaveOperation(snapshot.Operations[0])
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			service := New(evidencestore.New(), WithSessionStore(store), WithProjectionSource(&capturingProjectionSource{}), WithCurrentRecordIntegrity())
+			materializeIntegrityFixture(t, service)
+			if err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+				tx.SaveInteraction(sessionvo.Interaction{ID: "uncomputed", ConversationID: "conv", ExecutionStatus: sessionvo.InteractionCompleted, CreatedAt: now.Add(time.Minute), TerminalAt: &now})
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
+			page, err := service.ListConversations(ctx, evidencevo.SummaryQueryOptions{Scope: scope, RecordIntegrity: verdict})
+			if err != nil || !page.Partial || !slices.Contains(page.PartialReasons, "record_integrity_check_failed") {
+				t.Fatalf("unknown round coverage must remain explicit: %+v %v", page, err)
+			}
+			if verdict == "missing" {
+				if len(page.Entries) != 1 || page.Entries[0].CurrentRecordIntegrity == nil || page.Entries[0].CurrentRecordIntegrity.Status != "missing" || len(page.Entries[0].CurrentRecordIntegrity.Missing) == 0 {
+					t.Fatalf("known missing was swallowed: %+v", page)
+				}
+			} else if len(page.Entries) != 0 {
+				t.Fatalf("unknown round must not certify complete: %+v", page)
+			}
+			if store.reads != 1 {
+				t.Fatalf("aggregation did live verification: %d", store.reads)
+			}
+		})
+	}
+}
