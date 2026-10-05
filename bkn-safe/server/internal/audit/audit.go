@@ -117,7 +117,17 @@ func (o *RequestOperation) MarkHandled() {
 	o.mu.Unlock()
 	if pending != nil && publish != nil {
 		if err := publish(context.Background(), *pending); err != nil {
-			slog.Error("safe audit coverage gap after commit", "request_id", pending.RequestID, "error", err)
+			if !CoverageGapWasLogged(err) {
+				slog.Error("safe audit coverage gap",
+					"request_id", pending.RequestID,
+					"resource", pending.Resource,
+					"action", pending.Action,
+					"target_id", pending.TargetID,
+					"stage", "post_commit_record",
+					"reason", "record_failed",
+					"error", err,
+				)
+			}
 		}
 	}
 }

@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -17,7 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 )
 
-func registerEnterpriseObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service) {
+func registerEnterpriseObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service, catalog AuthorizationResourceCatalog) {
 	g.GET("/enterprise-object-grants", RequirePermission(e, "admin-authz", "view"), func(c *gin.Context) {
 		entries, err := permobject.Inventory(c.Request.Context(), time.Now().UTC())
 		if err != nil {
@@ -41,23 +42,41 @@ func registerEnterpriseObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *g
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		var targetID, targetName string
+		targetID := req.GrantID
+		var targetName string
+		var snapshotErr error
+		alreadyRevoked := false
 		if entries, err := permobject.Inventory(c.Request.Context(), time.Now().UTC()); err == nil {
+			found := false
 			for _, entry := range entries {
 				if entry.GrantID == req.GrantID {
-					targetID = entry.ResourceID
-					targetName = auditObjectGrantName(c.Request.Context(), db, dir, entry.AccessorID, entry.ResourceType, entry.ResourceID)
+					found = true
+					alreadyRevoked = entry.ActivationState == permobject.ActivationStateRevoked
+					if !alreadyRevoked {
+						targetName, snapshotErr = resolveObjectGrantAuditName(c.Request.Context(), catalog, db, dir, entry.AccessorID, entry.ResourceType, entry.ResourceID)
+					}
 					break
 				}
 			}
+			if !found {
+				snapshotErr = errors.New("enterprise object grant is absent from the management inventory")
+			}
+		} else {
+			snapshotErr = err
 		}
 		if err := permobject.Revoke(c.Request.Context(), req.GrantID,
 			c.GetString(ctxAccessorID), req.Reason, time.Now().UTC()); err != nil {
 			serverError(c, err)
 			return
 		}
-		setAuditOperation(c, "revoke", targetID, targetName)
-		setAuditOutcome(c, map[string]any{"grant_id": req.GrantID, "removed": true})
+		if alreadyRevoked {
+			suppressAuditOperation(c)
+		} else if snapshotErr != nil {
+			setAuditSnapshotFailure(c, "revoke", targetID, snapshotErr)
+		} else {
+			setAuditOperation(c, "revoke", targetID, targetName)
+		}
+		setAuditOutcome(c, map[string]any{"grant_id": req.GrantID, "removed": !alreadyRevoked})
 		c.Status(http.StatusNoContent)
 	})
 }

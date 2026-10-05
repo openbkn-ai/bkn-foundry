@@ -59,6 +59,7 @@ type AuthorizationResourceProvider interface {
 
 type AuthorizationResourceCatalog interface {
 	List(context.Context, string, AuthorizationResourceQuery) (AuthorizationResourceList, error)
+	Resolve(context.Context, string, string) (AuthorizationResource, error)
 }
 
 type authorizationResourceCatalog struct {
@@ -151,8 +152,58 @@ func (c *authorizationResourceCatalog) List(ctx context.Context, resourceType st
 	return provider.List(ctx, query)
 }
 
+// Resolve returns the producer-time display snapshot for one concrete
+// authorization resource. The owning services currently expose paged catalogs
+// rather than a shared GET-by-ID contract, so resolution walks those
+// authoritative catalogs and matches the stable ID exactly.
+func (c *authorizationResourceCatalog) Resolve(ctx context.Context, resourceType, resourceID string) (AuthorizationResource, error) {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return AuthorizationResource{}, errAuthorizationResourceNotFound
+	}
+	query := AuthorizationResourceQuery{Sort: "name", Direction: "asc", Limit: 100}
+	if isKnowledgeNetworkChildResource(resourceType) {
+		parentID, _, ok := strings.Cut(resourceID, "/")
+		if !ok || parentID == "" {
+			return AuthorizationResource{}, errAuthorizationResourceNotFound
+		}
+		query.ParentType = knowledgeNetworkResourceType
+		query.ParentID = parentID
+	}
+	for {
+		page, err := c.List(ctx, resourceType, query)
+		if err != nil {
+			return AuthorizationResource{}, err
+		}
+		for _, entry := range page.Entries {
+			if entry.ID == resourceID {
+				entry.Name = strings.TrimSpace(entry.Name)
+				if entry.Name == "" || entry.Name == resourceID {
+					return AuthorizationResource{}, errAuthorizationResourceNameMissing
+				}
+				return entry, nil
+			}
+		}
+		query.Offset += len(page.Entries)
+		if len(page.Entries) == 0 || query.Offset >= page.Total {
+			return AuthorizationResource{}, errAuthorizationResourceNotFound
+		}
+	}
+}
+
+func isKnowledgeNetworkChildResource(resourceType string) bool {
+	switch resourceType {
+	case objectTypeResourceType, relationTypeResourceType, actionTypeResourceType, metricResourceType, conceptGroupResourceType:
+		return true
+	default:
+		return false
+	}
+}
+
 var errUnsupportedResourceType = errors.New("unsupported authorization resource type")
 var errInvalidAuthorizationResourceParent = errors.New("invalid authorization resource parent")
+var errAuthorizationResourceNotFound = errors.New("authorization resource not found")
+var errAuthorizationResourceNameMissing = errors.New("authorization resource name is missing")
 
 type authorizationResourceProvider struct {
 	endpoint     string

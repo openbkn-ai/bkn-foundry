@@ -46,6 +46,33 @@ func TestAuthorizationResourcesForwardsKnowledgeNetworkQuery(t *testing.T) {
 	}
 }
 
+func TestAuthorizationResourceCatalogResolvesExactProducerSnapshot(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if query.Get("resource_type") != objectTypeResourceType || query.Get("parent_type") != knowledgeNetworkResourceType || query.Get("parent_id") != "kn-1" {
+			t.Fatalf("unexpected resolver query: %s", r.URL.RawQuery)
+		}
+		if query.Get("offset") == "0" {
+			_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1/customer","name":"Customer"}],"total":2}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1/order","name":"Sales order"}],"total":2}`))
+	}))
+	defer backend.Close()
+	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := catalog.Resolve(t.Context(), objectTypeResourceType, "kn-1/order")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.ID != "kn-1/order" || resource.Name != "Sales order" {
+		t.Fatalf("resolved resource = %+v", resource)
+	}
+}
+
 func TestAuthorizationResourcesRejectsUnsupportedResourceType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

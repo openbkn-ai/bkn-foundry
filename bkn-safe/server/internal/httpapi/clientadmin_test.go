@@ -63,6 +63,11 @@ func (f *fakeClientManager) RemoveClientRedirectURI(_ context.Context, id, uri s
 // a fake ClientManager, with adminSub seeded as super-admin (Bearer adminSub passes
 // RequireAdmin).
 func newClientAdminServer(t *testing.T) (*gin.Engine, *fakeClientManager) {
+	router, manager, _ := newClientAdminServerWithDB(t)
+	return router, manager
+}
+
+func newClientAdminServerWithDB(t *testing.T) (*gin.Engine, *fakeClientManager, *gorm.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -89,7 +94,33 @@ func newClientAdminServer(t *testing.T) (*gin.Engine, *fakeClientManager) {
 		TokenVerifier: stubVerifier{},
 		ClientAdmin:   fake,
 	})
-	return r, fake
+	return r, fake, db
+}
+
+func TestClientRedirectAuditUsesClientAndURISnapshot(t *testing.T) {
+	r, _, db := newClientAdminServerWithDB(t)
+	const path = "/api/safe/v1/admin/clients/openbkn-studio/redirect-uris"
+	const uri = "https://console.example.test/studio/callback?tenant=acme"
+	if w := adminReq(t, r, http.MethodPost, path, map[string]string{"redirect_uri": uri}); w.Code != http.StatusOK {
+		t.Fatalf("add redirect URI = %d: %s", w.Code, w.Body.String())
+	}
+	var entry model.AuditLog
+	if err := db.Where("resource = ? AND action = ?", "clients", "add_redirect_uri").First(&entry).Error; err != nil {
+		t.Fatal(err)
+	}
+	if entry.TargetID != oauthRedirectTargetID("openbkn-studio", uri) || entry.TargetName != "OpenBKN Studio redirect URI "+uri {
+		t.Fatalf("redirect URI audit target = id=%q name=%q", entry.TargetID, entry.TargetName)
+	}
+	if entry.ActorNameSnapshot != adminSub {
+		t.Fatalf("redirect URI actor snapshot = %q, want %q", entry.ActorNameSnapshot, adminSub)
+	}
+	if w := adminReq(t, r, http.MethodGet, path, nil); w.Code != http.StatusOK {
+		t.Fatalf("list redirect URIs = %d", w.Code)
+	}
+	var count int64
+	if err := db.Model(&model.AuditLog{}).Count(&count).Error; err != nil || count != 1 {
+		t.Fatalf("audit rows after GET = %d, err=%v, want 1", count, err)
+	}
 }
 
 // redirectURIs decodes the { "redirect_uris": [...] } body.
