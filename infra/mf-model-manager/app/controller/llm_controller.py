@@ -233,7 +233,15 @@ async def remove_model_by_name(model_names, userId, language):
 async def test_model(model_config, userId, language):
     model_id = model_config.get("model_id", "-")
     change = model_config.get("change", False)
-    model_config_new = model_config.get("model_config",{})
+    model_config_new = model_config.get("model_config", {})
+    if not isinstance(model_config_new, dict):
+        model_config_new = {}
+    if model_id != "-" and model_config_new.get("api_key"):
+        info = llm_model_dao.get_data_from_model_list_by_id(model_id)
+        if info:
+            old_config = json.loads(info[0]["f_model_config"].replace("'", '"'))
+            if is_credential_digest(model_config_new["api_key"], old_config.get("api_key", "")):
+                change = False
     if not change:
         try:
             info = llm_model_dao.get_data_from_model_list_by_id(model_id)
@@ -270,7 +278,7 @@ async def test_model(model_config, userId, language):
         StandLogger.error(str(e))
         error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
         error_dict["description"] = "The model service URL is not reachable."
-        error_dict["detail"] = str(e)
+        error_dict["detail"] = "Model service test failed; check the model configuration."
         return JSONResponse(status_code=400, content=error_dict)
 
 
@@ -315,6 +323,9 @@ async def edit_model(model_para, userId, language, role=""):
                 quota = model_para.get("quota", old_quota)
                 config_old = json.loads(info[0]["f_model_config"])
                 config_new = model_para['model_config']
+                if config_new.get("api_key") and is_credential_digest(
+                        config_new["api_key"], config_old.get("api_key", "")):
+                    change = False
                 if not change:
                     if 'api_key' in config_new:
                         config_new["api_key"] = config_old.get("api_key","")
