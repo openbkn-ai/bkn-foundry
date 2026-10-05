@@ -66,7 +66,17 @@ func (s *Source) LoadExecutionProjection(ctx context.Context, query iprojections
 			artifactQuery.InteractionID = ""
 			artifactQuery.AuthorizedInteractionIDs = authorizedInteractions
 		}
-		artifactResult, err = s.artifacts.LoadExecutionProjection(ctx, artifactQuery)
+		if artifactSource, ok := s.artifacts.(iprojectionsource.ArtifactProjectionSourcePort); ok && query.SummaryOnly && len(authorizedInteractions) > 0 {
+			// Receipt projection already supplies these traces. Match the legacy
+			// store's authorized artifact selectors without reading discarded traces.
+			artifactQuery.ConversationIDs = nil
+			artifactQuery.TraceIDs = nil
+			var result iprojectionsource.ArtifactResult
+			result, err = artifactSource.LoadArtifactProjection(ctx, artifactQuery)
+			artifactResult.Artifacts, artifactResult.Truncated = result.Artifacts, result.Truncated
+		} else {
+			artifactResult, err = s.artifacts.LoadExecutionProjection(ctx, artifactQuery)
+		}
 		if err != nil {
 			return iprojectionsource.Result{}, err
 		}

@@ -25,13 +25,21 @@ func marshalTerminalPayload(payload *sessionvo.PayloadEnvelope, completion *sess
 	}
 	return marshalJSON(storedTerminalPayload{*payload, completion})
 }
+
+// Presence checks retain exact JSON keys without copying large inline values.
+// The typed decode below continues to validate and merge recorded metadata.
+type terminalPayloadFieldPresence struct{}
+
+func (*terminalPayloadFieldPresence) UnmarshalJSON([]byte) error { return nil }
+
 func decodeTerminalPayload(raw string) (*sessionvo.PayloadEnvelope, *sessionvo.EvidenceCompletion, error) {
+	body := []byte(raw)
 	var value storedTerminalPayload
-	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+	if err := json.Unmarshal(body, &value); err != nil {
 		return nil, nil, err
 	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+	var fields map[string]terminalPayloadFieldPresence
+	if err := json.Unmarshal(body, &fields); err != nil {
 		return nil, nil, err
 	}
 	if _, present := fields["_trace_evidence_completion"]; present {

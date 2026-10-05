@@ -35,6 +35,85 @@ type capturingProjectionSource struct {
 
 type fixedTraceStatsSource map[string]int
 
+type countingConversationTraceReads struct {
+	isessionstore.Store
+	statsCalls, traceIdentityReads int
+}
+
+type countingConversationTransaction struct {
+	isessionstore.Transaction
+	reads *countingConversationTraceReads
+}
+
+func (s *countingConversationTraceReads) WithinTransaction(ctx context.Context, fn func(isessionstore.Transaction) error) error {
+	return s.Store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		return fn(countingConversationTransaction{Transaction: tx, reads: s})
+	})
+}
+
+func (s *countingConversationTraceReads) CountSpansByTraceIDs(context.Context, []string) (map[string]int, error) {
+	s.statsCalls++
+	return map[string]int{}, nil
+}
+
+func (tx countingConversationTransaction) ListFirstOperationSourceModulesByTraceIDs(ids []string) map[string]string {
+	tx.reads.traceIdentityReads++
+	return tx.Transaction.ListFirstOperationSourceModulesByTraceIDs(ids)
+}
+
+func TestConversationKeywordReadSkipsUnusedTraceEnrichmentAndRetainsRequestIdentity(t *testing.T) {
+	base := evidencestore.New()
+	seedBusinessProvenanceRequest(t, base, "req-identity", "trace-identity", "conv-identity", "int-identity",
+		"2026-08-10T08:00:00Z", "查询库存", "库存 230", "acct_demo")
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conv-identity", AgentName: "canonical-agent", Status: sessionvo.ConversationActive,
+			Owner: sessionvo.Owner{EffectiveSubjectID: "acct_demo", EffectiveSubjectType: sessionvo.SubjectUser},
+		})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reads := &countingConversationTraceReads{Store: sessions}
+	service := New(base, WithProjectionSource(base), WithSessionStore(reads), WithTraceStatsSource(reads))
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Keyword: "库存", AgentOrApp: "canonical-agent", Limit: 20,
+	})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].AgentName != "canonical-agent" {
+		t.Fatalf("canonical request identity must remain usable by agent filter: page=%+v err=%v", page, err)
+	}
+	if reads.statsCalls != 0 || reads.traceIdentityReads != 0 {
+		t.Fatalf("conversation list discards trace enrichment: stats=%d canonicalTrace=%d", reads.statsCalls, reads.traceIdentityReads)
+	}
+}
+
+func TestConversationKeywordSummaryReadKeepsCrossConversationMatches(t *testing.T) {
+	base := evidencestore.New()
+	const target = "conv_5932399dcec2f8f1d0d30884b883f763"
+	seedBusinessProvenanceRequestWithAgent(t, base, "req-target", "trace-target", target, "int-target",
+		"2026-08-10T08:00:00Z", "原会话问题", "原会话结论", "acct_demo", "business_agent", "agent_id")
+	seedBusinessProvenanceRequestWithAgent(t, base, "req-reference", "trace-reference", "conv-reference", "int-reference",
+		"2026-08-10T08:01:00Z", "复盘 "+target, "引用另一会话", "acct_demo", "business_agent", "agent_id")
+	result, err := base.LoadExecutionProjection(context.Background(), iprojectionsource.Query{Scope: summaryScope("acct_demo")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection := &capturingProjectionSource{result: result}
+	page, err := New(base, WithProjectionSource(projection)).ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Keyword: target, Limit: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Entries) != 2 || page.Entries[0].ConversationID != "conv-reference" || page.Entries[1].ConversationID != target {
+		t.Fatalf("keyword must keep both identity and text matches: %+v", page)
+	}
+	if len(projection.queries) != 1 || !projection.queries[0].SummaryOnly || len(projection.queries[0].ConversationIDs) != 0 {
+		t.Fatalf("must use summary projection without changing keyword scope: %+v", projection.queries)
+	}
+}
+
 func pageSummaryTrace(traceID, requestID, at, account, domain string) evidencevo.NormalizedTrace {
 	return evidencevo.NormalizedTrace{
 		TraceID:       traceID,

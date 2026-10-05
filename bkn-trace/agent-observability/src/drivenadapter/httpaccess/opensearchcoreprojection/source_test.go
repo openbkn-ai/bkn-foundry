@@ -17,9 +17,148 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchcoreprojection"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchevidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
+
+const summaryReceiptResponse = `{"hits":{"hits":[{"_source":{"receipt_id":"receipt-1","owner":{"effective_subject_type":"user","effective_subject_id":"user-1"},"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-1","request_id":"req-1","trace_id":"trace-1","receipt_status":"completed","issued_at":"2026-09-14T10:00:00Z"}}]}}`
+
+func TestSummaryExecutionUsesAuthorizedArtifactOnlyReadWithoutLegacyTruncation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, summaryReceiptResponse)
+	}))
+	t.Cleanup(server.Close)
+	artifacts := &recordingArtifactProjectionSource{
+		result: iprojectionsource.Result{Truncated: true},
+		artifactResult: iprojectionsource.ArtifactResult{Artifacts: []evidencevo.EvidenceArtifact{{
+			ArtifactID: "question-1", ArtifactType: evidencevo.ArtifactTypeQuestion, InteractionID: "int-1",
+			RequestID: "req-lifecycle", Content: "库存问题",
+		}}},
+	}
+	query := iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}, SummaryOnly: true,
+		TraceIDs: []string{"trace-1"}, ConversationIDs: []string{"conv-1"}, Limit: 20,
+	}
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "core", artifacts)
+	result, err := source.LoadExecutionProjection(context.Background(), query)
+	if err != nil || result.Truncated || len(result.Traces) != 1 || len(result.Artifacts) != 1 {
+		t.Fatalf("authorized receipt/artifacts must determine the summary: result=%+v err=%v", result, err)
+	}
+	if len(artifacts.queries) != 0 || len(artifacts.artifactProjectionQueries) != 1 {
+		t.Fatalf("must not load discarded legacy evidence: full=%+v artifact=%+v", artifacts.queries, artifacts.artifactProjectionQueries)
+	}
+	read := artifacts.artifactProjectionQueries[0]
+	if len(read.TraceIDs) != 0 || len(read.ConversationIDs) != 0 || len(read.AuthorizedInteractionIDs) != 1 ||
+		read.AuthorizedInteractionIDs[0] != "int-1" || read.Limit != query.Limit || read.Scope != query.Scope || !read.SummaryOnly {
+		t.Fatalf("artifact query must retain scope/budget and include trace-less terminal facts: %+v", read)
+	}
+}
+
+type legacyOnlyArtifactSource struct{ calls int }
+
+func (s *legacyOnlyArtifactSource) LoadExecutionProjection(context.Context, iprojectionsource.Query) (iprojectionsource.Result, error) {
+	s.calls++
+	return iprojectionsource.Result{Truncated: true}, nil
+}
+
+func TestSummaryExecutionRetainsLegacyCompatibilityFallbacks(t *testing.T) {
+	for _, mode := range []string{"ordinary", "no_authorized_interaction", "unauthorized", "legacy_source"} {
+		t.Run(mode, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				switch mode {
+				case "no_authorized_interaction":
+					_, _ = io.WriteString(w, `{"hits":{"hits":[]}}`)
+				case "unauthorized":
+					_, _ = io.WriteString(w, strings.ReplaceAll(summaryReceiptResponse, "user-1", "foreign-user"))
+				default:
+					_, _ = io.WriteString(w, summaryReceiptResponse)
+				}
+			}))
+			t.Cleanup(server.Close)
+			artifacts := &recordingArtifactProjectionSource{result: iprojectionsource.Result{Truncated: true}}
+			legacy := &legacyOnlyArtifactSource{}
+			var downstream iprojectionsource.ProjectionSourcePort = artifacts
+			if mode == "legacy_source" {
+				downstream = legacy
+			}
+			source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "core", downstream)
+			result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+				Scope: evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}, SummaryOnly: mode != "ordinary", Limit: 20,
+			})
+			if err != nil || !result.Truncated || len(artifacts.artifactProjectionQueries) != 0 || len(artifacts.queries)+legacy.calls != 1 {
+				t.Fatalf("fallback changed: result=%+v err=%v full=%d legacy=%d", result, err, len(artifacts.queries), legacy.calls)
+			}
+		})
+	}
+}
+
+func TestSummaryExecutionHTTPPreservesTraceLessQuestionResultAndAvoidsLegacyFailure(t *testing.T) {
+	legacySearches, artifactSearches, multiGets := 0, 0, 0
+	documents := map[string]map[string]any{}
+	for _, kind := range []string{"question", "result"} {
+		documents[kind] = map[string]any{
+			"artifact_id": kind, "artifact_type": kind, "interaction_id": "int-1", "bkn.request.id": "req-lifecycle",
+			"bkn.account.id": "producer-other", "bkn.account.type": "app", "observed_at": "2026-09-14T10:00:00Z",
+			"content_json": `"` + kind + `正文"`, "content_hash": "same-hash",
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodHead:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodPut:
+			_, _ = io.WriteString(w, `{"acknowledged":true}`)
+		case r.URL.Path == "/core/_search":
+			response := strings.Replace(summaryReceiptResponse, `}]}}`, `},{"_source":{"receipt_id":"foreign","owner":{"effective_subject_type":"user","effective_subject_id":"foreign-user"},"conversation_id":"conv-foreign","interaction_id":"int-foreign","operation_id":"op-foreign","request_id":"req-1","trace_id":"trace-foreign","receipt_status":"completed","issued_at":"2026-09-14T10:00:00Z"}}]}}`, 1)
+			_, _ = io.WriteString(w, response)
+		case r.URL.Path == "/legacy/_search":
+			legacySearches++
+			http.Error(w, "discarded legacy evidence unavailable", http.StatusServiceUnavailable)
+		case r.URL.Path == "/legacy-artifacts/_search":
+			artifactSearches++
+			body, _ := io.ReadAll(r.Body)
+			if !strings.Contains(string(body), `"interaction_id":["int-1"]`) || strings.Contains(string(body), `"trace_id"`) {
+				t.Errorf("must use authorized interaction without trace selector: %s", body)
+			}
+			hits := []any{}
+			for _, kind := range []string{"question", "result"} {
+				metadata := map[string]any{}
+				for key, value := range documents[kind] {
+					if key != "content_json" {
+						metadata[key] = value
+					}
+				}
+				hits = append(hits, map[string]any{"_source": metadata, "sort": []any{metadata["observed_at"], kind}})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"hits": map[string]any{"hits": hits}})
+		case r.URL.Path == "/legacy-artifacts/_mget":
+			multiGets++
+			docs := []any{}
+			for _, kind := range []string{"question", "result"} {
+				docs = append(docs, map[string]any{"_id": kind, "found": true, "_source": documents[kind]})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"docs": docs})
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	client := opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second)
+	source := opensearchcoreprojection.New(client, "core", opensearchevidencestore.New(client, "legacy"))
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}, RequestID: "req-1", SummaryOnly: true, Limit: 20,
+	})
+	if err != nil || result.Truncated || len(result.Traces) != 1 || len(result.Artifacts) != 2 || legacySearches != 0 || artifactSearches != 1 || multiGets != 1 {
+		t.Fatalf("must preserve authorized terminal facts despite failed legacy service: result=%+v err=%v searches=%d/%d mget=%d", result, err, legacySearches, artifactSearches, multiGets)
+	}
+	for _, artifact := range result.Artifacts {
+		if artifact.RequestID != "req-1" || artifact.TraceID != "trace-1" || artifact.Content != string(artifact.ArtifactType)+"正文" {
+			t.Fatalf("trace-less terminal content or identity was lost: %+v", artifact)
+		}
+	}
+}
 
 func TestSourceLimitsReceiptCandidatesToRequestedLimitPlusLookahead(t *testing.T) {
 	t.Parallel()

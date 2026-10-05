@@ -229,6 +229,11 @@ func (s *Store) listArtifactProjection(ctx context.Context, query iprojectionsou
 			artifacts = append(artifacts, hit.Source)
 		}
 	}
+	if query.SummaryOnly {
+		if err := s.loadSummaryTerminalContent(ctx, artifacts, query); err != nil {
+			return nil, false, err
+		}
+	}
 	sort.Slice(artifacts, func(i, j int) bool {
 		if artifacts[i].ObservedAt == artifacts[j].ObservedAt {
 			return artifacts[i].ArtifactID < artifacts[j].ArtifactID
@@ -236,6 +241,54 @@ func (s *Store) listArtifactProjection(ctx context.Context, query iprojectionsou
 		return artifacts[i].ObservedAt < artifacts[j].ObservedAt
 	})
 	return artifacts, truncated, nil
+}
+
+// Supporting artifacts contribute identity, references and terminal facts to a
+// summary, but only question/result bodies are used by its previews. Reuse the
+// selected, authorized metadata IDs; never rescan by type or expand the window.
+func (s *Store) loadSummaryTerminalContent(ctx context.Context, artifacts []evidencevo.EvidenceArtifact, query iprojectionsource.Query) error {
+	ids := make([]string, 0)
+	positions := make(map[string]int)
+	for index, artifact := range artifacts {
+		if artifact.ArtifactType == evidencevo.ArtifactTypeQuestion || artifact.ArtifactType == evidencevo.ArtifactTypeResult {
+			ids = append(ids, artifact.ArtifactID)
+			positions[artifact.ArtifactID] = index
+		}
+	}
+	for start := 0; start < len(ids); start += evidenceSearchPageSize {
+		end := start + evidenceSearchPageSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		documents, err := s.client.MultiGetDocuments(ctx, s.artifactIndex(), ids[start:end])
+		if err != nil {
+			return err
+		}
+		loaded := make(map[string]bool, end-start)
+		for _, document := range documents {
+			index, selected := positions[document.ID]
+			if !selected || !document.Found {
+				continue
+			}
+			artifact, err := decodeArtifactDocument(document.Source)
+			if err != nil {
+				return fmt.Errorf("decode summary terminal artifact: %w", err)
+			}
+			metadata := artifacts[index]
+			if artifact.ArtifactID != metadata.ArtifactID || artifact.ArtifactType != metadata.ArtifactType || artifact.ContentHash != metadata.ContentHash ||
+				!artifactMatchesProjectionScope(artifact, query) || !matchesProjectionArtifact(artifact, query) {
+				return fmt.Errorf("summary terminal artifact no longer matches selected metadata")
+			}
+			artifacts[index].Content = artifact.Content
+			loaded[document.ID] = true
+		}
+		for _, id := range ids[start:end] {
+			if !loaded[id] {
+				return fmt.Errorf("selected summary terminal artifact is unavailable")
+			}
+		}
+	}
+	return nil
 }
 
 func matchesProjectionTrace(trace evidencevo.NormalizedTrace, query iprojectionsource.Query) bool {
@@ -341,6 +394,9 @@ func (s *Store) listArtifactProjectionPage(ctx context.Context, query iprojectio
 			{"observed_at": map[string]any{"order": "asc"}},
 			{"artifact_id": map[string]any{"order": "asc"}},
 		},
+	}
+	if query.SummaryOnly {
+		queryBody["_source"] = map[string]any{"excludes": []string{"content_json"}}
 	}
 	if len(searchAfter) > 0 {
 		queryBody["search_after"] = searchAfter
