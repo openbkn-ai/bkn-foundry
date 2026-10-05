@@ -12,7 +12,7 @@ from app import auth, evidence, observability
 from app.commons import locale
 from app.commons.i18n import build_error_content
 from app.observability import setup_otel, setup_otlp_logging
-from app.routers import agents, chat, impex, prompts, tasks, threads
+from app.routers import agents, authorization_resources, chat, impex, prompts, tasks, threads
 
 logger = logging.getLogger("bkn-agent")
 
@@ -73,6 +73,12 @@ app.include_router(tasks.router, prefix=API_PREFIX, tags=["BknAgent"], responses
 app.include_router(prompts.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(threads.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(impex.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
+app.include_router(
+    authorization_resources.router,
+    prefix="/api/bkn-agent/in/v1",
+    tags=["BknAgentInternal"],
+    responses=_ERRORS,
+)
 
 
 def _apply_language_headers(response, path: str, effective_locale: str) -> None:

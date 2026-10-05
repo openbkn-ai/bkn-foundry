@@ -229,7 +229,7 @@ func TestObjectGrantAuditNamesTheRequiredOperation(t *testing.T) {
 	}
 
 	entries, total, err := audit.New(db).List(t.Context(), audit.Filter{
-		Resource: "object-grants", Action: "grant", TargetID: "c7",
+		Resource: "object-grants", Action: "grant", TargetID: objectGrantScopeTargetID("u-9", "catalog", "c7"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -240,6 +240,9 @@ func TestObjectGrantAuditNamesTheRequiredOperation(t *testing.T) {
 	if !strings.Contains(entries[0].Detail, "required_operations") ||
 		!strings.Contains(entries[0].Detail, "view_detail") {
 		t.Fatalf("audit detail does not name the required operation: %s", entries[0].Detail)
+	}
+	if !strings.Contains(entries[0].TargetName, "Carol") || !strings.Contains(entries[0].TargetName, "Test catalog c7") {
+		t.Fatalf("audit target name is not a producer snapshot: %q", entries[0].TargetName)
 	}
 }
 

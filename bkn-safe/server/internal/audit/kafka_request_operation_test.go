@@ -1,11 +1,15 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -73,5 +77,30 @@ func TestKafkaRequestOperationRollbackDoesNotPublish(t *testing.T) {
 	}
 	if called || op.Handled() {
 		t.Fatal("rolled-back operation was published or marked handled")
+	}
+}
+
+func TestKafkaRequestOperationDoesNotDuplicateRecorderCoverageGap(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	publisher := &auditPublisherStub{disposition: auditpublisher.DroppedQueueFull}
+	recorder := NewKafkaRecorder(publisher, "test")
+	op := NewKafkaRequestOperation(Entry{
+		ActorID: "admin-1", ActorNameSnapshot: "Administrator",
+		RequestID: "req-safe-gap-once", Method: "POST", Resource: "role-bindings", Action: "bind_role",
+	}, recorder.Record)
+	if err := op.Enqueue(db, "role-binding:user-1:role-1", "Alice · Reviewer role binding", 204); err != nil {
+		t.Fatal(err)
+	}
+	op.MarkHandled()
+	if count := strings.Count(output.String(), `"msg":"safe audit coverage gap"`); count != 1 {
+		t.Fatalf("coverage-gap log count = %d, want 1: %s", count, output.String())
 	}
 }

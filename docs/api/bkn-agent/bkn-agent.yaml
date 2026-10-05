@@ -652,6 +652,86 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/in/v1/authorization-resources:
+    get:
+      tags:
+      - BknAgentInternal
+      summary: List Authorization Resources
+      description: 'Internal, network-scoped resource directory for bkn-safe.
+
+
+        The resource_type and sort parameters deliberately mirror the other
+
+        authorization-resource providers even though both supported types share
+
+        the same authoritative agent table.'
+      operationId: list_authorization_resources_api_bkn_agent_in_v1_authorization_resources_get
+      parameters:
+      - name: resource_type
+        in: query
+        required: true
+        schema:
+          enum:
+          - agent
+          - agent_tpl
+          type: string
+          title: Resource Type
+      - name: name
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ''
+          title: Name
+      - name: sort
+        in: query
+        required: false
+        schema:
+          const: name
+          type: string
+          default: name
+          title: Sort
+      - name: direction
+        in: query
+        required: false
+        schema:
+          enum:
+          - asc
+          - desc
+          type: string
+          default: asc
+          title: Direction
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/health:
     get:
       summary: Health

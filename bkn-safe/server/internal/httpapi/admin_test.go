@@ -50,6 +50,16 @@ type discardAccessRecorder struct{}
 
 func (discardAccessRecorder) Record(context.Context, accesslog.Entry) error { return nil }
 
+type testAuthorizationResourceCatalog struct{}
+
+func (testAuthorizationResourceCatalog) List(context.Context, string, AuthorizationResourceQuery) (AuthorizationResourceList, error) {
+	return AuthorizationResourceList{}, nil
+}
+
+func (testAuthorizationResourceCatalog) Resolve(_ context.Context, resourceType, resourceID string) (AuthorizationResource, error) {
+	return AuthorizationResource{ID: resourceID, Name: "Test " + resourceType + " " + resourceID}, nil
+}
+
 type collectedDecisions struct {
 	mu   sync.Mutex
 	rows []decisionlog.Entry
@@ -111,10 +121,11 @@ func newAdminServerWithDecisions(t *testing.T) (*gin.Engine, *authz.Enforcer, *g
 	decisions := &collectedDecisions{}
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
-		Audit:         audit.New(db),
-		AccessLog:     discardAccessRecorder{},
-		Decisions:     decisions,
-		TokenVerifier: stubVerifier{},
+		Audit:                  audit.New(db),
+		AccessLog:              discardAccessRecorder{},
+		Decisions:              decisions,
+		TokenVerifier:          stubVerifier{},
+		AuthorizationResources: testAuthorizationResourceCatalog{},
 	})
 	return r, e, db, users, decisions
 }
@@ -1048,8 +1059,11 @@ func TestRoleManagementSuccessPersistsAuditBeforeChainAppend(t *testing.T) {
 		if err := db.Where("request_id = ?", requestID).First(&bindingAudit).Error; err != nil {
 			t.Fatal(err)
 		}
-		if bindingAudit.TargetID != memberUser {
-			t.Fatalf("%s target_id = %q, want accessor %q", requestID, bindingAudit.TargetID, memberUser)
+		if want := roleBindingTargetID(memberUser, roleID); bindingAudit.TargetID != want {
+			t.Fatalf("%s target_id = %q, want binding %q", requestID, bindingAudit.TargetID, want)
+		}
+		if !strings.Contains(bindingAudit.TargetName, memberUser) || !strings.Contains(bindingAudit.TargetName, "Renamed role") {
+			t.Fatalf("%s target_name = %q, want accessor and role snapshots", requestID, bindingAudit.TargetName)
 		}
 	}
 	request("role-delete", http.MethodDelete, "/api/safe/v1/admin/roles/"+roleID, nil, http.StatusNoContent)

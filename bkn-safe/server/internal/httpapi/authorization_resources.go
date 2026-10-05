@@ -20,7 +20,10 @@ import (
 
 const (
 	knowledgeNetworkResourceType = "knowledge_network"
+	agentResourceType            = "agent"
+	agentTemplateResourceType    = "agent_tpl"
 	catalogResourceType          = "catalog"
+	connectorTypeResourceType    = "connector_type"
 	resourceResourceType         = "resource"
 	objectTypeResourceType       = "object_type"
 	relationTypeResourceType     = "relation_type"
@@ -31,6 +34,7 @@ const (
 	functionResourceType         = "function"
 	mcpResourceType              = "mcp"
 	skillResourceType            = "skill"
+	operatorResourceType         = "operator"
 )
 
 type AuthorizationResource struct {
@@ -59,18 +63,31 @@ type AuthorizationResourceProvider interface {
 
 type AuthorizationResourceCatalog interface {
 	List(context.Context, string, AuthorizationResourceQuery) (AuthorizationResourceList, error)
+	Resolve(context.Context, string, string) (AuthorizationResource, error)
 }
 
 type authorizationResourceCatalog struct {
 	providers map[string]AuthorizationResourceProvider
 }
 
-func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
+func NewAuthorizationResourceCatalog(bknBackend, bknAgent, executionFactory, vegaBackend config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
 	knowledgeNetworks, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", knowledgeNetworkResourceType)
 	if err != nil {
 		return nil, err
 	}
+	agents, err := newAuthorizationResourceProvider(bknAgent, "/api/bkn-agent/in/v1/authorization-resources", "bkn agent", agentResourceType)
+	if err != nil {
+		return nil, err
+	}
+	agentTemplates, err := newAuthorizationResourceProvider(bknAgent, "/api/bkn-agent/in/v1/authorization-resources", "bkn agent", agentTemplateResourceType)
+	if err != nil {
+		return nil, err
+	}
 	catalogs, err := newAuthorizationResourceProvider(vegaBackend, "/api/vega-backend/in/v1/authorization-resources", "vega backend", catalogResourceType)
+	if err != nil {
+		return nil, err
+	}
+	connectorTypes, err := newAuthorizationResourceProvider(vegaBackend, "/api/vega-backend/in/v1/authorization-resources", "vega backend", connectorTypeResourceType)
 	if err != nil {
 		return nil, err
 	}
@@ -114,9 +131,16 @@ func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend c
 	if err != nil {
 		return nil, err
 	}
+	operators, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", operatorResourceType)
+	if err != nil {
+		return nil, err
+	}
 	return &authorizationResourceCatalog{providers: map[string]AuthorizationResourceProvider{
 		knowledgeNetworkResourceType: knowledgeNetworks,
+		agentResourceType:            agents,
+		agentTemplateResourceType:    agentTemplates,
 		catalogResourceType:          catalogs,
+		connectorTypeResourceType:    connectorTypes,
 		resourceResourceType:         resources,
 		objectTypeResourceType:       objectTypes,
 		relationTypeResourceType:     relationTypes,
@@ -127,6 +151,7 @@ func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend c
 		functionResourceType:         functions,
 		mcpResourceType:              mcp,
 		skillResourceType:            skills,
+		operatorResourceType:         operators,
 	}}, nil
 }
 
@@ -151,8 +176,58 @@ func (c *authorizationResourceCatalog) List(ctx context.Context, resourceType st
 	return provider.List(ctx, query)
 }
 
+// Resolve returns the producer-time display snapshot for one concrete
+// authorization resource. The owning services currently expose paged catalogs
+// rather than a shared GET-by-ID contract, so resolution walks those
+// authoritative catalogs and matches the stable ID exactly.
+func (c *authorizationResourceCatalog) Resolve(ctx context.Context, resourceType, resourceID string) (AuthorizationResource, error) {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return AuthorizationResource{}, errAuthorizationResourceNotFound
+	}
+	query := AuthorizationResourceQuery{Sort: "name", Direction: "asc", Limit: 100}
+	if isKnowledgeNetworkChildResource(resourceType) {
+		parentID, _, ok := strings.Cut(resourceID, "/")
+		if !ok || parentID == "" {
+			return AuthorizationResource{}, errAuthorizationResourceNotFound
+		}
+		query.ParentType = knowledgeNetworkResourceType
+		query.ParentID = parentID
+	}
+	for {
+		page, err := c.List(ctx, resourceType, query)
+		if err != nil {
+			return AuthorizationResource{}, err
+		}
+		for _, entry := range page.Entries {
+			if entry.ID == resourceID {
+				entry.Name = strings.TrimSpace(entry.Name)
+				if entry.Name == "" {
+					return AuthorizationResource{}, errAuthorizationResourceNameMissing
+				}
+				return entry, nil
+			}
+		}
+		query.Offset += len(page.Entries)
+		if len(page.Entries) == 0 || query.Offset >= page.Total {
+			return AuthorizationResource{}, errAuthorizationResourceNotFound
+		}
+	}
+}
+
+func isKnowledgeNetworkChildResource(resourceType string) bool {
+	switch resourceType {
+	case objectTypeResourceType, relationTypeResourceType, actionTypeResourceType, metricResourceType, conceptGroupResourceType:
+		return true
+	default:
+		return false
+	}
+}
+
 var errUnsupportedResourceType = errors.New("unsupported authorization resource type")
 var errInvalidAuthorizationResourceParent = errors.New("invalid authorization resource parent")
+var errAuthorizationResourceNotFound = errors.New("authorization resource not found")
+var errAuthorizationResourceNameMissing = errors.New("authorization resource name is missing")
 
 type authorizationResourceProvider struct {
 	endpoint     string
