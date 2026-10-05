@@ -285,6 +285,13 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event, co
 	if err != nil {
 		return ledgervo.DurableAck{}, retryableTransactionError(err), err
 	}
+	// New stored events change the integrity source even if receipt
+	// reconciliation later stays pending or has no completion contract.
+	_, err = tx.ExecContext(ctx, `UPDATE bkn_trace_interactions SET record_integrity_version=record_integrity_version+1, record_integrity_json=NULL
+		WHERE interaction_id=? AND execution_status<>?`, event.InteractionID, sessionvo.InteractionActive)
+	if err != nil {
+		return ledgervo.DurableAck{}, retryableTransactionError(err), err
+	}
 	if err := tx.Commit(); err != nil {
 		return ledgervo.DurableAck{}, retryableTransactionError(err), err
 	}

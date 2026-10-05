@@ -57,12 +57,18 @@ func (s *Store) WithinTransaction(ctx context.Context, fn func(isessionstore.Tra
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return fn(memoryTransaction{s: s, now: s.now().UTC()})
+	tx := memoryTransaction{s: s, now: s.now().UTC(), integrityDirty: make(map[string]struct{})}
+	if err := fn(tx); err != nil {
+		return err
+	}
+	tx.flushIntegrityDirty()
+	return nil
 }
 
 type memoryTransaction struct {
-	s   *Store
-	now time.Time
+	integrityDirty map[string]struct{}
+	s              *Store
+	now            time.Time
 }
 
 func (tx memoryTransaction) Now() time.Time {
@@ -149,7 +155,7 @@ func (tx memoryTransaction) ListConversations(owner sessionvo.Owner, limit int) 
 func (tx memoryTransaction) FindActiveInteraction(conversationID string) (sessionvo.Interaction, bool) {
 	for _, interaction := range tx.s.interactions {
 		if interaction.ConversationID == conversationID && interaction.ExecutionStatus == sessionvo.InteractionActive {
-			return interaction, true
+			return copyInteractionIntegrity(interaction), true
 		}
 	}
 	return sessionvo.Interaction{}, false
@@ -161,7 +167,7 @@ func (tx memoryTransaction) FindInteractionByStartKey(
 ) (sessionvo.Interaction, bool) {
 	for _, interaction := range tx.s.interactions {
 		if interaction.ConversationID == conversationID && interaction.StartIdempotencyKey == idempotencyKey {
-			return interaction, true
+			return copyInteractionIntegrity(interaction), true
 		}
 	}
 	return sessionvo.Interaction{}, false
@@ -169,7 +175,7 @@ func (tx memoryTransaction) FindInteractionByStartKey(
 
 func (tx memoryTransaction) FindInteraction(interactionID string) (sessionvo.Interaction, bool) {
 	interaction, found := tx.s.interactions[interactionID]
-	return interaction, found
+	return copyInteractionIntegrity(interaction), found
 }
 
 func (tx memoryTransaction) PeekInteraction(interactionID string) (sessionvo.Interaction, bool) {
@@ -180,7 +186,7 @@ func (tx memoryTransaction) ListInteractionsByIDs(interactionIDs []string) map[s
 	result := make(map[string]sessionvo.Interaction, len(interactionIDs))
 	for _, interactionID := range interactionIDs {
 		if interaction, found := tx.s.interactions[interactionID]; found {
-			result[interactionID] = interaction
+			result[interactionID] = copyInteractionIntegrity(interaction)
 		}
 	}
 	return result
@@ -196,7 +202,7 @@ func (tx memoryTransaction) ListInteractionsByConversationIDs(conversationIDs []
 	}
 	for _, interaction := range tx.s.interactions {
 		if _, found := selected[interaction.ConversationID]; found {
-			result[interaction.ConversationID] = append(result[interaction.ConversationID], interaction)
+			result[interaction.ConversationID] = append(result[interaction.ConversationID], copyInteractionIntegrity(interaction))
 		}
 	}
 	for conversationID := range result {
@@ -216,7 +222,7 @@ func (tx memoryTransaction) ListInteractions(conversationID string) []sessionvo.
 	result := make([]sessionvo.Interaction, 0)
 	for _, interaction := range tx.s.interactions {
 		if interaction.ConversationID == conversationID {
-			result = append(result, interaction)
+			result = append(result, copyInteractionIntegrity(interaction))
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -266,7 +272,15 @@ func (tx memoryTransaction) NextInteractionOrdinal(conversationID string) uint64
 }
 
 func (tx memoryTransaction) SaveInteraction(interaction sessionvo.Interaction) {
+	if current, found := tx.s.interactions[interaction.ID]; found {
+		interaction.IntegritySourceVersion = current.IntegritySourceVersion
+		interaction.StoredRecordIntegrity = sessionvo.CopyStoredRecordIntegrity(current.StoredRecordIntegrity)
+	} else {
+		interaction.IntegritySourceVersion = 0
+		interaction.StoredRecordIntegrity = nil
+	}
 	tx.s.interactions[interaction.ID] = interaction
+	tx.markIntegrityDirty(interaction.ID)
 }
 
 func (tx memoryTransaction) FindOperationByKey(interactionID, operationKey string) (sessionvo.Operation, bool) {
@@ -381,6 +395,7 @@ func sortOperationCallFacts(result []sessionvo.OperationCallFact) {
 }
 
 func (tx memoryTransaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
+	tx.markIntegrityDirty(fact.InteractionID)
 	fact.EvidenceCompletion = sessionvo.CopyEvidenceCompletion(fact.EvidenceCompletion)
 	tx.s.operationCalls[operationCallFactKey(fact.OperationID, fact.Attempt)] = fact
 }
@@ -449,6 +464,7 @@ func (tx memoryTransaction) ListReceipts(interactionID string) []sessionvo.Recei
 }
 
 func (tx memoryTransaction) SaveReceipt(receipt sessionvo.Receipt) {
+	tx.markIntegrityDirty(receipt.InteractionID)
 	tx.s.receipts[receipt.ID] = receipt
 }
 

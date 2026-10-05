@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -348,13 +347,21 @@ func (s *Service) inspectRecordIntegrityWithScope(ctx context.Context, id string
 	if !s.currentRecordIntegrity {
 		return nil, false, nil
 	}
-	reader, ok := s.sessionStore.(isessionstore.EvidenceSnapshotReader)
-	if !ok {
-		return nil, false, errors.New("record integrity snapshot source unavailable")
+	interaction, _, authorized, err := s.authorizeRecordIntegrityInteraction(ctx, id, scope)
+	if err != nil || !authorized {
+		return nil, false, err
 	}
+	return storedRecordIntegrity(interaction)
+}
+
+func (s *Service) authorizeRecordIntegrityInteraction(ctx context.Context, id string, scope evidencevo.QueryScope) (sessionvo.Interaction, sessionvo.Owner, bool, error) {
+	var interaction sessionvo.Interaction
 	var owner sessionvo.Owner
 	authorized := false
-	if err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+	if s.sessionStore == nil {
+		return interaction, owner, false, errors.New("record integrity session source unavailable")
+	}
+	err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		i, found := tx.PeekInteraction(id)
 		if !found {
 			return nil
@@ -363,24 +370,47 @@ func (s *Service) inspectRecordIntegrityWithScope(ctx context.Context, id string
 		if !found || !canReadCanonicalConversation(c, scope) {
 			return nil
 		}
-		owner = c.Owner
-		authorized = true
+		interaction, owner, authorized = i, c.Owner, true
 		return nil
-	}); err != nil {
-		return nil, false, err
+	})
+	return interaction, owner, authorized, err
+}
+
+// Live inspection is an internal generation path. Page reads consume the
+// persisted verdict; they never fetch call payloads or external evidence.
+func (s *Service) inspectLiveRecordIntegrity(ctx context.Context, id string, scope evidencevo.QueryScope) (*evidencevo.RecordIntegrity, error) {
+	report, _, _, err := s.inspectLiveRecordIntegrityWithScope(ctx, id, scope)
+	return report, err
+}
+
+func (s *Service) inspectLiveRecordIntegrityWithScope(ctx context.Context, id string, scope evidencevo.QueryScope) (*evidencevo.RecordIntegrity, bool, uint64, error) {
+	if !s.currentRecordIntegrity {
+		return nil, false, 0, nil
 	}
-	if !authorized {
-		return nil, false, nil
+	interaction, owner, authorized, err := s.authorizeRecordIntegrityInteraction(ctx, id, scope)
+	if err != nil || !authorized {
+		return nil, false, 0, err
+	}
+	return s.inspectAuthorizedLiveRecordIntegrity(ctx, interaction.ID, interaction.ConversationID, owner, scope)
+}
+
+func (s *Service) inspectAuthorizedLiveRecordIntegrity(ctx context.Context, id, conversationID string, owner sessionvo.Owner, scope evidencevo.QueryScope) (*evidencevo.RecordIntegrity, bool, uint64, error) {
+	reader, ok := s.sessionStore.(isessionstore.EvidenceSnapshotReader)
+	if !ok {
+		return nil, false, 0, errors.New("record integrity snapshot source unavailable")
 	}
 	snapshot, found, err := reader.ReadEvidenceSnapshot(ctx, id)
 	if err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
 	if !found {
-		return nil, false, errors.New("registered interaction disappeared during integrity check")
+		return nil, false, 0, errors.New("registered interaction disappeared during integrity check")
 	}
-	if !hasRecordIntegrityCalls(snapshot) {
-		return nil, false, nil
+	if snapshot.Interaction.ID != id || snapshot.Interaction.ConversationID != conversationID {
+		return nil, false, 0, errors.New("record integrity snapshot identity mismatch")
+	}
+	if snapshot.Interaction.ExecutionStatus == sessionvo.InteractionActive || !hasRecordIntegrityCalls(snapshot) {
+		return nil, false, snapshot.Interaction.IntegritySourceVersion, nil
 	}
 	// Artifact misses through a caller-filtered store are not authoritative
 	// absence: do not turn authorization or unsupported external reads into gaps.
@@ -490,28 +520,14 @@ func (s *Service) inspectRecordIntegrityWithScope(ctx context.Context, id string
 		return content.CanonicalJSON, nil
 	}
 	report, err := evaluateRecordIntegrity(snapshot, owner, time.Now(), verify)
-	return report, true, err
+	return report, true, snapshot.Interaction.IntegritySourceVersion, err
 }
 
 func (s *Service) applyInteractionRecordIntegrity(ctx context.Context, entries []evidencevo.InteractionListSummary, scope evidencevo.QueryScope) error {
-	ctx = withRecordIntegrityReadBudget(ctx)
 	if !s.currentRecordIntegrity {
 		return nil
 	}
-	// Use the list's stable timestamp/ID order for shared-budget consumption,
-	// without changing a conversation's separately ordered round page.
-	order := make([]int, len(entries))
-	for i := range order {
-		order[i] = i
-	}
-	sort.Slice(order, func(i, j int) bool {
-		a, b := entries[order[i]], entries[order[j]]
-		if a.StartedAt == b.StartedAt {
-			return a.InteractionID < b.InteractionID
-		}
-		return a.StartedAt > b.StartedAt
-	})
-	for _, i := range order {
+	for i := range entries {
 		report, err := s.inspectRecordIntegrity(ctx, entries[i].InteractionID, scope)
 		if err != nil {
 			entries[i].RecordIntegrityCheckFailed = true
@@ -523,43 +539,35 @@ func (s *Service) applyInteractionRecordIntegrity(ctx context.Context, entries [
 }
 
 func (s *Service) applyConversationRecordIntegrity(ctx context.Context, entries []evidencevo.ConversationSummary, scope evidencevo.QueryScope) error {
-	ctx = withRecordIntegrityReadBudget(ctx)
-	if !s.currentRecordIntegrity {
+	if !s.currentRecordIntegrity || len(entries) == 0 {
 		return nil
 	}
-	// Use the list's stable timestamp/ID order for shared-budget consumption,
-	// without changing a conversation's separately ordered round page.
-	order := make([]int, len(entries))
-	for i := range order {
-		order[i] = i
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		ids = append(ids, entry.ConversationID)
 	}
-	sort.Slice(order, func(i, j int) bool {
-		a, b := entries[order[i]], entries[order[j]]
-		if a.StartedAt == b.StartedAt {
-			return a.ConversationID < b.ConversationID
-		}
-		return a.StartedAt > b.StartedAt
-	})
-	for _, i := range order {
-		var interactions []sessionvo.Interaction
-		if err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
-			c, found := tx.PeekConversation(entries[i].ConversationID)
-			if found && canReadCanonicalConversation(c, scope) {
-				interactions = tx.ListInteractions(c.ID)
+	byConversation := map[string][]sessionvo.Interaction{}
+	if err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		conversations := tx.ListConversationsByIDs(ids)
+		authorizedIDs := make([]string, 0, len(conversations))
+		for _, id := range ids {
+			if c, found := conversations[id]; found && canReadCanonicalConversation(c, scope) {
+				authorizedIDs = append(authorizedIDs, id)
 			}
-			return nil
-		}); err != nil {
+		}
+		byConversation = tx.ListInteractionsByConversationIDs(authorizedIDs)
+		return nil
+	}); err != nil {
+		for i := range entries {
 			entries[i].RecordIntegrityCheckFailed = true
-			continue
 		}
-		if len(interactions) == 0 {
-			continue
-		}
-		aggregate := &evidencevo.RecordIntegrity{Status: "complete", CheckedAt: time.Now().UTC(), Scope: "registered_call_records", Missing: []evidencevo.MissingRecord{}}
-		unfinished := false
-		checked := false
-		for _, interaction := range interactions {
-			report, applicable, err := s.inspectRecordIntegrityWithScope(ctx, interaction.ID, scope)
+		return nil
+	}
+	for i := range entries {
+		aggregate := &evidencevo.RecordIntegrity{Status: "complete", Scope: "registered_call_records", Missing: []evidencevo.MissingRecord{}}
+		unfinished, checked := false, false
+		for _, interaction := range byConversation[entries[i].ConversationID] {
+			report, applicable, err := storedRecordIntegrity(interaction)
 			if err != nil {
 				entries[i].RecordIntegrityCheckFailed = true
 				unfinished = true
@@ -573,6 +581,9 @@ func (s *Service) applyConversationRecordIntegrity(ctx context.Context, entries 
 				continue
 			}
 			checked = true
+			if aggregate.CheckedAt.IsZero() || report.CheckedAt.Before(aggregate.CheckedAt) {
+				aggregate.CheckedAt = report.CheckedAt
+			}
 			aggregate.Missing = append(aggregate.Missing, report.Missing...)
 			if report.Status == "missing" {
 				aggregate.Status = "missing"

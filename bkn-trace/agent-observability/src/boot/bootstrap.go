@@ -35,6 +35,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sourcecoveragesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/archivestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
@@ -501,7 +502,13 @@ func NewApp() (*App, error) {
 		}
 	}
 	sessionService := sessionsvc.New(sessionStore, sessionOptions)
-	ledgerService.SetDurableObserver(sessionService.ReconcileEvidence)
+	// The SQL session/ledger store marks record integrity dirty in the same
+	// transaction as the ledger write. The development memory stores are
+	// deliberately separate, so install the equivalent post-commit hook only
+	// for that backend. Commit has returned (and released the ledger mutex) by
+	// the time this observer runs; invalidation itself only takes the session
+	// map lock and never calls back while holding it.
+	ledgerService.SetDurableObserver(memoryRecordIntegrityObserver(sessionStore, sessionService.ReconcileEvidence))
 	archiveStore := archivesvc.NewMemoryStore()
 	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok {
 		archiveStore = archivestore.New(databaseStore.Database())
@@ -560,6 +567,13 @@ func NewApp() (*App, error) {
 	}
 	workerContext, stopWorkers := context.WithCancel(context.Background())
 	app.stopWorkers = stopWorkers
+	// Materialized integrity serves lists without fetching stored business bodies.
+	// It also backfills existing terminal interactions, regardless of projection.
+	app.workers.Add(1)
+	go func() {
+		defer app.workers.Done()
+		runRecordIntegritySupervisor(workerContext, evidenceService, 5*time.Second)
+	}()
 	if captureController != nil {
 		app.workers.Add(1)
 		go func() {
@@ -650,6 +664,25 @@ func NewApp() (*App, error) {
 		}()
 	}
 	return app, nil
+}
+
+func memoryRecordIntegrityObserver(
+	sessionStore isessionstore.Store,
+	reconcile func(context.Context, ledgervo.Event) error,
+) func(context.Context, ledgervo.Event) error {
+	memorySessions, ok := sessionStore.(*memorysessionstore.Store)
+	if !ok {
+		return reconcile
+	}
+	return func(ctx context.Context, event ledgervo.Event) error {
+		if err := memorySessions.InvalidateRecordIntegrity(ctx, event.InteractionID, event.Owner); err != nil {
+			return err
+		}
+		// This fallback also runs for replayed durable events. It is safe for
+		// the in-memory store and compensates for the absence of SQL's
+		// transaction-level dirty marker.
+		return reconcile(ctx, event)
+	}
 }
 
 type memoryCapturePolicyCommander struct {
