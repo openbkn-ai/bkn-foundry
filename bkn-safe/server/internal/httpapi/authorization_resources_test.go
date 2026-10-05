@@ -116,6 +116,28 @@ func TestAuthorizationResourceCatalogResolvesExactProducerSnapshot(t *testing.T)
 	}
 }
 
+func TestAuthorizationResourceCatalogAcceptsProducerNameEqualToID(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("resource_type"); got != connectorTypeResourceType {
+			t.Fatalf("resource_type = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"id":"mysql","name":"mysql"}],"total":1}`))
+	}))
+	defer backend.Close()
+	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := catalog.Resolve(t.Context(), connectorTypeResourceType, "mysql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.ID != "mysql" || resource.Name != "mysql" {
+		t.Fatalf("resolved resource = %+v", resource)
+	}
+}
+
 func TestAuthorizationResourcesRejectsUnsupportedResourceType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

@@ -202,7 +202,7 @@ func (c *authorizationResourceCatalog) Resolve(ctx context.Context, resourceType
 		for _, entry := range page.Entries {
 			if entry.ID == resourceID {
 				entry.Name = strings.TrimSpace(entry.Name)
-				if entry.Name == "" || entry.Name == resourceID {
+				if entry.Name == "" {
 					return AuthorizationResource{}, errAuthorizationResourceNameMissing
 				}
 				return entry, nil
