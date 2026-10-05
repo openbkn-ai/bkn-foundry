@@ -1312,7 +1312,13 @@ func revokeObjectGrantBatchHandler(e *authz.Enforcer, db *gorm.DB, dir *director
 			} else if result.snapshotErr != nil {
 				setAuditSnapshotFailure(c, "revoke", targetID, result.snapshotErr)
 			} else {
-				setAuditOperation(c, "revoke", targetID, fmt.Sprintf("%d object grants · %s", result.removed, result.targetName))
+				targetName := fmt.Sprintf("%d object grants", result.removed)
+				if result.mixedTargets {
+					targetName += " across multiple subjects or resources"
+				} else {
+					targetName += " · " + result.targetName
+				}
+				setAuditOperation(c, "revoke", targetID, targetName)
 			}
 			grantIDs, truncated := compactGrantIDs(result.sources)
 			setAuditOutcome(c, map[string]any{"grant_count": len(result.sources), "removed_count": result.removed, "grant_ids": grantIDs, "grant_ids_truncated": truncated})
@@ -1343,11 +1349,12 @@ func compactGrantIDs(sources []gin.H) ([]string, bool) {
 // rows are deleted. Request bodies contain only opaque stable IDs, so the
 // audit middleware cannot reconstruct the source once RevokePolicies commits.
 type objectGrantRevokeResult struct {
-	sources     []gin.H
-	grantIDs    []string
-	removed     int
-	targetName  string
-	snapshotErr error
+	sources      []gin.H
+	grantIDs     []string
+	removed      int
+	targetName   string
+	mixedTargets bool
+	snapshotErr  error
 }
 
 func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, dir *directory.Service, catalog AuthorizationResourceCatalog, grantIDs []string) (objectGrantRevokeResult, bool) {
@@ -1375,6 +1382,7 @@ func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, dir *d
 		sources:  make([]gin.H, 0, len(normalized)),
 		grantIDs: normalized,
 	}
+	var targetAccessorID, targetResourceType, targetResourceID string
 	for _, grantID := range normalized {
 		records, err := e.PolicyRecords(authz.PolicyFilter{GrantID: grantID})
 		if err != nil {
@@ -1404,14 +1412,19 @@ func revokeObjectGrantIDs(c *gin.Context, e *authz.Enforcer, db *gorm.DB, dir *d
 			return objectGrantRevokeResult{}, false
 		}
 		source := objectGrantRevokeAuditSource(records[0], authority)
-		if result.targetName == "" && result.snapshotErr == nil {
-			resourceType, resourceID, _ := strings.Cut(records[0].Object, ":")
-			result.targetName, result.snapshotErr = resolveObjectGrantAuditName(c.Request.Context(), catalog, db, dir, records[0].AccessorID, resourceType, resourceID)
+		resourceType, resourceID, _ := strings.Cut(records[0].Object, ":")
+		if targetAccessorID == "" {
+			targetAccessorID, targetResourceType, targetResourceID = records[0].AccessorID, resourceType, resourceID
+		} else if records[0].AccessorID != targetAccessorID || resourceType != targetResourceType || resourceID != targetResourceID {
+			result.mixedTargets = true
 		}
 		// false is the longer JSON spelling, so this also validates the worst-case
 		// per-target audit size before any policy is removed.
 		source["removed"] = false
 		result.sources = append(result.sources, source)
+	}
+	if targetAccessorID != "" && !result.mixedTargets {
+		result.targetName, result.snapshotErr = resolveObjectGrantAuditName(c.Request.Context(), catalog, db, dir, targetAccessorID, targetResourceType, targetResourceID)
 	}
 	removedByID, err := e.RevokePolicies(normalized)
 	if err != nil {

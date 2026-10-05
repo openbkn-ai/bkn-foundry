@@ -26,6 +26,7 @@ type authorizationResourceList struct {
 }
 
 type authorizationResourceHandler struct {
+	operators model.IOperatorRegisterDB
 	toolboxes model.IToolboxDB
 	mcp       model.DBMCPServerConfig
 	skills    model.ISkillRepository
@@ -33,6 +34,7 @@ type authorizationResourceHandler struct {
 
 func newAuthorizationResourceHandler() *authorizationResourceHandler {
 	return &authorizationResourceHandler{
+		operators: dbaccess.NewOperatorManagerDB(),
 		toolboxes: dbaccess.NewToolboxDB(),
 		mcp:       dbaccess.NewMCPServerConfigDBSingleton(),
 		skills:    dbaccess.NewSkillRepositoryDB(),
@@ -55,6 +57,17 @@ func (h *authorizationResourceHandler) ListAuthorizationResources(c *gin.Context
 	sortParams := authorizationResourceSort(resourceType, ormhelper.SortOrder(direction))
 	var result authorizationResourceList
 	switch resourceType {
+	case "operator":
+		filter := map[string]interface{}{"name": name, "limit": limit, "offset": offset}
+		total, listErr := h.operators.CountByWhereClause(c.Request.Context(), filter)
+		if listErr == nil {
+			var rows []*model.OperatorRegisterDB
+			rows, listErr = h.operators.SelectListPage(c.Request.Context(), filter, sortParams, nil)
+			for _, row := range rows {
+				result.Entries = append(result.Entries, AuthorizationResource{ID: row.OperatorID, Name: row.Name})
+			}
+		}
+		result.Total, err = total, listErr
 	case "tool_box", "function":
 		metadataType := "openapi"
 		if resourceType == "function" {
@@ -111,6 +124,8 @@ func (h *authorizationResourceHandler) ListAuthorizationResources(c *gin.Context
 func authorizationResourceSort(resourceType string, order ormhelper.SortOrder) *ormhelper.SortParams {
 	idField := "f_skill_id"
 	switch resourceType {
+	case "operator":
+		idField = "f_op_id"
 	case "tool_box", "function":
 		idField = "f_box_id"
 	case "mcp":

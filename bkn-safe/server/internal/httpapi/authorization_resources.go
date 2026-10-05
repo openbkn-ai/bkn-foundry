@@ -20,7 +20,10 @@ import (
 
 const (
 	knowledgeNetworkResourceType = "knowledge_network"
+	agentResourceType            = "agent"
+	agentTemplateResourceType    = "agent_tpl"
 	catalogResourceType          = "catalog"
+	connectorTypeResourceType    = "connector_type"
 	resourceResourceType         = "resource"
 	objectTypeResourceType       = "object_type"
 	relationTypeResourceType     = "relation_type"
@@ -31,6 +34,7 @@ const (
 	functionResourceType         = "function"
 	mcpResourceType              = "mcp"
 	skillResourceType            = "skill"
+	operatorResourceType         = "operator"
 )
 
 type AuthorizationResource struct {
@@ -66,12 +70,24 @@ type authorizationResourceCatalog struct {
 	providers map[string]AuthorizationResourceProvider
 }
 
-func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
+func NewAuthorizationResourceCatalog(bknBackend, bknAgent, executionFactory, vegaBackend config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
 	knowledgeNetworks, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", knowledgeNetworkResourceType)
 	if err != nil {
 		return nil, err
 	}
+	agents, err := newAuthorizationResourceProvider(bknAgent, "/api/bkn-agent/in/v1/authorization-resources", "bkn agent", agentResourceType)
+	if err != nil {
+		return nil, err
+	}
+	agentTemplates, err := newAuthorizationResourceProvider(bknAgent, "/api/bkn-agent/in/v1/authorization-resources", "bkn agent", agentTemplateResourceType)
+	if err != nil {
+		return nil, err
+	}
 	catalogs, err := newAuthorizationResourceProvider(vegaBackend, "/api/vega-backend/in/v1/authorization-resources", "vega backend", catalogResourceType)
+	if err != nil {
+		return nil, err
+	}
+	connectorTypes, err := newAuthorizationResourceProvider(vegaBackend, "/api/vega-backend/in/v1/authorization-resources", "vega backend", connectorTypeResourceType)
 	if err != nil {
 		return nil, err
 	}
@@ -115,9 +131,16 @@ func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend c
 	if err != nil {
 		return nil, err
 	}
+	operators, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", operatorResourceType)
+	if err != nil {
+		return nil, err
+	}
 	return &authorizationResourceCatalog{providers: map[string]AuthorizationResourceProvider{
 		knowledgeNetworkResourceType: knowledgeNetworks,
+		agentResourceType:            agents,
+		agentTemplateResourceType:    agentTemplates,
 		catalogResourceType:          catalogs,
+		connectorTypeResourceType:    connectorTypes,
 		resourceResourceType:         resources,
 		objectTypeResourceType:       objectTypes,
 		relationTypeResourceType:     relationTypes,
@@ -128,6 +151,7 @@ func NewAuthorizationResourceCatalog(bknBackend, executionFactory, vegaBackend c
 		functionResourceType:         functions,
 		mcpResourceType:              mcp,
 		skillResourceType:            skills,
+		operatorResourceType:         operators,
 	}}, nil
 }
 

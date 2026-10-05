@@ -877,6 +877,47 @@ func TestObjectGrantsOwnerBatchRevokeIsAllOrNothing(t *testing.T) {
 	}
 }
 
+func TestObjectGrantsMixedBatchRevokeDoesNotMislabelFirstTarget(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	for _, user := range []model.User{
+		{ID: "u-one", Account: "one", Name: "User One", Enabled: true},
+		{ID: "u-two", Account: "two", Name: "User Two", Enabled: true},
+	} {
+		if err := users.CreateLocalUser(t.Context(), &user, "pw-init0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seedCatalogOps(t, db, "knowledge_network", "view_detail")
+	for _, accessorID := range []string{"u-one", "u-two"} {
+		if err := e.GrantProfessionalObjectPermission(accessorID, "knowledge_network", "kn-mine",
+			"view_detail", authz.EffectAllow, authz.AuthoritySourceAdminAuthz); err != nil {
+			t.Fatal(err)
+		}
+	}
+	grantIDs := make([]string, 0, 2)
+	for _, accessorID := range []string{"u-one", "u-two"} {
+		grantIDs = append(grantIDs, oneGrantID(t, e, authz.PolicyFilter{
+			AccessorID: accessorID, Object: "knowledge_network:kn-mine", Operation: "view_detail",
+			PolicySource: authz.PolicySourceProfessionalRule, AuthoritySource: authz.AuthoritySourceAdminAuthz,
+		}))
+	}
+
+	clearAuditLog(t, db)
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants/revoke", map[string]any{
+		"grant_ids": grantIDs,
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("mixed batch revoke = %d %s; want 204", w.Code, w.Body.String())
+	}
+	rows := objectGrantRevokeAuditRows(t, db, w.Header().Get("x-request-id"))
+	if len(rows) != 1 {
+		t.Fatalf("mixed batch audit rows = %d, want 1", len(rows))
+	}
+	if rows[0].TargetName != "2 object grants across multiple subjects or resources" {
+		t.Fatalf("mixed batch target name = %q", rows[0].TargetName)
+	}
+}
+
 func TestObjectGrantsLargeBatchRevokeCreatesOneAuditFact(t *testing.T) {
 	r, e, db := ownerGrantFixtureWithDB(t)
 	operations := make([]string, 0, 20)
