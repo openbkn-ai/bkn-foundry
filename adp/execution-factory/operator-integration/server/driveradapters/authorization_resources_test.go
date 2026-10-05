@@ -1,12 +1,43 @@
 package driveradapters
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 )
+
+type authorizationOperatorDBStub struct {
+	model.IOperatorRegisterDB
+}
+
+func (authorizationOperatorDBStub) CountByWhereClause(context.Context, map[string]interface{}) (int64, error) {
+	return 1, nil
+}
+
+func (authorizationOperatorDBStub) SelectListPage(context.Context, map[string]interface{}, *ormhelper.SortParams, *ormhelper.CursorParams) ([]*model.OperatorRegisterDB, error) {
+	return []*model.OperatorRegisterDB{{OperatorID: "operator-1", Name: "Readable operator"}}, nil
+}
+
+func TestListAuthorizationResourcesSupportsOperator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := &authorizationResourceHandler{operators: authorizationOperatorDBStub{}}
+	r := gin.New()
+	r.GET("/authorization-resources", h.ListAuthorizationResources)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/authorization-resources?resource_type=operator&name=readable", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+	if body := w.Body.String(); !strings.Contains(body, `"id":"operator-1"`) || !strings.Contains(body, `"name":"Readable operator"`) {
+		t.Fatalf("body = %s", body)
+	}
+}
 
 func TestAuthorizationResourcePage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -46,6 +77,7 @@ func TestAuthorizationResourceSortUsesResourceIDAsTieBreaker(t *testing.T) {
 		{resourceType: "function", direction: ormhelper.SortOrderDesc, idField: "f_box_id"},
 		{resourceType: "mcp", direction: ormhelper.SortOrderAsc, idField: "f_mcp_id"},
 		{resourceType: "skill", direction: ormhelper.SortOrderDesc, idField: "f_skill_id"},
+		{resourceType: "operator", direction: ormhelper.SortOrderAsc, idField: "f_op_id"},
 	} {
 		t.Run(test.resourceType, func(t *testing.T) {
 			sort := authorizationResourceSort(test.resourceType, test.direction)

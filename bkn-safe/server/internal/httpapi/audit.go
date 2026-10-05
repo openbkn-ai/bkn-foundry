@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -115,27 +116,43 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 			return
 		}
 		explicitTargetName := ""
+		var snapshotErr error
+		explicitOperation := false
 		if rawOperation, ok := c.Get(ctxAuditOperation); ok {
 			if operation, valid := rawOperation.(auditOperation); valid {
+				if operation.Suppress {
+					return
+				}
+				explicitOperation = true
 				if operation.Action != "" {
 					action = operation.Action
 				}
-				if operation.TargetID != "" {
-					targetID = operation.TargetID
-				}
+				targetID = operation.TargetID
 				explicitTargetName = operation.TargetName
+				snapshotErr = operation.SnapshotErr
 			}
 		}
 		targetName := beforeName
-		if explicitTargetName != "" {
+		if explicitOperation && explicitTargetName != "" {
 			targetName = explicitTargetName
-		} else if c.Writer.Status() < http.StatusBadRequest {
+		} else if snapshotErr == nil && c.Writer.Status() < http.StatusBadRequest {
 			if name := auditTargetName(c.Request.Context(), dir, db, resource, targetID, detail); name != "" {
 				targetName = name
 			}
 		}
 		actorID = c.GetString(ctxAccessorID)
 		actorType, authMethod, sourceChannel = "user", "oauth", "api"
+		if strings.TrimSpace(actorName) == "" {
+			logAuditCoverageGap(requestID, resource, action, targetID, "snapshot", "actor_snapshot_unavailable", errors.New("actor display name could not be resolved"))
+			return
+		}
+		if strings.TrimSpace(targetName) == "" {
+			if snapshotErr == nil {
+				snapshotErr = errors.New("target display name could not be resolved")
+			}
+			logAuditCoverageGap(requestID, resource, action, targetID, "snapshot", "target_snapshot_unavailable", snapshotErr)
+			return
+		}
 		// The write may have committed after the caller hung up (its deadline
 		// passed mid-commit); its audit row must not be dropped with the
 		// cancelled request context (#1511). It keeps a bound of its own, so a
@@ -159,12 +176,9 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		}
 		baseEntry.Detail = withAuditGate(withAuditOutcome(detail, c), c)
 		if err := store.RecordBatch(recordCtx, []audit.Entry{baseEntry}); err != nil {
-			slog.Error("failed to persist operation audit record",
-				"request_id", requestID,
-				"resource", resource,
-				"action", action,
-				"error", err,
-			)
+			if !audit.CoverageGapWasLogged(err) {
+				logAuditCoverageGap(requestID, resource, action, targetID, "record", "record_failed", err)
+			}
 			_ = c.Error(err)
 		}
 	}
@@ -309,13 +323,40 @@ const ctxAuditOutcome = "audit_outcome"
 const ctxAuditOperation = "audit_operation"
 
 type auditOperation struct {
-	Action     string
-	TargetID   string
-	TargetName string
+	Action      string
+	TargetID    string
+	TargetName  string
+	SnapshotErr error
+	Suppress    bool
 }
 
 func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
 	c.Set(ctxAuditOperation, auditOperation{Action: action, TargetID: targetID, TargetName: targetName})
+}
+
+func setAuditSnapshotFailure(c *gin.Context, action, targetID string, err error) {
+	c.Set(ctxAuditOperation, auditOperation{Action: action, TargetID: targetID, SnapshotErr: err})
+}
+
+func suppressAuditOperation(c *gin.Context) {
+	c.Set(ctxAuditOperation, auditOperation{Suppress: true})
+}
+
+func logAuditCoverageGap(requestID, resource, action, targetID, stage, reason string, err error) {
+	attributes := []any{
+		"request_id", requestID,
+		"resource", resource,
+		"action", action,
+		"stage", stage,
+		"reason", reason,
+	}
+	if targetID != "" {
+		attributes = append(attributes, "target_id", targetID)
+	}
+	if err != nil {
+		attributes = append(attributes, "error", err)
+	}
+	slog.Error("safe audit coverage gap", attributes...)
 }
 
 // setAuditOutcome records outcome facts for the audit Detail of the current
@@ -460,13 +501,9 @@ func auditDetailName(
 	if name, ok := body["name"].(string); ok && name != "" {
 		return name
 	}
-	if resource == "object-grants" || resource == "enterprise-object-grants" {
-		accessorID, _ := body["accessor_id"].(string)
-		ref, _ := body["resource"].(map[string]any)
-		resourceType, _ := ref["type"].(string)
-		resourceID, _ := ref["id"].(string)
-		return auditObjectGrantName(ctx, db, dir, accessorID, resourceType, resourceID)
-	}
+	// Object-grant names must come from the owning resource catalog. Request
+	// IDs and type names are not display snapshots and are never synthesized
+	// here.
 	if resource == "role-bindings" {
 		roleID, _ := body["role_id"].(string)
 		accessorID, _ := body["accessor_id"].(string)
@@ -483,10 +520,20 @@ func auditDetailName(
 	return ""
 }
 
-func auditObjectGrantName(ctx context.Context, db *gorm.DB, dir *directory.Service, accessorID, resourceType, resourceID string) string {
+func auditObjectGrantName(ctx context.Context, db *gorm.DB, dir *directory.Service, accessorID, resourceName string) string {
 	accessorName := accessorNameByID(ctx, dir, accessorID)
 	if accessorName == "" && db != nil && accessorID != "" {
-		for _, target := range []any{&model.User{}, &model.Department{}, &model.Group{}, &model.Role{}} {
+		var user model.User
+		if err := db.WithContext(ctx).Select("name", "account").First(&user, "id = ?", accessorID).Error; err == nil {
+			accessorName = strings.TrimSpace(user.Name)
+			if accessorName == "" {
+				accessorName = strings.TrimSpace(user.Account)
+			}
+		}
+		for _, target := range []any{&model.Department{}, &model.Group{}, &model.Role{}} {
+			if accessorName != "" {
+				break
+			}
 			var row struct{ Name string }
 			if err := db.WithContext(ctx).Model(target).Select("name").Where("id = ?", accessorID).Scan(&row).Error; err == nil && row.Name != "" {
 				accessorName = row.Name
@@ -494,17 +541,27 @@ func auditObjectGrantName(ctx context.Context, db *gorm.DB, dir *directory.Servi
 			}
 		}
 	}
-	if accessorName == "" || resourceType == "" || resourceID == "" {
+	resourceName = strings.TrimSpace(resourceName)
+	if accessorName == "" || resourceName == "" {
 		return ""
 	}
-	resourceName := fmt.Sprintf("%s %s", resourceType, resourceID)
 	return fmt.Sprintf("%s · authorization for %s", accessorName, resourceName)
 }
 
 func auditBindingTargetName(ctx context.Context, db *gorm.DB, accessorID, roleID string) string {
 	accessorName := ""
 	if db != nil {
-		for _, target := range []any{&model.User{}, &model.Department{}, &model.Group{}} {
+		var user model.User
+		if err := db.WithContext(ctx).Select("name", "account").First(&user, "id = ?", accessorID).Error; err == nil {
+			accessorName = strings.TrimSpace(user.Name)
+			if accessorName == "" {
+				accessorName = strings.TrimSpace(user.Account)
+			}
+		}
+		for _, target := range []any{&model.Department{}, &model.Group{}} {
+			if accessorName != "" {
+				break
+			}
 			var row struct{ Name string }
 			if err := db.WithContext(ctx).Model(target).Select("name").Where("id = ?", accessorID).Scan(&row).Error; err == nil && row.Name != "" {
 				accessorName = row.Name

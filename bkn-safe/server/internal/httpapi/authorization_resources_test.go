@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,6 +14,48 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
 )
+
+func TestAuthorizationResourceCatalogCoversEveryObjectGrantProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resourceType := r.URL.Query().Get("resource_type")
+		wantPath := map[string]string{
+			"agent":          "/api/bkn-agent/in/v1/authorization-resources",
+			"agent_tpl":      "/api/bkn-agent/in/v1/authorization-resources",
+			"operator":       "/api/agent-operator-integration/internal-v1/authorization-resources",
+			"connector_type": "/api/vega-backend/in/v1/authorization-resources",
+		}[resourceType]
+		if r.URL.Path != wantPath {
+			t.Fatalf("path for %s = %q, want %q", resourceType, r.URL.Path, wantPath)
+		}
+		resourceID := resourceType + "-1"
+		if resourceType == "agent_tpl" {
+			resourceID = "agent-1"
+		}
+		_, _ = fmt.Fprintf(w, `{"entries":[{"id":"%s","name":"Readable %s"}],"total":1}`, resourceID, resourceType)
+	}))
+	defer server.Close()
+
+	upstream := config.UpstreamConfig{BaseURL: server.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, resourceType := range []string{"agent", "agent_tpl", "operator", "connector_type"} {
+		t.Run(resourceType, func(t *testing.T) {
+			resourceID := resourceType + "-1"
+			if resourceType == "agent_tpl" {
+				resourceID = "agent-1"
+			}
+			resource, err := catalog.Resolve(t.Context(), resourceType, resourceID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resource.Name != "Readable "+resourceType {
+				t.Fatalf("name = %q", resource.Name)
+			}
+		})
+	}
+}
 
 func TestAuthorizationResourcesForwardsKnowledgeNetworkQuery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -30,7 +73,7 @@ func TestAuthorizationResourcesForwardsKnowledgeNetworkQuery(t *testing.T) {
 		_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1","name":"Supply"}],"total":1}`))
 	}))
 	defer backend.Close()
-	catalog, err := NewAuthorizationResourceCatalog(config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second})
+	catalog, err := NewAuthorizationResourceCatalog(config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +86,55 @@ func TestAuthorizationResourcesForwardsKnowledgeNetworkQuery(t *testing.T) {
 	}
 	if got := w.Body.String(); got != `{"entries":[{"id":"kn-1","name":"Supply"}],"total":1}` {
 		t.Fatalf("response = %s", got)
+	}
+}
+
+func TestAuthorizationResourceCatalogResolvesExactProducerSnapshot(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if query.Get("resource_type") != objectTypeResourceType || query.Get("parent_type") != knowledgeNetworkResourceType || query.Get("parent_id") != "kn-1" {
+			t.Fatalf("unexpected resolver query: %s", r.URL.RawQuery)
+		}
+		if query.Get("offset") == "0" {
+			_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1/customer","name":"Customer"}],"total":2}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1/order","name":"Sales order"}],"total":2}`))
+	}))
+	defer backend.Close()
+	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := catalog.Resolve(t.Context(), objectTypeResourceType, "kn-1/order")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.ID != "kn-1/order" || resource.Name != "Sales order" {
+		t.Fatalf("resolved resource = %+v", resource)
+	}
+}
+
+func TestAuthorizationResourceCatalogAcceptsProducerNameEqualToID(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("resource_type"); got != connectorTypeResourceType {
+			t.Fatalf("resource_type = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"entries":[{"id":"mysql","name":"mysql"}],"total":1}`))
+	}))
+	defer backend.Close()
+	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := catalog.Resolve(t.Context(), connectorTypeResourceType, "mysql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.ID != "mysql" || resource.Name != "mysql" {
+		t.Fatalf("resolved resource = %+v", resource)
 	}
 }
 
@@ -76,6 +168,7 @@ func TestAuthorizationResourcesForwardsExecutionFactoryQuery(t *testing.T) {
 		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
 		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
 		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
+		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +199,7 @@ func TestAuthorizationResourcesForwardsVegaQuery(t *testing.T) {
 	defer vega.Close()
 
 	upstream := config.UpstreamConfig{BaseURL: vega.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +226,7 @@ func TestAuthorizationResourcesForwardsVegaResourceQuery(t *testing.T) {
 	defer vega.Close()
 
 	upstream := config.UpstreamConfig{BaseURL: vega.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +255,7 @@ func TestAuthorizationResourcesForwardsChildParentQuery(t *testing.T) {
 	}))
 	defer backend.Close()
 	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}

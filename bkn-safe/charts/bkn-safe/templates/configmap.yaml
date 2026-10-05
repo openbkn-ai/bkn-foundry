@@ -36,6 +36,9 @@ data:
   {{- $bknBackend := $upstreams.bknBackend | default dict }}
   SAFE_BKN_BACKEND_BASE_URL: {{ $bknBackend.baseURL | default "http://bkn-backend-svc:13014" | quote }}
   SAFE_BKN_BACKEND_TIMEOUT: {{ $bknBackend.timeout | default "3s" | quote }}
+  {{- $bknAgent := $upstreams.bknAgent | default dict }}
+  SAFE_BKN_AGENT_BASE_URL: {{ $bknAgent.baseURL | default "http://bkn-agent:30800" | quote }}
+  SAFE_BKN_AGENT_TIMEOUT: {{ $bknAgent.timeout | default "3s" | quote }}
   {{- $executionFactory := $upstreams.executionFactory | default dict }}
   SAFE_EXECUTION_FACTORY_BASE_URL: {{ $executionFactory.baseURL | default "http://agent-operator-integration:9000" | quote }}
   SAFE_EXECUTION_FACTORY_TIMEOUT: {{ $executionFactory.timeout | default "3s" | quote }}

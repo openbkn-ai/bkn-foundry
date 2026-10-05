@@ -41,10 +41,10 @@ type StudioOriginManager interface {
 // charts/bkn-safe client-seed-job) keeps this from being a generic hydra client
 // editor. Kept as its own list — not aliased to firstPartyClients — so loosening
 // what is editable never silently loosens what skips the consent screen.
-var manageableClients = map[string]bool{
-	"openbkn-studio": true,
-	"openbkn-cli":    true,
-	"openbkn-sdk":    true,
+var manageableClients = map[string]string{
+	"openbkn-studio": "OpenBKN Studio",
+	"openbkn-cli":    "OpenBKN CLI",
+	"openbkn-sdk":    "OpenBKN SDK",
 }
 
 // registerClientAdmin mounts redirect-uri management for the platform's login
@@ -55,7 +55,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 	// GET /clients/:id/redirect-uris -> { "redirect_uris": [...] }
 	g.GET("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
-		if !manageableClients[id] {
+		if _, ok := manageableClients[id]; !ok {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
@@ -77,7 +77,8 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 	// Idempotent: adding an already-registered uri returns the unchanged list.
 	g.POST("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
-		if !manageableClients[id] {
+		clientName, ok := manageableClients[id]
+		if !ok {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
@@ -91,7 +92,6 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		setAuditOperation(c, "add_redirect_uri", id, fmt.Sprintf("%s redirect URI %s", id, req.RedirectURI))
 		var uris []string
 		var err error
 		if id == "openbkn-studio" && origins != nil {
@@ -113,13 +113,15 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "add_redirect_uri", oauthRedirectTargetID(id, req.RedirectURI), fmt.Sprintf("%s redirect URI %s", clientName, req.RedirectURI))
 		c.JSON(http.StatusOK, gin.H{"redirect_uris": uris})
 	})
 
 	// DELETE /clients/:id/redirect-uris { "redirect_uri": "..." } -> { "redirect_uris" }
 	g.DELETE("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
-		if !manageableClients[id] {
+		clientName, ok := manageableClients[id]
+		if !ok {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
@@ -129,7 +131,6 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 		if !bind(c, &req) {
 			return
 		}
-		setAuditOperation(c, "remove_redirect_uri", id, fmt.Sprintf("%s redirect URI %s", id, req.RedirectURI))
 		var uris []string
 		var err error
 		if id == "openbkn-studio" && origins != nil {
@@ -152,6 +153,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, origins StudioOr
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "remove_redirect_uri", oauthRedirectTargetID(id, req.RedirectURI), fmt.Sprintf("%s redirect URI %s", clientName, req.RedirectURI))
 		c.JSON(http.StatusOK, gin.H{"redirect_uris": uris})
 	})
 }

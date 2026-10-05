@@ -143,7 +143,7 @@ func Boot(opts Options) (*App, error) {
 		os.Getenv("BKN_AUDIT_ENVIRONMENT"),
 		func(outcome string) { auditRuntime.Telemetry.ObserveForSource("bkn-safe-security", outcome) },
 	)
-	authorizationResources, err := httpapi.NewAuthorizationResourceCatalog(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
+	authorizationResources, err := httpapi.NewAuthorizationResourceCatalog(cfg.Upstreams.BKNBackend, cfg.Upstreams.BKNAgent, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
 	if err != nil {
 		return nil, fmt.Errorf("authorization resource catalog: %w", err)
 	}
