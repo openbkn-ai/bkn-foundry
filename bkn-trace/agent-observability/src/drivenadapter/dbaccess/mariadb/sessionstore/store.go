@@ -436,6 +436,9 @@ func (s *Store) WithinTransaction(ctx context.Context, fn func(isessionstore.Tra
 			return err
 		}
 		callbackErr := fn(adapter)
+		if callbackErr == nil {
+			adapter.flushIntegrityDirty()
+		}
 		// Lookup failures can make the callback report a domain-level not-found.
 		// Preserve the storage error so transaction retries see the real cause.
 		if adapter.err != nil {
@@ -503,6 +506,7 @@ func retryableTransactionError(err error) bool {
 }
 
 type transaction struct {
+	integrityDirty     map[string]struct{}
 	strictEvidenceJSON bool
 	ctx                context.Context
 	tx                 *sql.Tx
@@ -916,6 +920,10 @@ func (t *transaction) SaveInteraction(interaction sessionvo.Interaction) {
 	if t.err != nil {
 		return
 	}
+	t.markIntegrityDirty(interaction.ID)
+	if t.err != nil {
+		return
+	}
 	manifest := marshalJSON(interaction.ClosureManifest)
 	var assemblerDeadline any
 	if interaction.ClosureManifest != nil {
@@ -1185,6 +1193,10 @@ func (t *transaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
 	if t.err != nil {
 		return
 	}
+	t.markIntegrityDirty(fact.InteractionID)
+	if t.err != nil {
+		return
+	}
 	var exists int
 	err := t.tx.QueryRowContext(t.ctx,
 		"SELECT 1 FROM bkn_trace_operation_call_facts WHERE operation_id=? AND attempt_no=?",
@@ -1275,6 +1287,10 @@ func (t *transaction) ListReceipts(interactionID string) []sessionvo.Receipt {
 }
 
 func (t *transaction) SaveReceipt(receipt sessionvo.Receipt) {
+	if t.err != nil {
+		return
+	}
+	t.markIntegrityDirty(receipt.InteractionID)
 	if t.err != nil {
 		return
 	}
@@ -1714,7 +1730,8 @@ const interactionSelect = `SELECT interaction_id, conversation_id, ordinal_no,
 	execution_status, evidence_status, start_idempotency_key,
 	COALESCE(terminal_idempotency_key, ''), COALESCE(terminal_payload_hash, ''),
 	COALESCE(closure_manifest, ''), lease_token, lease_epoch, lease_version,
-	lease_expires_at, row_version, created_at, updated_at, terminal_at
+	lease_expires_at, row_version, created_at, updated_at, terminal_at,
+	record_integrity_version, record_integrity_json
 	FROM bkn_trace_interactions`
 
 func (t *transaction) scanInteraction(row rowScanner) (sessionvo.Interaction, bool) {
@@ -1733,12 +1750,14 @@ func scanInteractionRows(row rowScanner) (sessionvo.Interaction, error) {
 	var value sessionvo.Interaction
 	var manifest string
 	var terminalAt sql.NullTime
+	var integrityJSON sql.NullString
 	err := row.Scan(
 		&value.ID, &value.ConversationID, &value.Ordinal, &value.ExecutionStatus,
 		&value.EvidenceStatus, &value.StartIdempotencyKey,
 		&value.TerminalIdempotencyKey, &value.TerminalPayloadHash, &manifest,
 		&value.LeaseToken, &value.LeaseEpoch, &value.LeaseVersion,
 		&value.LeaseExpiresAt, &value.RowVersion, &value.CreatedAt, &value.UpdatedAt, &terminalAt,
+		&value.IntegritySourceVersion, &integrityJSON,
 	)
 	if err != nil {
 		return sessionvo.Interaction{}, err
@@ -1752,6 +1771,14 @@ func scanInteractionRows(row rowScanner) (sessionvo.Interaction, error) {
 	}
 	if terminalAt.Valid {
 		value.TerminalAt = &terminalAt.Time
+	}
+	if integrityJSON.Valid {
+		if len(integrityJSON.String) > isessionstore.MaxStoredRecordIntegrityBytes {
+			return sessionvo.Interaction{}, isessionstore.ErrRecordIntegrityLimit
+		}
+		if err := json.Unmarshal([]byte(integrityJSON.String), &value.StoredRecordIntegrity); err != nil || value.StoredRecordIntegrity == nil {
+			return sessionvo.Interaction{}, fmt.Errorf("%w: interaction.record_integrity", isessionstore.ErrInvalidEvidenceJSON)
+		}
 	}
 	return value, nil
 }

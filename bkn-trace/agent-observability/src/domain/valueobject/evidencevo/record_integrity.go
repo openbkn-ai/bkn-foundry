@@ -5,21 +5,9 @@
 
 package evidencevo
 
-import "time"
+import "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 
 // RecordIntegrity is a current read of registered call records, independent
 // of historical assembly state, execution success and claim support.
-type RecordIntegrity struct {
-	Status    string          `json:"status"`
-	CheckedAt time.Time       `json:"checked_at"`
-	Scope     string          `json:"scope"`
-	Missing   []MissingRecord `json:"missing"`
-}
-
-type MissingRecord struct {
-	OperationID string `json:"operation_id"`
-	Attempt     uint32 `json:"attempt"`
-	ToolName    string `json:"tool_name,omitempty"`
-	Reason      string `json:"reason"`
-	Field       string `json:"field"`
-}
+type RecordIntegrity = sessionvo.RecordIntegrity
+type MissingRecord = sessionvo.MissingRecord

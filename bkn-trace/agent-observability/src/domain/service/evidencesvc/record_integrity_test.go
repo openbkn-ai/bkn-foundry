@@ -221,6 +221,7 @@ func TestRecordIntegritySummaryUsesCurrentCheckWithoutRewritingAssembly(t *testi
 		t.Fatalf("authorization summary must retain entry without reading call snapshot: %+v %v reads=%d", probe, err, store.reads)
 	}
 
+	materializeIntegrityFixture(t, service)
 	summary, found, err := service.GetInteractionSummary(ctx, "int", scope)
 	if err != nil || !found || summary.CurrentRecordIntegrity == nil || summary.CurrentRecordIntegrity.Status != "complete" {
 		t.Fatalf("summary must include independent current result: %+v %v", summary, err)
@@ -230,8 +231,8 @@ func TestRecordIntegritySummaryUsesCurrentCheckWithoutRewritingAssembly(t *testi
 	}
 	store.readErr = errors.New("database read failed")
 	summary, found, err = service.GetInteractionSummary(ctx, "int", scope)
-	if err != nil || !found || summary.CurrentRecordIntegrity != nil || !summary.RecordIntegrityCheckFailed {
-		t.Fatalf("check failure must preserve facts without a verdict: %+v %v", summary, err)
+	if err != nil || !found || summary.CurrentRecordIntegrity == nil || summary.RecordIntegrityCheckFailed || store.reads != 1 {
+		t.Fatalf("stored check must survive evidence read failure: %+v %v reads=%d", summary, err, store.reads)
 	}
 }
 
@@ -402,20 +403,20 @@ func TestRecordIntegrityReferencedPayloadAbsenceAndVisibility(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
 			service.artifactStore = integrityArtifacts{result: test.result}
-			summary, found, err := service.GetInteractionSummary(ctx, "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
-			if err != nil || !found || summary.RecordIntegrityCheckFailed != test.failed {
-				t.Fatalf("summary: %+v %v", summary, err)
+			report, err := service.inspectLiveRecordIntegrity(ctx, "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+			if (err != nil) != test.failed {
+				t.Fatalf("strict verification: %+v %v", report, err)
 			}
-			if test.status != "" && (summary.CurrentRecordIntegrity == nil || summary.CurrentRecordIntegrity.Status != test.status) {
-				t.Fatalf("verdict: %+v", summary.CurrentRecordIntegrity)
+			if test.status != "" && (report == nil || report.Status != test.status) {
+				t.Fatalf("verdict: %+v", report)
 			}
 		})
 	}
 	artifact.OperationID = "another-op"
 	service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
 	service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Found: true, Exists: true, Artifact: artifact}}
-	summary, _, _ := service.GetInteractionSummary(ctx, "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
-	if summary.CurrentRecordIntegrity != nil || !summary.RecordIntegrityCheckFailed {
+	report, err := service.inspectLiveRecordIntegrity(ctx, "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+	if report != nil || err == nil {
 		t.Fatal("another operation must not certify this payload")
 	}
 }
@@ -471,6 +472,7 @@ func TestRecordIntegrityListSurvivesAllReceiptAndProjectionLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(evidencestore.New(), WithSessionStore(store), WithProjectionSource(&capturingProjectionSource{}), WithCurrentRecordIntegrity())
+	materializeIntegrityFixture(t, service)
 	for _, filter := range []string{"", "missing"} {
 		page, err := service.ListConversations(ctx, evidencevo.SummaryQueryOptions{Scope: evidencevo.QueryScope{AccountID: "user", AccountType: "user"}, RecordIntegrity: filter})
 		if err != nil || page.Total != 1 || len(page.Entries) != 1 || page.Entries[0].CurrentRecordIntegrity == nil || page.Entries[0].CurrentRecordIntegrity.Status != "missing" {
@@ -511,6 +513,7 @@ func TestConversationIntegrityIgnoresRoundsWithNoRegisteredCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
+	materializeIntegrityFixture(t, service)
 	entries := []evidencevo.ConversationSummary{{ConversationID: "conv"}}
 	if err := service.applyConversationRecordIntegrity(ctx, entries, evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err != nil || entries[0].CurrentRecordIntegrity == nil || entries[0].CurrentRecordIntegrity.Status != "complete" {
 		t.Fatalf("empty round must not prevent complete call records: %+v %v", entries, err)
@@ -544,12 +547,12 @@ func TestRecordIntegrityArtifactBudgetIsSharedAcrossRounds(t *testing.T) {
 	service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
 	service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}}
 	scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
-	first, found, err := service.GetInteractionSummary(ctx, "int", scope)
-	if err != nil || !found || first.CurrentRecordIntegrity == nil {
+	first, err := service.inspectLiveRecordIntegrity(ctx, "int", scope)
+	if err != nil || first == nil {
 		t.Fatalf("last permitted content read must succeed: %+v %v", first, err)
 	}
-	second, found, err := service.GetInteractionSummary(ctx, "int", scope)
-	if err != nil || !found || second.CurrentRecordIntegrity != nil || !second.RecordIntegrityCheckFailed {
+	second, err := service.inspectLiveRecordIntegrity(ctx, "int", scope)
+	if err == nil || second != nil {
 		t.Fatalf("exhausted request budget must retain facts without verdict: %+v %v", second, err)
 	}
 	if reads := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget).reads; reads != 128 {
@@ -557,14 +560,14 @@ func TestRecordIntegrityArtifactBudgetIsSharedAcrossRounds(t *testing.T) {
 	}
 }
 
-func TestIntegrityBudgetChecksNewestCandidateDeterministically(t *testing.T) {
+func TestMaterializedPagesIgnoreExhaustedRequestBudget(t *testing.T) {
 	for _, kind := range []string{"conversation", "interaction"} {
 		for _, order := range [][]string{{"a", "b"}, {"b", "a"}} {
 			t.Run(kind+order[0], func(t *testing.T) {
 				_, owner, now := integrityFixture()
 				store := &integritySnapshotStore{Store: memorystore.New(), snapshots: map[string]sessionvo.EvidenceSnapshot{}}
 				artifacts := &integrityArtifactMap{byID: map[string]evidencevo.EvidenceArtifact{}}
-				ctx := context.WithValue(context.Background(), recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{reads: 127})
+				ctx := context.WithValue(context.Background(), recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{reads: 128})
 				var conversations []evidencevo.ConversationSummary
 				var interactions []evidencevo.InteractionListSummary
 				for _, id := range order {
@@ -596,6 +599,7 @@ func TestIntegrityBudgetChecksNewestCandidateDeterministically(t *testing.T) {
 				}
 				service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
 				service.artifactStore = artifacts
+				materializeIntegrityFixture(t, service)
 				scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
 				if kind == "conversation" {
 					if err := service.applyConversationRecordIntegrity(ctx, conversations, scope); err != nil {
@@ -605,11 +609,8 @@ func TestIntegrityBudgetChecksNewestCandidateDeterministically(t *testing.T) {
 						if e.ConversationID != "conv_"+order[i] {
 							t.Fatalf("check reordered conversation page: %+v", conversations)
 						}
-						if e.ConversationID == "conv_b" && (e.CurrentRecordIntegrity == nil || e.RecordIntegrityCheckFailed) {
+						if e.CurrentRecordIntegrity == nil || e.RecordIntegrityCheckFailed {
 							t.Fatalf("newest candidate lost budget: %+v", e)
-						}
-						if e.ConversationID == "conv_a" && (e.CurrentRecordIntegrity != nil || !e.RecordIntegrityCheckFailed) {
-							t.Fatalf("older candidate took budget: %+v", e)
 						}
 					}
 				} else {
@@ -620,13 +621,13 @@ func TestIntegrityBudgetChecksNewestCandidateDeterministically(t *testing.T) {
 						if e.InteractionID != "int_"+order[i] {
 							t.Fatalf("check reordered round page: %+v", interactions)
 						}
-						if e.InteractionID == "int_b" && (e.CurrentRecordIntegrity == nil || e.RecordIntegrityCheckFailed) {
+						if e.CurrentRecordIntegrity == nil || e.RecordIntegrityCheckFailed {
 							t.Fatalf("newest round lost budget: %+v", e)
 						}
-						if e.InteractionID == "int_a" && (e.CurrentRecordIntegrity != nil || !e.RecordIntegrityCheckFailed) {
-							t.Fatalf("older round took budget: %+v", e)
-						}
 					}
+				}
+				if store.reads != 2 {
+					t.Fatalf("page performed live checks: %d", store.reads)
 				}
 			})
 		}
@@ -686,7 +687,7 @@ func TestRecordIntegrityAcceptsOnlyExactVerifiedPayloadLengths(t *testing.T) {
 				snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a", ByteLength: length}
 				service := integrityServiceForSnapshot(t, snapshot)
 				service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}}
-				report, err := service.inspectRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+				report, err := service.inspectLiveRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
 				valid := length == canonicalLength || length == legacyLength
 				if valid && (err != nil || report == nil || report.Status != "complete") {
 					t.Fatalf("verified length=%d canonical=%d legacy=%d: %+v %v", length, canonicalLength, legacyLength, report, err)
@@ -725,7 +726,7 @@ func TestRecordIntegrityPayloadLengthCompatibilityPreservesVerification(t *testi
 			snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a", ByteLength: length}
 			service := integrityServiceForSnapshot(t, snapshot)
 			service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}}
-			if report, err := service.inspectRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err == nil || report != nil {
+			if report, err := service.inspectLiveRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err == nil || report != nil {
 				t.Fatalf("invalid %s must fail: %+v %v", mutation, report, err)
 			}
 		})
@@ -760,7 +761,7 @@ func TestRecordIntegrityRepeatedReceiptArtifactsUseOneBoundedRead(t *testing.T) 
 	service := integrityServiceForSnapshot(t, snapshot)
 	service.artifactStore = reader
 	ctx := withRecordIntegrityReadBudget(context.Background())
-	report, err := service.inspectRecordIntegrity(ctx, "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+	report, err := service.inspectLiveRecordIntegrity(ctx, "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
 	if err != nil || report == nil || report.Status != "complete" {
 		t.Fatalf("12 complete repeated artifacts must fit budget: %+v %v", report, err)
 	}
@@ -801,7 +802,7 @@ func TestRecordIntegrityCachedArtifactStillChecksEveryCallReference(t *testing.T
 			snapshot.Receipts = append(snapshot.Receipts, r)
 			service := integrityServiceForSnapshot(t, snapshot)
 			service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}}
-			if report, err := service.inspectRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err == nil || report != nil {
+			if report, err := service.inspectLiveRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err == nil || report != nil {
 				t.Fatalf("cached artifact accepted invalid %s: %+v %v", mutation, report, err)
 			}
 		})
@@ -817,10 +818,10 @@ func TestRecordIntegrityReceiptReuseDoesNotExtendSharedByteBudget(t *testing.T) 
 	service.artifactStore = integrityArtifacts{result: iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true, ReadBytes: int64(length)}}
 	ctx := context.WithValue(context.Background(), recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{bytes: (32 << 20) - int64(length)})
 	scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
-	if report, err := service.inspectRecordIntegrity(ctx, "int", scope); err != nil || report == nil || report.Status != "complete" {
+	if report, err := service.inspectLiveRecordIntegrity(ctx, "int", scope); err != nil || report == nil || report.Status != "complete" {
 		t.Fatalf("receipt reuse must fit last allowed read: %+v %v", report, err)
 	}
-	if report, err := service.inspectRecordIntegrity(ctx, "int", scope); err == nil || report != nil {
+	if report, err := service.inspectLiveRecordIntegrity(ctx, "int", scope); err == nil || report != nil {
 		t.Fatalf("new inspection must still fail exhausted budget: %+v %v", report, err)
 	}
 	budget := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget)
@@ -840,7 +841,7 @@ func TestRecordIntegrityCachedReceiptChecksCurrentSource(t *testing.T) {
 	reader := &integrityCountingArtifacts{captureArtifactReader: captureArtifactReader{records: map[string]evidencevo.EvidenceArtifact{"a": artifact}}}
 	service := integrityServiceForSnapshot(t, snapshot)
 	service.artifactStore = reader
-	report, err := service.inspectRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+	report, err := service.inspectLiveRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
 	if err == nil || report != nil || !strings.Contains(err.Error(), "unverified_source_scope") {
 		t.Fatalf("cached receipt must recheck its request source: %+v %v", report, err)
 	}

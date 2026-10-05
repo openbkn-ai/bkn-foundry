@@ -14,16 +14,17 @@ import (
 // EvidenceInteraction is the recorded interaction state without lifecycle leases
 // or idempotency secrets. It does not recompute completeness or infer success.
 type EvidenceInteraction struct {
-	ID              string            `json:"interaction_id"`
-	ConversationID  string            `json:"conversation_id"`
-	Ordinal         uint64            `json:"ordinal"`
-	ExecutionStatus InteractionStatus `json:"execution_status"`
-	EvidenceStatus  EvidenceStatus    `json:"evidence_status"`
-	ClosureManifest *ClosureManifest  `json:"closure_manifest,omitempty"`
-	RowVersion      uint64            `json:"row_version"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
-	TerminalAt      *time.Time        `json:"terminal_at,omitempty"`
+	IntegritySourceVersion uint64            `json:"-"`
+	ID                     string            `json:"interaction_id"`
+	ConversationID         string            `json:"conversation_id"`
+	Ordinal                uint64            `json:"ordinal"`
+	ExecutionStatus        InteractionStatus `json:"execution_status"`
+	EvidenceStatus         EvidenceStatus    `json:"evidence_status"`
+	ClosureManifest        *ClosureManifest  `json:"closure_manifest,omitempty"`
+	RowVersion             uint64            `json:"row_version"`
+	CreatedAt              time.Time         `json:"created_at"`
+	UpdatedAt              time.Time         `json:"updated_at"`
+	TerminalAt             *time.Time        `json:"terminal_at,omitempty"`
 }
 
 // EvidenceSnapshot is an owned copy of one session-store read. It is not a full
@@ -77,6 +78,7 @@ func CopyEvidenceSnapshot(interaction Interaction, operations []Operation, recei
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return EvidenceSnapshot{}, err
 	}
+	result.Interaction.IntegritySourceVersion = interaction.IntegritySourceVersion
 	result.CallFacts = make([]OperationCallFact, len(facts))
 	for i, fact := range facts {
 		result.CallFacts[i] = fact

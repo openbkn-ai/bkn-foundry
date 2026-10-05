@@ -91,6 +91,7 @@ func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 		"032": "217207e904a420922327aa24be43b2aa6ea34979347be8d2af154ccea047cb13",
 		"033": "61724a6fc17222f903dd3c51974cd3ecd21ed6b5364d11a3885d23b4fc3cbf6f",
 		"034": "1b14bac1b8b381371e1d1a11c202f5ff2237986e327445a2feeb2541795515dd",
+		"035": "23762452351bdc3dc29a7d08596753252856a27b4b3a40b461ac07907acf2f40",
 	}
 	migrations := sessionstore.Migrations()
 	if len(migrations) != len(expectedChecksums) {
