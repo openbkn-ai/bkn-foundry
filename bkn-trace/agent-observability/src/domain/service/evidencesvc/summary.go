@@ -107,7 +107,7 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	}
 	loadOptions := options
 	loadOptions.Status = ""
-	requests, _, metadata, err := s.loadConversationExecutionSummaries(ctx, loadOptions, candidateLimit)
+	requests, metadata, err := s.loadConversationExecutionSummaries(ctx, loadOptions, candidateLimit)
 	if err != nil {
 		return evidencevo.ConversationSummaryPage{}, err
 	}
@@ -204,22 +204,36 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 
 // Preserve execution facts used by legacy business-reference and network filters.
 // First-turn previews are loaded independently so operation artifacts cannot hide them.
-func (s *Service) loadConversationExecutionSummaries(ctx context.Context, options evidencevo.SummaryQueryOptions, limit int) ([]evidencevo.RequestSummary, []evidencevo.TraceSummary, summaryLoadMetadata, error) {
+func (s *Service) loadConversationExecutionSummaries(ctx context.Context, options evidencevo.SummaryQueryOptions, limit int) ([]evidencevo.RequestSummary, summaryLoadMetadata, error) {
 	if !trustedQueryScope(options.Scope) {
-		return []evidencevo.RequestSummary{}, []evidencevo.TraceSummary{}, summaryLoadMetadata{}, nil
+		return []evidencevo.RequestSummary{}, summaryLoadMetadata{}, nil
 	}
 	if s.projectionSource == nil {
-		return nil, nil, summaryLoadMetadata{}, errors.New("execution summary projection source is not configured")
+		return nil, summaryLoadMetadata{}, errors.New("execution summary projection source is not configured")
 	}
 	query := iprojectionsource.Query{
 		Scope: options.Scope, From: options.From, To: options.To,
 		TraceID: options.TraceID, InteractionID: options.InteractionID,
-		Limit: limit,
+		Limit: limit, SummaryOnly: true,
 	}
 	if options.ConversationID != "" {
 		query.ConversationIDs = []string{options.ConversationID}
 	}
-	return s.loadProjectedExecutionSummaries(ctx, query, summaryLoadMetadata{})
+	result, err := s.projectionSource.LoadExecutionProjection(ctx, query)
+	if err != nil {
+		return nil, summaryLoadMetadata{}, err
+	}
+	metadata := summaryLoadMetadata{}
+	if result.Truncated {
+		metadata.addReason("projection_scan_cap_reached")
+	}
+	requests, _ := evidencevo.BuildExecutionSummaries(result.Traces, result.Artifacts)
+	if err := s.applyCanonicalRequestIdentity(ctx, requests); err != nil {
+		return nil, summaryLoadMetadata{}, err
+	}
+	// Conversation filters consume request facts only; trace identity and span
+	// statistics belong to the trace list and must not add discarded reads here.
+	return requests, metadata, nil
 }
 
 // Reuse the same authorized, first-turn artifact read as the ordinary list.
