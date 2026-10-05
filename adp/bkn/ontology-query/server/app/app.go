@@ -1,0 +1,344 @@
+// Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
+//
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
+
+// Package app owns the ontology-query process lifecycle. Paid distributions
+// can boot the open-core application, assemble private extensions, and only
+// then start serving requests.
+package app
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"sort"
+	"strings"
+	"sync"
+
+	// _ "net/http/pprof"
+	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
+	_ "time/tzdata"
+	_ "unicode/utf8"
+
+	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	_ "go.uber.org/automaxprocs"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/agent_operator"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/auth"
+	knproxy "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/kn_proxy"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/model_factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/ontology_manager"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/opensearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/vega_backend"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
+	proxycontext "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/proxy_context"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
+)
+
+// Options controls application bootstrapping. It is intentionally empty today
+// so callers do not need to change when injectable boot dependencies are added.
+type Options struct{}
+
+// Application is a booted ontology-query process that has not started serving yet.
+// Extension assembly belongs between Boot and Run.
+type Application struct {
+	appSetting       *common.AppSetting
+	otelProviders    *otel.Providers
+	restHandler      driveradapters.RestHandler
+	evidenceRuntime  *evidencepublisher.PublisherRuntime
+	evidenceProducer interface{ Close() error }
+	retentionOnly    bool
+	refresh          func(stop <-chan struct{})
+	stop             chan struct{}
+	extensionMu      sync.Mutex
+	extensionsFrozen bool
+	routeExtensions  map[string]func(*gin.Engine)
+}
+
+// Setting exposes immutable boot configuration to explicitly assembled extensions.
+func (server *Application) Setting() *common.AppSetting {
+	return server.appSetting
+}
+
+// RegisterRoutes adds one explicitly named route extension. Registration is
+// only valid after Boot and before Run; duplicate names are rejected so a paid
+// binary cannot silently replace another capability's surface.
+func (server *Application) RegisterRoutes(name string, install func(*gin.Engine)) error {
+	server.extensionMu.Lock()
+	defer server.extensionMu.Unlock()
+	if server.extensionsFrozen {
+		return fmt.Errorf("ontology-query app: register routes %q after Run", name)
+	}
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("ontology-query app: route extension name is required")
+	}
+	if install == nil {
+		return fmt.Errorf("ontology-query app: route extension %q has no installer", name)
+	}
+	if _, exists := server.routeExtensions[name]; exists {
+		return fmt.Errorf("ontology-query app: route extension %q already registered", name)
+	}
+	server.routeExtensions[name] = install
+	return nil
+}
+
+func (server *Application) freezeRouteExtensions() []func(*gin.Engine) {
+	server.extensionMu.Lock()
+	defer server.extensionMu.Unlock()
+	if server.extensionsFrozen {
+		panic("ontology-query app: Run called more than once")
+	}
+	server.extensionsFrozen = true
+	names := make([]string, 0, len(server.routeExtensions))
+	for name := range server.routeExtensions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	installers := make([]func(*gin.Engine), 0, len(names))
+	for _, name := range names {
+		installers = append(installers, server.routeExtensions[name])
+	}
+	return installers
+}
+
+// Run freezes the assembled process shape and serves until shutdown.
+func (server *Application) Run() {
+	if server.retentionOnly {
+		runActionLogRetention(server.appSetting)
+		server.otelProviders.Shutdown(context.Background())
+		return
+	}
+	logger.Info("Server Starting")
+	routeExtensions := server.freezeRouteExtensions()
+	entitlement.Freeze()
+	if caps := entitlement.Assembled(); len(caps) > 0 {
+		logger.Infof("Extensions assembled: %+v", caps)
+	}
+	if server.refresh != nil {
+		go server.refresh(server.stop)
+	}
+
+	// Create the Gin engine and register APIs.
+	engine := gin.New()
+
+	server.restHandler.RegisterPublic(engine)
+	for _, install := range routeExtensions {
+		install(engine)
+	}
+	logger.Info("Server Register API Success")
+
+	// Listen for interrupt signals (SIGINT and SIGTERM).
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Receiving a signal triggers ctx.Done. stop stops receiving registered signals and releases those resources.
+	defer stop()
+	var runtimeDone <-chan error
+	var flusher evidenceFlusher
+	if server.evidenceRuntime != nil {
+		flusher = server.evidenceRuntime
+		done := make(chan error, 1)
+		runtimeDone = done
+		go func() { done <- server.evidenceRuntime.Run(ctx) }()
+	}
+	flushDone := startEvidenceFlushLoop(ctx, flusher, time.Second)
+
+	// Initialize the HTTP service.
+	s := &http.Server{
+		Addr:           ":" + strconv.Itoa(server.appSetting.ServerSetting.HttpPort),
+		Handler:        engine,
+		ReadTimeout:    server.appSetting.ServerSetting.ReadTimeOut * time.Second,
+		WriteTimeout:   server.appSetting.ServerSetting.WriteTimeout * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	// Start the HTTP service.
+	go func() {
+		err := s.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			logger.Fatalf("s.ListenAndServe err:%v", err)
+		}
+	}()
+
+	logger.Infof("Server Started on Port:%d", server.appSetting.ServerSetting.HttpPort)
+
+	<-ctx.Done()
+	close(server.stop)
+
+	// Set the system's last processed time.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	<-flushDone
+	if runtimeDone != nil {
+		<-runtimeDone
+	}
+
+	// Stop the HTTP service.
+	logger.Info("Server Start Shutdown")
+	if err := s.Shutdown(ctx); err != nil {
+		logger.Fatalf("Server Shutdown:%v", err)
+	}
+	if server.evidenceRuntime != nil {
+		if _, err := server.evidenceRuntime.Close(ctx); err != nil {
+			logger.Warnf("Evidence publisher runtime close failed: %v", err)
+		}
+	}
+	if server.evidenceProducer != nil {
+		if err := server.evidenceProducer.Close(); err != nil {
+			logger.Warnf("Evidence Kafka producer close failed: %v", err)
+		}
+	}
+	server.otelProviders.Shutdown(ctx)
+
+	logger.Info("Server Exited")
+}
+
+// Boot initializes shared infrastructure without opening the HTTP listener.
+// Paid entry points may register extensions after Boot returns and before Run.
+func Boot(_ Options) *Application {
+	// Enable pprof.
+	// go func() {
+	// 	http.ListenAndServe("0.0.0.0:6060", nil)
+	// }()
+
+	logger.Info("Server Initializing")
+
+	// Initialize service configuration.
+	appSetting := common.NewSetting()
+	logger.Info("Server Init Setting Success")
+
+	// Configure error-code locales.
+	rest.SetLang(appSetting.ServerSetting.Language)
+	logger.Info("Server Set Language Success")
+
+	// Configure Gin run mode.
+	gin.SetMode(appSetting.ServerSetting.RunMode)
+	logger.Infof("Server RunMode: %s", appSetting.ServerSetting.RunMode)
+
+	logger.Infof("Server Start By Port:%d", appSetting.ServerSetting.HttpPort)
+
+	otelProviders, err := otel.InitOTel(context.Background(), &appSetting.OtelSetting)
+	if err != nil {
+		logger.Fatalf("Failed to initialize OpenTelemetry provider: %v", err)
+	}
+	gate, refresh := entitlement.GateWithRunner()
+	entitlement.SetGate(gate)
+	var publisherRuntime *bkntrace.EvidencePublisherRuntime
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
+		publisherRuntime, err = bkntrace.NewEvidencePublisherRuntime()
+		if err != nil {
+			logger.Warnf("Evidence Kafka publisher unavailable; evidence will be dropped: %v", err)
+			publisherRuntime = nil
+		} else {
+			bkntrace.SetEvidencePublisher(publisherRuntime.Runtime)
+		}
+	} else {
+		logger.Warn("BKN Trace Evidence Kafka publisher is disabled; workload is not 0.2-ready and evidence events will be dropped")
+	}
+	if action_logs.RetentionCleanupOnly() {
+		return &Application{
+			appSetting:      appSetting,
+			otelProviders:   otelProviders,
+			retentionOnly:   true,
+			refresh:         refresh,
+			stop:            make(chan struct{}),
+			routeExtensions: make(map[string]func(*gin.Engine)),
+		}
+	}
+
+	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
+	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))
+	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
+	logics.SetOntologyManagerAccess(ontology_manager.NewOntologyManagerAccess(appSetting))
+	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))
+	logics.SetVegaBackendAccess(vega_backend.NewVegaBackendAccess(appSetting))
+	logics.SetProxyContextResolver(proxycontext.NewProxyContextResolver(knproxy.NewKnowledgeNetworkProxyAccess(appSetting)))
+
+	server := &Application{
+		appSetting:      appSetting,
+		otelProviders:   otelProviders,
+		restHandler:     driveradapters.NewRestHandler(appSetting),
+		refresh:         refresh,
+		stop:            make(chan struct{}),
+		routeExtensions: make(map[string]func(*gin.Engine)),
+	}
+	if publisherRuntime != nil {
+		server.evidenceRuntime = publisherRuntime.Runtime
+		server.evidenceProducer = publisherRuntime.Producer
+	}
+	return server
+}
+
+type evidenceFlusher interface {
+	Flush(context.Context) evidencepublisher.DrainResult
+}
+
+func startEvidenceFlushLoop(ctx context.Context, publisher evidenceFlusher, interval time.Duration) <-chan struct{} {
+	done := make(chan struct{})
+	if publisher == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		defer close(done)
+		for {
+			select {
+			case <-ticker.C:
+				publisher.Flush(context.Background())
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return done
+}
+
+// runActionLogRetention runs one retention cleanup of action execution logs, as the retention
+// CronJob does, and exits the process on failure so the Job is retried.
+func runActionLogRetention(appSetting *common.AppSetting) {
+	cfg, err := action_logs.LoadRetentionConfig()
+	if err != nil {
+		logger.Fatalf("Invalid action execution log retention configuration: %v", err)
+	}
+	if cfg.RetentionDays == 0 {
+		logger.Info("Action execution log retention is disabled: ACTION_EXECUTION_LOG_RETENTION_DAYS is 0")
+		return
+	}
+
+	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	started := time.Now()
+	result, err := action_logs.CleanupExpiredExecutions(ctx, appSetting, cfg)
+	if err != nil {
+		deletedExecutions, deletedResults := int64(0), int64(0)
+		if result != nil {
+			deletedExecutions, deletedResults = result.Executions, result.Results
+		}
+		logger.Fatalf("Action execution log retention failed after executions=%d results=%d: %v",
+			deletedExecutions, deletedResults, err)
+	}
+	logger.Infof("Action execution log retention complete: dry_run=%t retention_days=%d cutoff=%s executions=%d results=%d batches=%d more_remaining=%t took=%s",
+		cfg.DryRun, cfg.RetentionDays, time.UnixMilli(result.Cutoff).UTC().Format(time.RFC3339),
+		result.Executions, result.Results, result.Batches, result.Truncated, time.Since(started).Round(time.Millisecond))
+	if result.Truncated {
+		logger.Warnf("Action execution log retention stopped at its per-run limit of %d executions (batch size %d x %d batches) "+
+			"with more expired executions left; if this repeats, raise the batch count or run the CronJob more often",
+			cfg.BatchSize*cfg.MaxBatches, cfg.BatchSize, cfg.MaxBatches)
+	}
+}

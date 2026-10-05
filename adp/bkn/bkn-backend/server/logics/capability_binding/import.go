@@ -12,8 +12,8 @@ import (
 	"fmt"
 	"strings"
 
-	bknsdk "bkn-backend/bkn-specification/bkn"
-	"bkn-backend/interfaces"
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // Reasons a declared capability could not be bound. They are returned to the caller rather than

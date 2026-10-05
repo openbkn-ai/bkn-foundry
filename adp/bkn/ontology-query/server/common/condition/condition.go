@@ -13,8 +13,8 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	dtype "ontology-query/interfaces/data_type"
-	"ontology-query/locale"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 const MaxSubCondition = 100

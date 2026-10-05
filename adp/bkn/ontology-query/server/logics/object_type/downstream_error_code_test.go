@@ -13,7 +13,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	oerrors "ontology-query/errors"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 )
 
 func Test_downstreamErrorCode(t *testing.T) {

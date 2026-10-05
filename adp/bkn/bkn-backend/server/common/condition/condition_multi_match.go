@@ -12,7 +12,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"bkn-backend/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 )
 
 type MultiMatchCond struct {

@@ -9,7 +9,7 @@ package logics
 import (
 	"database/sql"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 var (
@@ -25,6 +25,7 @@ var (
 	KPA            interfaces.KNProxyAccess
 	KPOA           interfaces.KNProxyOutboxAccess
 	MA             interfaces.MetricAccess
+	OMA            interfaces.ObjectMetricAccessV1
 	MPA            interfaces.ManagedProxyAccess
 	MFA            interfaces.ModelFactoryAccess
 	OSA            interfaces.OpenSearchAccess
@@ -82,6 +83,10 @@ func SetManagedProxyAccess(mpa interfaces.ManagedProxyAccess) {
 
 func SetMetricAccess(ma interfaces.MetricAccess) {
 	MA = ma
+}
+
+func SetObjectMetricAccess(oma interfaces.ObjectMetricAccessV1) {
+	OMA = oma
 }
 
 func SetModelFactoryAccess(mfa interfaces.ModelFactoryAccess) {

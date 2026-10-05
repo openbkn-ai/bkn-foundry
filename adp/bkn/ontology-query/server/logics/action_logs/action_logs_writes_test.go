@@ -13,8 +13,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"ontology-query/interfaces"
-	omock "ontology-query/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
 
 // Writes to an execution record must never be read-modify-write (#790): every write is a

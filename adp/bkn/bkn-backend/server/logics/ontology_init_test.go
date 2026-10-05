@@ -15,10 +15,10 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/common"
-	"bkn-backend/interfaces"
-	mock_interfaces "bkn-backend/interfaces/mock"
-	"bkn-backend/logics/model_factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/model_factory"
 )
 
 // ── bknCatalogRequest ─────────────────────────────────────────────────────────

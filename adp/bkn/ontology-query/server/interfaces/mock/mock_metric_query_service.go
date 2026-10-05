@@ -6,7 +6,7 @@ package mock_interfaces
 
 import (
 	context "context"
-	interfaces "ontology-query/interfaces"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -79,4 +79,34 @@ func (m *MockMetricQueryService) QueryMetricData(ctx context.Context, knID, bran
 func (mr *MockMetricQueryServiceMockRecorder) QueryMetricData(ctx, knID, branch, metricID, body interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryMetricData", reflect.TypeOf((*MockMetricQueryService)(nil).QueryMetricData), ctx, knID, branch, metricID, body)
+}
+
+// QueryObjectMetricDataV1 mocks base method.
+func (m *MockMetricQueryService) QueryObjectMetricDataV1(ctx context.Context, knID, branch, metricID string, version int, body *interfaces.ObjectMetricQueryRequestV1) (interfaces.ObjectMetricDataV1, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryObjectMetricDataV1", ctx, knID, branch, metricID, version, body)
+	ret0, _ := ret[0].(interfaces.ObjectMetricDataV1)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryObjectMetricDataV1 indicates an expected call of QueryObjectMetricDataV1.
+func (mr *MockMetricQueryServiceMockRecorder) QueryObjectMetricDataV1(ctx, knID, branch, metricID, version, body interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryObjectMetricDataV1", reflect.TypeOf((*MockMetricQueryService)(nil).QueryObjectMetricDataV1), ctx, knID, branch, metricID, version, body)
+}
+
+// TrialObjectMetricDataV1 mocks base method.
+func (m *MockMetricQueryService) TrialObjectMetricDataV1(ctx context.Context, knID, branch string, body *interfaces.ObjectMetricTrialRequestV1) (interfaces.ObjectMetricDataV1, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TrialObjectMetricDataV1", ctx, knID, branch, body)
+	ret0, _ := ret[0].(interfaces.ObjectMetricDataV1)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TrialObjectMetricDataV1 indicates an expected call of TrialObjectMetricDataV1.
+func (mr *MockMetricQueryServiceMockRecorder) TrialObjectMetricDataV1(ctx, knID, branch, body interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TrialObjectMetricDataV1", reflect.TypeOf((*MockMetricQueryService)(nil).TrialObjectMetricDataV1), ctx, knID, branch, body)
 }

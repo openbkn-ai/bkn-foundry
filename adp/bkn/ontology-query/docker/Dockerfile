@@ -20,7 +20,7 @@ ENV GOPROXY=${GOPROXY_URL}
 RUN set -ex; \
     cd /workspace/adp/bkn/ontology-query/server; \
     go mod download -x; \
-    export flags="-X 'ontology-query/version.ServerVersion=${SERVER_VERSION}'"; \
+    export flags="-X 'github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/version.ServerVersion=${SERVER_VERSION}'"; \
     CGO_ENABLED=1 go build -ldflags "-s -w $flags" -o ./bin/ontology-query-server;
 
 ########################### Stage 1 ########################

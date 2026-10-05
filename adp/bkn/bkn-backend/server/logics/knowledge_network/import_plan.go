@@ -11,8 +11,8 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"bkn-backend/interfaces"
-	"bkn-backend/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 // NormalizedImportPlan is the persistence-only projection of a knowledge-network import.

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func testQueryCursorCodec(t *testing.T, now time.Time) *queryCursorCodec {

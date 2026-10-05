@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"strings"
 
-	"bkn-backend/interfaces"
-	"bkn-backend/interfaces/data_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 )
 
 // applyRowFilters resolves all object classes the compiled plan reads in one

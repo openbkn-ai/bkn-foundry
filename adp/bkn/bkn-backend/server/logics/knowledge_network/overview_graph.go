@@ -15,9 +15,9 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
-	"bkn-backend/logics/permission"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 type overviewGraphCursor struct {

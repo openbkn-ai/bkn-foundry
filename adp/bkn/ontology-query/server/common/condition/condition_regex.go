@@ -12,7 +12,7 @@ import (
 
 	"github.com/dlclark/regexp2"
 
-	dtype "ontology-query/interfaces/data_type"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 )
 
 type RegexCond struct {

@@ -16,8 +16,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/mock/gomock"
 
-	"ontology-query/common"
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func TestVegaBackendAccessBuildProxyHeadersPropagatesDualPrincipalAndTraceContext(t *testing.T) {

@@ -24,10 +24,10 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"ontology-query/common"
-	"ontology-query/common/visitor"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/visitor"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 // CheckActionExecutionByIn verifies the current internal caller against the

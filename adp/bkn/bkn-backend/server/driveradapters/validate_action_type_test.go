@@ -13,9 +13,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	cond "bkn-backend/common/condition"
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func Test_ValidateActionType(t *testing.T) {

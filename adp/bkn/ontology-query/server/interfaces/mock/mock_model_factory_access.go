@@ -11,8 +11,8 @@ package mock_interfaces
 
 import (
 	context "context"
-	condition "ontology-query/common/condition"
-	interfaces "ontology-query/interfaces"
+	condition "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"

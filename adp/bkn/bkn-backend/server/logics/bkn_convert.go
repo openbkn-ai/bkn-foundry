@@ -9,9 +9,9 @@ package logics
 import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	bknsdk "bkn-backend/bkn-specification/bkn"
-	cond "bkn-backend/common/condition"
-	"bkn-backend/interfaces"
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func ToADPNetWork(bknNetwork *bknsdk.BknNetwork) *interfaces.KN {

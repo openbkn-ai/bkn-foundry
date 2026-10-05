@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // NewBatchIDIndex constructs an empty index; empty branch defaults to MAIN_BRANCH.

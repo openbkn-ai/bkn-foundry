@@ -14,9 +14,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	cond "ontology-query/common/condition"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func Test_validateMetricQueryRequest_timeAndStep(t *testing.T) {

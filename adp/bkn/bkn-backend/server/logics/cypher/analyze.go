@@ -15,8 +15,8 @@ import (
 
 	"github.com/antlr4-go/antlr/v4"
 
-	"bkn-backend/interfaces"
-	"bkn-backend/logics/cypher/parsing"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher/parsing"
 )
 
 // The parser accepts all of openCypher; this file decides what the compiler

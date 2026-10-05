@@ -7,8 +7,8 @@
 package interfaces
 
 import (
-	cond "bkn-backend/common/condition"
-	"bkn-backend/interfaces/data_type"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 )
 
 const (

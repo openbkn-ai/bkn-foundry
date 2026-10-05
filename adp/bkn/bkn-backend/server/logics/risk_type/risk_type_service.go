@@ -24,14 +24,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
-	"bkn-backend/common"
-	cond "bkn-backend/common/condition"
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
-	"bkn-backend/logics"
-	"bkn-backend/logics/model_factory"
-	"bkn-backend/logics/permission"
-	"bkn-backend/logics/vega_backend"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/model_factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
 )
 
 var (

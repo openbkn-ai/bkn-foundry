@@ -22,11 +22,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
-	"bkn-backend/common"
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
-	"bkn-backend/logics"
-	"bkn-backend/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 // Column widths of t_kn_capability_binding, mirrored here so an over-long value is rejected

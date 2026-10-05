@@ -7,8 +7,8 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 
-	"bkn-backend/common"
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func TestGetConceptGroupIdentitiesByIDsOrNames(t *testing.T) {

@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"bkn-backend/interfaces"
-	"bkn-backend/logics/object_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 )
 
 // Schema is one knowledge network's modelling metadata, indexed for name

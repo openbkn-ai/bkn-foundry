@@ -17,8 +17,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/common"
-	bmock "bkn-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
 // setGinMode sets Gin to test mode and returns a restore function.
@@ -109,4 +109,27 @@ func TestRegisterPublicIncludesOAuthProxyGovernanceRoutes(t *testing.T) {
 			t.Fatalf("public proxy governance route %q is not registered", want)
 		}
 	}
+}
+
+func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	engine := gin.New()
+	handler := &restHandler{appSetting: &common.AppSetting{}}
+	handler.RegisterPublic(engine)
+
+	objectMetricPath := "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics"
+	for _, route := range engine.Routes() {
+		if route.Path == objectMetricPath {
+			t.Fatalf("community handler unexpectedly registered %q", objectMetricPath)
+		}
+	}
+
+	RegisterObjectMetricRoutes(engine, &common.AppSetting{}, nil, nil)
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodPost && route.Path == objectMetricPath {
+			return
+		}
+	}
+	t.Fatalf("extension registration did not mount POST %q", objectMetricPath)
 }

@@ -13,7 +13,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // capabilityKey identifies a capability across both the bindings and the model that uses it.

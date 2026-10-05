@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	cond "ontology-query/common/condition"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 )
 
 func vectorProperty(model string) *cond.DataProperty {

@@ -19,9 +19,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"ontology-query/common/visitor"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/visitor"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 // PostMetricDataByEx external: POST .../metrics/:metric_id/data.

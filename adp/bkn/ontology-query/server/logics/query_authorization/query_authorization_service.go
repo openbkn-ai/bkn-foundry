@@ -14,11 +14,11 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"ontology-query/common"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	"ontology-query/logics"
-	permissionlogic "ontology-query/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
+	permissionlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
 )
 
 type queryAuthorizationService struct {
@@ -133,6 +133,45 @@ func (s *queryAuthorizationService) AuthorizeMetricQuery(ctx context.Context,
 		interfaces.KNChildPermissionResource(interfaces.PermissionResourceTypeMetric, knID, metricID),
 	}
 	return s.require(ctx, resources)
+}
+
+// AuthorizeObjectMetricQuery checks the V1 metric resource directly. The
+// immutable object-metric definition is resolved by bkn-backend's execution
+// context endpoint, so consulting the legacy metric catalog here would reject
+// every V1 metric before that authoritative check can run.
+func (s *queryAuthorizationService) AuthorizeObjectMetricQuery(ctx context.Context,
+	knID, branch, metricID string) error {
+	if err := validateQueryIdentity(ctx, knID, branch, metricID); err != nil {
+		return err
+	}
+	return s.require(ctx, []interfaces.PermissionResource{
+		interfaces.KNChildPermissionResource(interfaces.PermissionResourceTypeMetric, knID, metricID),
+	})
+}
+
+// AuthorizeObjectMetricTrial treats an unpublished definition as a KN-scoped
+// calculation. It requires access to the containing knowledge network and to
+// the data resources mounted by the definition's owner object type.
+func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Context,
+	knID, branch string, definition *interfaces.ObjectMetricDefinitionV1) error {
+	if err := validateQueryIdentity(ctx, knID, branch, "object-metric-trial"); err != nil {
+		return err
+	}
+	if definition == nil || strings.TrimSpace(definition.OwnerObjectTypeID) == "" {
+		return invalidQuery(ctx, "object metric owner_object_type_id is required")
+	}
+	objectType, err := s.loadObjectType(ctx, knID, definition.OwnerObjectTypeID)
+	if err != nil {
+		return err
+	}
+	resources := []interfaces.PermissionResource{
+		{Type: interfaces.PermissionResourceTypeKnowledgeNetwork, ID: knID},
+	}
+	dependencies, err := objectTypeResources(ctx, knID, objectType)
+	if err != nil {
+		return err
+	}
+	return s.require(ctx, append(resources, dependencies...))
 }
 
 func (s *queryAuthorizationService) AuthorizeMetricDryRun(ctx context.Context,

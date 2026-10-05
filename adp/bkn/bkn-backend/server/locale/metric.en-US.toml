@@ -103,3 +103,33 @@ ErrorLink = ""
 Description = "Metric type is not allowed"
 Solution = "Only atomic metrics are supported in strict mode."
 ErrorLink = ""
+
+[BknBackend.ObjectMetric.InvalidDefinition]
+Description = "The object metric definition is invalid"
+Solution = "Correct the field-level validation issues and retry."
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.NotFound]
+Description = "Object metric not found"
+Solution = "Verify the metric ID, version, and branch."
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.DuplicateCode]
+Description = "Object metric code already exists"
+Solution = "Use a unique stable code within the knowledge network."
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.ImmutableVersion]
+Description = "The object metric version is immutable"
+Solution = "Create a new draft version instead of editing a published version."
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.DependencyInvalid]
+Description = "The object metric dependency is invalid"
+Solution = "Review pinned versions, object alignment, time windows, and dependency cycles."
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.InternalError]
+Description = "Object metric service error"
+Solution = "Retry later or contact an administrator if the problem persists."
+ErrorLink = ""

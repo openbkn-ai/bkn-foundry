@@ -1,0 +1,133 @@
+openapi: 3.1.0
+info:
+  title: OpenBKN Object Metric Query API
+  version: 2.0.0
+  description: Trials an unpublished definition or executes an immutable, published object-metric version.
+servers:
+  - url: /api/ontology-query
+paths:
+  /v2/knowledge-networks/{kn_id}/object-metrics/trial:
+    post:
+      operationId: trialObjectMetricData
+      summary: Trial an unpublished object metric against real data without persisting it.
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: branch
+          in: query
+          schema: { type: string, default: main }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectMetricTrial" }
+      responses:
+        "200":
+          description: Trial result produced by the same runtime as a published query.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricData" }
+        "400": { description: Invalid definition, runtime input, or time range. }
+        "403": { description: The caller cannot read the knowledge network or its mounted data. }
+        "422": { description: The definition is incomplete or cannot be executed with its published, version-pinned dependencies. }
+  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data:
+    post:
+      operationId: queryObjectMetricData
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: metric_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: branch
+          in: query
+          schema: { type: string, default: main }
+        - name: version
+          in: query
+          required: true
+          description: Immutable published metric version. Runtime never resolves an implicit latest version.
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectMetricQuery" }
+      responses:
+        "200":
+          description: Metric result with explicit no-data, unavailable, or partial status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricData" }
+        "400": { description: Invalid runtime filter, dimension, time range, or version. }
+        "403": { description: The caller cannot query this metric. }
+        "404": { description: Metric or referenced ontology element not found. }
+        "409": { description: The requested version is not published. }
+        "422": { description: The immutable definition cannot be executed against current data. }
+components:
+  schemas:
+    PropertyRef:
+      type: object
+      required: [object_type_id, property_name]
+      properties:
+        object_type_id: { type: string }
+        property_name: { type: string }
+        relation_path_alias: { type: string }
+    ObjectMetricQuery:
+      type: object
+      additionalProperties: false
+      properties:
+        instance_identities:
+          type: array
+          items: { type: object, additionalProperties: true }
+        filter:
+          type: object
+          description: Typed condition AST restricted to the published query capabilities.
+          additionalProperties: true
+        analysis_dimensions:
+          type: array
+          items: { $ref: "#/components/schemas/PropertyRef" }
+        time:
+          type: object
+          required: [start, end]
+          additionalProperties: false
+          properties:
+            start: { type: integer, format: int64, description: Inclusive Unix time in milliseconds. }
+            end: { type: integer, format: int64, description: Inclusive Unix time in milliseconds. }
+    ObjectMetricTrial:
+      type: object
+      additionalProperties: false
+      required: [definition, query]
+      properties:
+        definition:
+          type: object
+          description: A complete atomic, derived, or composite ObjectMetricDefinitionV1. Non-atomic dependencies must reference published immutable versions.
+          additionalProperties: true
+        query: { $ref: "#/components/schemas/ObjectMetricQuery" }
+    ObjectMetricData:
+      type: object
+      required: [model, entries, status, overall_ms]
+      properties:
+        model:
+          type: object
+          additionalProperties: true
+        entries:
+          type: array
+          items:
+            type: object
+            required: [status]
+            properties:
+              instance_identity: { type: object, additionalProperties: true }
+              dimensions: { type: object, additionalProperties: true }
+              time: { type: integer, format: int64 }
+              value: {}
+              status: { type: string, enum: [ok, no_data, unavailable] }
+        status: { type: string, enum: [ok, no_data, unavailable, partial] }
+        warnings:
+          type: array
+          items: { type: string }
+        overall_ms: { type: integer, format: int64 }

@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"bkn-backend/common/maskrule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
 
 	"gopkg.in/yaml.v3"
 )

@@ -6,7 +6,7 @@
 
 package bkn
 
-import "bkn-backend/common/maskrule"
+import "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
 
 // RelationType mapping types.
 const (

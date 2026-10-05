@@ -15,10 +15,10 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	omock "ontology-query/interfaces/mock"
-	"ontology-query/logics"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 )
 
 func Test_computeDuplicateFingerprint(t *testing.T) {

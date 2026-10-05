@@ -3,7 +3,7 @@ package condition
 import (
 	"context"
 	"fmt"
-	dtype "ontology-query/interfaces/data_type"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 )
 
 type NotEmptyCond struct {

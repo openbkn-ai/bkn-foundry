@@ -9,9 +9,9 @@ package user_mgmt
 import (
 	"context"
 
-	"bkn-backend/common"
-	"bkn-backend/interfaces"
-	"bkn-backend/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 type UserMgmtServiceImpl struct {

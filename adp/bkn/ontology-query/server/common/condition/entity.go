@@ -11,7 +11,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"ontology-query/common/maskrule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/maskrule"
 )
 
 // Field scope.

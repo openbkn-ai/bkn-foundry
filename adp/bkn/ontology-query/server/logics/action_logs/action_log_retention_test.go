@@ -14,7 +14,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 var retentionNow = time.Date(2026, 9, 13, 3, 30, 0, 0, time.UTC)

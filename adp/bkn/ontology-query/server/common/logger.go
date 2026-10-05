@@ -9,7 +9,7 @@ package common
 import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"ontology-query/version"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/version"
 )
 
 const (

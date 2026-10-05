@@ -14,8 +14,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
-	"ontology-query/interfaces"
-	omock "ontology-query/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
 
 func TestAuthorizeMetricQueryUsesOnlyPublishedMetricPermission(t *testing.T) {
@@ -35,6 +35,20 @@ func TestAuthorizeMetricQueryUsesOnlyPublishedMetricPermission(t *testing.T) {
 
 	if err := service.AuthorizeMetricQuery(context.Background(), "kn-a", "main", "metric-1"); err != nil {
 		t.Fatalf("AuthorizeMetricQuery() error = %v", err)
+	}
+}
+
+func TestAuthorizeObjectMetricQueryDoesNotConsultLegacyMetricCatalog(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	permissions := omock.NewMockPermissionService(ctrl)
+	service := &queryAuthorizationService{permissions: permissions}
+
+	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
+		{Type: "metric", ID: "kn-a/metric-v1"},
+	}).Return(nil)
+
+	if err := service.AuthorizeObjectMetricQuery(context.Background(), "kn-a", "main", "metric-v1"); err != nil {
+		t.Fatalf("AuthorizeObjectMetricQuery() error = %v", err)
 	}
 }
 
@@ -75,6 +89,27 @@ func TestAuthorizeMetricDryRunDoesNotInventMetricResource(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("AuthorizeMetricDryRun() error = %v", err)
+	}
+}
+
+func TestAuthorizeObjectMetricTrialUsesKnowledgeNetworkAndObjectResources(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	permissions := omock.NewMockPermissionService(ctrl)
+	service := &queryAuthorizationService{models: models, permissions: permissions}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
+		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
+	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
+		{Type: "knowledge_network", ID: "kn-a"},
+		{Type: "object_type", ID: "kn-a/orders"},
+	}).Return(nil)
+
+	err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", &interfaces.ObjectMetricDefinitionV1{
+		OwnerObjectTypeID: "orders",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeObjectMetricTrial() error = %v", err)
 	}
 }
 

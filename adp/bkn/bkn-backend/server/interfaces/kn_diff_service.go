@@ -6,7 +6,7 @@
 package interfaces
 
 import (
-	bknsdk "bkn-backend/bkn-specification/bkn"
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 )
 
 // KNRef names one side of a comparison.

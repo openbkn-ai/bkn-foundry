@@ -9,7 +9,7 @@ package logics
 import (
 	"context"
 
-	cond "ontology-query/common/condition"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 )
 
 // Vectorizer converts query terms to vectors for condition rewriting and DSL conversion.

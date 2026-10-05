@@ -18,9 +18,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"bkn-backend/common/maskrule"
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType, strictMode bool) error {

@@ -18,9 +18,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	cond "bkn-backend/common/condition"
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // objectNameErrorCode maps object types to their required-name and overlength error codes.

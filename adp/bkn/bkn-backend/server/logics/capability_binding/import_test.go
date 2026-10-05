@@ -14,8 +14,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	bknsdk "bkn-backend/bkn-specification/bkn"
-	"bkn-backend/interfaces"
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func skillDecl(id, name string) *bknsdk.BknCapabilities {

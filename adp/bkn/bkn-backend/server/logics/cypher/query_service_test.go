@@ -24,9 +24,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
-	"bkn-backend/locale"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/locale"
 )
 
 // spanRecorder keeps the attributes set on any span started while it is the

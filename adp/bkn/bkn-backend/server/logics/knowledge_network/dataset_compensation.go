@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // compensateDatasetDocuments only touches documents attempted by the failed

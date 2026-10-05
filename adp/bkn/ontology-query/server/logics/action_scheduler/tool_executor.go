@@ -14,7 +14,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 const toolExecutionTimeoutSeconds int64 = 300

@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	"bkn-backend/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 )
 
 type EqCond struct {

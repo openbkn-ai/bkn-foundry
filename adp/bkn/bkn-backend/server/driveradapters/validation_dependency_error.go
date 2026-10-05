@@ -12,7 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/trace"
 
-	"bkn-backend/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 // replyDependencyValidationError keeps validate-only endpoints machine

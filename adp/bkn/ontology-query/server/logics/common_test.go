@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	cond "ontology-query/common/condition"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	dtype "ontology-query/interfaces/data_type"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"

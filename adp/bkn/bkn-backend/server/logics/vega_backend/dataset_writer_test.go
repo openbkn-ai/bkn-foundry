@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	mock_interfaces "bkn-backend/interfaces/mock"
+	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
 func TestWriteDatasetDocumentsUsesPerBatchBoundedConcurrency(t *testing.T) {

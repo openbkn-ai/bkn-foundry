@@ -11,7 +11,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // backfillResult carries what a page of bindings needs beyond the stored rows.

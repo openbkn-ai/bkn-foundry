@@ -20,13 +20,13 @@ import (
 	"github.com/tidwall/sjson"
 	"go.opentelemetry.io/otel/attribute"
 
-	"ontology-query/common"
-	cond "ontology-query/common/condition"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	"ontology-query/logics"
-	"ontology-query/logics/object_type"
-	propertyaccess "ontology-query/logics/property_access"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
+	propertyaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/property_access"
 )
 
 var (

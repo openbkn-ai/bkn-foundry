@@ -5,9 +5,9 @@
 package object_type
 
 import (
-	cond "ontology-query/common/condition"
-	"ontology-query/interfaces"
-	rowfilter "ontology-query/logics/row_filter"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	rowfilter "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/row_filter"
 )
 
 // compileRowFilter remains for package-local callers and tests.

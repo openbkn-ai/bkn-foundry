@@ -17,12 +17,12 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/common"
-	cond "bkn-backend/common/condition"
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
-	bmock "bkn-backend/interfaces/mock"
-	"bkn-backend/logics/batchindex"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/batchindex"
 )
 
 func allowAllMetricPermissionResources(_ context.Context, _ string, ids, _ []string) (map[string]interfaces.PermissionResourceOps, error) {

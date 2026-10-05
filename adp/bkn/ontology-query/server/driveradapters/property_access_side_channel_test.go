@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func TestEvidenceQueryShapeDoesNotContainRawPaginationValues(t *testing.T) {

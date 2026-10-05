@@ -1,4 +1,4 @@
-module bkn-backend
+module github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server
 
 go 1.25.0
 
@@ -14,7 +14,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20260929020905-34e2e7470d7b
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261004201442-ff9b33adf47d
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smartystreets/goconvey v1.8.1
@@ -78,6 +78,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nsqio/go-nsq v1.1.0 // indirect
+	github.com/openbkn-ai/licverify v0.5.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pierrec/lz4/v4 v4.1.29 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect

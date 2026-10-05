@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	oerrors "ontology-query/errors"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 )
 
 func (r *restHandler) authorizeQuery(c *gin.Context, ctx context.Context,

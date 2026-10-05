@@ -14,7 +14,7 @@ import (
 
 	"github.com/PaesslerAG/jsonpath"
 
-	"bkn-backend/common/maskrule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
 )
 
 // Aligned with adp bkn-backend/interfaces/common.go RegexPattern_NonBuiltin_ID

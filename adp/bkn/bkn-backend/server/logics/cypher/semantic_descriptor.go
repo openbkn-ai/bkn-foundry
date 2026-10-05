@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 const maxSemanticDescriptorBytes = 64 << 10

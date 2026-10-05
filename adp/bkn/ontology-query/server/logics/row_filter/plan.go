@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"strings"
 
-	cond "ontology-query/common/condition"
-	"ontology-query/interfaces"
-	dtype "ontology-query/interfaces/data_type"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 )
 
 func Compile(predicate interfaces.RowFilterPredicate,

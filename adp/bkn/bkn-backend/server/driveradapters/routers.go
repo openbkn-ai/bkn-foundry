@@ -21,24 +21,24 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/middleware"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"bkn-backend/common"
-	"bkn-backend/common/bkntrace"
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
-	"bkn-backend/logics/action_schedule"
-	"bkn-backend/logics/action_type"
-	"bkn-backend/logics/auth"
-	"bkn-backend/logics/bkn"
-	"bkn-backend/logics/capability_binding"
-	"bkn-backend/logics/concept_group"
-	"bkn-backend/logics/cypher"
-	"bkn-backend/logics/knowledge_network"
-	metriclogics "bkn-backend/logics/metric"
-	"bkn-backend/logics/object_data_stats"
-	"bkn-backend/logics/object_type"
-	"bkn-backend/logics/relation_type"
-	"bkn-backend/logics/risk_type"
-	"bkn-backend/version"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/bkntrace"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_schedule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/bkn"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/concept_group"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
+	metriclogics "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/metric"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_data_stats"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/relation_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/risk_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/version"
 )
 
 type RestHandler interface {
@@ -61,6 +61,7 @@ type restHandler struct {
 	rts                     interfaces.RelationTypeService
 	rtsRisk                 interfaces.RiskTypeService
 	ms                      interfaces.MetricService
+	oms                     interfaces.ObjectMetricServiceV1
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 	cqs                     interfaces.CypherQueryService
@@ -121,8 +122,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.GET("/api/bkn-backend/v1/health", r.HealthCheck)
 
 	bknApiV1 := c.Group("/api/bkn-backend/v1")
+	bknApiV2 := c.Group("/api/bkn-backend/v2")
 	otlApiV1 := c.Group("/api/ontology-manager/v1")
 	bknApiV1.Use(rest.PrivateNoCacheMiddleware())
+	bknApiV2.Use(rest.PrivateNoCacheMiddleware())
 	otlApiV1.Use(rest.PrivateNoCacheMiddleware())
 	bknApiV1.GET("/proxy-accounts", r.ListKNProxiesByEx)
 	bknApiV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxyByEx)

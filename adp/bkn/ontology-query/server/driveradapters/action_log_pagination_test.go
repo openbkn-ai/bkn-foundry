@@ -13,9 +13,9 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"ontology-query/common"
-	"ontology-query/interfaces"
-	omock "ontology-query/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
 
 // Cursor paging and offset paging are mutually exclusive: OpenSearch fails a non-zero from next to

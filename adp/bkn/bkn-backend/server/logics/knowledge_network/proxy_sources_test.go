@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"bkn-backend/interfaces"
-	bmock "bkn-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
 func TestTypedProxyProjectionIncludesFunctionMountAndConceptGroup(t *testing.T) {

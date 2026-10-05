@@ -20,7 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
-	"bkn-backend/common/operationaudit"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/operationaudit"
 )
 
 func TestRegisteredOperationAuditRoutes(t *testing.T) {

@@ -11,9 +11,9 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	propertyaccess "ontology-query/logics/property_access"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	propertyaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/property_access"
 )
 
 type relationPropertyRequirements map[string]map[string]struct{}

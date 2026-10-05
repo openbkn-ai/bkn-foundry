@@ -13,7 +13,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"ontology-query/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 )
 
 type InCond struct {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // arithmeticSchema types its properties, because what arithmetic accepts

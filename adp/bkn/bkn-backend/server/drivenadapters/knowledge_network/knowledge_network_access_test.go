@@ -19,8 +19,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"bkn-backend/common"
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 var (
@@ -907,6 +907,7 @@ func Test_knowledgeNetworkAccess_ListKNChildResourceCandidates(t *testing.T) {
 			interfaces.RESOURCE_TYPE_OBJECT_TYPE, "kn1", "kn2", interfaces.MAIN_BRANCH,
 			interfaces.RESOURCE_TYPE_RELATION_TYPE, "kn1", "kn2", interfaces.MAIN_BRANCH,
 			interfaces.RESOURCE_TYPE_ACTION_TYPE, "kn1", "kn2", interfaces.MAIN_BRANCH,
+			interfaces.RESOURCE_TYPE_METRIC, "kn1", "kn2", interfaces.MAIN_BRANCH,
 			interfaces.RESOURCE_TYPE_METRIC, "kn1", "kn2", interfaces.MAIN_BRANCH,
 			interfaces.RESOURCE_TYPE_RISK_TYPE, "kn1", "kn2", interfaces.MAIN_BRANCH,
 		).WillReturnRows(rows)

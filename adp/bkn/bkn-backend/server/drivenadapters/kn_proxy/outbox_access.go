@@ -15,7 +15,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 const (

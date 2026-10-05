@@ -12,8 +12,8 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"ontology-query/interfaces"
-	omock "ontology-query/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
 
 type actionPermissionStub struct {

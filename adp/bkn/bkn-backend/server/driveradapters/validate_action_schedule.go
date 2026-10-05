@@ -13,8 +13,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func actionScheduleDetail(ctx context.Context, name string) string {

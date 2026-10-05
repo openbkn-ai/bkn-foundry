@@ -9,7 +9,7 @@ package cypher
 import (
 	"context"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // serviceSchemaSource reads modelling metadata through the ordinary object

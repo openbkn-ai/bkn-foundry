@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"sync"
 
-	"bkn-backend/common"
-	cond "bkn-backend/common/condition"
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 var (

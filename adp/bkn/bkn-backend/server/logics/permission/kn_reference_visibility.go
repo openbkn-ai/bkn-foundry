@@ -8,7 +8,7 @@ import (
 	"context"
 	"sort"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // VisibleReferencedObjectTypes returns which of the given object types may be named to the caller

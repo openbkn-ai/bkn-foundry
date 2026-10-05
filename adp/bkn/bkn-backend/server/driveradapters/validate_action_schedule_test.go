@@ -15,7 +15,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func Test_ValidateActionScheduleCreate(t *testing.T) {

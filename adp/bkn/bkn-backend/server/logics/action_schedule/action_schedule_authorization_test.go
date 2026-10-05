@@ -11,8 +11,8 @@ import (
 	"github.com/robfig/cron/v3"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/interfaces"
-	bmock "bkn-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
 type actionExecutionAccessStub struct {

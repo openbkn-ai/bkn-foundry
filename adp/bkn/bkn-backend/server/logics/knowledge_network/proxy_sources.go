@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 type proxyModelBinding struct {

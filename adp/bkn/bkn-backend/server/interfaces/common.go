@@ -11,7 +11,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 
-	"bkn-backend/interfaces/data_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 )
 
 type contextKey string // Private context key type.

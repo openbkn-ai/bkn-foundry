@@ -31,6 +31,7 @@ service:
       interface:
         path:
           - /api/bkn-backend/v1
+          - /api/bkn-backend/v2
           - /api/ontology-manager/v1
 
 # Anti-affinity settings.

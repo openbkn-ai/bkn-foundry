@@ -103,3 +103,33 @@ ErrorLink = ""
 Description = "指标类型不允许"
 Solution = "严格模式下当前仅支持 atomic 指标。"
 ErrorLink = ""
+
+[BknBackend.ObjectMetric.InvalidDefinition]
+Description = "对象指标定义不合法"
+Solution = "请根据字段级校验结果修正定义后重试。"
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.NotFound]
+Description = "未找到对象指标"
+Solution = "请确认指标 ID、版本和分支。"
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.DuplicateCode]
+Description = "对象指标编码已存在"
+Solution = "请使用同一知识网络内唯一且稳定的指标编码。"
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.ImmutableVersion]
+Description = "该指标版本不可修改"
+Solution = "已发布版本不可变，请创建新草稿版本。"
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.DependencyInvalid]
+Description = "对象指标依赖不合法"
+Solution = "请检查依赖版本、对象对齐、时间窗口和循环依赖。"
+ErrorLink = ""
+
+[BknBackend.ObjectMetric.InternalError]
+Description = "对象指标服务内部错误"
+Solution = "请稍后重试；若问题持续，请联系管理员。"
+ErrorLink = ""

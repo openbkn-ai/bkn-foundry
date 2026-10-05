@@ -12,6 +12,8 @@ type QueryAuthorizationService interface {
 	AuthorizeObjectTypeQuery(ctx context.Context, knID, branch, objectTypeID string) error
 	AuthorizeActionTypeQuery(ctx context.Context, knID, branch, actionTypeID string) error
 	AuthorizeMetricQuery(ctx context.Context, knID, branch, metricID string) error
+	AuthorizeObjectMetricQuery(ctx context.Context, knID, branch, metricID string) error
+	AuthorizeObjectMetricTrial(ctx context.Context, knID, branch string, definition *ObjectMetricDefinitionV1) error
 	AuthorizeMetricDryRun(ctx context.Context, knID, branch string, definition *MetricDefinition) error
 	AuthorizeSubgraphBySource(ctx context.Context, query *SubGraphQueryBaseOnSource) error
 	AuthorizeSubgraphByTypePath(ctx context.Context, query *SubGraphQueryBaseOnTypePath) error

@@ -16,8 +16,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	attr "go.opentelemetry.io/otel/attribute"
 
-	"ontology-query/common"
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 // Retention of action execution logs (#790). Scheduled actions keep adding executions, so

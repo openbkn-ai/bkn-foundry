@@ -11,10 +11,10 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	bknsdk "bkn-backend/bkn-specification/bkn"
-	cond "bkn-backend/common/condition"
-	"bkn-backend/common/maskrule"
-	"bkn-backend/interfaces"
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // ── Network ──────────────────────────────────────────────────────────────────

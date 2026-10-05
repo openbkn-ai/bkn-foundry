@@ -15,9 +15,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	omock "ontology-query/interfaces/mock"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
 
 // vegaSessionPoolStub models Vega's global cursor session pool: every initial

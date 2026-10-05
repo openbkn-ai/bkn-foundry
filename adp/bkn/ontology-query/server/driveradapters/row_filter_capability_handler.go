@@ -12,9 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	rowfilter "ontology-query/logics/row_filter"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	rowfilter "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/row_filter"
 )
 
 type rowFilterCapabilityRequest struct {

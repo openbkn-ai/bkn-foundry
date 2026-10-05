@@ -10,7 +10,7 @@ package errors
 import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"bkn-backend/locale"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/locale"
 )
 
 // Public error codes available to all service modules.

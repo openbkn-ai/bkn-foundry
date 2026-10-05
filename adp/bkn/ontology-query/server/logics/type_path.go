@@ -10,9 +10,9 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	"ontology-query/locale"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 // ResolveTypeEdgeDirection returns the direction in which edge, the index-th

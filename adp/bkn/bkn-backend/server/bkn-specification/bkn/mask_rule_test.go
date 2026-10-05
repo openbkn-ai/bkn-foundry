@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"bkn-backend/common/maskrule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

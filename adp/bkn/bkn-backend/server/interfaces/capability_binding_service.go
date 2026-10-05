@@ -10,7 +10,7 @@ import (
 	"context"
 	"database/sql"
 
-	"bkn-backend/bkn-specification/bkn"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 )
 
 // CapabilityBindingService owns the knowledge-network side of Skill and Function binding (#1257).

@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"strings"
 
-	"bkn-backend/interfaces"
-	dtype "bkn-backend/interfaces/data_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 )
 
 // The planner turns an accepted query plus the model into the shape of one

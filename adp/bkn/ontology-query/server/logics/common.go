@@ -25,12 +25,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"ontology-query/common"
-	cond "ontology-query/common/condition"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	dtype "ontology-query/interfaces/data_type"
-	"ontology-query/locale"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 // Build the default sort for views.

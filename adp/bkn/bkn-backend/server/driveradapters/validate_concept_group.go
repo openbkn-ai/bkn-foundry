@@ -12,7 +12,7 @@ import (
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // ValidateConceptGroup validates required concept group fields.

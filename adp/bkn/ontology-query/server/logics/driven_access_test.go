@@ -9,7 +9,7 @@ package logics
 import (
 	"testing"
 
-	omock "ontology-query/interfaces/mock"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"

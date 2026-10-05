@@ -10,8 +10,8 @@
 package mock_interfaces
 
 import (
-	condition "bkn-backend/common/condition"
-	interfaces "bkn-backend/interfaces"
+	condition "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	context "context"
 	reflect "reflect"
 

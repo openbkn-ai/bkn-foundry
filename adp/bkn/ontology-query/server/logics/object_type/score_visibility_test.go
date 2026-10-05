@@ -11,8 +11,8 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	cond "ontology-query/common/condition"
-	"ontology-query/interfaces"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func TestScoreIsOnlyReturnedForExplicitFullPropertySearch(t *testing.T) {

@@ -19,14 +19,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"ontology-query/common"
-	cond "ontology-query/common/condition"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	"ontology-query/locale"
-	"ontology-query/logics"
-	permissionlogic "ontology-query/logics/permission"
-	rowfilter "ontology-query/logics/row_filter"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
+	permissionlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
+	rowfilter "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/row_filter"
 )
 
 var (

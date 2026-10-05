@@ -9,7 +9,7 @@ package interfaces
 import (
 	"context"
 
-	cond "ontology-query/common/condition"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 )
 
 const (
