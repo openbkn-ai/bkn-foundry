@@ -8,6 +8,7 @@ package evidencesvc
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -36,8 +37,8 @@ func TestUnmaterializedIntegrityReadDoesNotInspectLiveEvidenceOrInventComplete(t
 		t.Fatalf("historical report must stay unknown without live reads: report=%+v applicable=%v reads=%d err=%v", report, applicable, store.reads, err)
 	}
 	entries := []evidencevo.ConversationSummary{{ConversationID: "conv"}}
-	if err := service.applyConversationRecordIntegrity(ctx, entries, evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err != nil || entries[0].CurrentRecordIntegrity != nil || entries[0].RecordIntegrityCheckFailed || store.reads != 0 {
-		t.Fatalf("unmaterialized round must not appear complete or fail from live dependency: %+v reads=%d err=%v", entries, store.reads, err)
+	if err := service.applyConversationRecordIntegrity(ctx, entries, evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err != nil || entries[0].CurrentRecordIntegrity != nil || !entries[0].RecordIntegrityCheckFailed || store.reads != 0 {
+		t.Fatalf("unmaterialized round must signal absent verdict without reading live dependency: %+v reads=%d err=%v", entries, store.reads, err)
 	}
 }
 
@@ -249,11 +250,13 @@ func TestMaterializationOwnerProfileAllowsAppArtifactAndRejectsForeignOwner(t *t
 	artifact.InteractionID, artifact.OperationID, artifact.RequestID, artifact.TraceID = "int", "op", "req", "trace"
 	artifact.ArtifactType = evidencevo.ArtifactTypeDataResult
 	artifact.AccountID, artifact.AccountType = owner.ApplicationPrincipalID, "app"
-	service.artifactStore = &integrityCountingArtifacts{captureArtifactReader: captureArtifactReader{hook: func(string) (iartifactstore.CaptureReadResult, error) {
-		return iartifactstore.CaptureReadResult{Artifact: artifact, Found: true, Exists: true}, nil
-	}}}
+	reader := &materializationScopedArtifactReader{artifact: artifact}
+	service.artifactStore = reader
 	if _, err := service.PersistRecordIntegrityBatch(context.Background(), "", 100); err != nil {
 		t.Fatalf("matching app artifact stayed pending: %v", err)
+	}
+	if len(reader.scopes) != 1 || !evidencevo.MatchesArtifactScope(artifact, reader.scopes[0]) {
+		t.Fatalf("materialization did not pass the owner access profile: %+v", reader.scopes)
 	}
 	if report, applicable, err := service.inspectRecordIntegrityWithScope(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"}); err != nil || !applicable || report == nil {
 		t.Fatalf("matching app artifact was not materialized: report=%+v applicable=%v err=%v", report, applicable, err)
@@ -265,14 +268,61 @@ func TestMaterializationOwnerProfileAllowsAppArtifactAndRejectsForeignOwner(t *t
 	store = service.sessionStore.(*integritySnapshotStore)
 	alignIntegrityFixtureVersions(t, store)
 	artifact.AccountID = "foreign-app"
-	service.artifactStore = &integrityCountingArtifacts{captureArtifactReader: captureArtifactReader{hook: func(string) (iartifactstore.CaptureReadResult, error) {
-		profile := &evidencevo.AccessProfile{ActorID: owner.EffectiveSubjectID, EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID, AccountActive: true}
-		if evidencevo.MatchesArtifactScope(artifact, evidencevo.QueryScope{AccessProfile: profile}) {
-			t.Fatal("foreign app artifact passed owner scope")
-		}
-		return iartifactstore.CaptureReadResult{Artifact: artifact, Found: false, Exists: true}, nil
-	}}}
+	reader = &materializationScopedArtifactReader{artifact: artifact}
+	service.artifactStore = reader
 	if _, err := service.PersistRecordIntegrityBatch(context.Background(), "", 100); err == nil {
 		t.Fatal("foreign app artifact was accepted")
+	}
+	if len(reader.scopes) != 1 || evidencevo.MatchesArtifactScope(artifact, reader.scopes[0]) {
+		t.Fatalf("foreign app artifact passed owner access profile: %+v", reader.scopes)
+	}
+}
+
+type materializationScopedArtifactReader struct {
+	iartifactstore.ArtifactStorePort
+	artifact evidencevo.EvidenceArtifact
+	scopes   []evidencevo.QueryScope
+}
+
+func (r *materializationScopedArtifactReader) ReadArtifactForCapture(_ context.Context, _ string, scope evidencevo.QueryScope, _ int64) (iartifactstore.CaptureReadResult, error) {
+	r.scopes = append(r.scopes, scope)
+	if !evidencevo.MatchesArtifactScope(r.artifact, scope) {
+		return iartifactstore.CaptureReadResult{Found: false, Exists: true}, nil
+	}
+	return iartifactstore.CaptureReadResult{Artifact: r.artifact, Found: true, Exists: true}, nil
+}
+
+func TestUnmaterializedIntegrityFilterReportsIncompleteResults(t *testing.T) {
+	snapshot, owner, now := integrityFixture()
+	store := &integrityCandidateStore{integritySnapshotStore: &integritySnapshotStore{Store: memorystore.New(), snapshot: snapshot}}
+	ctx := context.Background()
+	if err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{ID: "conv", Owner: owner, Status: sessionvo.ConversationClosed, CreatedAt: now})
+		tx.SaveInteraction(sessionvo.Interaction{ID: "int", ConversationID: "conv", ExecutionStatus: sessionvo.InteractionCompleted, CreatedAt: now, TerminalAt: &now})
+		tx.SaveOperation(snapshot.Operations[0])
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := New(evidencestore.New(), WithSessionStore(store), WithProjectionSource(&capturingProjectionSource{}), WithCurrentRecordIntegrity())
+	scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
+	for _, filter := range []string{"complete", "missing"} {
+		options := evidencevo.SummaryQueryOptions{Scope: scope, RecordIntegrity: filter}
+		page, err := service.ListConversations(ctx, options)
+		if err != nil || len(page.Entries) != 0 || !page.Partial || !slices.Contains(page.PartialReasons, "record_integrity_check_failed") {
+			t.Fatalf("uncomputed conversation must not certify a complete filtered result: %+v %v", page, err)
+		}
+		options.ConversationID = "conv"
+		rounds, err := service.ListInteractions(ctx, options)
+		if err != nil || len(rounds.Entries) != 0 || !rounds.Partial || !slices.Contains(rounds.PartialReasons, "record_integrity_check_failed") {
+			t.Fatalf("uncomputed round must not certify a complete filtered result: %+v %v", rounds, err)
+		}
+	}
+	summary, found, err := service.GetInteractionSummary(ctx, "int", scope)
+	if err != nil || !found || summary.CurrentRecordIntegrity != nil || !summary.RecordIntegrityCheckFailed {
+		t.Fatalf("uncomputed detail must signal absent verdict: %+v %v", summary, err)
+	}
+	if store.reads != 0 {
+		t.Fatalf("page performed live verification: %d", store.reads)
 	}
 }

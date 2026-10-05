@@ -31,7 +31,7 @@ func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBa
 		}
 		cursor = next
 		if err != nil {
-			log.Print("record integrity materialization batch incomplete; candidates remain pending")
+			log.Printf("record integrity materialization batch incomplete; candidates remain pending: %v", err)
 		}
 		timer := time.NewTimer(interval)
 		select {

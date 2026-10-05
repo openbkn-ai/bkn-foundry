@@ -6,8 +6,11 @@
 package boot
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -36,6 +39,10 @@ func (p *integrityBatchProbe) PersistRecordIntegrityBatch(_ context.Context, cur
 	}
 }
 func TestRecordIntegritySupervisorBoundedCursorAndCancellation(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	probe := &integrityBatchProbe{cancel: cancel}
@@ -45,6 +52,9 @@ func TestRecordIntegritySupervisorBoundedCursorAndCancellation(t *testing.T) {
 	case <-done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("supervisor did not stop")
+	}
+	if !strings.Contains(output.String(), "one candidate temporarily unavailable") {
+		t.Fatalf("diagnostic omitted batch cause: %s", output.String())
 	}
 	probe.mu.Lock()
 	defer probe.mu.Unlock()

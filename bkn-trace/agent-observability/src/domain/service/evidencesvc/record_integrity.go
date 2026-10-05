@@ -338,11 +338,6 @@ func hasRecordIntegrityCalls(snapshot sessionvo.EvidenceSnapshot) bool {
 	}
 	return manifest != nil && (len(manifest.ExpectedOperations) > 0 || len(manifest.ExpectedReceipts) > 0 || slices.Contains(manifest.SystemPartialReasons, "not_collected_due_to_license") || slices.Contains(manifest.SystemPartialReasons, "not_collected_due_to_policy"))
 }
-func (s *Service) inspectRecordIntegrity(ctx context.Context, id string, scope evidencevo.QueryScope) (*evidencevo.RecordIntegrity, error) {
-	report, _, err := s.inspectRecordIntegrityWithScope(ctx, id, scope)
-	return report, err
-}
-
 func (s *Service) inspectRecordIntegrityWithScope(ctx context.Context, id string, scope evidencevo.QueryScope) (*evidencevo.RecordIntegrity, bool, error) {
 	if !s.currentRecordIntegrity {
 		return nil, false, nil
@@ -528,8 +523,8 @@ func (s *Service) applyInteractionRecordIntegrity(ctx context.Context, entries [
 		return nil
 	}
 	for i := range entries {
-		report, err := s.inspectRecordIntegrity(ctx, entries[i].InteractionID, scope)
-		if err != nil {
+		report, applicable, err := s.inspectRecordIntegrityWithScope(ctx, entries[i].InteractionID, scope)
+		if err != nil || (applicable && report == nil) {
 			entries[i].RecordIntegrityCheckFailed = true
 			continue
 		}
@@ -577,6 +572,7 @@ func (s *Service) applyConversationRecordIntegrity(ctx context.Context, entries 
 				continue
 			}
 			if report == nil {
+				entries[i].RecordIntegrityCheckFailed = true
 				unfinished = true
 				continue
 			}

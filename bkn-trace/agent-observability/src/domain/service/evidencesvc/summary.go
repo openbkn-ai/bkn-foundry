@@ -1571,8 +1571,9 @@ func (s *Service) getInteractionSummary(ctx context.Context, interactionID strin
 		}
 	}
 	if checkIntegrity {
-		summary.CurrentRecordIntegrity, err = s.inspectRecordIntegrity(ctx, interactionID, scope)
-		if err != nil {
+		var applicable bool
+		summary.CurrentRecordIntegrity, applicable, err = s.inspectRecordIntegrityWithScope(ctx, interactionID, scope)
+		if err != nil || (applicable && summary.CurrentRecordIntegrity == nil) {
 			summary.RecordIntegrityCheckFailed = true
 		}
 	}
