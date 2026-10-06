@@ -757,6 +757,7 @@ type artifactProjectionSource struct {
 }
 
 type recordingArtifactProjectionSource struct {
+	resultFor                 func(iprojectionsource.Query) iprojectionsource.Result
 	result                    iprojectionsource.Result
 	artifactResult            iprojectionsource.ArtifactResult
 	queries                   []iprojectionsource.Query
@@ -765,6 +766,9 @@ type recordingArtifactProjectionSource struct {
 
 func (s *recordingArtifactProjectionSource) LoadExecutionProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.Result, error) {
 	s.queries = append(s.queries, query)
+	if s.resultFor != nil {
+		return s.resultFor(query), nil
+	}
 	return s.result, nil
 }
 
@@ -847,5 +851,45 @@ func TestHistoricalRangeUnionsEvidenceWithCurrentReceipts(t *testing.T) {
 	}
 	if len(downstream.queries) != 1 || len(downstream.queries[0].AuthorizedInteractionIDs) != 0 || !downstream.queries[0].From.Equal(query.From) {
 		t.Fatalf("history must retain original scope/range: %+v", downstream.queries)
+	}
+}
+
+func TestRangeCandidatesDoNotSpendCurrentPreviewBudgetOnOldArtifacts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, summaryReceiptResponse) }))
+	t.Cleanup(server.Close)
+	old := make([]evidencevo.EvidenceArtifact, 1002)
+	for i := range old {
+		old[i] = evidencevo.EvidenceArtifact{ArtifactID: "old", RequestID: "old-request", InteractionID: "old-interaction", ArtifactType: evidencevo.ArtifactTypeQuestion, Content: "old question"}
+	}
+	downstream := &recordingArtifactProjectionSource{resultFor: func(query iprojectionsource.Query) iprojectionsource.Result {
+		if query.EvidenceOnly {
+			return iprojectionsource.Result{}
+		}
+		return iprojectionsource.Result{Artifacts: old[:1001], Truncated: true}
+	}, artifactResult: iprojectionsource.ArtifactResult{Artifacts: []evidencevo.EvidenceArtifact{{ArtifactID: "latest-question", RequestID: "req-1", InteractionID: "int-1", ArtifactType: evidencevo.ArtifactTypeQuestion, Content: "latest question"}}}}
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "core", downstream)
+	scope := evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}
+	candidates, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{Scope: scope, From: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), SummaryOnly: true, EvidenceOnly: true, Limit: 1001})
+	if err != nil || candidates.Truncated || len(candidates.Artifacts) != 0 || len(downstream.queries) != 1 || !downstream.queries[0].EvidenceOnly {
+		t.Fatalf("unrelated artifact budget affected candidates: %+v err=%v", candidates, err)
+	}
+	selected, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{Scope: scope, TraceIDs: []string{"trace-1"}, SummaryOnly: true, Limit: 20})
+	if err != nil || selected.Truncated || len(selected.Artifacts) != 1 || selected.Artifacts[0].ArtifactID != "latest-question" {
+		t.Fatalf("selected preview: %+v err=%v", selected, err)
+	}
+	q := downstream.artifactProjectionQueries[0]
+	if len(q.AuthorizedInteractionIDs) != 1 || q.AuthorizedInteractionIDs[0] != "int-1" || !q.From.IsZero() || !q.To.IsZero() {
+		t.Fatalf("preview must be selected by canonical interaction, independent of time window: %+v", q)
+	}
+}
+
+func TestSummaryOnlyRangeDoesNotImplicitlyExcludeArtifacts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, summaryReceiptResponse) }))
+	t.Cleanup(server.Close)
+	downstream := &recordingArtifactProjectionSource{result: iprojectionsource.Result{Artifacts: []evidencevo.EvidenceArtifact{{ArtifactID: "question", RequestID: "req-1", InteractionID: "int-1", ArtifactType: evidencevo.ArtifactTypeQuestion, Content: "question"}}}}
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "core", downstream)
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}, From: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), SummaryOnly: true})
+	if err != nil || len(result.Artifacts) != 1 || len(downstream.queries) != 1 || downstream.queries[0].EvidenceOnly {
+		t.Fatalf("ordinary summary range lost artifacts: %+v err=%v", result, err)
 	}
 }

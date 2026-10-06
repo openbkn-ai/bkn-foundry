@@ -64,3 +64,17 @@ The administrator guide and executable entry point are in
 
 PR approval, merge and merged-image 8081 acceptance remain pending. Native
 library verification is not a substitute for the merged-image product check.
+
+## Review blocker 14279111
+
+The ordinary time-range Trace list now scans evidence candidates without
+artifacts, then hydrates only the selected page's Trace IDs through the existing
+receipt-authorized artifact path. Preview hydration is not restricted by the
+candidate time window. Request, Interaction and Conversation summary reads keep
+their existing artifact behavior. Time-range evidence candidates are sorted by
+observed start descending with document ID as the tie-breaker.
+
+Regression coverage includes 1002 older artifacts, selected-page question/result
+previews, mixed historical/current cursor pages, and ordinary summary artifact
+retention. Full agent-observability Go tests and build passed. PR re-review and
+merge approval remain pending; no merged-image acceptance is claimed here.

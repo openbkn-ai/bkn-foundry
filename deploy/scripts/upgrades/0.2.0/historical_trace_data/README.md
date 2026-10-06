@@ -83,6 +83,10 @@ Validate the result using the report and the 020 product/API:
 4. Run the command a second time. It must complete without conflicts and must
    not create duplicate historical IDs.
 
+For time-range acceptance, also check that the selected current Trace records
+retain their question/result previews when the window contains many older
+artifacts. Candidate scans and selected-page preview reads have separate budgets.
+
 Trace range lists retain the existing bounded scan and partial/truncated
 indicators. The conversion report is the complete migration count; a partial
 page is not an exact count of all migrated Trace events.

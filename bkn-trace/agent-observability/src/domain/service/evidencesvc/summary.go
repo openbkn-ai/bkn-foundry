@@ -1695,6 +1695,12 @@ func (s *Service) ListTraceExecutions(ctx context.Context, options evidencevo.Su
 	var err error
 	if strings.TrimSpace(options.TraceID) != "" {
 		_, traces, metadata, err = s.loadTraceExecutionSummaries(ctx, strings.TrimSpace(options.TraceID), options.Scope)
+	} else if trustedQueryScope(options.Scope) && (!options.From.IsZero() || !options.To.IsZero()) && !hasSummaryContentFilters(options) {
+		_, traces, metadata, err = s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
+			Scope: options.Scope, From: options.From, To: options.To,
+			Status: options.Status, InteractionID: options.InteractionID,
+			Limit: summaryCandidateLimit(options), SummaryOnly: true, EvidenceOnly: true,
+		}, summaryLoadMetadata{})
 	} else {
 		_, traces, metadata, err = s.loadExecutionSummaries(ctx, options)
 	}
@@ -1708,6 +1714,30 @@ func (s *Service) ListTraceExecutions(ctx context.Context, options evidencevo.Su
 		}
 	}
 	page, err := paginateTraceSummaries(filtered, options)
+	if err == nil && len(page.Entries) > 0 && (!options.From.IsZero() || !options.To.IsZero()) {
+		ids := make([]string, 0, len(page.Entries))
+		for _, trace := range page.Entries {
+			ids = append(ids, trace.TraceID)
+		}
+		_, selected, selectedMetadata, loadErr := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
+			Scope: options.Scope, TraceIDs: ids, SummaryOnly: true,
+			Limit: selectedSummaryCandidateLimit(len(ids)),
+		}, summaryLoadMetadata{})
+		if loadErr != nil {
+			return evidencevo.TraceSummaryPage{}, loadErr
+		}
+		mergeSummaryLoadMetadata(&metadata, selectedMetadata)
+		byID := make(map[string]evidencevo.TraceSummary, len(selected))
+		for _, trace := range selected {
+			byID[trace.TraceID] = trace
+		}
+		for index := range page.Entries {
+			if trace, found := byID[page.Entries[index].TraceID]; found {
+				page.Entries[index].QuestionPreview = trace.QuestionPreview
+				page.Entries[index].ResultPreview = trace.ResultPreview
+			}
+		}
+	}
 	if metadata.Truncated {
 		page.Truncated = true
 		page.Partial = true

@@ -609,3 +609,27 @@ func mustTime(t *testing.T, value string) time.Time {
 	}
 	return parsed
 }
+
+func TestRangeEvidenceCandidatesSkipArtifactsAndUseNewestFirstOrder(t *testing.T) {
+	trace := normalizedTrace()
+	doc := toDocument(trace, mustTime(t, "2026-07-26T08:00:00Z"))
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
+		if r.URL.Path != "/history/_search" {
+			t.Fatalf("candidate scan must not fetch artifacts: %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"observed_start":{"order":"desc"}`) {
+			t.Fatalf("history candidates must be newest first: %s", body)
+		}
+		response, _ := json.Marshal(map[string]any{"hits": map[string]any{"hits": []any{map[string]any{"_source": doc, "sort": []any{doc.ObservedStart, doc.DocumentID}}}}})
+		return jsonResponse(string(response)), nil
+	})
+	store := New(client, "history")
+	result, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: trace.AccountID, AccountType: trace.AccountType}, From: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), EvidenceOnly: true, Limit: 1001})
+	if err != nil || len(result.Traces) != 1 || len(result.Artifacts) != 0 || result.Truncated {
+		t.Fatalf("candidate-only range result: %+v err=%v", result, err)
+	}
+}

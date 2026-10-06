@@ -36,6 +36,8 @@ type Query struct {
 	// SummaryOnly retains artifact metadata and question/result content while
 	// omitting supporting result bodies. Full evidence reads leave this false.
 	SummaryOnly bool
+	// EvidenceOnly loads Trace candidates without spending their budget on artifacts.
+	EvidenceOnly bool
 }
 
 type Result struct {
