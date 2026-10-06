@@ -18,6 +18,7 @@ class FakeRuntime:
         self.fail = False
         self.evidence_calls = []
         self.span_calls = []
+        self.log_events = []
         self.safe_evidence = False
         self.safe_spans = False
         self.cluster_uid = "cluster-one"
@@ -67,6 +68,10 @@ class FakeRuntime:
             return {"verified": 0, "retained": len(records), "reason": "span_target_config_not_verified"}
         return {"verified": len(records), "retained": 0}
 
+    def publish_logs(self, events):
+        self.log_events.extend(events)
+        return {"created": len(events), "already_verified": 0, "conflict": 0}
+
 
 class UpgradeRunnerTests(unittest.TestCase):
     def setUp(self):
@@ -80,6 +85,8 @@ class UpgradeRunnerTests(unittest.TestCase):
         self.assertEqual(result["source_count"], 3)
         self.assertEqual(result["target_verified_count"], 1)
         self.assertEqual(len(runtime.sent), 1)
+        self.assertEqual(len(runtime.log_events), 1)
+        self.assertEqual(result["opensearch_log_created"], 1)
         self.assertEqual(result["retained_count"], 2)
         self.assertTrue((Path(result["run_directory"]) / "report.md").exists())
 
@@ -138,7 +145,7 @@ class UpgradeRunnerTests(unittest.TestCase):
             {"metadata": {"namespace": "resource", "name": "mariadb-0"}, "status": {"phase": "Running"}},
             {"metadata": {"namespace": "openbkn", "name": "agent-observability-0"},
              "status": {"phase": "Running"}, "spec": {"containers": [
-                 {"name": "agent-observability", "image": "020", "env": [{"name": "BKN_AUDIT_ENVIRONMENT", "value": "test"}]}]}}]}
+                 {"name": "agent-observability", "image": "020", "env": [{"name": "BKN_AUDIT_ENVIRONMENT", "value": "test"}, {"name": "OPENSEARCH_ENDPOINT", "value": "http://opensearch"}, {"name": "OPENSEARCH_LOG_INDEX", "value": "logs"}]}]}}]}
         for uid in ("cluster-one", "cluster-two"):
             with patch("run_upgrade._command", side_effect=[b"default", canonical({"metadata": {"uid": uid}}).encode(), canonical(pods).encode(), b""]):
                 deployment = DeploymentRuntime().discover()

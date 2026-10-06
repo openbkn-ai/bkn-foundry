@@ -8,11 +8,13 @@ import re
 import subprocess
 import time
 import uuid
+from urllib.parse import urlparse
 
 from logs import convert_log
 import reconcile
 from snapshot import SQLSource, canonical, digest, private_write, read_snapshot, save_snapshot, strict_loads
 from trace import convert_evidence, convert_span
+from opensearch_history import OpenSearchHistoryWriter
 
 
 def _command(arguments, data=None):
@@ -46,6 +48,10 @@ class DeploymentRuntime:
         container = next((value for value in containers if "agent-observability" in value["name"]), containers[0])
         self.container = container["name"]
         values = {entry["name"]: entry.get("value") for entry in container.get("env", [])}
+        self.opensearch_endpoint = values.get("OPENSEARCH_ENDPOINT")
+        self.opensearch_log_index = values.get("OPENSEARCH_LOG_INDEX")
+        if not self.opensearch_endpoint or not self.opensearch_log_index:
+            raise ValueError("opensearch_log_configuration_missing")
         environment = values.get("BKN_AUDIT_ENVIRONMENT")
         if environment not in {"development", "test", "staging", "production"}:
             raise ValueError("deployment_environment_missing")
@@ -84,6 +90,31 @@ class DeploymentRuntime:
     def migrate_spans(self, records):
         raise ValueError("span_target_config_not_verified")
 
+    def publish_logs(self, events):
+        endpoint = self.opensearch_endpoint
+        parsed = urlparse(endpoint)
+        port_forward = None
+        if parsed.hostname and parsed.hostname.endswith(".svc.cluster.local"):
+            # The administrator entry point runs on the host, while the
+            # deployed endpoint is only resolvable inside Kubernetes.
+            port_forward = subprocess.Popen(
+                ["kubectl", "--context", self.context, "-n", "resource", "port-forward",
+                 "svc/opensearch-cluster-master", "0:9200"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            line = port_forward.stdout.readline() if port_forward.stdout else ""
+            match = re.search(r"Forwarding from 127\.0\.0\.1:(\d+)", line)
+            if not match:
+                port_forward.terminate()
+                raise RuntimeError("opensearch_port_forward_failed")
+            endpoint = "http://127.0.0.1:" + match.group(1)
+        try:
+            writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index)
+            return writer.publish(events, datetime.now(timezone.utc))
+        finally:
+            if port_forward is not None:
+                port_forward.terminate()
+                port_forward.wait(timeout=5)
+
 
 def _status(runtime, item):
     return reconcile.check([item], runtime.fetch)["results"][0]["status"]
@@ -94,6 +125,9 @@ def _report(directory, result, reasons):
              "- State: " + result["state"],
              "- Source records: %d" % result["source_count"],
              "- Native target records verified: %d" % result["target_verified_count"],
+             "- OpenSearch log documents created: %d" % result.get("opensearch_log_created", 0),
+             "- OpenSearch log documents already verified: %d" % result.get("opensearch_log_already_verified", 0),
+             "- OpenSearch log conflicts: %d" % result.get("opensearch_log_conflict", 0),
              "- Already verified before publication: %d" % result["already_verified_count"],
              "- Source records retained without conversion: %d" % result["retained_count"],
              "", "## Retained Records And Failures", ""]
@@ -113,7 +147,8 @@ def run(runtime, state_root):
     directory.mkdir(mode=0o700)
     result = {"complete": False, "state": "precheck_failed", "source_count": 0,
               "target_verified_count": 0, "already_verified_count": 0, "retained_count": 0,
-              "run_directory": str(directory)}
+              "opensearch_log_created": 0, "opensearch_log_already_verified": 0,
+              "opensearch_log_conflict": 0, "run_directory": str(directory)}
     reasons, items = Counter(), []
     phase = "precheck_failed"
     try:
@@ -222,6 +257,7 @@ def run(runtime, state_root):
                     item.update(disposition="archive", reason="source_identity_content_conflict")
         private_write(directory / "items.jsonl", "".join(canonical(item) + "\n" for item in items).encode())
         missing = []
+        verified_audit_events = {}
         phase = "target_readback_failed"
         for item in items:
             if item["disposition"] == "writer_verified":
@@ -234,6 +270,7 @@ def run(runtime, state_root):
             if status == "verified":
                 result["already_verified_count"] += 1
                 result["target_verified_count"] += 1
+                verified_audit_events[item["payload"]["event_id"]] = item["payload"]
             elif status == "missing":
                 missing.append(item)
             else:
@@ -261,11 +298,21 @@ def run(runtime, state_root):
                         time.sleep(2)
                 if status == "verified":
                     result["target_verified_count"] += 1
+                    verified_audit_events[item["payload"]["event_id"]] = item["payload"]
                 else:
                     result["retained_count"] += 1
                     reasons["publication_requires_readback" if publication_error else "target_" + status] += 1
+        if verified_audit_events and hasattr(runtime, "publish_logs"):
+            try:
+                log_result = runtime.publish_logs(list(verified_audit_events.values()))
+                for key in ("created", "already_verified", "conflict"):
+                    result["opensearch_log_" + key] = int(log_result.get(key, 0))
+                if result["opensearch_log_conflict"]:
+                    reasons["opensearch_log_conflict"] += result["opensearch_log_conflict"]
+            except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+                reasons["opensearch_log_publish_failed"] += len(verified_audit_events)
         result["complete"] = result["target_verified_count"] + result["retained_count"] == result["source_count"] and not any(
-            name.startswith(("publication_", "target_")) for name in reasons)
+            name.startswith(("publication_", "target_", "opensearch_log_")) for name in reasons)
         result["state"] = "completed_with_retained_records" if result["complete"] and result["retained_count"] else "completed" if result["complete"] else "partial_requires_reconciliation"
     except (OSError, ValueError, KeyError, TypeError):
         reasons[phase] += 1
