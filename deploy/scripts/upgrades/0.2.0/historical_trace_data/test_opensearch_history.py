@@ -143,3 +143,35 @@ class OpenSearchHistoryWriterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class OpenSearchReadbackAccountingTests(unittest.TestCase):
+    def test_bulk_failure_counts_one_conflict_not_two(self):
+        from opensearch_history import OpenSearchHistoryWriter
+        fake = _OpenSearchFake()
+        def opener(request, timeout):
+            if request.full_url.endswith('/_bulk'):
+                return _Response(200, json_bytes({"items": [{"create": {"status": 500}}]}))
+            return fake(request, timeout)
+        result = OpenSearchHistoryWriter("http://opensearch", "logs", opener=opener).publish_documents([{"_id": "history-1", "document": {"value": 1}}])
+        self.assertEqual(result, {"created": 0, "updated": 0, "already_verified": 0, "conflict": 1})
+
+    def test_mismatched_readback_is_not_counted_as_created(self):
+        from opensearch_history import OpenSearchHistoryWriter
+        fake = _OpenSearchFake()
+        reads = 0
+        def opener(request, timeout):
+            nonlocal reads
+            response = fake(request, timeout)
+            if request.full_url.endswith('/_mget'):
+                reads += 1
+                if reads == 2:
+                    return _Response(200, json_bytes({"docs": [{"found": True, "_source": {"value": 2}}]}))
+            return response
+        result = OpenSearchHistoryWriter("http://opensearch", "logs", opener=opener).publish_documents([{"_id": "history-1", "document": {"value": 1}}])
+        self.assertEqual(result, {"created": 0, "updated": 0, "already_verified": 0, "conflict": 1})
+
+    def test_short_readback_response_fails_instead_of_skipping_rows(self):
+        from opensearch_history import OpenSearchHistoryWriter
+        writer = OpenSearchHistoryWriter("http://opensearch", "logs", opener=lambda request, timeout: _Response(200, b'{"docs":[]}'))
+        with self.assertRaisesRegex(RuntimeError, "readback count mismatch"):
+            writer.publish_documents([{"_id": "history-1", "document": {"value": 1}}])

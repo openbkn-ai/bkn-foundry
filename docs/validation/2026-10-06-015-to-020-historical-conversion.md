@@ -12,7 +12,7 @@ python3 deploy/scripts/upgrades/0.2.0/historical_trace_data/run_upgrade.py
 ```
 
 Report:
-`~/.bkn/upgrades/015-to-020-historical/run-20261006T141446-dadbab67/report.md`
+`~/.bkn/upgrades/015-to-020-historical/run-20261006T162225-7b1e0dfc/report.md`
 
 | Measure | Result |
 | --- | ---: |
@@ -24,8 +24,8 @@ Report:
 | Log documents updated | 0 |
 | Log documents already verified | 106 |
 | Evidence documents created | 0 |
-| Evidence documents updated | 2648 |
-| Evidence documents already verified | 980 |
+| Evidence documents updated | 0 |
+| Evidence documents already verified | 3628 |
 | Conflicts | 0 |
 | Source records not written | 0 |
 
@@ -52,3 +52,15 @@ source event without adding a fabricated trace or span.
 
 The administrator guide and executable entry point are in
 `deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md`.
+
+## Review feedback verification
+
+- Kubernetes forwarding resolves the configured service, namespace and remote
+  port. Startup notices, large connection output and timeout cleanup are covered.
+- Write counts are assigned only after document readback. A failed write or
+  mismatched readback counts once as a conflict; short replies stop the run.
+- Python migration tests: 113 passed.
+- The real rerun read back all 3734 documents without updates or conflicts.
+
+PR approval, merge and merged-image 8081 acceptance remain pending. Native
+library verification is not a substitute for the merged-image product check.

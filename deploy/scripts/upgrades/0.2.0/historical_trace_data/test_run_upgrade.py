@@ -197,3 +197,49 @@ class UpgradeRunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class OpenSearchConnectionTests(unittest.TestCase):
+    def runtime(self, endpoint):
+        runtime = DeploymentRuntime()
+        runtime.context = "customer-cluster"
+        runtime.opensearch_endpoint = endpoint
+        return runtime
+
+    def test_customer_service_namespace_port_and_noisy_output(self):
+        import subprocess
+        import sys
+        original_popen = subprocess.Popen
+        processes = []
+        def launch(command, **kwargs):
+            self.assertEqual(command, ["kubectl", "--context", "customer-cluster", "-n", "customer-data", "port-forward", "svc/customer-search", "0:9443"])
+            self.assertNotEqual(kwargs["stdout"], subprocess.PIPE)
+            process = original_popen([sys.executable, "-c", "import sys; print('startup notice'); print('Forwarding from 127.0.0.1:51234 -> 9443', flush=True); sys.stdout.write('Handling connection\\n' * 10000); sys.stdout.flush()"], **kwargs)
+            processes.append(process)
+            return process
+        with patch("run_upgrade.subprocess.Popen", side_effect=launch):
+            with self.runtime("https://customer-search.customer-data.svc.cluster.local:9443/prefix")._opensearch_connection() as (endpoint, forwarded):
+                self.assertEqual(endpoint, "https://127.0.0.1:51234/prefix")
+                self.assertTrue(forwarded)
+                processes[0].wait(timeout=5)
+        self.assertIsNotNone(processes[0].poll())
+
+    def test_startup_timeout_cleans_up_process(self):
+        import subprocess
+        import sys
+        original_popen = subprocess.Popen
+        processes = []
+        def launch(_, **kwargs):
+            process = original_popen([sys.executable, "-c", "import time; time.sleep(30)"], **kwargs)
+            processes.append(process)
+            return process
+        with patch("run_upgrade.subprocess.Popen", side_effect=launch):
+            with self.assertRaisesRegex(RuntimeError, "opensearch_port_forward_failed"):
+                with self.runtime("http://search.data.svc.cluster.local:9201")._opensearch_connection(timeout=0.01):
+                    self.fail("unready forward yielded")
+        self.assertIsNotNone(processes[0].poll())
+
+    def test_external_endpoint_is_used_directly(self):
+        with patch("run_upgrade.subprocess.Popen") as launch:
+            with self.runtime("https://customer.example:9443")._opensearch_connection() as value:
+                self.assertEqual(value, ("https://customer.example:9443", False))
+            launch.assert_not_called()

@@ -25,7 +25,9 @@ python3 deploy/scripts/upgrades/0.2.0/historical_trace_data/run_upgrade.py
 The script discovers the running deployment and reads the retained 015 source
 snapshot. It obtains the deployed OpenSearch endpoint, index names and, when
 configured, credentials from the deployment Secret. For an in-cluster endpoint
-it opens a short-lived port-forward to the existing OpenSearch service. It does
+it opens a short-lived port-forward using the service, namespace and port from
+that endpoint. Startup is bounded by a timeout, and connection output goes to a
+private temporary file so large migrations cannot block on a full pipe. It does
 not delete source tables, restore over the running database, or import completed
 archive files.
 

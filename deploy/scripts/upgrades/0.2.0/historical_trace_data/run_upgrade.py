@@ -1,11 +1,13 @@
 """One-instance post-upgrade administrator entry point."""
 
+from contextlib import contextmanager
 from collections import Counter
 from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import time
 import uuid
 import base64
@@ -107,58 +109,68 @@ class DeploymentRuntime:
     def migrate_spans(self, records):
         raise ValueError("span_target_config_not_verified")
 
-    def publish_logs(self, events):
+    @contextmanager
+    def _opensearch_connection(self, timeout=15):
         endpoint = self.opensearch_endpoint
         parsed = urlparse(endpoint)
-        port_forward = None
-        if parsed.hostname and parsed.hostname.endswith(".svc.cluster.local"):
-            # The administrator entry point runs on the host, while the
-            # deployed endpoint is only resolvable inside Kubernetes.
-            port_forward = subprocess.Popen(
-                ["kubectl", "--context", self.context, "-n", "resource", "port-forward",
-                 "svc/opensearch-cluster-master", "0:9200"],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            line = port_forward.stdout.readline() if port_forward.stdout else ""
-            match = re.search(r"Forwarding from 127\.0\.0\.1:(\d+)", line)
-            if not match:
-                port_forward.terminate()
-                raise RuntimeError("opensearch_port_forward_failed")
-            endpoint = "http://127.0.0.1:" + match.group(1)
-        try:
+        match = re.fullmatch(r"([a-z0-9-]+)\.([a-z0-9-]+)\.svc\.cluster\.local", parsed.hostname or "")
+        if not match:
+            yield endpoint, False
+            return
+        service, namespace = match.groups()
+        remote_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        # A file avoids pipe backpressure during large migrations. Read it via
+        # a separate descriptor so the tail reader cannot move kubectl's offset.
+        with tempfile.NamedTemporaryFile(mode="w+", prefix="bkn-history-port-forward-") as output:
+            process = subprocess.Popen(
+                ["kubectl", "--context", self.context, "-n", namespace, "port-forward",
+                 "svc/" + service, "0:" + str(remote_port)],
+                stdout=output, stderr=subprocess.STDOUT, text=True)
+            try:
+                deadline = time.monotonic() + timeout
+                with open(output.name) as reader:
+                    while True:
+                        line = reader.readline()
+                        ready = re.search(r"Forwarding from 127\.0\.0\.1:(\d+)", line)
+                        if ready:
+                            endpoint = parsed._replace(netloc="127.0.0.1:" + ready.group(1)).geturl()
+                            break
+                        if (not line and process.poll() is not None) or time.monotonic() >= deadline:
+                            raise RuntimeError("opensearch_port_forward_failed")
+                        if not line:
+                            time.sleep(0.05)
+                yield endpoint, True
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+
+    def _tls_options(self, forwarded):
+        return {
+            "verify_tls": os.environ.get("BKN_HISTORY_OPENSEARCH_TLS_VERIFY", "false" if forwarded else "true").lower() != "false",
+            "ca_file": os.environ.get("BKN_HISTORY_OPENSEARCH_CA_FILE") or None,
+        }
+
+    def publish_logs(self, events):
+        with self._opensearch_connection() as (endpoint, forwarded):
             writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index,
-                                             self.opensearch_username, self.opensearch_password)
+                                             self.opensearch_username, self.opensearch_password,
+                                             **self._tls_options(forwarded))
             return writer.publish(events, datetime.now(timezone.utc))
-        finally:
-            if port_forward is not None:
-                port_forward.terminate()
-                port_forward.wait(timeout=5)
 
     def publish_history(self, records):
         """Write every retained 015 log/evidence row to its 020 index."""
-        endpoint = self.opensearch_endpoint
-        parsed = urlparse(endpoint)
-        port_forward = None
-        if parsed.hostname and parsed.hostname.endswith(".svc.cluster.local"):
-            port_forward = subprocess.Popen(
-                ["kubectl", "--context", self.context, "-n", "resource", "port-forward",
-                 "svc/opensearch-cluster-master", "0:9200"],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            line = port_forward.stdout.readline() if port_forward.stdout else ""
-            match = re.search(r"Forwarding from 127\.0\.0\.1:(\d+)", line)
-            if not match:
-                port_forward.terminate()
-                raise RuntimeError("opensearch_port_forward_failed")
-            endpoint = parsed.scheme + "://127.0.0.1:" + match.group(1)
-        try:
+        with self._opensearch_connection() as (endpoint, forwarded):
             observed_at = datetime.now(timezone.utc)
             audit_items = [document_from_legacy_audit(record, observed_at, self.environment)
                            for record in records if record.get("kind") == "audit"]
             evidence_items = [evidence_document_from_legacy_row(record, observed_at)
                               for record in records if record.get("kind") == "evidence"]
-            tls_options = {
-                "verify_tls": os.environ.get("BKN_HISTORY_OPENSEARCH_TLS_VERIFY", "false" if port_forward else "true").lower() != "false",
-                "ca_file": os.environ.get("BKN_HISTORY_OPENSEARCH_CA_FILE") or None,
-            }
+            tls_options = self._tls_options(forwarded)
             log_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index,
                                                  self.opensearch_username, self.opensearch_password, **tls_options)
             evidence_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,
@@ -167,10 +179,6 @@ class DeploymentRuntime:
                 "logs": log_writer.publish_documents(audit_items, observed_at),
                 "evidence": evidence_writer.publish_documents(evidence_items, observed_at),
             }
-        finally:
-            if port_forward is not None:
-                port_forward.terminate()
-                port_forward.wait(timeout=5)
 
 
 def _status(runtime, item):

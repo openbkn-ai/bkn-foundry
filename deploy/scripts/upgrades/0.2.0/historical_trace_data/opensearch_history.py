@@ -296,6 +296,8 @@ class OpenSearchHistoryWriter:
             if status != 200:
                 raise RuntimeError("OpenSearch history readback failed")
             existing_docs = json.loads(body).get("docs", [])
+            if len(existing_docs) != len(chunk):
+                raise RuntimeError("OpenSearch history readback count mismatch")
             lines = []
             actions = []
             for item, existing_doc in zip(chunk, existing_docs):
@@ -313,26 +315,32 @@ class OpenSearchHistoryWriter:
                     raise RuntimeError("OpenSearch bulk history write failed")
                 response = json.loads(body)
                 results = response.get("items", [])
+                if len(results) != sum(action != "already" for action in actions):
+                    raise RuntimeError("OpenSearch bulk response count mismatch")
+                failed = set()
                 result_index = 0
-                for action in actions:
+                for item_index, action in enumerate(actions):
                     if action == "already":
                         continue
                     result = results[result_index].get(action, {}) if result_index < len(results) else {}
                     result_index += 1
-                    if result.get("status") in {200, 201}:
-                        counts["created" if action == "create" else "updated"] += 1
-                    else:
-                        counts["conflict"] += 1
+                    if result.get("status") not in {200, 201}:
+                        failed.add(item_index)
+            else:
+                failed = set()
             status, body = self._request("POST", "/" + quote(self.index, safe="") + "/_mget",
                                          json.dumps({"docs": [{"_id": item["_id"]} for item in chunk]}, separators=(",", ":")).encode())
             if status != 200:
                 raise RuntimeError("OpenSearch history readback failed")
             docs = json.loads(body).get("docs", [])
-            for item, doc, action in zip(chunk, docs, actions):
-                if not doc.get("found"):
+            if len(docs) != len(chunk):
+                raise RuntimeError("OpenSearch history readback count mismatch")
+            for item_index, (item, doc, action) in enumerate(zip(chunk, docs, actions)):
+                if item_index in failed or not doc.get("found"):
                     counts["conflict"] += 1
                 elif not self._matches(doc.get("_source"), item["document"]):
                     counts["conflict"] += 1
-                elif action == "already":
-                    counts["already_verified"] += 1
+                else:
+                    state = {"already": "already_verified", "create": "created", "index": "updated"}[action]
+                    counts[state] += 1
         return counts
