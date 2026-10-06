@@ -433,24 +433,28 @@ per-component and per-file breakdown:
 
 The license applicable to each file is stated in that file's header.
 
-## OpenSearch log publication
+## OpenSearch history publication
 
-The administrator entry point publishes only Audit events that have already
-been validated and confirmed by native 020 Audit readback. It writes the
-existing `OPENSEARCH_LOG_INDEX` (normally
-`ss4o_logs-default-namespace`) using a stable `_id` of
-`historical-audit:<source_id>:<source_event_id>`.
+The administrator entry point converts every retained 015 Audit and Evidence
+row into the corresponding 020 OpenSearch store. It writes the existing
+`OPENSEARCH_LOG_INDEX` (normally `ss4o_logs-default-namespace`) and
+`OPENSEARCH_EVIDENCE_INDEX` (normally `bkn-trace-evidence-v2`) using stable IDs
+qualified by the source record identity.
 
-The generated document preserves the historical `@timestamp`, actor and target
-snapshots, source identity, event name, outcome, request ID and HTTP status.
-`observedTimestamp` records the conversion time. Trace and span fields are not
-created by this step. After create, the writer reads the document back; a
+The generated log document preserves the historical timestamp, actor and
+target snapshots, source identity, event name, outcome, request ID and HTTP
+status. The generated evidence document preserves the historical trace,
+request, conversation, operation, span and payload fields. New 020 fields that
+are absent in 015 remain absent; the converter does not invent values. A
 matching existing document is `already_verified`, and a different document
 with the same ID is a conflict. The Markdown report includes:
 
 - `OpenSearch log documents created`
 - `OpenSearch log documents already verified`
 - `OpenSearch log conflicts`
+- `OpenSearch evidence documents created`
+- `OpenSearch evidence documents already verified`
+- `OpenSearch evidence conflicts`
 
 The script discovers `OPENSEARCH_ENDPOINT` and `OPENSEARCH_LOG_INDEX` from the
 running observability deployment. It does not require an administrator to
@@ -459,8 +463,6 @@ log index is not configured, the run stops before publication and records the
 precheck failure. The source Audit tables and MariaDB Ledger are never changed
 by the OpenSearch step.
 
-Evidence and technical Span records remain subject to their own provenance and
-lifecycle checks. An Evidence Outbox row without its historical Conversation,
-Interaction, Operation, owner, causality and watermark remains retained; it is
-not converted into a log or fabricated Span. A Core projection or a current
-020 Span index is not sufficient provenance for a 015 historical Span.
+The source snapshot is the migration authority. Rows are not rejected because
+they lack 020-only fields; the original values remain in the private snapshot
+and the mapped values are visible through the 020 product pages.

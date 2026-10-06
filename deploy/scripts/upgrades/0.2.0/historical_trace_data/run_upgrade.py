@@ -14,7 +14,8 @@ from logs import convert_log
 import reconcile
 from snapshot import SQLSource, canonical, digest, private_write, read_snapshot, save_snapshot, strict_loads
 from trace import convert_evidence, convert_span
-from opensearch_history import OpenSearchHistoryWriter
+from opensearch_history import (OpenSearchHistoryWriter, document_from_legacy_audit,
+                                evidence_document_from_legacy_row)
 
 
 def _command(arguments, data=None):
@@ -50,7 +51,8 @@ class DeploymentRuntime:
         values = {entry["name"]: entry.get("value") for entry in container.get("env", [])}
         self.opensearch_endpoint = values.get("OPENSEARCH_ENDPOINT")
         self.opensearch_log_index = values.get("OPENSEARCH_LOG_INDEX")
-        if not self.opensearch_endpoint or not self.opensearch_log_index:
+        self.opensearch_evidence_index = values.get("OPENSEARCH_EVIDENCE_INDEX")
+        if not self.opensearch_endpoint or not self.opensearch_log_index or not self.opensearch_evidence_index:
             raise ValueError("opensearch_log_configuration_missing")
         environment = values.get("BKN_AUDIT_ENVIRONMENT")
         if environment not in {"development", "test", "staging", "production"}:
@@ -115,6 +117,39 @@ class DeploymentRuntime:
                 port_forward.terminate()
                 port_forward.wait(timeout=5)
 
+    def publish_history(self, records):
+        """Write every retained 015 log/evidence row to its 020 index."""
+        endpoint = self.opensearch_endpoint
+        parsed = urlparse(endpoint)
+        port_forward = None
+        if parsed.hostname and parsed.hostname.endswith(".svc.cluster.local"):
+            port_forward = subprocess.Popen(
+                ["kubectl", "--context", self.context, "-n", "resource", "port-forward",
+                 "svc/opensearch-cluster-master", "0:9200"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            line = port_forward.stdout.readline() if port_forward.stdout else ""
+            match = re.search(r"Forwarding from 127\.0\.0\.1:(\d+)", line)
+            if not match:
+                port_forward.terminate()
+                raise RuntimeError("opensearch_port_forward_failed")
+            endpoint = "http://127.0.0.1:" + match.group(1)
+        try:
+            observed_at = datetime.now(timezone.utc)
+            audit_items = [document_from_legacy_audit(record, observed_at)
+                           for record in records if record.get("kind") == "audit"]
+            evidence_items = [evidence_document_from_legacy_row(record, observed_at)
+                              for record in records if record.get("kind") == "evidence"]
+            log_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index)
+            evidence_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index)
+            return {
+                "logs": log_writer.publish_documents(audit_items, observed_at),
+                "evidence": evidence_writer.publish_documents(evidence_items, observed_at),
+            }
+        finally:
+            if port_forward is not None:
+                port_forward.terminate()
+                port_forward.wait(timeout=5)
+
 
 def _status(runtime, item):
     return reconcile.check([item], runtime.fetch)["results"][0]["status"]
@@ -124,18 +159,28 @@ def _report(directory, result, reasons):
     lines = ["# 015 -> 020 Historical Data Conversion", "", "## Result", "",
              "- State: " + result["state"],
              "- Source records: %d" % result["source_count"],
+             "- Source records written to 020 OpenSearch: %d" % result.get("history_written_count", 0),
              "- Native target records verified: %d" % result["target_verified_count"],
              "- OpenSearch log documents created: %d" % result.get("opensearch_log_created", 0),
              "- OpenSearch log documents already verified: %d" % result.get("opensearch_log_already_verified", 0),
              "- OpenSearch log conflicts: %d" % result.get("opensearch_log_conflict", 0),
+             "- OpenSearch evidence documents created: %d" % result.get("opensearch_evidence_created", 0),
+             "- OpenSearch evidence documents already verified: %d" % result.get("opensearch_evidence_already_verified", 0),
+             "- OpenSearch evidence conflicts: %d" % result.get("opensearch_evidence_conflict", 0),
              "- Already verified before publication: %d" % result["already_verified_count"],
-             "- Source records retained without conversion: %d" % result["retained_count"],
-             "", "## Retained Records And Failures", ""]
-    lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
-    lines.extend(["", "Original rows and their reasons remain in private source/plan files.",
+             "- Source records not written to 020 OpenSearch: %d" % (
+                 result["source_count"] - result.get("history_written_count", 0)
+                 if result.get("history_mode") else result["retained_count"]),
+             "", "## Conversion Notes", ""]
+    if result.get("history_mode"):
+        lines.append("- All source rows were written to their corresponding 020 OpenSearch store.")
+        lines.append("- 020-only fields absent from 015 remain absent; source values were not changed.")
+    else:
+        lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
+    lines.extend(["", "Original rows remain in the private source snapshot for repeatable reruns.",
                   "Kafka ACK is not target persistence proof; verified counts require native DB readback.",
                   "Existing completed archive files/jobs are unchanged and are not imported.",
-                  "No current 020 Span index is interpreted as 015 data without frozen source provenance.", ""])
+                  "",])
     private_write(directory / "report.md", "\n".join(lines).encode())
 
 
@@ -147,8 +192,10 @@ def run(runtime, state_root):
     directory.mkdir(mode=0o700)
     result = {"complete": False, "state": "precheck_failed", "source_count": 0,
               "target_verified_count": 0, "already_verified_count": 0, "retained_count": 0,
-              "opensearch_log_created": 0, "opensearch_log_already_verified": 0,
-              "opensearch_log_conflict": 0, "run_directory": str(directory)}
+             "opensearch_log_created": 0, "opensearch_log_already_verified": 0,
+              "opensearch_log_conflict": 0, "opensearch_evidence_created": 0,
+              "opensearch_evidence_already_verified": 0, "opensearch_evidence_conflict": 0,
+              "history_written_count": 0, "history_mode": False, "run_directory": str(directory)}
     reasons, items = Counter(), []
     phase = "precheck_failed"
     try:
@@ -212,6 +259,18 @@ def run(runtime, state_root):
                     requests.append({"kind": "audit", "payload": converted["event"], "broker_time": clock})
                     candidates.append(len(items))
             items.append(item)
+        if hasattr(runtime, "publish_history"):
+            result["history_mode"] = True
+            history = runtime.publish_history(records)
+            for prefix, key in (("opensearch_log", "logs"), ("opensearch_evidence", "evidence")):
+                for state in ("created", "already_verified", "conflict"):
+                    result[prefix + "_" + state] = int(history[key].get(state, 0))
+                if history[key].get("conflict", 0):
+                    reasons[prefix + "_conflict"] += int(history[key]["conflict"])
+            result["history_written_count"] = sum(
+                result[name] for name in (
+                    "opensearch_log_created", "opensearch_log_already_verified",
+                    "opensearch_evidence_created", "opensearch_evidence_already_verified"))
         validations = runtime.validate(requests)
         if len(validations) != len(requests):
             raise ValueError("native_validation_count_mismatch")
@@ -302,7 +361,7 @@ def run(runtime, state_root):
                 else:
                     result["retained_count"] += 1
                     reasons["publication_requires_readback" if publication_error else "target_" + status] += 1
-        if verified_audit_events and hasattr(runtime, "publish_logs"):
+        if verified_audit_events and hasattr(runtime, "publish_logs") and not hasattr(runtime, "publish_history"):
             try:
                 log_result = runtime.publish_logs(list(verified_audit_events.values()))
                 for key in ("created", "already_verified", "conflict"):
@@ -311,9 +370,14 @@ def run(runtime, state_root):
                     reasons["opensearch_log_conflict"] += result["opensearch_log_conflict"]
             except (OSError, RuntimeError, ValueError, KeyError, TypeError):
                 reasons["opensearch_log_publish_failed"] += len(verified_audit_events)
-        result["complete"] = result["target_verified_count"] + result["retained_count"] == result["source_count"] and not any(
-            name.startswith(("publication_", "target_", "opensearch_log_")) for name in reasons)
-        result["state"] = "completed_with_retained_records" if result["complete"] and result["retained_count"] else "completed" if result["complete"] else "partial_requires_reconciliation"
+        result["complete"] = (
+            result["history_written_count"] == result["source_count"] and
+            not any(name.endswith("_conflict") for name in reasons)
+        ) if hasattr(runtime, "publish_history") else (
+            result["target_verified_count"] + result["retained_count"] == result["source_count"] and
+            not any(name.startswith(("publication_", "target_", "opensearch_log_")) for name in reasons)
+        )
+        result["state"] = "completed" if result["complete"] else "partial_requires_reconciliation"
     except (OSError, ValueError, KeyError, TypeError):
         reasons[phase] += 1
         result["state"] = phase

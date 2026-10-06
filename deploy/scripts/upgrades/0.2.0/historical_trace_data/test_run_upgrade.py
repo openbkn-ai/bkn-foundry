@@ -145,7 +145,7 @@ class UpgradeRunnerTests(unittest.TestCase):
             {"metadata": {"namespace": "resource", "name": "mariadb-0"}, "status": {"phase": "Running"}},
             {"metadata": {"namespace": "openbkn", "name": "agent-observability-0"},
              "status": {"phase": "Running"}, "spec": {"containers": [
-                 {"name": "agent-observability", "image": "020", "env": [{"name": "BKN_AUDIT_ENVIRONMENT", "value": "test"}, {"name": "OPENSEARCH_ENDPOINT", "value": "http://opensearch"}, {"name": "OPENSEARCH_LOG_INDEX", "value": "logs"}]}]}}]}
+                 {"name": "agent-observability", "image": "020", "env": [{"name": "BKN_AUDIT_ENVIRONMENT", "value": "test"}, {"name": "OPENSEARCH_ENDPOINT", "value": "http://opensearch"}, {"name": "OPENSEARCH_LOG_INDEX", "value": "logs"}, {"name": "OPENSEARCH_EVIDENCE_INDEX", "value": "evidence"}]}]}}]}
         for uid in ("cluster-one", "cluster-two"):
             with patch("run_upgrade._command", side_effect=[b"default", canonical({"metadata": {"uid": uid}}).encode(), canonical(pods).encode(), b""]):
                 deployment = DeploymentRuntime().discover()

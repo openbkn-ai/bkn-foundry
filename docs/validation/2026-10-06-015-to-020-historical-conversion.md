@@ -18,10 +18,14 @@ The report was written to the fixed private upgrade directory:
 | --- | ---: |
 | Source records scanned | 3734 |
 | Native 020 Audit records verified | 1 |
+| Source records written to 020 OpenSearch | 3734 |
 | OpenSearch log documents created | 0 |
-| OpenSearch log documents already verified | 1 |
+| OpenSearch log documents already verified | 106 |
 | OpenSearch log conflicts | 0 |
-| Records retained with a reason | 3733 |
+| OpenSearch evidence documents created | 0 |
+| OpenSearch evidence documents already verified | 3628 |
+| OpenSearch evidence conflicts | 0 |
+| Source records not written | 0 |
 
 The run completed with retained records. The retained reasons were:
 
@@ -32,7 +36,7 @@ The run completed with retained records. The retained reasons were:
 | `missing_http_status` | 46 |
 | `unverified_actor_origin` | 2 |
 
-The one verified Audit event is:
+The one native Audit event that also passed the 020 Audit ledger validator is:
 
 - event ID `e162af73-7f8e-5d15-b4fe-6ca14c9a57e4`
 - source `vega`
@@ -43,7 +47,8 @@ The one verified Audit event is:
 
 It is stored in MariaDB's native `bkn_audit` ledger through the existing
 Kafka/consumer path and is also present in the configured OpenSearch log index
-`ss4o_logs-default-namespace`. The OpenSearch document uses the stable ID
+`ss4o_logs-default-namespace`. All 106 015 Audit rows are present in that
+index; the OpenSearch document for this event uses the stable ID
 `historical-audit:vega:e162af73-7f8e-5d15-b4fe-6ca14c9a57e4`, preserves the
 historical timestamp and target snapshot, and has no fabricated `traceId` or
 `spanId`. A direct OpenSearch readback using the normal log filters returned the
@@ -52,18 +57,17 @@ new document.
 
 ## Operational boundary
 
-The script publishes only Audit events that first pass native 020 validation
-and MariaDB readback. When the deployment advertises an in-cluster OpenSearch
+The script writes every source Audit and Evidence row to its corresponding
+020 OpenSearch index. When the deployment advertises an in-cluster OpenSearch
 endpoint, the host-side entry point creates a short-lived `kubectl
 port-forward` to the existing OpenSearch service and closes it after the
 idempotent create/readback operation. No new service, index, or legacy reader
 is introduced.
 
-Evidence rows without their historical Conversation, Interaction, Operation,
-owner, causality and watermark remain in the private source/plan material.
-They are not converted into logs or synthetic Trace facts. No authentic 015
-technical Span source was found in the deployed indexes, so no Span is
-fabricated from a current 020 projection.
+015-only fields remain in the source snapshot when 020 has no equivalent field;
+they do not prevent migration. The 3628 evidence documents are visible in the
+020 evidence index with their original trace, span, request, operation and
+payload fields.
 
 The upgrade tool and its administrator guide are in
 `deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md`.

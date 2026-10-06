@@ -1,7 +1,8 @@
 import unittest
 from datetime import datetime, timezone
 
-from opensearch_history import document_from_event, stable_log_id
+from opensearch_history import (document_from_event, document_from_legacy_audit,
+                                evidence_document_from_legacy_row, stable_log_id)
 
 
 class OpenSearchHistoryDocumentTests(unittest.TestCase):
@@ -34,6 +35,27 @@ class OpenSearchHistoryDocumentTests(unittest.TestCase):
         self.assertEqual(stable_log_id("vega", "event-1"), stable_log_id("vega", "event-1"))
         self.assertNotEqual(stable_log_id("vega", "event-1"), stable_log_id("bkn-backend", "event-1"))
 
+    def test_legacy_audit_row_is_migrated_even_when_online_contract_would_reject_it(self):
+        item = document_from_legacy_audit({"source_id": "execution-factory", "row": {
+            "event_id": "evt-legacy", "event_time": "2026-09-02T10:43:29.255720Z",
+            "action": "create", "outcome": "success", "actor_id": "u",
+            "actor_name": "Administrator", "target_type": "tool", "target_id": "tool-1",
+            "target_name": "tool-1", "request_id": "req-1",
+        }}, datetime(2026, 10, 6, tzinfo=timezone.utc))
+        self.assertEqual(item["document"]["attributes"]["source_log_id"], "evt-legacy")
+        self.assertEqual(item["document"]["attributes"]["target_name"], "tool-1")
+
+    def test_legacy_evidence_row_maps_to_native_evidence_document(self):
+        row = {"event_id": "evt-evidence", "created_at": "2026-09-02T10:43:29.255720Z",
+               "envelope": json_bytes({"event": {"event_id": "evt-evidence",
+               "event_type": "knowledge.read.observed", "trace_id": "a" * 32,
+               "span_id": "b" * 16, "request_id": "req-1", "producer_id": "bkn-backend",
+               "producer_epoch": 1, "producer_sequence": 1, "observed_at": "2026-09-02T10:43:29.255720Z",
+               "envelope": {"event": {"event_type": "knowledge.read.observed", "payload": {"kn_id": "kn-1"}}}}}).decode()}
+        item = evidence_document_from_legacy_row({"source_id": "bkn-backend", "row": row}, datetime(2026, 10, 6, tzinfo=timezone.utc))
+        self.assertEqual(item["document"]["trace_id"], "a" * 32)
+        self.assertEqual(item["document"]["knowledge_network_ids"], ["kn-1"])
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -54,7 +76,23 @@ class _OpenSearchFake:
     def __init__(self):
         self.documents = {}
     def __call__(self, request, timeout):
+        import json
         path = request.full_url.split("/", 3)[-1]
+        if request.method == "POST" and path == "_bulk":
+            lines = request.data.decode().splitlines()
+            response = []
+            for i in range(0, len(lines), 2):
+                action = json.loads(lines[i])["create"]
+                doc_id = action["_id"]
+                if doc_id in self.documents:
+                    response.append({"create": {"status": 409}})
+                else:
+                    self.documents[doc_id] = json.loads(lines[i + 1])
+                    response.append({"create": {"status": 201}})
+            return _Response(200, json.dumps({"items": response}).encode())
+        if request.method == "POST" and path.startswith("logs/_mget"):
+            ids = [item["_id"] for item in json.loads(request.data)["docs"]]
+            return _Response(200, json.dumps({"docs": [{"_id": i, "found": i in self.documents, "_source": self.documents.get(i)} for i in ids]}).encode())
         parts = path.split("/")
         log_id = parts[-1]
         if request.method == "GET":

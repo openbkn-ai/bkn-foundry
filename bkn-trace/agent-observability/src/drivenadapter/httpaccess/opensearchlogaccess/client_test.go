@@ -82,6 +82,21 @@ func TestSearchUsesRegisteredLogFieldsWithoutAnExtraTrustGate(t *testing.T) {
 	}
 }
 
+func TestMetadataIncludesOperationAuditCategories(t *testing.T) {
+	metadata := New(&fakeSearchClient{}, "logs").Metadata()
+	for _, category := range []string{"access.user", "audit.admin", "audit.security"} {
+		found := false
+		for _, value := range metadata.Categories {
+			if value == category {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("metadata does not expose %s", category)
+		}
+	}
+}
+
 func TestSearchPushesEventNamesOnlyWhenCallerRequestsThem(t *testing.T) {
 	query := buildQuery(observabilityvo.LogQuery{
 		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
