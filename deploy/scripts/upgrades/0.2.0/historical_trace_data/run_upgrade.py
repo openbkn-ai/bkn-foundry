@@ -401,7 +401,7 @@ def run(runtime, state_root):
             not any(name.startswith(("publication_", "target_", "opensearch_log_")) for name in reasons)
         )
         result["state"] = "completed" if result["complete"] else "partial_requires_reconciliation"
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         reasons[phase] += 1
         result["state"] = phase
     _report(directory, result, reasons)
