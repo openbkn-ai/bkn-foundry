@@ -8,6 +8,7 @@ import re
 import subprocess
 import time
 import uuid
+import base64
 from urllib.parse import urlparse
 
 from logs import convert_log
@@ -49,9 +50,17 @@ class DeploymentRuntime:
         container = next((value for value in containers if "agent-observability" in value["name"]), containers[0])
         self.container = container["name"]
         values = {entry["name"]: entry.get("value") for entry in container.get("env", [])}
+        for entry in container.get("env", []):
+            if entry["name"] not in {"OPENSEARCH_AUTH_USERNAME", "OPENSEARCH_AUTH_PASSWORD"}:
+                continue
+            ref = entry.get("valueFrom", {}).get("secretKeyRef", {})
+            if ref.get("name") and ref.get("key"):
+                values[entry["name"]] = self._secret(ref["name"], ref["key"])
         self.opensearch_endpoint = values.get("OPENSEARCH_ENDPOINT")
         self.opensearch_log_index = values.get("OPENSEARCH_LOG_INDEX")
         self.opensearch_evidence_index = values.get("OPENSEARCH_EVIDENCE_INDEX")
+        self.opensearch_username = values.get("OPENSEARCH_AUTH_USERNAME")
+        self.opensearch_password = values.get("OPENSEARCH_AUTH_PASSWORD")
         if not self.opensearch_endpoint or not self.opensearch_log_index or not self.opensearch_evidence_index:
             raise ValueError("opensearch_log_configuration_missing")
         environment = values.get("BKN_AUDIT_ENVIRONMENT")
@@ -62,6 +71,13 @@ class DeploymentRuntime:
         return {"instance": "instance-" + digest(cluster_uid.encode()), "cluster_uid": cluster_uid, "environment": environment,
                 "target_image": container["image"], "context": self.context,
                 "span_source": "no_frozen_015_index_provenance"}
+
+    def _secret(self, name, key):
+        encoded = _command(["kubectl", "--context", self.context, "-n", "openbkn", "get", "secret", name,
+                            "-o", "jsonpath={.data." + key + "}"]).strip()
+        if not encoded:
+            raise ValueError("opensearch_secret_missing")
+        return base64.b64decode(encoded).decode()
 
     def _native(self, flags, data):
         command = ["kubectl", "--context", self.context, "-n", "openbkn", "exec", "-i", self.pod,
@@ -110,7 +126,8 @@ class DeploymentRuntime:
                 raise RuntimeError("opensearch_port_forward_failed")
             endpoint = "http://127.0.0.1:" + match.group(1)
         try:
-            writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index)
+            writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index,
+                                             self.opensearch_username, self.opensearch_password)
             return writer.publish(events, datetime.now(timezone.utc))
         finally:
             if port_forward is not None:
@@ -132,15 +149,17 @@ class DeploymentRuntime:
             if not match:
                 port_forward.terminate()
                 raise RuntimeError("opensearch_port_forward_failed")
-            endpoint = "http://127.0.0.1:" + match.group(1)
+            endpoint = parsed.scheme + "://127.0.0.1:" + match.group(1)
         try:
             observed_at = datetime.now(timezone.utc)
             audit_items = [document_from_legacy_audit(record, observed_at)
                            for record in records if record.get("kind") == "audit"]
             evidence_items = [evidence_document_from_legacy_row(record, observed_at)
                               for record in records if record.get("kind") == "evidence"]
-            log_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index)
-            evidence_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index)
+            log_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index,
+                                                 self.opensearch_username, self.opensearch_password)
+            evidence_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,
+                                                      self.opensearch_username, self.opensearch_password)
             return {
                 "logs": log_writer.publish_documents(audit_items, observed_at),
                 "evidence": evidence_writer.publish_documents(evidence_items, observed_at),
@@ -162,9 +181,11 @@ def _report(directory, result, reasons):
              "- Source records written to 020 OpenSearch: %d" % result.get("history_written_count", 0),
              "- Native target records verified: %d" % result["target_verified_count"],
              "- OpenSearch log documents created: %d" % result.get("opensearch_log_created", 0),
+             "- OpenSearch log documents updated: %d" % result.get("opensearch_log_updated", 0),
              "- OpenSearch log documents already verified: %d" % result.get("opensearch_log_already_verified", 0),
              "- OpenSearch log conflicts: %d" % result.get("opensearch_log_conflict", 0),
              "- OpenSearch evidence documents created: %d" % result.get("opensearch_evidence_created", 0),
+             "- OpenSearch evidence documents updated: %d" % result.get("opensearch_evidence_updated", 0),
              "- OpenSearch evidence documents already verified: %d" % result.get("opensearch_evidence_already_verified", 0),
              "- OpenSearch evidence conflicts: %d" % result.get("opensearch_evidence_conflict", 0),
              "- Already verified before publication: %d" % result["already_verified_count"],
@@ -193,7 +214,8 @@ def run(runtime, state_root):
     result = {"complete": False, "state": "precheck_failed", "source_count": 0,
               "target_verified_count": 0, "already_verified_count": 0, "retained_count": 0,
              "opensearch_log_created": 0, "opensearch_log_already_verified": 0,
-              "opensearch_log_conflict": 0, "opensearch_evidence_created": 0,
+             "opensearch_log_updated": 0, "opensearch_log_conflict": 0, "opensearch_evidence_created": 0,
+             "opensearch_evidence_updated": 0,
               "opensearch_evidence_already_verified": 0, "opensearch_evidence_conflict": 0,
               "history_written_count": 0, "history_mode": False, "run_directory": str(directory)}
     reasons, items = Counter(), []
@@ -263,14 +285,15 @@ def run(runtime, state_root):
             result["history_mode"] = True
             history = runtime.publish_history(records)
             for prefix, key in (("opensearch_log", "logs"), ("opensearch_evidence", "evidence")):
-                for state in ("created", "already_verified", "conflict"):
+                for state in ("created", "updated", "already_verified", "conflict"):
                     result[prefix + "_" + state] = int(history[key].get(state, 0))
                 if history[key].get("conflict", 0):
                     reasons[prefix + "_conflict"] += int(history[key]["conflict"])
             result["history_written_count"] = sum(
                 result[name] for name in (
-                    "opensearch_log_created", "opensearch_log_already_verified",
-                    "opensearch_evidence_created", "opensearch_evidence_already_verified"))
+                    "opensearch_log_created", "opensearch_log_updated", "opensearch_log_already_verified",
+                    "opensearch_evidence_created", "opensearch_evidence_updated",
+                    "opensearch_evidence_already_verified"))
         validations = runtime.validate(requests)
         if len(validations) != len(requests):
             raise ValueError("native_validation_count_mismatch")

@@ -4,10 +4,11 @@ import base64
 import hashlib
 import json
 import os
+import ssl
 from datetime import timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
-from urllib.request import Request, ProxyHandler, build_opener
+from urllib.request import HTTPSHandler, Request, ProxyHandler, build_opener
 
 
 
@@ -85,6 +86,15 @@ _AUDIT_EVENT_NAMES = {
     "bkn-safe-admin": "safe.admin.operation.observed",
 }
 
+_AUDIT_BUSINESS_MODULES = {
+    "bkn-backend": "domain_knowledge_network",
+    "vega": "data_resource_knowledge_network",
+    "execution-factory": "execution_factory",
+    "model-manager": "model_management",
+    "bkn-safe-admin": "system_management",
+    "bkn-safe-access": "system_management",
+}
+
 
 def document_from_legacy_audit(record, observed_at):
     """Map one stored 015 row directly to the 020 SS4O log shape.
@@ -102,6 +112,7 @@ def document_from_legacy_audit(record, observed_at):
     target_id = str(row.get("target_id") or row.get("resource") or source_log_id)
     target_name = str(row.get("target_name") or row.get("resource") or target_id)
     actor_id = str(row.get("actor_id") or row.get("actor_name") or "")
+    actor_name = str(row.get("actor_name") or row.get("actor_display_name") or actor_id)
     event_name = ("login.succeeded" if action == "login" and outcome == "success" else
                   "login.failed" if action == "login" else
                   "logout.succeeded" if action == "logout" else
@@ -119,10 +130,15 @@ def document_from_legacy_audit(record, observed_at):
         "safe_summary": summary,
         "outcome": outcome,
         "actor_id": actor_id,
+        "actor_name_snapshot": actor_name,
+        "actor_type": str(row.get("actor_type") or "user"),
         "effective_subject_id": actor_id,
         "target_type": str(row.get("target_type") or row.get("resource") or "resource"),
         "target_id": target_id,
         "target_name": target_name,
+        "business_module_id": _AUDIT_BUSINESS_MODULES.get(source_id, "system_management"),
+        "action": action,
+        "source_channel": str(row.get("source_channel") or "api"),
         "request_id": str(row.get("request_id") or ""),
         "auth_method": str(row.get("auth_method") or ""),
         "ingress_principal": source_id,
@@ -212,7 +228,12 @@ class OpenSearchHistoryWriter:
         self.index = index
         self.username = username
         self.password = password
-        self.opener = opener or build_opener(ProxyHandler({})).open
+        if opener is not None:
+            self.opener = opener
+        elif parsed.scheme == "https":
+            self.opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl._create_unverified_context())).open
+        else:
+            self.opener = build_opener(ProxyHandler({})).open
         self.timeout = timeout
 
     def _request(self, method, path, body=None, content_type="application/json"):
@@ -258,42 +279,51 @@ class OpenSearchHistoryWriter:
         )
 
     def publish_documents(self, items, observed_at=None):
-        counts = {"created": 0, "already_verified": 0, "conflict": 0}
+        counts = {"created": 0, "updated": 0, "already_verified": 0, "conflict": 0}
         for start in range(0, len(items), 200):
             chunk = items[start:start + 200]
-            lines = []
-            for item in chunk:
-                lines.append(json.dumps({"create": {"_index": self.index, "_id": item["_id"]}}, separators=(",", ":")))
-                lines.append(json.dumps(item["document"], ensure_ascii=False, separators=(",", ":")))
-            status, body = self._request("POST", "/_bulk", ("\n".join(lines) + "\n").encode(),
-                                         content_type="application/x-ndjson")
+            status, body = self._request("POST", "/" + quote(self.index, safe="") + "/_mget",
+                                         json.dumps({"docs": [{"_id": item["_id"]} for item in chunk]}, separators=(",", ":")).encode())
             if status != 200:
-                raise RuntimeError("OpenSearch bulk create failed")
-            response = json.loads(body)
-            results = response.get("items", [])
-            if len(results) != len(chunk):
-                raise RuntimeError("OpenSearch bulk response count mismatch")
-            created_flags = []
-            for item, result in zip(chunk, results):
-                create = result.get("create", {})
-                if create.get("status") in {200, 201}:
-                    counts["created"] += 1
-                    created_flags.append(True)
-                elif create.get("status") == 409:
-                    created_flags.append(False)
-                else:
-                    created_flags.append(False)
-                    counts["conflict"] += 1
+                raise RuntimeError("OpenSearch history readback failed")
+            existing_docs = json.loads(body).get("docs", [])
+            lines = []
+            actions = []
+            for item, existing_doc in zip(chunk, existing_docs):
+                if existing_doc.get("found") and self._matches(existing_doc.get("_source"), item["document"]):
+                    actions.append("already")
+                    continue
+                action = "index" if existing_doc.get("found") else "create"
+                actions.append(action)
+                lines.append(json.dumps({action: {"_index": self.index, "_id": item["_id"]}}, separators=(",", ":")))
+                lines.append(json.dumps(item["document"], ensure_ascii=False, separators=(",", ":")))
+            if lines:
+                status, body = self._request("POST", "/_bulk", ("\n".join(lines) + "\n").encode(),
+                                             content_type="application/x-ndjson")
+                if status != 200:
+                    raise RuntimeError("OpenSearch bulk history write failed")
+                response = json.loads(body)
+                results = response.get("items", [])
+                result_index = 0
+                for action in actions:
+                    if action == "already":
+                        continue
+                    result = results[result_index].get(action, {}) if result_index < len(results) else {}
+                    result_index += 1
+                    if result.get("status") in {200, 201}:
+                        counts["created" if action == "create" else "updated"] += 1
+                    else:
+                        counts["conflict"] += 1
             status, body = self._request("POST", "/" + quote(self.index, safe="") + "/_mget",
                                          json.dumps({"docs": [{"_id": item["_id"]} for item in chunk]}, separators=(",", ":")).encode())
             if status != 200:
                 raise RuntimeError("OpenSearch history readback failed")
             docs = json.loads(body).get("docs", [])
-            for item, doc, created in zip(chunk, docs, created_flags):
+            for item, doc, action in zip(chunk, docs, actions):
                 if not doc.get("found"):
                     counts["conflict"] += 1
                 elif not self._matches(doc.get("_source"), item["document"]):
                     counts["conflict"] += 1
-                elif not created:
+                elif action == "already":
                     counts["already_verified"] += 1
         return counts

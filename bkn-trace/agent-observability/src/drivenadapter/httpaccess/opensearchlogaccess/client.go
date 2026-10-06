@@ -300,7 +300,21 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 
 func stringAttribute(attributes map[string]any, key, fallback string) string {
 	value, ok := attributes[key]
-	if !ok {
+	if !ok && strings.Contains(key, ".") {
+		parts := strings.Split(key, ".")
+		var current any = attributes
+		for _, part := range parts {
+			object, ok := current.(map[string]any)
+			if !ok {
+				return fallback
+			}
+			current, ok = object[part]
+			if !ok {
+				return fallback
+			}
+		}
+		value = current
+	} else if !ok {
 		return fallback
 	}
 	text, ok := value.(string)

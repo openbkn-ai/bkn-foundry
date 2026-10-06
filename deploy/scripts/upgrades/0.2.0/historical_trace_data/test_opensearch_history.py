@@ -44,6 +44,9 @@ class OpenSearchHistoryDocumentTests(unittest.TestCase):
         }}, datetime(2026, 10, 6, tzinfo=timezone.utc))
         self.assertEqual(item["document"]["attributes"]["source_log_id"], "evt-legacy")
         self.assertEqual(item["document"]["attributes"]["target_name"], "tool-1")
+        self.assertEqual(item["document"]["attributes"]["actor_name_snapshot"], "Administrator")
+        self.assertEqual(item["document"]["attributes"]["business_module_id"], "execution_factory")
+        self.assertEqual(item["document"]["attributes"]["source_channel"], "api")
 
     def test_legacy_evidence_row_maps_to_native_evidence_document(self):
         row = {"event_id": "evt-evidence", "created_at": "2026-09-02T10:43:29.255720Z",
@@ -82,19 +85,20 @@ class _OpenSearchFake:
             lines = request.data.decode().splitlines()
             response = []
             for i in range(0, len(lines), 2):
-                action = json.loads(lines[i])["create"]
+                action_name, action = next(iter(json.loads(lines[i]).items()))
                 doc_id = action["_id"]
-                if doc_id in self.documents:
+                if action_name == "create" and doc_id in self.documents:
                     response.append({"create": {"status": 409}})
                 else:
                     self.documents[doc_id] = json.loads(lines[i + 1])
-                    response.append({"create": {"status": 201}})
+                    response.append({action_name: {"status": 201}})
             return _Response(200, json.dumps({"items": response}).encode())
-        if request.method == "POST" and path.startswith("logs/_mget"):
+        if request.method == "POST" and path.endswith("/_mget"):
             ids = [item["_id"] for item in json.loads(request.data)["docs"]]
             return _Response(200, json.dumps({"docs": [{"_id": i, "found": i in self.documents, "_source": self.documents.get(i)} for i in ids]}).encode())
         parts = path.split("/")
-        log_id = parts[-1]
+        from urllib.parse import unquote
+        log_id = unquote(parts[-1])
         if request.method == "GET":
             if log_id not in self.documents:
                 return _Response(404, b"{}")

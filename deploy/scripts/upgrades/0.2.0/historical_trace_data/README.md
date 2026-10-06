@@ -1,182 +1,75 @@
-# Historical 015 Data Conversion
+# 015 to 020 Historical Log and Trace Migration
 
-Development candidate for Foundry #2012. Reads retained source data offline
-after upgrading to 020; it does not add a legacy reader to the online service.
-Completed archive files/jobs are retained unchanged and are not imported here.
+This administrator tool migrates the historical records stored by 015 into the
+020 OpenSearch stores used by the product. It is a data upgrade, not an online
+legacy reader and not a new event admission path.
 
-Current support:
+- Every source Audit row is written to the 020 SS4O log index.
+- Every source Trace Evidence row is written to the 020 evidence index.
+- Source timestamps, identifiers, payloads, actor and target values are kept.
+- Fields that did not exist in 015 remain absent; the tool does not invent them.
+- Stable historical IDs make the operation safe to repeat. Existing historical
+  documents are checked and updated only when the converted source document has
+  changed.
+- The source snapshot is retained so the operation can be rerun and audited.
 
-- Private immutable SQL-row snapshots, full source fields, hashes and counts.
-- Six source-specific management/access Log codecs to native Audit v1.
-- Original Evidence Event extraction and native structure/semantic/hash checks.
-- Full-source SS4O Span identity conversion and official exporter v0.148.0
-  Factory-based nested OTLP expansion, with complete typed source sidecar.
-- Explicit `convert`, `archive`, `blocked` classifications and deterministic
-  plans. Original HTTP status is required where the target contract requires
-  it; success does not imply 200. Deployment `environment` is an operator
-  configuration parameter, not a reason to recover the old software environment.
-- Qualification-only Audit Kafka publishing and native month/dedup readback.
-- Qualification-only Span bulk CREATE with exact readback, frozen mapping,
-  numeric/time checks and safe repeated execution.
+## Administrator execution
 
-## Administrator Execution
-
-After an in-place 015 to 020 upgrade, with business writes stopped and the
-pre-upgrade backup available, run on the OpenBKN server:
+Run after the 020 deployment is healthy, with writes paused according to the
+upgrade runbook and the 015 database backup available:
 
 ```sh
 python3 deploy/scripts/upgrades/0.2.0/historical_trace_data/run_upgrade.py
 ```
 
-The script reads the current deployment; administrators do not specify source,
-target, output directory or hashes. It requires the packaged native validator
-in the upgraded Trace image, the retained 015 SQL tables and the existing Audit
-publisher configuration. The in-place Audit path performs real writes to
-`openbkn.audit.v1`; it is not a dry run. This execution model was explicitly
-approved for the upgrade tool. The script does not restore a backup over the
-running center database, delete source tables or import completed archives.
+The script discovers the running deployment and reads the retained 015 source
+snapshot. It obtains the deployed OpenSearch endpoint, index names and, when
+configured, credentials from the deployment Secret. For an in-cluster endpoint
+it opens a short-lived port-forward to the existing OpenSearch service. It does
+not delete source tables, restore over the running database, or import completed
+archive files.
 
-Private snapshots and per-run `report.md` files are stored under
-`~/.bkn/upgrades/015-to-020-historical/`. Snapshot identity uses the `kube-system`
-namespace UID, not the context name. Reusing a snapshot checks its recorded
-cluster UID and source identity before any target readback or publication;
-unidentified or mismatched snapshots stop the run. A renamed context for the
-same cluster is valid; a rebuilt cluster with the same context is a new source.
-Older context-name snapshots are left unchanged and are not reused.
+The run writes a private snapshot and report below:
 
-Publication uses the deployed producer credentials `BKN_AUDIT_KAFKA_*`, never
-the independent consumer credentials `BKN_TRACE_AUDIT_KAFKA_*`. If the Audit
-publisher is disabled or incompletely configured, publication fails and the
-report records the unresolved result; it does not fall back to a reader account.
-The native topic must use `LogAppendTime`. The broker reception time is the
-actual conversion time; historical `occurred_at` is preserved.
+```text
+~/.bkn/upgrades/015-to-020-historical/
+```
 
-Reruns read back native Audit dedup/month-table contents before publishing
-missing records. ACKs do not count as successful migration. Records missing
-required historical facts are retained with reasons, rather than fabricated.
-The current default runtime retains Evidence dependency sets it cannot verify
-and does not discover old Span indexes automatically; the offline Evidence
-bridge and Span qualification tools below remain separate, tested capabilities,
-not proof of a completed production Trace writer integration. Full Kafka E2E
-and production Evidence/Span integration remain release-verification gaps.
+A successful report has `State: completed`, shows the source count equal to
+`Source records written to 020 OpenSearch`, and reports zero conflicts. On a
+repeat run, documents are reported as already verified or updated; the source
+count must still equal the written count.
 
-## Developer Qualification
+## Validation
 
-The developer `cli.py` writers remain qualification-only; this restriction
-does not apply to the explicit server-side in-place Audit entry above.
-Qualification writers require approved full plan, item and target-profile
-digests and only connect to loopback targets.
-Span qualification indexes must begin with `bkn-history-test-`. This candidate
-does not claim a full 015-to-020 version-upgrade qualification (G2).
+Validate the result using the report and the 020 product/API:
 
-### Build And Test
+1. Confirm the Audit count in `ss4o_logs-default-namespace` equals the 015 Audit
+   source count and that records retain their historical time, readable actor,
+   action, target and outcome.
+2. Confirm the Evidence count in `bkn-trace-evidence-v2` equals the 015 Evidence
+   source count and that trace, span, request, operation and payload fields are
+   present where they existed in 015.
+3. Query the 020 log search and Trace pages for a historical time range and
+   compare representative records with the source snapshot.
+4. Run the command a second time. It must complete without conflicts and must
+   not create duplicate historical IDs.
 
-Go 1.25+, Python 3.11+; Python uses only the standard library. Build the native
-validator from `bkn-trace/agent-observability`:
+A Kafka acknowledgement or a database-side audit row alone is not sufficient
+for this migration: the corresponding OpenSearch document must be readable by
+the 020 query path and visible in the product.
+
+## Development checks
+
+The tool uses only the Python standard library. From this directory run:
 
 ```sh
-go build -o /tmp/bkn-historical-data-validate ./cmd/historical-data-validate
-go test ./cmd/historical-data-validate ./src/domain/service/ledgersvc
+python3 -m unittest discover -s . -p 'test_*.py'
 ```
 
-From this directory:
+For changes to the OpenSearch log reader, run the focused Go tests from
+`bkn-trace/agent-observability`:
 
 ```sh
-make ci
+GOCACHE=/tmp/openbkn-go-cache go test ./src/drivenadapter/httpaccess/opensearchlogaccess ./src/domain/valueobject/observabilityvo
 ```
-
-The Span codec uses a temporary loopback HTTP capture server, not a business
-OpenSearch endpoint. Running it requires local-listen permission. Its exporter
-dataset/namespace are frozen to the 015/020 default `default` / `namespace`;
-non-default deployment profiles require a separately frozen codec contract.
-
-### Backup And Plan
-
-Always stabilize the instance and back up retained source tables before an
-upgrade/test. Restore SQL backups only to an explicitly isolated disposable
-database for repeated testing, never automatically over a running source.
-
-Source profile (no credentials):
-
-```json
-{"kind":"kubernetes","context":"kind-bkn-main-e2e","namespace":"resource","pod":"mariadb-0"}
-```
-
-An isolated restored source can use `{"kind":"docker","container":"bkn-history-test-2012"}`.
-The SQL reader executes read-only consistent-snapshot transactions and uses the
-database container's root-password environment, never a password in argv or
-logs. It does not execute restore, DROP or source UPDATE commands.
-
-```sh
-python3 cli.py snapshot --source-profile source-profile.json --source-deployment INSTANCE --output SOURCE
-python3 cli.py plan --source SOURCE --output RUN --environment test --validation-time 2026-10-06T00:00:00Z --native-validator /tmp/bkn-historical-data-validate --span-codec /tmp/bkn-historical-span-codec
-python3 cli.py verify --plan RUN
-```
-
-Each output directory must be new. Source/plan files are private (0700/0600).
-Keep the entire snapshot/plan, not only the summary. Input/provenance and
-unconverted fields remain in the source/sidecar. Output counts distinguish
-source documents from expanded Span items (`record_count` / `item_count`).
-The native validator checks format; it does not prove target durable admission.
-
-### Qualification Writers
-
-Before any write, inspect the private plan and approve all three digests:
-
-- `items_sha256` from `plan.json`.
-- SHA-256 of exact `plan.json` file bytes.
-- SHA-256 of canonical target-profile JSON (UTF-8, sorted keys, compact,
-  non-ASCII preserved). This is not the source Ledger/JCS hash.
-
-Audit profile comes from `apply_audit.audit_profile()`. Set credentials only
-in `BKN_HISTORY_KAFKA_USERNAME` / `BKN_HISTORY_KAFKA_PASSWORD`, endpoints in
-`BKN_HISTORY_KAFKA_BROKERS`, and mechanism in `BKN_HISTORY_KAFKA_MECHANISM`.
-All seed and advertised broker addresses must remain loopback. Native topic
-must be `openbkn.audit.v1` with `LogAppendTime` and valid authenticated access.
-
-```sh
-python3 cli.py apply-audit --mode qualification --plan RUN --sources vega --expected-items-sha256 ITEMS --expected-plan-sha256 PLAN --expected-profile-sha256 PROFILE --native-validator /tmp/bkn-historical-data-validate --receipt audit-receipt.json
-python3 cli.py reconcile-audit --plan RUN --sources vega --target-profile isolated-db.json --output audit-readback.json
-```
-
-Kafka ACKs are explicitly not database proof. `reconcile-audit` reads the native
-dedup and correct month table and checks payload, content hash, source, event
-time and coordinates. Native API/UI and permissions need separate qualification.
-Selected blocked sources prevent writing. Unselected sources are reported,
-not silently declared migrated. Native consumer dedup handles approved repeat
-events; do not automatically retry an uncertain outcome before readback.
-
-Span profile example:
-
-```json
-{"endpoint":"http://127.0.0.1:59200","index":"bkn-history-test-2012-span-v1"}
-```
-
-Optional `user_env` / `password_env` name environment variables, not values.
-No URL credentials are accepted. The writer creates its explicit test index
-only after preflight; it never changes an arbitrary existing mapping or deletes
-documents. Existing content conflicts fail; identical 409s require readback.
-
-```sh
-python3 cli.py apply-spans --mode qualification --plan RUN --expected-items-sha256 ITEMS --expected-plan-sha256 PLAN --expected-profile-sha256 PROFILE --target-profile span-profile.json --receipt span-receipt.json
-```
-
-Receipts must have fresh paths, preserve uncertain/partial outcomes, and do not
-grant production migration permission. Repeating an approved Span plan with a
-new receipt should create zero new documents and verify all existing content.
-
-## Evidence And Core Facts
-
-Extracted Evidence retains its original ID/hash/epoch/sequence; no owner,
-sequence or business lifecycle is invented. Wrapper owner stays in the sidecar.
-**Do not submit the extracted Event through the Audit writer.** Durable Evidence
-migration uses the existing `../evidence_outbox_to_kafka` controlled manifest
-bridge and `evidence-migration-admin`; it requires trusted old Core dependencies,
-ownership, target-watermark/causality checks and activation. Format success does
-not satisfy these gates. Outbox runtime cursors compare numeric primary keys.
-
-Valid old Core facts are preserved with their migration ledger and upgraded by
-the normal target schema migration; they are not reconstructed from Outbox
-events. Missing old facts cannot be replaced with current-directory lookups or
-new synthetic interactions. The 8081 sample has old producer rows but no matching
-old central facts, so it cannot prove their full durable replay or UI visibility.
