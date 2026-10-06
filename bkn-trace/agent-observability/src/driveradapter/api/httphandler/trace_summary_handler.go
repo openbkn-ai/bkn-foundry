@@ -35,6 +35,9 @@ const maxSummaryQueryPage = 100
 // @Param to query string false "Started at or before this RFC3339 timestamp"
 // @Param status query string false "Execution status"
 // @Param agent_or_app query string false "Agent or application"
+// @Param service query string false "Root service name"
+// @Param tool query string false "Root operation name"
+// @Param error_keyword query string false "Substring matched against the recorded error summary"
 // @Param keyword query string false "Trace, request, operation, or error keyword"
 // @Success 200 {object} evidencevo.TraceSummaryPage
 // @Failure 400 {object} rdto.ErrorResponse

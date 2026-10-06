@@ -2468,6 +2468,24 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Root service name",
+                        "name": "service",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Root operation name",
+                        "name": "tool",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Substring matched against the recorded error summary",
+                        "name": "error_keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Trace, request, operation, or error keyword",
                         "name": "keyword",
                         "in": "query"
