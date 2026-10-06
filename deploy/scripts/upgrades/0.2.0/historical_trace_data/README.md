@@ -51,6 +51,10 @@ The log `deployment.environment` is copied from the target deployment's
 `BKN_AUDIT_ENVIRONMENT` configuration. It labels the query environment and does
 not rewrite the original event timestamp or business payload.
 
+The administrator path writes directly to OpenSearch and reads the documents
+back. It does not require Kafka publication, a native validator binary, or
+online event admission for historical rows.
+
 The run writes a private snapshot and report below:
 
 ```text
@@ -72,10 +76,14 @@ Validate the result using the report and the 020 product/API:
 2. Confirm the Evidence count in `bkn-trace-evidence-v2` equals the 015 Evidence
    source count and that trace, span, request, operation and payload fields are
    present where they existed in 015.
-3. Query the 020 log search and Trace pages for a historical time range and
+3. Set a historical time range in the 020 log search and Trace pages and
    compare representative records with the source snapshot.
 4. Run the command a second time. It must complete without conflicts and must
    not create duplicate historical IDs.
+
+Trace range lists retain the existing bounded scan and partial/truncated
+indicators. The conversion report is the complete migration count; a partial
+page is not an exact count of all migrated Trace events.
 
 A Kafka acknowledgement or a database-side audit row alone is not sufficient
 for this migration: the corresponding OpenSearch document must be readable by

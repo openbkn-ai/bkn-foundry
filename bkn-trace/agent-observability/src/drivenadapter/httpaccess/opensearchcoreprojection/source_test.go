@@ -830,3 +830,22 @@ func TestHistoricalEvidenceIsReturnedWhenNoReceiptMatches(t *testing.T) {
 		t.Fatalf("history must remain visible within owner scope: result=%+v err=%v", result, err)
 	}
 }
+
+func TestHistoricalRangeUnionsEvidenceWithCurrentReceipts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, summaryReceiptResponse) }))
+	t.Cleanup(server.Close)
+	downstream := &recordingArtifactProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{
+		{TraceID: "history-1", AccountID: "user-1", AccountType: "user"},
+		{TraceID: "trace-1", AccountID: "user-1", AccountType: "user"},
+		{TraceID: "foreign", AccountID: "foreign-user", AccountType: "user"},
+	}}}
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "core", downstream)
+	query := iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}, From: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)}
+	result, err := source.LoadExecutionProjection(context.Background(), query)
+	if err != nil || len(result.Traces) != 2 {
+		t.Fatalf("mixed history projection: %+v err=%v", result, err)
+	}
+	if len(downstream.queries) != 1 || len(downstream.queries[0].AuthorizedInteractionIDs) != 0 || !downstream.queries[0].From.Equal(query.From) {
+		t.Fatalf("history must retain original scope/range: %+v", downstream.queries)
+	}
+}

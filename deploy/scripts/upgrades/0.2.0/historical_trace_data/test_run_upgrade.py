@@ -79,6 +79,24 @@ class UpgradeRunnerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    def test_history_mode_completes_without_online_admission_or_kafka(self):
+        runtime = FakeRuntime()
+        runtime.publish_history = lambda records: {"logs": {"created": 2}, "evidence": {"created": 1}}
+        runtime.validate = lambda _: (_ for _ in ()).throw(AssertionError("online validation must not run"))
+        result = run(runtime, self.root)
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["history_written_count"], 3)
+        self.assertEqual(runtime.sent, [])
+
+    def test_history_failure_generates_truthful_report(self):
+        runtime = FakeRuntime()
+        runtime.publish_history = lambda _: (_ for _ in ()).throw(RuntimeError("OpenSearch request failed"))
+        result = run(runtime, self.root)
+        self.assertFalse(result["complete"])
+        report = (Path(result["run_directory"]) / "report.md").read_text()
+        self.assertIn("history_publication_failed", report)
+        self.assertNotIn("All source rows were written", report)
+
     def test_single_run_partial_conversion_writes_only_confirmed_log_and_report(self):
         runtime = FakeRuntime()
         result = run(runtime, self.root)

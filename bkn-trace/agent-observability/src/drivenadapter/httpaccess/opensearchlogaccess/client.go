@@ -342,7 +342,7 @@ func stringSliceAttribute(attributes map[string]any, key string) []string {
 }
 
 func projectedAttributes(attributes map[string]any) map[string]any {
-	allowed := []string{"business_context", "task_id", "causation_request_id", "linked_trace_id", "linked_span_id"}
+	allowed := []string{"migration_source", "business_context", "task_id", "causation_request_id", "linked_trace_id", "linked_span_id"}
 	result := make(map[string]any)
 	for _, key := range allowed {
 		if value, ok := attributes[key]; ok {

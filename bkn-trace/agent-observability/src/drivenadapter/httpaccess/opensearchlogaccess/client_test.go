@@ -278,7 +278,7 @@ func containsBytes(payload []byte, value string) bool {
 
 func TestHistoricalAuditListAndDetailThroughOperationAuditService(t *testing.T) {
 	backend := &fakeSearchClient{response: []byte(`{"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"historical-audit:vega:evt-1","_source":{
- "attributes":{"schema_version":"1.0","log_id":"historical-audit:vega:evt-1","source_id":"vega","source_log_id":"evt-1","log_category":"audit.admin","event_name":"vega.operation.observed","safe_summary":"create Catalog One","outcome":"success","actor_id":"user-1","actor_name_snapshot":"Administrator","auth_method":"oauth","source_channel":"api","business_module_id":"data_resource_knowledge_network","action":"create","target_type":"catalog","target_id":"catalog-1","target_name":"Catalog One"},
+ "attributes":{"schema_version":"1.0","log_id":"historical-audit:vega:evt-1","source_id":"vega","source_log_id":"evt-1","log_category":"audit.admin","event_name":"vega.operation.observed","safe_summary":"create Catalog One","outcome":"success","actor_id":"user-1","actor_name_snapshot":"Administrator","auth_method":"","migration_source":"015-to-020","source_channel":"api","business_module_id":"data_resource_knowledge_network","action":"create","target_type":"catalog","target_id":"catalog-1","target_name":"Catalog One"},
  "@timestamp":"2026-09-12T21:25:44Z","observedTimestamp":"2026-10-06T12:00:00Z","resource":{"service":{"name":"vega"},"deployment":{"environment":"production"}},"severity":{"text":"INFO","number":9}
  }}]}}`)}
 	service := logsvc.NewWithOptions([]logsvc.Source{New(backend, "logs")}, logsvc.Options{OperationAuditOnly: true})

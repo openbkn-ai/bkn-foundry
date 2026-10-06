@@ -49,6 +49,18 @@ class OpenSearchHistoryDocumentTests(unittest.TestCase):
         self.assertEqual(item["document"]["attributes"]["business_module_id"], "execution_factory")
         self.assertEqual(item["document"]["attributes"]["source_channel"], "api")
 
+    def test_safe_history_preserves_name_http_outcome_and_failure(self):
+        item = document_from_legacy_audit({"source_id": "bkn-safe-admin", "row": {
+            "id": "safe-1", "created_at": "2026-09-02T00:00:00Z", "actor_id": "u-1",
+            "actor_name_snapshot": "Alice", "status": 403, "action": "update", "resource": "role",
+            "failure_code": "forbidden",
+        }}, datetime(2026, 10, 6, tzinfo=timezone.utc), "production")
+        attrs = item["document"]["attributes"]
+        self.assertEqual(attrs["actor_name_snapshot"], "Alice")
+        self.assertEqual(attrs["outcome"], "denied")
+        self.assertEqual(attrs["http_status"], 403)
+        self.assertEqual(attrs["failure_code"], "forbidden")
+
     def test_legacy_evidence_row_maps_to_native_evidence_document(self):
         row = {"event_id": "evt-evidence", "created_at": "2026-09-02T10:43:29.255720Z",
                "envelope": json_bytes({"event": {"event_id": "evt-evidence",

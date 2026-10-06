@@ -108,11 +108,14 @@ def document_from_legacy_audit(record, observed_at, environment):
     source_log_id = str(row.get("event_id") or row.get("id"))
     access = source_id == "bkn-safe-access"
     action = str(row.get("action") or "operation")
-    outcome = str(row.get("outcome") or "unknown")
+    http_status = row.get("http_status")
+    if http_status is None and source_id == "bkn-safe-admin":
+        http_status = row.get("status")
+    outcome = str(row.get("outcome") or ("denied" if http_status in (401, 403) else "failure" if isinstance(http_status, int) and http_status >= 400 else "success" if isinstance(http_status, int) and 200 <= http_status < 300 else "unknown"))
     target_id = str(row.get("target_id") or row.get("resource") or source_log_id)
     target_name = str(row.get("target_name") or row.get("resource") or target_id)
     actor_id = str(row.get("actor_id") or row.get("actor_name") or "")
-    actor_name = str(row.get("actor_name") or row.get("actor_display_name") or actor_id)
+    actor_name = str(row.get("actor_name_snapshot") or row.get("actor_name") or row.get("actor_display_name") or actor_id)
     event_name = ("login.succeeded" if action == "login" and outcome == "success" else
                   "login.failed" if action == "login" else
                   "logout.succeeded" if action == "logout" else
@@ -146,8 +149,13 @@ def document_from_legacy_audit(record, observed_at, environment):
         "migration_source": "015-to-020",
         "historical_event_id": source_log_id,
     }
-    if row.get("http_status") is not None:
-        attributes["http_status"] = row["http_status"]
+    if http_status is not None:
+        attributes["http_status"] = http_status
+    if row.get("failure_code"):
+        attributes["failure_code"] = row["failure_code"]
+    network_id = row.get("knowledge_network_id") or row.get("kn_id")
+    if network_id:
+        attributes["knowledge_network_ids"] = [str(network_id)]
     if row.get("method"):
         attributes["http"] = {"request": {"method": str(row["method"])}}
     occurred_at = row.get("event_time") or row.get("created_at") or row.get("recorded_at")

@@ -159,9 +159,7 @@ func TestListTraceExecutionsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	}}
 	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{pageSummaryTrace("trace-page", "req-page", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo")}}}
 	service := New(base, WithProjectionSource(projection), WithSessionStore(store))
-	from := time.Date(2026, 8, 19, 8, 0, 0, 0, time.UTC)
-	to := time.Date(2026, 8, 19, 10, 0, 0, 0, time.UTC)
-	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: from, To: to, Limit: 20})
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20})
 	if err != nil {
 		t.Fatalf("list trace page: %v", err)
 	}
@@ -174,14 +172,12 @@ func TestListTraceExecutionsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	if !projection.queries[0].From.IsZero() || !projection.queries[0].To.IsZero() {
 		t.Fatalf("page expansion must not filter later facts by the identity time range: %+v", projection.queries[0])
 	}
-	if query := store.traceQueries[0]; !query.From.Equal(from) || !query.To.Equal(to) {
-		t.Fatalf("identity query must own the time filter: %+v", query)
-	}
+
 	store.tracePage = isessionstore.SummaryIdentityPage{Entries: []isessionstore.SummaryIdentity{{ID: "trace-next", StartedAt: "2026-08-19T08:59:00Z"}}, Total: 101}
 	projection.resultFor = func(query iprojectionsource.Query) iprojectionsource.Result {
 		return iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{pageSummaryTrace(query.TraceIDs[0], "req-next", "2026-08-19T08:59:00Z", "acct_demo", "bd_demo")}}
 	}
-	nextPage, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: from, To: to, Limit: 20, Cursor: *page.NextCursor})
+	nextPage, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20, Cursor: *page.NextCursor})
 	if err != nil || len(nextPage.Entries) != 1 || nextPage.Entries[0].TraceID != "trace-next" {
 		t.Fatalf("next page=%+v err=%v", nextPage, err)
 	}
@@ -2745,17 +2741,24 @@ func TestOperationFailureSummaryKeepsUsefulTextAndBoundsListSize(t *testing.T) {
 	}
 }
 
-func TestHistoricalTraceRangeFallsBackWhenReceiptIdentityRangeIsEmpty(t *testing.T) {
-	store := &pagingSessionStore{Store: sessionstore.New()}
-	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{pageSummaryTrace("trace-history", "req-history", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo")}}}
+func TestHistoricalTraceRangePreservesMixedRecordsAndCursor(t *testing.T) {
+	store := &pagingSessionStore{Store: sessionstore.New(), tracePage: isessionstore.SummaryIdentityPage{Entries: []isessionstore.SummaryIdentity{{ID: "trace-current"}}, Total: 1}}
+	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{
+		pageSummaryTrace("trace-current", "req-current", "2026-08-19T09:30:00Z", "acct_demo", "bd_demo"),
+		pageSummaryTrace("trace-history", "req-history", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo"),
+	}}}
 	service := New(evidencestore.New(), WithProjectionSource(projection), WithSessionStore(store))
-	from := time.Date(2026, 8, 19, 8, 0, 0, 0, time.UTC)
-	to := time.Date(2026, 8, 19, 10, 0, 0, 0, time.UTC)
-	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: from, To: to, Limit: 20})
-	if err != nil || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-history" {
-		t.Fatalf("historical range: page=%+v err=%v", page, err)
+	opts := evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: time.Date(2026, 8, 19, 8, 0, 0, 0, time.UTC), To: time.Date(2026, 8, 19, 10, 0, 0, 0, time.UTC), Limit: 1}
+	page, err := service.ListTraceExecutions(context.Background(), opts)
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-current" || page.NextCursor == nil {
+		t.Fatalf("first mixed page: %+v err=%v", page, err)
 	}
-	if len(projection.queries) != 1 || !projection.queries[0].From.Equal(from) {
-		t.Fatalf("fallback must preserve range and scope: %+v", projection.queries)
+	opts.Cursor = *page.NextCursor
+	page, err = service.ListTraceExecutions(context.Background(), opts)
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-history" {
+		t.Fatalf("history cursor page: %+v err=%v", page, err)
+	}
+	if len(store.traceQueries) != 0 || len(projection.queries) != 2 || !projection.queries[0].From.Equal(opts.From) {
+		t.Fatalf("range projection: %+v", projection.queries)
 	}
 }

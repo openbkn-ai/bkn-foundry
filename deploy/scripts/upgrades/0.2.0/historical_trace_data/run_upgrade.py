@@ -67,8 +67,6 @@ class DeploymentRuntime:
         if environment not in {"development", "test", "staging", "production"}:
             raise ValueError("deployment_environment_missing")
         self.environment = environment
-        # Verifies the packaged binary; no administrator Go compiler required.
-        self._native([], b"")
         return {"instance": "instance-" + digest(cluster_uid.encode()), "cluster_uid": cluster_uid, "environment": environment,
                 "target_image": container["image"], "context": self.context,
                 "span_source": "no_frozen_015_index_provenance"}
@@ -184,7 +182,6 @@ def _report(directory, result, reasons):
              "- State: " + result["state"],
              "- Source records: %d" % result["source_count"],
              "- Source records written to 020 OpenSearch: %d" % result.get("history_written_count", 0),
-             "- Native target records verified: %d" % result["target_verified_count"],
              "- OpenSearch log documents created: %d" % result.get("opensearch_log_created", 0),
              "- OpenSearch log documents updated: %d" % result.get("opensearch_log_updated", 0),
              "- OpenSearch log documents already verified: %d" % result.get("opensearch_log_already_verified", 0),
@@ -207,7 +204,7 @@ def _report(directory, result, reasons):
     else:
         lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
     lines.extend(["", "Original rows remain in the private source snapshot for repeatable reruns.",
-                  "Kafka ACK is not target persistence proof; verified counts require native DB readback.",
+                  "OpenSearch written counts are confirmed by document readback.",
                   "Existing completed archive files/jobs are unchanged and are not imported.",
                   "",])
     private_write(directory / "report.md", "\n".join(lines).encode())
@@ -247,6 +244,25 @@ def run(runtime, state_root):
         phase = "source_snapshot_failed"
         records = list(read_snapshot(source))
         result["source_count"] = len(records)
+        if hasattr(runtime, "publish_history"):
+            result["history_mode"] = True
+            phase = "history_publication_failed"
+            history = runtime.publish_history(records)
+            for prefix, key in (("opensearch_log", "logs"), ("opensearch_evidence", "evidence")):
+                for state in ("created", "updated", "already_verified", "conflict"):
+                    result[prefix + "_" + state] = int(history[key].get(state, 0))
+                if history[key].get("conflict", 0):
+                    reasons[prefix + "_conflict"] += int(history[key]["conflict"])
+            result["history_written_count"] = sum(
+                result[name] for name in (
+                    "opensearch_log_created", "opensearch_log_updated", "opensearch_log_already_verified",
+                    "opensearch_evidence_created", "opensearch_evidence_updated",
+                    "opensearch_evidence_already_verified"))
+            result["complete"] = result["history_written_count"] == result["source_count"] and not reasons
+            result["state"] = "completed" if result["complete"] else "partial_requires_reconciliation"
+            private_write(directory / "items.jsonl", "".join(canonical({"kind": r["kind"], "source_id": r["source_id"], "source": r, "disposition": "migrated" if result["complete"] else "requires_readback"}) + "\n" for r in records).encode())
+            _report(directory, result, reasons)
+            return result
         clock = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         requests, candidates = [], []
         delegated = {"evidence": [], "span": []}
@@ -289,19 +305,6 @@ def run(runtime, state_root):
                     requests.append({"kind": "audit", "payload": converted["event"], "broker_time": clock})
                     candidates.append(len(items))
             items.append(item)
-        if hasattr(runtime, "publish_history"):
-            result["history_mode"] = True
-            history = runtime.publish_history(records)
-            for prefix, key in (("opensearch_log", "logs"), ("opensearch_evidence", "evidence")):
-                for state in ("created", "updated", "already_verified", "conflict"):
-                    result[prefix + "_" + state] = int(history[key].get(state, 0))
-                if history[key].get("conflict", 0):
-                    reasons[prefix + "_conflict"] += int(history[key]["conflict"])
-            result["history_written_count"] = sum(
-                result[name] for name in (
-                    "opensearch_log_created", "opensearch_log_updated", "opensearch_log_already_verified",
-                    "opensearch_evidence_created", "opensearch_evidence_updated",
-                    "opensearch_evidence_already_verified"))
         validations = runtime.validate(requests)
         if len(validations) != len(requests):
             raise ValueError("native_validation_count_mismatch")

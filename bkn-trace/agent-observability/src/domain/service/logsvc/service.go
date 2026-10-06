@@ -668,9 +668,10 @@ func isOperationAuditRecord(record observabilityvo.LogRecord) bool {
 }
 
 func validOperationAuditProjection(record observabilityvo.LogRecord) bool {
+	authRecordedOrHistorical := record.AuthMethod != "" || (strings.HasPrefix(record.LogID, "historical-audit:") && record.Attributes["migration_source"] == "015-to-020")
 	return observabilityvo.IsBusinessModule(record.BusinessModule) && record.Action != "" &&
 		record.TargetType != "" && record.TargetID != "" && record.TargetNameSnapshot != "" &&
-		record.ActorID != "" && record.ActorNameSnapshot != "" && record.AuthMethod != "" &&
+		record.ActorID != "" && record.ActorNameSnapshot != "" && authRecordedOrHistorical &&
 		record.SourceChannel != ""
 }
 
