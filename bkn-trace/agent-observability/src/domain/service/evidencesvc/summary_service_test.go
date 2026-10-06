@@ -2744,3 +2744,18 @@ func TestOperationFailureSummaryKeepsUsefulTextAndBoundsListSize(t *testing.T) {
 		t.Fatal("original details must remain intact")
 	}
 }
+
+func TestHistoricalTraceRangeFallsBackWhenReceiptIdentityRangeIsEmpty(t *testing.T) {
+	store := &pagingSessionStore{Store: sessionstore.New()}
+	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{pageSummaryTrace("trace-history", "req-history", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo")}}}
+	service := New(evidencestore.New(), WithProjectionSource(projection), WithSessionStore(store))
+	from := time.Date(2026, 8, 19, 8, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 19, 10, 0, 0, 0, time.UTC)
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: from, To: to, Limit: 20})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-history" {
+		t.Fatalf("historical range: page=%+v err=%v", page, err)
+	}
+	if len(projection.queries) != 1 || !projection.queries[0].From.Equal(from) {
+		t.Fatalf("fallback must preserve range and scope: %+v", projection.queries)
+	}
+}

@@ -1735,6 +1735,11 @@ func (s *Service) listTraceIdentityPage(ctx context.Context, options evidencevo.
 		return evidencevo.TraceSummaryPage{}, true, err
 	}
 	if len(identityPage.Entries) == 0 {
+		if identityPage.Total == 0 && !hasCursor && (!options.From.IsZero() || !options.To.IsZero()) {
+			// Imported history can have evidence without current receipt identities.
+			// Preserve the existing scoped projection path for historical ranges.
+			return evidencevo.TraceSummaryPage{}, false, nil
+		}
 		return evidencevo.TraceSummaryPage{Entries: []evidencevo.TraceSummary{}, Total: identityPage.Total, Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit)}, true, nil
 	}
 	ids := summaryIdentityIDs(identityPage.Entries)

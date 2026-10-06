@@ -82,6 +82,13 @@ func (s *Source) LoadExecutionProjection(ctx context.Context, query iprojections
 		}
 	}
 	traces := tracesFromReceipts(receipts)
+	if len(receipts) == 0 {
+		for _, trace := range artifactResult.Traces {
+			if evidencevo.MatchesScope(trace, query.Scope) {
+				traces = append(traces, trace)
+			}
+		}
+	}
 	artifacts := artifactsForTraces(artifactResult.Artifacts, traces)
 	attachArtifactEvents(traces, artifacts)
 	return iprojectionsource.Result{

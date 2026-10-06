@@ -817,3 +817,16 @@ func TestSourceDelegatesArtifactOnlyProjectionWithCoreReceiptAuthorization(t *te
 		t.Fatalf("artifact-only projection must retain the Core-authorized interaction: %+v", query)
 	}
 }
+
+func TestHistoricalEvidenceIsReturnedWhenNoReceiptMatches(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `{"hits":{"hits":[]}}`) }))
+	t.Cleanup(server.Close)
+	history := evidencevo.NormalizedTrace{TraceID: "history-1", AccountID: "user-1", AccountType: "user"}
+	foreign := evidencevo.NormalizedTrace{TraceID: "foreign-1", AccountID: "foreign-user", AccountType: "user"}
+	downstream := artifactProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{history, foreign}}}
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "core", downstream)
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}})
+	if err != nil || len(result.Traces) != 1 || result.Traces[0].TraceID != "history-1" {
+		t.Fatalf("history must remain visible within owner scope: result=%+v err=%v", result, err)
+	}
+}
