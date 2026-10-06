@@ -212,7 +212,6 @@ def evidence_document_from_legacy_row(record, observed_at):
         "business_ref_count": len(refs),
         "observed_start": event_doc["observed_at"],
         "ingested_at": _iso(observed_at),
-        "aggregate": False,
     }
     return {"_id": document_id, "document": document}
 

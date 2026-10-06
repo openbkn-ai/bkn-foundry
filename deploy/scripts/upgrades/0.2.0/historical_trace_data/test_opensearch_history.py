@@ -57,6 +57,7 @@ class OpenSearchHistoryDocumentTests(unittest.TestCase):
                "producer_epoch": 1, "producer_sequence": 1, "observed_at": "2026-09-02T10:43:29.255720Z",
                "envelope": {"event": {"event_type": "knowledge.read.observed", "payload": {"kn_id": "kn-1"}}}}}).decode()}
         item = evidence_document_from_legacy_row({"source_id": "bkn-backend", "row": row}, datetime(2026, 10, 6, tzinfo=timezone.utc))
+        self.assertNotIn("aggregate", item["document"])
         self.assertEqual(item["document"]["trace_id"], "a" * 32)
         self.assertEqual(item["document"]["knowledge_network_ids"], ["kn-1"])
 
