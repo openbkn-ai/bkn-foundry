@@ -27,6 +27,10 @@ class DeploymentRuntime:
 
     def discover(self):
         self.context = _command(["kubectl", "config", "current-context"]).decode().strip()
+        namespace = strict_loads(_command(["kubectl", "--context", self.context, "get", "namespace", "kube-system", "-o", "json"]))
+        cluster_uid = namespace.get("metadata", {}).get("uid")
+        if not isinstance(cluster_uid, str) or not cluster_uid.strip():
+            raise ValueError("cluster_identity_missing")
         pods = strict_loads(_command(["kubectl", "--context", self.context, "get", "pods", "-A", "-o", "json"]))["items"]
         database = [pod for pod in pods if pod["metadata"]["namespace"] == "resource" and
                     pod["metadata"]["name"].startswith("mariadb-") and pod["status"].get("phase") == "Running"]
@@ -47,7 +51,7 @@ class DeploymentRuntime:
             raise ValueError("deployment_environment_missing")
         # Verifies the packaged binary; no administrator Go compiler required.
         self._native([], b"")
-        return {"instance": "instance-" + digest(self.context.encode())[:16], "environment": environment,
+        return {"instance": "instance-" + digest(cluster_uid.encode()), "cluster_uid": cluster_uid, "environment": environment,
                 "target_image": container["image"], "context": self.context,
                 "span_source": "no_frozen_015_index_provenance"}
 
@@ -122,6 +126,13 @@ def run(runtime, state_root):
         if not source.exists():
             records, tables = runtime.snapshot()
             save_snapshot(source, records, instance, {"tables": tables, "deployment": deployment})
+        phase = "snapshot_deployment_mismatch"
+        manifest = strict_loads((source / "snapshot.json").read_text())
+        frozen = manifest.get("metadata", {}).get("deployment", {})
+        if (not deployment.get("cluster_uid") or manifest.get("source_deployment") != instance or
+                frozen.get("instance") != instance or frozen.get("cluster_uid") != deployment["cluster_uid"]):
+            raise ValueError("snapshot_deployment_mismatch")
+        phase = "source_snapshot_failed"
         records = list(read_snapshot(source))
         result["source_count"] = len(records)
         clock = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

@@ -71,11 +71,22 @@ func newKafkaPublisher() (auditPublisher, error) {
 }
 
 func inPlaceAuditConfig() (conf.KafkaTopicConsumerConfig, error) {
-	config, err := conf.NewKafkaConsumerConfig()
-	if err != nil || !config.Audit.Enabled {
-		return conf.KafkaTopicConsumerConfig{}, errors.New("enabled native Audit service configuration required")
+	// Use the deployed producer principal, never the independent READ-only
+	// consumer credentials. No upgrade-specific credentials are introduced.
+	config := conf.KafkaTopicConsumerConfig{Topic: auditconsumer.Topic,
+		Enabled:       os.Getenv("BKN_AUDIT_KAFKA_ENABLED") == "true",
+		SASLMechanism: strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_SASL_MECHANISM")),
+		Username:      strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_USERNAME")),
+		Password:      os.Getenv("BKN_AUDIT_KAFKA_PASSWORD")}
+	for _, entry := range strings.Split(os.Getenv("BKN_AUDIT_KAFKA_BROKERS"), ",") {
+		if broker := strings.TrimSpace(entry); broker != "" {
+			config.Brokers = append(config.Brokers, broker)
+		}
 	}
-	return config.Audit, nil
+	if !config.Enabled || len(config.Brokers) == 0 || config.SASLMechanism == "" || config.Username == "" || config.Password == "" {
+		return conf.KafkaTopicConsumerConfig{}, errors.New("enabled native Audit publisher configuration required")
+	}
+	return config, nil
 }
 
 func newInPlaceKafkaPublisher() (auditPublisher, error) {

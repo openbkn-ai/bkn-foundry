@@ -131,13 +131,38 @@ func TestInPlaceUpgradeUsesCurrentAuditServiceConfiguration(t *testing.T) {
 	t.Setenv("BKN_TRACE_AUDIT_KAFKA_USERNAME", "migration-source")
 	t.Setenv("BKN_TRACE_AUDIT_KAFKA_PASSWORD", "private")
 	t.Setenv("BKN_TRACE_AUDIT_KAFKA_GROUP", "audit-writer")
+	t.Setenv("BKN_AUDIT_KAFKA_ENABLED", "true")
+	t.Setenv("BKN_AUDIT_KAFKA_BROKERS", "kafka.resource.svc.cluster.local:9092")
+	t.Setenv("BKN_AUDIT_KAFKA_SASL_MECHANISM", "PLAIN")
+	t.Setenv("BKN_AUDIT_KAFKA_USERNAME", "upgrade-producer")
+	t.Setenv("BKN_AUDIT_KAFKA_PASSWORD", "producer-private")
 	configuration, err := inPlaceAuditConfig()
 	if err != nil || configuration.Topic != "openbkn.audit.v1" || configuration.Brokers[0] != "kafka.resource.svc.cluster.local:9092" {
 		t.Fatal("existing service configuration not reused")
 	}
-	t.Setenv("BKN_TRACE_AUDIT_KAFKA_ENABLED", "false")
+	if configuration.Username != "upgrade-producer" || configuration.Password != "producer-private" {
+		t.Fatal("consumer credentials used for upgrade publication")
+	}
+	t.Setenv("BKN_AUDIT_KAFKA_ENABLED", "false")
 	if _, err := inPlaceAuditConfig(); err == nil {
-		t.Fatal("disabled Audit service accepted")
+		t.Fatal("disabled Audit publisher accepted")
+	}
+}
+
+func TestInPlaceUpgradeDoesNotFallBackToConsumerCredentials(t *testing.T) {
+	t.Setenv("BKN_TRACE_AUDIT_KAFKA_ENABLED", "true")
+	t.Setenv("BKN_TRACE_AUDIT_KAFKA_BROKERS", "kafka:9092")
+	t.Setenv("BKN_TRACE_AUDIT_KAFKA_SASL_MECHANISM", "PLAIN")
+	t.Setenv("BKN_TRACE_AUDIT_KAFKA_USERNAME", "reader")
+	t.Setenv("BKN_TRACE_AUDIT_KAFKA_PASSWORD", "reader-private")
+	t.Setenv("BKN_TRACE_AUDIT_KAFKA_GROUP", "reader-group")
+	t.Setenv("BKN_AUDIT_KAFKA_ENABLED", "true")
+	t.Setenv("BKN_AUDIT_KAFKA_BROKERS", "kafka:9092")
+	t.Setenv("BKN_AUDIT_KAFKA_SASL_MECHANISM", "PLAIN")
+	t.Setenv("BKN_AUDIT_KAFKA_USERNAME", "")
+	t.Setenv("BKN_AUDIT_KAFKA_PASSWORD", "")
+	if _, err := inPlaceAuditConfig(); err == nil {
+		t.Fatal("missing producer credentials accepted")
 	}
 }
 

@@ -19,12 +19,57 @@ Current support:
 - Qualification-only Span bulk CREATE with exact readback, frozen mapping,
   numeric/time checks and safe repeated execution.
 
-**Release writes remain disabled.** Qualification writers require approved
-full plan, item and target-profile digests and only connect to loopback targets.
+## Administrator Execution
+
+After an in-place 015 to 020 upgrade, with business writes stopped and the
+pre-upgrade backup available, run on the OpenBKN server:
+
+```sh
+python3 deploy/scripts/upgrades/0.2.0/historical_trace_data/run_upgrade.py
+```
+
+The script reads the current deployment; administrators do not specify source,
+target, output directory or hashes. It requires the packaged native validator
+in the upgraded Trace image, the retained 015 SQL tables and the existing Audit
+publisher configuration. The in-place Audit path performs real writes to
+`openbkn.audit.v1`; it is not a dry run. This execution model was explicitly
+approved for the upgrade tool. The script does not restore a backup over the
+running center database, delete source tables or import completed archives.
+
+Private snapshots and per-run `report.md` files are stored under
+`~/.bkn/upgrades/015-to-020-historical/`. Snapshot identity uses the `kube-system`
+namespace UID, not the context name. Reusing a snapshot checks its recorded
+cluster UID and source identity before any target readback or publication;
+unidentified or mismatched snapshots stop the run. A renamed context for the
+same cluster is valid; a rebuilt cluster with the same context is a new source.
+Older context-name snapshots are left unchanged and are not reused.
+
+Publication uses the deployed producer credentials `BKN_AUDIT_KAFKA_*`, never
+the independent consumer credentials `BKN_TRACE_AUDIT_KAFKA_*`. If the Audit
+publisher is disabled or incompletely configured, publication fails and the
+report records the unresolved result; it does not fall back to a reader account.
+The native topic must use `LogAppendTime`. The broker reception time is the
+actual conversion time; historical `occurred_at` is preserved.
+
+Reruns read back native Audit dedup/month-table contents before publishing
+missing records. ACKs do not count as successful migration. Records missing
+required historical facts are retained with reasons, rather than fabricated.
+The current default runtime retains Evidence dependency sets it cannot verify
+and does not discover old Span indexes automatically; the offline Evidence
+bridge and Span qualification tools below remain separate, tested capabilities,
+not proof of a completed production Trace writer integration. Full Kafka E2E
+and production Evidence/Span integration remain release-verification gaps.
+
+## Developer Qualification
+
+The developer `cli.py` writers remain qualification-only; this restriction
+does not apply to the explicit server-side in-place Audit entry above.
+Qualification writers require approved full plan, item and target-profile
+digests and only connect to loopback targets.
 Span qualification indexes must begin with `bkn-history-test-`. This candidate
 does not claim a full 015-to-020 version-upgrade qualification (G2).
 
-## Build And Test
+### Build And Test
 
 Go 1.25+, Python 3.11+; Python uses only the standard library. Build the native
 validator from `bkn-trace/agent-observability`:
@@ -45,7 +90,7 @@ OpenSearch endpoint. Running it requires local-listen permission. Its exporter
 dataset/namespace are frozen to the 015/020 default `default` / `namespace`;
 non-default deployment profiles require a separately frozen codec contract.
 
-## Backup And Plan
+### Backup And Plan
 
 Always stabilize the instance and back up retained source tables before an
 upgrade/test. Restore SQL backups only to an explicitly isolated disposable
@@ -74,7 +119,7 @@ unconverted fields remain in the source/sidecar. Output counts distinguish
 source documents from expanded Span items (`record_count` / `item_count`).
 The native validator checks format; it does not prove target durable admission.
 
-## Qualification Writers
+### Qualification Writers
 
 Before any write, inspect the private plan and approve all three digests:
 

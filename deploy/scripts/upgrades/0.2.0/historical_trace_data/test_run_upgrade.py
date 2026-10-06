@@ -1,8 +1,10 @@
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from run_upgrade import run, DeploymentRuntime
+from snapshot import canonical, digest, strict_loads
 from test_logs import row
 
 
@@ -18,11 +20,17 @@ class FakeRuntime:
         self.span_calls = []
         self.safe_evidence = False
         self.safe_spans = False
+        self.cluster_uid = "cluster-one"
+        self.context = "default"
+        self.snapshot_calls = 0
 
     def discover(self):
-        return {"instance": "test-instance", "environment": "test", "target_image": "020-test"}
+        return {"instance": "instance-" + digest(self.cluster_uid.encode()),
+                "cluster_uid": self.cluster_uid, "context": self.context,
+                "environment": "test", "target_image": "020-test"}
 
     def snapshot(self):
+        self.snapshot_calls += 1
         return self.rows, []
 
     def validate(self, requests):
@@ -90,7 +98,52 @@ class UpgradeRunnerTests(unittest.TestCase):
         text = (Path(result["run_directory"]) / "report.md").read_text()
         self.assertIn("publication_requires_readback", text)
         self.assertNotIn("private error", text)
-        self.assertTrue((self.root / "test-instance" / "source" / "records.jsonl").exists())
+        self.assertTrue((self.root / runtime.discover()["instance"] / "source" / "records.jsonl").exists())
+
+    def test_rebuilt_cluster_with_same_context_gets_its_own_snapshot(self):
+        first = FakeRuntime()
+        run(first, self.root)
+        second = FakeRuntime()
+        second.cluster_uid = "cluster-two"
+        second.rows = [dict(kind="audit", source_id="vega", row=row(event_id="second-cluster"))]
+        result = run(second, self.root)
+        self.assertEqual(second.snapshot_calls, 1)
+        self.assertEqual(result["source_count"], 1)
+        self.assertEqual(second.sent[0]["payload"]["event_id"], second.validate(second.sent)[0]["event_id"])
+        self.assertNotEqual(first.sent[0]["payload"]["event_id"], second.sent[0]["payload"]["event_id"])
+
+    def test_snapshot_identity_mismatch_stops_before_publish(self):
+        runtime = FakeRuntime()
+        run(runtime, self.root)
+        manifest_path = self.root / runtime.discover()["instance"] / "source" / "snapshot.json"
+        manifest = strict_loads(manifest_path.read_text())
+        manifest["metadata"]["deployment"]["cluster_uid"] = "another-cluster"
+        manifest_path.write_text(canonical(manifest))
+        runtime.sent.clear()
+        result = run(runtime, self.root)
+        self.assertFalse(result["complete"])
+        self.assertEqual(runtime.sent, [])
+        self.assertIn("snapshot_deployment_mismatch", (Path(result["run_directory"]) / "report.md").read_text())
+
+    def test_context_rename_on_same_cluster_reuses_snapshot(self):
+        runtime = FakeRuntime()
+        run(runtime, self.root)
+        runtime.context = "renamed"
+        result = run(runtime, self.root)
+        self.assertTrue(result["complete"])
+        self.assertEqual(runtime.snapshot_calls, 1)
+
+    def test_discovery_uses_cluster_uid_not_context_label(self):
+        pods = {"items": [
+            {"metadata": {"namespace": "resource", "name": "mariadb-0"}, "status": {"phase": "Running"}},
+            {"metadata": {"namespace": "openbkn", "name": "agent-observability-0"},
+             "status": {"phase": "Running"}, "spec": {"containers": [
+                 {"name": "agent-observability", "image": "020", "env": [{"name": "BKN_AUDIT_ENVIRONMENT", "value": "test"}]}]}}]}
+        for uid in ("cluster-one", "cluster-two"):
+            with patch("run_upgrade._command", side_effect=[b"default", canonical({"metadata": {"uid": uid}}).encode(), canonical(pods).encode(), b""]):
+                deployment = DeploymentRuntime().discover()
+                self.assertEqual(deployment["cluster_uid"], uid)
+                self.assertEqual(deployment["instance"], "instance-" + digest(uid.encode()))
 
     def test_precheck_failure_still_generates_report(self):
         runtime = FakeRuntime()
