@@ -16,12 +16,14 @@ ARG TARGETOS
 ARG TARGETARCH
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -o /out/agent-observability .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -o /out/historical-data-validate ./cmd/historical-data-validate
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 
 COPY --from=builder /out/agent-observability /app/agent-observability
+COPY --from=builder /out/historical-data-validate /app/historical-data-validate
 COPY --from=builder /workspace/docs/swagger /app/docs/swagger
 COPY --from=builder /workspace/locale /app/locale
 

@@ -1,0 +1,42 @@
+{
+  "contract_version": "015-to-020-log-v1",
+  "source_commit": "e6445df3fd70f0768a77764d10ec084954d3a770",
+  "target_commit": "b1a8e10d860bf0bf54438f8240131ebc301cf1bd",
+  "migration_namespace": "a3f3ab60-baf3-559e-b401-88a93db6a4da",
+  "sources": {
+    "bkn-backend": {
+      "event_name": "backend.operation.observed", "business_module": "domain_knowledge_network",
+      "targets": ["knowledge_network", "object_type", "relation_type", "action_type", "metric", "risk_type", "concept_group", "action_schedule", "kn_capability_binding"],
+      "actions": ["create", "update", "delete", "import", "add_members", "remove_members", "enable", "disable", "attach", "detach"],
+      "status_from_failure_code": false, "identity": "publisher_namespace_url"
+    },
+    "vega": {
+      "event_name": "vega.operation.observed", "business_module": "data_resource_knowledge_network",
+      "targets": ["catalog", "resource", "discovery_schedule", "build_task", "connector_type", "discovery_task", "semantic_understanding_task"],
+      "target_aliases": {"catalog_health_check_schedule": "catalog", "discover_schedule": "discovery_schedule", "index_task": "build_task", "discover_task": "discovery_task"},
+      "actions": ["create", "update", "delete", "enable", "disable", "start", "stop"],
+      "status_from_failure_code": true, "identity": "publisher_namespace_url"
+    },
+    "execution-factory": {
+      "event_name": "execution_factory.operation.observed", "business_module": "execution_factory",
+      "targets": ["operator", "mcp", "toolbox", "tool", "skill", "import_batch", "capability_bundle", "operator_category"],
+      "actions": ["create", "update", "delete", "status_change", "publish", "import"],
+      "status_from_failure_code": true, "identity": "migration_namespace"
+    },
+    "model-manager": {
+      "event_name": "model_manager.operation.observed", "business_module": "model_management",
+      "targets": ["llm_model", "small_model", "model_quota", "user_model_quota"],
+      "actions": ["create", "update", "delete", "set_default"],
+      "status_from_failure_code": true, "identity": "migration_namespace"
+    },
+    "bkn-safe-admin": {
+      "event_name": "safe.admin.operation.observed", "business_module": "system_management",
+      "resource_aliases": {"users": "user", "roles": "role", "departments": "department", "role-bindings": "role_binding", "object-grants": "object_grant", "enterprise-object-grants": "object_grant", "permission-requests": "permission_request", "api-keys": "api_key", "oauth": "oauth_access_origin", "clients": "oauth_client", "license": "license", "policies": "authorization_policy", "resource-parents": "resource_parent", "property-levels": "property_level", "property-grants": "property_grant", "row-filter-policies": "row_filter_policy", "profile": "user"},
+      "identity": "migration_namespace"
+    },
+    "bkn-safe-access": {
+      "business_module": "system_management", "targets": ["user"], "actions": ["login", "logout"],
+      "identity": "migration_namespace"
+    }
+  }
+}
