@@ -230,8 +230,10 @@ class OpenSearchHistoryWriter:
         self.password = password
         if opener is not None:
             self.opener = opener
-        elif parsed.scheme == "https":
+        elif parsed.scheme == "https" and parsed.hostname in {"127.0.0.1", "localhost"}:
             self.opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl._create_unverified_context())).open
+        elif parsed.scheme == "https":
+            self.opener = build_opener(ProxyHandler({}), HTTPSHandler()).open
         else:
             self.opener = build_opener(ProxyHandler({})).open
         self.timeout = timeout

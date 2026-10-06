@@ -193,9 +193,11 @@ def _report(directory, result, reasons):
                  result["source_count"] - result.get("history_written_count", 0)
                  if result.get("history_mode") else result["retained_count"]),
              "", "## Conversion Notes", ""]
-    if result.get("history_mode"):
+    if result.get("history_mode") and result.get("complete"):
         lines.append("- All source rows were written to their corresponding 020 OpenSearch store.")
         lines.append("- 020-only fields absent from 015 remain absent; source values were not changed.")
+    elif result.get("history_mode"):
+        lines.append("- History publication did not complete; inspect the failure reasons above before retrying.")
     else:
         lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
     lines.extend(["", "Original rows remain in the private source snapshot for repeatable reruns.",
