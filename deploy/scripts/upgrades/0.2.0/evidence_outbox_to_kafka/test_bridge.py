@@ -21,7 +21,7 @@ class BridgeTest(unittest.TestCase):
     def setUp(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
         self.publish = dict(fixture["manifest_digest_golden"]["entries"][0], entry_id="z-last")
-        self.publish_second = dict(self.publish, entry_id="a-first", event_id="evt-second", source_primary_key="1002")
+        self.publish_second = dict(self.publish, entry_id="a-first", event_id="evt-second", source_primary_key="1002", producer_sequence=str(int(self.publish["producer_sequence"]) + 1))
         self.gap = dict(self.publish, entry_id="entry-gap", classification="coverage_gap", event_id=None, payload_hash=None, producer_id=None, producer_stream_id=None, producer_epoch=None, producer_sequence=None, source_primary_key="0999")
         self.tail = dict(self.gap, entry_id="tail-gap", source_primary_key="1003")
         self.entries = [self.publish, self.publish_second, self.gap, self.tail]
@@ -58,6 +58,32 @@ class BridgeTest(unittest.TestCase):
             self.assertTrue(saved["completed"])
             self.assertEqual(saved["classification_counts"], {"coverage_gap": 2, "publish": 2})
             self.assertEqual(publish_entries(self.manifest, self.entries, checkpoint, self.ack), [])
+
+    def test_source_cursor_compares_numeric_primary_keys_and_resumes(self):
+        entries = [dict(self.publish, source_primary_key=str(pk), event_id="evt-" + str(pk), producer_sequence=str(pk)) for pk in (10, 2, 1)]
+        manifest = dict(self.manifest, entry_count="3", entries_digest=entries_digest(entries))
+        observed = []
+        with tempfile.TemporaryDirectory() as root:
+            checkpoint = Path(root) / "checkpoint"
+            publish_entries(manifest, entries, checkpoint, lambda entry: observed.append(entry["source_primary_key"]) or self.ack(entry))
+            self.assertEqual(observed, ["1", "2", "10"])
+            self.assertEqual(publish_entries(manifest, entries, checkpoint, self.ack), [])
+
+    def test_nonmonotonic_stream_coordinates_fail_before_any_publish(self):
+        entries = [dict(self.publish, source_primary_key=str(pk), event_id="evt-" + str(pk), producer_sequence=str(sequence)) for pk, sequence in ((1, 2), (2, 1))]
+        manifest = dict(self.manifest, entry_count="2", entries_digest=entries_digest(entries))
+        observed = []
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaisesRegex(ManifestError, "stream"):
+                publish_entries(manifest, entries, Path(root) / "checkpoint", lambda entry: observed.append(entry) or self.ack(entry))
+        self.assertEqual(observed, [])
+
+    def test_numeric_cursor_aliases_cannot_skip_source_rows(self):
+        entries = [dict(self.publish, source_primary_key=pk, event_id="evt-" + pk) for pk in ("1", "01")]
+        manifest = dict(self.manifest, entry_count="2", entries_digest=entries_digest(entries))
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaisesRegex(ManifestError, "cursor"):
+                publish_entries(manifest, entries, Path(root) / "checkpoint", self.ack)
 
     def test_draft_manifest_cannot_publish(self):
         with tempfile.TemporaryDirectory() as root:

@@ -5,6 +5,8 @@ on:
     paths:
       - 'bkn-trace/**'
       - 'docs/api/agent-observability/**'
+      - 'deploy/scripts/upgrades/0.2.0/historical_trace_data/**'
+      - 'deploy/scripts/upgrades/0.2.0/evidence_outbox_to_kafka/**'
       - '.github/workflows/ci-bkn-trace.yml'
 
 permissions:
@@ -59,6 +61,16 @@ jobs:
         run: make license-check
       - name: Unit tests
         run: make test
+      - name: Historical upgrade tool tests
+        working-directory: deploy/scripts/upgrades/0.2.0
+        run: |
+          python3 -m unittest discover -s historical_trace_data -p 'test_*.py'
+      - name: Offline historical Span codec
+        working-directory: deploy/scripts/upgrades/0.2.0/historical_trace_data/span-codec
+        run: |
+          go vet ./...
+          go test ./... -count=1
+          go build ./...
       - name: Swagger contract drift
         run: make check-swag
       - name: Race tests
