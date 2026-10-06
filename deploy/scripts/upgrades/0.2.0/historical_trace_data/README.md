@@ -29,6 +29,28 @@ it opens a short-lived port-forward to the existing OpenSearch service. It does
 not delete source tables, restore over the running database, or import completed
 archive files.
 
+### Customer HTTPS deployments
+
+External HTTPS OpenSearch endpoints use normal certificate verification, with
+system trust by default. For a customer/private CA, set the CA bundle on the
+upgrade host before running the same command:
+
+```sh
+export BKN_HISTORY_OPENSEARCH_CA_FILE=/path/to/customer-ca.pem
+```
+
+For an explicitly approved deployment with a self-signed certificate and no CA
+bundle, `BKN_HISTORY_OPENSEARCH_TLS_VERIFY=false` disables certificate verification.
+This is an operator setting, independent of the endpoint hostname; credentials
+still come from the deployment Secret. The default remains verification enabled
+for direct endpoints. A script-created Kubernetes port-forward disables
+verification by default because its loopback address does not match the service
+certificate; operators can override it with the same setting.
+
+The log `deployment.environment` is copied from the target deployment's
+`BKN_AUDIT_ENVIRONMENT` configuration. It labels the query environment and does
+not rewrite the original event timestamp or business payload.
+
 The run writes a private snapshot and report below:
 
 ```text

@@ -96,7 +96,7 @@ _AUDIT_BUSINESS_MODULES = {
 }
 
 
-def document_from_legacy_audit(record, observed_at):
+def document_from_legacy_audit(record, observed_at, environment):
     """Map one stored 015 row directly to the 020 SS4O log shape.
 
     This is a history conversion. It preserves the source row's values and
@@ -156,7 +156,7 @@ def document_from_legacy_audit(record, observed_at):
         "observedTimestamp": _iso(observed_at),
         "body": summary,
         "instrumentationScope": {"name": "openbkn.historical-migration"},
-        "resource": {"service": {"name": source_id}},
+        "resource": {"service": {"name": source_id}, "deployment": {"environment": environment}},
         "severity": {"text": "ERROR" if outcome in {"failure", "denied"} else "INFO",
                      "number": 17 if outcome in {"failure", "denied"} else 9},
         "attributes": attributes,
@@ -218,7 +218,7 @@ def evidence_document_from_legacy_row(record, observed_at):
 
 
 class OpenSearchHistoryWriter:
-    def __init__(self, endpoint, index, username=None, password=None, opener=None, timeout=15):
+    def __init__(self, endpoint, index, username=None, password=None, opener=None, timeout=15, verify_tls=True, ca_file=None):
         parsed = urlparse(endpoint)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
             raise ValueError("invalid OpenSearch endpoint")
@@ -230,10 +230,10 @@ class OpenSearchHistoryWriter:
         self.password = password
         if opener is not None:
             self.opener = opener
-        elif parsed.scheme == "https" and parsed.hostname in {"127.0.0.1", "localhost"}:
+        elif parsed.scheme == "https" and not verify_tls:
             self.opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl._create_unverified_context())).open
         elif parsed.scheme == "https":
-            self.opener = build_opener(ProxyHandler({}), HTTPSHandler()).open
+            self.opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl.create_default_context(cafile=ca_file))).open
         else:
             self.opener = build_opener(ProxyHandler({})).open
         self.timeout = timeout

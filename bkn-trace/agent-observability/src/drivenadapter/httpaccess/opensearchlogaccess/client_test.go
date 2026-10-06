@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
@@ -272,4 +274,21 @@ func containsBytes(payload []byte, value string) bool {
 		}
 	}
 	return false
+}
+
+func TestHistoricalAuditListAndDetailThroughOperationAuditService(t *testing.T) {
+	backend := &fakeSearchClient{response: []byte(`{"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"historical-audit:vega:evt-1","_source":{
+ "attributes":{"schema_version":"1.0","log_id":"historical-audit:vega:evt-1","source_id":"vega","source_log_id":"evt-1","log_category":"audit.admin","event_name":"vega.operation.observed","safe_summary":"create Catalog One","outcome":"success","actor_id":"user-1","actor_name_snapshot":"Administrator","auth_method":"oauth","source_channel":"api","business_module_id":"data_resource_knowledge_network","action":"create","target_type":"catalog","target_id":"catalog-1","target_name":"Catalog One"},
+ "@timestamp":"2026-09-12T21:25:44Z","observedTimestamp":"2026-10-06T12:00:00Z","resource":{"service":{"name":"vega"},"deployment":{"environment":"production"}},"severity":{"text":"INFO","number":9}
+ }}]}}`)}
+	service := logsvc.NewWithOptions([]logsvc.Source{New(backend, "logs")}, logsvc.Options{OperationAuditOnly: true})
+	profile := evidencevo.AccessProfile{AccountActive: true, Roles: []string{"super_admin"}}
+	result, err := service.List(context.Background(), profile, observabilityvo.LogQuery{})
+	if err != nil || len(result.Records) != 1 {
+		t.Fatalf("historical audit list: result=%+v err=%v", result, err)
+	}
+	record, err := service.Get(context.Background(), profile, "historical-audit:vega:evt-1")
+	if err != nil || record.Environment != "production" || record.ServiceName != "vega" || record.TargetNameSnapshot != "Catalog One" {
+		t.Fatalf("historical audit detail: record=%+v err=%v", record, err)
+	}
 }

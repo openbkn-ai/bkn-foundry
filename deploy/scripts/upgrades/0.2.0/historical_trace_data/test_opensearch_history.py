@@ -41,7 +41,8 @@ class OpenSearchHistoryDocumentTests(unittest.TestCase):
             "action": "create", "outcome": "success", "actor_id": "u",
             "actor_name": "Administrator", "target_type": "tool", "target_id": "tool-1",
             "target_name": "tool-1", "request_id": "req-1",
-        }}, datetime(2026, 10, 6, tzinfo=timezone.utc))
+        }}, datetime(2026, 10, 6, tzinfo=timezone.utc), "production")
+        self.assertEqual(item["document"]["resource"]["deployment"]["environment"], "production")
         self.assertEqual(item["document"]["attributes"]["source_log_id"], "evt-legacy")
         self.assertEqual(item["document"]["attributes"]["target_name"], "tool-1")
         self.assertEqual(item["document"]["attributes"]["actor_name_snapshot"], "Administrator")

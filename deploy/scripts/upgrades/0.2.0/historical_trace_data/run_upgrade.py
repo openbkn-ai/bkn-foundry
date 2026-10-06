@@ -66,6 +66,7 @@ class DeploymentRuntime:
         environment = values.get("BKN_AUDIT_ENVIRONMENT")
         if environment not in {"development", "test", "staging", "production"}:
             raise ValueError("deployment_environment_missing")
+        self.environment = environment
         # Verifies the packaged binary; no administrator Go compiler required.
         self._native([], b"")
         return {"instance": "instance-" + digest(cluster_uid.encode()), "cluster_uid": cluster_uid, "environment": environment,
@@ -152,14 +153,18 @@ class DeploymentRuntime:
             endpoint = parsed.scheme + "://127.0.0.1:" + match.group(1)
         try:
             observed_at = datetime.now(timezone.utc)
-            audit_items = [document_from_legacy_audit(record, observed_at)
+            audit_items = [document_from_legacy_audit(record, observed_at, self.environment)
                            for record in records if record.get("kind") == "audit"]
             evidence_items = [evidence_document_from_legacy_row(record, observed_at)
                               for record in records if record.get("kind") == "evidence"]
+            tls_options = {
+                "verify_tls": os.environ.get("BKN_HISTORY_OPENSEARCH_TLS_VERIFY", "false" if port_forward else "true").lower() != "false",
+                "ca_file": os.environ.get("BKN_HISTORY_OPENSEARCH_CA_FILE") or None,
+            }
             log_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index,
-                                                 self.opensearch_username, self.opensearch_password)
+                                                 self.opensearch_username, self.opensearch_password, **tls_options)
             evidence_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,
-                                                      self.opensearch_username, self.opensearch_password)
+                                                      self.opensearch_username, self.opensearch_password, **tls_options)
             return {
                 "logs": log_writer.publish_documents(audit_items, observed_at),
                 "evidence": evidence_writer.publish_documents(evidence_items, observed_at),
@@ -197,7 +202,8 @@ def _report(directory, result, reasons):
         lines.append("- All source rows were written to their corresponding 020 OpenSearch store.")
         lines.append("- 020-only fields absent from 015 remain absent; source values were not changed.")
     elif result.get("history_mode"):
-        lines.append("- History publication did not complete; inspect the failure reasons above before retrying.")
+        lines.append("- History publication did not complete; inspect the failure reasons below before retrying.")
+        lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
     else:
         lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
     lines.extend(["", "Original rows remain in the private source snapshot for repeatable reruns.",
