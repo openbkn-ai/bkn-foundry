@@ -194,3 +194,19 @@ Agent threads, with retained checkpoint tables. Their message content, round
 structure and correlation to historical calls must be investigated before
 claiming those fields were absent or migration complete. This documentation PR
 remains draft while that work proceeds.
+
+Read-only checkpoint follow-up confirms 22 September threads have 69 retained
+checkpoint versions and 47 messages-channel blobs. Safe MessagePack structure
+decoding, without class instantiation, finds 47 nonempty HumanMessage occurrences
+and eight nonempty AIMessage occurrences across those retained versions.
+These are version-occurrence counts, not deduplicated conversation round totals.
+Original user and assistant content therefore does exist outside the exported
+Audit/Evidence input and must not be described as universally absent.
+
+All 3,628 exported observations use request-derived conv_req_ identities, with
+application principals bkn-backend (3,114) and ontology-query (514). They are
+not the same identity space as original Agent threads. Mapping those observations
+into Core records does not substitute for converting actual Agent conversations.
+No September artifact or technical Span was found in the currently retained
+native indexes using their event-time ranges; this does not justify discarding
+the retained Agent message source.
