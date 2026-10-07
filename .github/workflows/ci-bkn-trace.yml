@@ -64,6 +64,7 @@ jobs:
       - name: Historical upgrade tool tests
         working-directory: deploy/scripts/upgrades/0.2.0
         run: |
+          python3 -m pip install -r historical_trace_data/requirements.txt
           python3 -m unittest discover -s historical_trace_data -p 'test_*.py'
       - name: Offline historical Span codec
         working-directory: deploy/scripts/upgrades/0.2.0/historical_trace_data/span-codec

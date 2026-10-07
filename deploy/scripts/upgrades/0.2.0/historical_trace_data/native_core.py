@@ -134,16 +134,16 @@ def plan_core(records, actor_names=None):
                               'protocol':'mcp','source_module':first['event'].get('producer_module') or records[first['ordinal']]['source_id'],
                               'input':envelope,'output':envelope if status=='completed' else None,
                               'error':envelope if status=='failed' else None,'request_id':first['outer']['request_id'],
-                              'trace_id':first['outer']['trace_id'],'span_id':first['outer'].get('span_id',''),
+                              'trace_id':first['outer']['trace_id'],'span_id':first['event'].get('span_id') or first['outer'].get('span_id',''),
                               'started_at':begin,'finished_at':end,'status':status,'retryable':False}
     mapping=[]
     for x in sorted(parsed,key=lambda x:x['ordinal']):
-        old={'trace_id':x['source_trace_id'],'conversation_id':x['outer']['conversation_id'],'interaction_id':x['outer']['interaction_id'],'operation_id':x['outer']['operation_id']}
+        old={'span_id':x['event'].get('span_id') or x['outer'].get('span_id',''),'request_id':x['outer']['request_id'],'trace_id':x['source_trace_id'],'conversation_id':x['outer']['conversation_id'],'interaction_id':x['outer']['interaction_id'],'operation_id':x['outer']['operation_id']}
         new={'trace_id':x['outer']['trace_id'],'conversation_id':x['conv_id'],'interaction_id':x['int_id'],'operation_id':x['op_id']}
         x['outer'].update(new);x['event'].update({'interaction_id':x['int_id'],'operation_id':x['op_id']})
         converted[x['ordinal']]['row']['envelope']=x['wrapper']
         mapping.append({'source_ordinal':x['ordinal'],'event_id':x['event']['event_id'],'source':old,
-                        'target':new,'receipt_id':x['receipt_id'],'defaults':{'auth_method':'unknown','protocol':'mcp','terminal_status':receipts[x['receipt_id']]['receipt_status']}})
+                        'target':new,'receipt_id':x['receipt_id'],'span_id':old['span_id'],'request_id':old['request_id'],'defaults':{'auth_method':'unknown','protocol':'mcp','terminal_status':receipts[x['receipt_id']]['receipt_status']}})
     return {'conversations':[conversations[k] for k in sorted(conversations)],
             'interactions':[interactions[k] for k in sorted(interactions)],
             'operations':[operations[k] for k in sorted(operations)],

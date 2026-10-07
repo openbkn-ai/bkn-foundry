@@ -9,10 +9,15 @@ records are the input. Lossy conversion is allowed and reported.
 Back up the 015 databases and persistent stores, pause business writes, deploy
 020, and wait for its database schema migrations and services to become healthy.
 Use the release containing this tool and its `historical-data-validate` command.
-Run on the upgrade host with Python 3 and kubectl access to the existing cluster:
+Run on the upgrade host with Python 3.10+ and kubectl access to the existing cluster.
+Set the customer's actual cutover time (exclusive, RFC3339 with timezone); the
+tool does not assume a release date or a localhost deployment:
 
 ```sh
-python3 deploy/scripts/upgrades/0.2.0/historical_trace_data/run_upgrade.py
+python3 -m venv /tmp/openbkn-history-upgrade
+/tmp/openbkn-history-upgrade/bin/pip install -r deploy/scripts/upgrades/0.2.0/historical_trace_data/requirements.txt
+export BKN_HISTORY_AGENT_BEFORE='<actual-cutover-time-with-timezone>'
+/tmp/openbkn-history-upgrade/bin/python deploy/scripts/upgrades/0.2.0/historical_trace_data/run_upgrade.py
 ```
 
 The tool discovers the current Kubernetes deployment, its database pod and
@@ -25,6 +30,7 @@ remain in the existing deployment. Reports and source snapshots are private:
 
 ```text
 ~/.bkn/upgrades/015-to-020-historical/instance-<cluster-digest>/source/
+~/.bkn/upgrades/015-to-020-historical/instance-<cluster-digest>/agent-source-<cutover-digest>/
 ~/.bkn/upgrades/015-to-020-historical/run-<timestamp>-<id>/report.md
 ```
 
@@ -41,7 +47,9 @@ is incomplete. Inspect the report, resolve the failure, and repeat the command.
 | Retained center Conversation, Interaction, Operation, Receipt and related facts | Original native tables and Core projection alias | Keep the facts. Check the deployed schema and verify authoritative projection bodies, versions and counts. Reuse the native rebuild service only if the existing projection does not match. |
 | Backend/ontology Evidence outboxes | Native Evidence aggregate index | Convert stored events and their relationships into native Conversation, Interaction, Operation, Receipt and call-fact rows; rebuild Core projections and write native Evidence aggregates. Preserve event IDs, times, payloads and references. Split reused Trace IDs by request/context so existing native lookups can find every request. |
 | Existing native SS4O technical Span index | Same native SS4O storage | Preserved by the platform upgrade; this SQL snapshot does not export or reimport that index. Evidence events are never converted into invented technical Spans. |
-| Existing Artifact content and references | Existing native Artifact storage | Preserved; this tool does not restore archive files or create missing content. |
+| Agent threads, root message checkpoints and messages-channel blobs | Native Core conversations/rounds, interaction-level question/result Artifacts and Evidence aggregates | Decode the retained MessagePack message structures without executing serialized constructors. Use the latest retained message order, first observation for starts and last content-change observation for ends; preserve each HumanMessage round and its final AIMessage. |
+| Agent tasks and Agent definitions | Native Core conversations/rounds, interaction-level question/result Artifacts and Evidence aggregates | Preserve the task input, complete structured output, failure detail, original Agent name and create/update times. Standalone tasks become deterministic conversations. |
+| Existing Artifact content and references | Existing native Artifact storage | Preserved; converted Agent question/result content is added through the ordinary native Artifact normalizer and store. No completed archive is restored. |
 
 Audit is a category of the shared log data. Management events are `audit.admin`;
 login/logout events are `access.user`. The audit workbench filters the same
@@ -66,8 +74,30 @@ native records. A raw SS4O log copy is not a second audit migration target.
   Missing terminal state defaults to completed observation; observed failure
   stays failed. Start/end times use captured bounds. Missing auth method is
   unknown; missing protocol defaults to MCP. Agent name retains the source
-  application principal. Missing full question/answer remains empty; captured
+  application principal. For observation-only outboxes, missing full question/answer remains empty; captured
   observation payload is available in call details.
+- Agent question/result Artifacts belong to the interaction, with no operation
+  ID. This is the native representation needed for complete original-text reads;
+  they are also linked from ordinary receipts and closure manifests. Structured
+  task results remain intact in call facts. No new runtime read path is added.
+- Task duration uses original create/update milliseconds. Thread duration uses
+  retained checkpoint message observation times; it is not a reconstructed token
+  or technical Span duration. Missing final messages remain empty and the native
+  terminal default is reported in `agent-field-defaults.json`. A missing message
+  does not remove its source thread/task.
+- A conversation contains user-message rounds; a round can contain multiple
+  calls and Traces. Checkpoint `tool_calls` join `ToolMessage.tool_call_id` within
+  their original round. Their arguments, results and native parent operation are
+  preserved; internal tool calls never increase the question/answer round count.
+  These converted Agent calls use native `internal` protocol when the source
+  does not retain MCP/SDK transport or a technical Span. Their deterministic
+  Trace IDs provide the native projection context, without creating Span trees.
+- The source-to-target report keeps reused source Trace identities and each
+  request/Span identity. Request-context splitting is a lossy grouping conversion,
+  not evidence that the original Trace had only one request. A retained Span ID
+  alone does not supply a missing technical Span document or its parent tree.
+- Thread and task rows count as source records; checkpoint versions, message
+  blobs and definitions are supporting inputs, not additional user interactions.
 - Evidence aggregates retain all original observations and include the normal
   `retrieval.completed` projection of converted receipts. Explicit Trace-ID
   queries therefore read the same terminal state and tool name as Core-backed

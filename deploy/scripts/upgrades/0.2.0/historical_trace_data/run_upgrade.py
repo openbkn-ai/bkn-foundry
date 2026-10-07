@@ -171,6 +171,61 @@ class DeploymentRuntime:
                                     "identity_mapping": plan["source_map"][ordinal]}
         return {"results": results, "counts": counts, "core_import": core}
 
+    def prepare_agent_history(self, records, before):
+        from agent_history import plan_agent_history
+        plan = plan_agent_history(records, before, getattr(self, "actor_names", {}))
+        batches = list(core_import_batches(plan["core"]))
+        for data in batches:
+            if strict_loads(self._native(["--validate-core-records"], data)).get("verified") is not True:
+                raise ValueError("native_agent_core_validation_failed")
+        data = "".join(canonical({"kind": "artifact", "payload": a}) + "\n" for a in plan["artifacts"]).encode()
+        answers = [strict_loads(line) for line in self._native([], data).splitlines()] if data else []
+        if len(answers) != len(plan["artifacts"]) or any(a.get("accepted") is not True for a in answers):
+            raise ValueError("native_agent_artifact_validation_failed")
+        plan["artifacts"] = [a["canonical_payload"] for a in answers]
+        items, rejected = plan_aggregates(plan["records"], datetime.now(timezone.utc), receipts=plan["core"]["receipts"])
+        if rejected:
+            raise ValueError("native_agent_evidence_validation_failed")
+        # Exact baseline of the earlier offline conversion which omitted tools.
+        # Only that known document, or an identical current result, may be updated.
+        roots = {f["operation_id"] for f in plan["core"]["call_facts"] if not f.get("parent_operation_id")}
+        prior_records = [r for r in plan["records"]
+                         if r["row"]["envelope"]["event"]["operation_id"] in roots]
+        prior_receipts = [r for r in plan["core"]["receipts"] if r["operation_id"] in roots]
+        prior, _ = plan_aggregates(prior_records, datetime.now(timezone.utc), receipts=prior_receipts)
+        prior_by_id = {item["_id"]: item["document"] for item in prior}
+        for item in items:
+            item["previous_documents"] = [prior_by_id[item["_id"]]] if item["_id"] in prior_by_id else []
+        return {"plan": plan, "batches": batches, "items": items}
+
+    def migrate_agent_history(self, prepared):
+        plan = prepared["plan"]
+        # Artifacts use the ordinary native normalizer and store, not a second document format.
+        settings = {"artifacts": plan["artifacts"], "tls_verify": self._tls_options(False)["verify_tls"]}
+        ca_file = self._tls_options(False).get("ca_file")
+        if ca_file:
+            settings["ca_pem"] = Path(ca_file).read_text()
+        artifacts = strict_loads(self._native(["--import-artifact-records"], canonical(settings).encode()))
+        if artifacts.get("verified") is not True or artifacts.get("verified_count") != len(plan["artifacts"]):
+            raise ValueError("native_agent_artifact_readback_failed")
+        created = 0
+        for data in prepared["batches"]:
+            answer = strict_loads(self._native(["--import-core-records"], data))
+            if answer.get("verified") is not True:
+                raise ValueError("native_agent_core_readback_failed")
+            created += answer["created"]
+        with self._opensearch_connection() as (endpoint, forwarded):
+            writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,
+                self.opensearch_username, self.opensearch_password, **self._tls_options(forwarded))
+            counts = writer.publish_documents(prepared["items"], allow_update=True)
+        if counts.get("conflict", 0):
+            raise ValueError("native_agent_evidence_conflict")
+        total = sum(len(plan["core"][key]) for key in CORE_FIELDS)
+        return {"verified": True, "source_count": len(plan["source_map"]),
+                "source_map": plan["source_map"], "field_defaults": plan["defaults"],
+                "artifacts": artifacts, "evidence_documents": counts,
+                "core_import": {"verified": True, "created": created, "already_verified": total-created}}
+
     def migrate_spans(self, records):
         raise ValueError("span_target_config_not_verified")
 
@@ -237,6 +292,9 @@ def _report(directory, result, reasons):
              "- Core projection documents verified: %d" % result.get("core_projection", {}).get("projected_count", 0),
              "- Core projection index: " + str(result.get("core_projection", {}).get("index_version", "not checked")),
              "- Native Evidence aggregate documents: " + canonical(result.get("evidence_documents", {})),
+             "- Agent history: " + canonical(result.get("agent_history", {})),
+             "- Agent source tables: " + canonical(result.get("agent_source_tables", {})),
+             "- Agent cutover (exclusive): " + str(result.get("agent_cutover_before", "not selected")),
              "- Native Core import: " + canonical(result.get("core_import", {})),
              "- Converted records with explicit field defaults or identity mapping: %d" % result.get("field_conversion_count", 0),
              "", "## Conversion Losses and Execution Failures", ""]
@@ -292,6 +350,33 @@ def run(runtime, state_root):
                     actor_name = row.get("actor_name_snapshot") or row.get("actor_name") or row.get("user_name") or row.get("operator_name")
                     if actor_id and actor_name:
                         runtime.actor_names[str(actor_id)] = str(actor_name)
+        agent_prepared = None
+        if hasattr(runtime, "prepare_agent_history"):
+            from agent_history import export_agent_source
+            from native_core import _time
+            phase = "agent_source_precheck_failed"
+            before = os.environ.get("BKN_HISTORY_AGENT_BEFORE")
+            if not before:
+                raise ValueError("agent_history_cutover_required")
+            before = _time(before)
+            # A separate immutable capture extends the old Audit/Evidence snapshot
+            # without replacing it. Customer cutover is explicit, never a release date constant.
+            agent_source = state_root / instance / ("agent-source-" + digest(before.encode())[:16])
+            if not agent_source.exists():
+                agent_records, tables = export_agent_source(runtime.source, before)
+                save_snapshot(agent_source, agent_records, instance,
+                              {"before": before, "cluster_uid": deployment["cluster_uid"], "tables": tables})
+            agent_manifest = strict_loads((agent_source / "snapshot.json").read_text())
+            if (agent_manifest.get("source_deployment") != instance or
+                    agent_manifest.get("metadata", {}).get("cluster_uid") != deployment["cluster_uid"] or
+                    agent_manifest.get("metadata", {}).get("before") != before):
+                raise ValueError("agent_snapshot_deployment_mismatch")
+            agent_records = list(read_snapshot(agent_source))
+            phase = "agent_conversion_preflight_failed"
+            agent_prepared = runtime.prepare_agent_history(agent_records, before)
+            result["agent_source_tables"] = agent_manifest["source_counts"]
+            result["agent_cutover_before"] = before
+            result["source_count"] += len(agent_prepared["plan"]["source_map"])
         clock = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         requests, candidates = [], []
         delegated = {"evidence": [], "span": []}
@@ -435,6 +520,18 @@ def run(runtime, state_root):
                     reason = "publication_requires_readback" if publication_error else "target_" + status
                     reasons[reason] += 1
                     item.update(disposition="requires_reconciliation", reason=reason, target_status=status, state="not_verified")
+        if agent_prepared is not None:
+            phase = "agent_target_readback_failed"
+            agent_result = runtime.migrate_agent_history(agent_prepared)
+            result["agent_history"] = {k:v for k,v in agent_result.items() if k not in {"source_map", "field_defaults"}}
+            result["target_verified_count"] += agent_result["source_count"]
+            private_write(directory / "agent-field-defaults.json", canonical(agent_result["field_defaults"]).encode())
+            defaults_by_interaction = {d["interaction_id"]: d for d in agent_result["field_defaults"]}
+            for mapping in agent_result["source_map"]:
+                field_defaults = [defaults_by_interaction[i] for i in mapping["interaction_ids"] if i in defaults_by_interaction]
+                items.append({"kind": mapping["source_kind"], "source_id": mapping["source_id"],
+                              "identity_mapping": mapping, "field_defaults": field_defaults, "disposition": "writer_verified",
+                              "reason": "native_agent_core_artifact_evidence_readback"})
         if hasattr(runtime, "rebuild_core_projection"):
             phase = "native_core_projection_failed"
             result["core_projection"] = runtime.rebuild_core_projection()
@@ -445,6 +542,7 @@ def run(runtime, state_root):
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         reasons[phase] += 1
         result["state"] = phase
+        result["retained_count"] = max(result["retained_count"], result["source_count"] - result["target_verified_count"])
     _report(directory, result, reasons)
     return result
 

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
@@ -51,6 +52,7 @@ func runCommand(args []string, reader io.Reader, writer io.Writer) error {
 	flags := flag.NewFlagSet("historical-data-validate", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	coreValidate := flags.Bool("validate-core-records", false, "Validate converted Core records and payloads without writing")
+	artifactImport := flags.Bool("import-artifact-records", false, "Import native artifacts and verify readback")
 	coreImport := flags.Bool("import-core-records", false, "Import converted native Core records and verify readback")
 	rebuild := flags.Bool("rebuild-core-projection", false, "Rebuild native Core projections from retained authoritative data")
 	mode := flags.Bool("publish-audit", false, "Publish an approved Audit-only NDJSON plan; Kafka ACK is not database proof")
@@ -62,6 +64,12 @@ func runCommand(args []string, reader io.Reader, writer io.Writer) error {
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments")
+	}
+	if *artifactImport {
+		if *coreImport || *coreValidate || *rebuild || *mode || *expected != "" || *qualification || *inPlace {
+			return fmt.Errorf("cannot combine Artifact import modes")
+		}
+		return importArtifactRecords(reader, writer)
 	}
 	if *coreImport || *coreValidate {
 		if (*coreImport && *coreValidate) || *rebuild || *mode || *expected != "" || *qualification || *inPlace {
@@ -111,6 +119,20 @@ func validate(candidate input) result {
 		return result{Reason: "payload_json_invalid"}
 	}
 	switch candidate.Kind {
+	case "artifact":
+		var artifact evidencevo.EvidenceArtifact
+		if json.Unmarshal(candidate.Payload, &artifact) != nil {
+			return result{Reason: "artifact_json_invalid"}
+		}
+		normalized, validationErrors := evidencevo.NormalizeArtifact(artifact)
+		if len(validationErrors) != 0 {
+			return result{Reason: "artifact_native_invalid"}
+		}
+		body, err := json.Marshal(normalized)
+		if err != nil {
+			return result{Reason: "artifact_json_invalid"}
+		}
+		return result{Accepted: true, Reason: "native_artifact_format_valid", EventID: normalized.ArtifactID, ContentHash: normalized.ContentHash, CanonicalPayload: body}
 	case "audit":
 		return validateAudit(candidate)
 	case "evidence":

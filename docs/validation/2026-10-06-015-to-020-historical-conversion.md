@@ -177,36 +177,78 @@ backup's acceptance-20261007 directory. No source/backup/archive was deleted.
 Engineer instructions: [upgrade guide](../../deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md).
 
 
-## Reopened content-completeness investigation
+## Supplementary Agent content and relationship validation (2026-10-07)
 
-The user identified missing question, result and duration across the migrated
-business-provenance rows. Loading and matching IDs do not establish complete
-conversation-content migration. Final acceptance and issue closure remain pending.
+The original SQL export covered Audit and observation outboxes, but omitted
+Agent thread/checkpoint/task sources. The offline upgrade now captures those
+sources before an operator-supplied cutover timestamp. The product runtime and
+frontend remain unchanged.
 
-The 3,628 exported Evidence rows contain observation/reference payloads, not
-question/answer content; every captured started_at equals observed_at. The
-converter generates 3,504 request-context conversations and currently does not
-populate their question/result lifecycle artifacts. Native September lifecycle
-events were not found in the current center ledger.
+September input: 106 Audit, 3,628 observations, 27 Agent threads and 119 tasks
+(3,880 source records). Supporting inputs are 69 checkpoint versions, 47 message
+blobs and four Agent definitions. Versions are not counted as user rounds.
 
-A further original source was found: openbkn.t_agent_thread contains 27 September
-Agent threads, with retained checkpoint tables. Their message content, round
-structure and correlation to historical calls must be investigated before
-claiming those fields were absent or migration complete. This documentation PR
-remains draft while that work proceeds.
+The retained histories contain 22 distinct user messages in 22 threads. Five
+threads have no retained messages. Tasks have no retained parent-thread IDs.
+Conversion produces 146 Agent conversations/interactions, 151 operations,
+151 receipts, 151 call facts and 260 interaction-level original-text Artifacts.
+The five additional calls are two `search_schema`, two `list_skills` and one
+`get_kn_detail`. Two have original tool results; three lack retained results.
+Missing results remain visible as native partial/failed records with a reason,
+not discarded source rows or invented answers. Message-level tool-call IDs join
+only their corresponding ToolMessage within the same original user round.
 
-Read-only checkpoint follow-up confirms 22 September threads have 69 retained
-checkpoint versions and 47 messages-channel blobs. Safe MessagePack structure
-decoding, without class instantiation, finds 47 nonempty HumanMessage occurrences
-and eight nonempty AIMessage occurrences across those retained versions.
-These are version-occurrence counts, not deduplicated conversation round totals.
-Original user and assistant content therefore does exist outside the exported
-Audit/Evidence input and must not be described as universally absent.
+Final checkpoint message order defines user rounds. Starts use first message
+observations; ends use the last content-change observation, excluding unchanged
+checkpoint repetitions. Regression checks cover inserted tools, revised answers
+and exclusion of post-cutover messages.
 
-All 3,628 exported observations use request-derived conv_req_ identities, with
-application principals bkn-backend (3,114) and ontology-query (514). They are
-not the same identity space as original Agent threads. Mapping those observations
-into Core records does not substitute for converting actual Agent conversations.
-No September artifact or technical Span was found in the currently retained
-native indexes using their event-time ranges; this does not justify discarding
-the retained Agent message source.
+Native relation checks distinguish conversation, interaction, operation and
+Span. A two-round regression fixture remains one conversation with two
+interactions; tool calls add operations, not user rounds. Original outboxes
+contain 808 reused Trace IDs across multiple request contexts, converted to
+3,504 native request-context aggregates. This is an explicit grouping loss:
+source-to-target mappings preserve original Trace/request/Span IDs. It must not
+be described as the source containing only one request per Trace.
+
+All 3,628 observation rows carry identical nonempty inner/outer Span IDs. The
+converter also supports rows retaining the Span ID only in the inner event.
+The live SS4O technical index has no September Spans by startTime or timestamp;
+three September sample Spans belong to a separate test index. No technical Span
+tree is generated from observations or Agent messages. Agent sources contain
+no original Trace-ID matches with these outbox records, so they are not joined
+by time or Agent name.
+
+Local run `run-20261007T113710-b281a676/report.md` completed with 3,880 verified
+source records and zero unconverted records. Original 17,899 Core rows and
+3,504 aggregates were unchanged. The Agent supplement verified 745 Core rows
+and 260 Artifacts; four aggregates were updated by an exact prior-conversion
+comparison to include the five recovered tool calls. Core projection rebuild
+verified 17,854 documents. A preceding qualification imported the 15 new child
+operation/receipt/call-fact rows; its aggregate conflict was resolved by that
+exact baseline, not an unrestricted overwrite.
+
+Unchanged native queries verified all 146 Agent interactions using the same
+technical access view as the enterprise page. At 8081:
+
+- Conversation `396f3837-e00e-44bf-ac87-1267d26e0d2c` displays the full original
+  question/result, original Agent name, one round and 3.2 seconds.
+- Conversation `a1295718-216e-4079-ba1b-24df5149d92e` displays its original question,
+  one interaction and three calls: `agent.run`, `search_schema`, `get_kn_detail`.
+  Missing final answer/tool results match the retained source messages.
+- Its native Trace is `c6f65dfdf09c17810945abdc9a34fb48`; interaction is
+  `int_d152302893b398fcf3f7d9c5309d35f0d204a59196043f57`. Both child operations
+  point to `op_8bdd9526b128a6c1575adc87112efccd2203b3258c1c75a2` and share that
+  interaction and Trace, rather than creating two additional rounds.
+
+Qualification used a locally built offline executable. The running official
+image remains EE `sha6f935e2`. Final release acceptance still requires approved
+Foundry/EE package updates, official-image deployment, and repeat native/page
+verification. Issue #2012 remains open until then.
+
+Repeat Agent qualification verified 745 Core rows, 260 Artifacts and 146
+aggregates with zero created/updated/conflicting records.
+
+Checks: 148 Python tests, full Go service tests, Go lint (zero issues), native source/store readback,
+`git diff --check`; no net changes under the online service `src/` relative to
+merged #2030.

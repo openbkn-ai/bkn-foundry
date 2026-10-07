@@ -346,3 +346,46 @@ class EvidencePreflightTests(unittest.TestCase):
                 runtime.migrate_evidence(self.records())
         self.assertEqual(calls, [(['--validate-core-records'], b'good'),
                                  (['--validate-core-records'], b'bad')])
+
+class AgentHistoryPreflightTests(unittest.TestCase):
+    def test_rejected_artifact_prevents_agent_writes(self):
+        from test_agent_history import fixture
+        runtime = object.__new__(DeploymentRuntime)
+        calls = []
+        def native(flags, data):
+            calls.append(flags)
+            if flags == ['--validate-core-records']:
+                return b'{"verified":true}'
+            return b'{"accepted":false,"reason":"invalid"}\n'
+        runtime._native = native
+        with self.assertRaises(ValueError):
+            runtime.prepare_agent_history(fixture(), '2026-10-01T00:00:00Z')
+        self.assertFalse(any('--import-core-records' in f or '--import-artifact-records' in f for f in calls))
+
+    def test_agent_sources_extend_source_accounting_without_replacing_snapshot(self):
+        from agent_history import plan_agent_history
+        from test_agent_history import fixture
+        class Runtime(FakeRuntime):
+            source = object()
+            def prepare_agent_history(self, records, before):
+                return {'plan': plan_agent_history(records, before)}
+            def migrate_agent_history(self, prepared):
+                return {'verified':True,'source_count':1,'source_map':prepared['plan']['source_map'],
+                        'field_defaults':[],'artifacts':{'verified':True}}
+        runtime=Runtime();runtime.rows=runtime.rows[:1]
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict('os.environ',{'BKN_HISTORY_AGENT_BEFORE':'2026-10-01T00:00:00Z'}), patch('agent_history.export_agent_source',return_value=([{**r, 'source_id':'bkn-agent'} for r in fixture()],[])) as export:
+                first=run(runtime,Path(directory));second=run(runtime,Path(directory))
+            self.assertTrue(first['complete']);self.assertTrue(second['complete'])
+            self.assertEqual(second['source_count'],2)
+            self.assertEqual(runtime.snapshot_calls,1)
+            self.assertEqual(export.call_count,1)
+
+    def test_cutover_required_before_writes(self):
+        class Runtime(FakeRuntime):
+            def prepare_agent_history(self, records, before):return None
+        runtime=Runtime()
+        with tempfile.TemporaryDirectory() as directory, patch.dict('os.environ',{},clear=True):
+            result=run(runtime,Path(directory))
+        self.assertFalse(result['complete']);self.assertEqual(result['state'],'agent_source_precheck_failed')
+        self.assertEqual(runtime.sent,[])

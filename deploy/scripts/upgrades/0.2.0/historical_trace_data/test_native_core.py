@@ -43,6 +43,14 @@ class NativeCoreConversionTests(unittest.TestCase):
         for receipt in plan['receipts']:
             self.assertEqual(roots[receipt['request_id']],receipt['trace_id'])
 
+    def test_call_facts_preserve_span_identity_from_inner_evidence_event(self):
+        source = record('span-linked')
+        outer = source['row']['envelope']['event']
+        outer.update(conversation_id='c', interaction_id='i', operation_id='o')
+        outer['envelope']['event']['span_id'] = '1234567890abcdef'
+        plan = plan_core([source])
+        self.assertEqual(plan['call_facts'][0]['span_id'], '1234567890abcdef')
+
     def test_reused_operation_across_traces_keeps_both_receipts(self):
         first,second=record('one'),record('two',trace_id='b'*32)
         for r in (first,second):
