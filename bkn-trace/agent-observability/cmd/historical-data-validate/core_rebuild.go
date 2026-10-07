@@ -43,7 +43,7 @@ func rebuildCoreProjection(input io.Reader, output io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("open native Core database failed")
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	source := sessionstore.New(db)
 	if err := source.EnsureSchema(ctx, false); err != nil {
 		return fmt.Errorf("native Core schema check failed")

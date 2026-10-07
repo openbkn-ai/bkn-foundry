@@ -18,7 +18,7 @@ import reconcile
 from snapshot import SQLSource, canonical, digest, private_write, read_snapshot, save_snapshot, strict_loads
 from trace import convert_evidence, convert_span
 from native_evidence import plan_aggregates
-from native_core import plan_core
+from native_core import plan_core, core_import_batches, CORE_FIELDS
 from opensearch_history import OpenSearchHistoryWriter
 
 
@@ -127,23 +127,29 @@ class DeploymentRuntime:
 
     def migrate_evidence(self, records):
         plan = plan_core(records, getattr(self, "actor_names", {}))
-        core = strict_loads(self._native(["--import-core-records"], canonical({
-            key: plan[key] for key in ("conversations", "interactions", "operations", "receipts", "call_facts")
-        }).encode()))
-        if core.get("verified") is not True:
-            raise ValueError("native_core_import_not_verified")
         items, rejected = plan_aggregates(plan["records"], datetime.now(timezone.utc), receipts=plan["receipts"])
         prior_items, _ = plan_aggregates(plan["records"], datetime.now(timezone.utc))
         prior_by_id = {item["_id"]: item["document"] for item in prior_items}
         if rejected:
             raise ValueError("native_evidence_conversion_incomplete")
-        originals, invalid = plan_aggregates(records, datetime.now(timezone.utc))
-        if invalid:
-            raise ValueError("native_evidence_source_incomplete")
+        # The original representation is only an optional exact update baseline.
+        # Owner/capacity conflicts already resolved in the target must not reject it.
+        originals, _ = plan_aggregates(records, datetime.now(timezone.utc))
         original_by_id = {item["_id"]: item["document"] for item in originals}
         for item in items:
             item["previous_documents"] = [doc for doc in
                 (original_by_id.get(item["_id"]), prior_by_id.get(item["_id"])) if doc is not None]
+        # Finish all target and transport preflight before any Core write.
+        batches = list(core_import_batches(plan))
+        created = 0
+        for data in batches:
+            answer = strict_loads(self._native(["--import-core-records"], data))
+            if answer.get("verified") is not True:
+                raise ValueError("native_core_import_not_verified")
+            created += answer["created"]
+        total = sum(len(plan[key]) for key in CORE_FIELDS)
+        core = {"verified": True, "created": created, "already_verified": total - created,
+                "batches": len(batches)}
         states = {}
         with self._opensearch_connection() as (endpoint, forwarded):
             writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,

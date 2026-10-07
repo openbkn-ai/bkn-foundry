@@ -149,3 +149,37 @@ def plan_core(records, actor_names=None):
             'operations':[operations[k] for k in sorted(operations)],
             'receipts':[receipts[k] for k in sorted(receipts)],
             'call_facts':[calls[k] for k in sorted(calls)],'source_map':mapping,'records':converted}
+
+
+CORE_FIELDS = ('conversations', 'interactions', 'operations', 'receipts', 'call_facts')
+
+
+def core_import_batches(plan, max_bytes=64 << 20, max_receipts=1000):
+    """Bound stdin size while keeping each receipt and its native dependencies."""
+    identifiers = ('conversation_id', 'interaction_id', 'operation_id', 'receipt_id', 'receipt_id')
+    indexes = {key: {row[identity]: row for row in plan[key]}
+               for key, identity in zip(CORE_FIELDS, identifiers)}
+    encoded_sizes = {key: {identity: len(canonical(row).encode()) for identity, row in rows.items()}
+                     for key, rows in indexes.items()}
+    batch = {key: {} for key in CORE_FIELDS}
+    base_size = len(canonical({key: [] for key in CORE_FIELDS}).encode())
+    size = base_size
+    for receipt in plan['receipts']:
+        ids = (receipt['conversation_id'], receipt['interaction_id'], receipt['operation_id'],
+               receipt['receipt_id'], receipt['receipt_id'])
+        def added_size():
+            return sum(encoded_sizes[key][identity] + bool(batch[key])
+                       for key, identity in zip(CORE_FIELDS, ids) if identity not in batch[key])
+        extra = added_size()
+        if batch['receipts'] and (size + extra > max_bytes or len(batch['receipts']) >= max_receipts):
+            yield canonical({key: list(rows.values()) for key, rows in batch.items()}).encode()
+            batch = {key: {} for key in CORE_FIELDS}
+            size = base_size
+            extra = added_size()
+        if size + extra > max_bytes:
+            raise ValueError('native_core_record_exceeds_transport_limit')
+        for key, identity in zip(CORE_FIELDS, ids):
+            batch[key][identity] = indexes[key][identity]
+        size += extra
+    if batch['receipts']:
+        yield canonical({key: list(rows.values()) for key, rows in batch.items()}).encode()

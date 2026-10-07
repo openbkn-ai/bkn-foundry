@@ -114,3 +114,11 @@ class ReceiptProjectionTests(unittest.TestCase):
         self.assertEqual(terminal["event_id"], "receipt:" + receipt["receipt_id"])
         self.assertEqual(next(event for event in events if event["event_type"] == "knowledge.read.observed")["payload"],
                          source[0]["row"]["envelope"]["event"]["envelope"]["event"]["payload"])
+
+class NativeNetworkReferenceTests(unittest.TestCase):
+    def test_native_action_type_prefix_contributes_network_scope(self):
+        source = record()
+        source['row']['envelope']['event']['envelope']['event']['payload'] = {'business_refs': [{'ref_id': 'action_type:network-one:action-one'}]}
+        items, rejected = plan_aggregates([source], datetime.now(timezone.utc))
+        self.assertEqual(rejected, {})
+        self.assertEqual(items[0]['document']['knowledge_network_ids'], ['network-one'])

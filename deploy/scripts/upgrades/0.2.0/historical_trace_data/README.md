@@ -72,6 +72,10 @@ native records. A raw SS4O log copy is not a second audit migration target.
   `retrieval.completed` projection of converted receipts. Explicit Trace-ID
   queries therefore read the same terminal state and tool name as Core-backed
   lists. These derived projection events do not increase source-row counts.
+- Validate target aggregates and transport batches before importing Core records.
+  Core input is sent in batches of at most 1000 receipts and 64 MiB, with each
+  receipt and its native dependencies kept together. A failed batch is safely
+  retried by repeating the command; matching dependencies are skipped.
 - Use native transactions and native record-integrity calculation. Exact target
   matches are skipped. Conflicting existing Core records are never overwritten.
   Existing aggregates may be replaced only when they exactly match the frozen

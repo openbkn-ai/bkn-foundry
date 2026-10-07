@@ -299,3 +299,35 @@ class AuditPublicationRecoveryTests(unittest.TestCase):
         with patch("run_upgrade.reconcile.fetch_audits", return_value={"event-one": {"persisted": True}}) as fetch:
             self.assertEqual(runtime.fetch({"target_id": "event-one"}), {"persisted": True})
             fetch.assert_called_once_with(runtime.source, ["event-one"])
+
+class EvidencePreflightTests(unittest.TestCase):
+    def records(self, owners=('u', 'u')):
+        from test_native_evidence import record
+        rows = [record(str(i), owner=owner) for i, owner in enumerate(owners)]
+        for i, row in enumerate(rows):
+            row['row']['envelope']['event'].update(conversation_id='c', interaction_id='i', operation_id='op_' + str(i))
+        return rows
+
+    def test_rejected_target_plan_never_imports_core(self):
+        runtime = object.__new__(DeploymentRuntime)
+        with patch.object(runtime, '_native') as native, patch('run_upgrade.plan_aggregates', return_value=([], {0: 'invalid'})):
+            with self.assertRaisesRegex(ValueError, 'native_evidence_conversion_incomplete'):
+                runtime.migrate_evidence(self.records())
+            native.assert_not_called()
+
+    def test_original_owner_conflict_does_not_reject_valid_split_targets(self):
+        from contextlib import nullcontext
+        runtime = object.__new__(DeploymentRuntime)
+        runtime.opensearch_evidence_index = 'evidence'
+        runtime.opensearch_username = runtime.opensearch_password = None
+        runtime._opensearch_connection = lambda: nullcontext(('http://search', False))
+        runtime._tls_options = lambda _: {}
+        def publish(items, allow_update, on_result):
+            for item in items:
+                on_result(item['_id'], 'created')
+            return {'created': len(items), 'updated': 0, 'already_verified': 0, 'conflict': 0}
+        with patch.object(runtime, '_native', return_value=b'{"verified":true,"created":10,"already_verified":0}') as native, patch('run_upgrade.OpenSearchHistoryWriter') as writer:
+            writer.return_value.publish_documents.side_effect = publish
+            result = runtime.migrate_evidence(self.records(('u1', 'u2')))
+            self.assertTrue(all(item['verified'] for item in result['results']))
+            native.assert_called_once()

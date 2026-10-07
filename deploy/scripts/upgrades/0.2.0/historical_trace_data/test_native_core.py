@@ -51,3 +51,34 @@ class NativeCoreConversionTests(unittest.TestCase):
         self.assertEqual(len(plan['receipts']),2)
         self.assertEqual({r['trace_id'] for r in plan['receipts']},{'a'*32,'b'*32})
         self.assertEqual(len(plan['operations']),2)
+
+class CoreTransportBatchTests(unittest.TestCase):
+    def plan(self, count=3):
+        rows = [record(str(i), trace_id=format(i + 1, '032x')) for i in range(count)]
+        for i, row in enumerate(rows):
+            row['row']['envelope']['event'].update(conversation_id='c', interaction_id='i', operation_id='op_' + str(i))
+        return plan_core(rows)
+
+    def test_batches_keep_dependencies_and_every_receipt_once(self):
+        from native_core import core_import_batches
+        from snapshot import strict_loads
+        plan = self.plan()
+        batches = [strict_loads(body) for body in core_import_batches(plan, max_receipts=1)]
+        self.assertEqual(len(batches), 3)
+        self.assertEqual({r['receipt_id'] for batch in batches for r in batch['receipts']},
+                         {r['receipt_id'] for r in plan['receipts']})
+        for batch in batches:
+            self.assertEqual([len(batch[key]) for key in ('conversations', 'interactions', 'operations', 'receipts', 'call_facts')], [1] * 5)
+            self.assertEqual(batch['call_facts'][0]['receipt_id'], batch['receipts'][0]['receipt_id'])
+            self.assertEqual(batch['operations'][0]['operation_id'], batch['receipts'][0]['operation_id'])
+
+    def test_transport_size_bound_splits_and_oversized_unit_fails_preflight(self):
+        from native_core import core_import_batches
+        plan = self.plan()
+        single = list(core_import_batches(plan, max_receipts=1))
+        limit = max(map(len, single))
+        batches = list(core_import_batches(plan, max_bytes=limit))
+        self.assertEqual(len(batches), 3)
+        self.assertTrue(all(len(body) <= limit for body in batches))
+        with self.assertRaisesRegex(ValueError, 'native_core_record_exceeds_transport_limit'):
+            list(core_import_batches(plan, max_bytes=min(map(len, single)) - 1))

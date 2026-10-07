@@ -27,7 +27,7 @@ def _networks(value, bare=False):
         parts = ref.split(':')
         segments = {'kn': 2, 'object': 3, 'object_instance': 4, 'property': 4,
                     'relation': 3, 'metric': 3, 'logic': 4, 'function': 3,
-                    'action': 3, 'action_instance': 4}
+                    'action_type': 3, 'action_instance': 4}
         expected = segments.get(parts[0])
         if expected:
             if parts[0] in ('object_instance', 'action_instance'):

@@ -40,7 +40,7 @@ func importCoreRecords(reader io.Reader, writer io.Writer) (failure error) {
 	defer func() {
 		if failure != nil {
 			reason := "native_core_import_failed_" + stage
-			for _, known := range []string{"Core target content conflict", "Core readback missing", "invalid converted input", "invalid converted payload", "invalid converted receipt", "invalid converted business reference"} {
+			for _, known := range []string{"core target content conflict", "core readback missing", "invalid converted input", "invalid converted payload", "invalid converted receipt", "invalid converted business reference"} {
 				if failure.Error() == known {
 					reason = known
 				}
@@ -65,19 +65,19 @@ func importCoreRecords(reader io.Reader, writer io.Writer) (failure error) {
 	stage = "configuration"
 	dsn := os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")
 	if dsn == "" {
-		return fmt.Errorf("Core database configuration missing")
+		return fmt.Errorf("core database configuration missing")
 	}
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return fmt.Errorf("Core database unavailable")
+		return fmt.Errorf("core database unavailable")
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	stage = "schema"
 	store := sessionstore.New(db)
 	if err := store.EnsureSchema(ctx, false); err != nil {
-		return fmt.Errorf("Core schema check failed")
+		return fmt.Errorf("core schema check failed")
 	}
 	stage = "transaction"
 	result, err := importCorePlan(ctx, store, plan)
@@ -230,7 +230,7 @@ func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImport
 		check := func(found bool, old, next any, save func()) error {
 			if found {
 				if !sameCore(old, next) {
-					return fmt.Errorf("Core target content conflict")
+					return fmt.Errorf("core target content conflict")
 				}
 				if write {
 					result.AlreadyVerified++
@@ -238,7 +238,7 @@ func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImport
 				return nil
 			}
 			if !write {
-				return fmt.Errorf("Core readback missing")
+				return fmt.Errorf("core readback missing")
 			}
 			save()
 			result.Created++
