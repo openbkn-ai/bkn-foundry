@@ -50,6 +50,7 @@ func main() {
 func runCommand(args []string, reader io.Reader, writer io.Writer) error {
 	flags := flag.NewFlagSet("historical-data-validate", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	coreImport := flags.Bool("import-core-records", false, "Import converted native Core records and verify readback")
 	rebuild := flags.Bool("rebuild-core-projection", false, "Rebuild native Core projections from retained authoritative data")
 	mode := flags.Bool("publish-audit", false, "Publish an approved Audit-only NDJSON plan; Kafka ACK is not database proof")
 	expected := flags.String("expected-plan-sha256", "", "SHA-256 of exact approved stdin bytes, mandatory for publishing")
@@ -60,6 +61,12 @@ func runCommand(args []string, reader io.Reader, writer io.Writer) error {
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments")
+	}
+	if *coreImport {
+		if *rebuild || *mode || *expected != "" || *qualification || *inPlace {
+			return fmt.Errorf("cannot combine Core import with other modes")
+		}
+		return importCoreRecords(reader, writer)
 	}
 	if *rebuild {
 		if *mode || *expected != "" || *qualification || *inPlace {

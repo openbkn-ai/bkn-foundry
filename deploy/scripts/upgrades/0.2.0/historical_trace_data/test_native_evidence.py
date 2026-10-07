@@ -80,3 +80,37 @@ class NativeAggregateTests(unittest.TestCase):
         items, rejected = plan_aggregates([record(), bad], datetime.now(timezone.utc))
         self.assertEqual(len(items), 1)
         self.assertEqual(rejected, {1: 'missing_evidence_owner'})
+
+    def test_multiple_requests_and_apps_are_preserved_with_a_deterministic_anchor(self):
+        first, other = record('e1'), record('e2')
+        outer = other['row']['envelope']['event']
+        outer['request_id'] = 'req_2'
+        outer['conversation_id'] = 'conv_2'
+        outer['envelope']['event']['bkn.request.id'] = 'req_2'
+        outer['envelope']['owner']['application_principal_id'] = 'ontology-query'
+        items, rejected = plan_aggregates([first, other], datetime.now(timezone.utc))
+        self.assertEqual(rejected, {})
+        self.assertEqual(len(items), 1)
+        self.assertEqual([e['bkn.request.id'] for e in items[0]['document']['events']], ['req_1','req_2'])
+        self.assertEqual(items[0]['document']['bkn.request.id'], 'req_1')
+        self.assertEqual(items[0]['document'], plan_aggregates([other, first], datetime.now(timezone.utc))[0][0]['document'] | {'ingested_at': items[0]['document']['ingested_at']})
+
+
+class ReceiptProjectionTests(unittest.TestCase):
+    def test_terminal_projection_preserves_observation_and_native_relationships(self):
+        from native_core import plan_core
+        source = [record()]
+        source[0]["row"]["envelope"]["event"].update(interaction_id="int_1", operation_id="op_1", attempt=1)
+        plan = plan_core(source)
+        items, rejected = plan_aggregates(plan["records"], datetime.now(timezone.utc), plan["receipts"])
+        self.assertEqual(rejected, {})
+        events = items[0]["document"]["events"]
+        self.assertEqual(len(events), 2)
+        terminal = next(event for event in events if event["event_type"] == "retrieval.completed")
+        receipt = plan["receipts"][0]
+        self.assertEqual(terminal["payload"]["status"], "completed")
+        self.assertEqual(terminal["bkn.operation.name"], receipt["tool_name"])
+        self.assertEqual(terminal["bkn.request.id"], receipt["request_id"])
+        self.assertEqual(terminal["event_id"], "receipt:" + receipt["receipt_id"])
+        self.assertEqual(next(event for event in events if event["event_type"] == "knowledge.read.observed")["payload"],
+                         source[0]["row"]["envelope"]["event"]["envelope"]["event"]["payload"])

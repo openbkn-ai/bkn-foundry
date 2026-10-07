@@ -79,12 +79,12 @@ class UpgradeRunnerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
-    def test_scope_exclusion_is_a_conversion_loss_not_an_execution_failure(self):
+    def test_unconverted_record_cannot_report_completion(self):
         runtime = FakeRuntime()
         runtime.rows = [dict(kind="audit", source_id="vega", row=row(action="read"))]
         result = run(runtime, self.root)
-        self.assertTrue(result["complete"])
-        self.assertEqual(result["state"], "completed_with_loss")
+        self.assertFalse(result["complete"])
+        self.assertEqual(result["state"], "partial_requires_reconciliation")
         self.assertEqual(result["retained_count"], 1)
         self.assertEqual(runtime.sent, [])
 
@@ -92,18 +92,18 @@ class UpgradeRunnerTests(unittest.TestCase):
         runtime = FakeRuntime()
         result = run(runtime, self.root)
         self.assertEqual(result["source_count"], 3)
-        self.assertEqual(result["target_verified_count"], 1)
-        self.assertEqual(len(runtime.sent), 1)
+        self.assertEqual(result["target_verified_count"], 2)
+        self.assertEqual(len(runtime.sent), 2)
         self.assertEqual(len(runtime.log_events), 0)
-        self.assertEqual(result["retained_count"], 2)
+        self.assertEqual(result["retained_count"], 1)
         self.assertTrue((Path(result["run_directory"]) / "report.md").exists())
 
     def test_repeat_reads_before_sending_no_duplicate_publish(self):
         runtime = FakeRuntime()
         run(runtime, self.root)
         second = run(runtime, self.root)
-        self.assertEqual(len(runtime.sent), 1)
-        self.assertEqual(second["already_verified_count"], 1)
+        self.assertEqual(len(runtime.sent), 2)
+        self.assertEqual(second["already_verified_count"], 2)
 
     def test_publish_failure_still_returns_markdown_report_and_preserves_source(self):
         runtime = FakeRuntime()
@@ -145,7 +145,7 @@ class UpgradeRunnerTests(unittest.TestCase):
         run(runtime, self.root)
         runtime.context = "renamed"
         result = run(runtime, self.root)
-        self.assertTrue(result["complete"])
+        self.assertFalse(result["complete"])
         self.assertEqual(runtime.snapshot_calls, 1)
 
     def test_discovery_uses_cluster_uid_not_context_label(self):
@@ -247,8 +247,8 @@ class NativeWriterAccountingTests(unittest.TestCase):
             result = run(runtime, root)
             self.assertEqual(result['target_verified_count'], 2)
             self.assertEqual(result['retained_count'], 1)
-            self.assertTrue(result['complete'])
-            self.assertEqual(result['state'], 'completed_with_loss')
+            self.assertFalse(result['complete'])
+            self.assertEqual(result['state'], 'partial_requires_reconciliation')
             final = [strict_loads(line) for line in (Path(result['run_directory']) / 'final-items.jsonl').read_text().splitlines()]
             self.assertEqual([item['disposition'] for item in final], ['writer_verified', 'archive', 'writer_verified'])
 
@@ -284,3 +284,18 @@ class NativeWriterAccountingTests(unittest.TestCase):
             self.assertEqual(item['disposition'], 'requires_reconciliation')
             self.assertEqual(item['target_status'], 'missing')
             self.assertEqual(item['reason'], 'publication_requires_readback')
+
+
+class AuditPublicationRecoveryTests(unittest.TestCase):
+    def test_unknown_publication_outcome_forces_fresh_database_readback(self):
+        runtime = object.__new__(DeploymentRuntime)
+        runtime.source = object()
+        runtime._audit_ids = ["event-one"]
+        runtime._audit_cache = {}
+        runtime._audit_published = False
+        runtime._native = lambda *_: (_ for _ in ()).throw(ValueError("ack lost"))
+        with self.assertRaises(ValueError):
+            runtime.publish([])
+        with patch("run_upgrade.reconcile.fetch_audits", return_value={"event-one": {"persisted": True}}) as fetch:
+            self.assertEqual(runtime.fetch({"target_id": "event-one"}), {"persisted": True})
+            fetch.assert_called_once_with(runtime.source, ["event-one"])

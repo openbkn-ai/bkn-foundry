@@ -80,9 +80,30 @@ class OpenSearchHistoryWriter:
                 if existing_doc.get("found") and not allow_update:
                     actions.append("conflict")
                     continue
+                metadata = {"_index": self.index, "_id": item["_id"]}
+                if existing_doc.get("found"):
+                    old = existing_doc.get("_source", {})
+                    old_events = {e.get("event_id") for e in old.get("events", []) if isinstance(e, dict)}
+                    new_events = {e.get("event_id") for e in item["document"].get("events", []) if isinstance(e, dict)}
+                    previous = item.get("previous_documents", [item.get("previous_document") or {}])
+                    compatible = dict(old)
+                    compatible.pop("ingested_at", None)
+                    expected = []
+                    for candidate in previous:
+                        value = dict(candidate)
+                        value.pop("ingested_at", None)
+                        expected.append(value)
+                    if (compatible not in expected or
+                            old.get("aggregate") is not True or old.get("trace_id") != item["document"].get("trace_id") or
+                            old.get("effective_subject_id") != item["document"].get("effective_subject_id") or
+                            not old_events or not old_events.issubset(new_events) or
+                            "_seq_no" not in existing_doc or "_primary_term" not in existing_doc):
+                        actions.append("conflict")
+                        continue
+                    metadata.update(if_seq_no=existing_doc["_seq_no"], if_primary_term=existing_doc["_primary_term"])
                 action = "index" if existing_doc.get("found") else "create"
                 actions.append(action)
-                lines.append(json.dumps({action: {"_index": self.index, "_id": item["_id"]}}, separators=(",", ":")))
+                lines.append(json.dumps({action: metadata}, separators=(",", ":")))
                 lines.append(json.dumps(item["document"], ensure_ascii=False, separators=(",", ":")))
             if lines:
                 status, body = self._request("POST", "/_bulk", ("\n".join(lines) + "\n").encode(),

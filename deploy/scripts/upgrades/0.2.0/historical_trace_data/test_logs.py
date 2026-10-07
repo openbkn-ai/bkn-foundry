@@ -42,20 +42,25 @@ class LogConverterTests(unittest.TestCase):
                          convert_log("vega", original, "test", "dep"))
         self.assertEqual(original, saved)
 
-    def test_missing_status_never_infers_success_200(self):
+    def test_missing_status_maps_success_and_preserves_outcome(self):
         for source in ("vega", "bkn-backend", "model-manager"):
             result = self.convert(source, outcome="success", failure_code="",
                                   target_type="knowledge_network" if source == "bkn-backend" else
                                   "llm_model" if source == "model-manager" else "catalog",
-                                  knowledge_network_id="kn-1", _provenance={"actor_authenticated": True})
-            self.assertEqual(result["disposition"], "archive")
-            self.assertEqual(result["reason"], "missing_http_status")
-            self.assertIsNone(result["event"])
+                                  knowledge_network_id="kn-1")
+            self.assertEqual(result["disposition"], "convert")
+            self.assertEqual(result["event"]["http_status"], 200)
+            self.assertEqual(result["event"]["outcome"], "success")
+            self.assertEqual(result["sidecar"]["provenance"]["http_status"], "default_from_source_outcome")
 
-    def test_backend_business_code_is_not_http_proof(self):
-        result = self.convert("bkn-backend", target_type="knowledge_network",
-                              target_id="kn-1", knowledge_network_id="kn-1")
-        self.assertEqual(result["reason"], "missing_http_status")
+    def test_missing_failure_status_maps_recorded_status_text(self):
+        for code, status in (("Service Unavailable", 503), ("Bad Request", 400), ("CUSTOM_ERROR", 500)):
+            result = self.convert("bkn-backend", target_type="knowledge_network", target_id="kn-1",
+                                  knowledge_network_id="kn-1", failure_code=code)
+            self.assertEqual(result["disposition"], "convert")
+            self.assertEqual(result["event"]["http_status"], status)
+            self.assertEqual(result["event"]["outcome"], "failure")
+            self.assertEqual(result["sidecar"]["residue"]["failure_code"], code)
 
     def test_verified_backend_status_and_kn_scope(self):
         result = self.convert("bkn-backend", target_type="knowledge_network", target_id="kn-1",
@@ -176,3 +181,11 @@ class LogConverterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class BoundedSnapshotConversionTests(unittest.TestCase):
+    def test_oversized_label_is_shortened_without_dropping_record(self):
+        result=convert_log('vega',row(target_name='A'*600,target_id='ID'*300),'test','instance')
+        self.assertEqual(result['disposition'],'convert')
+        self.assertEqual(len(result['event']['target']['name']),512)
+        self.assertLessEqual(len(result['event']['target']['id']),256)
+        self.assertEqual(result['sidecar']['provenance']['target.display_name_snapshot'],'truncated_to_native_limit')

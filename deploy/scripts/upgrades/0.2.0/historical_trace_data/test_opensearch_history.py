@@ -33,7 +33,7 @@ class _OpenSearchFake:
             return _Response(200, json.dumps({"items": response}).encode())
         if request.method == "POST" and path.endswith("/_mget"):
             ids = [item["_id"] for item in json.loads(request.data)["docs"]]
-            return _Response(200, json.dumps({"docs": [{"_id": i, "found": i in self.documents, "_source": self.documents.get(i)} for i in ids]}).encode())
+            return _Response(200, json.dumps({"docs": [{"_id": i, "found": i in self.documents, "_source": self.documents.get(i), "_seq_no": 1, "_primary_term": 1} for i in ids]}).encode())
         parts = path.split("/")
         from urllib.parse import unquote
         log_id = unquote(parts[-1])
@@ -110,3 +110,35 @@ class NativeProjectionWriteTests(unittest.TestCase):
         self.assertEqual(counts['conflict'], 1)
         self.assertEqual(fake.documents['aggregate-1']['events'], ['existing'])
         self.assertEqual(results, {'aggregate-1': 'conflict'})
+
+    def test_update_requires_exact_frozen_source_document(self):
+        from opensearch_history import OpenSearchHistoryWriter
+        import copy
+        fake = _OpenSearchFake()
+        old={'aggregate':True,'trace_id':'t','effective_subject_id':'u','events':[{'event_id':'e','operation_id':'old'}]}
+        fake.documents['a']=copy.deepcopy(old)
+        new=copy.deepcopy(old);new['events'][0]['operation_id']='mapped'
+        writer=OpenSearchHistoryWriter('http://opensearch','evidence',opener=fake)
+        self.assertEqual(writer.publish_documents([{'_id':'a','document':new,'previous_document':old}],allow_update=True)['updated'],1)
+        fake.documents['a']['events'][0]['operation_id']='live'
+        self.assertEqual(writer.publish_documents([{'_id':'a','document':new,'previous_document':old}],allow_update=True)['conflict'],1)
+        self.assertEqual(fake.documents['a']['events'][0]['operation_id'],'live')
+
+
+    def test_terminal_enrichment_accepts_only_exact_known_converted_baseline(self):
+        from opensearch_history import OpenSearchHistoryWriter
+        import copy
+        fake = _OpenSearchFake()
+        old = {"aggregate": True, "trace_id": "t", "effective_subject_id": "u",
+               "events": [{"event_id": "e", "operation_id": "mapped", "payload": {"value": 1}}]}
+        fake.documents["a"] = copy.deepcopy(old)
+        new = copy.deepcopy(old)
+        new["events"].append({"event_id": "receipt:r", "event_type": "retrieval.completed"})
+        writer = OpenSearchHistoryWriter("http://opensearch", "evidence", opener=fake)
+        item = {"_id": "a", "document": new, "previous_documents": [{}, old]}
+        self.assertEqual(writer.publish_documents([item], allow_update=True)["updated"], 1)
+        self.assertEqual(writer.publish_documents([item], allow_update=True)["already_verified"], 1)
+        fake.documents["a"] = copy.deepcopy(old)
+        fake.documents["a"]["events"][0]["payload"]["value"] = 2
+        self.assertEqual(writer.publish_documents([item], allow_update=True)["conflict"], 1)
+        self.assertEqual(fake.documents["a"]["events"][0]["payload"]["value"], 2)

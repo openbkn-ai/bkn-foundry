@@ -59,3 +59,32 @@ def fetch_audit(source, item):
         raise ValueError("native month identity conflict")
     row.update(json.loads(payloads[0]))
     return row
+
+
+def fetch_audits(source, event_ids):
+    """Bounded batch readback avoids two kubectl/database sessions per record."""
+    result = {}
+    ids = sorted(set(event_ids))
+    for start in range(0, len(ids), 200):
+        chunk = ids[start:start + 200]
+        if any(not re.fullmatch(r'[0-9a-f-]{36}', value) for value in chunk):
+            raise ValueError('invalid native event identity')
+        condition = ','.join(literal(value) for value in chunk)
+        rows = source.query("SELECT JSON_OBJECT('event_id',event_id,'target_table',target_table,'dedup_hash',content_hash) FROM bkn_audit.audit_event_dedup WHERE event_id IN (" + condition + ")")
+        by_table = {}
+        for raw in rows:
+            row = json.loads(raw); identity = row['event_id']; table = row['target_table']
+            if identity in result or not re.fullmatch(r'audit_event_[0-9]{6}', table):
+                raise ValueError('native dedup identity conflict')
+            result[identity] = row
+            by_table.setdefault(table, []).append(identity)
+        for table, identities in by_table.items():
+            condition = ','.join(literal(value) for value in identities)
+            rows = source.query("SELECT JSON_OBJECT('event_id',event_id,'content_hash',content_hash,'payload',JSON_QUERY(payload,'$'),'source_id',source_id,'occurred_at',DATE_FORMAT(occurred_at,'%Y-%m-%dT%H:%i:%s.%fZ'),'topic',topic,'partition',partition_id,'offset',offset_id) FROM bkn_audit." + identifier(table) + " WHERE event_id IN (" + condition + ")")
+            seen = set()
+            for raw in rows:
+                row = json.loads(raw); identity = row['event_id']
+                if identity in seen: raise ValueError('native month identity conflict')
+                seen.add(identity); result[identity].update(row)
+            for identity in set(identities) - seen: result.pop(identity, None)
+    return result

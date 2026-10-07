@@ -1,6 +1,7 @@
 """Offline, deterministic conversion of frozen 015 management/access rows."""
 
 import copy
+import hashlib
 import datetime as dt
 import json
 from pathlib import Path
@@ -95,7 +96,13 @@ def convert_log(source_id, row, environment, source_deployment):
             status = encoded_status
             provenance["http_status"] = "source_failure_code"
         if status is None and not access and source_id != "execution-factory":
-            return result("archive", "missing_http_status")
+            # One-time schema normalization; source outcome stays unchanged.
+            phrases = {"Bad Request": 400, "Unauthorized": 401, "Forbidden": 403,
+                       "Not Found": 404, "Internal Server Error": 500,
+                       "Bad Gateway": 502, "Service Unavailable": 503, "Gateway Timeout": 504}
+            defaults = {"success": 200, "failure": 500, "denied": 403}
+            status = phrases.get(code, defaults.get(outcome))
+            provenance["http_status"] = "mapped_source_status_text" if code in phrases else "default_from_source_outcome"
     if target_type is None:
         return result("archive", "unregistered_target")
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", action):
@@ -131,7 +138,10 @@ def convert_log(source_id, row, environment, source_deployment):
         if not isinstance(value, str) or not value:
             return result("archive", "missing_snapshot")
         if len(value) > maximum:
-            return result("archive", "oversized_snapshot")
+            value = value[:maximum - 1] + "…"
+            provenance[label + ".display_name_snapshot"] = "truncated_to_native_limit"
+            if label == "actor": actor_name = value
+            else: target_name = value
     kn_ids = []
     if source_id == "bkn-backend":
         kn = row.get("knowledge_network_id", "")
@@ -150,7 +160,10 @@ def convert_log(source_id, row, environment, source_deployment):
     auth_method = row.get("auth_method", "") or "unknown"
     if not isinstance(auth_method, str) or len(auth_method) > 64:
         return result("archive", "invalid_auth_method")
-    if len(actor_id) > 128 or len(target_id) > 256 or len(request_id) > 128 or any(len(kn) > 128 for kn in kn_ids):
+    if len(target_id) > 256:
+        target_id = target_type + ":" + hashlib.sha256(target_id.encode()).hexdigest()
+        provenance["target.id"] = "mapped_source_identifier_to_native_limit"
+    if len(actor_id) > 128 or len(request_id) > 128 or any(len(kn) > 128 for kn in kn_ids):
         return result("archive", "oversized_reference")
     channel = row.get("source_channel", "")
     if source_id in {"bkn-backend", "vega", "model-manager"}:

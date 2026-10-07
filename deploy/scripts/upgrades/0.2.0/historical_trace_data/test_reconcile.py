@@ -44,3 +44,21 @@ class ReconcileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class BatchReadbackTests(unittest.TestCase):
+    def test_batch_keeps_dedup_payload_binding_and_missing_identity(self):
+        from reconcile import fetch_audits
+        import json
+        ids=['00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002']
+        class Source:
+            def __init__(self): self.queries=[]
+            def query(self,sql):
+                self.queries.append(sql)
+                if 'audit_event_dedup' in sql:
+                    return [json.dumps({'event_id':ids[0],'target_table':'audit_event_202609','dedup_hash':'h'})]
+                return [json.dumps({'event_id':ids[0],'content_hash':'h','payload':{'value':'native'}})]
+        source=Source();rows=fetch_audits(source,ids)
+        self.assertEqual(len(source.queries),2)
+        self.assertEqual(set(rows),{ids[0]})
+        self.assertEqual(rows[ids[0]]['payload'],{'value':'native'})
+        self.assertEqual(rows[ids[0]]['dedup_hash'],'h')

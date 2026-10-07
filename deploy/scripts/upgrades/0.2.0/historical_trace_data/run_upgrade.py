@@ -18,6 +18,7 @@ import reconcile
 from snapshot import SQLSource, canonical, digest, private_write, read_snapshot, save_snapshot, strict_loads
 from trace import convert_evidence, convert_span
 from native_evidence import plan_aggregates
+from native_core import plan_core
 from opensearch_history import OpenSearchHistoryWriter
 
 
@@ -90,16 +91,27 @@ class DeploymentRuntime:
 
     def validate(self, requests):
         data = "".join(canonical(request) + "\n" for request in requests).encode()
-        return [strict_loads(line) for line in self._native([], data).splitlines()] if data else []
+        answers = [strict_loads(line) for line in self._native([], data).splitlines()] if data else []
+        self._audit_ids = [answer["event_id"] for answer in answers if answer.get("accepted")]
+        self._audit_cache = None
+        self._audit_published = False
+        return answers
 
     def fetch(self, item):
         # reconcile.fetch_audit reads the 020 bkn_audit month/dedup tables via
         # the discovered MariaDB connection; it never queries the 015 source
         # audit tables. The source snapshot remains immutable for reruns.
-        return reconcile.fetch_audit(self.source, item)
+        if not hasattr(self, "_audit_ids"):
+            return reconcile.fetch_audit(self.source, item)
+        if self._audit_cache is None or (self._audit_published and item["target_id"] not in self._audit_cache):
+            self._audit_cache = reconcile.fetch_audits(self.source, self._audit_ids)
+        return self._audit_cache.get(item["target_id"])
 
     def publish(self, requests):
         data = "".join(canonical(request) + "\n" for request in requests).encode()
+        # Kafka delivery may have succeeded even when the command loses its ACK.
+        self._audit_cache = None
+        self._audit_published = True
         output = self._native(["--publish-audit", "--in-place-upgrade", "--expected-plan-sha256", digest(data)], data)
         return [strict_loads(line) for line in output.splitlines()]
 
@@ -114,23 +126,40 @@ class DeploymentRuntime:
         return answer
 
     def migrate_evidence(self, records):
-        items, rejected = plan_aggregates(records, datetime.now(timezone.utc))
+        plan = plan_core(records, getattr(self, "actor_names", {}))
+        core = strict_loads(self._native(["--import-core-records"], canonical({
+            key: plan[key] for key in ("conversations", "interactions", "operations", "receipts", "call_facts")
+        }).encode()))
+        if core.get("verified") is not True:
+            raise ValueError("native_core_import_not_verified")
+        items, rejected = plan_aggregates(plan["records"], datetime.now(timezone.utc), receipts=plan["receipts"])
+        prior_items, _ = plan_aggregates(plan["records"], datetime.now(timezone.utc))
+        prior_by_id = {item["_id"]: item["document"] for item in prior_items}
+        if rejected:
+            raise ValueError("native_evidence_conversion_incomplete")
+        originals, invalid = plan_aggregates(records, datetime.now(timezone.utc))
+        if invalid:
+            raise ValueError("native_evidence_source_incomplete")
+        original_by_id = {item["_id"]: item["document"] for item in originals}
+        for item in items:
+            item["previous_documents"] = [doc for doc in
+                (original_by_id.get(item["_id"]), prior_by_id.get(item["_id"])) if doc is not None]
         states = {}
         with self._opensearch_connection() as (endpoint, forwarded):
             writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,
                                              self.opensearch_username, self.opensearch_password,
                                              **self._tls_options(forwarded))
-            counts = writer.publish_documents(items, allow_update=False,
+            counts = writer.publish_documents(items, allow_update=True,
                                                on_result=lambda key, state: states.update({key: state}))
-        receipts = set(self.source.query("SELECT trace_id FROM bkn_trace.bkn_trace_receipts WHERE trace_id IS NOT NULL"))
         results = [{"verified": False, "reason": rejected.get(i, "native_evidence_write_failed")} for i in range(len(records))]
         for item in items:
             state = states.get(item["_id"], "conflict")
             for ordinal in item["source_ordinals"]:
                 results[ordinal] = {"verified": state != "conflict", "reason": "native_aggregate_readback" if state != "conflict" else "native_evidence_content_conflict",
                                     "target_id": item["_id"], "state": state,
-                                    "losses": ["missing_core_receipt"] if item["document"]["trace_id"] not in receipts else []}
-        return {"results": results, "counts": counts}
+                                    "losses": [], "field_defaults": plan["source_map"][ordinal]["defaults"],
+                                    "identity_mapping": plan["source_map"][ordinal]}
+        return {"results": results, "counts": counts, "core_import": core}
 
     def migrate_spans(self, records):
         raise ValueError("span_target_config_not_verified")
@@ -198,14 +227,16 @@ def _report(directory, result, reasons):
              "- Core projection documents verified: %d" % result.get("core_projection", {}).get("projected_count", 0),
              "- Core projection index: " + str(result.get("core_projection", {}).get("index_version", "not checked")),
              "- Native Evidence aggregate documents: " + canonical(result.get("evidence_documents", {})),
+             "- Native Core import: " + canonical(result.get("core_import", {})),
+             "- Converted records with explicit field defaults or identity mapping: %d" % result.get("field_conversion_count", 0),
              "", "## Conversion Losses and Execution Failures", ""]
     lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
     if not reasons:
         lines.append("- None reported.")
     lines.extend(["", "## Target and Product Meaning", "",
                   "Audit records are confirmed in the native Audit ledger; Kafka acknowledgements do not count as persistence.",
-                  "Evidence is converted into native aggregate documents and read back. Evidence without a Core receipt cannot appear as a normal Trace list entry; this association loss is reported explicitly.",
-                  "Core projection counts describe retained authoritative facts, not additional converted source rows.",
+                  "Evidence is converted into native aggregate documents and read back. Associated native Core records are converted and imported before rebuilding the ordinary Trace projection.",
+                  "Core projection counts include existing records and converted historical Core records.",
                   "No online historical query or UI compatibility branch is permitted.",
                   "Original rows remain in the private source snapshot for repeatable reruns. Final per-record outcomes are recorded in final-items.jsonl when the conversion phase finishes.",
                   "Existing completed archive files/jobs are unchanged and are not imported.", ""])
@@ -213,7 +244,7 @@ def _report(directory, result, reasons):
 
 
 def run(runtime, state_root):
-    """Single run, retaining independent rejected records and unknown dependencies."""
+    """Convert every source record; failures remain incomplete and retryable."""
     state_root = Path(state_root)
     state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     directory = state_root / ("run-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8])
@@ -242,9 +273,15 @@ def run(runtime, state_root):
         phase = "source_snapshot_failed"
         records = list(read_snapshot(source))
         result["source_count"] = len(records)
-        if hasattr(runtime, "rebuild_core_projection"):
-            phase = "native_core_projection_failed"
-            result["core_projection"] = runtime.rebuild_core_projection()
+        if isinstance(runtime, DeploymentRuntime):
+            runtime.actor_names = {}
+            for record in records:
+                if record.get("kind") != "evidence":
+                    row = record.get("row", {})
+                    actor_id = row.get("actor_id") or row.get("user_id") or row.get("operator_id")
+                    actor_name = row.get("actor_name_snapshot") or row.get("actor_name") or row.get("user_name") or row.get("operator_name")
+                    if actor_id and actor_name:
+                        runtime.actor_names[str(actor_id)] = str(actor_name)
         clock = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         requests, candidates = [], []
         delegated = {"evidence": [], "span": []}
@@ -252,8 +289,8 @@ def run(runtime, state_root):
         for ordinal, record in enumerate(records):
             if record.get("kind") == "evidence":
                 # Stored rows are migration input. The deployment helper maps
-                # their inner events into native aggregate projections without
-                # replaying live producer admission or creating lifecycle facts.
+                # their events and relationships into native Core and Evidence
+                # records, without replaying live producer admission.
                 candidate = convert_evidence(record["row"], instance)
                 if isinstance(runtime, DeploymentRuntime) or record.get("frozen_015_provenance") is True:
                     delegated["evidence"].append(record)
@@ -311,6 +348,8 @@ def run(runtime, state_root):
                                for index in range(len(records_for_writer))]
                 if len(results) != len(records_for_writer):
                     raise ValueError("native_writer_result_count_mismatch")
+                if outcome.get("core_import"):
+                    result["core_import"] = outcome["core_import"]
                 if outcome.get("counts"):
                     result[kind + "_documents"] = outcome["counts"]
                 for record, entry in zip(records_for_writer, results):
@@ -318,7 +357,8 @@ def run(runtime, state_root):
                     if entry.get("verified") is True:
                         result["target_verified_count"] += 1
                         item.update(disposition="writer_verified", reason=entry.get("reason", "native_readback_verified"),
-                                    target_id=entry.get("target_id"), losses=entry.get("losses", []), state=entry.get("state"))
+                                    target_id=entry.get("target_id"), losses=entry.get("losses", []), state=entry.get("state"),
+                                    field_defaults=entry.get("field_defaults", {}), identity_mapping=entry.get("identity_mapping"))
                         for loss in entry.get("losses", []):
                             reasons[loss] += 1
                     else:
@@ -385,13 +425,12 @@ def run(runtime, state_root):
                     reason = "publication_requires_readback" if publication_error else "target_" + status
                     reasons[reason] += 1
                     item.update(disposition="requires_reconciliation", reason=reason, target_status=status, state="not_verified")
-        execution_errors = {"publication_requires_readback", "target_content_conflict", "target_missing", "target_conflict",
-                            "native_evidence_content_conflict", "native_evidence_write_failed"}
-        result["complete"] = (
-            result["target_verified_count"] + result["retained_count"] == result["source_count"] and
-            not any(name in execution_errors or name.endswith("_writer_failed") for name in reasons)
-        )
-        result["state"] = ("completed_with_loss" if result["retained_count"] or any(item.get("losses") for item in items) else "completed") if result["complete"] else "partial_requires_reconciliation"
+        if hasattr(runtime, "rebuild_core_projection"):
+            phase = "native_core_projection_failed"
+            result["core_projection"] = runtime.rebuild_core_projection()
+        result["field_conversion_count"] = sum(bool(item.get("field_defaults") or any(str(value).startswith(("default_", "mapped_source_", "truncated_")) for value in item.get("sidecar", {}).get("provenance", {}).values())) for item in items)
+        result["complete"] = result["target_verified_count"] == result["source_count"] and result["retained_count"] == 0
+        result["state"] = "completed" if result["complete"] else "partial_requires_reconciliation"
         private_write(directory / "final-items.jsonl", "".join(canonical(item) + "\n" for item in items).encode())
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         reasons[phase] += 1

@@ -1,101 +1,118 @@
 # 015 to 020 Historical Conversion Validation
 
-Scope: Foundry #2012 / #2030, one-time data and projection conversion only.
-All migration-specific changes under `bkn-trace/agent-observability/src/` were
-removed from the PR. The remaining Go changes are in the offline upgrade command.
-No product query, HTTP API or UI compatibility branch is added.
+Scope: Foundry #2012 / #2030, one-time offline data and projection conversion.
+There is no migration-specific change under `agent-observability/src/`, and no
+historical query, API or UI compatibility branch.
 
-## Candidate execution against the backed-up local instance
+## Conversion against the backed-up local instance
 
-Instance: `kind-bkn-main-e2e`. Frozen SQL source: 3734 rows, consisting of 106
-Audit rows and 3628 Evidence outbox rows. The source snapshot was reused.
+The frozen source contains 3734 records: 106 Audit rows and 3628 Evidence outbox
+rows. It was reused without changing or deleting source records or archives.
 
-Latest repeat report:
-`~/.bkn/upgrades/015-to-020-historical/run-20261007T000311-8941ce44/report.md`
+The corrected conversion and terminal-projection run is
+`~/.bkn/upgrades/015-to-020-historical/run-20261007T020015-da02b7ce/report.md`.
+The subsequent unchanged-input repeat is
+`~/.bkn/upgrades/015-to-020-historical/run-20261007T020348-4be481ac/report.md`.
+Both finish with `complete=true`, `state=completed` and no unconverted rows.
 
 | Measure | Verified result |
 | --- | ---: |
-| Source rows | 3734 |
-| Native Audit records converted and read back | 60 |
-| Evidence source rows converted and read back | 179 |
-| Native Evidence aggregate documents | 157 |
-| Source rows not converted; originals retained | 3495 |
-| Missing native HTTP status | 46 |
-| Incompatible multiple-request contexts for one Trace | 3449 |
-| Converted Evidence rows missing a Core receipt association | 179 |
-| Core projection documents verified against authoritative state | 2989 |
-| Already verified Audit records on repeat | 60 |
-| Already verified aggregate documents on repeat | 157 |
-| New aggregate documents on repeat | 0 |
-| Aggregate conflicts | 0 |
+| Source records | 3734 |
+| Audit records converted and read back | 106 |
+| Evidence source records converted and read back | 3628 |
+| Unconverted records | 0 |
+| Native Evidence aggregates | 3504 |
+| Original observed events retained in those aggregates | 3628 |
+| Derived native receipt terminal-projection events | 3628 |
+| Converted Core Conversations | 3504 |
+| Converted Core Interactions | 3511 |
+| Converted Core Operations / Receipts / call facts, each | 3628 |
+| Native Core records imported and read back | 17899 |
+| Core projection documents, including existing records | 17260 |
+| Repeat: already verified Audit records | 106 |
+| Repeat: already verified Core records | 17899 |
+| Repeat: already verified aggregates | 3504 |
+| Repeat: created / updated aggregate documents | 0 / 0 |
+| Repeat: conflicting aggregates | 0 |
+| Source rows with field defaults, truncation or identifier conversion | 3674 |
 
-`239 converted + 3495 retained = 3734 input rows`. The 179 association losses
-are a subset of converted rows and must not be added to the retained count.
-The result is `completed_with_loss`; it does not claim all source data or views
-were migrated.
+Source-row counts and derived native records are different measures. Neither
+Core rows nor terminal-projection events inflate the 3734-record input count.
 
-The Core helper reused the existing native projection builder, rebuilt the
-projection into `bkn-trace-core-history-18dc1580739247b3`, validated document
-versions, bodies and total count, then switched the native alias. Subsequent
-runs found the existing alias correct and did not rebuild it.
+## Necessary native target conversion
 
-The retained center contains 118 Conversations, 167 Interactions, 842 Operations
-and 842 Receipts. Receipt times range from 2026-10-01 to 2026-10-05. These facts
-are not the old September outbox rows, whose Conversation/Interaction/Operation
-IDs have no matching center facts. No replacement lifecycle, status or receipt
-was created for them.
+Missing HTTP status defaults to 200 for stored successes, 500 for failures and
+403 for denials; recognized stored HTTP status names map to their numeric code.
+The stored result is preserved. Oversized labels are truncated to native limits;
+oversized object identifiers map to stable type/hash identifiers. Originals and
+field transformations remain in the private snapshot and per-record report.
 
-## Ordinary native query verification
+The old outbox has 808 distinct Trace IDs reused across multiple requests and
+contexts. The tool splits those contexts into 3504 deterministic native Trace
+identities, updates all related identities together, and creates native Core
+records through the ordinary store. Field defaults include completed observation
+when no terminal result was stored, unknown authentication and MCP protocol.
+Captured failures remain failed; missing full question/answer remains absent.
+Captured observation payload remains available in native call details.
 
-An isolated ARM64 test job used the unchanged native query libraries from this
-branch, the deployment's database/OpenSearch configuration and a complete
-Administrator query scope. The 8081 service image was not replaced by this job.
+Each native Evidence aggregate retains every original observation and includes
+its converted receipt's ordinary `retrieval.completed` projection. This is the
+same data representation used by the existing Core projection builder. It fixes
+explicit Trace-ID queries, which prefer stored Evidence over Core projections,
+without adding any query fallback. Previously written aggregates can be updated
+only if their complete body matches a known representation derived from the
+same frozen source; updates also require OpenSearch sequence/primary-term CAS.
 
-| Query | Result |
+## Unmodified native query qualification
+
+A local acceptance checker uses the unchanged native query libraries and the
+instance's actual MariaDB/OpenSearch targets with Administrator scope. It does
+not change the running query service or install a historical reader.
+
+| Query | Verified result |
 | --- | ---: |
-| Log search: converted Audit IDs returned once each | 60 |
-| Audit `audit.admin` filter: same converted IDs returned once each | 60 |
-| Native aggregates preferred over earlier per-event prototype documents | 157 |
-| Native Evidence events returned | 179 |
-| Native business graph reads found | 157 |
-| Retained receipt-based Trace list total, matching SQL identities | 764 |
-| First native Trace page | 20 |
+| Ordinary log search: each converted Audit ID returned once | 106 |
+| `audit.admin` filter: the same converted Audit IDs returned once | 106 |
+| Native aggregate reads, terminal/root summaries and request-chain reachability | 3504 |
+| Evidence events returned, original plus terminal projections | 7256 |
+| Explicit Trace-ID terminal/root, conversation and business graph samples | 12 |
+| Native conversation list total, including existing data | 3614 |
+| Native Trace list total, including existing data | 4268 |
 
-Log queries used 2026-09-01 through 2026-10-01 UTC, respecting the existing
-30-day query limit. Retained Trace queries used 2026-09-12 through 2026-10-07 UTC.
-The verification helper initially omitted its account ID/type and was corrected
-to match the existing authenticated-handler contract; no product code changed.
+Log records have nonempty actor/object snapshots and actions. Aggregate counts
+match native normalization. Native list totals match native database identities
+for the same September 1 to October 7 query range. A narrower September 12 range
+correctly excludes earlier history; its smaller count is not a migration loss.
 
-The 764 Trace entries are retained center facts, not converted September
-Evidence-only rows. Native Evidence/business graph availability does not imply
-receipt-based Trace list membership. Source identifier-only names remain as
-captured; no current directory lookup was used to rewrite historical names.
+## 8081 page verification and remaining release work
 
-## Earlier prototype results superseded
+The existing Trace detail page successfully reads historical Trace
+`0019705187e8a7e733143149ea6d6eb4`: `completed`, tool
+`bkn.schema.object_type.get`, request
+`req_01a0a498-2187-7c0f-9afb-42a1e3a154bd`, and a completed MCP operation with the
+captured business-reference payload. The displayed historical time is September
+15, 2026. Missing technical Spans and full question/answer are shown as unavailable.
 
-The earlier report that read back 106 SS4O log documents and 3628 per-event
-Evidence documents proved raw-index publication only. It does not count as
-native conversion or product acceptance. That raw-publication execution path
-and the migration-specific online query changes have been removed.
+The ordinary log page displays September history when the September 1 to
+October 1 range is selected. Native Audit comparison above verifies exact IDs;
+the page's overall count also includes ordinary Core conversation projections
+and pre-existing logs, so it is not the 106-row source Audit count.
 
-## Checks and remaining acceptance
+The business provenance page currently reports that the enterprise implementation
+is not deployed. Consequently **final three-page acceptance is not complete**.
+The running observability image is a local qualification image, and bkn-agent
+is a community image. After this revision is reviewed and approved for merge,
+package the offline command into the EE image, align its Core dependency, deploy
+formal merged images, repeat the native checks and finish business provenance
+and audit-workbench page acceptance before closing #2012.
 
-- Python migration tests: 119 passed.
-- Full agent-observability Go tests passed.
-- `go vet ./...`, `go build ./cmd/...` and `git diff --check` passed.
-- Repeated candidate execution produced no duplicate Audit publication, no new
-  aggregates and no repeated Core projection rebuild.
-- Source snapshots and completed archive files were not deleted or reimported.
+## Development verification
 
-The administrator guide is
-`deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md`. The production
-entry point executes the bundled upgrade command in the existing observability
-pod. Local qualification used a temporary command-only job because the currently
-running image does not yet contain this revision; its query behavior was not
-used as evidence for this branch.
+- 129 Python tests pass, including missing status, oversized fields, reused
+  Trace/request/operation identities, native terminal projection, exact prior
+  aggregate/CAS protection and publication failure followed by fresh readback.
+- `go test ./...`, `go vet ./...` and `go build ./cmd/...` pass for
+  agent-observability.
+- `git diff --check` passes; the net runtime-source migration diff is empty.
 
-PR re-review, explicit merge approval, merged-image deployment and final 8081
-page acceptance remain pending. The enterprise image must also bump its Core
-dependency to the merged revision and package the offline upgrade command; its
-current Dockerfile does not include that command. Native-library checks are not merged-image UI
-acceptance, and #2012 is not closed by this report.
+Engineer instructions: [upgrade guide](../../deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md).
