@@ -57,5 +57,7 @@ LIMIT/OFFSET. Neither page needs the log-service traversal fix.
       all 42 cases with the unchanged 10-second test timeout.
 - [x] Requester explicitly authorized committing/pushing this review revision
       and directed subsequent revisions to proceed without repeated confirmation.
-- [ ] Update backend PR #2035 in English and create the companion Studio PR.
+- [x] Push the backend revision and update PR #2035 in English; create companion
+      Studio PR [#831](https://github.com/openbkn-ai/bkn-studio/pull/831),
+      closing Studio issue #830. Local validation passed; remote CI is running.
 - [ ] Validate the deployed Studio with other issues, as requested by the user.
