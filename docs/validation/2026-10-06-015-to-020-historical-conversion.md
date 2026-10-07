@@ -106,7 +106,7 @@ Native Audit comparison above verifies exact IDs;
 the page's overall count also includes ordinary Core conversation projections
 and pre-existing logs, so it is not the 106-row source Audit count.
 
-## Final merged-image acceptance — October 7, 2026
+## Merged-image record loading checks — October 7, 2026
 
 Foundry #2030 merged at 74a9ade79aed. EE #230 was approved at its exact
 head, passed its required checks and merged at 6f935e2b3251. Its ordinary
@@ -175,3 +175,22 @@ backup's acceptance-20261007 directory. No source/backup/archive was deleted.
 - `git diff --check` passes; the net runtime-source migration diff is empty.
 
 Engineer instructions: [upgrade guide](../../deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md).
+
+
+## Reopened content-completeness investigation
+
+The user identified missing question, result and duration across the migrated
+business-provenance rows. Loading and matching IDs do not establish complete
+conversation-content migration. Final acceptance and issue closure remain pending.
+
+The 3,628 exported Evidence rows contain observation/reference payloads, not
+question/answer content; every captured started_at equals observed_at. The
+converter generates 3,504 request-context conversations and currently does not
+populate their question/result lifecycle artifacts. Native September lifecycle
+events were not found in the current center ledger.
+
+A further original source was found: openbkn.t_agent_thread contains 27 September
+Agent threads, with retained checkpoint tables. Their message content, round
+structure and correlation to historical calls must be investigated before
+claiming those fields were absent or migration complete. This documentation PR
+remains draft while that work proceeds.
