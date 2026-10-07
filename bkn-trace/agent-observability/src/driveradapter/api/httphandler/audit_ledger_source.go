@@ -122,7 +122,11 @@ func (s *auditLedgerSource) SearchNumbered(ctx context.Context, query observabil
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
-	out := observabilityvo.SourcePage{Count: count, CountAccuracy: "exact"}
+	accuracy := "exact"
+	if query.Page <= 1 || query.PageBefore != nil {
+		accuracy = "partial"
+	}
+	out := observabilityvo.SourcePage{Count: count, CountAccuracy: accuracy}
 	for _, record := range page.Records {
 		out.Records = append(out.Records, auditLogRecord(record))
 	}

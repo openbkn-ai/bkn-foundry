@@ -31,6 +31,9 @@ var (
 
 const MinLogPageSize = 20
 
+// Retain the pre-existing numbered window for cursor-only or mixed sources.
+const maxLegacyLogPage = 100
+
 type Source interface {
 	ID() string
 	Search(context.Context, observabilityvo.LogQuery) (observabilityvo.SourcePage, error)
@@ -144,7 +147,42 @@ func (service *Service) List(
 	profile evidencevo.AccessProfile,
 	query observabilityvo.LogQuery,
 ) (observabilityvo.ListResult, error) {
-	return service.listPage(ctx, profile, query)
+	result, err := service.listPage(ctx, profile, query)
+	if !errors.Is(err, ErrNumberedPaginationUnsupported) || query.Page > maxLegacyLogPage {
+		return result, err
+	}
+	// Compatibility replay shares one deadline, rather than renewing the budget
+	// for each page. The SQL-only path above never enters this loop.
+	replayContext, cancel := context.WithTimeout(ctx, service.sourceTimeout)
+	defer cancel()
+	targetPage := query.Page
+	query.Page = 1
+	partial := false
+	for currentPage := 1; currentPage <= targetPage; currentPage++ {
+		if err := replayContext.Err(); err != nil {
+			return observabilityvo.ListResult{}, errors.Join(ErrSourcesUnavailable, err)
+		}
+		result, err = service.listPage(replayContext, profile, query)
+		if err != nil {
+			return observabilityvo.ListResult{}, err
+		}
+		if err := replayContext.Err(); err != nil {
+			return observabilityvo.ListResult{}, errors.Join(ErrSourcesUnavailable, err)
+		}
+		partial = partial || result.Partial
+		if currentPage == targetPage {
+			break
+		}
+		if result.NextCursor == "" {
+			result.Records = []observabilityvo.LogRecord{}
+			break
+		}
+		query.Cursor = result.NextCursor
+	}
+	result.Page = targetPage
+	result.Partial = result.Partial || partial
+	result.CountExact = result.CountExact && !result.Partial
+	return result, nil
 }
 
 func (service *Service) listPage(

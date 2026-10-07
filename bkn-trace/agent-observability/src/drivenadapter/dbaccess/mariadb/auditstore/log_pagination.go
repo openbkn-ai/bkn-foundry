@@ -17,8 +17,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
-// QueryLogPage counts the filtered monthly ledgers, then reads only the target
-// slice. Months have disjoint occurred_at ranges, so descending month order is
+// QueryLogPage counts matching monthly rows only for numbered jumps; first-page
+// and cursor reads fetch a bounded slice without counting. Months have disjoint
+// occurred_at ranges, so descending month order is
 // also global time order. Database round trips scale with the bounded time window, not Page;
 // a deep OFFSET still costs work inside the database.
 func (reader *Reader) QueryLogPage(ctx context.Context, query observabilityvo.LogQuery, profile evidencevo.AccessProfile) (auditsvc.Page, int64, error) {
@@ -41,30 +42,33 @@ func (reader *Reader) QueryLogPage(ctx context.Context, query observabilityvo.Lo
 		where string
 		args  []any
 	}
+	counted := query.Page > 1
 	months := make([]monthCount, 0, len(tables))
 	var total int64
 	for index := len(tables) - 1; index >= 0; index-- {
 		where, args := logPageWhere(query, profile)
 		table := tables[index]
-		var count int64
-		err := reader.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM bkn_audit."+table+where, args...).Scan(&count)
-		if isMissingMonthlyTable(err) {
-			continue
+		count := int64(-1)
+		if counted {
+			err := reader.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM bkn_audit."+table+where, args...).Scan(&count)
+			if isMissingMonthlyTable(err) {
+				continue
+			}
+			if err != nil {
+				return auditsvc.Page{}, 0, fmt.Errorf("count Audit ledger %s: %w", table, err)
+			}
+			total += count
 		}
-		if err != nil {
-			return auditsvc.Page{}, 0, fmt.Errorf("count Audit ledger %s: %w", table, err)
-		}
-		total += count
 		months = append(months, monthCount{table, count, where, args})
 	}
 	page := auditsvc.Page{Records: []auditsvc.Record{}}
 	// Compare before multiplying, including MaxInt page numbers.
-	if total == 0 || int64(query.Page-1) > (total-1)/int64(query.Limit) {
+	if counted && (total == 0 || int64(query.Page-1) > (total-1)/int64(query.Limit)) {
 		return page, total, nil
 	}
 	offset := int64(query.Page-1) * int64(query.Limit)
 	for _, month := range months {
-		if offset >= month.count {
+		if counted && offset >= month.count {
 			offset -= month.count
 			continue
 		}
@@ -72,6 +76,9 @@ func (reader *Reader) QueryLogPage(ctx context.Context, query observabilityvo.Lo
 		statement := "SELECT event_id, source_id, payload, occurred_at, broker_received_at, recorded_at FROM bkn_audit." + month.table + month.where + " ORDER BY occurred_at DESC, event_id DESC LIMIT ? OFFSET ?"
 		args := append(append([]any(nil), month.args...), remaining, offset)
 		rows, err := reader.db.QueryContext(ctx, statement, args...)
+		if isMissingMonthlyTable(err) {
+			continue
+		}
 		if err != nil {
 			return auditsvc.Page{}, 0, fmt.Errorf("page Audit ledger %s: %w", month.table, err)
 		}
@@ -102,6 +109,9 @@ func (reader *Reader) QueryLogPage(ctx context.Context, query observabilityvo.Lo
 			break
 		}
 		offset = 0
+	}
+	if !counted {
+		total = int64(len(page.Records))
 	}
 	if len(page.Records) > query.Limit {
 		page.Records = page.Records[:query.Limit]

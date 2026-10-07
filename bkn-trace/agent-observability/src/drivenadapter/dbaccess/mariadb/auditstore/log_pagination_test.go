@@ -117,8 +117,7 @@ func TestLogPageSpansMonthsAndCursorContinuesInOlderMonth(t *testing.T) {
 	}
 	q.Page = 181 // A supplied cursor takes precedence over the numbered offset.
 	q.PageBefore = &observabilityvo.SourcePosition{EventTimestamp: page.Next.OccurredAt, LogID: page.Next.EventID}
-	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202610").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202609").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(10))
+	mock.ExpectQuery("SELECT event_id.*audit_event_202610").WithArgs(from, to, "audit.admin", page.Next.OccurredAt, page.Next.OccurredAt, page.Next.EventID, 21, int64(0)).WillReturnRows(logPageRows(10, 0))
 	mock.ExpectQuery("SELECT event_id.*audit_event_202609").WithArgs(from, to, "audit.admin", page.Next.OccurredAt, page.Next.OccurredAt, page.Next.EventID, 21, int64(0)).WillReturnRows(logPageRows(9, 10, 5))
 	next, _, err := reader.QueryLogPage(context.Background(), q, profile)
 	if err != nil || len(next.Records) != 10 || next.Next != nil || next.Records[0].EventID != "evt-09-05" {
@@ -161,6 +160,22 @@ func TestLogPageSkipsMissingMonthlyLedger(t *testing.T) {
 	_, count, err := reader.QueryLogPage(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 1000000}, evidencevo.AccessProfile{Roles: []string{"admin"}})
 	if err != nil || count != 0 {
 		t.Fatalf("count=%d err=%v", count, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogFirstPageDoesNotCountLedger(t *testing.T) {
+	db, mock, _ := sqlmock.New()
+	defer func() { _ = db.Close() }()
+	reader, _ := NewReader(db)
+	from := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	mock.ExpectQuery("SELECT event_id.*audit_event_202609").WithArgs(from, to, "audit.admin", 21, int64(0)).WillReturnRows(logPageRows(9, 21))
+	page, count, err := reader.QueryLogPage(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 1}, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"admin"}})
+	if err != nil || len(page.Records) != 20 || page.Next == nil || count != 21 {
+		t.Fatalf("page=%+v count=%d err=%v", page, count, err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

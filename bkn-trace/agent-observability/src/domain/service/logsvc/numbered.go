@@ -16,7 +16,7 @@ import (
 
 // numberedSource must apply all filters and authorization before counting and
 // slicing. Sources without this capability remain available through cursors;
-// numbered jumps must never replay earlier pages.
+// numbered jumps beyond the legacy compatibility window require this capability.
 type numberedSource interface {
 	SearchNumbered(context.Context, observabilityvo.LogQuery, evidencevo.AccessProfile) (observabilityvo.SourcePage, error)
 }

@@ -911,9 +911,9 @@ func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 	}
 }
 
-func TestListRejectsNumberedJumpsWithoutDirectSourceCapability(t *testing.T) {
+func TestListRejectsUnboundedJumpsWithoutDirectSourceCapability(t *testing.T) {
 	source := &filteredPageSource{}
-	_, err := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key")).List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 20, Page: 2})
+	_, err := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key")).List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 20, Page: 101})
 	if !errors.Is(err, ErrNumberedPaginationUnsupported) {
 		t.Fatalf("unsupported source must use cursors: %v", err)
 	}

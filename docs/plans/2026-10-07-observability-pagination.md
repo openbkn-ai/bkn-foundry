@@ -7,8 +7,11 @@ Removing that validation exposed an existing log-service loop that replayed ever
 preceding cursor page. A request for page 181 could therefore issue 181 source
 searches; using larger skip batches still required 19 sequential searches.
 
-The deployed log service uses the centralized MariaDB audit ledger with
-`OperationAuditOnly: true`. Follow the business-provenance list strategy: count
+The log service uses `OperationAuditOnly: true`, which filters record kinds but
+does not imply a single source. Complete installations enable `bkn-trace-core`
+conversation projection by default, while audit Kafka is opt-in. A deployment
+can expose the projection, the MariaDB audit ledger, or both. For a sole ledger,
+follow the business-provenance list strategy: count
 the matching dataset and directly select the requested slice with LIMIT/OFFSET.
 Apply public filters, valid operation-audit projection predicates, and per-record
 access scope before both COUNT and pagination. Retain authorization checks on
@@ -24,14 +27,16 @@ required.
 
 Reject page sizes below 20 for both `page_size` and its `limit` alias, retaining
 the upper bound of 200. The Studio log selector exposes 20/50/100/200. Reject
-numbered jumps for sources without direct pagination instead of replaying
-cursor pages; those sources retain cursor access. An oversized page beyond the
+numbered jumps beyond page 100 for cursor-only or mixed sources; pages 1–100
+retain their existing cursor replay under one shared source timeout. Those
+sources also retain cursor access. An oversized page beyond the
 matching total returns an empty page after counting, without executing a deep
 OFFSET. Compare page numbers with the total before multiplying offsets.
 
 Cursor requests use the same ledger order and filters, and ignore numbered
-page offsets. Their count describes the matching rows remaining after the
-cursor boundary. Existing first-page counts become exact for the ledger.
+page offsets. They read only a bounded slice and report a lower-bound count,
+without COUNT queries. First-page and facet requests read bounded slices without COUNT and keep the
+ledger's native event-ID tie-break. Exact ledger totals are fetched only for numbered jumps.
 
 ## Related pages
 
@@ -61,3 +66,19 @@ LIMIT/OFFSET. Neither page needs the log-service traversal fix.
       Studio PR [#831](https://github.com/openbkn-ai/bkn-studio/pull/831),
       closing Studio issue #830. Local validation passed; remote CI is running.
 - [ ] Validate the deployed Studio with other issues, as requested by the user.
+
+## Targeted review revision (2026-10-08)
+
+- [x] Reproduce and restore page 2 and page 100 for projection-only and mixed
+      installations; reject page 101 before source searches.
+- [x] Retain one overall timeout/cancellation budget for legacy replay, rather
+      than resetting it on every page. Sole-ledger jumps still query directly.
+- [x] Avoid COUNT for first-page, facet and cursor reads; cover cursor continuity
+      across monthly partitions without count queries.
+- [x] Preserve the requester-required minimum size of 20 and align the published
+      OpenAPI page/page-size/limit constraints and pagination_not_supported error.
+- [x] Full backend tests, lint/vet/build/license/Swagger checks, published JSON
+      validation, and focused compatibility/count/timestamp-tie regressions pass;
+      the narrow revision is prepared for the authorized push to PR #2035.
+- Frontend PR #831 is approved; its existing stale-response concern is outside
+  this pagination compatibility fix and no frontend code is changed this round.
