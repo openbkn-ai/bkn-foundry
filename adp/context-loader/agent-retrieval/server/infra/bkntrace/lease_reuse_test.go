@@ -275,8 +275,8 @@ func TestLifecycleClientFencedRefreshStopsOnFailure(t *testing.T) {
 			}
 			switch stage {
 			case "read_unavailable":
-				if err == nil || !strings.Contains(err.Error(), "Core unavailable") {
-					t.Fatalf("lost refresh transport error: %v", err)
+				if err != nil || apiErr == nil || apiErr.Code != "terminal_conflict" || IsTraceInfrastructureFailure(apiErr, err) {
+					t.Fatalf("refresh outage replaced Core refusal: %v %v", apiErr, err)
 				}
 			case "read_terminal":
 				if apiErr == nil || apiErr.Code != "interaction_terminal" {

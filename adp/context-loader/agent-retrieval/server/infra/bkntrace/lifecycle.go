@@ -328,12 +328,20 @@ func (c *LifecycleClient) EnsureOperation(
 	if apiErr != nil {
 		c.forgetLease(ctx, input.ConversationID, input.InteractionID)
 		if cached && apiErr.Code == "terminal_conflict" {
+			rejection := apiErr
 			// A rejected ensure has not authorized execution. Refresh once, preserving
 			// the operation key and input so response loss/idempotency remain unchanged.
 			interaction, apiErr, err = c.readOperationInteraction(ctx, input)
 			if err == nil && apiErr == nil {
 				body["lease_token"], body["lease_epoch"] = interaction.LeaseToken, interaction.LeaseEpoch
 				apiErr, err = c.do(ctx, http.MethodPost, path, body, &result)
+			}
+			// Core already refused admission. A failed refresh or retry cannot
+			// turn that refusal into an observation outage: outer adapters may
+			// execute untraced business on infrastructure errors.
+			if err != nil || IsTraceInfrastructureFailure(apiErr, err) {
+				c.forgetLease(ctx, input.ConversationID, input.InteractionID)
+				return OperationResult{}, rejection, nil
 			}
 			if apiErr != nil {
 				c.forgetLease(ctx, input.ConversationID, input.InteractionID)

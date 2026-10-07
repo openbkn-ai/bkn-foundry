@@ -17,3 +17,5 @@ Artifact acknowledgements are drained up to 4 KiB under the existing request dea
 - [x] Submit PR and write actual scope/results back to #1691. Artifact HTTP persistence is retained and remains a separate issue scope.
 
 Validation: full module tests, race tests for the trace client, vet, default/ee_dev builds and default/ee_dev MCP/extension tests passed. The initial all-package run under parallel compilation hit two existing two-second Python SSE test deadlines; both passed in the subsequent full run with GOMAXPROCS=4. No Kind/Studio deployment was performed for this client-only optimization.
+
+Review follow-up: after a cached lease is explicitly fenced, a refresh GET or ensure retry outage must preserve the original `terminal_conflict`. The HTTP/MCP outer adapters otherwise treat transport/5xx errors as observation failures and execute untraced business. Added outer regression coverage for both stages and both failure types, plus CI race coverage. Full module tests, vet, default build, client race and ee_dev client/MCP tests and build passed after this correction.

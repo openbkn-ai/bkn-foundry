@@ -45,3 +45,4 @@ jobs:
       - run: go vet ./server/extension/... ./server/driveradapters/mcp/ ./server/infra/bkntrace/
       - run: go test ./server/extension/... ./server/driveradapters/mcp/ ./server/infra/bkntrace/
       - run: go test -tags ee_dev ./server/extension/... ./server/driveradapters/mcp/ ./server/infra/bkntrace/
+      - run: go test -race ./server/infra/bkntrace/
