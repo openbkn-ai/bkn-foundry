@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -339,12 +340,12 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 		Roles:              []string{"admin"}, AccountActive: true, Fingerprint: "sha256:scope-a",
 	}
 	base := time.Now().UTC().Truncate(time.Second)
-	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{
-		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base},
-		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base.Add(-time.Second)},
-		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base.Add(-2 * time.Second)},
-	})
-	firstRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2", nil)
+	records := make([]observabilityvo.LogRecord, 21)
+	for index := range records {
+		records[index] = observabilityvo.LogRecord{LogID: "log-" + strconv.Itoa(index), Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base.Add(-time.Duration(index) * time.Second)}
+	}
+	handler := newTestLogHandler(profile, records)
+	firstRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=20", nil)
 	setLogTestIdentity(firstRequest, "admin-a")
 	firstResponse := httptest.NewRecorder()
 	handler.ListLogs(firstResponse, firstRequest)
@@ -355,7 +356,7 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 		t.Fatalf("first page did not return a cursor: %d %s", firstResponse.Code, firstResponse.Body.String())
 	}
 
-	invalidRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2&cursor=invalid", nil)
+	invalidRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=20&cursor=invalid", nil)
 	setLogTestIdentity(invalidRequest, "admin-a")
 	invalidResponse := httptest.NewRecorder()
 	handler.ListLogs(invalidResponse, invalidRequest)
@@ -363,7 +364,7 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 		t.Fatalf("invalid cursor contract mismatch: %d %s", invalidResponse.Code, invalidResponse.Body.String())
 	}
 
-	changedFilterRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2&business_module=system_management&cursor="+firstBody.NextCursor, nil)
+	changedFilterRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=20&business_module=system_management&cursor="+firstBody.NextCursor, nil)
 	setLogTestIdentity(changedFilterRequest, "admin-a")
 	changedFilterResponse := httptest.NewRecorder()
 	handler.ListLogs(changedFilterResponse, changedFilterRequest)

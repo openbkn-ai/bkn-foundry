@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -2148,6 +2149,10 @@ func summaryCandidateLimit(options evidencevo.SummaryQueryOptions) int {
 		// entries disappear merely because the ordinary list fast path exists.
 		return MaxSummaryScanEntries
 	}
+	// Check the scan cap before multiplying so deep page numbers cannot overflow.
+	if page > (MaxSummaryScanEntries-1)/(limit*maxReceiptsPerSummary) {
+		return MaxSummaryScanEntries
+	}
 	candidates := page*limit*maxReceiptsPerSummary + 1
 	if candidates > MaxSummaryScanEntries {
 		return MaxSummaryScanEntries
@@ -2445,5 +2450,10 @@ func summaryOffset(options evidencevo.SummaryQueryOptions, length int) int {
 }
 
 func summaryQueryOffset(options evidencevo.SummaryQueryOptions) int {
-	return (normalizeSummaryPage(options.Page) - 1) * normalizeSummaryLimit(options.Limit)
+	pageIndex := normalizeSummaryPage(options.Page) - 1
+	limit := normalizeSummaryLimit(options.Limit)
+	if pageIndex > math.MaxInt/limit {
+		return math.MaxInt
+	}
+	return pageIndex * limit
 }

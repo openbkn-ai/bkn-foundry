@@ -911,17 +911,11 @@ func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 	}
 }
 
-func TestListSupportsPageNumberPaginationWithoutExposingCursors(t *testing.T) {
-	base := time.Now().UTC().Truncate(time.Second)
-	source := &filteredPageSource{pages: [][]observabilityvo.LogRecord{
-		{{LogID: "log-new", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "sandbox.session.changed", EventTimestamp: base}},
-		{{LogID: "log-old", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "sandbox.session.changed", EventTimestamp: base.Add(-time.Second)}},
-	}}
-	result, err := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key")).List(
-		context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 1, Page: 2},
-	)
-	if err != nil || result.Page != 2 || result.PageSize != 1 || len(result.Records) != 1 || result.Records[0].LogID != "log-old" {
-		t.Fatalf("unexpected numbered log page: %+v err=%v", result, err)
+func TestListRejectsUnboundedJumpsWithoutDirectSourceCapability(t *testing.T) {
+	source := &filteredPageSource{}
+	_, err := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key")).List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 20, Page: 101})
+	if !errors.Is(err, ErrNumberedPaginationUnsupported) {
+		t.Fatalf("unsupported source must use cursors: %v", err)
 	}
 }
 

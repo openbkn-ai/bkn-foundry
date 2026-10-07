@@ -195,12 +195,11 @@
           {
             "name": "page",
             "in": "query",
-            "description": "One-based page number. The server uses a controlled cursor to keep each page's query range stable.",
+            "description": "One-based page number. A single audit-ledger source supports direct page jumps. Cursor-only or mixed sources retain pages 1–100 within one shared source timeout; deeper jumps return pagination_not_supported. A supplied cursor takes precedence over page.",
             "schema": {
               "type": "integer",
               "default": 1,
-              "minimum": 1,
-              "maximum": 100
+              "minimum": 1
             }
           },
           {
@@ -209,7 +208,18 @@
             "schema": {
               "type": "integer",
               "default": 50,
-              "minimum": 1,
+              "minimum": 20,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Alias for page_size. If both are present, page_size takes precedence; both supplied values must be valid.",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 20,
               "maximum": 200
             }
           }
@@ -1611,7 +1621,7 @@
             "required": ["page", "page_size"],
             "properties": {
               "page": { "type": "integer", "minimum": 1 },
-              "page_size": { "type": "integer", "minimum": 1, "maximum": 200 }
+              "page_size": { "type": "integer", "minimum": 20, "maximum": 200 }
             },
             "additionalProperties": false
           },
@@ -1862,7 +1872,7 @@
     },
     "responses": {
       "BadRequest": {
-        "description": "invalid_log_filter or cursor_invalid.",
+        "description": "invalid_log_filter, cursor_invalid, or pagination_not_supported (numbered jumps beyond page 100 for cursor-only or mixed sources).",
         "content": {
           "application/json": {
             "schema": {

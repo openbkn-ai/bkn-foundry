@@ -20,13 +20,19 @@ import (
 )
 
 var (
-	ErrAccessDenied       = errors.New("observability access denied")
-	ErrSourcesUnavailable = errors.New("observability sources unavailable")
-	ErrNotDisclosed       = errors.New("observability log not disclosed")
-	ErrCursorInvalid      = errors.New("observability cursor invalid")
-	ErrCursorStale        = errors.New("observability cursor stale")
-	ErrInvalidQuery       = errors.New("observability query invalid")
+	ErrAccessDenied                  = errors.New("observability access denied")
+	ErrSourcesUnavailable            = errors.New("observability sources unavailable")
+	ErrNotDisclosed                  = errors.New("observability log not disclosed")
+	ErrCursorInvalid                 = errors.New("observability cursor invalid")
+	ErrCursorStale                   = errors.New("observability cursor stale")
+	ErrInvalidQuery                  = errors.New("observability query invalid")
+	ErrNumberedPaginationUnsupported = errors.New("observability source does not support direct numbered pagination")
 )
+
+const MinLogPageSize = 20
+
+// Retain the pre-existing numbered window for cursor-only or mixed sources.
+const maxLegacyLogPage = 100
 
 type Source interface {
 	ID() string
@@ -141,25 +147,41 @@ func (service *Service) List(
 	profile evidencevo.AccessProfile,
 	query observabilityvo.LogQuery,
 ) (observabilityvo.ListResult, error) {
-	targetPage := normalizeLogPage(query.Page)
-	if query.Cursor != "" || targetPage == 1 {
-		return service.listPage(ctx, profile, query)
+	result, err := service.listPage(ctx, profile, query)
+	if !errors.Is(err, ErrNumberedPaginationUnsupported) || query.Page > maxLegacyLogPage {
+		return result, err
 	}
-
+	// Compatibility replay shares one deadline, rather than renewing the budget
+	// for each page. The SQL-only path above never enters this loop.
+	replayContext, cancel := context.WithTimeout(ctx, service.sourceTimeout)
+	defer cancel()
+	targetPage := query.Page
 	query.Page = 1
-	var result observabilityvo.ListResult
+	partial := false
 	for currentPage := 1; currentPage <= targetPage; currentPage++ {
-		pageResult, err := service.listPage(ctx, profile, query)
+		if err := replayContext.Err(); err != nil {
+			return observabilityvo.ListResult{}, errors.Join(ErrSourcesUnavailable, err)
+		}
+		result, err = service.listPage(replayContext, profile, query)
 		if err != nil {
 			return observabilityvo.ListResult{}, err
 		}
-		result = pageResult
-		if currentPage == targetPage || pageResult.NextCursor == "" {
+		if err := replayContext.Err(); err != nil {
+			return observabilityvo.ListResult{}, errors.Join(ErrSourcesUnavailable, err)
+		}
+		partial = partial || result.Partial
+		if currentPage == targetPage {
 			break
 		}
-		query.Cursor = pageResult.NextCursor
+		if result.NextCursor == "" {
+			result.Records = []observabilityvo.LogRecord{}
+			break
+		}
+		query.Cursor = result.NextCursor
 	}
 	result.Page = targetPage
+	result.Partial = result.Partial || partial
+	result.CountExact = result.CountExact && !result.Partial
 	return result, nil
 }
 
@@ -238,6 +260,21 @@ func (service *Service) listPage(
 	sourceQuery.ObservedBefore = &queryWatermark
 	filterQuery := sourceQuery
 	filterQuery.ActorQuery = query.ActorQuery
+	if len(visibleSources) == 1 {
+		if source, ok := visibleSources[0].(numberedSource); ok {
+			sourceQuery.ActorQuery = query.ActorQuery
+			sourceQuery.Limit = limit
+			sourceQuery.Page = normalizeLogPage(query.Page)
+			if position, ok := positions[visibleSources[0].ID()]; ok {
+				sourceQuery.PageBefore = &position
+				sourceQuery.Page = 1
+			}
+			return service.listNumbered(ctx, profile, capabilities, query, sourceQuery, source, visibleSources[0], queryWatermark, result)
+		}
+	}
+	if query.Cursor == "" && normalizeLogPage(query.Page) > 1 {
+		return observabilityvo.ListResult{}, ErrNumberedPaginationUnsupported
+	}
 	succeeded := 0
 	failed := 0
 	coveragePartial := false

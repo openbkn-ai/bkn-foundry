@@ -162,6 +162,8 @@
 "outcomes contains an unsupported value" = "outcomes 包含不支持的值"
 "page is outside the supported range" = "page 超出支持范围"
 "page must be an integer between 1 and 100" = "page 必须是 1 到 100 之间的整数"
+"page must be a positive integer" = "page 必须是正整数"
+"this log source does not support direct page jumps; use cursor pagination" = "当前日志来源不支持直接跳页，请使用游标分页"
 "page_size is outside the supported range" = "page_size 超出支持范围"
 "page_size must be an integer between 1 and 200" = "page_size 必须是 1 到 200 之间的整数"
 "payload_hash does not match canonical envelope" = "payload_hash 与规范信封不匹配"
