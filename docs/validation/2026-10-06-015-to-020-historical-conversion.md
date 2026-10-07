@@ -94,7 +94,11 @@ captured business-reference payload. The displayed historical time is September
 15, 2026. Missing technical Spans and full question/answer are shown as unavailable.
 
 The ordinary log page displays September history when the September 1 to
-October 1 range is selected. Native Audit comparison above verifies exact IDs;
+October 1 range is selected; filtering Execution Factory shows 48 records.
+The audit workbench with the same month displays 107 management records
+(106 converted source Audit records plus one pre-existing native record),
+including the same September 27 toolbox updates and September 12 operations.
+Native Audit comparison above verifies exact IDs;
 the page's overall count also includes ordinary Core conversation projections
 and pre-existing logs, so it is not the 106-row source Audit count.
 
@@ -104,7 +108,7 @@ The running observability image is a local qualification image, and bkn-agent
 is a community image. After this revision is reviewed and approved for merge,
 package the offline command into the EE image, align its Core dependency, deploy
 formal merged images, repeat the native checks and finish business provenance
-and audit-workbench page acceptance before closing #2012.
+page acceptance and formal-image revalidation before closing #2012.
 
 ## Development verification
 
