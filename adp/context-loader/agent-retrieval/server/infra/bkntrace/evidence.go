@@ -282,6 +282,9 @@ func postArtifactWithRetry(
 		resp, requestErr := artifactHTTPClient.Do(req)
 		if requestErr == nil {
 			if resp.StatusCode < http.StatusBadRequest {
+				// Consume the small acknowledgement so the transport can reuse
+				// the connection. Bound reads and keep HTTP success authoritative.
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxCoreErrorBodyBytes))
 				_ = resp.Body.Close()
 				cancel()
 				return nil
