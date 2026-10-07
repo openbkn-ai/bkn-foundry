@@ -106,13 +106,58 @@ Native Audit comparison above verifies exact IDs;
 the page's overall count also includes ordinary Core conversation projections
 and pre-existing logs, so it is not the 106-row source Audit count.
 
-The business provenance page currently reports that the enterprise implementation
-is not deployed. Consequently **final three-page acceptance is not complete**.
-The running observability image is a local qualification image, and bkn-agent
-is a community image. After this revision is reviewed and approved for merge,
-package the offline command into the EE image, align its Core dependency, deploy
-formal merged images, repeat the native checks and finish business provenance
-page acceptance and formal-image revalidation before closing #2012.
+## Final merged-image acceptance — October 7, 2026
+
+Foundry #2030 merged at 74a9ade79aed. EE #230 was approved at its exact
+head, passed its required checks and merged at 6f935e2b3251. Its ordinary
+main ARM64 image is deployed at 8081:
+
+swr.cn-east-3.myhuaweicloud.com/openbkn-ai-ee/agent-observability-ee:0.2.0-main.20261007170552.sha6f935e2
+
+Image digest:
+sha256:1f2b852cb81585f3705899ab746499e2d0456a9f90acc112ce9c81b556b62763
+
+The EE packaging change pins Core to merged Foundry and includes the existing
+offline command; it adds no historical runtime reader. The deployed service is
+Ready with no restarts. The actual engineer entrypoint completed with exit 0:
+
+~/.bkn/upgrades/015-to-020-historical/run-20261007T091801-72628e89/report.md
+
+It verified all 3734 input rows with zero unconverted rows, all 17899 Core
+records and 3504 aggregates. The unchanged-input rerun created or updated none.
+The unchanged native query checker passed again after this final deployment:
+106 Audit IDs in ordinary logs and audit.admin, 3504 aggregates, 7256 events and
+12 business graph samples.
+
+With September 1 through October 1 selected in the existing page controls:
+
+- Logs list 48 Execution Factory records; the next page loads September 2 rows.
+  The earlier transient OAuth-unavailable response did not recur in this final
+  deployment check.
+- Audit lists 107 management records (106 converted plus one existing).
+  The September 27 20:05:37 toolbox update matches the log page on actor,
+  object, result, POST and request req_9adfa453-7926-4db5-bb65-a38668b479b7.
+  Its source snapshot has an object identifier but no toolbox name.
+- Trace e0bb6468563156cb7e282edec34a6897 opens normally: completed,
+  ontology-query, bkn.object.query, September 18 10:30:52, request
+  req_630e55f1-2ddd-433c-95dd-f97c8a13fc0d. The call details retain
+  query_hash, the inventory object reference and row_count 500.
+- Enterprise business provenance now loads the September ontology-query
+  conversations. Conversation conv_req_630e55f1-2ddd-433c-95dd-f97c8a13fc0d
+  opens its timeline, showing one successful call and 500 returned rows.
+  It has the same operation as Trace:
+  op_58048934a279bea69c8e36e829d1145efc1f692fcebdbac5.
+
+Missing full question/answer, Spans or duration remain unavailable. No new Agent
+interpretation was generated for the historical evidence-chain tab. The sampled
+query Trace has no matching management log; conversion does not invent that link.
+
+A separate existing log-pagination display issue was observed: page two changes
+the displayed total from 48 to 28 while loading its records. Full source-ID
+verification still passes. This acceptance does not change online pagination.
+
+Screenshots and the private final Markdown report are retained under the local
+backup's acceptance-20261007 directory. No source/backup/archive was deleted.
 
 ## Development verification
 
