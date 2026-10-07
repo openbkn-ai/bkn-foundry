@@ -162,6 +162,7 @@
 "outcomes contains an unsupported value" = "outcomes contains an unsupported value"
 "page is outside the supported range" = "page is outside the supported range"
 "page must be an integer between 1 and 100" = "page must be an integer between 1 and 100"
+"page must be a positive integer" = "page must be a positive integer"
 "page_size is outside the supported range" = "page_size is outside the supported range"
 "page_size must be an integer between 1 and 200" = "page_size must be an integer between 1 and 200"
 "payload_hash does not match canonical envelope" = "payload_hash does not match canonical envelope"

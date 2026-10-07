@@ -7,6 +7,7 @@ package httphandler
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -305,7 +306,7 @@ func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 	if err != nil {
 		return observabilityvo.LogQuery{}, err
 	}
-	page, err := parseBoundedInteger(values.Get("page"), 1, 1, 100, "page")
+	page, err := parseBoundedInteger(values.Get("page"), 1, 1, math.MaxInt, "page")
 	if err != nil {
 		return observabilityvo.LogQuery{}, err
 	}

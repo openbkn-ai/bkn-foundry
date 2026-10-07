@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -1991,6 +1992,19 @@ func TestSummaryCandidateLimitUsesPageBudgetOnlyWithoutContentFilters(t *testing
 	}
 	if got := summaryCandidateLimit(evidencevo.SummaryQueryOptions{Page: 1, Limit: 20, Keyword: "needle"}); got != MaxSummaryScanEntries {
 		t.Fatalf("content-filter candidate limit=%d", got)
+	}
+}
+
+func TestSummaryPaginationDoesNotOverflow(t *testing.T) {
+	options := evidencevo.SummaryQueryOptions{Page: math.MaxInt, Limit: 20}
+	if got := summaryCandidateLimit(options); got != MaxSummaryScanEntries {
+		t.Errorf("large page candidate limit=%d, want %d", got, MaxSummaryScanEntries)
+	}
+	if got := summaryQueryOffset(options); got != math.MaxInt {
+		t.Errorf("large page offset=%d, want saturated maximum", got)
+	}
+	if got := summaryQueryOffset(evidencevo.SummaryQueryOptions{Page: 181, Limit: 20}); got != 3600 {
+		t.Errorf("ordinary page offset=%d, want 3600", got)
 	}
 }
 
