@@ -53,9 +53,6 @@ func (client *Client) Metadata() observabilityvo.SourceStatus {
 		SourceID: sourceID, Status: "healthy", Reliability: "best_effort",
 		CollectionMethod: "direct_otlp", CoveredModules: []string{"openbkn"}, CountAccuracy: "exact",
 		Categories: []string{
-			observabilityvo.CategoryAccessUser,
-			observabilityvo.CategoryAuditAdmin,
-			observabilityvo.CategoryAuditSecurity,
 			observabilityvo.CategoryRuntimeBusiness,
 			observabilityvo.CategoryRuntimeModel,
 		},
@@ -267,11 +264,6 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 		ServiceName:         stringAttribute(document.Resource, "service.name", stringAttribute(document.Attributes, "service.name", "")),
 		Environment:         stringAttribute(document.Resource, "deployment.environment", ""),
 		ActorID:             stringAttribute(document.Attributes, "actor_id", ""),
-		ActorNameSnapshot:   stringAttribute(document.Attributes, "actor_name_snapshot", ""),
-		ActorType:           stringAttribute(document.Attributes, "actor_type", ""),
-		AuthMethod:          stringAttribute(document.Attributes, "auth_method", ""),
-		SourceChannel:       stringAttribute(document.Attributes, "source_channel", ""),
-		BusinessModule:      stringAttribute(document.Attributes, "business_module_id", ""),
 		EffectiveSubjectID:  stringAttribute(document.Attributes, "effective_subject_id", ""),
 		ApplicationID:       stringAttribute(document.Attributes, "application_id", ""),
 		RequestID:           stringAttribute(document.Attributes, "request_id", ""),
@@ -281,11 +273,6 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 		InteractionID:       stringAttribute(document.Attributes, "interaction_id", ""),
 		OperationID:         stringAttribute(document.Attributes, "operation_id", ""),
 		ToolName:            stringAttribute(document.Attributes, "tool_name", ""),
-		Action:              stringAttribute(document.Attributes, "action", ""),
-		TargetType:          stringAttribute(document.Attributes, "target_type", ""),
-		TargetID:            stringAttribute(document.Attributes, "target_id", ""),
-		TargetNameSnapshot:  stringAttribute(document.Attributes, "target_name", ""),
-		FailureCode:         stringAttribute(document.Attributes, "failure_code", ""),
 		ArtifactRef:         stringAttribute(document.Attributes, "artifact_ref", ""),
 		KnowledgeNetworkIDs: stringSliceAttribute(document.Attributes, "knowledge_network_ids"),
 		Attributes:          projectedAttributes(document.Attributes),
@@ -300,21 +287,7 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 
 func stringAttribute(attributes map[string]any, key, fallback string) string {
 	value, ok := attributes[key]
-	if !ok && strings.Contains(key, ".") {
-		parts := strings.Split(key, ".")
-		var current any = attributes
-		for _, part := range parts {
-			object, ok := current.(map[string]any)
-			if !ok {
-				return fallback
-			}
-			current, ok = object[part]
-			if !ok {
-				return fallback
-			}
-		}
-		value = current
-	} else if !ok {
+	if !ok {
 		return fallback
 	}
 	text, ok := value.(string)
@@ -342,7 +315,7 @@ func stringSliceAttribute(attributes map[string]any, key string) []string {
 }
 
 func projectedAttributes(attributes map[string]any) map[string]any {
-	allowed := []string{"migration_source", "business_context", "task_id", "causation_request_id", "linked_trace_id", "linked_span_id"}
+	allowed := []string{"business_context", "task_id", "causation_request_id", "linked_trace_id", "linked_span_id"}
 	result := make(map[string]any)
 	for _, key := range allowed {
 		if value, ok := attributes[key]; ok {

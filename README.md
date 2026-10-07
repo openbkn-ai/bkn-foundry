@@ -433,36 +433,10 @@ per-component and per-file breakdown:
 
 The license applicable to each file is stated in that file's header.
 
-## OpenSearch history publication
+## Historical data upgrade
 
-The administrator entry point converts every retained 015 Audit and Evidence
-row into the corresponding 020 OpenSearch store. It writes the existing
-`OPENSEARCH_LOG_INDEX` (normally `ss4o_logs-default-namespace`) and
-`OPENSEARCH_EVIDENCE_INDEX` (normally `bkn-trace-evidence-v2`) using stable IDs
-qualified by the source record identity.
-
-The generated log document preserves the historical timestamp, actor and
-target snapshots, source identity, event name, outcome, request ID and HTTP
-status. The generated evidence document preserves the historical trace,
-request, conversation, operation, span and payload fields. New 020 fields that
-are absent in 015 remain absent; the converter does not invent values. A
-matching existing document is `already_verified`, and a different document
-with the same ID is a conflict. The Markdown report includes:
-
-- `OpenSearch log documents created`
-- `OpenSearch log documents already verified`
-- `OpenSearch log conflicts`
-- `OpenSearch evidence documents created`
-- `OpenSearch evidence documents already verified`
-- `OpenSearch evidence conflicts`
-
-The script discovers `OPENSEARCH_ENDPOINT` and `OPENSEARCH_LOG_INDEX` from the
-running observability deployment. It does not require an administrator to
-supply an endpoint, index, credentials, or a second migration command. If the
-log index is not configured, the run stops before publication and records the
-precheck failure. The source Audit tables and MariaDB Ledger are never changed
-by the OpenSearch step.
-
-The source snapshot is the migration authority. Rows are not rejected because
-they lack 020-only fields; the original values remain in the private snapshot
-and the mapped values are visible through the 020 product pages.
+The one-time [015-to-020 upgrade tool](deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md)
+converts retained logs into native Audit data, converts representable Evidence
+into native aggregates, and verifies or rebuilds Core projections from existing
+facts. Conversion losses are reported. No historical query or UI compatibility
+branch is added. Run it after the 020 deployment and schema upgrade are healthy.

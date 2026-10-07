@@ -37,17 +37,3 @@ func TestRegisteredLogEventsIncludeUnifiedCaptureControlAudit(t *testing.T) {
 		}
 	}
 }
-
-func TestRegisteredLogEventsIncludeHistoricalManagementAudits(t *testing.T) {
-	for _, name := range []string{
-		"backend.operation.observed",
-		"vega.operation.observed",
-		"execution_factory.operation.observed",
-		"model_manager.operation.observed",
-		"safe.admin.operation.observed",
-	} {
-		if !IsRegisteredLogEvent(CategoryAuditAdmin, name) {
-			t.Fatalf("historical management event %s is not queryable", name)
-		}
-	}
-}

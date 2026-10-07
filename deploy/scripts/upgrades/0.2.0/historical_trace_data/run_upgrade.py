@@ -17,8 +17,8 @@ from logs import convert_log
 import reconcile
 from snapshot import SQLSource, canonical, digest, private_write, read_snapshot, save_snapshot, strict_loads
 from trace import convert_evidence, convert_span
-from opensearch_history import (OpenSearchHistoryWriter, document_from_legacy_audit,
-                                evidence_document_from_legacy_row)
+from native_evidence import plan_aggregates
+from opensearch_history import OpenSearchHistoryWriter
 
 
 def _command(arguments, data=None):
@@ -82,7 +82,7 @@ class DeploymentRuntime:
 
     def _native(self, flags, data):
         command = ["kubectl", "--context", self.context, "-n", "openbkn", "exec", "-i", self.pod,
-                   "-c", self.container, "--", "/app/historical-data-validate"] + flags
+                   "-c", self.container, "--", getattr(self, "native_program", "/app/historical-data-validate")] + flags
         return _command(command, data)
 
     def snapshot(self):
@@ -103,8 +103,34 @@ class DeploymentRuntime:
         output = self._native(["--publish-audit", "--in-place-upgrade", "--expected-plan-sha256", digest(data)], data)
         return [strict_loads(line) for line in output.splitlines()]
 
+    def rebuild_core_projection(self):
+        options = self._tls_options(False)
+        settings = {"tls_verify": options["verify_tls"]}
+        if options.get("ca_file"):
+            settings["ca_pem"] = Path(options["ca_file"]).read_text()
+        answer = strict_loads(self._native(["--rebuild-core-projection"], canonical(settings).encode()))
+        if answer.get("verified") is not True:
+            raise ValueError("native_core_projection_not_verified")
+        return answer
+
     def migrate_evidence(self, records):
-        raise ValueError("evidence_dependency_set_not_verified")
+        items, rejected = plan_aggregates(records, datetime.now(timezone.utc))
+        states = {}
+        with self._opensearch_connection() as (endpoint, forwarded):
+            writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,
+                                             self.opensearch_username, self.opensearch_password,
+                                             **self._tls_options(forwarded))
+            counts = writer.publish_documents(items, allow_update=False,
+                                               on_result=lambda key, state: states.update({key: state}))
+        receipts = set(self.source.query("SELECT trace_id FROM bkn_trace.bkn_trace_receipts WHERE trace_id IS NOT NULL"))
+        results = [{"verified": False, "reason": rejected.get(i, "native_evidence_write_failed")} for i in range(len(records))]
+        for item in items:
+            state = states.get(item["_id"], "conflict")
+            for ordinal in item["source_ordinals"]:
+                results[ordinal] = {"verified": state != "conflict", "reason": "native_aggregate_readback" if state != "conflict" else "native_evidence_content_conflict",
+                                    "target_id": item["_id"], "state": state,
+                                    "losses": ["missing_core_receipt"] if item["document"]["trace_id"] not in receipts else []}
+        return {"results": results, "counts": counts}
 
     def migrate_spans(self, records):
         raise ValueError("span_target_config_not_verified")
@@ -155,30 +181,6 @@ class DeploymentRuntime:
             "ca_file": os.environ.get("BKN_HISTORY_OPENSEARCH_CA_FILE") or None,
         }
 
-    def publish_logs(self, events):
-        with self._opensearch_connection() as (endpoint, forwarded):
-            writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index,
-                                             self.opensearch_username, self.opensearch_password,
-                                             **self._tls_options(forwarded))
-            return writer.publish(events, datetime.now(timezone.utc))
-
-    def publish_history(self, records):
-        """Write every retained 015 log/evidence row to its 020 index."""
-        with self._opensearch_connection() as (endpoint, forwarded):
-            observed_at = datetime.now(timezone.utc)
-            audit_items = [document_from_legacy_audit(record, observed_at, self.environment)
-                           for record in records if record.get("kind") == "audit"]
-            evidence_items = [evidence_document_from_legacy_row(record, observed_at)
-                              for record in records if record.get("kind") == "evidence"]
-            tls_options = self._tls_options(forwarded)
-            log_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_log_index,
-                                                 self.opensearch_username, self.opensearch_password, **tls_options)
-            evidence_writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,
-                                                      self.opensearch_username, self.opensearch_password, **tls_options)
-            return {
-                "logs": log_writer.publish_documents(audit_items, observed_at),
-                "evidence": evidence_writer.publish_documents(evidence_items, observed_at),
-            }
 
 
 def _status(runtime, item):
@@ -189,32 +191,24 @@ def _report(directory, result, reasons):
     lines = ["# 015 -> 020 Historical Data Conversion", "", "## Result", "",
              "- State: " + result["state"],
              "- Source records: %d" % result["source_count"],
-             "- Source records written to 020 OpenSearch: %d" % result.get("history_written_count", 0),
-             "- OpenSearch log documents created: %d" % result.get("opensearch_log_created", 0),
-             "- OpenSearch log documents updated: %d" % result.get("opensearch_log_updated", 0),
-             "- OpenSearch log documents already verified: %d" % result.get("opensearch_log_already_verified", 0),
-             "- OpenSearch log conflicts: %d" % result.get("opensearch_log_conflict", 0),
-             "- OpenSearch evidence documents created: %d" % result.get("opensearch_evidence_created", 0),
-             "- OpenSearch evidence documents updated: %d" % result.get("opensearch_evidence_updated", 0),
-             "- OpenSearch evidence documents already verified: %d" % result.get("opensearch_evidence_already_verified", 0),
-             "- OpenSearch evidence conflicts: %d" % result.get("opensearch_evidence_conflict", 0),
-             "- Already verified before publication: %d" % result["already_verified_count"],
-             "- Source records not written to 020 OpenSearch: %d" % (
-                 result["source_count"] - result.get("history_written_count", 0)
-                 if result.get("history_mode") else result["retained_count"]),
-             "", "## Conversion Notes", ""]
-    if result.get("history_mode") and result.get("complete"):
-        lines.append("- All source rows were written to their corresponding 020 OpenSearch store.")
-        lines.append("- 020-only fields absent from 015 remain absent; source values were not changed.")
-    elif result.get("history_mode"):
-        lines.append("- History publication did not complete; inspect the failure reasons below before retrying.")
-        lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
-    else:
-        lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
-    lines.extend(["", "Original rows remain in the private source snapshot for repeatable reruns.",
-                  "OpenSearch written counts are confirmed by document readback.",
-                  "Existing completed archive files/jobs are unchanged and are not imported.",
-                  "",])
+             "- Source records converted and native target verified: %d" % result["target_verified_count"],
+             "- Already verified Audit records before publication: %d" % result["already_verified_count"],
+             "- Source records not converted (originals retained): %d" % result["retained_count"],
+             "- Core projection verified: " + str(result.get("core_projection", {}).get("verified", False)),
+             "- Core projection documents verified: %d" % result.get("core_projection", {}).get("projected_count", 0),
+             "- Core projection index: " + str(result.get("core_projection", {}).get("index_version", "not checked")),
+             "- Native Evidence aggregate documents: " + canonical(result.get("evidence_documents", {})),
+             "", "## Conversion Losses and Execution Failures", ""]
+    lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
+    if not reasons:
+        lines.append("- None reported.")
+    lines.extend(["", "## Target and Product Meaning", "",
+                  "Audit records are confirmed in the native Audit ledger; Kafka acknowledgements do not count as persistence.",
+                  "Evidence is converted into native aggregate documents and read back. Evidence without a Core receipt cannot appear as a normal Trace list entry; this association loss is reported explicitly.",
+                  "Core projection counts describe retained authoritative facts, not additional converted source rows.",
+                  "No online historical query or UI compatibility branch is permitted.",
+                  "Original rows remain in the private source snapshot for repeatable reruns. Final per-record outcomes are recorded in final-items.jsonl when the conversion phase finishes.",
+                  "Existing completed archive files/jobs are unchanged and are not imported.", ""])
     private_write(directory / "report.md", "\n".join(lines).encode())
 
 
@@ -226,11 +220,7 @@ def run(runtime, state_root):
     directory.mkdir(mode=0o700)
     result = {"complete": False, "state": "precheck_failed", "source_count": 0,
               "target_verified_count": 0, "already_verified_count": 0, "retained_count": 0,
-             "opensearch_log_created": 0, "opensearch_log_already_verified": 0,
-             "opensearch_log_updated": 0, "opensearch_log_conflict": 0, "opensearch_evidence_created": 0,
-             "opensearch_evidence_updated": 0,
-              "opensearch_evidence_already_verified": 0, "opensearch_evidence_conflict": 0,
-              "history_written_count": 0, "history_mode": False, "run_directory": str(directory)}
+              "run_directory": str(directory)}
     reasons, items = Counter(), []
     phase = "precheck_failed"
     try:
@@ -252,48 +242,32 @@ def run(runtime, state_root):
         phase = "source_snapshot_failed"
         records = list(read_snapshot(source))
         result["source_count"] = len(records)
-        if hasattr(runtime, "publish_history"):
-            result["history_mode"] = True
-            phase = "history_publication_failed"
-            history = runtime.publish_history(records)
-            for prefix, key in (("opensearch_log", "logs"), ("opensearch_evidence", "evidence")):
-                for state in ("created", "updated", "already_verified", "conflict"):
-                    result[prefix + "_" + state] = int(history[key].get(state, 0))
-                if history[key].get("conflict", 0):
-                    reasons[prefix + "_conflict"] += int(history[key]["conflict"])
-            result["history_written_count"] = sum(
-                result[name] for name in (
-                    "opensearch_log_created", "opensearch_log_updated", "opensearch_log_already_verified",
-                    "opensearch_evidence_created", "opensearch_evidence_updated",
-                    "opensearch_evidence_already_verified"))
-            result["complete"] = result["history_written_count"] == result["source_count"] and not reasons
-            result["state"] = "completed" if result["complete"] else "partial_requires_reconciliation"
-            private_write(directory / "items.jsonl", "".join(canonical({"kind": r["kind"], "source_id": r["source_id"], "source": r, "disposition": "migrated" if result["complete"] else "requires_readback"}) + "\n" for r in records).encode())
-            _report(directory, result, reasons)
-            return result
+        if hasattr(runtime, "rebuild_core_projection"):
+            phase = "native_core_projection_failed"
+            result["core_projection"] = runtime.rebuild_core_projection()
         clock = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         requests, candidates = [], []
         delegated = {"evidence": [], "span": []}
         phase = "conversion_failed"
         for ordinal, record in enumerate(records):
             if record.get("kind") == "evidence":
-                # Validate the stored Event wrapper before retaining it. Admission
-                # still requires the old owner/sequence dependency set, which is
-                # deliberately not guessed from the 020 database.
+                # Stored rows are migration input. The deployment helper maps
+                # their inner events into native aggregate projections without
+                # replaying live producer admission or creating lifecycle facts.
                 candidate = convert_evidence(record["row"], instance)
-                if record.get("frozen_015_provenance") is True:
+                if isinstance(runtime, DeploymentRuntime) or record.get("frozen_015_provenance") is True:
                     delegated["evidence"].append(record)
                     item = {"ordinal": ordinal, "kind": "evidence", "source": record,
                             "disposition": "convert", "reason": "delegated_to_existing_writer"}
                 else:
                     item = {"ordinal": ordinal, "kind": "evidence", "source": record,
                             "disposition": "archive",
-                            "reason": "evidence_dependency_set_not_verified",
+                            "reason": "missing_native_trace_dependencies",
                             "format_disposition": candidate.get("disposition"),
                             "format_reason": candidate.get("reason", "")}
             elif record.get("kind") == "span":
-                # A current 020 index is not proof that a document came from
-                # 015. Without frozen source provenance, retain the raw span.
+                # The standalone Span writer requires an explicit source index
+                # locator; an absent locator is a conversion/configuration gap.
                 candidate = convert_span(record["row"], instance)
                 if record.get("frozen_015_provenance") is True:
                     delegated["span"].append(record)
@@ -302,7 +276,7 @@ def run(runtime, state_root):
                 else:
                     item = {"ordinal": ordinal, "kind": "span", "source": record,
                             "disposition": "archive",
-                            "reason": "span_source_provenance_not_verified",
+                            "reason": "missing_source_span_index_metadata",
                             "format_disposition": candidate.get("disposition"),
                             "format_reason": candidate.get("reason", "")}
             else:
@@ -330,23 +304,29 @@ def run(runtime, state_root):
                 continue
             try:
                 outcome = getattr(runtime, "migrate_evidence" if kind == "evidence" else "migrate_spans")(records_for_writer)
-                verified = int(outcome.get("verified", 0))
-                retained = int(outcome.get("retained", len(records_for_writer) - verified))
-                result["target_verified_count"] += verified
-                result["retained_count"] += retained
-                for record in records_for_writer[:verified]:
-                    for item in items:
-                        if item.get("source") is record:
-                            item.update(disposition="writer_verified", reason="existing_writer_readback_verified")
-                            break
-                if retained:
-                    reasons[outcome.get("reason", kind + "_writer_retained")] += retained
-            except (OSError, ValueError, KeyError, TypeError):
-                result["retained_count"] += len(records_for_writer)
-                reasons[kind + "_writer_requires_dependencies"] += len(records_for_writer)
+                results = outcome.get("results")
+                if results is None:
+                    verified = int(outcome.get("verified", 0))
+                    results = [{"verified": index < verified, "reason": outcome.get("reason", kind + "_writer_retained")}
+                               for index in range(len(records_for_writer))]
+                if len(results) != len(records_for_writer):
+                    raise ValueError("native_writer_result_count_mismatch")
+                if outcome.get("counts"):
+                    result[kind + "_documents"] = outcome["counts"]
+                for record, entry in zip(records_for_writer, results):
+                    item = next(item for item in items if item.get("source") is record)
+                    if entry.get("verified") is True:
+                        result["target_verified_count"] += 1
+                        item.update(disposition="writer_verified", reason=entry.get("reason", "native_readback_verified"),
+                                    target_id=entry.get("target_id"), losses=entry.get("losses", []), state=entry.get("state"))
+                        for loss in entry.get("losses", []):
+                            reasons[loss] += 1
+                    else:
+                        item.update(disposition="archive", reason=entry.get("reason", kind + "_writer_retained"))
+            except (OSError, RuntimeError, ValueError, KeyError, TypeError):
                 for item in items:
-                    if item.get("source") in records_for_writer and item["disposition"] == "convert":
-                        item.update(disposition="archive", reason=kind + "_writer_requires_dependencies")
+                    if any(item.get("source") is record for record in records_for_writer):
+                        item.update(disposition="archive", reason=kind + "_writer_failed")
         identities = {}
         for item in items:
             if item["disposition"] == "convert":
@@ -358,7 +338,6 @@ def run(runtime, state_root):
                     item.update(disposition="archive", reason="source_identity_content_conflict")
         private_write(directory / "items.jsonl", "".join(canonical(item) + "\n" for item in items).encode())
         missing = []
-        verified_audit_events = {}
         phase = "target_readback_failed"
         for item in items:
             if item["disposition"] == "writer_verified":
@@ -371,12 +350,13 @@ def run(runtime, state_root):
             if status == "verified":
                 result["already_verified_count"] += 1
                 result["target_verified_count"] += 1
-                verified_audit_events[item["payload"]["event_id"]] = item["payload"]
+                item.update(disposition="writer_verified", reason="native_audit_readback", target_status="verified", state="already_verified")
             elif status == "missing":
                 missing.append(item)
             else:
                 reasons["target_content_conflict"] += 1
                 result["retained_count"] += 1
+                item.update(disposition="requires_reconciliation", reason="target_content_conflict", target_status=status, state="not_verified")
         if missing:
             phase = "publication_requires_readback"
             request_bytes = "".join(canonical({"kind": "audit", "payload": item["payload"], "broker_time": clock}) + "\n" for item in missing).encode()
@@ -399,27 +379,20 @@ def run(runtime, state_root):
                         time.sleep(2)
                 if status == "verified":
                     result["target_verified_count"] += 1
-                    verified_audit_events[item["payload"]["event_id"]] = item["payload"]
+                    item.update(disposition="writer_verified", reason="native_audit_readback", target_status="verified", state="created")
                 else:
                     result["retained_count"] += 1
-                    reasons["publication_requires_readback" if publication_error else "target_" + status] += 1
-        if verified_audit_events and hasattr(runtime, "publish_logs") and not hasattr(runtime, "publish_history"):
-            try:
-                log_result = runtime.publish_logs(list(verified_audit_events.values()))
-                for key in ("created", "already_verified", "conflict"):
-                    result["opensearch_log_" + key] = int(log_result.get(key, 0))
-                if result["opensearch_log_conflict"]:
-                    reasons["opensearch_log_conflict"] += result["opensearch_log_conflict"]
-            except (OSError, RuntimeError, ValueError, KeyError, TypeError):
-                reasons["opensearch_log_publish_failed"] += len(verified_audit_events)
+                    reason = "publication_requires_readback" if publication_error else "target_" + status
+                    reasons[reason] += 1
+                    item.update(disposition="requires_reconciliation", reason=reason, target_status=status, state="not_verified")
+        execution_errors = {"publication_requires_readback", "target_content_conflict", "target_missing", "target_conflict",
+                            "native_evidence_content_conflict", "native_evidence_write_failed"}
         result["complete"] = (
-            result["history_written_count"] == result["source_count"] and
-            not any(name.endswith("_conflict") for name in reasons)
-        ) if hasattr(runtime, "publish_history") else (
             result["target_verified_count"] + result["retained_count"] == result["source_count"] and
-            not any(name.startswith(("publication_", "target_", "opensearch_log_")) for name in reasons)
+            not any(name in execution_errors or name.endswith("_writer_failed") for name in reasons)
         )
-        result["state"] = "completed" if result["complete"] else "partial_requires_reconciliation"
+        result["state"] = ("completed_with_loss" if result["retained_count"] or any(item.get("losses") for item in items) else "completed") if result["complete"] else "partial_requires_reconciliation"
+        private_write(directory / "final-items.jsonl", "".join(canonical(item) + "\n" for item in items).encode())
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         reasons[phase] += 1
         result["state"] = phase

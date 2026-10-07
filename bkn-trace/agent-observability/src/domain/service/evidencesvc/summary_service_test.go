@@ -159,7 +159,9 @@ func TestListTraceExecutionsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	}}
 	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{pageSummaryTrace("trace-page", "req-page", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo")}}}
 	service := New(base, WithProjectionSource(projection), WithSessionStore(store))
-	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20})
+	from := time.Date(2026, 8, 19, 8, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 19, 10, 0, 0, 0, time.UTC)
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: from, To: to, Limit: 20})
 	if err != nil {
 		t.Fatalf("list trace page: %v", err)
 	}
@@ -172,12 +174,14 @@ func TestListTraceExecutionsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	if !projection.queries[0].From.IsZero() || !projection.queries[0].To.IsZero() {
 		t.Fatalf("page expansion must not filter later facts by the identity time range: %+v", projection.queries[0])
 	}
-
+	if query := store.traceQueries[0]; !query.From.Equal(from) || !query.To.Equal(to) {
+		t.Fatalf("identity query must own the time filter: %+v", query)
+	}
 	store.tracePage = isessionstore.SummaryIdentityPage{Entries: []isessionstore.SummaryIdentity{{ID: "trace-next", StartedAt: "2026-08-19T08:59:00Z"}}, Total: 101}
 	projection.resultFor = func(query iprojectionsource.Query) iprojectionsource.Result {
 		return iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{pageSummaryTrace(query.TraceIDs[0], "req-next", "2026-08-19T08:59:00Z", "acct_demo", "bd_demo")}}
 	}
-	nextPage, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20, Cursor: *page.NextCursor})
+	nextPage, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: from, To: to, Limit: 20, Cursor: *page.NextCursor})
 	if err != nil || len(nextPage.Entries) != 1 || nextPage.Entries[0].TraceID != "trace-next" {
 		t.Fatalf("next page=%+v err=%v", nextPage, err)
 	}
@@ -2738,72 +2742,5 @@ func TestOperationFailureSummaryKeepsUsefulTextAndBoundsListSize(t *testing.T) {
 	}
 	if !strings.Contains(string(payload.Inline), message) {
 		t.Fatal("original details must remain intact")
-	}
-}
-
-func TestHistoricalTraceRangePreservesMixedRecordsAndCursor(t *testing.T) {
-	store := &pagingSessionStore{Store: sessionstore.New(), tracePage: isessionstore.SummaryIdentityPage{Entries: []isessionstore.SummaryIdentity{{ID: "trace-current"}}, Total: 1}}
-	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{
-		pageSummaryTrace("trace-current", "req-current", "2026-08-19T09:30:00Z", "acct_demo", "bd_demo"),
-		pageSummaryTrace("trace-history", "req-history", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo"),
-	}}}
-	service := New(evidencestore.New(), WithProjectionSource(projection), WithSessionStore(store))
-	opts := evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: time.Date(2026, 8, 19, 8, 0, 0, 0, time.UTC), To: time.Date(2026, 8, 19, 10, 0, 0, 0, time.UTC), Limit: 1}
-	page, err := service.ListTraceExecutions(context.Background(), opts)
-	if err != nil || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-current" || page.NextCursor == nil {
-		t.Fatalf("first mixed page: %+v err=%v", page, err)
-	}
-	opts.Cursor = *page.NextCursor
-	page, err = service.ListTraceExecutions(context.Background(), opts)
-	if err != nil || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-history" {
-		t.Fatalf("history cursor page: %+v err=%v", page, err)
-	}
-	if len(store.traceQueries) != 0 || len(projection.queries) != 4 || !projection.queries[0].From.Equal(opts.From) {
-		t.Fatalf("range projection: %+v", projection.queries)
-	}
-}
-
-func TestRangeTracePageHydratesSelectedPreviewOutsideCandidateArtifactBudget(t *testing.T) {
-	base := evidencestore.New()
-	seedBusinessProvenanceRequestWithAgent(t, base, "req-latest", "trace-latest", "conv-latest", "int-latest", "2026-08-19T09:00:00Z", "latest question", "latest result", "acct_demo", "agent-demo", "agent-demo")
-	full, err := base.LoadExecutionProjection(context.Background(), iprojectionsource.Query{Scope: summaryScope("acct_demo")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	projection := &capturingProjectionSource{resultFor: func(query iprojectionsource.Query) iprojectionsource.Result {
-		if !query.From.IsZero() {
-			return iprojectionsource.Result{Traces: full.Traces}
-		}
-		if len(query.TraceIDs) != 1 || query.TraceIDs[0] != "trace-latest" || !query.SummaryOnly || !query.From.IsZero() || !query.To.IsZero() {
-			t.Fatalf("must hydrate only selected page: %+v", query)
-		}
-		return full
-	}}
-	service := New(base, WithProjectionSource(projection))
-	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC), Limit: 50})
-	if err != nil || len(page.Entries) != 1 || page.Entries[0].QuestionPreview != "latest question" || page.Entries[0].ResultPreview != "latest result" || page.Partial {
-		t.Fatalf("selected previews lost to range budget: %+v err=%v", page, err)
-	}
-	if len(projection.queries) != 2 {
-		t.Fatalf("expected candidate scan and selected-page hydration: %+v", projection.queries)
-	}
-}
-
-func TestRangeRequestProjectionRetainsQuestionAndResultArtifacts(t *testing.T) {
-	base := evidencestore.New()
-	seedBusinessProvenanceRequestWithAgent(t, base, "req-range", "trace-range", "conv-range", "int-range", "2026-08-19T09:00:00Z", "range question", "range result", "acct_demo", "agent-demo", "agent-demo")
-	full, err := base.LoadExecutionProjection(context.Background(), iprojectionsource.Query{Scope: summaryScope("acct_demo")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	projection := &capturingProjectionSource{resultFor: func(query iprojectionsource.Query) iprojectionsource.Result {
-		if query.EvidenceOnly {
-			t.Fatal("Trace candidate optimization leaked into Request projection")
-		}
-		return full
-	}}
-	page, err := New(base, WithProjectionSource(projection)).ListRequests(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC), Limit: 50})
-	if err != nil || len(page.Entries) != 1 || page.Entries[0].InteractionQuestion != "range question" || page.Entries[0].InteractionResult != "range result" {
-		t.Fatalf("Request range previews changed: %+v err=%v", page, err)
 	}
 }

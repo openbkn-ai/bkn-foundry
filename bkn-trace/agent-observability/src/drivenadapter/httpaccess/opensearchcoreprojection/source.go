@@ -58,16 +58,15 @@ func (s *Source) LoadExecutionProjection(ctx context.Context, query iprojections
 		return iprojectionsource.Result{}, err
 	}
 	artifactResult := iprojectionsource.Result{}
-	historicalRange := !query.From.IsZero() || !query.To.IsZero()
 	if s.artifacts != nil {
 		artifactQuery := query
-		if len(authorizedInteractions) > 0 && !historicalRange {
+		if len(authorizedInteractions) > 0 {
 			artifactQuery.RequestID = ""
 			artifactQuery.TraceID = ""
 			artifactQuery.InteractionID = ""
 			artifactQuery.AuthorizedInteractionIDs = authorizedInteractions
 		}
-		if artifactSource, ok := s.artifacts.(iprojectionsource.ArtifactProjectionSourcePort); ok && query.SummaryOnly && len(authorizedInteractions) > 0 && !historicalRange {
+		if artifactSource, ok := s.artifacts.(iprojectionsource.ArtifactProjectionSourcePort); ok && query.SummaryOnly && len(authorizedInteractions) > 0 {
 			// Receipt projection already supplies these traces. Match the legacy
 			// store's authorized artifact selectors without reading discarded traces.
 			artifactQuery.ConversationIDs = nil
@@ -83,18 +82,6 @@ func (s *Source) LoadExecutionProjection(ctx context.Context, query iprojections
 		}
 	}
 	traces := tracesFromReceipts(receipts)
-	if len(receipts) == 0 || historicalRange {
-		seen := make(map[string]bool, len(traces))
-		for _, trace := range traces {
-			seen[trace.TraceID] = true
-		}
-		for _, trace := range artifactResult.Traces {
-			if !seen[trace.TraceID] && evidencevo.MatchesScope(trace, query.Scope) {
-				seen[trace.TraceID] = true
-				traces = append(traces, trace)
-			}
-		}
-	}
 	artifacts := artifactsForTraces(artifactResult.Artifacts, traces)
 	attachArtifactEvents(traces, artifacts)
 	return iprojectionsource.Result{

@@ -59,7 +59,7 @@ class FakeRuntime:
     def migrate_evidence(self, records):
         self.evidence_calls.extend(records)
         if not self.safe_evidence:
-            return {"verified": 0, "retained": len(records), "reason": "evidence_dependency_set_not_verified"}
+            return {"verified": 0, "retained": len(records), "reason": "missing_native_trace_dependencies"}
         return {"verified": len(records), "retained": 0}
 
     def migrate_spans(self, records):
@@ -79,23 +79,14 @@ class UpgradeRunnerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
-    def test_history_mode_completes_without_online_admission_or_kafka(self):
+    def test_scope_exclusion_is_a_conversion_loss_not_an_execution_failure(self):
         runtime = FakeRuntime()
-        runtime.publish_history = lambda records: {"logs": {"created": 2}, "evidence": {"created": 1}}
-        runtime.validate = lambda _: (_ for _ in ()).throw(AssertionError("online validation must not run"))
+        runtime.rows = [dict(kind="audit", source_id="vega", row=row(action="read"))]
         result = run(runtime, self.root)
         self.assertTrue(result["complete"])
-        self.assertEqual(result["history_written_count"], 3)
+        self.assertEqual(result["state"], "completed_with_loss")
+        self.assertEqual(result["retained_count"], 1)
         self.assertEqual(runtime.sent, [])
-
-    def test_history_failure_generates_truthful_report(self):
-        runtime = FakeRuntime()
-        runtime.publish_history = lambda _: (_ for _ in ()).throw(RuntimeError("OpenSearch request failed"))
-        result = run(runtime, self.root)
-        self.assertFalse(result["complete"])
-        report = (Path(result["run_directory"]) / "report.md").read_text()
-        self.assertIn("history_publication_failed", report)
-        self.assertNotIn("All source rows were written", report)
 
     def test_single_run_partial_conversion_writes_only_confirmed_log_and_report(self):
         runtime = FakeRuntime()
@@ -103,8 +94,7 @@ class UpgradeRunnerTests(unittest.TestCase):
         self.assertEqual(result["source_count"], 3)
         self.assertEqual(result["target_verified_count"], 1)
         self.assertEqual(len(runtime.sent), 1)
-        self.assertEqual(len(runtime.log_events), 1)
-        self.assertEqual(result["opensearch_log_created"], 1)
+        self.assertEqual(len(runtime.log_events), 0)
         self.assertEqual(result["retained_count"], 2)
         self.assertTrue((Path(result["run_directory"]) / "report.md").exists())
 
@@ -243,3 +233,54 @@ class OpenSearchConnectionTests(unittest.TestCase):
             with self.runtime("https://customer.example:9443")._opensearch_connection() as value:
                 self.assertEqual(value, ("https://customer.example:9443", False))
             launch.assert_not_called()
+
+class NativeWriterAccountingTests(unittest.TestCase):
+    def test_mixed_writer_results_retain_exact_rows_without_double_count(self):
+        with tempfile.TemporaryDirectory() as root:
+            runtime = FakeRuntime()
+            runtime.rows = [dict(kind='evidence', source_id='backend', row={'event_id': str(i), 'envelope': {}},
+                                 frozen_015_provenance=True) for i in range(3)]
+            runtime.migrate_evidence = lambda _: {'results': [
+                {'verified': True, 'target_id': 'aggregate-first'},
+                {'verified': False, 'reason': 'multiple_request_contexts_for_trace'},
+                {'verified': True, 'target_id': 'aggregate-last', 'losses': ['missing_core_receipt']}]}
+            result = run(runtime, root)
+            self.assertEqual(result['target_verified_count'], 2)
+            self.assertEqual(result['retained_count'], 1)
+            self.assertTrue(result['complete'])
+            self.assertEqual(result['state'], 'completed_with_loss')
+            final = [strict_loads(line) for line in (Path(result['run_directory']) / 'final-items.jsonl').read_text().splitlines()]
+            self.assertEqual([item['disposition'] for item in final], ['writer_verified', 'archive', 'writer_verified'])
+
+    def test_native_writer_failure_is_not_reported_as_successful_loss(self):
+        with tempfile.TemporaryDirectory() as root:
+            runtime = FakeRuntime()
+            runtime.rows = [dict(kind='evidence', source_id='backend', row={'envelope': {}}, frozen_015_provenance=True)]
+            runtime.migrate_evidence = lambda _: (_ for _ in ()).throw(RuntimeError('write failed'))
+            result = run(runtime, root)
+            self.assertFalse(result['complete'])
+            self.assertEqual(result['retained_count'], 1)
+
+    def test_audit_final_record_is_verified_after_native_readback(self):
+        with tempfile.TemporaryDirectory() as root:
+            runtime = FakeRuntime()
+            runtime.rows = [dict(kind='audit', source_id='vega', row=row())]
+            result = run(runtime, root)
+            item = strict_loads((Path(result['run_directory']) / 'final-items.jsonl').read_text())
+            self.assertEqual(item['disposition'], 'writer_verified')
+            self.assertEqual(item['target_status'], 'verified')
+            self.assertEqual(item['state'], 'created')
+            second = run(runtime, root)
+            again = strict_loads((Path(second['run_directory']) / 'final-items.jsonl').read_text())
+            self.assertEqual(again['state'], 'already_verified')
+
+    def test_audit_failed_readback_is_explicit_per_record(self):
+        with tempfile.TemporaryDirectory() as root:
+            runtime = FakeRuntime()
+            runtime.rows = [dict(kind='audit', source_id='vega', row=row())]
+            runtime.fail = True
+            result = run(runtime, root)
+            item = strict_loads((Path(result['run_directory']) / 'final-items.jsonl').read_text())
+            self.assertEqual(item['disposition'], 'requires_reconciliation')
+            self.assertEqual(item['target_status'], 'missing')
+            self.assertEqual(item['reason'], 'publication_requires_readback')

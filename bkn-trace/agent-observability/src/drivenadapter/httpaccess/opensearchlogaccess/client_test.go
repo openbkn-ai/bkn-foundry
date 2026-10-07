@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
@@ -81,21 +79,6 @@ func TestSearchUsesRegisteredLogFieldsWithoutAnExtraTrustGate(t *testing.T) {
 	}
 	if record.CursorPosition == nil || len(record.CursorPosition.SearchAfter) != 2 || record.CursorPosition.SearchAfter[0] != "2026-08-01T11:35:46.123456Z" {
 		t.Fatalf("OpenSearch sort values were not preserved: %+v", record.CursorPosition)
-	}
-}
-
-func TestMetadataIncludesOperationAuditCategories(t *testing.T) {
-	metadata := New(&fakeSearchClient{}, "logs").Metadata()
-	for _, category := range []string{"access.user", "audit.admin", "audit.security"} {
-		found := false
-		for _, value := range metadata.Categories {
-			if value == category {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("metadata does not expose %s", category)
-		}
 	}
 }
 
@@ -274,21 +257,4 @@ func containsBytes(payload []byte, value string) bool {
 		}
 	}
 	return false
-}
-
-func TestHistoricalAuditListAndDetailThroughOperationAuditService(t *testing.T) {
-	backend := &fakeSearchClient{response: []byte(`{"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"historical-audit:vega:evt-1","_source":{
- "attributes":{"schema_version":"1.0","log_id":"historical-audit:vega:evt-1","source_id":"vega","source_log_id":"evt-1","log_category":"audit.admin","event_name":"vega.operation.observed","safe_summary":"create Catalog One","outcome":"success","actor_id":"user-1","actor_name_snapshot":"Administrator","auth_method":"","migration_source":"015-to-020","source_channel":"api","business_module_id":"data_resource_knowledge_network","action":"create","target_type":"catalog","target_id":"catalog-1","target_name":"Catalog One"},
- "@timestamp":"2026-09-12T21:25:44Z","observedTimestamp":"2026-10-06T12:00:00Z","resource":{"service":{"name":"vega"},"deployment":{"environment":"production"}},"severity":{"text":"INFO","number":9}
- }}]}}`)}
-	service := logsvc.NewWithOptions([]logsvc.Source{New(backend, "logs")}, logsvc.Options{OperationAuditOnly: true})
-	profile := evidencevo.AccessProfile{AccountActive: true, Roles: []string{"super_admin"}}
-	result, err := service.List(context.Background(), profile, observabilityvo.LogQuery{})
-	if err != nil || len(result.Records) != 1 {
-		t.Fatalf("historical audit list: result=%+v err=%v", result, err)
-	}
-	record, err := service.Get(context.Background(), profile, "historical-audit:vega:evt-1")
-	if err != nil || record.Environment != "production" || record.ServiceName != "vega" || record.TargetNameSnapshot != "Catalog One" {
-		t.Fatalf("historical audit detail: record=%+v err=%v", record, err)
-	}
 }

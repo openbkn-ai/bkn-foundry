@@ -774,27 +774,6 @@ func TestOperationAuditListDoesNotQueryOTLPRuntimeSource(t *testing.T) {
 	}
 }
 
-func TestOperationAuditListQueriesOpenSearchSourceForRegisteredAuditHistory(t *testing.T) {
-	auditSource := &categorizedSource{
-		id: "otel-runtime", categories: []string{observabilityvo.CategoryAuditAdmin},
-		records: []observabilityvo.LogRecord{{
-			LogID: "historical-audit:execution-factory:evt-1", Category: observabilityvo.CategoryAuditAdmin,
-			EventName: "execution_factory.operation.observed", EventTimestamp: time.Now().UTC(),
-			BusinessModule: "execution_factory", Action: "create", TargetType: "tool",
-			TargetID: "tool-1", TargetNameSnapshot: "Tool One", ActorID: "user-1",
-			ActorNameSnapshot: "Administrator", AuthMethod: "oauth", SourceChannel: "api",
-		}},
-	}
-	service := NewWithOptions([]Source{auditSource}, Options{OperationAuditOnly: true})
-	result, err := service.List(context.Background(), activeProfile("user-1", "admin"), observabilityvo.LogQuery{})
-	if err != nil {
-		t.Fatalf("list registered audit history: %v", err)
-	}
-	if auditSource.queries != 1 || len(result.Records) != 1 {
-		t.Fatalf("registered OpenSearch audit source was not queried: queries=%d result=%+v", auditSource.queries, result)
-	}
-}
-
 func TestOperationAuditAssociatedDrilldownOnlyDisclosesOwnedConversation(t *testing.T) {
 	now := time.Now().UTC()
 	service := NewWithOptions([]Source{&categorizedSource{

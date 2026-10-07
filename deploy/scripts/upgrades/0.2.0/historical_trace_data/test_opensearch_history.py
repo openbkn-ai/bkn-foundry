@@ -1,82 +1,6 @@
 import unittest
 from datetime import datetime, timezone
 
-from opensearch_history import (document_from_event, document_from_legacy_audit,
-                                evidence_document_from_legacy_row, stable_log_id)
-
-
-class OpenSearchHistoryDocumentTests(unittest.TestCase):
-    def test_audit_event_maps_to_queryable_ss4o_document_without_inventing_trace(self):
-        event = {
-            "schema_version": "1.0", "event_id": "event-1", "source_id": "vega",
-            "category": "audit.admin", "event_name": "vega.operation.observed",
-            "occurred_at": "2026-09-12T21:25:44.168466Z",
-            "actor": {"id": "user-1", "type": "user", "auth_method": "oauth", "effective_subject": "user-1", "display_name_snapshot": "Administrator"},
-            "target": {"type": "catalog", "id": "catalog:1", "name": "worldcup_mysql_vega"},
-            "outcome": "failure", "scope": {"business_module": "data_resource_knowledge_network", "environment": "test", "platform_scope": True, "knowledge_network_ids": []},
-            "request_context": {"source_channel": "api", "transport": "http", "method": "POST"},
-            "correlation": {"request_id": "request-1"}, "summary": "vega.operation.observed create catalog", "http_status": 400, "failure_code": "HTTP_400",
-        }
-        document = document_from_event(event, source_log_id="event-1", observed_at=datetime(2026, 10, 6, 12, tzinfo=timezone.utc))
-        self.assertEqual(document["_id"], stable_log_id("vega", "event-1"))
-        value = document["document"]
-        self.assertEqual(value["@timestamp"], event["occurred_at"])
-        self.assertEqual(value["observedTimestamp"], "2026-10-06T12:00:00Z")
-        self.assertEqual(value["attributes"]["log_category"], "audit.admin")
-        self.assertEqual(value["attributes"]["event_name"], "vega.operation.observed")
-        self.assertEqual(value["attributes"]["source_log_id"], "event-1")
-        self.assertEqual(value["attributes"]["target_name"], "worldcup_mysql_vega")
-        self.assertEqual(value["attributes"]["http_status"], 400)
-        self.assertEqual(value["resource"]["service"]["name"], "vega")
-        self.assertNotIn("traceId", value)
-        self.assertNotIn("spanId", value)
-
-    def test_log_id_is_stable_for_same_source_identity(self):
-        self.assertEqual(stable_log_id("vega", "event-1"), stable_log_id("vega", "event-1"))
-        self.assertNotEqual(stable_log_id("vega", "event-1"), stable_log_id("bkn-backend", "event-1"))
-
-    def test_legacy_audit_row_is_migrated_even_when_online_contract_would_reject_it(self):
-        item = document_from_legacy_audit({"source_id": "execution-factory", "row": {
-            "event_id": "evt-legacy", "event_time": "2026-09-02T10:43:29.255720Z",
-            "action": "create", "outcome": "success", "actor_id": "u",
-            "actor_name": "Administrator", "target_type": "tool", "target_id": "tool-1",
-            "target_name": "tool-1", "request_id": "req-1",
-        }}, datetime(2026, 10, 6, tzinfo=timezone.utc), "production")
-        self.assertEqual(item["document"]["resource"]["deployment"]["environment"], "production")
-        self.assertEqual(item["document"]["attributes"]["source_log_id"], "evt-legacy")
-        self.assertEqual(item["document"]["attributes"]["target_name"], "tool-1")
-        self.assertEqual(item["document"]["attributes"]["actor_name_snapshot"], "Administrator")
-        self.assertEqual(item["document"]["attributes"]["business_module_id"], "execution_factory")
-        self.assertEqual(item["document"]["attributes"]["source_channel"], "api")
-
-    def test_safe_history_preserves_name_http_outcome_and_failure(self):
-        item = document_from_legacy_audit({"source_id": "bkn-safe-admin", "row": {
-            "id": "safe-1", "created_at": "2026-09-02T00:00:00Z", "actor_id": "u-1",
-            "actor_name_snapshot": "Alice", "status": 403, "action": "update", "resource": "role",
-            "failure_code": "forbidden",
-        }}, datetime(2026, 10, 6, tzinfo=timezone.utc), "production")
-        attrs = item["document"]["attributes"]
-        self.assertEqual(attrs["actor_name_snapshot"], "Alice")
-        self.assertEqual(attrs["outcome"], "denied")
-        self.assertEqual(attrs["http_status"], 403)
-        self.assertEqual(attrs["failure_code"], "forbidden")
-
-    def test_legacy_evidence_row_maps_to_native_evidence_document(self):
-        row = {"event_id": "evt-evidence", "created_at": "2026-09-02T10:43:29.255720Z",
-               "envelope": json_bytes({"event": {"event_id": "evt-evidence",
-               "event_type": "knowledge.read.observed", "trace_id": "a" * 32,
-               "span_id": "b" * 16, "request_id": "req-1", "producer_id": "bkn-backend",
-               "producer_epoch": 1, "producer_sequence": 1, "observed_at": "2026-09-02T10:43:29.255720Z",
-               "envelope": {"event": {"event_type": "knowledge.read.observed", "payload": {"kn_id": "kn-1"}}}}}).decode()}
-        item = evidence_document_from_legacy_row({"source_id": "bkn-backend", "row": row}, datetime(2026, 10, 6, tzinfo=timezone.utc))
-        self.assertNotIn("aggregate", item["document"])
-        self.assertEqual(item["document"]["trace_id"], "a" * 32)
-        self.assertEqual(item["document"]["knowledge_network_ids"], ["kn-1"])
-
-
-if __name__ == "__main__":
-    unittest.main()
-
 class _Response:
     def __init__(self, status, body):
         self.status = status
@@ -132,17 +56,15 @@ def json_loads(value):
 
 
 class OpenSearchHistoryWriterTests(unittest.TestCase):
-    def test_publish_creates_then_rerun_verifies_existing_document(self):
+    def test_native_aggregate_create_then_repeat_preserves_ingestion_time(self):
         from opensearch_history import OpenSearchHistoryWriter
         fake = _OpenSearchFake()
-        event = {"event_id": "event-1", "source_id": "vega", "category": "audit.admin", "event_name": "vega.operation.observed", "occurred_at": "2026-09-12T21:25:44Z", "actor": {"id": "u", "effective_subject": "u", "display_name_snapshot": "U"}, "target": {"type": "catalog", "id": "c", "name": "C"}, "outcome": "success", "scope": {"business_module": "data", "environment": "test", "platform_scope": True}, "request_context": {"method": "POST"}, "summary": "summary"}
-        writer = OpenSearchHistoryWriter("http://opensearch", "logs", opener=fake)
-        self.assertEqual(writer.publish([event], datetime(2026, 10, 6, tzinfo=timezone.utc))["created"], 1)
-        self.assertEqual(writer.publish([event], datetime(2026, 10, 7, tzinfo=timezone.utc))["already_verified"], 1)
+        writer = OpenSearchHistoryWriter("http://opensearch", "evidence", opener=fake)
+        item = {"_id": "aggregate-1", "document": {"aggregate": True, "events": [{"event_id": "one"}], "ingested_at": "2026-10-06T00:00:00Z"}}
+        self.assertEqual(writer.publish_documents([item])["created"], 1)
+        item["document"]["ingested_at"] = "2026-10-07T00:00:00Z"
+        self.assertEqual(writer.publish_documents([item])["already_verified"], 1)
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 class OpenSearchReadbackAccountingTests(unittest.TestCase):
     def test_bulk_failure_counts_one_conflict_not_two(self):
@@ -175,3 +97,16 @@ class OpenSearchReadbackAccountingTests(unittest.TestCase):
         writer = OpenSearchHistoryWriter("http://opensearch", "logs", opener=lambda request, timeout: _Response(200, b'{"docs":[]}'))
         with self.assertRaisesRegex(RuntimeError, "readback count mismatch"):
             writer.publish_documents([{"_id": "history-1", "document": {"value": 1}}])
+
+class NativeProjectionWriteTests(unittest.TestCase):
+    def test_native_document_conflict_is_preserved_without_overwrite(self):
+        from opensearch_history import OpenSearchHistoryWriter
+        fake = _OpenSearchFake()
+        fake.documents['aggregate-1'] = {'aggregate': True, 'events': ['existing']}
+        writer = OpenSearchHistoryWriter('http://opensearch', 'evidence', opener=fake)
+        results = {}
+        counts = writer.publish_documents([{'_id': 'aggregate-1', 'document': {'aggregate': True, 'events': ['converted']}}],
+                                          allow_update=False, on_result=lambda key, state: results.update({key: state}))
+        self.assertEqual(counts['conflict'], 1)
+        self.assertEqual(fake.documents['aggregate-1']['events'], ['existing'])
+        self.assertEqual(results, {'aggregate-1': 'conflict'})

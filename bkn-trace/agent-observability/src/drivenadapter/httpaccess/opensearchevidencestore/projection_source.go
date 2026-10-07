@@ -26,9 +26,6 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 	if err != nil {
 		return iprojectionsource.Result{}, err
 	}
-	if query.EvidenceOnly {
-		return iprojectionsource.Result{Traces: traces, Truncated: evidenceTruncated}, nil
-	}
 	artifactQuery := query
 	terminalArtifactQuery := iprojectionsource.Query{}
 	loadTerminalArtifacts := false
@@ -171,12 +168,6 @@ func (s *Store) listEvidenceProjectionPage(ctx context.Context, query iprojectio
 		"sort": []map[string]any{
 			{"document_id": map[string]any{"order": "asc"}},
 		},
-	}
-	if !query.From.IsZero() || !query.To.IsZero() {
-		queryBody["sort"] = []map[string]any{
-			{"observed_start": map[string]any{"order": "desc"}},
-			{"document_id": map[string]any{"order": "asc"}},
-		}
 	}
 	if len(searchAfter) > 0 {
 		queryBody["search_after"] = searchAfter

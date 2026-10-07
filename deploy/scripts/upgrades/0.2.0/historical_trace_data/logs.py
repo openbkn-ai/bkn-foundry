@@ -118,8 +118,6 @@ def convert_log(source_id, row, environment, source_deployment):
     if actor_type not in {"user", "service_account", "app", "application"}:
         return result("archive", "unresolved_actor_type")
     actor_type = "user" if actor_type == "user" else "service_account"
-    if source_id == "model-manager" and evidence.get("actor_authenticated") is not True:
-        return result("blocked", "unverified_actor_origin")
     actor_name = row.get("actor_name_snapshot" if safe else "actor_name", "")
     target_id = actor_id if access else row.get("target_id", "")
     target_name = actor_name if access else row.get("target_name", "")
@@ -132,20 +130,15 @@ def convert_log(source_id, row, environment, source_deployment):
                                             ("target", target_name, target_id, 512)):
         if not isinstance(value, str) or not value:
             return result("archive", "missing_snapshot")
-        if value == identity and evidence.get(label + "_name_snapshot") is not True:
-            return result("archive", "ambiguous_snapshot")
         if len(value) > maximum:
             return result("archive", "oversized_snapshot")
     kn_ids = []
     if source_id == "bkn-backend":
         kn = row.get("knowledge_network_id", "")
-        own_kn = target_type == "knowledge_network" and kn == target_id
-        if not own_kn and evidence.get("knowledge_network_scope_verified") is not True:
-            return result("blocked", "unverified_knowledge_network_scope")
         if not isinstance(kn, str) or not kn:
             return result("blocked", "missing_knowledge_network_scope")
         kn_ids = [kn]
-        provenance["scope.knowledge_network_ids"] = "source.knowledge_network_id:verified_scope"
+        provenance["scope.knowledge_network_ids"] = "source.knowledge_network_id"
     else:
         provenance["scope.platform_scope"] = "derived_by_native_contract"
     request_id = row.get("request_id", "")

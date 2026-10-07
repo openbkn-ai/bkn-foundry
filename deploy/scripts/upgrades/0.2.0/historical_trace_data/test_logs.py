@@ -64,11 +64,11 @@ class LogConverterTests(unittest.TestCase):
         self.assertFalse(result["event"]["scope"]["platform_scope"])
         self.assertEqual(result["event"]["scope"]["knowledge_network_ids"], ["kn-1"])
 
-    def test_backend_child_scope_fallback_is_blocked(self):
+    def test_backend_stored_network_scope_is_preserved(self):
         result = self.convert("bkn-backend", target_type="object_type", target_id="obj-1",
                               knowledge_network_id="obj-1", _provenance={"http_status": 400})
-        self.assertEqual(result["disposition"], "blocked")
-        self.assertEqual(result["reason"], "unverified_knowledge_network_scope")
+        self.assertEqual(result["disposition"], "convert")
+        self.assertEqual(result["event"]["scope"]["knowledge_network_ids"], ["obj-1"])
 
     def test_encoded_status_must_agree_with_outcome(self):
         for outcome, code in (("success", "http_400"), ("failure", "http_403"),
@@ -81,11 +81,13 @@ class LogConverterTests(unittest.TestCase):
         self.assertEqual(result["disposition"], "convert")
         self.assertEqual(result["event"]["facts"]["decision"], "denied")
 
-    def test_snapshot_equal_id_is_ambiguous_without_proof(self):
-        self.assertEqual(self.convert(actor_name="user-1")["reason"], "ambiguous_snapshot")
-        self.assertEqual(self.convert(target_name="catalog-1")["reason"], "ambiguous_snapshot")
-        result = self.convert(actor_name="user-1", _provenance={"actor_name_snapshot": True})
-        self.assertEqual(result["disposition"], "convert")
+    def test_stored_snapshot_equal_to_id_is_preserved_without_extra_proof(self):
+        for changes, field in (({"actor_name": "user-1"}, "actor"),
+                               ({"target_name": "catalog-1"}, "target")):
+            result = self.convert(**changes)
+            self.assertEqual(result["disposition"], "convert")
+            self.assertEqual(result["event"][field]["display_name_snapshot" if field == "actor" else "name"],
+                             next(iter(changes.values())))
 
     def test_unresolved_actor_is_not_anonymous_fallback(self):
         for actor in ("", "unknown", "unauthenticated"):
@@ -97,11 +99,10 @@ class LogConverterTests(unittest.TestCase):
         self.assertNotIn("http_status", result["event"])
         self.assertNotIn("decision", result["event"]["facts"])
 
-    def test_model_header_actor_needs_trusted_input_contract(self):
-        self.assertEqual(self.convert("model-manager", target_type="llm_model")["reason"],
-                         "unverified_actor_origin")
-        result = self.convert("model-manager", target_type="llm_model", _provenance={"actor_authenticated": True})
+    def test_model_stored_actor_is_preserved_without_extra_proof(self):
+        result = self.convert("model-manager", target_type="llm_model")
         self.assertEqual(result["disposition"], "convert")
+        self.assertEqual(result["event"]["actor"]["id"], "user-1")
         self.assertEqual(result["event"]["request_context"]["source_channel"], "api")
 
     def test_migration_identity_distinguishes_deployments_and_safe_rows(self):
