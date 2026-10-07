@@ -7,6 +7,7 @@ package httphandler
 
 import (
 	"context"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/auditsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
@@ -112,4 +113,22 @@ func auditLogRecord(r auditsvc.Record) observabilityvo.LogRecord {
 		ResourceRef: &observabilityvo.ResourceRef{ResourceType: r.TargetType, ResourceID: r.TargetID},
 		Attributes:  attributes,
 	}
+}
+
+// SearchNumbered delegates to the ledger's direct SQL pagination. Cursor requests
+// use the same order and predicates, so switching to next_cursor preserves continuity.
+func (s *auditLedgerSource) SearchNumbered(ctx context.Context, query observabilityvo.LogQuery, profile evidencevo.AccessProfile) (observabilityvo.SourcePage, error) {
+	page, count, err := s.reader.QueryLogPage(ctx, query, profile)
+	if err != nil {
+		return observabilityvo.SourcePage{}, err
+	}
+	out := observabilityvo.SourcePage{Count: count, CountAccuracy: "exact"}
+	for _, record := range page.Records {
+		out.Records = append(out.Records, auditLogRecord(record))
+	}
+	if page.Next != nil {
+		out.NextCursor = "more"
+		out.LastPosition = &observabilityvo.SourcePosition{EventTimestamp: page.Next.OccurredAt, LogID: page.Next.EventID}
+	}
+	return out, nil
 }

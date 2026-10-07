@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 )
@@ -64,5 +66,28 @@ func TestTraceAndLogPaginationRetainsPageSizeLimit(t *testing.T) {
 	}
 	if _, err := parseLogQuery(request); err == nil {
 		t.Fatal("expected log page size above 200 to be rejected")
+	}
+}
+
+func TestLogPaginationRequiresAtLeast20Records(t *testing.T) {
+	for _, name := range []string{"page_size", "limit"} {
+		for _, size := range []int{1, 10, 19} {
+			request := httptest.NewRequest(http.MethodGet, "/?page=1000000&"+name+"="+strconv.Itoa(size), nil)
+			if _, err := parseLogQuery(request); err == nil {
+				t.Errorf("expected %s=%d to be rejected", name, size)
+			}
+		}
+	}
+}
+
+func TestLogNumberedPaginationUnsupportedReturnsActionableError(t *testing.T) {
+	profile := evidencevo.AccessProfile{EffectiveSubjectID: "admin-a", Roles: []string{"admin"}, AccountActive: true}
+	handler := newTestLogHandler(profile, nil)
+	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?page=1000000&page_size=20", nil)
+	setLogTestIdentity(request, "admin-a")
+	response := httptest.NewRecorder()
+	handler.ListLogs(response, request)
+	if response.Code != http.StatusBadRequest || !containsJSONCode(response.Body.Bytes(), "pagination_not_supported") {
+		t.Fatalf("expected unsupported numbered pagination error, got %d: %s", response.Code, response.Body.String())
 	}
 }
