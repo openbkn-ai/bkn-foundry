@@ -330,4 +330,19 @@ class EvidencePreflightTests(unittest.TestCase):
             writer.return_value.publish_documents.side_effect = publish
             result = runtime.migrate_evidence(self.records(('u1', 'u2')))
             self.assertTrue(all(item['verified'] for item in result['results']))
-            native.assert_called_once()
+            self.assertEqual([call.args[0] for call in native.call_args_list],
+                             [['--validate-core-records'], ['--import-core-records']])
+
+    def test_later_invalid_native_batch_prevents_all_imports(self):
+        runtime = object.__new__(DeploymentRuntime)
+        calls = []
+        def native(args, data):
+            calls.append((args, data))
+            if args == ['--validate-core-records'] and data == b'bad':
+                raise ValueError('invalid converted payload')
+            return b'{"verified":true,"created":0}'
+        with patch.object(runtime, '_native', side_effect=native), patch('run_upgrade.core_import_batches', return_value=iter([b'good', b'bad'])):
+            with self.assertRaisesRegex(ValueError, 'invalid converted payload'):
+                runtime.migrate_evidence(self.records())
+        self.assertEqual(calls, [(['--validate-core-records'], b'good'),
+                                 (['--validate-core-records'], b'bad')])

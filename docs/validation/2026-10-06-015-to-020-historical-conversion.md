@@ -12,9 +12,10 @@ rows. It was reused without changing or deleting source records or archives.
 The corrected conversion and terminal-projection run is
 `~/.bkn/upgrades/015-to-020-historical/run-20261007T020015-da02b7ce/report.md`.
 The subsequent unchanged-input repeat is
-`~/.bkn/upgrades/015-to-020-historical/run-20261007T043239-30612cb9/report.md`.
+`~/.bkn/upgrades/015-to-020-historical/run-20261007T083507-0b1fd698/report.md`.
 Both finish with `complete=true`, `state=completed` and no unconverted rows.
-The latest repeat preflights the complete target before writing and verifies
+The latest repeat completes all four database-free native structure/payload
+preflights before the first import and verifies
 17899 unique Core records in four dependency-complete transport batches, with
 zero new Core records and zero created or updated aggregates.
 
@@ -115,13 +116,16 @@ page acceptance and formal-image revalidation before closing #2012.
 
 ## Development verification
 
-- 134 Python tests pass, including missing status, oversized fields, reused
+- 135 Python tests pass, including missing status, oversized fields, reused
   Trace/request/operation identities, native terminal projection, exact prior
   aggregate/CAS protection and publication failure followed by fresh readback.
   Added regressions cover preflight-before-write, valid owner-context splits,
-  native action-type network scope, and dependency-complete size-bounded batches.
+  native action-type network scope, dependency-complete size-bounded batches,
+  and a rejected later native batch preventing all imports. Go command tests
+  verify database-free preflight and rejection of invalid native payloads.
 - `go test ./...`, `go vet ./...` and `go build ./cmd/...` pass for
   agent-observability.
+- `make license-check` passes, including all four added Go files.
 - CI-matching `golangci-lint` 2.12.2 reports zero issues.
 - `git diff --check` passes; the net runtime-source migration diff is empty.
 

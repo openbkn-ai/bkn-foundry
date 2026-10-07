@@ -1,5 +1,6 @@
 // Copyright (c) 2026 OpenBKN
 // SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt.
 
 package main
 
@@ -35,7 +36,7 @@ type coreImportResult struct {
 
 // This is an offline conversion writer. All rows use the existing native store,
 // including its record-integrity calculation; no online migration branch exists.
-func importCoreRecords(reader io.Reader, writer io.Writer) (failure error) {
+func importCoreRecords(reader io.Reader, writer io.Writer, validateOnly bool) (failure error) {
 	stage := "input"
 	defer func() {
 		if failure != nil {
@@ -61,6 +62,13 @@ func importCoreRecords(reader io.Reader, writer io.Writer) (failure error) {
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return fmt.Errorf("unexpected Core import input")
+	}
+	stage = "validation"
+	if err := prepareCorePlan(&plan); err != nil {
+		return err
+	}
+	if validateOnly {
+		return json.NewEncoder(writer).Encode(coreImportResult{Verified: true})
 	}
 	stage = "configuration"
 	dsn := os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")
@@ -151,7 +159,7 @@ func sameCore(left, right any) bool {
 }
 func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImportPlan) (coreImportResult, error) {
 	result := coreImportResult{}
-	if err := validateCorePlan(p); err != nil {
+	if err := prepareCorePlan(&p); err != nil {
 		return result, err
 	}
 
@@ -205,26 +213,6 @@ func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImport
 		}
 		result.Verified = true
 		return result, nil
-	}
-	for i := range p.Interactions {
-		p.Interactions[i].StartIdempotencyKey = p.Interactions[i].ID
-	}
-	for i := range p.CallFacts {
-		v := &p.CallFacts[i]
-		var err error
-		v.Input, err = sessionvo.NormalizePayloadEnvelope(v.Input)
-		if err != nil {
-			return result, fmt.Errorf("invalid converted input")
-		}
-		for _, payload := range []*sessionvo.PayloadEnvelope{v.Output, v.Error} {
-			if payload != nil {
-				normalized, e := sessionvo.NormalizePayloadEnvelope(*payload)
-				if e != nil {
-					return result, fmt.Errorf("invalid converted payload")
-				}
-				*payload = normalized
-			}
-		}
 	}
 	apply := func(tx isessionstore.Transaction, write bool) error {
 		check := func(found bool, old, next any, save func()) error {
@@ -284,4 +272,33 @@ func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImport
 	}
 	result.Verified = true
 	return result, nil
+}
+
+// Use the same native validation and payload normalization before any write,
+// including before transaction partitioning and in validation-only mode.
+func prepareCorePlan(p *coreImportPlan) error {
+	if err := validateCorePlan(*p); err != nil {
+		return err
+	}
+	for i := range p.Interactions {
+		p.Interactions[i].StartIdempotencyKey = p.Interactions[i].ID
+	}
+	for i := range p.CallFacts {
+		v := &p.CallFacts[i]
+		var err error
+		v.Input, err = sessionvo.NormalizePayloadEnvelope(v.Input)
+		if err != nil {
+			return fmt.Errorf("invalid converted input")
+		}
+		for _, payload := range []*sessionvo.PayloadEnvelope{v.Output, v.Error} {
+			if payload != nil {
+				normalized, e := sessionvo.NormalizePayloadEnvelope(*payload)
+				if e != nil {
+					return fmt.Errorf("invalid converted payload")
+				}
+				*payload = normalized
+			}
+		}
+	}
+	return nil
 }

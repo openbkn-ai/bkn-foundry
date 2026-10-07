@@ -141,6 +141,10 @@ class DeploymentRuntime:
                 (original_by_id.get(item["_id"]), prior_by_id.get(item["_id"])) if doc is not None]
         # Finish all target and transport preflight before any Core write.
         batches = list(core_import_batches(plan))
+        for data in batches:
+            answer = strict_loads(self._native(["--validate-core-records"], data))
+            if answer.get("verified") is not True:
+                raise ValueError("native_core_validation_not_verified")
         created = 0
         for data in batches:
             answer = strict_loads(self._native(["--import-core-records"], data))
