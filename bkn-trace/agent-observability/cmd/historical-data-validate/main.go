@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditconsumer"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/kafkaaccess/auditvalidator"
@@ -51,7 +52,13 @@ func runCommand(args []string, reader io.Reader, writer io.Writer) error {
 	flags := flag.NewFlagSet("historical-data-validate", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	coreValidate := flags.Bool("validate-core-records", false, "Validate converted Core records and payloads without writing")
+	artifactImport := flags.Bool("import-artifact-records", false, "Import native artifacts and verify readback")
 	coreImport := flags.Bool("import-core-records", false, "Import converted native Core records and verify readback")
+	ledgerImport := flags.Bool("import-ledger-records", false, "Restore original native Ledger records and verify readback")
+	ledgerValidate := flags.Bool("validate-ledger-records", false, "Validate original native Ledger records without writing")
+	provenanceImport := flags.Bool("import-provenance-records", false, "Restore native historical provenance snapshots and verify readback")
+	provenanceValidate := flags.Bool("validate-provenance-records", false, "Validate native provenance snapshot conversion without writing")
+	messagePrepare := flags.Bool("prepare-message-ledger", false, "Convert retained Agent messages into native Ledger records without writing")
 	rebuild := flags.Bool("rebuild-core-projection", false, "Rebuild native Core projections from retained authoritative data")
 	mode := flags.Bool("publish-audit", false, "Publish an approved Audit-only NDJSON plan; Kafka ACK is not database proof")
 	expected := flags.String("expected-plan-sha256", "", "SHA-256 of exact approved stdin bytes, mandatory for publishing")
@@ -62,6 +69,36 @@ func runCommand(args []string, reader io.Reader, writer io.Writer) error {
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments")
+	}
+	if *messagePrepare {
+		if *provenanceImport || *provenanceValidate || *ledgerImport || *ledgerValidate || *artifactImport || *coreImport || *coreValidate || *rebuild || *mode || *expected != "" || *qualification || *inPlace {
+			return fmt.Errorf("cannot combine message preparation modes")
+		}
+		return prepareMessageLedger(reader, writer)
+	}
+	if *provenanceImport || *provenanceValidate {
+		if (*provenanceImport && *provenanceValidate) || *ledgerImport || *ledgerValidate || *artifactImport || *coreImport || *coreValidate || *rebuild || *mode || *expected != "" || *qualification || *inPlace {
+			return fmt.Errorf("cannot combine provenance import modes")
+		}
+		if *provenanceValidate {
+			return validateHistoricalEE(reader, writer)
+		}
+		return importHistoricalEE(reader, writer)
+	}
+	if *ledgerImport || *ledgerValidate {
+		if (*ledgerImport && *ledgerValidate) || *artifactImport || *coreImport || *coreValidate || *rebuild || *mode || *expected != "" || *qualification || *inPlace {
+			return fmt.Errorf("cannot combine Ledger import modes")
+		}
+		if *ledgerValidate {
+			return validateHistoricalLedger(reader, writer)
+		}
+		return importHistoricalLedger(reader, writer)
+	}
+	if *artifactImport {
+		if *coreImport || *coreValidate || *rebuild || *mode || *expected != "" || *qualification || *inPlace {
+			return fmt.Errorf("cannot combine Artifact import modes")
+		}
+		return importArtifactRecords(reader, writer)
 	}
 	if *coreImport || *coreValidate {
 		if (*coreImport && *coreValidate) || *rebuild || *mode || *expected != "" || *qualification || *inPlace {
@@ -111,6 +148,20 @@ func validate(candidate input) result {
 		return result{Reason: "payload_json_invalid"}
 	}
 	switch candidate.Kind {
+	case "artifact":
+		var artifact evidencevo.EvidenceArtifact
+		if json.Unmarshal(candidate.Payload, &artifact) != nil {
+			return result{Reason: "artifact_json_invalid"}
+		}
+		normalized, validationErrors := evidencevo.NormalizeArtifact(artifact)
+		if len(validationErrors) != 0 {
+			return result{Reason: "artifact_native_invalid"}
+		}
+		body, err := json.Marshal(normalized)
+		if err != nil {
+			return result{Reason: "artifact_json_invalid"}
+		}
+		return result{Accepted: true, Reason: "native_artifact_format_valid", EventID: normalized.ArtifactID, ContentHash: normalized.ContentHash, CanonicalPayload: body}
 	case "audit":
 		return validateAudit(candidate)
 	case "evidence":

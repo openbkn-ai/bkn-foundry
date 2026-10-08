@@ -49,56 +49,18 @@ func rebuildCoreProjection(input io.Reader, output io.Writer) error {
 	if err := source.EnsureSchema(ctx, false); err != nil {
 		return fmt.Errorf("native Core schema check failed")
 	}
-	var settings struct {
-		TLSVerify *bool  `json:"tls_verify"`
-		CAPEM     string `json:"ca_pem"`
-	}
+	var settings historyTransportSettings
 	decoder := json.NewDecoder(io.LimitReader(input, 4<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&settings); err != nil && err != io.EOF {
 		return fmt.Errorf("invalid rebuild transport settings")
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-	if value := os.Getenv("BKN_HISTORY_OPENSEARCH_TLS_VERIFY"); value != "" {
-		verify, err := strconv.ParseBool(value)
-		if err != nil {
-			return fmt.Errorf("invalid TLS verification setting")
-		}
-		// Explicit operator option for customer deployments, never inferred from host.
-		transport.TLSClientConfig.InsecureSkipVerify = !verify
+	client, closeClient, err := historyOpenSearchClient(settings)
+	if err != nil {
+		return err
 	}
-	if path := os.Getenv("BKN_HISTORY_OPENSEARCH_CA_FILE"); path != "" {
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read configured CA bundle failed")
-		}
-		roots, err := x509.SystemCertPool()
-		if err != nil || roots == nil {
-			roots = x509.NewCertPool()
-		}
-		if !roots.AppendCertsFromPEM(body) {
-			return fmt.Errorf("configured CA bundle contains no certificates")
-		}
-		transport.TLSClientConfig.RootCAs = roots
-	}
-	if settings.TLSVerify != nil {
-		transport.TLSClientConfig.InsecureSkipVerify = !*settings.TLSVerify
-	}
-	if settings.CAPEM != "" {
-		roots, err := x509.SystemCertPool()
-		if err != nil || roots == nil {
-			roots = x509.NewCertPool()
-		}
-		if !roots.AppendCertsFromPEM([]byte(settings.CAPEM)) {
-			return fmt.Errorf("configured CA bundle contains no certificates")
-		}
-		transport.TLSClientConfig.RootCAs = roots
-	}
-	defer transport.CloseIdleConnections()
-	auth := opensearch.AuthConfig{Enabled: os.Getenv("OPENSEARCH_AUTH_ENABLED") == "true",
-		Username: os.Getenv("OPENSEARCH_AUTH_USERNAME"), Password: os.Getenv("OPENSEARCH_AUTH_PASSWORD")}
-	client := opensearch.NewWithHTTPClient(endpoint, auth, &http.Client{Transport: transport, Timeout: 60 * time.Second})
+	defer closeClient()
+
 	sink := opensearchprojection.New(client, alias)
 	if count, err := verifyNativeCoreProjection(ctx, source, sink, alias); err == nil {
 		return json.NewEncoder(output).Encode(map[string]any{"verified": true, "index_version": alias,
@@ -141,4 +103,58 @@ func verifyNativeCoreProjection(ctx context.Context, source iprojectionrebuild.S
 		return 0, projectionrebuildsvc.ErrProjectionValidation
 	}
 	return actual, nil
+}
+
+// Shared only by offline upgrade commands. Customer TLS settings are explicit.
+type historyTransportSettings struct {
+	TLSVerify *bool  `json:"tls_verify"`
+	CAPEM     string `json:"ca_pem"`
+}
+
+func historyOpenSearchClient(settings historyTransportSettings) (*opensearch.Client, func(), error) {
+	endpoint := os.Getenv("OPENSEARCH_ENDPOINT")
+	if endpoint == "" {
+		return nil, nil, fmt.Errorf("OpenSearch configuration missing")
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	if value := os.Getenv("BKN_HISTORY_OPENSEARCH_TLS_VERIFY"); value != "" {
+		verify, err := strconv.ParseBool(value)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid TLS verification setting")
+		}
+		// Explicit operator option for customer deployments, never inferred from host.
+		transport.TLSClientConfig.InsecureSkipVerify = !verify
+	}
+	if path := os.Getenv("BKN_HISTORY_OPENSEARCH_CA_FILE"); path != "" {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read configured CA bundle failed")
+		}
+		roots, err := x509.SystemCertPool()
+		if err != nil || roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM(body) {
+			return nil, nil, fmt.Errorf("configured CA bundle contains no certificates")
+		}
+		transport.TLSClientConfig.RootCAs = roots
+	}
+	if settings.TLSVerify != nil {
+		transport.TLSClientConfig.InsecureSkipVerify = !*settings.TLSVerify
+	}
+	if settings.CAPEM != "" {
+		roots, err := x509.SystemCertPool()
+		if err != nil || roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM([]byte(settings.CAPEM)) {
+			return nil, nil, fmt.Errorf("configured CA bundle contains no certificates")
+		}
+		transport.TLSClientConfig.RootCAs = roots
+	}
+	auth := opensearch.AuthConfig{Enabled: os.Getenv("OPENSEARCH_AUTH_ENABLED") == "true",
+		Username: os.Getenv("OPENSEARCH_AUTH_USERNAME"), Password: os.Getenv("OPENSEARCH_AUTH_PASSWORD")}
+	client := opensearch.NewWithHTTPClient(endpoint, auth, &http.Client{Transport: transport, Timeout: 60 * time.Second})
+	return client, transport.CloseIdleConnections, nil
 }

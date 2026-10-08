@@ -126,3 +126,15 @@ func TestNDJSONStrictWrapperAndRecursiveKeys(t *testing.T) {
 		t.Fatal("valid extra Span source lost")
 	}
 }
+
+func TestOfflineArtifactValidationUsesNativeNormalization(t *testing.T) {
+	payload := json.RawMessage(`{"artifact_id":"artifact_history_question","artifact_type":"question","bkn.request.id":"req_history","interaction_id":"int_history","content_type":"application/json","schema_version":"2.2.0","observed_at":"2026-09-01T00:00:00Z","content":{"text":"Inventory?"},"bkn.account.id":"user_history","bkn.account.type":"user","effective_subject_id":"user_history","application_principal_id":"agent_history"}`)
+	result := validate(input{Kind: "artifact", Payload: payload})
+	if !result.Accepted || result.ContentHash == "" || len(result.CanonicalPayload) == 0 {
+		t.Fatalf("native artifact normalization missing: accepted=%v reason=%s", result.Accepted, result.Reason)
+	}
+	bad := validate(input{Kind: "artifact", Payload: json.RawMessage(`{"artifact_id":"../unsafe"}`)})
+	if bad.Accepted {
+		t.Fatal("invalid native artifact accepted")
+	}
+}

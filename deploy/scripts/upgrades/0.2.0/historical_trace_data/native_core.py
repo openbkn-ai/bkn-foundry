@@ -44,19 +44,20 @@ def plan_core(records, actor_names=None):
         conv_key = (outer['conversation_id'], canonical(owner))
         parsed.append({'ordinal':ordinal,'outer':outer,'event':event,'owner':owner,'wrapper':wrapper,
                        'start':min(started,finished),'end':max(started,finished),'conv_key':conv_key})
-    # Ordinary 020 Evidence lookups address the aggregate root request/context.
-    # Split reused historical Trace identities by native context, consistently
-    # remapping both Core rows and events; the report keeps every original ID.
-    trace_contexts = defaultdict(set)
+    # Request identity does not define Trace identity. Keep original Trace
+    # connections across requests/modules. Only a reused ID across distinct
+    # actors needs source-qualified identities to avoid mixing their records.
+    trace_subjects = defaultdict(set)
     for x in parsed:
         x['source_trace_id'] = x['outer']['trace_id']
-        x['trace_context'] = (x['outer']['request_id'], x['conv_key'])
-        trace_contexts[x['source_trace_id']].add(x['trace_context'])
+        x['subject'] = (x['owner']['effective_subject_type'], x['owner']['effective_subject_id'])
+        trace_subjects[x['source_trace_id']].add(x['subject'])
     for x in parsed:
         old = x['source_trace_id']
-        mapped = old if len(trace_contexts[old]) == 1 else hashlib.sha256(canonical((old, x['trace_context'])).encode()).hexdigest()[:32]
-        x['outer']['trace_id'] = mapped
-        x['event']['trace_id'] = mapped
+        if len(trace_subjects[old]) > 1:
+            mapped = hashlib.sha256(canonical((old, x['subject'])).encode()).hexdigest()[:32]
+            x['outer']['trace_id'] = mapped
+            x['event']['trace_id'] = mapped
     conv_ids = _map_ids({x['conv_key'] for x in parsed},0,'conv')
     for x in parsed:
         x['conv_id'] = conv_ids[x['conv_key']]
@@ -71,6 +72,13 @@ def plan_core(records, actor_names=None):
         if len(operation_traces[x['op_key']])>1:
             x['op_key']=x['op_key']+(x['outer']['trace_id'],)
     op_ids = _map_ids({x['op_key'] for x in parsed},1,'op')
+    parent_candidates = defaultdict(set)
+    for x in parsed:
+        parent_candidates[(x['source_trace_id'], x['subject'], x['outer']['operation_id'])].add(op_ids[x['op_key']])
+    for x in parsed:
+        x['source_parent'] = x['event'].get('parent_operation_id', '')
+        candidates = parent_candidates.get((x['source_trace_id'], x['subject'], x['source_parent']), set())
+        x['parent_target'] = next(iter(candidates)) if len(candidates) == 1 else x['source_parent']
     conversations, interactions, operations, receipts, calls = {}, {}, {}, {}, {}
     by_conversation = defaultdict(list)
     for x in parsed: by_conversation[x['conv_id']].append(x)
@@ -134,16 +142,20 @@ def plan_core(records, actor_names=None):
                               'protocol':'mcp','source_module':first['event'].get('producer_module') or records[first['ordinal']]['source_id'],
                               'input':envelope,'output':envelope if status=='completed' else None,
                               'error':envelope if status=='failed' else None,'request_id':first['outer']['request_id'],
-                              'trace_id':first['outer']['trace_id'],'span_id':first['outer'].get('span_id',''),
+                              'trace_id':first['outer']['trace_id'],'span_id':first['event'].get('span_id') or first['outer'].get('span_id',''),
                               'started_at':begin,'finished_at':end,'status':status,'retryable':False}
+        parents = {x['parent_target'] for x in rows if x['parent_target']}
+        if len(parents) == 1:
+            calls[(oid, attempt)]['parent_operation_id'] = next(iter(parents))
     mapping=[]
     for x in sorted(parsed,key=lambda x:x['ordinal']):
-        old={'trace_id':x['source_trace_id'],'conversation_id':x['outer']['conversation_id'],'interaction_id':x['outer']['interaction_id'],'operation_id':x['outer']['operation_id']}
+        old={'parent_operation_id':x['source_parent'],'span_id':x['event'].get('span_id') or x['outer'].get('span_id',''),'request_id':x['outer']['request_id'],'trace_id':x['source_trace_id'],'conversation_id':x['outer']['conversation_id'],'interaction_id':x['outer']['interaction_id'],'operation_id':x['outer']['operation_id']}
         new={'trace_id':x['outer']['trace_id'],'conversation_id':x['conv_id'],'interaction_id':x['int_id'],'operation_id':x['op_id']}
         x['outer'].update(new);x['event'].update({'interaction_id':x['int_id'],'operation_id':x['op_id']})
+        if x['parent_target']:x['event']['parent_operation_id']=x['parent_target']
         converted[x['ordinal']]['row']['envelope']=x['wrapper']
         mapping.append({'source_ordinal':x['ordinal'],'event_id':x['event']['event_id'],'source':old,
-                        'target':new,'receipt_id':x['receipt_id'],'defaults':{'auth_method':'unknown','protocol':'mcp','terminal_status':receipts[x['receipt_id']]['receipt_status']}})
+                        'target':new,'receipt_id':x['receipt_id'],'span_id':old['span_id'],'request_id':old['request_id'],'defaults':{'auth_method':'unknown','protocol':'mcp','terminal_status':receipts[x['receipt_id']]['receipt_status']}})
     return {'conversations':[conversations[k] for k in sorted(conversations)],
             'interactions':[interactions[k] for k in sorted(interactions)],
             'operations':[operations[k] for k in sorted(operations)],
