@@ -77,3 +77,33 @@ class ProvenanceBatchTests(unittest.TestCase):
         for batch in batches:
             self.assertEqual(batch['contexts'], [{'interaction_id': 'int-one', 'conversation_id': 'conv-one',
                                                    'owner': {'effective_subject_id': 'alice'}}])
+
+class RetainedArtifactNormalizationTests(unittest.TestCase):
+    def test_rejected_artifact_is_lossy_converted_without_blocking_batch(self):
+        from retained_runtime import normalize_artifacts_lossy
+        from snapshot import strict_loads
+
+        class Runtime:
+            def _native(self, flags, data):
+                answers = []
+                for line in data.splitlines():
+                    artifact = strict_loads(line)['payload']
+                    text = artifact.get('content', {}).get('text', '')
+                    if 'token=' in text:
+                        answers.append({'accepted': False, 'reason': 'artifact_native_invalid'})
+                    else:
+                        answers.append({'accepted': True, 'canonical_payload': artifact})
+                return ''.join(__import__('json').dumps(answer, separators=(',', ':')) + '\n' for answer in answers).encode()
+
+        plan = {
+            'artifacts': [
+                {'artifact_id': 'a1', 'interaction_id': 'i1', 'artifact_type': 'question', 'content': {'text': 'safe'}},
+                {'artifact_id': 'a2', 'interaction_id': 'i1', 'artifact_type': 'result', 'content': {'text': 'token=secret'}},
+            ],
+            'thread_mappings': [{'source_kind': 'agent_thread', 'source_id': 't1', 'interaction_ids': ['i1']}],
+        }
+        normalized = normalize_artifacts_lossy(Runtime(), plan)
+        self.assertEqual([item['artifact_id'] for item in normalized], ['a1', 'a2'])
+        self.assertIn('Historical content omitted during upgrade', normalized[1]['content']['text'])
+        self.assertEqual(plan['defaults'][0]['reason'], 'artifact_native_invalid')
+        self.assertEqual(plan['defaults'][0]['source_id'], 't1')

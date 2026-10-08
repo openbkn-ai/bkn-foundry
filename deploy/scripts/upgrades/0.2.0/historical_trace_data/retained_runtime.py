@@ -83,6 +83,48 @@ def provenance_import_batches(plan, max_bytes=64 << 20):
         yield encoded()
 
 
+
+def normalize_artifacts_lossy(runtime, plan):
+    """Normalize artifacts individually; retain identity when content is rejected."""
+    from run_upgrade import artifact_import_batches
+    source_by_interaction = {}
+    for mapping in plan.get('thread_mappings', []):
+        source = {'source_kind': mapping.get('source_kind', 'agent_thread'),
+                  'source_id': mapping.get('source_id', '')}
+        for interaction_id in mapping.get('interaction_ids', []):
+            source_by_interaction[interaction_id] = source
+    normalized = []
+    for batch in artifact_import_batches(plan['artifacts'], {}):
+        artifacts = strict_loads(batch)['artifacts']
+        answers = [strict_loads(line) for line in runtime._native([], ''.join(
+            canonical({'kind': 'artifact', 'payload': artifact}) + '\n'
+            for artifact in artifacts).encode()).splitlines()]
+        if len(answers) != len(artifacts):
+            raise ValueError('retained_artifact_validation_failed')
+        for artifact, answer in zip(artifacts, answers):
+            if answer.get('accepted') is not True:
+                content_hash = digest(canonical(artifact['content']).encode())
+                converted = dict(artifact)
+                converted['content'] = {'text': 'Historical content omitted during upgrade; original content is preserved in the source snapshot (sha256:' + content_hash + ').'}
+                converted.pop('content_hash', None)
+                source = source_by_interaction.get(artifact.get('interaction_id'), {})
+                plan.setdefault('defaults', []).append({**source,
+                    'interaction_id': artifact.get('interaction_id', ''),
+                    'artifact_id': artifact.get('artifact_id', ''),
+                    'artifact_type': artifact.get('artifact_type', ''),
+                    'reason': answer.get('reason', 'artifact_native_invalid'),
+                    'conversion': 'native_content_replaced',
+                    'source_content_sha256': content_hash})
+                retry = runtime._native([], (canonical({'kind': 'artifact', 'payload': converted}) + '\n').encode()).splitlines()
+                if len(retry) != 1:
+                    raise ValueError('retained_artifact_fallback_invalid')
+                answer = strict_loads(retry[0])
+                if answer.get('accepted') is not True:
+                    raise ValueError('retained_artifact_fallback_invalid')
+            normalized.append(answer['canonical_payload'])
+    plan['artifacts'] = normalized
+    return normalized
+
 def prepare_retained_history(runtime, state_root, deployment, evidence_records, before):
     """Freeze source once, then build and validate every original dependency."""
     if not before:
@@ -126,24 +168,15 @@ def prepare_retained_history(runtime, state_root, deployment, evidence_records, 
     if any(issue['reason'] not in supplemental_gaps for issue in plan['issues']):
         raise ValueError('retained_source_conversion_issues')
     batches = list(core_history_import_batches(plan['core']))
-    # Normalize Artifacts through the unchanged native contract before any write.
+    # Normalize each Artifact through the unchanged native contract.
+    normalize_artifacts_lossy(runtime, plan)
     from run_upgrade import artifact_import_batches
-    normalized = []
-    for batch in artifact_import_batches(plan['artifacts'], {}):
-        artifacts = strict_loads(batch)['artifacts']
-        answers = [strict_loads(line) for line in runtime._native([], ''.join(
-            canonical({'kind': 'artifact', 'payload': artifact}) + '\n'
-            for artifact in artifacts).encode()).splitlines()]
-        if len(answers) != len(artifacts) or any(answer.get('accepted') is not True for answer in answers):
-            raise ValueError('retained_artifact_validation_failed')
-        normalized.extend(answer['canonical_payload'] for answer in answers)
     settings = {'tls_verify': runtime._tls_options(False)['verify_tls']}
     ca_file = runtime._tls_options(False).get('ca_file')
     if ca_file:
         settings['ca_pem'] = Path(ca_file).read_text()
-    plan['artifacts'] = normalized
     return {'plan': plan, 'batches': batches,
-            'artifact_batches': list(artifact_import_batches(normalized, settings)),
+            'artifact_batches': list(artifact_import_batches(plan['artifacts'], settings)),
             'ledger': canonical({'ledger': plan['ledger']}).encode(),
             'snapshots': list(provenance_import_batches(plan)),
             'source_manifest': manifest}
