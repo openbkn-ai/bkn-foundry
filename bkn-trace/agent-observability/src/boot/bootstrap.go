@@ -204,11 +204,8 @@ func NewApp() (*App, error) {
 	}
 	capturePolicyHandler = httphandler.NewCapturePolicyHandlerWithInternal(
 		capturePolicyReader, capturePolicyCommander, captureController,
-		capturepolicysnapshot.Signer{
-			PrivateKey: coreConfig.CapturePolicySigningKey,
-			KeyID:      coreConfig.CapturePolicySigningKeyID,
-			Audience:   coreConfig.CapturePolicyAudience,
-			TTL:        coreConfig.CapturePolicySnapshotTTL,
+		capturepolicysnapshot.Builder{
+			TTL: coreConfig.CapturePolicySnapshotTTL,
 		}, capturePolicyWriter,
 	)
 	capturePolicyHandler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType string, before, after capturepolicysvc.Snapshot) {
@@ -991,12 +988,10 @@ func newAppWithArchiveAndCapture(
 	}
 	httphandler.RegisterSessionRoutes(internalMux, APIBasePath, sessionHandler, lifecycle)
 	if capturePolicyHandler != nil {
-		workload := func(next http.HandlerFunc) http.HandlerFunc {
-			return internal(evidenceHandler.RequireTrustedServicePrincipal(next))
-		}
-		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/policy", workload(capturePolicyHandler.GetInternalTraceEvidencePolicy))
-		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/endpoints:heartbeat", workload(capturePolicyHandler.HeartbeatInternalTraceEvidenceEndpoint))
-		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/operations/", workload(capturePolicyHandler.AcknowledgeInternalTraceEvidenceOperation))
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/policy", capturePolicyHandler.GetInternalTraceEvidencePolicy)
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/configuration", capturePolicyHandler.GetTraceEvidenceConfiguration)
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/endpoints:heartbeat", capturePolicyHandler.HeartbeatInternalTraceEvidenceEndpoint)
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/operations/", capturePolicyHandler.AcknowledgeInternalTraceEvidenceOperation)
 	}
 
 	publicHandler := observabilitylocale.PrivateNoCacheForPrefixes(

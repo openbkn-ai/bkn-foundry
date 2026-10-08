@@ -6,6 +6,7 @@ on:
       - 'v*'
     branches: ['**']
     paths:
+      - 'comm-go/**'
       - 'adp/execution-factory/operator-integration/**'
       - '.github/workflows/release-adp-operator-integration.yml'
       - '.github/workflows/reusable-*.yml'
@@ -39,7 +40,7 @@ jobs:
     with:
       service-path: adp/execution-factory/operator-integration
       dockerfile: docker/Dockerfile
-      context: '.'
+      context: '../../..'
       image-name: agent-operator-integration
       version: ${{ needs.version.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

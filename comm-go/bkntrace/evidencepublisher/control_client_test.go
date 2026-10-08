@@ -14,7 +14,7 @@ func TestControlClientSendsFrozenHeartbeatAndAck(t *testing.T) {
 	requests := 0
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requests++
-		if got := request.Header.Get("Authorization"); got != "Bearer workload-token" {
+		if got := request.Header.Get("Authorization"); got != "" {
 			t.Fatalf("Authorization = %q", got)
 		}
 		body, err := io.ReadAll(request.Body)
@@ -26,7 +26,7 @@ func TestControlClientSendsFrozenHeartbeatAndAck(t *testing.T) {
 			if request.Method != http.MethodPost || request.URL.String() != "https://trace.internal/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat" {
 				t.Fatalf("unexpected heartbeat request: %s %s", request.Method, request.URL)
 			}
-			if got, want := string(body), `{"instance_id":"spiffe://cluster.local/ns/openbkn/sa/bkn-backend#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`; got != want {
+			if got, want := string(body), `{"endpoint_kind":"evidence_publisher","workload_identity":"spiffe://cluster.local/ns/openbkn/sa/bkn-backend","instance_id":"spiffe://cluster.local/ns/openbkn/sa/bkn-backend#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`; got != want {
 				t.Fatalf("heartbeat body = %s; want %s", got, want)
 			}
 		case 2:
@@ -41,7 +41,7 @@ func TestControlClientSendsFrozenHeartbeatAndAck(t *testing.T) {
 		}
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})}
-	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token")})
+	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,6 @@ func TestControlClientDoesNotSendMismatchedAck(t *testing.T) {
 			t.Fatal("control endpoint called for mismatched ACK")
 			return nil, nil
 		})},
-		TokenSource: staticTokenSource("workload-token"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +83,7 @@ func TestControlClientOnlyClassifiesFrozenSetNonmemberConflict(t *testing.T) {
 			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: http.StatusConflict, Body: io.NopCloser(strings.NewReader(`{"code":"` + test.code + `"}`))}, nil
 			})}
-			control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token")})
+			control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -108,7 +107,7 @@ func TestControlClientAcknowledgementUsesUTCMilliseconds(t *testing.T) {
 		}
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})}
-	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token")})
+	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}

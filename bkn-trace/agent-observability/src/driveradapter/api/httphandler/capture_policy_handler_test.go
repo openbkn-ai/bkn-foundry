@@ -8,12 +8,10 @@ package httphandler
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,7 +23,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/traceadmissionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iauthorizationscope"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 )
 
@@ -113,9 +110,24 @@ func TestCapturePolicyControlWriterIncludesEvidencePublisherHeartbeat(t *testing
 }
 
 func capturePolicyWorkloadRequest(method, url, body string, profile evidencevo.AccessProfile) *http.Request {
-	scope := evidencevo.QueryScope{AccountID: "svc-account", AccountType: "service", AccessProfile: &profile}
-	request := httptest.NewRequest(method, url, bytes.NewBufferString(body))
-	return request.WithContext(context.WithValue(request.Context(), trustedQueryScopeContextKey{}, scope))
+	if strings.HasSuffix(url, "endpoints:heartbeat") {
+		var payload map[string]any
+		if json.Unmarshal([]byte(body), &payload) == nil {
+			payload["workload_identity"] = profile.ApplicationPrincipalID
+			if _, supplied := payload["endpoint_kind"]; !supplied {
+				kind := icapturepolicy.EndpointTraceGateway
+				for _, permission := range profile.Permissions {
+					if permission.ResourceID == icapturepolicy.EndpointEvidencePublisher {
+						kind = icapturepolicy.EndpointEvidencePublisher
+					}
+				}
+				payload["endpoint_kind"] = kind
+			}
+			encoded, _ := json.Marshal(payload)
+			body = string(encoded)
+		}
+	}
+	return httptest.NewRequest(method, url, bytes.NewBufferString(body))
 }
 
 func capturePolicyWorkloadProfile() evidencevo.AccessProfile {
@@ -126,32 +138,8 @@ func capturePolicyWorkloadProfile() evidencevo.AccessProfile {
 	}
 }
 
-func newTraceEvidenceWorkloadAuth(
-	t *testing.T,
-	profile evidencevo.AccessProfile,
-	introspection string,
-) (*EvidenceHandler, *fakeAccessScopeResolver) {
-	t.Helper()
-	resolver := &fakeAccessScopeResolver{profile: profile}
-	auth := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{
-		HydraAdminURL: "http://hydra.test",
-		QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			if request.Method != http.MethodPost || request.URL.Path != "/admin/oauth2/introspect" {
-				t.Fatalf("unexpected OAuth introspection request: %s %s", request.Method, request.URL.Path)
-			}
-			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(introspection))}, nil
-		})},
-		AuthorizationScopeResolver: resolver,
-	})
-	return auth, resolver
-}
-
 func traceEvidenceAppProfile(principalID string, permissions ...evidencevo.Permission) evidencevo.AccessProfile {
 	return evidencevo.AccessProfile{ActorID: principalID, EffectiveSubjectID: principalID, ApplicationPrincipalID: principalID, AccountActive: true, Permissions: permissions}
-}
-
-func traceEvidenceAppIntrospection(principalID string) string {
-	return `{"active":true,"sub":"` + principalID + `","client_id":"` + principalID + `","ext":{"visitor_type":"app"}}`
 }
 
 func traceGatewayAckReader(operationID string, revision uint64, phase capturepolicysvc.Phase) capturepolicysvc.ReaderFunc {
@@ -178,157 +166,7 @@ func (traceGatewayAckRaceReader) ReadOperation(context.Context, string) (capture
 	return capturepolicysvc.Operation{ID: "op-race", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateDisabled}, nil
 }
 
-func TestInternalTracePolicyAcceptsBearerOnlyWorkload(t *testing.T) {
-	auth, resolver := newTraceEvidenceWorkloadAuth(t, traceEvidenceAppProfile("trace-gateway"), traceEvidenceAppIntrospection("trace-gateway"))
-	signer := capturepolicysnapshot.Signer{PrivateKey: ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), KeyID: "capture-2026", Audience: "cluster-a", TTL: time.Minute}
-	policy := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
-		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 42, Operation: capturepolicysvc.Operation{ID: "op-42", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled}}, nil
-	}), nil, nil, signer, nil)
-	handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(policy.GetInternalTraceEvidencePolicy))
-	request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
-	request.Header.Set("Authorization", "Bearer gateway-token")
-	response := httptest.NewRecorder()
-	handler(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
-	}
-	if resolver.calls != 1 || resolver.trustedIdentity.ApplicationPrincipalID != "trace-gateway" {
-		t.Fatalf("Bearer identity not resolved: calls=%d identity=%+v", resolver.calls, resolver.trustedIdentity)
-	}
-	if request.Header.Get("x-account-id") != "trace-gateway" || request.Header.Get("x-account-type") != "app" {
-		t.Fatalf("OAuth identity headers not derived from token: %v", request.Header)
-	}
-}
-
-func TestInternalTraceHeartbeatAcceptsBearerOnlyWorkload(t *testing.T) {
-	profile := traceEvidenceAppProfile("trace-gateway", evidencevo.Permission{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointTraceGateway, Operations: []string{"heartbeat"}})
-	auth, resolver := newTraceEvidenceWorkloadAuth(t, profile, traceEvidenceAppIntrospection("trace-gateway"))
-	writer := &capturePolicyInternalWriter{}
-	policy := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
-		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
-	}), nil, nil, nil, writer)
-	handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(policy.HeartbeatInternalTraceEvidenceEndpoint))
-	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", strings.NewReader(`{"instance_id":"trace-gateway#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`))
-	request.Header.Set("Authorization", "Bearer gateway-token")
-	response := httptest.NewRecorder()
-	handler(response, request)
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want 204: %s", response.Code, response.Body.String())
-	}
-	if resolver.calls != 1 || resolver.trustedIdentity.ApplicationPrincipalID != "trace-gateway" {
-		t.Fatalf("Bearer identity not resolved: calls=%d identity=%+v", resolver.calls, resolver.trustedIdentity)
-	}
-	if writer.lease.EndpointKind != icapturepolicy.EndpointTraceGateway || writer.lease.WorkloadIdentity != "trace-gateway" {
-		t.Fatalf("heartbeat not bound to verified grant: %+v", writer.lease)
-	}
-}
-
-func TestInternalTraceWorkloadRejectsMissingAndInactiveBearer(t *testing.T) {
-	for _, test := range []struct {
-		name, introspection string
-		includeToken        bool
-	}{
-		{name: "missing bearer", introspection: traceEvidenceAppIntrospection("trace-gateway")},
-		{name: "inactive bearer", introspection: `{"active":false}`, includeToken: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			auth, resolver := newTraceEvidenceWorkloadAuth(t, traceEvidenceAppProfile("trace-gateway"), test.introspection)
-			nextCalled := false
-			handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(func(w http.ResponseWriter, _ *http.Request) { nextCalled = true; w.WriteHeader(http.StatusNoContent) }))
-			request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
-			request.Header.Set("x-account-id", "trace-gateway")
-			request.Header.Set("x-account-type", "app")
-			if test.includeToken {
-				request.Header.Set("Authorization", "Bearer inactive-token")
-			}
-			response := httptest.NewRecorder()
-			handler(response, request)
-			if response.Code != http.StatusUnauthorized || nextCalled {
-				t.Fatalf("absent/inactive bearer must fail: status=%d nextCalled=%v body=%s", response.Code, nextCalled, response.Body.String())
-			}
-			if resolver.calls != 0 {
-				t.Fatalf("unverified identity reached resolver: %d calls", resolver.calls)
-			}
-		})
-	}
-}
-
-func TestInternalTraceWorkloadRejectsForgedIdentityHeaders(t *testing.T) {
-	for _, test := range []struct{ name, header, value string }{
-		{name: "account id", header: "x-account-id", value: "other-app"},
-		{name: "account type", header: "x-account-type", value: "user"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			auth, resolver := newTraceEvidenceWorkloadAuth(t, traceEvidenceAppProfile("trace-gateway"), traceEvidenceAppIntrospection("trace-gateway"))
-			nextCalled := false
-			handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(func(w http.ResponseWriter, _ *http.Request) { nextCalled = true; w.WriteHeader(http.StatusNoContent) }))
-			request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
-			request.Header.Set("Authorization", "Bearer gateway-token")
-			request.Header.Set(test.header, test.value)
-			response := httptest.NewRecorder()
-			handler(response, request)
-			if response.Code != http.StatusUnauthorized || nextCalled {
-				t.Fatalf("forged identity must fail: status=%d nextCalled=%v body=%s", response.Code, nextCalled, response.Body.String())
-			}
-			if resolver.calls != 0 {
-				t.Fatalf("mismatched identity reached resolver: %d calls", resolver.calls)
-			}
-		})
-	}
-}
-
-func TestInternalTraceGatewayAckRejectsPublisherOnlyBearer(t *testing.T) {
-	profile := traceEvidenceAppProfile("trace-gateway", evidencevo.Permission{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}})
-	auth, resolver := newTraceEvidenceWorkloadAuth(t, profile, traceEvidenceAppIntrospection("trace-gateway"))
-	writer := &capturePolicyInternalWriter{}
-	policy := NewCapturePolicyHandlerWithInternal(traceGatewayAckReader("op-43", 43, capturepolicysvc.PhaseDisabling), nil, nil, nil, writer)
-	handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(policy.AcknowledgeInternalTraceEvidenceOperation))
-	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:ack", strings.NewReader(`{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"trace-gateway#boot-1","workload_identity":"trace-gateway","process_boot_id":"boot-1","capture_policy_revision":43,"admission_state":"disabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"complete","exported":16,"dropped":2,"unaccounted":0}}`))
-	request.Header.Set("Authorization", "Bearer gateway-token")
-	response := httptest.NewRecorder()
-	handler(response, request)
-	if response.Code != http.StatusForbidden || writer.ack.OperationID != "" {
-		t.Fatalf("publisher-only principal acknowledged as gateway: status=%d ack=%+v body=%s", response.Code, writer.ack, response.Body.String())
-	}
-	if resolver.calls != 1 || resolver.trustedIdentity.ApplicationPrincipalID != "trace-gateway" {
-		t.Fatalf("Bearer identity not resolved before endpoint auth: calls=%d identity=%+v", resolver.calls, resolver.trustedIdentity)
-	}
-}
-
-func TestInternalTraceWorkloadResolverFailuresWriteSingleResponse(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		err  error
-	}{
-		{name: "denied", err: iauthorizationscope.ErrDenied},
-		{name: "unavailable", err: iauthorizationscope.ErrUnavailable},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			auth, resolver := newTraceEvidenceWorkloadAuth(t, traceEvidenceAppProfile("trace-gateway"), traceEvidenceAppIntrospection("trace-gateway"))
-			resolver.err = test.err
-			handler := auth.InternalLifecycle(auth.RequireTrustedServicePrincipal(func(http.ResponseWriter, *http.Request) {
-				t.Fatal("resolver failure reached workload handler")
-			}))
-			request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
-			request.Header.Set("Authorization", "Bearer gateway-token")
-			response := httptest.NewRecorder()
-
-			handler(response, request)
-
-			var envelope struct {
-				Code string `json:"code"`
-			}
-			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-				t.Fatalf("resolver failure must produce one JSON response, got %q: %v", response.Body.String(), err)
-			}
-			if response.Code != http.StatusUnauthorized || envelope.Code != "QUERY_ACCESS_DENIED" {
-				t.Fatalf("unexpected resolver failure response: status=%d body=%s", response.Code, response.Body.String())
-			}
-		})
-	}
-}
-
-func TestInternalTraceEvidenceHeartbeatBindsEndpointKindToVerifiedGrant(t *testing.T) {
+func TestInternalTraceEvidenceHeartbeatUsesBodyEndpointKind(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
 	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
 		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
@@ -398,22 +236,7 @@ func TestInternalTraceEvidencePublisherHeartbeatDoesNotFallbackWhenRegistrationF
 	}
 }
 
-func TestInternalTraceEvidenceHeartbeatRejectsUnboundEndpointKind(t *testing.T) {
-	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
-		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
-	}), nil, nil, nil, writer)
-	profile := capturePolicyWorkloadProfile()
-	profile.Permissions = nil
-	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`, profile)
-	response := httptest.NewRecorder()
-	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403 when verified principal has no endpoint grant", response.Code)
-	}
-}
-
-func TestInternalTraceEvidenceHeartbeatRejectsCallerSuppliedEndpointKind(t *testing.T) {
+func TestInternalTraceEvidenceHeartbeatRejectsInconsistentBodyIdentity(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
 	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
 		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
@@ -422,7 +245,7 @@ func TestInternalTraceEvidenceHeartbeatRejectsCallerSuppliedEndpointKind(t *test
 	response := httptest.NewRecorder()
 	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
 	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 when endpoint_kind is caller-supplied", response.Code)
+		t.Fatalf("status = %d, want 400 for inconsistent body identity", response.Code)
 	}
 }
 
@@ -437,21 +260,6 @@ func TestInternalTraceGatewayAckRejectsOmittedRequiredQueueCount(t *testing.T) {
 	}
 }
 
-func TestInternalTraceEvidenceHeartbeatRequiresEndpointGrant(t *testing.T) {
-	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
-		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled}, nil
-	}), nil, nil, nil, writer)
-	profile := capturePolicyWorkloadProfile()
-	profile.Permissions = nil
-	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`, profile)
-	response := httptest.NewRecorder()
-	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", response.Code)
-	}
-}
-
 func TestInternalTraceEvidenceHeartbeatRejectsBootIdentityMismatch(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
 	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
@@ -460,7 +268,7 @@ func TestInternalTraceEvidenceHeartbeatRejectsBootIdentityMismatch(t *testing.T)
 	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", `{"instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-other","process_boot_id":"boot-1","observed_revision":42,"ready":true}`, capturePolicyWorkloadProfile())
 	response := httptest.NewRecorder()
 	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
-	if response.Code != http.StatusForbidden {
+	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 403", response.Code)
 	}
 }
@@ -595,32 +403,6 @@ func TestInternalTraceGatewayAckRejectsAdditionalPropertiesFromFrozenFixture(t *
 	}
 }
 
-func TestInternalTraceGatewayAckRejectsPublisherOnlyPrincipalWithoutIdentityMismatch(t *testing.T) {
-	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
-		return capturepolicysvc.Snapshot{}, nil
-	}), nil, nil, nil, writer)
-	profile := capturePolicyWorkloadProfile()
-	profile.Permissions = []evidencevo.Permission{{ResourceType: "trace_evidence_endpoint", ResourceID: icapturepolicy.EndpointEvidencePublisher, Operations: []string{"heartbeat"}}}
-	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-1","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/otelcol","process_boot_id":"boot-1","capture_policy_revision":43,"admission_state":"enabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"not_applicable","exported":0,"dropped":0,"unaccounted":0}}`, profile)
-	response := httptest.NewRecorder()
-	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403 for publisher-only principal without identity mismatch", response.Code)
-	}
-}
-
-func TestInternalTraceGatewayAckRejectsWorkloadIdentityMismatch(t *testing.T) {
-	writer := &capturePolicyInternalWriter{}
-	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return capturepolicysvc.Snapshot{}, nil }), nil, nil, nil, writer)
-	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-42:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/other#boot-1","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/other","process_boot_id":"boot-1","capture_policy_revision":42,"admission_state":"enabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"not_applicable","exported":0,"dropped":0,"unaccounted":0}}`, capturePolicyWorkloadProfile())
-	response := httptest.NewRecorder()
-	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", response.Code)
-	}
-}
-
 func TestInternalTraceGatewayAckAcceptsFrozenGapDisposition(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
 	handler := NewCapturePolicyHandlerWithInternal(traceGatewayAckReader("op-gap", 42, capturepolicysvc.PhaseDisabling), nil, nil, nil, writer)
@@ -654,7 +436,7 @@ func TestInternalTraceGatewayAckRejectsGapWithoutReason(t *testing.T) {
 	}
 }
 
-func TestInternalTraceGatewayAckRequiresGatewayCapabilityAndExactBootBinding(t *testing.T) {
+func TestInternalTraceGatewayAckRequiresExactBootBinding(t *testing.T) {
 	writer := &capturePolicyInternalWriter{}
 	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) { return capturepolicysvc.Snapshot{}, nil }), nil, nil, nil, writer)
 	profile := capturePolicyWorkloadProfile()
@@ -662,7 +444,7 @@ func TestInternalTraceGatewayAckRequiresGatewayCapabilityAndExactBootBinding(t *
 	request := capturePolicyWorkloadRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/operations/op-42:ack", `{"contract_version":"TraceGatewayAcknowledgementV1","gateway_instance_id":"spiffe://cluster-a/ns/openbkn/sa/otelcol#boot-other","workload_identity":"spiffe://cluster-a/ns/openbkn/sa/otelcol","process_boot_id":"boot-1","capture_policy_revision":42,"admission_state":"enabled","ready":true,"acknowledged_at":"2026-09-22T08:01:10Z","queue_disposition":{"state":"not_applicable","exported":0,"dropped":0,"unaccounted":0}}`, profile)
 	response := httptest.NewRecorder()
 	handler.AcknowledgeInternalTraceEvidenceOperation(response, request)
-	if response.Code != http.StatusForbidden {
+	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 403", response.Code)
 	}
 }
@@ -780,31 +562,30 @@ func TestSession1PublisherAcknowledgementFixtureCompatibility(t *testing.T) {
 	}
 }
 
-func TestInternalTracePolicySnapshotUsesDedicatedSigner(t *testing.T) {
-	privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+func TestInternalTracePolicySnapshotUnsignedWithoutAuthentication(t *testing.T) {
 	now := time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC)
-	signer := capturepolicysnapshot.Signer{PrivateKey: privateKey, KeyID: "capture-2026", Audience: "cluster-a", TTL: time.Minute, Now: func() time.Time { return now }}
+	builder := capturepolicysnapshot.Builder{TTL: time.Minute, Now: func() time.Time { return now }}
 	handler := NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
 		return capturepolicysvc.Snapshot{Revision: 42, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 42, Operation: capturepolicysvc.Operation{ID: "op-42", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled}}, nil
-	}), nil, nil, signer, nil)
-	request := capturePolicyWorkloadRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", "", capturePolicyWorkloadProfile())
+	}), nil, nil, builder, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/internal/trace-evidence/policy", nil)
 	response := httptest.NewRecorder()
 	handler.GetInternalTraceEvidencePolicy(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	var snapshot traceadmissionsvc.SignedSnapshot
+	var snapshot traceadmissionsvc.Snapshot
 	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil {
 		t.Fatalf("decode snapshot: %v", err)
 	}
-	if snapshot.ContractVersion != traceadmissionsvc.ContractVersion || snapshot.Revision != 42 || snapshot.TraceAdmission != traceadmissionsvc.ModeEnabled || snapshot.EvidenceAdmission != traceadmissionsvc.ModeEnabled || !strings.HasPrefix(snapshot.Signature, "ed25519:") {
-		t.Fatalf("unexpected signed snapshot: %+v", snapshot)
+	if snapshot.ContractVersion != traceadmissionsvc.ContractVersion || snapshot.Revision != 42 || snapshot.TraceAdmission != traceadmissionsvc.ModeEnabled || snapshot.EvidenceAdmission != traceadmissionsvc.ModeEnabled {
+		t.Fatalf("unexpected unsigned snapshot: %+v", snapshot)
 	}
 	var wire map[string]any
 	if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
 		t.Fatal(err)
 	}
-	if _, legacy := wire["admission_mode"]; legacy {
+	if _, legacy := wire["signature"]; legacy {
 		t.Fatal("legacy admission_mode field leaked into TraceEvidencePolicySnapshotV1")
 	}
 }
@@ -1209,5 +990,33 @@ func TestCapturePolicyHandlerReadsHistoricalOperationAfterNewOperation(t *testin
 	}
 	if operation.ID != "op-1" || operation.Phase != capturepolicysvc.PhaseSucceeded {
 		t.Fatalf("unexpected historical operation: %+v", operation)
+	}
+}
+
+func TestInternalTraceHeartbeatWithoutAuthentication(t *testing.T) {
+	writer := &capturePolicyInternalWriter{}
+	handler := NewCapturePolicyHandlerWithInternal(nil, nil, nil, nil, writer)
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", strings.NewReader(`{"endpoint_kind":"evidence_publisher","workload_identity":"bkn-agent","instance_id":"bkn-agent#boot-1","process_boot_id":"boot-1","observed_revision":42,"ready":true}`))
+	response := httptest.NewRecorder()
+	handler.HeartbeatInternalTraceEvidenceEndpoint(response, request)
+	if response.Code != http.StatusNoContent || writer.lease.WorkloadIdentity != "bkn-agent" || writer.registeredHeartbeats != 1 {
+		t.Fatalf("status = %d, lease = %+v, body = %s", response.Code, writer.lease, response.Body.String())
+	}
+}
+
+func TestInternalHeartbeatValidatesBodyStateWithoutAuthentication(t *testing.T) {
+	for _, body := range []string{
+		`{"endpoint_kind":"unknown","workload_identity":"publisher","instance_id":"publisher#boot-1","process_boot_id":"boot-1","observed_revision":42}`,
+		`{"endpoint_kind":"evidence_publisher","instance_id":"publisher#boot-1","process_boot_id":"boot-1","observed_revision":42}`,
+		`{"endpoint_kind":"evidence_publisher","workload_identity":"publisher","instance_id":"publisher#boot-1","process_boot_id":"boot-1","observed_revision":0}`,
+		`{"endpoint_kind":"evidence_publisher","workload_identity":"publisher","instance_id":"publisher#boot-2","process_boot_id":"boot-1","observed_revision":42}`,
+	} {
+		writer := &capturePolicyInternalWriter{}
+		handler := NewCapturePolicyHandlerWithInternal(nil, nil, nil, nil, writer)
+		response := httptest.NewRecorder()
+		handler.HeartbeatInternalTraceEvidenceEndpoint(response, httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat", strings.NewReader(body)))
+		if response.Code != http.StatusBadRequest || writer.leaseUpserts != 0 || writer.registeredHeartbeats != 0 {
+			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+		}
 	}
 }

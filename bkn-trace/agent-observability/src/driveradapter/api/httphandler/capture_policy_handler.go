@@ -19,8 +19,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icapturepolicy"
 )
 
-type CapturePolicySigner interface {
-	Sign(uint64, capturepolicysvc.State) (traceadmissionsvc.SignedSnapshot, error)
+type CapturePolicySnapshotBuilder interface {
+	Build(uint64, capturepolicysvc.State) (traceadmissionsvc.Snapshot, error)
 }
 
 type CapturePolicyControlWriter interface {
@@ -42,10 +42,10 @@ type CapturePolicyHandler struct {
 	reconciler interface {
 		Reconcile(context.Context) (bool, error)
 	}
-	signer         CapturePolicySigner
-	writer         CapturePolicyControlWriter
-	budget         AdmissionBudgetReader
-	auditRequested func(context.Context, string, string, capturepolicysvc.Snapshot, capturepolicysvc.Snapshot)
+	snapshotBuilder CapturePolicySnapshotBuilder
+	writer          CapturePolicyControlWriter
+	budget          AdmissionBudgetReader
+	auditRequested  func(context.Context, string, string, capturepolicysvc.Snapshot, capturepolicysvc.Snapshot)
 }
 
 // SetAuditRequestedObserver observes only accepted, non-noop commands. Audit
@@ -78,8 +78,8 @@ func NewCapturePolicyHandlerWithReconciler(reader capturepolicysvc.Reader, comma
 
 func NewCapturePolicyHandlerWithInternal(reader capturepolicysvc.Reader, commander capturepolicysvc.Commander, reconciler interface {
 	Reconcile(context.Context) (bool, error)
-}, signer CapturePolicySigner, writer CapturePolicyControlWriter) *CapturePolicyHandler {
-	return &CapturePolicyHandler{service: capturepolicysvc.New(reader), commander: commander, reconciler: reconciler, signer: signer, writer: writer}
+}, snapshotBuilder CapturePolicySnapshotBuilder, writer CapturePolicyControlWriter) *CapturePolicyHandler {
+	return &CapturePolicyHandler{service: capturepolicysvc.New(reader), commander: commander, reconciler: reconciler, snapshotBuilder: snapshotBuilder, writer: writer}
 }
 
 // HandleTraceEvidenceConfiguration dispatches the stable configuration
@@ -344,12 +344,8 @@ func (h *CapturePolicyHandler) GetInternalTraceEvidencePolicy(w http.ResponseWri
 		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
-	if h == nil || h.signer == nil || h.service == nil {
-		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_SIGNER_UNAVAILABLE", Message: "capture policy signing is not configured"})
-		return
-	}
-	if _, ok := workloadIdentityFromRequest(r); !ok {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
+	if h == nil || h.snapshotBuilder == nil || h.service == nil {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_SNAPSHOT_UNAVAILABLE", Message: "capture policy snapshot is not configured"})
 		return
 	}
 	snapshot, err := h.service.Read(contextWithRequest(r))
@@ -357,15 +353,17 @@ func (h *CapturePolicyHandler) GetInternalTraceEvidencePolicy(w http.ResponseWri
 		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_UNAVAILABLE", Message: "capture policy is not available"})
 		return
 	}
-	signed, err := h.signer.Sign(snapshot.Revision, snapshot.DesiredState)
+	response, err := h.snapshotBuilder.Build(snapshot.Revision, snapshot.DesiredState)
 	if err != nil {
-		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_SIGNING_FAILED", Message: "capture policy could not be signed"})
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_SNAPSHOT_FAILED", Message: "capture policy snapshot could not be built"})
 		return
 	}
-	writeJSON(w, r, http.StatusOK, signed)
+	writeJSON(w, r, http.StatusOK, response)
 }
 
 type endpointHeartbeatRequest struct {
+	EndpointKind     string `json:"endpoint_kind"`
+	WorkloadIdentity string `json:"workload_identity"`
 	InstanceID       string `json:"instance_id"`
 	ProcessBootID    string `json:"process_boot_id"`
 	ObservedRevision uint64 `json:"observed_revision"`
@@ -382,11 +380,6 @@ func (h *CapturePolicyHandler) HeartbeatInternalTraceEvidenceEndpoint(w http.Res
 		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "CAPTURE_POLICY_WRITER_UNAVAILABLE", Message: "capture policy writer is not configured"})
 		return
 	}
-	workloadIdentity, ok := workloadIdentityFromRequest(r)
-	if !ok {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
-		return
-	}
 	var request endpointHeartbeatRequest
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -394,13 +387,13 @@ func (h *CapturePolicyHandler) HeartbeatInternalTraceEvidenceEndpoint(w http.Res
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ENDPOINT_HEARTBEAT", Message: "endpoint identity and observed_revision are required"})
 		return
 	}
-	endpointKind, ok := endpointKindFromScope(r)
-	if !ok {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_ENDPOINT_FORBIDDEN", Message: "the verified service principal is not bound to one endpoint kind"})
+	endpointKind, workloadIdentity := request.EndpointKind, request.WorkloadIdentity
+	if workloadIdentity == "" || (endpointKind != icapturepolicy.EndpointTraceGateway && endpointKind != icapturepolicy.EndpointEvidencePublisher) {
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ENDPOINT_HEARTBEAT", Message: "workload_identity and a valid endpoint_kind are required"})
 		return
 	}
 	if request.InstanceID != workloadIdentity+"#"+request.ProcessBootID {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "endpoint instance and process boot identity do not match"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ENDPOINT_HEARTBEAT", Message: "endpoint instance and process boot identity do not match"})
 		return
 	}
 	now := time.Now().UTC()
@@ -489,11 +482,6 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "TRACE_EVIDENCE_OPERATION_NOT_FOUND", Message: "capture policy operation was not found"})
 		return
 	}
-	workloadIdentity, ok := workloadIdentityFromRequest(r)
-	if !ok {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
-		return
-	}
 	var request TraceGatewayAcknowledgementV1
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -501,16 +489,9 @@ func (h *CapturePolicyHandler) AcknowledgeInternalTraceEvidenceOperation(w http.
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "the frozen TraceGatewayAcknowledgementV1 contract is required"})
 		return
 	}
-	if request.WorkloadIdentity != workloadIdentity || !strings.HasPrefix(request.GatewayInstanceID, request.WorkloadIdentity+"#") {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "gateway identity does not match the verified service principal"})
-		return
-	}
-	if endpointKind, bound := endpointKindFromScope(r); !bound || endpointKind != icapturepolicy.EndpointTraceGateway {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_ENDPOINT_FORBIDDEN", Message: "a trace gateway capability is required"})
-		return
-	}
+	workloadIdentity := request.WorkloadIdentity
 	if request.GatewayInstanceID != request.WorkloadIdentity+"#"+request.ProcessBootID {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "gateway instance and process boot identity do not match"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_GATEWAY_ACKNOWLEDGEMENT", Message: "gateway instance and process boot identity do not match"})
 		return
 	}
 	mode := traceadmissionsvc.Mode(request.AdmissionState)
@@ -608,24 +589,15 @@ func (h *CapturePolicyHandler) AcknowledgeInternalEvidencePublisherOperation(w h
 		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "TRACE_EVIDENCE_OPERATION_NOT_FOUND", Message: "capture policy operation was not found"})
 		return
 	}
-	workloadIdentity, ok := workloadIdentityFromRequest(r)
-	if !ok {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_WORKLOAD_FORBIDDEN", Message: "a verified service principal is required"})
-		return
-	}
-	if endpointKind, bound := endpointKindFromScope(r); !bound || endpointKind != icapturepolicy.EndpointEvidencePublisher {
-		writeJSON(w, r, http.StatusForbidden, rdto.ErrorResponse{Code: "OBSERVABILITY_ENDPOINT_FORBIDDEN", Message: "an evidence publisher capability is required"})
-		return
-	}
 	var request evidencePublisherAcknowledgement
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil || request.ProducerInstanceID == "" || request.PolicyRevision == 0 || request.AcknowledgedAt.IsZero() || !request.QueueEmpty || request.LastAcceptedSequence != request.Published+request.Dropped || !strings.HasPrefix(request.ProducerInstanceID, workloadIdentity+"#") {
+	if err := decoder.Decode(&request); err != nil || request.ProducerInstanceID == "" || request.PolicyRevision == 0 || request.AcknowledgedAt.IsZero() || !request.QueueEmpty || request.LastAcceptedSequence != request.Published+request.Dropped {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "publisher acknowledgement does not satisfy the Session 1 closure contract"})
 		return
 	}
-	processBootID := strings.TrimPrefix(request.ProducerInstanceID, workloadIdentity+"#")
-	if processBootID == "" {
+	workloadIdentity, processBootID, validIdentity := splitInternalInstanceID(request.ProducerInstanceID)
+	if !validIdentity {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_EVIDENCE_PUBLISHER_ACKNOWLEDGEMENT", Message: "producer_instance_id must include a process boot identity"})
 		return
 	}
@@ -687,39 +659,13 @@ func validGatewayQueueDisposition(mode traceadmissionsvc.Mode, status string, ex
 	}
 }
 
-func workloadIdentityFromRequest(r *http.Request) (string, bool) {
-	scope, ok := trustedQueryScopeFromContext(r.Context())
-	if !ok || scope.AccessProfile == nil || !scope.AccessProfile.AccountActive {
-		return "", false
+// Internal workload identity is descriptive process state supplied by trusted cluster callers.
+func splitInternalInstanceID(instanceID string) (string, string, bool) {
+	index := strings.LastIndex(instanceID, "#")
+	if index <= 0 || index == len(instanceID)-1 {
+		return "", "", false
 	}
-	if scope.AccessProfile.ApplicationPrincipalID != "" && (scope.AccountType == "app" || scope.AccountType == "service") {
-		return scope.AccessProfile.ApplicationPrincipalID, true
-	}
-	if (scope.AccountType == "app" || scope.AccountType == "service") && scope.AccountID != "" {
-		return scope.AccountID, true
-	}
-	return "", false
-}
-
-// endpointKindFromScope binds endpoint identity to the verified Access Profile.
-// The heartbeat body deliberately has no endpoint_kind field: a workload may
-// only announce the endpoint kind granted by BKN Safe, and a principal with
-// zero or multiple endpoint grants is rejected rather than guessing.
-func endpointKindFromScope(r *http.Request) (string, bool) {
-	scope, ok := trustedQueryScopeFromContext(r.Context())
-	if !ok || scope.AccessProfile == nil {
-		return "", false
-	}
-	profile := *scope.AccessProfile
-	trace := profile.HasPermission("trace_evidence_endpoint", icapturepolicy.EndpointTraceGateway, "heartbeat")
-	evidence := profile.HasPermission("trace_evidence_endpoint", icapturepolicy.EndpointEvidencePublisher, "heartbeat")
-	if trace == evidence {
-		return "", false
-	}
-	if trace {
-		return icapturepolicy.EndpointTraceGateway, true
-	}
-	return icapturepolicy.EndpointEvidencePublisher, true
+	return instanceID[:index], instanceID[index+1:], true
 }
 
 func intPointer(value *uint64) *int {

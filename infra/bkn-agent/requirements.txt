@@ -25,7 +25,6 @@ aiomysql~=0.2.0
 PyMySQL>=1.2.3,<1.3
 aiohttp~=3.14.0
 aiokafka[snappy]~=0.14.0
-cryptography~=46.0
 
 # 契约（docs/api/bkn-agent.yaml 导出与漂移测试）
 pyyaml~=6.0

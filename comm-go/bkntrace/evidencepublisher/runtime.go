@@ -11,8 +11,8 @@ import (
 
 const publisherHeartbeatInterval = 10 * time.Second
 
-// PublisherRuntime wires the frozen Publisher data plane to the signed
-// policy/control-plane inputs. Business calls only consult its verified local
+// PublisherRuntime wires the frozen Publisher data plane to the internal
+// policy/control-plane inputs. Business calls only consult its validated local
 // snapshot; they never wait for policy, heartbeat, Kafka, or ACK I/O.
 type PublisherRuntime struct {
 	publisher     *Publisher
@@ -45,7 +45,7 @@ func NewPublisherRuntime(_ context.Context, config PublisherRuntimeConfig) (*Pub
 	if config.Policy == nil || config.Configuration == nil || config.Control == nil {
 		return nil, errors.New("evidence publisher runtime control clients are required")
 	}
-	// Runtime records always receive the verified snapshot revision at
+	// Runtime records always receive the validated snapshot revision at
 	// TryPublish/Flush time. Keep the legacy Publisher constructor's required
 	// value internal so a workload has no static policy-revision setting.
 	if config.Publisher.CapturePolicyRevision == "" {
@@ -63,8 +63,8 @@ func NewPublisherRuntime(_ context.Context, config PublisherRuntimeConfig) (*Pub
 	return runtime, nil
 }
 
-// CaptureDisabled reports an intentional, verified policy disable without I/O.
-// A disabled snapshot remains closed until a newer verified snapshot enables it;
+// CaptureDisabled reports an intentional, validated policy disable without I/O.
+// A disabled snapshot remains closed until a newer validated snapshot enables it;
 // expiry or transport failure must never silently re-enable capture.
 func (r *PublisherRuntime) CaptureDisabled() bool {
 	r.mu.Lock()
@@ -73,7 +73,7 @@ func (r *PublisherRuntime) CaptureDisabled() bool {
 }
 
 // TryPublish remains the business-facing non-blocking entrypoint. It only
-// accepts a fresh, verified enabled snapshot and stamps its exact revision on
+// accepts a fresh, validated enabled snapshot and stamps its exact revision on
 // the record before the bounded in-memory queue admission.
 func (r *PublisherRuntime) TryPublish(event Event) PublishResult {
 	r.mu.Lock()
@@ -91,7 +91,7 @@ func (r *PublisherRuntime) TryPublish(event Event) PublishResult {
 	return r.publisher.TryPublishForPolicyRevision(event, strconv.FormatUint(r.snapshot.Revision, 10))
 }
 
-// Refresh obtains and validates a new signed snapshot, sends the per-instance
+// Refresh obtains and validates a new internal snapshot, sends the per-instance
 // heartbeat, then accounts the bounded queue through the frozen
 // configuration/ACK flow before opening enabled admission. A failed ACK
 // lookup keeps Evidence closed without blocking business work.
@@ -139,7 +139,7 @@ func (r *PublisherRuntime) Refresh(ctx context.Context) error {
 		r.setError(err)
 		if errors.Is(err, errPublisherAcknowledgementNotExpected) {
 			// A newly joined instance may be outside the operation's frozen ACK
-			// set. It cannot converge the operation, but its signed policy and
+			// set. It cannot converge the operation, but its internal policy and
 			// successful heartbeat still permit live Evidence admission.
 			r.mu.Lock()
 			r.ackNotExpectedRevision = snapshot.Revision
@@ -174,7 +174,7 @@ func (r *PublisherRuntime) Run(ctx context.Context) error {
 }
 
 // Close rejects new events, performs the bounded final disposition, and only
-// ACKs if configuration names an active operation at the verified revision.
+// ACKs if configuration names an active operation at the validated revision.
 func (r *PublisherRuntime) Close(ctx context.Context) (DrainResult, error) {
 	r.mu.Lock()
 	r.admitting = false
@@ -182,7 +182,7 @@ func (r *PublisherRuntime) Close(ctx context.Context) (DrainResult, error) {
 	revision := r.snapshot.Revision
 	r.mu.Unlock()
 	if !hasPolicy {
-		return r.publisher.Close(ctx), errors.New("publisher runtime has no verified policy")
+		return r.publisher.Close(ctx), errors.New("publisher runtime has no validated policy")
 	}
 	return r.drainAndAcknowledge(ctx, revision, true, true)
 }
@@ -193,7 +193,7 @@ func (r *PublisherRuntime) LastRefreshError() error {
 	return r.lastError
 }
 
-// Flush performs only the bounded Kafka disposition for the current verified
+// Flush performs only the bounded Kafka disposition for the current validated
 // revision. It is safe for a background transport loop and never reads the
 // control plane or sends an operation acknowledgement.
 func (r *PublisherRuntime) Flush(ctx context.Context) DrainResult {
