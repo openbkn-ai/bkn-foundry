@@ -2575,6 +2575,27 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			So(kn.ObjectTypes[0].OTName, ShouldEqual, "top-level")
 		})
 
+		Convey("Ignore rejects a name owned by a different KN ID\n", func() {
+			kn := &interfaces.KN{
+				KNID:   "new-kn-id",
+				KNName: "existing-name",
+				Branch: interfaces.MAIN_BRANCH,
+			}
+
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().CheckKNExistByID(gomock.Any(), "new-kn-id", interfaces.MAIN_BRANCH).
+				Return("", false, nil)
+			kna.EXPECT().CheckKNExistByName(gomock.Any(), "existing-name", interfaces.MAIN_BRANCH).
+				Return("existing-kn-id", true, nil)
+
+			knID, err := service.CreateKN(ctx, kn, interfaces.ImportMode_Ignore, true)
+			So(err, ShouldNotBeNil)
+			So(knID, ShouldBeEmpty)
+			So(err.(*rest.HTTPError).BaseError.ErrorCode,
+				ShouldEqual, berrors.BknBackend_KnowledgeNetwork_KNNameExisted)
+			So(kn.KNID, ShouldEqual, "new-kn-id")
+		})
+
 		Convey("Success with Overwrite mode when ID exists\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn1",
