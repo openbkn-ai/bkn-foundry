@@ -18,6 +18,7 @@ func TestIsValidDiscoverStrategy(t *testing.T) {
 			DiscoverStrategyFullSync,
 			DiscoverStrategyCreateOnly,
 			DiscoverStrategyCleanupOnly,
+			DiscoverStrategyCountOnly,
 		} {
 			assert.True(t, IsValidDiscoverStrategy(strategy), "strategy %q should be valid", strategy)
 		}
@@ -55,6 +56,7 @@ func TestActionsFromDiscoverStrategy(t *testing.T) {
 			strategy: DiscoverStrategyCleanupOnly,
 			want:     DiscoverActions{MarkStale: true},
 		},
+		{name: "count only does not reconcile", strategy: DiscoverStrategyCountOnly, want: DiscoverActions{Count: true}},
 	}
 
 	for _, tt := range tests {

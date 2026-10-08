@@ -163,6 +163,7 @@ func scanDiscoverTaskSummary(scanner discoverTaskScanner) (*interfaces.DiscoverT
 				UpdatedCount:   result.UpdatedCount,
 				RestoredCount:  result.RestoredCount,
 				FailedCount:    result.FailedCount,
+				SkippedCount:   result.SkippedCount,
 			}
 		}
 	}
@@ -453,12 +454,20 @@ func (dta *discoverTaskAccess) MarkCompleted(
 		return false, err
 	}
 
-	return dta.update(ctx, nil, map[string]any{
-		"f_status":      interfaces.DiscoverTaskStatusCompleted,
+	status := interfaces.DiscoverTaskStatusCompleted
+	if result != nil && result.Failed {
+		status = interfaces.DiscoverTaskStatusFailed
+	}
+	fields := map[string]any{
+		"f_status":      status,
 		"f_result":      resultJSON,
 		"f_progress":    100,
 		"f_finish_time": finishTime,
-	}, map[string]any{
+	}
+	if result != nil && (result.Failed || result.FailedCount > 0 || result.SkippedCount > 0) {
+		fields["f_message"] = result.Message
+	}
+	return dta.update(ctx, nil, fields, map[string]any{
 		"f_id":     id,
 		"f_status": interfaces.DiscoverTaskStatusRunning,
 	})

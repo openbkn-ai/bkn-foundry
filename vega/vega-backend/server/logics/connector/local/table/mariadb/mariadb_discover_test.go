@@ -8,6 +8,8 @@ package mariadb
 
 import (
 	"context"
+	"errors"
+	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -200,4 +202,46 @@ func mariaDBTableRows() *sqlmock.Rows {
 		"TABLE_SCHEMA", "TABLE_NAME", "TABLE_TYPE", "ENGINE", "TABLE_COLLATION",
 		"TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH",
 	})
+}
+
+func TestMariaDBConnectorCountRows(t *testing.T) {
+	for _, tt := range []struct {
+		name, query string
+		table       *interfaces.TableMeta
+		count       int64
+		sourceErr   bool
+		wantError   string
+	}{
+		{name: "count", table: &interfaces.TableMeta{Database: "app", Name: "orders"}, query: "SELECT COUNT(*) FROM `app`.`orders`", count: 42},
+		{name: "empty", table: &interfaces.TableMeta{Database: "app", Name: "orders"}, query: "SELECT COUNT(*) FROM `app`.`orders`"},
+		{name: "source error", table: &interfaces.TableMeta{Database: "app", Name: "orders"}, query: "SELECT COUNT(*) FROM `app`.`orders`", sourceErr: true, wantError: "source failed"},
+		{name: "negative count", table: &interfaces.TableMeta{Database: "app", Name: "orders"}, query: "SELECT COUNT(*) FROM `app`.`orders`", count: -1, wantError: "invalid negative row count"},
+		{name: "invalid identifier", table: &interfaces.TableMeta{Database: "", Name: "orders"}, wantError: "invalid table metadata"},
+		{name: "nil metadata", wantError: "invalid table metadata"},
+		{name: "schema fallback", table: &interfaces.TableMeta{Schema: "app", Name: "orders.part"}, query: "SELECT COUNT(*) FROM `app`.`orders.part`", count: 2},
+		{name: "outside scope", table: &interfaces.TableMeta{Database: "other", Name: "orders"}, wantError: "outside the connector scope"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanup()
+			connector.connected = true
+			if tt.query != "" {
+				expect := mock.ExpectQuery(regexp.QuoteMeta(tt.query))
+				if tt.sourceErr {
+					expect.WillReturnError(errors.New("source failed"))
+				} else {
+					expect.WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tt.count))
+				}
+			}
+			count, err := connector.CountRows(context.Background(), tt.table)
+			if tt.wantError != "" {
+				require.ErrorContains(t, err, tt.wantError)
+				assert.Zero(t, count)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.count, count)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

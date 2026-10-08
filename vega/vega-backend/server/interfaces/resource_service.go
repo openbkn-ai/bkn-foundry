@@ -66,6 +66,8 @@ type ResourceService interface {
 	InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) error
 	// InternalUpdateDiscoveryMetadata updates only Resource metadata owned by discovery.
 	InternalUpdateDiscoveryMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) error
+	// InternalUpdateRowCount atomically stores an exact count if its source has not changed.
+	InternalUpdateRowCount(ctx context.Context, resource *Resource, count, countTime int64) error
 	// InternalCreate creates a Resource for internal workers within a transaction.
 	InternalCreate(ctx context.Context, tx *sql.Tx, req *ResourceRequest) (*Resource, error)
 	// InternalUpdateStatus updates a Resource status for internal workers within a transaction.

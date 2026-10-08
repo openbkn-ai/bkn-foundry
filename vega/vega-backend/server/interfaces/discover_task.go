@@ -41,6 +41,7 @@ var (
 
 // DiscoverResult represents the result of a discover operation.
 type DiscoverResult struct {
+	Failed         bool   `json:"-"`
 	CatalogID      string `json:"catalog_id"`
 	NewCount       int    `json:"new_count"`
 	StaleCount     int    `json:"stale_count"`
@@ -48,6 +49,7 @@ type DiscoverResult struct {
 	UpdatedCount   int    `json:"updated_count"`
 	RestoredCount  int    `json:"restored_count"`
 	FailedCount    int    `json:"failed_count"`
+	SkippedCount   int    `json:"skipped_count,omitempty"`
 	Message        string `json:"message"`
 }
 
@@ -112,6 +114,7 @@ type DiscoverTaskResultSummary struct {
 	UpdatedCount   int    `json:"updated_count"`
 	RestoredCount  int    `json:"restored_count"`
 	FailedCount    int    `json:"failed_count"`
+	SkippedCount   int    `json:"skipped_count,omitempty"`
 }
 
 // DiscoverTaskQueryParams holds discover task list query parameters.

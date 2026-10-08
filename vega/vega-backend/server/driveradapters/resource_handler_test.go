@@ -630,3 +630,25 @@ func Test_ResourceRestHandler_DeleteResources(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 	})
 }
+
+func TestReadResourceDiscoverStrategy(t *testing.T) {
+	for _, tt := range []struct {
+		body, want string
+		fail       bool
+	}{
+		{"", "full_sync", false}, {`{}`, "full_sync", false}, {`{"strategy":"count_only"}`, "count_only", false},
+		{`{"strategy":"create_only"}`, "", true}, {`{"strategy":"invalid"}`, "", true}, {`{`, "", true},
+	} {
+		t.Run(tt.body, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/resources/id/discover", strings.NewReader(tt.body))
+			got, err := readResourceDiscoverStrategy(c)
+			if tt.fail {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
+			}
+		})
+	}
+}

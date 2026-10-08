@@ -14,6 +14,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -40,7 +41,7 @@ func discoverStatusAfterEnrich(resource *interfaces.Resource, beforeHash string)
 		return ""
 	}
 	sourceMetadata := make(map[string]any)
-	err = sonic.Unmarshal(data, &sourceMetadata)
+	err = common.UnmarshalPreciseJSON(data, &sourceMetadata)
 	if err != nil {
 		return ""
 	}
@@ -57,7 +58,21 @@ func sourceSnapshotHash(resource *interfaces.Resource) string {
 	if resource == nil {
 		return ""
 	}
-	bytes, err := sonic.ConfigStd.Marshal(resource.SourceMetadata)
+	metadata := resource.SourceMetadata
+	if properties, ok := metadata["properties"].(map[string]any); ok {
+		metadata = make(map[string]any, len(resource.SourceMetadata))
+		for key, value := range resource.SourceMetadata {
+			metadata[key] = value
+		}
+		snapshotProperties := make(map[string]any, len(properties))
+		for key, value := range properties {
+			if key != "row_count_time" {
+				snapshotProperties[key] = value
+			}
+		}
+		metadata["properties"] = snapshotProperties
+	}
+	bytes, err := sonic.ConfigStd.Marshal(metadata)
 	if err != nil {
 		return ""
 	}
@@ -85,4 +100,21 @@ func updateDiscoverResultForEnrichStatus(result *interfaces.DiscoverResult, stat
 func formatDiscoverResultMessage(result *interfaces.DiscoverResult) string {
 	return fmt.Sprintf("Discover completed: %d new, %d stale, %d unchanged, %d updated, %d restored, %d failed",
 		result.NewCount, result.StaleCount, result.UnchangedCount, result.UpdatedCount, result.RestoredCount, result.FailedCount)
+}
+
+// discoveredProperties 以已有属性为基础，覆盖本次发现返回的属性。
+func discoveredProperties(previous any, fresh map[string]any) map[string]any {
+	properties, _ := previous.(map[string]any)
+	if properties == nil {
+		properties = make(map[string]any, len(fresh))
+	}
+	for key, value := range fresh {
+		properties[key] = value
+	}
+	return properties
+}
+
+// countOnlyActions 判断是否只执行计数，不排斥其他动作组合。
+func countOnlyActions(actions *interfaces.DiscoverActions) bool {
+	return actions != nil && actions.Count && !actions.Create && !actions.Refresh && !actions.MarkStale
 }

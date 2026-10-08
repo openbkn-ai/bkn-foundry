@@ -512,7 +512,8 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 			SourceMetadata: map[string]any{"properties": map[string]any{"estimated_row_count": json.Number("9007199254740993")}},
 		}
 		withoutMetadata := &interfaces.Resource{ID: "api-1", Category: interfaces.ResourceCategoryAPI}
-		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
+		staleTime := int64(100)
+		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, RowCountTime: &staleTime}
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"table-1", "fileset-1", "api-1", "dataset-1"}).
 			Return(map[string]*interfaces.Resource{"table-1": table, "fileset-1": fileset, "api-1": withoutMetadata, "dataset-1": dataset}, nil)
 		mockPS.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, gomock.Any(), gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).Return(map[string]interfaces.PermissionResourceOps{"table-1": {ResourceID: "table-1"}, "fileset-1": {ResourceID: "fileset-1"}, "api-1": {ResourceID: "api-1"}, "dataset-1": {ResourceID: "dataset-1"}}, nil)
@@ -563,7 +564,8 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 
 	t.Run("keeps dataset details available when counting rows fails", func(t *testing.T) {
 		rs, mockRA, mockPS, mockDS, mockUMS, _, _ := newTestService(t)
-		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset}
+		staleTime := int64(100)
+		dataset := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset, RowCountTime: &staleTime}
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"dataset-1"}).
 			Return(map[string]*interfaces.Resource{"dataset-1": dataset}, nil)
 		mockPS.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, gomock.Any(), gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).Return(map[string]interfaces.PermissionResourceOps{"dataset-1": {ResourceID: "dataset-1"}}, nil)
@@ -578,6 +580,7 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Nil(t, resources[0].RowCount)
+		assert.Nil(t, resources[0].RowCountTime)
 	})
 
 	t.Run("get by ids success", func(t *testing.T) {
@@ -679,9 +682,10 @@ func TestSourceMetadataRowCountHandlesMissingMetadata(t *testing.T) {
 		{},
 		{"properties": map[string]any{}},
 	} {
-		rowCount, estimatedRowCount := sourceMetadataRowCounts(metadata)
+		rowCount, estimatedRowCount, rowCountTime := sourceMetadataRowCounts(metadata)
 		assert.Nil(t, rowCount)
 		assert.Nil(t, estimatedRowCount)
+		assert.Nil(t, rowCountTime)
 	}
 }
 
@@ -2972,4 +2976,164 @@ func newS2STestService(t *testing.T) (
 	ums := vmock.NewMockUserMgmtService(ctrl)
 	rs := &resourceService{ra: ra, ps: ps, ums: ums}
 	return rs, ra, ps, ums
+}
+
+func TestResourceServicePopulateResourceRowCounts(t *testing.T) {
+	for _, includeCount := range []bool{true, false} {
+		t.Run(fmt.Sprintf("include_count_%t", includeCount), func(t *testing.T) {
+			rs, _, _, ds, _, _, _ := newTestService(t)
+			staleTime := int64(999)
+			table := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, RowCountTime: &staleTime, SourceMetadata: map[string]any{
+				"properties": map[string]any{"row_count": 0, "estimated_row_count": 12, "row_count_time": 100},
+			}}
+			legacy := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, RowCountTime: &staleTime, SourceMetadata: map[string]any{
+				"properties": map[string]any{"row_count": 42},
+			}}
+			dataset := &interfaces.Resource{Category: interfaces.ResourceCategoryDataset, RowCountTime: &staleTime, SourceMetadata: table.SourceMetadata}
+			if includeCount {
+				ds.EXPECT().CountDocuments(gomock.Any(), dataset).Return(int64(0), nil)
+			}
+			before := time.Now().UnixMilli()
+			rs.populateResourceRowCounts(context.Background(), []*interfaces.Resource{table, legacy, dataset}, includeCount)
+			after := time.Now().UnixMilli()
+			assert.Nil(t, legacy.RowCountTime)
+			assert.Nil(t, dataset.EstimatedRowCount)
+			if includeCount {
+				require.NotNil(t, table.RowCountTime)
+				assert.Equal(t, int64(100), *table.RowCountTime)
+				require.NotNil(t, table.RowCount)
+				assert.Zero(t, *table.RowCount)
+				require.NotNil(t, table.EstimatedRowCount)
+				assert.Equal(t, int64(12), *table.EstimatedRowCount)
+				require.NotNil(t, legacy.RowCount)
+				assert.Equal(t, int64(42), *legacy.RowCount)
+				require.NotNil(t, dataset.RowCount)
+				assert.Zero(t, *dataset.RowCount)
+				require.NotNil(t, dataset.RowCountTime)
+				assert.GreaterOrEqual(t, *dataset.RowCountTime, before)
+				assert.LessOrEqual(t, *dataset.RowCountTime, after)
+				assert.Equal(t, 100, dataset.SourceMetadata["properties"].(map[string]any)["row_count_time"])
+			} else {
+				assert.Nil(t, dataset.RowCountTime)
+				for _, resource := range []*interfaces.Resource{table, legacy, dataset} {
+					assert.Nil(t, resource.RowCount)
+					assert.Nil(t, resource.EstimatedRowCount)
+					assert.Nil(t, resource.RowCountTime)
+				}
+			}
+		})
+	}
+}
+
+func TestSourceMetadataRowCounts(t *testing.T) {
+	for _, tt := range []struct {
+		name             string
+		count, timestamp any
+		valid            bool
+	}{
+		{"zero count", int64(0), int64(100), true}, {"json numbers", json.Number("42"), json.Number("123"), true},
+		{"missing count", nil, 100, false}, {"negative count", -1, 100, false}, {"fractional count", 0.5, 100, false},
+		{"missing time", 42, nil, false}, {"zero time", 42, 0, false}, {"negative time", 42, -1, false},
+		{"fractional time", 42, 1.5, false}, {"overflow", 42, json.Number("9223372036854775808"), false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, got := sourceMetadataRowCounts(map[string]any{"properties": map[string]any{"row_count": tt.count, "row_count_time": tt.timestamp}})
+			if tt.valid {
+				require.NotNil(t, got)
+			} else {
+				require.Nil(t, got)
+			}
+		})
+	}
+}
+
+func TestResourceServiceInternalUpdateRowCount(t *testing.T) {
+	for _, scenario := range []string{"atomic merge", "nil metadata", "missing properties", "invalid properties", "resource changed or deleted", "write failure", "commit failure", "begin failure"} {
+		t.Run(scenario, func(t *testing.T) {
+			db, sqlMock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			ra := vmock.NewMockResourceAccess(gomock.NewController(t))
+			rs := &resourceService{db: db, ra: ra}
+			source := &interfaces.Resource{ID: "res", CatalogID: "cat", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "app.orders", UpdateTime: 10, LastDiscoverTime: 5, Updater: interfaces.AccountInfo{ID: "user"}, SourceMetadata: map[string]any{
+				"properties": map[string]any{"estimated_row_count": int64(99), "row_count": int64(40), "row_count_time": int64(100)}, "custom": "keep",
+			}}
+			switch scenario {
+			case "nil metadata":
+				source.SourceMetadata = nil
+			case "missing properties":
+				delete(source.SourceMetadata, "properties")
+			case "invalid properties":
+				source.SourceMetadata["properties"] = "invalid"
+			}
+			if scenario == "begin failure" {
+				sqlMock.ExpectBegin().WillReturnError(errors.New("begin failed"))
+			} else {
+				sqlMock.ExpectBegin()
+				ra.EXPECT().UpdateRowCount(gomock.Any(), gomock.Any(), gomock.Any(), int64(10)).DoAndReturn(func(_ context.Context, _ *sql.Tx, res *interfaces.Resource, _ int64) (int64, error) {
+					assert.Same(t, source, res)
+					props := res.SourceMetadata["properties"].(map[string]any)
+					assert.Equal(t, int64(0), props["row_count"])
+					assert.Equal(t, int64(1234), props["row_count_time"])
+					if scenario != "nil metadata" {
+						assert.Equal(t, "keep", res.SourceMetadata["custom"])
+					}
+					if scenario != "nil metadata" && scenario != "missing properties" && scenario != "invalid properties" {
+						assert.Equal(t, int64(99), props["estimated_row_count"])
+					}
+					assert.Equal(t, int64(5), res.LastDiscoverTime)
+					assert.Equal(t, interfaces.AccountInfo{ID: "user"}, res.Updater)
+					assert.Equal(t, "cat", res.CatalogID)
+					assert.Equal(t, "app.orders", res.SourceIdentifier)
+					assert.Greater(t, res.UpdateTime, int64(10))
+					switch scenario {
+					case "resource changed or deleted":
+						return 0, nil
+					case "write failure":
+						return 0, errors.New("write failed")
+					default:
+						return 1, nil
+					}
+				})
+				switch scenario {
+				case "resource changed or deleted", "write failure":
+					sqlMock.ExpectRollback()
+				case "commit failure":
+					sqlMock.ExpectCommit().WillReturnError(errors.New("commit failed"))
+				default:
+					sqlMock.ExpectCommit()
+				}
+			}
+			err = rs.InternalUpdateRowCount(context.Background(), source, 0, 1234)
+			switch scenario {
+			case "resource changed or deleted":
+				httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_UpdateConflict)
+				assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+			case "write failure", "commit failure", "begin failure":
+				require.ErrorContains(t, err, strings.Split(scenario, " ")[0]+" failed")
+			default:
+				require.NoError(t, err)
+			}
+			props := source.SourceMetadata["properties"].(map[string]any)
+			assert.Equal(t, int64(0), props["row_count"])
+			assert.Equal(t, int64(1234), props["row_count_time"])
+			assert.Greater(t, source.UpdateTime, int64(10))
+			require.NoError(t, sqlMock.ExpectationsWereMet())
+		})
+	}
+	t.Run("invalid input", func(t *testing.T) {
+		rs := &resourceService{}
+		for _, tt := range []struct {
+			source           *interfaces.Resource
+			count, timestamp int64
+		}{
+			{nil, 0, 1}, {&interfaces.Resource{Category: interfaces.ResourceCategoryTable}, -1, 1},
+			{&interfaces.Resource{Category: interfaces.ResourceCategoryTable}, 0, 0},
+			{&interfaces.Resource{Category: interfaces.ResourceCategoryDataset}, 0, 1},
+		} {
+			err := rs.InternalUpdateRowCount(context.Background(), tt.source, tt.count, tt.timestamp)
+			httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		}
+	})
 }

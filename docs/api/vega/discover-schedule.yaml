@@ -399,6 +399,7 @@ components:
             - full_sync
             - create_only
             - cleanup_only
+            - count_only
         last_run:
           description: 上次执行时间，毫秒时间戳；系统维护
           type: integer
@@ -470,6 +471,7 @@ components:
             - full_sync
             - create_only
             - cleanup_only
+            - count_only
     ListDiscoverSchedules:
       description: 调度列表响应
       type: object

@@ -642,3 +642,35 @@ func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
 	}
 	return schemas, nil
 }
+
+// CountRows reads an exact count for a table or view within connector scope.
+func (c *MariaDBConnector) CountRows(ctx context.Context, table *interfaces.TableMeta) (int64, error) {
+	if err := c.Connect(ctx); err != nil {
+		return 0, err
+	}
+	if table == nil || table.Name == "" {
+		return 0, fmt.Errorf("invalid table metadata")
+	}
+	database, name := table.Database, table.Name
+	if database == "" {
+		database = table.Schema
+	}
+	if database == "" {
+		return 0, fmt.Errorf("invalid table metadata")
+	}
+	if !c.databaseAllowed(database) {
+		return 0, fmt.Errorf("database is outside the connector scope")
+	}
+	query, args, err := sq.Select("COUNT(*)").From(fmt.Sprintf("`%s`.`%s`", database, name)).ToSql()
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	if err := c.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	if count < 0 {
+		return 0, fmt.Errorf("invalid negative row count")
+	}
+	return count, nil
+}

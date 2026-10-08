@@ -477,23 +477,26 @@ func (rs *resourceService) populateResourceRowCounts(ctx context.Context, resour
 		for _, resource := range resources {
 			resource.RowCount = nil
 			resource.EstimatedRowCount = nil
+			resource.RowCountTime = nil
 		}
 		return
 	}
 	for _, resource := range resources {
+		resource.RowCount = nil
+		resource.EstimatedRowCount = nil
+		resource.RowCountTime = nil
 		if resource.Category == interfaces.ResourceCategoryDataset {
 			count, err := rs.ds.CountDocuments(ctx, resource)
 			if err != nil {
 				logger.Warnf("Failed to populate dataset row count for resource %s: %v", resource.ID, err)
-				resource.RowCount = nil
-				resource.EstimatedRowCount = nil
 				continue
 			}
 			resource.RowCount = &count
-			resource.EstimatedRowCount = nil
+			countTime := time.Now().UnixMilli()
+			resource.RowCountTime = &countTime
 			continue
 		}
-		resource.RowCount, resource.EstimatedRowCount = sourceMetadataRowCounts(resource.SourceMetadata)
+		resource.RowCount, resource.EstimatedRowCount, resource.RowCountTime = sourceMetadataRowCounts(resource.SourceMetadata)
 	}
 }
 
@@ -509,15 +512,18 @@ func populateResourceColumnCount(resource *interfaces.Resource) {
 	resource.ColumnCount = &count
 }
 
-func sourceMetadataRowCounts(sourceMetadata map[string]any) (*int64, *int64) {
-	if sourceMetadata == nil {
-		return nil, nil
+func sourceMetadataRowCounts(sourceMetadata map[string]any) (*int64, *int64, *int64) {
+	properties, _ := sourceMetadata["properties"].(map[string]any)
+	rowCount := sourceMetadataRowCount(properties["row_count"])
+	estimatedRowCount := sourceMetadataRowCount(properties["estimated_row_count"])
+	var rowCountTime *int64
+	if rowCount != nil {
+		timestamp, valid := common.NumberAsInt64(properties["row_count_time"])
+		if valid && timestamp > 0 {
+			rowCountTime = &timestamp
+		}
 	}
-	properties, ok := sourceMetadata["properties"].(map[string]any)
-	if !ok {
-		return nil, nil
-	}
-	return sourceMetadataRowCount(properties["row_count"]), sourceMetadataRowCount(properties["estimated_row_count"])
+	return rowCount, estimatedRowCount, rowCountTime
 }
 
 func sourceMetadataRowCount(value any) *int64 {
@@ -1994,4 +2000,37 @@ func (rs *resourceService) CheckExistByCategories(ctx context.Context, catalogID
 	defer span.End()
 
 	return rs.ra.CheckExistByCategories(ctx, catalogID, categories)
+}
+
+func (rs *resourceService) InternalUpdateRowCount(ctx context.Context, source *interfaces.Resource, count, countTime int64) error {
+	if source == nil || (source.Category != interfaces.ResourceCategoryTable && source.Category != interfaces.ResourceCategoryIndex) || count < 0 || countTime <= 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody)
+	}
+	if source.SourceMetadata == nil {
+		source.SourceMetadata = map[string]any{}
+	}
+	properties, _ := source.SourceMetadata["properties"].(map[string]any)
+	if properties == nil {
+		properties = map[string]any{}
+	}
+	properties["row_count"] = count
+	properties["row_count_time"] = countTime
+	source.SourceMetadata["properties"] = properties
+	previous := source.UpdateTime
+	source.UpdateTime = max(time.Now().UnixMilli(), previous+1)
+
+	tx, err := rs.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	updated, err := rs.ra.UpdateRowCount(ctx, tx, source, previous)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
+	return tx.Commit()
 }

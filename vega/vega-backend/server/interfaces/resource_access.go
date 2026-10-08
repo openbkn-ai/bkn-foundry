@@ -47,6 +47,8 @@ type ResourceAccess interface {
 	UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
 	// UpdateDiscoveryMetadata updates only Resource metadata owned by discovery.
 	UpdateDiscoveryMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
+	// UpdateRowCount stores only count-owned metadata and audit fields with optimistic concurrency.
+	UpdateRowCount(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
 	// UpdateStatus updates a Resource's status, using tx when provided.
 	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.

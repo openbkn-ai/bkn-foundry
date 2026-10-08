@@ -27,6 +27,7 @@ import (
 const (
 	discoverTaskPollInterval   = 30 * time.Second
 	defaultDiscoverWorkerCount = 1
+	resourceCountTimeout       = 5 * time.Minute
 )
 
 type discoverTaskQueueItem struct {
@@ -331,7 +332,9 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	//Then obtain the resource information of the catalog based on its metadata: metadata
 	progress := &discoverTaskReconcileProgress{}
 	var result *interfaces.DiscoverResult
-	if taskInfo.ResourceID != "" {
+	if countOnlyActions(taskInfo.DiscoverActions) {
+		result, err = dtw.countResources(ctx, catalog, taskInfo)
+	} else if taskInfo.ResourceID != "" {
 		result, err = dtw.discoverResource(ctx, catalog, taskInfo, progress)
 	} else {
 		result, err = dtw.discoverCatalog(ctx, catalog, taskInfo, progress)
@@ -460,6 +463,7 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 	} else {
 		logger.Warnf("Failed to get metadata: %v", err)
 	}
+
 	// 2. Distribute to different discovery functions based on the connector category: For example, mysql will collect metadata under mysql.go, where there will be specific implementations
 	category := connector.GetCategory()
 	switch category {
@@ -475,6 +479,81 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 	default:
 		return nil, fmt.Errorf("unsupported connector category for discover: %s", category)
 	}
+}
+
+// countResources 独立执行纯计数任务，支持单资源和目录范围。
+func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *interfaces.Catalog, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+	singleResource := task.ResourceID != ""
+	var resources []*interfaces.Resource
+	if singleResource {
+		resource, err := dtw.rs.InternalGetByID(ctx, nil, task.ResourceID)
+		if err != nil {
+			return nil, fmt.Errorf("get resource for count: %w", err)
+		}
+		if resource == nil || resource.CatalogID != catalog.ID {
+			return nil, fmt.Errorf("resource %s not found in catalog %s", task.ResourceID, catalog.ID)
+		}
+		resources = []*interfaces.Resource{resource}
+	} else if catalog.Type != interfaces.CatalogTypePhysical {
+		return nil, fmt.Errorf("count only supports physical catalogs")
+	}
+
+	connector, err := dtw.createAndConnectConnector(ctx, catalog)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to data source: %w", err)
+	}
+	defer func() { _ = connector.Close(ctx) }()
+
+	var category string
+	if !singleResource {
+		category = connector.GetCategory()
+		resources, err = dtw.rs.InternalGetByCatalogID(ctx, catalog.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	result := &interfaces.DiscoverResult{CatalogID: catalog.ID}
+	for i, resource := range resources {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if dtw.stopped.Load() {
+			return nil, ErrWorkerManagerStopping
+		}
+		switch {
+		case resource.Category == interfaces.ResourceCategoryTable && (singleResource || category == interfaces.ConnectorCategoryTable):
+			if tableConnector, ok := connector.(interfaces.TableConnector); ok {
+				err = dtw.enrichResourceTableRowCount(ctx, task, resource, tableConnector, tableMetadataForCount(resource), result)
+			} else if singleResource {
+				result.FailedCount++
+			} else {
+				return nil, fmt.Errorf("connector does not support table count")
+			}
+		case resource.Category == interfaces.ResourceCategoryIndex && (singleResource || category == interfaces.ConnectorCategoryIndex):
+			if indexConnector, ok := connector.(interfaces.IndexConnector); ok {
+				err = dtw.enrichResourceIndexRowCount(ctx, task, resource, indexConnector, &interfaces.IndexMeta{Name: resource.SourceIdentifier}, result)
+			} else if singleResource {
+				result.FailedCount++
+			} else {
+				return nil, fmt.Errorf("connector does not support index count")
+			}
+		default:
+			if singleResource {
+				result.FailedCount++
+			} else {
+				result.SkippedCount++
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !singleResource {
+			if err := dtw.updateProgress(ctx, task.ID, 5+90*(i+1)/len(resources), fmt.Sprintf("Exact count processed: %d/%d", i+1, len(resources))); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return finishCountResult(result), nil
 }
 
 // createAndConnectConnector creates and connects a connector for the catalog.
@@ -493,4 +572,10 @@ func (dtw *DiscoverTaskWorker) createAndConnectConnector(ctx context.Context, ca
 	}
 
 	return connector, nil
+}
+
+func finishCountResult(result *interfaces.DiscoverResult) *interfaces.DiscoverResult {
+	result.Failed = result.UpdatedCount == 0 && result.FailedCount+result.SkippedCount > 0
+	result.Message = fmt.Sprintf("Exact count finished: %d counted, %d failed, %d skipped", result.UpdatedCount, result.FailedCount, result.SkippedCount)
+	return result
 }

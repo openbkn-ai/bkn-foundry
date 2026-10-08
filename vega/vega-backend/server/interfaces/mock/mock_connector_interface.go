@@ -317,6 +317,21 @@ func (mr *MockTableConnectorMockRecorder) Connect(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connect", reflect.TypeOf((*MockTableConnector)(nil).Connect), ctx)
 }
 
+// CountRows mocks base method.
+func (m *MockTableConnector) CountRows(ctx context.Context, table *interfaces.TableMeta) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountRows", ctx, table)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountRows indicates an expected call of CountRows.
+func (mr *MockTableConnectorMockRecorder) CountRows(ctx, table any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountRows", reflect.TypeOf((*MockTableConnector)(nil).CountRows), ctx, table)
+}
+
 // ExecuteQuery mocks base method.
 func (m *MockTableConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 	m.ctrl.T.Helper()
@@ -1548,6 +1563,21 @@ func (m *MockIndexConnector) Connect(ctx context.Context) error {
 func (mr *MockIndexConnectorMockRecorder) Connect(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connect", reflect.TypeOf((*MockIndexConnector)(nil).Connect), ctx)
+}
+
+// CountRows mocks base method.
+func (m *MockIndexConnector) CountRows(ctx context.Context, index *interfaces.IndexMeta) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountRows", ctx, index)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountRows indicates an expected call of CountRows.
+func (mr *MockIndexConnectorMockRecorder) CountRows(ctx, index any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountRows", reflect.TypeOf((*MockIndexConnector)(nil).CountRows), ctx, index)
 }
 
 // CreateDocuments mocks base method.

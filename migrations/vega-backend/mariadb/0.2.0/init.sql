@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     f_status                  VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '数据资源状态: active, deprecated, stale',
     f_status_message          VARCHAR(500) NOT NULL DEFAULT '' COMMENT '状态说明',
     f_last_discover_status    VARCHAR(32) NOT NULL DEFAULT '' COMMENT '最近一次扫描观察状态',
+    f_last_discover_time      BIGINT NOT NULL DEFAULT 0 COMMENT '最近成功发现时间，Unix毫秒',
 
     -- 物理数据资源专属字段
     f_schema                  VARCHAR(128) NOT NULL DEFAULT '' COMMENT '所属 schema 名称，由发现流程写入',
@@ -206,7 +207,7 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
     f_catalog_id              VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属catalog ID',
     f_resource_id             VARCHAR(40) NOT NULL DEFAULT '' COMMENT '单资源刷新目标；空表示 Catalog 扫描',
     f_schedule_id             VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关联的 DiscoverSchedule ID',
-    f_strategy                VARCHAR(32) NOT NULL DEFAULT 'full_sync' COMMENT '发现策略: full_sync, create_only, cleanup_only',
+    f_strategy                VARCHAR(32) NOT NULL DEFAULT 'full_sync' COMMENT '发现策略: full_sync, create_only, cleanup_only, count_only',
     f_strategies              VARCHAR(100) NOT NULL DEFAULT '' COMMENT '历史策略数组字段',
     f_trigger_type            VARCHAR(20) NOT NULL DEFAULT 'manual' COMMENT '触发类型: manual(立即执行), scheduled(定时驱动)',
     f_queue_priority          TINYINT NOT NULL DEFAULT 20 COMMENT '调度优先级，数值越大越优先',
@@ -349,7 +350,7 @@ CREATE TABLE IF NOT EXISTS t_discover_schedule (
 
     -- 调度状态
     f_enabled                 BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否启用: 0-禁用, 1-启用',
-    f_strategy                VARCHAR(32) NOT NULL DEFAULT 'full_sync' COMMENT '发现策略: full_sync, create_only, cleanup_only',
+    f_strategy                VARCHAR(32) NOT NULL DEFAULT 'full_sync' COMMENT '发现策略: full_sync, create_only, cleanup_only, count_only',
 
     f_last_run                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最后执行时间（Unix毫秒时间戳）',
     f_next_run                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '下次执行时间（Unix毫秒时间戳）',

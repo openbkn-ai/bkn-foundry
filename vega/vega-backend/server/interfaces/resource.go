@@ -78,6 +78,7 @@ type Resource struct {
 	Status             string `json:"status"`               // Status: active/stale/deprecated
 	StatusMessage      string `json:"status_message"`       // Status message
 	LastDiscoverStatus string `json:"last_discover_status"` // The latest scan observation status
+	LastDiscoverTime   int64  `json:"last_discover_time"`
 
 	// New field: Supports automatic discovery
 	Schema           string         `json:"schema,omitempty"`            // The schema to which it belongs is written by the discovery process
@@ -95,6 +96,7 @@ type Resource struct {
 	ColumnCount       *int   `json:"column_count,omitempty"`        // Number of schema_definition fields
 	RowCount          *int64 `json:"row_count,omitempty"`           // dataset 为当前本地索引文档数，其他资源使用源端精确值
 	EstimatedRowCount *int64 `json:"estimated_row_count,omitempty"` // Source metadata estimate when an exact count is unavailable
+	RowCountTime      *int64 `json:"row_count_time,omitempty"`
 
 	// Fields specific to the logical view
 	LogicType       string `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite)
@@ -124,6 +126,7 @@ type ResourceSummary struct {
 	Status             string `json:"status"`
 	StatusMessage      string `json:"status_message"`
 	LastDiscoverStatus string `json:"last_discover_status"`
+	LastDiscoverTime   int64  `json:"last_discover_time"`
 
 	Schema           string `json:"schema,omitempty"`
 	SourceIdentifier string `json:"source_identifier"`

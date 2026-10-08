@@ -399,3 +399,44 @@ func (c *OpenSearchConnector) fetchSettings(ctx context.Context, index *interfac
 	}
 	return nil
 }
+
+// CountRows 获取索引当前可检索文档的精确数量。
+func (c *OpenSearchConnector) CountRows(ctx context.Context, index *interfaces.IndexMeta) (int64, error) {
+	if index == nil || index.Name == "" {
+		return 0, fmt.Errorf("invalid index metadata")
+	}
+	if c.Config != nil {
+		if err := c.validateIndexScope(index.Name); err != nil {
+			return 0, err
+		}
+	}
+	if err := c.Connect(ctx); err != nil {
+		return 0, err
+	}
+	request := opensearchapi.CountRequest{Index: []string{index.Name}}
+	response, err := request.Do(ctx, c.client)
+	if err != nil {
+		return 0, fmt.Errorf("count index: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	if response.IsError() {
+		return 0, fmt.Errorf("count index failed: status %d", response.StatusCode)
+	}
+	var result struct {
+		Count  *int64 `json:"count"`
+		Shards struct {
+			Failed *int64 `json:"failed"`
+		} `json:"_shards"`
+	}
+	if err := sonic.ConfigDefault.NewDecoder(response.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("decode index count: %w", err)
+	}
+	if result.Count == nil || *result.Count < 0 {
+		return 0, fmt.Errorf("invalid index count")
+	}
+	if result.Shards.Failed == nil || *result.Shards.Failed != 0 {
+		return 0, fmt.Errorf("index count incomplete: shard statistics missing or failed")
+	}
+	return *result.Count, nil
+}
