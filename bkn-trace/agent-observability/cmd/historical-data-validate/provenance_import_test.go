@@ -137,12 +137,13 @@ func TestHistoricalEEExplanationRepeatAndFailedReadback(t *testing.T) {
 			e := plan.Explanations[0]
 			mock.ExpectBegin()
 			expectLedgerOwner(mock, "alice")
-			if kind == "readback" {
+			switch kind {
+			case "readback":
 				mock.ExpectQuery("FROM bkn_trace_ee_current_explanations").WithArgs(e.InteractionID, e.AccessProfileFingerprint).WillReturnRows(sqlmock.NewRows([]string{"record"}))
 				raw, _ := hex.DecodeString(e.ViewJSON)
 				mock.ExpectExec("INSERT INTO bkn_trace_ee_current_explanations").WithArgs(e.InteractionID, e.AccessProfileFingerprint, e.InputHash, e.Algorithm, e.WriteToken, e.GeneratedAt, e.ViewHash, raw).WillReturnResult(sqlmock.NewResult(0, 1))
 				e.WriteToken = "unexpected-target"
-			} else if kind == "content" {
+			case "content":
 				e.WriteToken = "unrelated-target"
 			}
 			mock.ExpectQuery("FROM bkn_trace_ee_current_explanations").WithArgs(e.InteractionID, e.AccessProfileFingerprint).WillReturnRows(eeMockRows(t, e))

@@ -41,9 +41,9 @@ func interactionRecord(v sessionvo.Interaction) coreInteractionRecord {
 }
 
 func (v coreInteractionRecord) native() sessionvo.Interaction {
-	v.Interaction.StartIdempotencyKey = v.StartKey
-	v.Interaction.TerminalIdempotencyKey = v.TerminalKey
-	v.Interaction.TerminalPayloadHash = v.PayloadHash
+	v.StartIdempotencyKey = v.StartKey
+	v.TerminalIdempotencyKey = v.TerminalKey
+	v.TerminalPayloadHash = v.PayloadHash
 	return v.Interaction
 }
 
