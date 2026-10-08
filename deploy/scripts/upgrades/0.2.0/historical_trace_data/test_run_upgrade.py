@@ -1,4 +1,5 @@
 import tempfile
+from collections import Counter
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -414,6 +415,18 @@ class AgentHistoryPreflightTests(unittest.TestCase):
             result=run(runtime,Path(directory))
         self.assertFalse(result['complete']);self.assertEqual(result['state'],'agent_source_precheck_failed')
         self.assertEqual(runtime.sent,[])
+
+    def test_retained_artifact_defaults_are_reported_and_persisted(self):
+        from run_upgrade import _report
+        with tempfile.TemporaryDirectory() as directory:
+            result = {'state': 'completed', 'source_count': 1, 'target_verified_count': 1,
+                      'already_verified_count': 0, 'retained_count': 0,
+                      'field_conversion_count': 1, 'retained_artifact_field_defaults': 1}
+            reasons = Counter({'artifact_native_invalid': 1})
+            _report(Path(directory), result, reasons)
+            report = (Path(directory) / 'report.md').read_text()
+            self.assertIn('artifact_native_invalid: 1', report)
+            self.assertIn('Converted records with explicit field defaults or identity mapping: 1', report)
 
 class AgentArtifactRecoveryTests(unittest.TestCase):
     def native(self, flags, data):

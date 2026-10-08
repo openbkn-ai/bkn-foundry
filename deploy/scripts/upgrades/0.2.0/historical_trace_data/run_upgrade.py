@@ -523,6 +523,12 @@ def run(runtime, state_root):
             private_write(directory / "original-content-issues.json", canonical(retained_prepared["plan"]["issues"]).encode())
             private_write(directory / "thread-identity-mappings.json", canonical(retained_prepared["plan"]["thread_mappings"]).encode())
             private_write(directory / "thread-field-defaults.json", canonical(retained_prepared["plan"]["thread_defaults"]).encode())
+            retained_defaults = retained_prepared["plan"].get("defaults", [])
+            private_write(directory / "retained-artifact-field-defaults.json", canonical(retained_defaults).encode())
+            result["retained_artifact_field_defaults"] = len(retained_defaults)
+            result["field_conversion_count"] = result.get("field_conversion_count", 0) + len(retained_defaults)
+            for default in retained_defaults:
+                reasons[default.get("reason", "retained_field_default")] += 1
         for kind, records_for_writer in delegated.items():
             if not records_for_writer:
                 continue
@@ -629,7 +635,7 @@ def run(runtime, state_root):
         if hasattr(runtime, "rebuild_core_projection"):
             phase = "native_core_projection_failed"
             result["core_projection"] = runtime.rebuild_core_projection()
-        result["field_conversion_count"] = sum(bool(item.get("field_defaults") or any(str(value).startswith(("default_", "mapped_source_", "truncated_")) for value in item.get("sidecar", {}).get("provenance", {}).values())) for item in items)
+        result["field_conversion_count"] = sum(bool(item.get("field_defaults") or any(str(value).startswith(("default_", "mapped_source_", "truncated_")) for value in item.get("sidecar", {}).get("provenance", {}).values())) for item in items) + result.get("retained_artifact_field_defaults", 0)
         result["complete"] = result["target_verified_count"] == result["source_count"] and result["retained_count"] == 0
         result["state"] = "completed" if result["complete"] else "partial_requires_reconciliation"
         private_write(directory / "final-items.jsonl", "".join(canonical(item) + "\n" for item in items).encode())
