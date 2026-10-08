@@ -157,7 +157,7 @@ class DeploymentRuntime:
 
     def prepare_retained_history(self, state_root, deployment, records):
         from retained_runtime import prepare_retained_history
-        before = os.environ.get("BKN_HISTORY_BEFORE") or os.environ.get("BKN_HISTORY_AGENT_BEFORE")
+        before = os.environ.get("BKN_HISTORY_BEFORE")
         evidence = [record for record in records if record.get("kind") == "evidence"]
         self.history_prepared = prepare_retained_history(self, state_root, deployment, evidence, before)
         return self.history_prepared
@@ -438,7 +438,7 @@ def run(runtime, state_root):
             from agent_history import export_agent_source
             from native_core import _time
             phase = "agent_source_precheck_failed"
-            before = os.environ.get("BKN_HISTORY_AGENT_BEFORE")
+            before = os.environ.get("BKN_HISTORY_BEFORE")
             if not before:
                 raise ValueError("agent_history_cutover_required")
             before = _time(before)

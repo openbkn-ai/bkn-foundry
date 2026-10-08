@@ -390,7 +390,7 @@ class AgentHistoryPreflightTests(unittest.TestCase):
                         'field_defaults':[],'artifacts':{'verified':True}}
         runtime=Runtime();runtime.rows=runtime.rows[:1]
         with tempfile.TemporaryDirectory() as directory:
-            with patch.dict('os.environ',{'BKN_HISTORY_AGENT_BEFORE':'2026-10-01T00:00:00Z'}), patch('agent_history.export_agent_source',return_value=([{**r, 'source_id':'bkn-agent'} for r in fixture()],[])) as export:
+            with patch.dict('os.environ',{'BKN_HISTORY_BEFORE':'2026-10-01T00:00:00Z'}), patch('agent_history.export_agent_source',return_value=([{**r, 'source_id':'bkn-agent'} for r in fixture()],[])) as export:
                 first=run(runtime,Path(directory));second=run(runtime,Path(directory))
             self.assertTrue(first['complete']);self.assertTrue(second['complete'])
             self.assertEqual(second['source_count'],2)
@@ -402,6 +402,15 @@ class AgentHistoryPreflightTests(unittest.TestCase):
             def prepare_agent_history(self, records, before):return None
         runtime=Runtime()
         with tempfile.TemporaryDirectory() as directory, patch.dict('os.environ',{},clear=True):
+            result=run(runtime,Path(directory))
+        self.assertFalse(result['complete']);self.assertEqual(result['state'],'agent_source_precheck_failed')
+        self.assertEqual(runtime.sent,[])
+
+    def test_legacy_cutover_variable_is_not_accepted(self):
+        class Runtime(FakeRuntime):
+            def prepare_agent_history(self, records, before):return None
+        runtime=Runtime()
+        with tempfile.TemporaryDirectory() as directory, patch.dict('os.environ', {'BKN_HISTORY_AGENT_BEFORE':'2026-10-01T00:00:00Z'}, clear=True):
             result=run(runtime,Path(directory))
         self.assertFalse(result['complete']);self.assertEqual(result['state'],'agent_source_precheck_failed')
         self.assertEqual(runtime.sent,[])
@@ -436,7 +445,7 @@ class AgentArtifactRecoveryTests(unittest.TestCase):
                 return {'verified':True,'source_count':1,'source_map':prepared['plan']['source_map'],
                         'field_defaults':prepared['plan']['defaults'],'artifacts':{'verified':True}}
         runtime = Runtime(); runtime.rows = runtime.rows[:1]; runtime._native = self.native
-        with tempfile.TemporaryDirectory() as directory, patch.dict('os.environ', {'BKN_HISTORY_AGENT_BEFORE':'2026-10-01T00:00:00Z'}), patch('agent_history.export_agent_source', return_value=([{**r, 'source_id':'bkn-agent'} for r in records],[])):
+        with tempfile.TemporaryDirectory() as directory, patch.dict('os.environ', {'BKN_HISTORY_BEFORE':'2026-10-01T00:00:00Z'}), patch('agent_history.export_agent_source', return_value=([{**r, 'source_id':'bkn-agent'} for r in records],[])):
             result = run(runtime, Path(directory))
             self.assertTrue(result['complete'])
             self.assertEqual(len(runtime.sent), 1)
