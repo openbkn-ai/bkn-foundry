@@ -28,3 +28,9 @@
 ### 环境验证限制
 
 未执行真实 Kubernetes 部署或 CNI 网络拒绝测试。Docker daemon 未启动，Collector 镜像配置验证未执行。GitHub CI 结果在 PR 中跟踪。独立 openbkn-deploy 安装器未在当前工作区，修改仅覆盖本仓库部署脚本和 Chart。
+
+## PR review follow-up
+
+- Confirmed the CI failure: the new integration module was missing indirect dependencies selected by Go 1.25 build constraints. Regenerated its dependency files with the CI Go version and Linux/amd64 target.
+- Replaced the ineffective negated grep assertion with an explicit failure for rendered OAuth/signing configuration. Verified the positive path and an injected-secret negative path.
+- Documented that upgrades must apply the new NetworkPolicy defaults or explicitly update custom allowedClients; old values retained by --reuse-values do not gain the new callers. Custom allowlists remain authoritative.

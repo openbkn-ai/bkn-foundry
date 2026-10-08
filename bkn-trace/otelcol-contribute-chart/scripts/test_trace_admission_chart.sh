@@ -15,7 +15,10 @@ helm template trace-admission "$chart_dir" \
   >"$rendered"
 
 grep -q 'traceadmission' "$rendered"
-! grep -q 'TRACE_ADMISSION_CLIENT_SECRET' "$rendered"
+if grep -Eq 'TRACE_ADMISSION_(CLIENT_SECRET|CLIENT_ID|TOKEN_URL|CURRENT_KEY|PREVIOUS_KEY|POLICY_AUDIENCE)' "$rendered"; then
+  echo "collector must not render OAuth or policy signing configuration" >&2
+  exit 1
+fi
 grep -q 'agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/policy' "$rendered"
 grep -q 'agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat' "$rendered"
 grep -q 'agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/operations' "$rendered"
