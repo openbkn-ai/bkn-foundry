@@ -2,8 +2,6 @@ package evidencepublisher
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,12 +11,8 @@ import (
 	"time"
 )
 
-func TestPublisherRuntimeUsesVerifiedSnapshotAndAcknowledgesDisabledBoundary(t *testing.T) {
+func TestPublisherRuntimeUsesValidatedSnapshotAndAcknowledgesDisabledBoundary(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	enabled := policySnapshotForTest(now)
 	disabled := policySnapshotForTest(now)
 	disabled.Revision = 43
@@ -34,18 +28,18 @@ func TestPublisherRuntimeUsesVerifiedSnapshotAndAcknowledgesDisabledBoundary(t *
 		case traceEvidencePolicyPath:
 			policyReads++
 			if policyReads == 1 {
-				return policyResponse(signedPolicySnapshot(t, privateKey, enabled)), nil
+				return policyResponse(unsignedPolicySnapshot(t, enabled)), nil
 			}
 			if policyReads == 2 {
-				return policyResponse(signedPolicySnapshot(t, privateKey, disabled)), nil
+				return policyResponse(unsignedPolicySnapshot(t, disabled)), nil
 			}
-			return policyResponse(signedPolicySnapshot(t, privateKey, reenabled)), nil
+			return policyResponse(unsignedPolicySnapshot(t, reenabled)), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			body, _ := io.ReadAll(request.Body)
 			heartbeats = append(heartbeats, string(body))
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
-			// desired/effective are not admission inputs: the signed snapshot is.
+			// desired/effective are not admission inputs: the policy snapshot is.
 			return configurationResponse(`{"kind":"configuration_get","desired_state":"enabled","effective_state":"enabled","policy_revision":43,"active_operation_id":"op-43"}`), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/operations/op-43:publisher-ack":
 			body, _ := io.ReadAll(request.Body)
@@ -56,15 +50,15 @@ func TestPublisherRuntimeUsesVerifiedSnapshotAndAcknowledgesDisabledBoundary(t *
 			return nil, nil
 		}
 	})}
-	policy, err := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	policy, err := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
-	configuration, err := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token")})
+	configuration, err := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}
-	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token")})
+	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,16 +111,12 @@ func TestPublisherRuntimeUsesVerifiedSnapshotAndAcknowledgesDisabledBoundary(t *
 
 func TestPublisherRuntimeAcknowledgesEnabledOperationBeforeAdmission(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	enabled := policySnapshotForTest(now)
 	acknowledgements := 0
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		switch request.URL.Path {
 		case traceEvidencePolicyPath:
-			return policyResponse(signedPolicySnapshot(t, privateKey, enabled)), nil
+			return policyResponse(unsignedPolicySnapshot(t, enabled)), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -152,9 +142,9 @@ func TestPublisherRuntimeAcknowledgesEnabledOperationBeforeAdmission(t *testing.
 			return nil, nil
 		}
 	})}
-	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
-	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
-	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -178,15 +168,11 @@ func TestPublisherRuntimeAcknowledgesEnabledOperationBeforeAdmission(t *testing.
 
 func TestPublisherRuntimeAdmitsUnfrozenNewInstanceAfterEnabledAckConflict(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	ackAttempts := 0
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		switch request.URL.Path {
 		case traceEvidencePolicyPath:
-			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+			return policyResponse(unsignedPolicySnapshot(t, policySnapshotForTest(now))), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -199,9 +185,9 @@ func TestPublisherRuntimeAdmitsUnfrozenNewInstanceAfterEnabledAckConflict(t *tes
 			return nil, nil
 		}
 	})}
-	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
-	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
-	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +196,7 @@ func TestPublisherRuntimeAdmitsUnfrozenNewInstanceAfterEnabledAckConflict(t *tes
 		t.Fatal("rejected enabled ACK was reported as accepted")
 	}
 	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
-		t.Fatalf("signed-policy admission after nonmember ACK conflict = %+v", result)
+		t.Fatalf("policy admission after nonmember ACK conflict = %+v", result)
 	}
 	if err := runtime.Refresh(context.Background()); err != nil {
 		t.Fatalf("same-revision refresh retried an unacknowledgeable instance: %v", err)
@@ -222,14 +208,10 @@ func TestPublisherRuntimeAdmitsUnfrozenNewInstanceAfterEnabledAckConflict(t *tes
 
 func TestPublisherRuntimeKeepsEvidenceClosedWhenEnabledAckCandidateUnavailable(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		switch request.URL.Path {
 		case traceEvidencePolicyPath:
-			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+			return policyResponse(unsignedPolicySnapshot(t, policySnapshotForTest(now))), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -239,9 +221,9 @@ func TestPublisherRuntimeKeepsEvidenceClosedWhenEnabledAckCandidateUnavailable(t
 			return nil, nil
 		}
 	})}
-	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
-	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
-	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -256,15 +238,11 @@ func TestPublisherRuntimeKeepsEvidenceClosedWhenEnabledAckCandidateUnavailable(t
 
 func TestPublisherRuntimeKeepsSameRevisionAdmissionDuringConfigurationOutage(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	configurationReads := 0
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		switch request.URL.Path {
 		case traceEvidencePolicyPath:
-			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+			return policyResponse(unsignedPolicySnapshot(t, policySnapshotForTest(now))), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -278,9 +256,9 @@ func TestPublisherRuntimeKeepsSameRevisionAdmissionDuringConfigurationOutage(t *
 			return nil, nil
 		}
 	})}
-	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
-	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
-	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -295,16 +273,12 @@ func TestPublisherRuntimeKeepsSameRevisionAdmissionDuringConfigurationOutage(t *
 		t.Fatal("missing configuration error on repeated refresh")
 	}
 	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
-		t.Fatalf("same-revision verified admission after configuration outage = %+v", result)
+		t.Fatalf("same-revision validated admission after configuration outage = %+v", result)
 	}
 }
 
 func TestPublisherRuntimeAcknowledgesDisabledEmptyDrainWithCumulativeDisposition(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	enabled := policySnapshotForTest(now)
 	disabled := policySnapshotForTest(now)
 	disabled.Revision = 43
@@ -324,7 +298,7 @@ func TestPublisherRuntimeAcknowledgesDisabledEmptyDrainWithCumulativeDisposition
 			if policyReads > 1 {
 				snapshot = disabled
 			}
-			return policyResponse(signedPolicySnapshot(t, privateKey, snapshot)), nil
+			return policyResponse(unsignedPolicySnapshot(t, snapshot)), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -340,9 +314,9 @@ func TestPublisherRuntimeAcknowledgesDisabledEmptyDrainWithCumulativeDisposition
 			return nil, nil
 		}
 	})}
-	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
-	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
-	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -372,14 +346,10 @@ func TestPublisherRuntimeAcknowledgesDisabledEmptyDrainWithCumulativeDisposition
 
 func TestPublisherRuntimeDoesNotRequireStaticPolicyRevision(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		switch request.URL.Path {
 		case traceEvidencePolicyPath:
-			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+			return policyResponse(unsignedPolicySnapshot(t, policySnapshotForTest(now))), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -389,9 +359,9 @@ func TestPublisherRuntimeDoesNotRequireStaticPolicyRevision(t *testing.T) {
 			return nil, nil
 		}
 	})}
-	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
-	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
-	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	config := publisherTestConfig()
 	config.CapturePolicyRevision = ""
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: config, Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
@@ -411,10 +381,6 @@ func TestPublisherRuntimeDoesNotRequireStaticPolicyRevision(t *testing.T) {
 
 func TestPublisherRuntimeStartsClosedAndRecoversAfterInitialPolicyFailure(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var policyReads atomic.Int32
 	policyRead := make(chan struct{}, 2)
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -424,7 +390,7 @@ func TestPublisherRuntimeStartsClosedAndRecoversAfterInitialPolicyFailure(t *tes
 			if policyReads.Add(1) == 1 {
 				return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader("temporarily unavailable"))}, nil
 			}
-			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+			return policyResponse(unsignedPolicySnapshot(t, policySnapshotForTest(now))), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -434,15 +400,15 @@ func TestPublisherRuntimeStartsClosedAndRecoversAfterInitialPolicyFailure(t *tes
 			return nil, nil
 		}
 	})}
-	policy, err := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	policy, err := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
-	configuration, err := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	configuration, err := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}
-	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,17 +448,13 @@ func TestPublisherRuntimeStartsClosedAndRecoversAfterInitialPolicyFailure(t *tes
 	}
 }
 
-func TestPublisherRuntimeFlushUsesVerifiedRevisionWithoutControlIO(t *testing.T) {
+func TestPublisherRuntimeFlushUsesValidatedRevisionWithoutControlIO(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	sender := &fakeSender{}
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		switch request.URL.Path {
 		case traceEvidencePolicyPath:
-			return policyResponse(signedPolicySnapshot(t, privateKey, policySnapshotForTest(now))), nil
+			return policyResponse(unsignedPolicySnapshot(t, policySnapshotForTest(now))), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -502,9 +464,9 @@ func TestPublisherRuntimeFlushUsesVerifiedRevisionWithoutControlIO(t *testing.T)
 			return nil, nil
 		}
 	})}
-	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
-	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
-	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: sender, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -522,17 +484,13 @@ func TestPublisherRuntimeFlushUsesVerifiedRevisionWithoutControlIO(t *testing.T)
 
 func TestPublisherRuntimeStartsStableDisabledWithoutOperationOrAck(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	snapshot := policySnapshotForTest(now)
 	snapshot.TraceAdmission, snapshot.EvidenceAdmission = "disabled", "disabled"
 	configurationReads, acknowledgements := 0, 0
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		switch request.URL.Path {
 		case traceEvidencePolicyPath:
-			return policyResponse(signedPolicySnapshot(t, privateKey, snapshot)), nil
+			return policyResponse(unsignedPolicySnapshot(t, snapshot)), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -547,9 +505,9 @@ func TestPublisherRuntimeStartsStableDisabledWithoutOperationOrAck(t *testing.T)
 			return nil, nil
 		}
 	})}
-	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
-	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
-	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("token")})
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatalf("NewPublisherRuntime() error = %v", err)
@@ -570,10 +528,6 @@ func TestPublisherRuntimeStartsStableDisabledWithoutOperationOrAck(t *testing.T)
 
 func TestPublisherRuntimeFailsClosedWhenCachedSnapshotExpires(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	snapshot := policySnapshotForTest(now)
 	snapshot.ExpiresAt = now.Add(time.Second)
 	policyReads := 0
@@ -584,7 +538,7 @@ func TestPublisherRuntimeFailsClosedWhenCachedSnapshotExpires(t *testing.T) {
 			if policyReads > 1 {
 				return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader("unavailable"))}, nil
 			}
-			return policyResponse(signedPolicySnapshot(t, privateKey, snapshot)), nil
+			return policyResponse(unsignedPolicySnapshot(t, snapshot)), nil
 		case "/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat":
 			return noContentResponse(), nil
 		case traceEvidenceConfigurationPath:
@@ -594,15 +548,15 @@ func TestPublisherRuntimeFailsClosedWhenCachedSnapshotExpires(t *testing.T) {
 			return nil, nil
 		}
 	})}
-	policy, err := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token"), Verifier: PolicyVerifierConfig{AudienceClusterID: "cluster-a", CurrentKeyID: "key-1", CurrentPublicKey: publicKey, Now: func() time.Time { return now }}})
+	policy, err := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
-	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token")})
+	control, err := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}
-	configuration, err := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, TokenSource: staticTokenSource("workload-token")})
+	configuration, err := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}

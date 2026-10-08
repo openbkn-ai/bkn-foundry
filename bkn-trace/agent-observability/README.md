@@ -169,32 +169,21 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 ### Evidence 写入安全边界
 
-受管 Conversation、Interaction、Operation 生命周期继续监听于集群内部的 `agent-observability-internal:8081`，同时在公开 8080 接口为 OAuth SDK 客户端开放。公开写入由服务端根据 OAuth 与 BKN Safe 身份派生 owner，不接受客户端伪造 owner。Evidence Event 经 Kafka 进入 Ledger；Artifact 继续使用独立的 8080 HTTP 接口和凭据。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认允许带 `app.kubernetes.io/name=agent-retrieval` 或现有 `app=agent-retrieval`、`app=agent-operator-integration`、`app=bkn-agent` 标签的 Pod 访问 8081；Gateway、Backend 等其他客户端可通过 `networkPolicy.allowedClients` 显式扩展。
+受管 Conversation、Interaction、Operation 生命周期继续监听于集群内部的 `agent-observability-internal:8081`，同时在公开 8080 接口为 OAuth SDK 客户端开放。公开写入由服务端根据 OAuth 与 BKN Safe 身份派生 owner，不接受客户端伪造 owner。Evidence Event 经 Kafka 进入 Ledger；Artifact 继续使用独立的 8080 HTTP 接口和凭据。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认允许带 `app.kubernetes.io/name=agent-retrieval` 或现有 `app=agent-retrieval`、`app=agent-operator-integration`、`app=bkn-agent` 标签的 Pod 访问 8081；默认还允许 `openbkn` namespace 的 `module=bkn-backend`、`module=ontology-query` 及本 namespace 的 `app.kubernetes.io/name=otelcol-contrib`；其他布局通过 `networkPolicy.allowedClients` 显式配置。
 
 该 NetworkPolicy 依赖 Kubernetes 1.23 或更高版本。离线执行 `helm template` 时应显式传入 `--kube-version 1.23.0` 或实际目标集群版本；连接集群的 `helm install/upgrade` 会按目标集群能力校验。
 
 Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器在 release 循环前创建或验证该 Secret，并将同一 token 注入 Agent Observability、Context Loader、Vega、BKN Backend、Ontology Query、BKN Agent 与行动执行服务；BKN Backend 和 Ontology Query 同时启用其持久 Evidence outbox worker 与既有清理任务（已投递记录保留 30 天，放弃记录保留 180 天）。单独安装任一 Chart 时，应预先创建并显式引用该 Secret。对无 outbox 的生产者，禁用 Evidence 写入须同时清空 ingest URL 与 token Secret；对启用了 producer outbox 的 BKN Backend 和 Ontology Query，须同时关闭 outbox 与 worker，不能只清空 URL。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
 
-Trace Admission Gateway 的签名策略也要求安装前准备外部 Secret；Chart 不会自动生成或轮换签名密钥。`core.capturePolicySigning.existingSecret` 必须存在，且 `privateKeyKey`（默认 `private-key`）的值必须是 base64 编码的 Ed25519 原始 64 字节私钥。`keyID` 与 `audience` 必须和 Gateway 的验证配置一致。缺少该 Secret 时 Helm render/install 会直接失败，避免默认 enabled 部署成无法取得有效快照的 fail-closed 状态：
+Trace/Evidence 控制面通过 `agent-observability-internal:8081` 提供无鉴权、无签名的内部接口，不通过公开 Service 或 Ingress 暴露：
 
-```bash
-capture_policy_key="$(python3 - <<'PY'
-import base64
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-key = Ed25519PrivateKey.generate()
-seed = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
-public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-print(base64.b64encode(seed + public).decode())
-PY
-)"
-kubectl create secret generic bkn-trace-capture-policy-signing \
-  --from-literal=private-key="${capture_policy_key}" -n observability
+- `GET /api/agent-observability/v1/internal/trace-evidence/policy`：返回 `TraceEvidencePolicySnapshotV1`，仅包含版本、revision、Trace/Evidence 开关和签发/过期时间。
+- `GET /api/agent-observability/v1/internal/trace-evidence/configuration`：读取当前配置和操作，用于确认状态切换。
+- `POST /api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat`：请求包含 `endpoint_kind`（`trace_gateway` 或 `evidence_publisher`）、`workload_identity`、`instance_id`、`process_boot_id`、`observed_revision`、`ready`；`instance_id` 必须等于 `workload_identity#process_boot_id`。
+- `POST /api/agent-observability/v1/internal/trace-evidence/operations/{id}:ack`：Gateway 使用请求体中的 workload/process 标识确认操作。
+- `POST /api/agent-observability/v1/internal/trace-evidence/operations/{id}:publisher-ack`：Publisher 使用 `producer_instance_id` 的 `workload_identity#process_boot_id` 标识确认操作。
 
-helm upgrade --install agent-observability charts/agent-observability \
-  --set core.capturePolicySigning.existingSecret=bkn-trace-capture-policy-signing \
-  -n observability
-```
+身份字段只用于内部进程状态关联，不进行服务身份认证。保留 revision、快照有效期、操作阶段和队列闭合校验。Chart 不再要求策略签名 Secret，快照有效期由 `core.capturePolicySnapshotTTL`（默认 `15m`）配置。公开用户接口仍保留 OAuth / Access Profile 鉴权。
 
 ```bash
 printf '%s' '<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' | \

@@ -8,7 +8,7 @@ set -euo pipefail
 
 chart_dir="${1:-charts/agent-observability}"
 render_chart() {
-    helm template "$@" --set core.capturePolicySigning.existingSecret=trace-capture-policy-test
+    helm template "$@"
 }
 
 disabled="$(render_chart agent-observability "${chart_dir}")"

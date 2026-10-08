@@ -232,21 +232,9 @@ observability:
       workload_identity: agent-operator-integration
       trace_admission:
         policy_url: "http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/policy"
-        configuration_url: "http://agent-observability:8080/api/agent-observability/v1/trace-evidence-configuration"
+        configuration_url: "http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/configuration"
         heartbeat_url: "http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat"
         ack_url_base: "http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/operations"
-        token_url: "http://bkn-safe-hydra-public:4444/oauth2/token"
-        client_id: ""
-        client_secret_name: ""
-        client_secret_key: "client-secret"
-        scope: ""
-        audience_cluster_id: "cluster-a"
-        current_key_id: ""
-        current_public_key_secret_name: ""
-        current_public_key_secret_key: "public-key"
-        previous_key_id: ""
-        previous_public_key_secret_name: ""
-        previous_public_key_secret_key: "public-key"
       queue_max_records: 4096
       queue_max_bytes: 67108864
       max_record_bytes: 1048576

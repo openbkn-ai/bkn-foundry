@@ -56,7 +56,7 @@ def test_build_record_matches_frozen_s1_record_shape_and_bkn_agent_identity():
 
 
 @pytest.mark.anyio
-async def test_start_publisher_uses_signed_policy_runtime(monkeypatch):
+async def test_start_publisher_uses_internal_policy_runtime(monkeypatch):
     configured = config()
     calls = []
     class FakePublisher:

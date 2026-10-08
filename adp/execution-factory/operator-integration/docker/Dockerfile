@@ -8,8 +8,9 @@ FROM ${BUILD_IMAGE} AS builder
 ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
 
-WORKDIR /src
-COPY . .
+COPY comm-go /workspace/comm-go
+COPY adp/execution-factory/operator-integration /workspace/adp/execution-factory/operator-integration
+WORKDIR /workspace/adp/execution-factory/operator-integration
 
 RUN set -ex; \
     go mod download; \

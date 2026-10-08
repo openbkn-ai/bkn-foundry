@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'bkn-trace/**'
+      - 'comm-go/**'
       - 'docs/api/agent-observability/**'
       - 'deploy/scripts/upgrades/0.2.0/historical_trace_data/**'
       - 'deploy/scripts/upgrades/0.2.0/evidence_outbox_to_kafka/**'
@@ -94,3 +95,12 @@ jobs:
       - uses: azure/setup-helm@v4
       - name: Helm lint
         run: make helm-lint
+      - name: Internal Trace control client/server contract
+        working-directory: bkn-trace/tests/internal-control
+        run: make ci
+      - name: Internal Trace installer and publisher chart contract
+        working-directory: .
+        run: |
+          bash deploy/scripts/services/test_internal_trace_admission.sh
+          bash deploy/scripts/services/test_internal_trace_admission_charts.sh
+          bash deploy/scripts/services/openbkn_trace_profile_test.sh

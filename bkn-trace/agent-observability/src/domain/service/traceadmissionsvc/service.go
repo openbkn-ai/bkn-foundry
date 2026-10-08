@@ -9,9 +9,6 @@
 package traceadmissionsvc
 
 import (
-	"crypto/ed25519"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -39,47 +36,21 @@ var (
 	ErrInvalidAck      = errors.New("invalid trace gateway acknowledgement")
 )
 
-type SignedSnapshot struct {
+type Snapshot struct {
 	ContractVersion   string    `json:"contract_version"`
 	Revision          uint64    `json:"revision"`
 	TraceAdmission    Mode      `json:"trace_admission"`
 	EvidenceAdmission Mode      `json:"evidence_admission"`
 	IssuedAt          time.Time `json:"issued_at"`
 	ExpiresAt         time.Time `json:"expires_at"`
-	KeyID             string    `json:"key_id"`
-	Audience          string    `json:"audience_cluster_id"`
-	Signature         string    `json:"signature"`
 }
 
-func (s SignedSnapshot) canonicalBytes() []byte {
-	payload := struct {
-		ContractVersion   string    `json:"contract_version"`
-		Revision          uint64    `json:"revision"`
-		TraceAdmission    Mode      `json:"trace_admission"`
-		EvidenceAdmission Mode      `json:"evidence_admission"`
-		IssuedAt          time.Time `json:"issued_at"`
-		ExpiresAt         time.Time `json:"expires_at"`
-		KeyID             string    `json:"key_id"`
-		Audience          string    `json:"audience_cluster_id"`
-	}{s.ContractVersion, s.Revision, s.TraceAdmission, s.EvidenceAdmission, s.IssuedAt, s.ExpiresAt, s.KeyID, s.Audience}
-	bytes, _ := json.Marshal(payload)
-	return bytes
-}
-
-type GatewayConfig struct {
-	Audience      string
-	CurrentKeyID  string
-	CurrentKey    ed25519.PublicKey
-	PreviousKeyID string
-	PreviousKey   ed25519.PublicKey
-	Now           func() time.Time
-}
+type GatewayConfig struct{ Now func() time.Time }
 
 type Gateway struct {
 	mu      sync.RWMutex
-	cfg     GatewayConfig
 	now     func() time.Time
-	current *SignedSnapshot
+	current *Snapshot
 }
 
 func NewGateway(config GatewayConfig) *Gateway {
@@ -87,10 +58,10 @@ func NewGateway(config GatewayConfig) *Gateway {
 	if now == nil {
 		now = time.Now
 	}
-	return &Gateway{cfg: config, now: now}
+	return &Gateway{now: now}
 }
 
-func (g *Gateway) Apply(snapshot SignedSnapshot) error {
+func (g *Gateway) Apply(snapshot Snapshot) error {
 	if g == nil || !g.verify(snapshot) {
 		return ErrInvalidSnapshot
 	}
@@ -103,11 +74,11 @@ func (g *Gateway) Apply(snapshot SignedSnapshot) error {
 		if *g.current == snapshot {
 			return nil
 		}
-		// The control plane re-signs the same policy revision on each read.
+		// The control plane refreshes the same policy revision on each read.
 		// A changed mode requires a new policy revision. For unchanged modes,
-		// ignore an older issuance (for example, from a skewed signer replica)
+		// ignore an older issuance (for example, from a skewed server replica)
 		// without interrupting the heartbeat. A newer issuance replaces the
-		// expiry even when the signer TTL has been shortened.
+		// expiry even when the snapshot TTL has been shortened.
 		if snapshot.TraceAdmission != g.current.TraceAdmission ||
 			snapshot.EvidenceAdmission != g.current.EvidenceAdmission {
 			return ErrStaleRevision
@@ -120,44 +91,12 @@ func (g *Gateway) Apply(snapshot SignedSnapshot) error {
 	return nil
 }
 
-func (g *Gateway) verify(snapshot SignedSnapshot) bool {
+func (g *Gateway) verify(snapshot Snapshot) bool {
 	now := g.now().UTC()
-	if snapshot.ContractVersion != ContractVersion || snapshot.Revision == 0 || (snapshot.TraceAdmission != ModeEnabled && snapshot.TraceAdmission != ModeDisabled) || snapshot.EvidenceAdmission != snapshot.TraceAdmission || snapshot.KeyID == "" || snapshot.Audience != g.cfg.Audience || snapshot.IssuedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.IssuedAt) || now.Before(snapshot.IssuedAt) || !now.Before(snapshot.ExpiresAt) {
+	if snapshot.ContractVersion != ContractVersion || snapshot.Revision == 0 || (snapshot.TraceAdmission != ModeEnabled && snapshot.TraceAdmission != ModeDisabled) || snapshot.EvidenceAdmission != snapshot.TraceAdmission || snapshot.IssuedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.IssuedAt) || now.Before(snapshot.IssuedAt) || !now.Before(snapshot.ExpiresAt) {
 		return false
 	}
-	key := g.cfg.CurrentKey
-	if snapshot.KeyID != g.cfg.CurrentKeyID {
-		if snapshot.KeyID != g.cfg.PreviousKeyID {
-			return false
-		}
-		key = g.cfg.PreviousKey
-	}
-	if len(key) != ed25519.PublicKeySize {
-		return false
-	}
-	if len(snapshot.Signature) <= len("ed25519:") || snapshot.Signature[:len("ed25519:")] != "ed25519:" {
-		return false
-	}
-	signatureText := snapshot.Signature[len("ed25519:"):]
-	signature, err := base64.RawURLEncoding.DecodeString(signatureText)
-	if err != nil {
-		signature, err = base64.StdEncoding.DecodeString(signatureText)
-	}
-	return err == nil && len(signature) == ed25519.SignatureSize && ed25519.Verify(key, snapshot.canonicalBytes(), signature)
-}
-
-// SignSnapshot signs the canonical policy snapshot with the dedicated Trace
-// capture policy key. Projection-grant keys are intentionally not accepted by
-// this API; callers provide an independent key and key ID/audience.
-func SignSnapshot(snapshot SignedSnapshot, privateKey ed25519.PrivateKey) (SignedSnapshot, error) {
-	if snapshot.ContractVersion == "" {
-		snapshot.ContractVersion = ContractVersion
-	}
-	if snapshot.ContractVersion != ContractVersion || snapshot.Revision == 0 || (snapshot.TraceAdmission != ModeEnabled && snapshot.TraceAdmission != ModeDisabled) || snapshot.EvidenceAdmission != snapshot.TraceAdmission || snapshot.KeyID == "" || snapshot.Audience == "" || snapshot.IssuedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.IssuedAt) || len(privateKey) != ed25519.PrivateKeySize {
-		return SignedSnapshot{}, ErrInvalidSnapshot
-	}
-	snapshot.Signature = "ed25519:" + base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, snapshot.canonicalBytes()))
-	return snapshot, nil
+	return true
 }
 
 type AdmissionDecision struct {
