@@ -6,7 +6,12 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var ErrRowCountUnavailable = errors.New("row statistics unavailable")
 
 //go:generate mockgen -source ../interfaces/connector_interface.go -destination ../interfaces/mock/mock_connector_interface.go
 
@@ -35,13 +40,13 @@ type Connector interface {
 	GetMetadata(ctx context.Context) (map[string]any, error)
 }
 
-// LocalConnectorBuilder is a local connector builder function
-type LocalConnectorBuilder func(cfg *ConnectorConfig) (Connector, error)
-
 // TableConnector defines the interface for relational database connectors.
 // Implementations: mysql, postgresql, dameng, oracle, clickhouse, etc.
 type TableConnector interface {
 	Connector
+
+	// CountRows 获取表或视图的精确数量。
+	CountRows(ctx context.Context, table *TableMeta) (int64, error)
 
 	// MapType maps the native types at the source end to VEGA unified types. If not recognized, always return "Other"
 	MapType(nativeType string) string
@@ -96,6 +101,9 @@ type MetricConnector interface {
 // Implementations: opensearch, elasticsearch, etc.
 type IndexConnector interface {
 	Connector
+
+	// CountRows 获取索引的精确数量，不支持时返回 ErrRowCountUnavailable。
+	CountRows(ctx context.Context, index *IndexMeta) (int64, error)
 
 	// MapType maps the native types at the source end to VEGA unified types. If not recognized, always return "Other"
 	MapType(nativeType string) string

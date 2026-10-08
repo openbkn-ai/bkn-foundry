@@ -14,7 +14,9 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 )
 
 // LastDiscoverStatus write policy:
@@ -40,7 +42,7 @@ func discoverStatusAfterEnrich(resource *interfaces.Resource, beforeHash string)
 		return ""
 	}
 	sourceMetadata := make(map[string]any)
-	err = sonic.Unmarshal(data, &sourceMetadata)
+	err = common.UnmarshalPreciseJSON(data, &sourceMetadata)
 	if err != nil {
 		return ""
 	}
@@ -57,7 +59,8 @@ func sourceSnapshotHash(resource *interfaces.Resource) string {
 	if resource == nil {
 		return ""
 	}
-	bytes, err := sonic.ConfigStd.Marshal(resource.SourceMetadata)
+	metadata := resource.SourceMetadata
+	bytes, err := sonic.ConfigStd.Marshal(metadata)
 	if err != nil {
 		return ""
 	}
@@ -85,4 +88,29 @@ func updateDiscoverResultForEnrichStatus(result *interfaces.DiscoverResult, stat
 func formatDiscoverResultMessage(result *interfaces.DiscoverResult) string {
 	return fmt.Sprintf("Discover completed: %d new, %d stale, %d unchanged, %d updated, %d restored, %d failed",
 		result.NewCount, result.StaleCount, result.UnchangedCount, result.UpdatedCount, result.RestoredCount, result.FailedCount)
+}
+
+// countOnlyActions 判断是否只执行计数，不排斥其他动作组合。
+func countOnlyActions(actions *interfaces.DiscoverActions) bool {
+	return actions != nil && actions.Count && !actions.Create && !actions.Refresh && !actions.MarkStale
+}
+
+// saveDiscoveredResource 在单个资源事务内编排元数据和精确统计保存。
+func (dtw *DiscoverTaskWorker) saveDiscoveredResource(ctx context.Context, resource *interfaces.Resource, expectedUpdateTime int64, exactCount *int64, countTime int64) error {
+	if exactCount == nil {
+		return dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime)
+	}
+	tx, err := logics.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, tx, resource, expectedUpdateTime); err != nil {
+		return err
+	}
+	if err := dtw.rs.InternalUpdateRowCount(ctx, tx, resource, *exactCount, countTime); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

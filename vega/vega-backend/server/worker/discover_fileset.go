@@ -207,6 +207,7 @@ func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, task *
 		for k, v := range fs.SourceMetadata {
 			sourceMetadata[k] = v
 		}
+
 		sourceMetadata["original_name"] = fs.Name
 		sourceMetadata["original_description"] = ""
 		sourceMetadata["columns"] = fs.Columns
@@ -229,10 +230,12 @@ func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, task *
 			updateDiscoverResultForEnrichStatus(result, discoverStatus)
 		}
 
+		observedAt := time.Now().UnixMilli()
 		resource.LastDiscoverStatus = discoverStatus
+		resource.LastDiscoverTime = observedAt
 		expectedUpdateTime := resource.UpdateTime
 		resource.Updater = task.Creator
-		resource.UpdateTime = time.Now().UnixMilli()
+		resource.UpdateTime = observedAt
 		if err := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime); err != nil {
 			logger.Errorf("Failed to update fileset resource %s: %v", resource.ID, err)
 			return err

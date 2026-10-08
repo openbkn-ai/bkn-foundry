@@ -301,6 +301,16 @@ func TestDiscoverTaskAccessMarkCompleted(t *testing.T) {
 	})
 }
 
+func TestDiscoverTaskAccessMarkCompletedRetainsFailedCountResult(t *testing.T) {
+	access, mock, cleanup := newDiscoverTaskAccessMock(t)
+	defer cleanup()
+	mock.ExpectExec("UPDATE t_discover_task SET f_finish_time = ?, f_message = ?, f_progress = ?, f_result = ?, f_status = ? WHERE f_id = ? AND f_status = ?").WithArgs(int64(999), "unavailable", 100, `{"catalog_id":"catalog-1","new_count":0,"stale_count":0,"unchanged_count":0,"updated_count":0,"restored_count":0,"failed_count":0,"skipped_count":1,"message":"unavailable"}`, interfaces.DiscoverTaskStatusFailed, "task-1", interfaces.DiscoverTaskStatusRunning).WillReturnResult(sqlmock.NewResult(0, 1))
+	updated, err := access.MarkCompleted(context.Background(), "task-1", &interfaces.DiscoverResult{CatalogID: "catalog-1", Failed: true, SkippedCount: 1, Message: "unavailable"}, 999)
+	require.NoError(t, err)
+	require.True(t, updated)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDiscoverTaskAccessDeleteByIDs(t *testing.T) {
 	t.Run("deletes tasks", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)

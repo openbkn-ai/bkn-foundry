@@ -10,11 +10,12 @@ package driveradapters
 import (
 	"context"
 	"fmt"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -759,11 +760,12 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 	}
 	if !interfaces.IsValidDiscoverStrategy(strategy) {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidStrategies).
-			WithErrorDetails(fmt.Sprintf("invalid strategy: %s, must be one of: %s, %s, %s",
+			WithErrorDetails(fmt.Sprintf("invalid strategy: %s, must be one of: %s, %s, %s, %s",
 				strategy,
 				interfaces.DiscoverStrategyFullSync,
 				interfaces.DiscoverStrategyCreateOnly,
-				interfaces.DiscoverStrategyCleanupOnly))
+				interfaces.DiscoverStrategyCleanupOnly,
+				interfaces.DiscoverStrategyCountOnly))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -790,7 +792,7 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	if catalog.Type != interfaces.CatalogTypePhysical {
+	if catalog.Type != interfaces.CatalogTypePhysical && strategy != interfaces.DiscoverStrategyCountOnly {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_Type).
 			WithErrorDetails("discover only supports physical catalogs")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

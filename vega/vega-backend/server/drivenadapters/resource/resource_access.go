@@ -63,6 +63,9 @@ var resourceColumns = []string{
 	"f_status",
 	"f_status_message",
 	"f_last_discover_status",
+	"f_last_discover_time",
+	"f_row_count",
+	"f_row_count_time",
 	"f_schema",
 	"f_source_identifier",
 	"f_source_metadata",
@@ -93,6 +96,7 @@ var resourceSummaryColumns = []string{
 	"f_status",
 	"f_status_message",
 	"f_last_discover_status",
+	"f_last_discover_time",
 	"f_schema",
 	"f_source_identifier",
 	"f_local_status",
@@ -128,6 +132,9 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 		&resource.Status,
 		&resource.StatusMessage,
 		&resource.LastDiscoverStatus,
+		&resource.LastDiscoverTime,
+		&resource.RowCount,
+		&resource.RowCountTime,
 		&resource.Schema,
 		&resource.SourceIdentifier,
 		&sourceMetadata,
@@ -179,6 +186,7 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 		&summary.Status,
 		&summary.StatusMessage,
 		&summary.LastDiscoverStatus,
+		&summary.LastDiscoverTime,
 		&summary.Schema,
 		&summary.SourceIdentifier,
 		&summary.LocalIndexStatus,
@@ -252,6 +260,10 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			"f_status",
 			"f_status_message",
 			"f_last_discover_status",
+			"f_last_discover_time",
+			"f_row_count",
+			"f_row_count_time",
+
 			"f_schema",
 			"f_source_identifier",
 			"f_source_metadata",
@@ -284,6 +296,10 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			resource.Status,
 			resource.StatusMessage,
 			resource.LastDiscoverStatus,
+			resource.LastDiscoverTime,
+			resource.RowCount,
+			resource.RowCountTime,
+
 			resource.Schema,
 			resource.SourceIdentifier,
 			string(sourceMetadataBytes),
@@ -639,6 +655,7 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 		Set("f_update_time", resource.UpdateTime).
 		Where(sq.Eq{"f_id": resource.ID}).
 		Where(sq.Eq{"f_update_time": expectedUpdateTime})
+
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		builder = builder.Set("f_source_metadata", string(sourceMetadataBytes))
 	}
@@ -856,6 +873,7 @@ func (ra *resourceAccess) UpdateDiscoveryMetadata(ctx context.Context,
 		Set("f_source_metadata", string(sourceMetadataBytes)).
 		Set("f_schema_definition", string(schemaDefinitionBytes)).
 		Set("f_last_discover_status", resource.LastDiscoverStatus).
+		Set("f_last_discover_time", resource.LastDiscoverTime).
 		Set("f_updater", resource.Updater.ID).
 		Set("f_updater_type", resource.Updater.Type).
 		Set("f_update_time", resource.UpdateTime).
@@ -1249,4 +1267,29 @@ func resourceListOrderByClause(sort, direction string) string {
 	default:
 		return "f_update_time DESC"
 	}
+}
+
+// UpdateRowCount 仅更新统计，原子保留其他元数据及资源版本。
+func (ra *resourceAccess) UpdateRowCount(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource, expectedUpdateTime int64) (int64, error) {
+	query, args, err := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_row_count", resource.RowCount).
+		Set("f_row_count_time", resource.RowCountTime).
+		Where(sq.Eq{
+			"f_id":          resource.ID,
+			"f_update_time": expectedUpdateTime,
+		}).
+		ToSql()
+	if err != nil {
+		return 0, err
+	}
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, query, args...)
+	} else {
+		result, err = ra.db.ExecContext(ctx, query, args...)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

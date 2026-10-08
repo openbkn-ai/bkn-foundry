@@ -477,23 +477,30 @@ func (rs *resourceService) populateResourceRowCounts(ctx context.Context, resour
 		for _, resource := range resources {
 			resource.RowCount = nil
 			resource.EstimatedRowCount = nil
+			resource.RowCountTime = nil
 		}
 		return
 	}
 	for _, resource := range resources {
+		resource.EstimatedRowCount = nil
 		if resource.Category == interfaces.ResourceCategoryDataset {
+			resource.RowCount = nil
+			resource.RowCountTime = nil
 			count, err := rs.ds.CountDocuments(ctx, resource)
 			if err != nil {
 				logger.Warnf("Failed to populate dataset row count for resource %s: %v", resource.ID, err)
-				resource.RowCount = nil
-				resource.EstimatedRowCount = nil
 				continue
 			}
 			resource.RowCount = &count
-			resource.EstimatedRowCount = nil
+			countTime := time.Now().UnixMilli()
+			resource.RowCountTime = &countTime
 			continue
 		}
-		resource.RowCount, resource.EstimatedRowCount = sourceMetadataRowCounts(resource.SourceMetadata)
+		properties, _ := resource.SourceMetadata["properties"].(map[string]any)
+		resource.EstimatedRowCount = sourceMetadataRowCount(properties["estimated_row_count"])
+		if resource.RowCount == nil || resource.RowCountTime != nil && *resource.RowCountTime <= 0 {
+			resource.RowCountTime = nil
+		}
 	}
 }
 
@@ -507,17 +514,6 @@ func populateResourceColumnCount(resource *interfaces.Resource) {
 	}
 	count := len(resource.SchemaDefinition)
 	resource.ColumnCount = &count
-}
-
-func sourceMetadataRowCounts(sourceMetadata map[string]any) (*int64, *int64) {
-	if sourceMetadata == nil {
-		return nil, nil
-	}
-	properties, ok := sourceMetadata["properties"].(map[string]any)
-	if !ok {
-		return nil, nil
-	}
-	return sourceMetadataRowCount(properties["row_count"]), sourceMetadataRowCount(properties["estimated_row_count"])
 }
 
 func sourceMetadataRowCount(value any) *int64 {
@@ -763,18 +759,6 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryLogicView:
-		previousDefinition := resource.LogicDefinition
-		previousSchema := resource.SchemaDefinition
-		previousMetadata := resource.SourceMetadata
-		if jsonNumbersEqual(previousDefinition, req.LogicDefinition) &&
-			jsonNumbersEqual(previousSchema, req.SchemaDefinition) {
-			if properties, ok := previousMetadata["properties"]; ok {
-				if req.SourceMetadata == nil {
-					req.SourceMetadata = make(map[string]any)
-				}
-				req.SourceMetadata["properties"] = properties
-			}
-		}
 		resource.SchemaDefinition = req.SchemaDefinition
 		resource.LogicType = req.LogicType
 		resource.LogicDefinition = req.LogicDefinition
@@ -869,6 +853,15 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	if rowsAffected == 0 {
 		span.SetStatus(codes.Error, "Resource update conflict")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
+	if resource.Category == interfaces.ResourceCategoryLogicView && buildRelevantChanged {
+		resource.RowCount = nil
+		resource.RowCountTime = nil
+		if _, err := rs.ra.UpdateRowCount(ctx, tx, resource, resource.UpdateTime); err != nil {
+			otellog.LogError(ctx, "Clear changed view row count failed", err)
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+				WithErrorDetails("failed to update resource")
+		}
 	}
 	if resource.Category == interfaces.ResourceCategoryDataset && (buildRelevantChanged || legacyDatasetVectorDimensions) {
 		// Claim the resource version before changing OpenSearch. The transaction
@@ -1994,4 +1987,23 @@ func (rs *resourceService) CheckExistByCategories(ctx context.Context, catalogID
 	defer span.End()
 
 	return rs.ra.CheckExistByCategories(ctx, catalogID, categories)
+}
+
+func (rs *resourceService) InternalUpdateRowCount(ctx context.Context, tx *sql.Tx, source *interfaces.Resource, count, countTime int64) error {
+	if source == nil || count < 0 || countTime <= 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody)
+	}
+	source.RowCount = &count
+	source.RowCountTime = &countTime
+	previous := source.UpdateTime
+	// 数量采集不改变资源定义版本，避免使数据游标和用户编辑失效。
+
+	updated, err := rs.ra.UpdateRowCount(ctx, tx, source, previous)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
+	return nil
 }

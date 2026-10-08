@@ -39,11 +39,12 @@ func ValidateDiscoverScheduleRequest(ctx context.Context, req *interfaces.Discov
 	}
 	if !interfaces.IsValidDiscoverStrategy(req.Strategy) {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidStrategies).
-			WithErrorDetails(fmt.Sprintf("invalid strategy: %s, must be one of: %s, %s, %s",
+			WithErrorDetails(fmt.Sprintf("invalid strategy: %s, must be one of: %s, %s, %s, %s",
 				req.Strategy,
 				interfaces.DiscoverStrategyFullSync,
 				interfaces.DiscoverStrategyCreateOnly,
-				interfaces.DiscoverStrategyCleanupOnly))
+				interfaces.DiscoverStrategyCleanupOnly,
+				interfaces.DiscoverStrategyCountOnly))
 	}
 	var errDetails string
 	switch {

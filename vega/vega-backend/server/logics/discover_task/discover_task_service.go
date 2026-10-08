@@ -92,6 +92,12 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.Create")
 	defer span.End() // End the span when the function returns.
 
+	if req.Strategy == "" {
+		req.Strategy = interfaces.DiscoverStrategyFullSync
+	}
+	if !interfaces.IsValidDiscoverStrategy(req.Strategy) {
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("invalid discover strategy")
+	}
 	// Get account info from context
 	accountInfo := interfaces.AccountInfo{}
 	if ai, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo); ok {

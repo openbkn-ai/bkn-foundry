@@ -10,23 +10,24 @@ const (
 	DiscoverStrategyFullSync    string = "full_sync"
 	DiscoverStrategyCreateOnly  string = "create_only"
 	DiscoverStrategyCleanupOnly string = "cleanup_only"
-
-	DiscoverActionCreate    string = "create"
-	DiscoverActionRefresh   string = "refresh"
-	DiscoverActionMarkStale string = "mark_stale"
+	DiscoverStrategyCountOnly   string = "count_only"
 )
 
-// DiscoverActions represents the internal resource reconciliation actions
+// DiscoverActions represents the internal resource discovery actions
 // derived from a business-level discover strategy.
 type DiscoverActions struct {
 	Create    bool
 	Refresh   bool
 	MarkStale bool
+	Count     bool
 }
 
 func IsValidDiscoverStrategy(strategy string) bool {
 	switch strategy {
-	case DiscoverStrategyFullSync, DiscoverStrategyCreateOnly, DiscoverStrategyCleanupOnly:
+	case DiscoverStrategyFullSync,
+		DiscoverStrategyCreateOnly,
+		DiscoverStrategyCleanupOnly,
+		DiscoverStrategyCountOnly:
 		return true
 	default:
 		return false
@@ -35,6 +36,8 @@ func IsValidDiscoverStrategy(strategy string) bool {
 
 func ActionsFromDiscoverStrategy(strategy string) DiscoverActions {
 	switch strategy {
+	case DiscoverStrategyCountOnly:
+		return DiscoverActions{Count: true}
 	case DiscoverStrategyCreateOnly:
 		return DiscoverActions{Create: true}
 	case DiscoverStrategyCleanupOnly:

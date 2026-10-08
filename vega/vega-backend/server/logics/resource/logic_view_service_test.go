@@ -177,13 +177,11 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 		storedSchema            []*interfaces.Property
 		requestSchema           []*interfaces.Property
 		wantBuildCheck          bool
-		wantProperties          map[string]any
 		withoutPreparedMetadata bool
 	}{
 		{
-			name:           "preserves scanned statistics for metadata-only update",
-			definition:     map[string]any{"source_resource_id": "source-1"},
-			wantProperties: map[string]any{"row_count": 6},
+			name:       "preserves scanned statistics for metadata-only update",
+			definition: map[string]any{"source_resource_id": "source-1"},
 		},
 		{
 			name: "preserves scanned statistics with a fixed filter",
@@ -191,26 +189,22 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 				"filter_condition": map[string]any{"operation": "eq", "value": json.Number("1.0")}},
 			storedDefinition: map[string]any{"source_resource_id": "source-1",
 				"filter_condition": map[string]any{"operation": "eq", "value": float64(1)}},
-			wantProperties: map[string]any{"row_count": 6},
 		},
 		{
 			name:                    "rejects update when prepare does not provide metadata",
 			definition:              map[string]any{"source_resource_id": "source-1"},
-			wantProperties:          map[string]any{"row_count": 6},
 			withoutPreparedMetadata: true,
 		},
 		{
 			name:           "clears scanned statistics when definition changes",
 			definition:     map[string]any{"source_resource_id": "source-2"},
 			wantBuildCheck: true,
-			wantProperties: map[string]any{},
 		},
 		{
 			name:           "clears scanned statistics when public schema changes",
 			definition:     map[string]any{"source_resource_id": "source-1"},
 			schema:         []*interfaces.Property{{Name: "alias", Type: interfaces.DataType_String}},
 			wantBuildCheck: true,
-			wantProperties: map[string]any{},
 		},
 		{
 			name:       "inherited features do not turn a name edit into a build change",
@@ -219,8 +213,7 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}},
 			storedSchema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String,
 				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}},
-			requestSchema:  []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
-			wantProperties: map[string]any{"row_count": 6},
+			requestSchema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -254,7 +247,9 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 			if storedDefinition == nil {
 				storedDefinition = map[string]any{"source_resource_id": "source-1"}
 			}
+			count, countTime := int64(6), int64(100)
 			resource := &interfaces.Resource{
+				RowCount: &count, RowCountTime: &countTime,
 				ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicView,
 				Name: "orders", LogicType: interfaces.LogicType_Derived,
 				LogicDefinition:  storedDefinition,
@@ -265,9 +260,18 @@ func TestResourceServiceUpdateLogicViewSourceMetadata(t *testing.T) {
 				},
 			}
 			if !tc.withoutPreparedMetadata {
+				if tc.wantBuildCheck {
+					mockRA.EXPECT().UpdateRowCount(gomock.Any(), gomock.Not(gomock.Nil()), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+						assert.Nil(t, got.RowCount)
+						assert.Nil(t, got.RowCountTime)
+						return 1, nil
+					})
+				}
 				mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
 					DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
-						assert.Equal(t, tc.wantProperties, got.SourceMetadata["properties"])
+						assert.Equal(t, map[string]any{}, got.SourceMetadata["properties"])
+						assert.Equal(t, int64(6), *got.RowCount)
+						assert.Equal(t, int64(100), *got.RowCountTime)
 						assert.Equal(t, viewService.sourceMetadata["source_resource"], got.SourceMetadata["source_resource"])
 						assert.NotContains(t, got.SourceMetadata, "injected")
 						return 1, nil
