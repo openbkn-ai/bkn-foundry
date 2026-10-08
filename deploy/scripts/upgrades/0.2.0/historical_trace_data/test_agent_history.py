@@ -254,3 +254,74 @@ class AgentContentRevisionTests(unittest.TestCase):
         )
         self.assertEqual(artifact["content"]["text"], "Corrected: 600 units")
         self.assertEqual(artifact["observed_at"], first["terminal_at"])
+
+
+class BusinessInputExtractionTests(unittest.TestCase):
+    def task(self, key, question="Inventory?", answer="500 units", ops=("op_query",), contract="claim-attribution/v20", account="user-1"):
+        import json
+        body = {"contract": contract, "question": question, "answer": answer,
+                "time_rail": [{"operation_id": op, "attempt": 1, "started_at": "2026-09-01T00:00:01Z", "finished_at": "2026-09-01T00:00:04Z"} for op in ops],
+                "evidence_catalog": {"facts": []}}
+        return {"kind": "agent_task", "row": {"f_task_id": key,
+                "f_agent_id": "business_provenance_claim_attribution", "f_account_id": account,
+                "f_create_time": 1788220800000, "f_update_time": 1788220810000,
+                "f_input": {"message": "Analyze the supplied facts.\nINPUT_JSON:\n" + json.dumps(body)}}}
+
+    def extract(self, records):
+        import agent_history
+        extractor = getattr(agent_history, "extract_business_inputs", None)
+        self.assertIsNotNone(extractor, "Historical business inputs must be extracted before native conversion")
+        return extractor(records)
+
+    def test_extracts_original_question_answer_and_call_times(self):
+        result = self.extract([self.task("task-1")])
+        self.assertEqual(result[0]["question"], "Inventory?")
+        self.assertEqual(result[0]["answer"], "500 units")
+        self.assertEqual(result[0]["time_rail"][0]["finished_at"], "2026-09-01T00:00:04Z")
+        self.assertEqual(result[0]["source_task_ids"], ["task-1"])
+
+    def test_distinct_analysis_inputs_are_preserved_even_with_identical_text_and_calls(self):
+        first = self.task("task-1")
+        second = self.task("task-2", contract="business-provenance-attribution/v15")
+        result = self.extract([second, first])
+        self.assertEqual(len(result), 2)
+        self.assertEqual({tuple(r["source_task_ids"]) for r in result}, {("task-1",), ("task-2",)})
+        self.assertEqual(result, self.extract([first, second]))
+
+    def test_same_question_in_different_runs_or_accounts_is_not_merged(self):
+        result = self.extract([self.task("a"), self.task("b", ops=("op_other",)), self.task("c", account="user-2")])
+        self.assertEqual(len(result), 3)
+
+    def test_arbitrary_user_prompt_with_marker_is_not_business_source(self):
+        task = self.task("a")
+        task["row"]["f_agent_id"] = "ordinary-agent"
+        self.assertEqual(self.extract([task]), [])
+
+    def test_absent_call_identity_does_not_merge_repeated_questions(self):
+        self.assertEqual(len(self.extract([self.task("a", ops=()), self.task("b", ops=())])), 2)
+
+    def test_malformed_internal_input_does_not_prevent_other_inputs(self):
+        task = self.task("bad")
+        task["row"]["f_input"]["message"] = "INPUT_JSON: {broken"
+        result = self.extract([task, self.task("good")])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["source_task_ids"], ["good"])
+
+    def test_wrong_catalog_shape_is_reported_without_aborting_other_tasks(self):
+        import json
+        import agent_history
+        bad = self.task("bad")
+        inp = json.loads(bad["row"]["f_input"]["message"].split("INPUT_JSON:", 1)[1])
+        inp["time_rail"] = {"wrong": "shape"}
+        bad["row"]["f_input"]["message"] = "INPUT_JSON:" + json.dumps(inp)
+        issues = []
+        result = agent_history.extract_business_inputs([bad, self.task("good")], issues)
+        self.assertEqual(result[0]["source_task_ids"], ["good"])
+        self.assertEqual(issues, [{"source_task_id": "bad", "reason": "business_input_invalid_catalog"}])
+
+    def test_original_records_are_unchanged(self):
+        import copy
+        records = [self.task("one")]
+        before = copy.deepcopy(records)
+        self.extract(records)[0]["time_rail"][0]["operation_id"] = "changed"
+        self.assertEqual(records, before)

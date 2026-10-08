@@ -79,6 +79,21 @@ class UpgradeRunnerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    def test_tls_verification_override_is_limited_to_loopback(self):
+        runtime = DeploymentRuntime()
+        runtime.opensearch_endpoint = "https://customer.example/opensearch"
+        with patch.dict("os.environ", {"BKN_HISTORY_OPENSEARCH_TLS_VERIFY": "false"}):
+            with self.assertRaisesRegex(ValueError, "remote_tls_verification_required"):
+                runtime._tls_options(False)
+
+        runtime.opensearch_endpoint = "https://127.0.0.1:9443"
+        with patch.dict("os.environ", {"BKN_HISTORY_OPENSEARCH_TLS_VERIFY": "false"}):
+            self.assertFalse(runtime._tls_options(False)["verify_tls"])
+
+        runtime.opensearch_endpoint = "https://customer.example/opensearch"
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertTrue(runtime._tls_options(False)["verify_tls"])
+
     def test_unconverted_record_cannot_report_completion(self):
         runtime = FakeRuntime()
         runtime.rows = [dict(kind="audit", source_id="vega", row=row(action="read"))]
@@ -308,44 +323,45 @@ class EvidencePreflightTests(unittest.TestCase):
             row['row']['envelope']['event'].update(conversation_id='c', interaction_id='i', operation_id='op_' + str(i))
         return rows
 
-    def test_rejected_target_plan_never_imports_core(self):
+    def prepared_runtime(self, records):
         runtime = object.__new__(DeploymentRuntime)
+        runtime.history_prepared = {"plan": {"core": {"receipts": []}, "mapped_records": records,
+            "mappings": [{"source_ordinal": i, "status": "unlinked"} for i in range(len(records))]}}
+        return runtime
+
+    def test_rejected_target_plan_never_imports_core(self):
+        records = self.records()
+        runtime = self.prepared_runtime(records)
         with patch.object(runtime, '_native') as native, patch('run_upgrade.plan_aggregates', return_value=([], {0: 'invalid'})):
             with self.assertRaisesRegex(ValueError, 'native_evidence_conversion_incomplete'):
-                runtime.migrate_evidence(self.records())
+                runtime.migrate_evidence(records)
             native.assert_not_called()
 
-    def test_original_owner_conflict_does_not_reject_valid_split_targets(self):
+    def test_reused_trace_with_conflicting_subjects_is_not_split(self):
+        records = self.records(('u1', 'u2'))
+        runtime = self.prepared_runtime(records)
+        with patch.object(runtime, '_native') as native:
+            with self.assertRaisesRegex(ValueError, 'native_evidence_conversion_incomplete'):
+                runtime.migrate_evidence(records)
+            native.assert_not_called()
+
+    def test_observation_import_does_not_create_business_executions(self):
         from contextlib import nullcontext
-        runtime = object.__new__(DeploymentRuntime)
+        records = self.records()
+        runtime = self.prepared_runtime(records)
         runtime.opensearch_evidence_index = 'evidence'
         runtime.opensearch_username = runtime.opensearch_password = None
         runtime._opensearch_connection = lambda: nullcontext(('http://search', False))
         runtime._tls_options = lambda _: {}
-        def publish(items, allow_update, on_result):
+        def publish(items, on_result):
             for item in items:
                 on_result(item['_id'], 'created')
-            return {'created': len(items), 'updated': 0, 'already_verified': 0, 'conflict': 0}
-        with patch.object(runtime, '_native', return_value=b'{"verified":true,"created":10,"already_verified":0}') as native, patch('run_upgrade.OpenSearchHistoryWriter') as writer:
+            return {'created': len(items), 'already_verified': 0, 'conflict': 0}
+        with patch.object(runtime, '_native') as native, patch('run_upgrade.OpenSearchHistoryWriter') as writer:
             writer.return_value.publish_documents.side_effect = publish
-            result = runtime.migrate_evidence(self.records(('u1', 'u2')))
+            result = runtime.migrate_evidence(records)
             self.assertTrue(all(item['verified'] for item in result['results']))
-            self.assertEqual([call.args[0] for call in native.call_args_list],
-                             [['--validate-core-records'], ['--import-core-records']])
-
-    def test_later_invalid_native_batch_prevents_all_imports(self):
-        runtime = object.__new__(DeploymentRuntime)
-        calls = []
-        def native(args, data):
-            calls.append((args, data))
-            if args == ['--validate-core-records'] and data == b'bad':
-                raise ValueError('invalid converted payload')
-            return b'{"verified":true,"created":0}'
-        with patch.object(runtime, '_native', side_effect=native), patch('run_upgrade.core_import_batches', return_value=iter([b'good', b'bad'])):
-            with self.assertRaisesRegex(ValueError, 'invalid converted payload'):
-                runtime.migrate_evidence(self.records())
-        self.assertEqual(calls, [(['--validate-core-records'], b'good'),
-                                 (['--validate-core-records'], b'bad')])
+            native.assert_not_called()
 
 class AgentHistoryPreflightTests(unittest.TestCase):
     def test_rejected_artifact_prevents_agent_writes(self):
@@ -389,3 +405,113 @@ class AgentHistoryPreflightTests(unittest.TestCase):
             result=run(runtime,Path(directory))
         self.assertFalse(result['complete']);self.assertEqual(result['state'],'agent_source_precheck_failed')
         self.assertEqual(runtime.sent,[])
+
+class AgentArtifactRecoveryTests(unittest.TestCase):
+    def native(self, flags, data):
+        if flags == ['--validate-core-records']:
+            return b'{"verified":true}'
+        answers = []
+        for line in data.splitlines():
+            artifact = strict_loads(line)['payload']
+            if 'token=secret' in artifact['content']['text']:
+                answers.append({'accepted':False, 'reason':'artifact_native_invalid'})
+            else:
+                answers.append({'accepted':True, 'canonical_payload':artifact})
+        return ''.join(canonical(a)+'\n' for a in answers).encode()
+
+    def test_one_rejected_content_is_lossy_converted_without_blocking_audit(self):
+        from test_agent_history import fixture
+        from agent_history import decode_messages
+        import msgpack
+        records = fixture()
+        blob = records[-1]['row']
+        messages = decode_messages(blob['blob_hex'])
+        messages[1]['content'] = 'Original response token=secret'
+        blob['blob_hex'] = msgpack.packb(messages, use_bin_type=True).hex()
+        class Runtime(FakeRuntime):
+            source = object()
+            prepare_agent_history = DeploymentRuntime.prepare_agent_history
+            def migrate_agent_history(self, prepared):
+                self.prepared = prepared
+                return {'verified':True,'source_count':1,'source_map':prepared['plan']['source_map'],
+                        'field_defaults':prepared['plan']['defaults'],'artifacts':{'verified':True}}
+        runtime = Runtime(); runtime.rows = runtime.rows[:1]; runtime._native = self.native
+        with tempfile.TemporaryDirectory() as directory, patch.dict('os.environ', {'BKN_HISTORY_AGENT_BEFORE':'2026-10-01T00:00:00Z'}), patch('agent_history.export_agent_source', return_value=([{**r, 'source_id':'bkn-agent'} for r in records],[])):
+            result = run(runtime, Path(directory))
+            self.assertTrue(result['complete'])
+            self.assertEqual(len(runtime.sent), 1)
+            artifacts = runtime.prepared['plan']['artifacts']
+            self.assertEqual(len(artifacts), 4)
+            self.assertFalse(any('token=secret' in a['content']['text'] for a in artifacts))
+            self.assertTrue(any(d.get('reason') == 'artifact_native_invalid' and d.get('artifact_id') for d in runtime.prepared['plan']['defaults']))
+            self.assertIn(blob['blob_hex'], next((Path(directory) / runtime.discover()['instance']).glob('agent-source-*/records.jsonl')).read_text())
+
+    def test_artifact_batches_include_metadata_and_keep_every_identity(self):
+        from run_upgrade import artifact_import_batches
+        artifacts = [{'artifact_id':str(i),'content':{'text':'物料'*30}} for i in range(9)]
+        settings = {'tls_verify':True,'ca_pem':'CA'*30}
+        batches = list(artifact_import_batches(artifacts, settings, max_bytes=650, max_records=3))
+        self.assertGreater(len(batches), 1)
+        bodies = [strict_loads(b) for b in batches]
+        self.assertTrue(all(len(b) <= 650 for b in batches))
+        self.assertTrue(all(v['tls_verify'] and v['ca_pem'] == settings['ca_pem'] for v in bodies))
+        self.assertEqual([a['artifact_id'] for v in bodies for a in v['artifacts']], [str(i) for i in range(9)])
+
+    def test_more_than_native_64mib_limit_is_split_without_dropping_artifacts(self):
+        from run_upgrade import artifact_import_batches
+        artifacts = [{'artifact_id':str(i),'content':{'text':'x'*700000}} for i in range(100)]
+        batches = list(artifact_import_batches(artifacts, {'tls_verify':True}))
+        self.assertGreater(sum(map(len, batches)), 64 << 20)
+        self.assertTrue(all(len(b) <= 8 << 20 for b in batches))
+        self.assertEqual(sum(len(strict_loads(b)['artifacts']) for b in batches), 100)
+
+    def test_oversized_content_is_converted_before_native_line_validation(self):
+        from test_agent_history import fixture
+        from agent_history import decode_messages
+        import msgpack
+        records = fixture(); blob = records[-1]['row']
+        messages = decode_messages(blob['blob_hex']); messages[1]['content'] = 'x'*9000
+        blob['blob_hex'] = msgpack.packb(messages, use_bin_type=True).hex()
+        runtime = object.__new__(DeploymentRuntime); runtime._native = self.native
+        with patch('run_upgrade.ARTIFACT_BATCH_BYTES', 8192):
+            prepared = runtime.prepare_agent_history(records, '2026-10-01T00:00:00Z')
+        self.assertEqual(len(prepared['plan']['artifacts']), 4)
+        self.assertTrue(any(d.get('reason') == 'artifact_transport_limit' for d in prepared['plan']['defaults']))
+        self.assertTrue(all(len(canonical(a).encode()) < 8192 for a in prepared['plan']['artifacts']))
+
+    def test_native_import_reads_back_each_bounded_batch_and_repeat(self):
+        from contextlib import nullcontext
+        runtime = object.__new__(DeploymentRuntime)
+        runtime._tls_options = lambda _: {'verify_tls':True}
+        runtime._opensearch_connection = lambda: nullcontext(('http://search',False))
+        runtime.opensearch_evidence_index = 'evidence'
+        runtime.opensearch_username = runtime.opensearch_password = None
+        artifacts = [{'artifact_id':str(i),'content':{'text':'original'}} for i in range(205)]
+        calls = []
+        def native(flags,data):
+            calls.append((flags,data))
+            count = len(strict_loads(data)['artifacts'])
+            return canonical({'verified':True,'verified_count':count,'created':0,'already_verified':count}).encode()
+        runtime._native = native
+        plan = {'artifacts':artifacts,'core':{k:[] for k in __import__('native_core').CORE_FIELDS},'source_map':[], 'defaults':[]}
+        with patch('run_upgrade.OpenSearchHistoryWriter') as writer:
+            writer.return_value.publish_documents.return_value = {'conflict':0}
+            answer = runtime.migrate_agent_history({'plan':plan,'batches':[],'items':[]})
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(answer['artifacts']['already_verified'], 205)
+        self.assertEqual(answer['artifacts']['created'], 0)
+
+
+class RetainedReportTests(unittest.TestCase):
+    def test_completed_rows_still_report_unavailable_source_content(self):
+        from run_upgrade import _report
+        with tempfile.TemporaryDirectory() as tmp:
+            result = dict(state='completed', source_count=10, target_verified_count=10,
+                          already_verified_count=0, retained_count=0,
+                          original_history={'original_question_refs_without_content': 3,
+                                            'original_answer_refs_without_content': 2})
+            _report(Path(tmp), result, {})
+            report = (Path(tmp) / 'report.md').read_text()
+            self.assertIn('Original question references without recoverable body: 3', report)
+            self.assertIn('Original answer references without recoverable body: 2', report)
+            self.assertNotIn('None reported.', report)

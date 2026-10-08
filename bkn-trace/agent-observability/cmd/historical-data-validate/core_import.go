@@ -22,15 +22,20 @@ import (
 )
 
 type coreImportPlan struct {
-	Conversations []sessionvo.Conversation      `json:"conversations"`
-	Interactions  []sessionvo.Interaction       `json:"interactions"`
-	Operations    []sessionvo.Operation         `json:"operations"`
-	Receipts      []sessionvo.Receipt           `json:"receipts"`
-	CallFacts     []sessionvo.OperationCallFact `json:"call_facts"`
+	Conversations      []sessionvo.Conversation      `json:"conversations"`
+	Interactions       []sessionvo.Interaction       `json:"interactions"`
+	Operations         []sessionvo.Operation         `json:"operations"`
+	Receipts           []sessionvo.Receipt           `json:"receipts"`
+	CallFacts          []sessionvo.OperationCallFact `json:"call_facts"`
+	PreviousReceipts   []sessionvo.Receipt           `json:"previous_receipts,omitempty"`
+	PreviousCallFacts  []sessionvo.OperationCallFact `json:"previous_call_facts,omitempty"`
+	IdempotencyRecords []coreIdempotencyRecord       `json:"idempotency_records,omitempty"`
+	AssemblyRevisions  []sessionvo.AssemblyRevision  `json:"assembly_revisions,omitempty"`
 }
 type coreImportResult struct {
 	Verified        bool `json:"verified"`
 	Created         int  `json:"created"`
+	Updated         int  `json:"updated"`
 	AlreadyVerified int  `json:"already_verified"`
 }
 
@@ -102,7 +107,8 @@ func validateCorePlan(p coreImportPlan) error {
 	receipts := map[string]sessionvo.Receipt{}
 	validID := func(id string) bool { return id != "" && len(id) <= 64 }
 	for _, v := range p.Conversations {
-		if !validID(v.ID) || convs[v.ID].ID != "" || v.Owner.EffectiveSubjectID == "" || v.Owner.ApplicationPrincipalID == "" || v.CreatedAt.IsZero() || v.UpdatedAt.Before(v.CreatedAt) || v.Status != sessionvo.ConversationClosed {
+		validStatus := v.Status == sessionvo.ConversationActive || v.Status == sessionvo.ConversationClosed || v.Status == sessionvo.ConversationExpired
+		if !validID(v.ID) || convs[v.ID].ID != "" || v.Owner.EffectiveSubjectID == "" || v.Owner.ApplicationPrincipalID == "" || v.CreatedAt.IsZero() || v.UpdatedAt.Before(v.CreatedAt) || !validStatus {
 			return fmt.Errorf("invalid converted conversation")
 		}
 		convs[v.ID] = v
@@ -123,7 +129,9 @@ func validateCorePlan(p coreImportPlan) error {
 	for _, v := range p.Receipts {
 		o := ops[v.OperationID]
 		c := convs[v.ConversationID]
-		if !validID(v.ID) || receipts[v.ID].ID != "" || o.ID == "" || o.InteractionID != v.InteractionID || o.ConversationID != v.ConversationID || !v.Owner.Equal(c.Owner) || v.RequestID == "" || v.TraceID == "" || v.Attempt == 0 || v.TerminalAt == nil || (v.Status != sessionvo.ReceiptCompleted && v.Status != sessionvo.ReceiptFailed) {
+		pending := v.Status == sessionvo.ReceiptPending
+		terminal := v.Status == sessionvo.ReceiptCompleted || v.Status == sessionvo.ReceiptFailed
+		if !validID(v.ID) || receipts[v.ID].ID != "" || o.ID == "" || o.InteractionID != v.InteractionID || o.ConversationID != v.ConversationID || !v.Owner.Equal(c.Owner) || v.Attempt == 0 || (!pending && !terminal) || (terminal && v.TerminalAt == nil) || (pending && v.TerminalAt != nil) {
 			return fmt.Errorf("invalid converted receipt")
 		}
 		for _, ref := range v.BusinessRefs {
@@ -137,16 +145,37 @@ func validateCorePlan(p coreImportPlan) error {
 	for _, v := range p.CallFacts {
 		r := receipts[v.ReceiptID]
 		key := fmt.Sprintf("%s:%d", v.OperationID, v.Attempt)
-		if seen[key] || r.ID == "" || r.OperationID != v.OperationID || r.Attempt != v.Attempt || r.InteractionID != v.InteractionID || r.ConversationID != v.ConversationID || r.RequestID != v.RequestID || r.TraceID != v.TraceID || !v.Protocol.IsValid() || v.FinishedAt == nil {
+		if seen[key] || r.ID == "" || r.OperationID != v.OperationID || r.Attempt != v.Attempt || r.InteractionID != v.InteractionID || r.ConversationID != v.ConversationID || r.RequestID != v.RequestID || r.TraceID != v.TraceID || !v.Protocol.IsValid() || (r.Status != sessionvo.ReceiptPending && v.FinishedAt == nil) {
 			return fmt.Errorf("invalid converted call fact")
 		}
 		seen[key] = true
+	}
+	for _, v := range p.IdempotencyRecords {
+		conversationID := v.ResourceID
+		if v.ResourceType == "interaction" {
+			conversationID = ints[v.ResourceID].ConversationID
+		}
+		c := convs[conversationID]
+		if v.Scope == "" || v.IdempotencyKey == "" || v.CreatedAt.IsZero() || c.ID == "" || !v.Owner.Equal(c.Owner) {
+			return fmt.Errorf("invalid historical idempotency record")
+		}
+	}
+	for _, v := range p.AssemblyRevisions {
+		if !validID(v.ID) || ints[v.InteractionID].ID == "" || v.RevisionNo == 0 || v.CreatedAt.IsZero() {
+			return fmt.Errorf("invalid historical assembly revision")
+		}
 	}
 	return nil
 }
 func sameCore(left, right any) bool {
 	// JSON excludes native store's derived integrity metadata. Decode to normalize
 	// JSON object key ordering and time locations without weakening field checks.
+	if v, ok := left.(sessionvo.Interaction); ok {
+		left = interactionRecord(v)
+	}
+	if v, ok := right.(sessionvo.Interaction); ok {
+		right = interactionRecord(v)
+	}
 	a, _ := json.Marshal(left)
 	b, _ := json.Marshal(right)
 	var x, y any
@@ -167,6 +196,7 @@ func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImport
 	// by interaction while keeping each operation/receipt/call together.
 	if len(p.Interactions) > 100 {
 		countedConversations := map[string]bool{}
+		countedIdempotency := map[string]bool{}
 		for start := 0; start < len(p.Interactions); start += 100 {
 			end := start + 100
 			if end > len(p.Interactions) {
@@ -198,11 +228,32 @@ func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImport
 					chunk.CallFacts = append(chunk.CallFacts, v)
 				}
 			}
+			for _, v := range p.PreviousReceipts {
+				if ids[v.InteractionID] {
+					chunk.PreviousReceipts = append(chunk.PreviousReceipts, v)
+				}
+			}
+			for _, v := range p.PreviousCallFacts {
+				if ids[v.InteractionID] {
+					chunk.PreviousCallFacts = append(chunk.PreviousCallFacts, v)
+				}
+			}
+			for _, v := range p.IdempotencyRecords {
+				if (v.ResourceType == "interaction" && ids[v.ResourceID]) || (v.ResourceType == "conversation" && convs[v.ResourceID]) {
+					chunk.IdempotencyRecords = append(chunk.IdempotencyRecords, v)
+				}
+			}
+			for _, v := range p.AssemblyRevisions {
+				if ids[v.InteractionID] {
+					chunk.AssemblyRevisions = append(chunk.AssemblyRevisions, v)
+				}
+			}
 			part, err := importCorePlan(ctx, store, chunk)
 			if err != nil {
 				return result, err
 			}
 			result.Created += part.Created
+			result.Updated += part.Updated
 			result.AlreadyVerified += part.AlreadyVerified
 			for _, v := range chunk.Conversations {
 				if countedConversations[v.ID] {
@@ -210,15 +261,57 @@ func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImport
 				}
 				countedConversations[v.ID] = true
 			}
+			for _, v := range chunk.IdempotencyRecords {
+				key := v.Scope + "\x00" + v.Owner.Key() + "\x00" + v.ExternalConversationKey + "\x00" + v.IdempotencyKey
+				if countedIdempotency[key] {
+					result.AlreadyVerified--
+				}
+				countedIdempotency[key] = true
+			}
+		}
+		// Empty historical conversations are records too. They must not vanish
+		// merely because transaction batching follows interaction dependencies.
+		empty := coreImportPlan{}
+		for _, v := range p.Conversations {
+			if !countedConversations[v.ID] {
+				empty.Conversations = append(empty.Conversations, v)
+			}
+		}
+		for _, v := range p.IdempotencyRecords {
+			if v.ResourceType == "conversation" && !countedConversations[v.ResourceID] {
+				empty.IdempotencyRecords = append(empty.IdempotencyRecords, v)
+			}
+		}
+		if len(empty.Conversations) > 0 {
+			part, err := importCorePlan(ctx, store, empty)
+			if err != nil {
+				return result, err
+			}
+			result.Created += part.Created
+			result.Updated += part.Updated
+			result.AlreadyVerified += part.AlreadyVerified
 		}
 		result.Verified = true
 		return result, nil
 	}
+	previousReceipts := map[string]sessionvo.Receipt{}
+	for _, v := range p.PreviousReceipts {
+		previousReceipts[v.ID] = v
+	}
+	previousCalls := map[string]sessionvo.OperationCallFact{}
+	for _, v := range p.PreviousCallFacts {
+		previousCalls[coreCallKey(v)] = v
+	}
 	apply := func(tx isessionstore.Transaction, write bool) error {
-		check := func(found bool, old, next any, save func()) error {
+		check := func(found bool, old, next, previous any, save func()) error {
 			if found {
 				if !sameCore(old, next) {
-					return fmt.Errorf("core target content conflict")
+					if !write || previous == nil || !sameCore(old, previous) {
+						return fmt.Errorf("core target content conflict")
+					}
+					save()
+					result.Updated++
+					return nil
 				}
 				if write {
 					result.AlreadyVerified++
@@ -234,31 +327,62 @@ func importCorePlan(ctx context.Context, store isessionstore.Store, p coreImport
 		}
 		for _, v := range p.Conversations {
 			old, found := tx.PeekConversation(v.ID)
-			if err := check(found, old, v, func() { tx.SaveConversation(v) }); err != nil {
+			if err := check(found, old, v, nil, func() { tx.SaveConversation(v) }); err != nil {
 				return err
 			}
 		}
 		for _, v := range p.Interactions {
 			old, found := tx.PeekInteraction(v.ID)
-			if err := check(found, old, v, func() { tx.SaveInteraction(v) }); err != nil {
+			if err := check(found, old, v, nil, func() { tx.SaveInteraction(v) }); err != nil {
 				return err
 			}
 		}
 		for _, v := range p.Operations {
 			old, found := tx.PeekOperation(v.ID)
-			if err := check(found, old, v, func() { tx.SaveOperation(v) }); err != nil {
+			if err := check(found, old, v, nil, func() { tx.SaveOperation(v) }); err != nil {
 				return err
 			}
 		}
 		for _, v := range p.Receipts {
-			old, found := tx.PeekReceipt(v.ID)
-			if err := check(found, old, v, func() { tx.SaveReceipt(v) }); err != nil {
+			old, found := tx.FindReceipt(v.ID)
+			var previous any
+			if prior, exists := previousReceipts[v.ID]; exists {
+				previous = prior
+			}
+			if err := check(found, old, v, previous, func() { tx.SaveReceipt(v) }); err != nil {
 				return err
 			}
 		}
 		for _, v := range p.CallFacts {
 			old, found := tx.FindOperationCallFact(v.OperationID, v.Attempt)
-			if err := check(found, old, v, func() { tx.SaveOperationCallFact(v) }); err != nil {
+			var previous any
+			if prior, exists := previousCalls[coreCallKey(v)]; exists {
+				previous = prior
+			}
+			// MariaDB currently preserves parent_operation_id on existing-row
+			// updates. The strict readback below must reject an unapplied parent
+			// repair; a successful memory-store test is not database qualification.
+			if err := check(found, old, v, previous, func() { tx.SaveOperationCallFact(v) }); err != nil {
+				return err
+			}
+		}
+		for _, wire := range p.IdempotencyRecords {
+			v := wire.native()
+			old, found := tx.FindIdempotency(v.Scope, v.Owner, v.ExternalConversationKey, v.IdempotencyKey)
+			if err := check(found, old, v, nil, func() { tx.SaveIdempotency(v) }); err != nil {
+				return err
+			}
+		}
+		for _, v := range p.AssemblyRevisions {
+			var old sessionvo.AssemblyRevision
+			found := false
+			for _, prior := range tx.ListAssemblyRevisions(v.InteractionID) {
+				if prior.ID == v.ID {
+					old, found = prior, true
+					break
+				}
+			}
+			if err := check(found, old, v, nil, func() { tx.SaveAssemblyRevision(v) }); err != nil {
 				return err
 			}
 		}
@@ -281,10 +405,18 @@ func prepareCorePlan(p *coreImportPlan) error {
 		return err
 	}
 	for i := range p.Interactions {
-		p.Interactions[i].StartIdempotencyKey = p.Interactions[i].ID
+		if p.Interactions[i].StartIdempotencyKey == "" {
+			p.Interactions[i].StartIdempotencyKey = p.Interactions[i].ID
+		}
 	}
+	calls := make([]*sessionvo.OperationCallFact, 0, len(p.CallFacts)+len(p.PreviousCallFacts))
 	for i := range p.CallFacts {
-		v := &p.CallFacts[i]
+		calls = append(calls, &p.CallFacts[i])
+	}
+	for i := range p.PreviousCallFacts {
+		calls = append(calls, &p.PreviousCallFacts[i])
+	}
+	for _, v := range calls {
 		var err error
 		v.Input, err = sessionvo.NormalizePayloadEnvelope(v.Input)
 		if err != nil {
@@ -298,6 +430,49 @@ func prepareCorePlan(p *coreImportPlan) error {
 				}
 				*payload = normalized
 			}
+		}
+	}
+	return validateCorePriors(*p)
+}
+
+func coreCallKey(v sessionvo.OperationCallFact) string {
+	return fmt.Sprintf("%s:%d", v.OperationID, v.Attempt)
+}
+
+// Prior records are exact frozen converter output, never a general overwrite
+// allowance. Only TraceID and a missing call parent may differ from the target.
+func validateCorePriors(p coreImportPlan) error {
+	receipts := map[string]sessionvo.Receipt{}
+	for _, v := range p.Receipts {
+		receipts[v.ID] = v
+	}
+	seen := map[string]bool{}
+	for _, prior := range p.PreviousReceipts {
+		next, found := receipts[prior.ID]
+		if !found || seen[prior.ID] || prior.TraceID == "" {
+			return fmt.Errorf("invalid converted prior receipt")
+		}
+		seen[prior.ID] = true
+		prior.TraceID = next.TraceID
+		if !sameCore(prior, next) {
+			return fmt.Errorf("invalid converted prior receipt")
+		}
+	}
+	calls := map[string]sessionvo.OperationCallFact{}
+	for _, v := range p.CallFacts {
+		calls[coreCallKey(v)] = v
+	}
+	seen = map[string]bool{}
+	for _, prior := range p.PreviousCallFacts {
+		key := coreCallKey(prior)
+		next, found := calls[key]
+		if !found || seen[key] || prior.TraceID == "" || (prior.ParentOperationID != "" && prior.ParentOperationID != next.ParentOperationID) {
+			return fmt.Errorf("invalid converted prior call fact")
+		}
+		seen[key] = true
+		prior.TraceID, prior.ParentOperationID = next.TraceID, next.ParentOperationID
+		if !sameCore(prior, next) {
+			return fmt.Errorf("invalid converted prior call fact")
 		}
 	}
 	return nil

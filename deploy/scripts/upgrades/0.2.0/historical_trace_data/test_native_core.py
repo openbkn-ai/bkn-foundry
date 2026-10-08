@@ -4,7 +4,7 @@ from test_native_evidence import record
 from native_core import plan_core
 
 class NativeCoreConversionTests(unittest.TestCase):
-    def test_two_requests_split_native_trace_contexts_and_have_usable_receipts(self):
+    def test_two_requests_preserve_native_trace_identity_and_have_usable_receipts(self):
         first, second = record('one'), record('two')
         for r, req in ((first,'req_1'),(second,'req_2')):
             e=r['row']['envelope']['event'];e['request_id']=req;e['conversation_id']='conv_'+req
@@ -14,7 +14,7 @@ class NativeCoreConversionTests(unittest.TestCase):
         original=copy.deepcopy([first,second])
         plan=plan_core([first,second],{'u1':'Alice'})
         self.assertEqual(len(plan['receipts']),2)
-        self.assertEqual(len({r['trace_id'] for r in plan['receipts']}),2)
+        self.assertEqual({r['trace_id'] for r in plan['receipts']},{'a'*32})
         self.assertEqual({m['source']['trace_id'] for m in plan['source_map']},{'a'*32})
         self.assertEqual({r['request_id'] for r in plan['receipts']},{'req_1','req_2'})
         self.assertEqual(len({r['interaction_id'] for r in plan['receipts']}),2)
@@ -27,7 +27,7 @@ class NativeCoreConversionTests(unittest.TestCase):
         for key in ('conversations','interactions','operations','receipts','call_facts'):
             self.assertEqual(plan[key],reversed_plan[key])
 
-    def test_every_converted_request_is_an_aggregate_root(self):
+    def test_every_converted_request_remains_in_shared_trace_events(self):
         from native_evidence import plan_aggregates
         from datetime import datetime, timezone
         rows = [record('one'), record('two')]
@@ -38,10 +38,11 @@ class NativeCoreConversionTests(unittest.TestCase):
         plan=plan_core(rows)
         aggregates,rejected=plan_aggregates(plan['records'],datetime.now(timezone.utc))
         self.assertEqual(rejected,{})
-        roots={item['document']['bkn.request.id']:item['document']['trace_id'] for item in aggregates}
-        self.assertEqual(set(roots),{'request_0','request_1'})
+        self.assertEqual(len(aggregates), 1)
+        events = aggregates[0]['document']['events']
+        self.assertEqual({event['bkn.request.id'] for event in events}, {'request_0', 'request_1'})
         for receipt in plan['receipts']:
-            self.assertEqual(roots[receipt['request_id']],receipt['trace_id'])
+            self.assertEqual(aggregates[0]['document']['trace_id'], receipt['trace_id'])
 
     def test_call_facts_preserve_span_identity_from_inner_evidence_event(self):
         source = record('span-linked')
@@ -59,6 +60,48 @@ class NativeCoreConversionTests(unittest.TestCase):
         self.assertEqual(len(plan['receipts']),2)
         self.assertEqual({r['trace_id'] for r in plan['receipts']},{'a'*32,'b'*32})
         self.assertEqual(len(plan['operations']),2)
+
+    def test_distinct_requests_preserve_original_trace_and_span_connections(self):
+        from native_evidence import plan_aggregates
+        from datetime import datetime, timezone
+        rows = [record('one'), record('two')]
+        for index, source in enumerate(rows):
+            outer = source['row']['envelope']['event']
+            outer.update(request_id='req_' + str(index), conversation_id='conv_' + str(index),
+                         interaction_id='int_' + str(index), operation_id='op_' + str(index),
+                         span_id='1234567890abcdef')
+            outer['envelope']['event'].update({'bkn.request.id': outer['request_id'],
+                                               'span_id': outer['span_id']})
+        plan = plan_core(rows)
+        self.assertEqual({receipt['trace_id'] for receipt in plan['receipts']}, {'a' * 32})
+        self.assertEqual({fact['span_id'] for fact in plan['call_facts']}, {'1234567890abcdef'})
+        aggregates, rejected = plan_aggregates(plan['records'], datetime.now(timezone.utc), receipts=plan['receipts'])
+        self.assertEqual(rejected, {})
+        self.assertEqual(len(aggregates), 1)
+        events = aggregates[0]['document']['events']
+        self.assertEqual({event['bkn.request.id'] for event in events}, {'req_0', 'req_1'})
+        self.assertEqual({event['trace_id'] for event in events}, {'a' * 32})
+
+    def test_external_parent_operation_reference_is_preserved(self):
+        source = record('child')
+        outer = source['row']['envelope']['event']
+        outer.update(conversation_id='c', interaction_id='i', operation_id='child')
+        outer['envelope']['event']['parent_operation_id'] = 'original_mcp_parent'
+        plan = plan_core([source])
+        self.assertEqual(plan['call_facts'][0].get('parent_operation_id'), 'original_mcp_parent')
+        self.assertEqual(plan['source_map'][0]['source']['parent_operation_id'], 'original_mcp_parent')
+
+    def test_parent_reference_uses_the_same_remapping_as_parent_operation(self):
+        parent, child = record('parent'), record('child')
+        long_id = 'op_' + 'f' * 64
+        for source, oid in ((parent, long_id), (child, 'child')):
+            source['row']['envelope']['event'].update(conversation_id='c', interaction_id='i', operation_id=oid)
+        child['row']['envelope']['event']['envelope']['event']['parent_operation_id'] = long_id
+        plan = plan_core([parent, child])
+        mapped_parent = plan['source_map'][0]['target']['operation_id']
+        fact = next(f for f in plan['call_facts'] if f['operation_id'] == 'child')
+        self.assertNotEqual(mapped_parent, long_id)
+        self.assertEqual(fact.get('parent_operation_id'), mapped_parent)
 
 class CoreTransportBatchTests(unittest.TestCase):
     def plan(self, count=3):

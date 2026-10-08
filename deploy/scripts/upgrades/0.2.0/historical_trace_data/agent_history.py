@@ -22,6 +22,53 @@ def _task_value(value):
         return value
 
 
+def extract_business_inputs(records, issues=None):
+    """Extract each retained attribution input independently, offline.
+
+    Source task identity locates the snapshot only. It does not establish a
+    business conversation or round. Question/answer text and equal call sets
+    never merge distinct task snapshots or establish execution relationships.
+    """
+    issues = issues if issues is not None else []
+    result = []
+    for record in records:
+        if record["kind"] != "agent_task":
+            continue
+        task = record["row"]
+        if task.get("f_agent_id") != "business_provenance_claim_attribution":
+            continue
+        inp = _task_value(task.get("f_input"))
+        message = inp.get("message", "") if isinstance(inp, dict) else ""
+        if not isinstance(message, str) or "INPUT_JSON:" not in message:
+            continue
+        try:
+            body = json.loads(message.split("INPUT_JSON:", 1)[1])
+        except (ValueError, TypeError):
+            issues.append({"source_task_id": task["f_task_id"], "reason": "business_input_invalid_json"})
+            continue
+        if (not isinstance(body, dict)
+                or not isinstance(body.get("contract"), str)
+                or not body["contract"].startswith(("claim-attribution/", "business-provenance-attribution/"))
+                or not isinstance(body.get("question"), str)
+                or not isinstance(body.get("answer"), str)):
+            issues.append({"source_task_id": task["f_task_id"], "reason": "business_input_invalid_contract"})
+            continue
+        rail = body.get("time_rail") or []
+        catalog = body.get("operation_catalog") or []
+        evidence = body.get("evidence_catalog") or {}
+        facts = evidence.get("facts", []) if isinstance(evidence, dict) else None
+        if (not isinstance(rail, list) or not isinstance(catalog, list)
+                or not isinstance(facts, list)
+                or any(not isinstance(item, dict) for item in rail + catalog + facts)):
+            issues.append({"source_task_id": task["f_task_id"], "reason": "business_input_invalid_catalog"})
+            continue
+        value = copy.deepcopy(body)
+        value.update(account_id=task["f_account_id"], source_task_ids=[task["f_task_id"]],
+                     business_input_id=_id("business", ("agent-task-input", task["f_task_id"])))
+        result.append(value)
+    return sorted(result, key=lambda value: value["business_input_id"])
+
+
 def _stamp(value):
     return _time(value)
 

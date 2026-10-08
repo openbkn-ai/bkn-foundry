@@ -11,6 +11,7 @@ import tempfile
 import time
 import uuid
 import base64
+import copy
 from urllib.parse import urlparse
 
 from logs import convert_log
@@ -27,6 +28,28 @@ def _command(arguments, data=None):
     if process.returncode:
         raise ValueError("deployment_command_failed")
     return process.stdout
+
+
+ARTIFACT_BATCH_BYTES = 8 << 20
+ARTIFACT_BATCH_RECORDS = 100
+
+
+def artifact_import_batches(artifacts, settings, max_bytes=ARTIFACT_BATCH_BYTES,
+                            max_records=ARTIFACT_BATCH_RECORDS):
+    """Bound encoded UTF-8 plans, including transport metadata, below native limits."""
+    overhead = len(canonical({**settings, "artifacts": []}).encode())
+    batch, size = [], overhead
+    for artifact in artifacts:
+        encoded_size = len(canonical(artifact).encode())
+        if overhead + encoded_size > max_bytes:
+            raise ValueError("artifact_transport_limit")
+        if batch and (len(batch) >= max_records or size + 1 + encoded_size > max_bytes):
+            yield canonical({**settings, "artifacts": batch}).encode()
+            batch, size = [], overhead
+        size += encoded_size + bool(batch)
+        batch.append(artifact)
+    if batch:
+        yield canonical({**settings, "artifacts": batch}).encode()
 
 
 class DeploymentRuntime:
@@ -86,6 +109,13 @@ class DeploymentRuntime:
                    "-c", self.container, "--", getattr(self, "native_program", "/app/historical-data-validate")] + flags
         return _command(command, data)
 
+    def _native_ee_projection(self, data):
+        helper = os.environ.get("BKN_HISTORY_PROVENANCE_HELPER")
+        if helper:
+            return _command([helper], data)
+        return _command(["kubectl", "--context", self.context, "-n", "openbkn", "exec", "-i", self.pod,
+                         "-c", self.container, "--", "/app/historical-provenance-convert-ee"], data)
+
     def snapshot(self):
         return self.source.export()
 
@@ -125,51 +155,46 @@ class DeploymentRuntime:
             raise ValueError("native_core_projection_not_verified")
         return answer
 
+    def prepare_retained_history(self, state_root, deployment, records):
+        from retained_runtime import prepare_retained_history
+        before = os.environ.get("BKN_HISTORY_BEFORE") or os.environ.get("BKN_HISTORY_AGENT_BEFORE")
+        evidence = [record for record in records if record.get("kind") == "evidence"]
+        self.history_prepared = prepare_retained_history(self, state_root, deployment, evidence, before)
+        return self.history_prepared
+
+    def migrate_retained_history(self, prepared):
+        from retained_runtime import import_retained_history
+        return import_retained_history(self, prepared)
+
     def migrate_evidence(self, records):
-        plan = plan_core(records, getattr(self, "actor_names", {}))
-        items, rejected = plan_aggregates(plan["records"], datetime.now(timezone.utc), receipts=plan["receipts"])
-        prior_items, _ = plan_aggregates(plan["records"], datetime.now(timezone.utc))
-        prior_by_id = {item["_id"]: item["document"] for item in prior_items}
+        prepared = getattr(self, "history_prepared", None)
+        if prepared is None:
+            raise ValueError("original_core_source_not_prepared")
+        plan = prepared["plan"]
+        if len(records) != len(plan["mapped_records"]):
+            raise ValueError("original_evidence_source_count_mismatch")
+        terminal_receipts = [receipt for receipt in plan["core"]["receipts"]
+                             if receipt.get("trace_id") and receipt.get("terminal_at")]
+        items, rejected = plan_aggregates(plan["mapped_records"], datetime.now(timezone.utc),
+                                         receipts=terminal_receipts)
         if rejected:
             raise ValueError("native_evidence_conversion_incomplete")
-        # The original representation is only an optional exact update baseline.
-        # Owner/capacity conflicts already resolved in the target must not reject it.
-        originals, _ = plan_aggregates(records, datetime.now(timezone.utc))
-        original_by_id = {item["_id"]: item["document"] for item in originals}
-        for item in items:
-            item["previous_documents"] = [doc for doc in
-                (original_by_id.get(item["_id"]), prior_by_id.get(item["_id"])) if doc is not None]
-        # Finish all target and transport preflight before any Core write.
-        batches = list(core_import_batches(plan))
-        for data in batches:
-            answer = strict_loads(self._native(["--validate-core-records"], data))
-            if answer.get("verified") is not True:
-                raise ValueError("native_core_validation_not_verified")
-        created = 0
-        for data in batches:
-            answer = strict_loads(self._native(["--import-core-records"], data))
-            if answer.get("verified") is not True:
-                raise ValueError("native_core_import_not_verified")
-            created += answer["created"]
-        total = sum(len(plan[key]) for key in CORE_FIELDS)
-        core = {"verified": True, "created": created, "already_verified": total - created,
-                "batches": len(batches)}
         states = {}
         with self._opensearch_connection() as (endpoint, forwarded):
             writer = OpenSearchHistoryWriter(endpoint, self.opensearch_evidence_index,
                                              self.opensearch_username, self.opensearch_password,
                                              **self._tls_options(forwarded))
-            counts = writer.publish_documents(items, allow_update=True,
-                                               on_result=lambda key, state: states.update({key: state}))
-        results = [{"verified": False, "reason": rejected.get(i, "native_evidence_write_failed")} for i in range(len(records))]
+            counts = writer.publish_documents(items,
+                on_result=lambda key, state: states.update({key: state}))
+        results = [{"verified": False, "reason": "native_evidence_write_failed"} for _ in records]
         for item in items:
             state = states.get(item["_id"], "conflict")
             for ordinal in item["source_ordinals"]:
-                results[ordinal] = {"verified": state != "conflict", "reason": "native_aggregate_readback" if state != "conflict" else "native_evidence_content_conflict",
-                                    "target_id": item["_id"], "state": state,
-                                    "losses": [], "field_defaults": plan["source_map"][ordinal]["defaults"],
-                                    "identity_mapping": plan["source_map"][ordinal]}
-        return {"results": results, "counts": counts, "core_import": core}
+                results[ordinal] = {"verified": state != "conflict",
+                    "reason": "native_aggregate_readback" if state != "conflict" else "native_evidence_content_conflict",
+                    "target_id": item["_id"], "state": state, "losses": [],
+                    "identity_mapping": plan["mappings"][ordinal]}
+        return {"results": results, "counts": counts}
 
     def prepare_agent_history(self, records, before):
         from agent_history import plan_agent_history
@@ -178,11 +203,39 @@ class DeploymentRuntime:
         for data in batches:
             if strict_loads(self._native(["--validate-core-records"], data)).get("verified") is not True:
                 raise ValueError("native_agent_core_validation_failed")
-        data = "".join(canonical({"kind": "artifact", "payload": a}) + "\n" for a in plan["artifacts"]).encode()
-        answers = [strict_loads(line) for line in self._native([], data).splitlines()] if data else []
-        if len(answers) != len(plan["artifacts"]) or any(a.get("accepted") is not True for a in answers):
-            raise ValueError("native_agent_artifact_validation_failed")
-        plan["artifacts"] = [a["canonical_payload"] for a in answers]
+        sources = {iid: {"source_kind": m["source_kind"], "source_id": m["source_id"]}
+                   for m in plan["source_map"] for iid in m["interaction_ids"]}
+        def fallback(artifact, reason):
+            converted = copy.deepcopy(artifact)
+            content_hash = digest(canonical(artifact["content"]).encode())
+            converted["content"] = {"text": "Historical content omitted during upgrade; original content is preserved in the source snapshot (sha256:" + content_hash + ")."}
+            converted.pop("content_hash", None)
+            plan["defaults"].append({**sources[artifact["interaction_id"]],
+                "interaction_id": artifact["interaction_id"], "artifact_id": artifact["artifact_id"],
+                "artifact_type": artifact["artifact_type"], "reason": reason,
+                "conversion": "native_content_replaced", "source_content_sha256": content_hash})
+            return converted
+        # A single oversized line would also exceed the native NDJSON scanner.
+        artifacts = [fallback(a, "artifact_transport_limit") if len(canonical(a).encode()) > ARTIFACT_BATCH_BYTES - 4096 else a
+                     for a in plan["artifacts"]]
+        normalized = []
+        for encoded in artifact_import_batches(artifacts, {}):
+            batch = strict_loads(encoded)["artifacts"]
+            data = "".join(canonical({"kind": "artifact", "payload": a}) + "\n" for a in batch).encode()
+            answers = [strict_loads(line) for line in self._native([], data).splitlines()]
+            if len(answers) != len(batch):
+                raise ValueError("native_agent_artifact_validation_failed")
+            for artifact, answer in zip(batch, answers):
+                if answer.get("accepted") is not True:
+                    converted = fallback(artifact, answer.get("reason", "artifact_native_invalid"))
+                    retry = self._native([], (canonical({"kind": "artifact", "payload": converted}) + "\n").encode()).splitlines()
+                    if len(retry) != 1:
+                        raise ValueError("native_agent_artifact_fallback_invalid")
+                    answer = strict_loads(retry[0])
+                    if answer.get("accepted") is not True:
+                        raise ValueError("native_agent_artifact_fallback_invalid")
+                normalized.append(answer["canonical_payload"])
+        plan["artifacts"] = normalized
         items, rejected = plan_aggregates(plan["records"], datetime.now(timezone.utc), receipts=plan["core"]["receipts"])
         if rejected:
             raise ValueError("native_agent_evidence_validation_failed")
@@ -201,13 +254,20 @@ class DeploymentRuntime:
     def migrate_agent_history(self, prepared):
         plan = prepared["plan"]
         # Artifacts use the ordinary native normalizer and store, not a second document format.
-        settings = {"artifacts": plan["artifacts"], "tls_verify": self._tls_options(False)["verify_tls"]}
+        settings = {"tls_verify": self._tls_options(False)["verify_tls"]}
         ca_file = self._tls_options(False).get("ca_file")
         if ca_file:
             settings["ca_pem"] = Path(ca_file).read_text()
-        artifacts = strict_loads(self._native(["--import-artifact-records"], canonical(settings).encode()))
-        if artifacts.get("verified") is not True or artifacts.get("verified_count") != len(plan["artifacts"]):
-            raise ValueError("native_agent_artifact_readback_failed")
+        artifact_batches = list(artifact_import_batches(plan["artifacts"], settings))
+        artifacts = {"verified": True, "created": 0, "already_verified": 0, "verified_count": 0,
+                     "batches": len(artifact_batches)}
+        for encoded in artifact_batches:
+            answer = strict_loads(self._native(["--import-artifact-records"], encoded))
+            count = len(strict_loads(encoded)["artifacts"])
+            if answer.get("verified") is not True or answer.get("verified_count") != count:
+                raise ValueError("native_agent_artifact_readback_failed")
+            for key in ("created", "already_verified", "verified_count"):
+                artifacts[key] += answer[key]
         created = 0
         for data in prepared["batches"]:
             answer = strict_loads(self._native(["--import-core-records"], data))
@@ -270,8 +330,15 @@ class DeploymentRuntime:
                     process.wait(timeout=5)
 
     def _tls_options(self, forwarded):
+        configured = os.environ.get("BKN_HISTORY_OPENSEARCH_TLS_VERIFY")
+        verify_tls = (configured if configured is not None else ("false" if forwarded else "true")).lower() != "false"
+        if not verify_tls:
+            host = (urlparse(self.opensearch_endpoint).hostname or "").lower()
+            loopback = forwarded or host in {"localhost", "127.0.0.1", "::1"}
+            if not loopback:
+                raise ValueError("remote_tls_verification_required")
         return {
-            "verify_tls": os.environ.get("BKN_HISTORY_OPENSEARCH_TLS_VERIFY", "false" if forwarded else "true").lower() != "false",
+            "verify_tls": verify_tls,
             "ca_file": os.environ.get("BKN_HISTORY_OPENSEARCH_CA_FILE") or None,
         }
 
@@ -292,6 +359,8 @@ def _report(directory, result, reasons):
              "- Core projection documents verified: %d" % result.get("core_projection", {}).get("projected_count", 0),
              "- Core projection index: " + str(result.get("core_projection", {}).get("index_version", "not checked")),
              "- Native Evidence aggregate documents: " + canonical(result.get("evidence_documents", {})),
+             "- Original historical facts and content: " + canonical(result.get("original_history", {})),
+             "- Original historical import: " + canonical(result.get("original_history_import", {})),
              "- Agent history: " + canonical(result.get("agent_history", {})),
              "- Agent source tables: " + canonical(result.get("agent_source_tables", {})),
              "- Agent cutover (exclusive): " + str(result.get("agent_cutover_before", "not selected")),
@@ -300,7 +369,13 @@ def _report(directory, result, reasons):
              "", "## Conversion Losses and Execution Failures", ""]
     lines.extend("- %s: %d" % entry for entry in sorted(reasons.items()))
     if not reasons:
-        lines.append("- None reported.")
+        lines.append("- No failed or unconverted source rows.")
+    history = result.get("original_history", {})
+    lines.extend([
+        "- Original question references without recoverable body: %d" % history.get("original_question_refs_without_content", 0),
+        "- Original answer references without recoverable body: %d" % history.get("original_answer_refs_without_content", 0),
+        "- Missing source bodies remain unavailable; successful row conversion does not recover absent content.",
+    ])
     lines.extend(["", "## Target and Product Meaning", "",
                   "Audit records are confirmed in the native Audit ledger; Kafka acknowledgements do not count as persistence.",
                   "Evidence is converted into native aggregate documents and read back. Associated native Core records are converted and imported before rebuilding the ordinary Trace projection.",
@@ -350,8 +425,16 @@ def run(runtime, state_root):
                     actor_name = row.get("actor_name_snapshot") or row.get("actor_name") or row.get("user_name") or row.get("operator_name")
                     if actor_id and actor_name:
                         runtime.actor_names[str(actor_id)] = str(actor_name)
+        retained_prepared = None
+        if hasattr(runtime, "prepare_retained_history"):
+            phase = "original_history_preflight_failed"
+            retained_prepared = runtime.prepare_retained_history(state_root, deployment, records)
+            result["original_history"] = retained_prepared["plan"]["stats"]
+            result["agent_cutover_before"] = retained_prepared.get("source_manifest", {}).get("metadata", {}).get("before", "not selected")
+            original_count = retained_prepared["plan"]["stats"]["verified_source_count"]
+            result["source_count"] += original_count
         agent_prepared = None
-        if hasattr(runtime, "prepare_agent_history"):
+        if retained_prepared is None and hasattr(runtime, "prepare_agent_history"):
             from agent_history import export_agent_source
             from native_core import _time
             phase = "agent_source_precheck_failed"
@@ -431,6 +514,15 @@ def run(runtime, state_root):
                 item.update(payload=validation["canonical_payload"], target_id=validation["event_id"],
                             content_hash=validation["content_hash"],
                             payload_sha256=digest(canonical(validation["canonical_payload"]).encode()))
+        if retained_prepared is not None:
+            phase = "original_history_readback_failed"
+            restored = runtime.migrate_retained_history(retained_prepared)
+            result["original_history_import"] = restored
+            result["target_verified_count"] += restored["source_count"]
+            private_write(directory / "original-identity-mappings.json", canonical(retained_prepared["plan"]["mappings"]).encode())
+            private_write(directory / "original-content-issues.json", canonical(retained_prepared["plan"]["issues"]).encode())
+            private_write(directory / "thread-identity-mappings.json", canonical(retained_prepared["plan"]["thread_mappings"]).encode())
+            private_write(directory / "thread-field-defaults.json", canonical(retained_prepared["plan"]["thread_defaults"]).encode())
         for kind, records_for_writer in delegated.items():
             if not records_for_writer:
                 continue
@@ -526,9 +618,11 @@ def run(runtime, state_root):
             result["agent_history"] = {k:v for k,v in agent_result.items() if k not in {"source_map", "field_defaults"}}
             result["target_verified_count"] += agent_result["source_count"]
             private_write(directory / "agent-field-defaults.json", canonical(agent_result["field_defaults"]).encode())
-            defaults_by_interaction = {d["interaction_id"]: d for d in agent_result["field_defaults"]}
+            defaults_by_interaction = {}
+            for default in agent_result["field_defaults"]:
+                defaults_by_interaction.setdefault(default["interaction_id"], []).append(default)
             for mapping in agent_result["source_map"]:
-                field_defaults = [defaults_by_interaction[i] for i in mapping["interaction_ids"] if i in defaults_by_interaction]
+                field_defaults = [d for i in mapping["interaction_ids"] for d in defaults_by_interaction.get(i, [])]
                 items.append({"kind": mapping["source_kind"], "source_id": mapping["source_id"],
                               "identity_mapping": mapping, "field_defaults": field_defaults, "disposition": "writer_verified",
                               "reason": "native_agent_core_artifact_evidence_readback"})
