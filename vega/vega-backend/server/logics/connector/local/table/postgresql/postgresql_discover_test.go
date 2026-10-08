@@ -9,6 +9,7 @@ package postgresql
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -413,7 +414,7 @@ func TestPostgresqlConnectorMetadataQueryCompatibility(t *testing.T) {
 }
 
 func TestPostgresqlConnectorCountRows(t *testing.T) {
-	for _, scenario := range []string{"empty", "count", "view", "empty view", "view error", "materialized view", "foreign table", "source error", "negative count", "nil metadata", "missing name", "missing schema", "outside scope"} {
+	for _, scenario := range []string{"quoted name", "empty", "count", "view", "empty view", "view error", "materialized view", "foreign table", "source error", "negative count", "nil metadata", "missing name", "missing schema", "outside scope"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
@@ -421,6 +422,8 @@ func TestPostgresqlConnectorCountRows(t *testing.T) {
 			connector := &PostgresqlConnector{db: db, connected: true, config: &postgresqlConfig{Database: "appdb", Schemas: []string{"app"}}}
 			table := &interfaces.TableMeta{Schema: "app", Name: "orders"}
 			switch scenario {
+			case "quoted name":
+				table.Name = `ord"ers`
 			case "nil metadata":
 				table = nil
 			case "missing name":
@@ -438,7 +441,11 @@ func TestPostgresqlConnectorCountRows(t *testing.T) {
 			}
 			invalid := scenario == "nil metadata" || scenario == "missing name" || scenario == "missing schema"
 			if !invalid && scenario != "outside scope" {
-				expect := mock.ExpectQuery(`SELECT COUNT\(\*\) FROM "app"."orders"`)
+				query := `SELECT COUNT(*) FROM "app"."orders"`
+				if scenario == "quoted name" {
+					query = `SELECT COUNT(*) FROM "app"."ord""ers"`
+				}
+				expect := mock.ExpectQuery(regexp.QuoteMeta(query))
 				if scenario == "source error" || scenario == "view error" {
 					expect.WillReturnError(errors.New("source failed"))
 				} else {

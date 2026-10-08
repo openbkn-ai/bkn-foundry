@@ -94,9 +94,9 @@ type Resource struct {
 
 	// 规模信息：nil 表示当前资源无法提供该统计值，序列化时省略。
 	ColumnCount       *int   `json:"column_count,omitempty"`        // Number of schema_definition fields
-	RowCount          *int64 `json:"row_count,omitempty"`           // dataset 为当前本地索引文档数，其他资源使用源端精确值
+	RowCount          *int64 `json:"row_count,omitempty"`           // dataset 为当前本地索引文档数，其他资源使用独立列保存的精确值
 	EstimatedRowCount *int64 `json:"estimated_row_count,omitempty"` // Source metadata estimate when an exact count is unavailable
-	RowCountTime      *int64 `json:"row_count_time,omitempty"`
+	RowCountTime      *int64 `json:"row_count_time,omitempty"`      // 精确数量采集时间，独立列存储；未知时省略
 
 	// Fields specific to the logical view
 	LogicType       string `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite)

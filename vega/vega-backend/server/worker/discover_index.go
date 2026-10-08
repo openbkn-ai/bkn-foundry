@@ -305,10 +305,14 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 		sourceMetadata["original_name"] = idx.Name
 		sourceMetadata["original_description"] = idx.Description
 		observedAt := time.Now().UnixMilli()
-		properties := discoveredProperties(sourceMetadata["properties"], idx.Properties)
+		properties := idx.Properties
+		if properties == nil {
+			properties = map[string]any{}
+		}
+
 		if exactCount != nil {
-			properties["row_count"] = *exactCount
-			properties["row_count_time"] = observedAt
+			resource.RowCount = exactCount
+			resource.RowCountTime = &observedAt
 		}
 		sourceMetadata["properties"] = properties
 		sourceMetadata["mapping"] = idx.Mapping
@@ -327,7 +331,7 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 		expectedUpdateTime := resource.UpdateTime
 		resource.Updater = task.Creator
 		resource.UpdateTime = observedAt
-		if err := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime); err != nil {
+		if err := dtw.saveDiscoveredResource(ctx, resource, expectedUpdateTime, exactCount, observedAt); err != nil {
 			logger.Errorf("Failed to update metadata for index %s: %v", idx.Name, err)
 			return err
 		}
@@ -411,8 +415,7 @@ func (dtw *DiscoverTaskWorker) enrichResourceIndexRowCount(ctx context.Context,
 		err = fmt.Errorf("invalid negative row count")
 	}
 	if err == nil {
-		resource.Updater = task.Creator
-		err = dtw.rs.InternalUpdateRowCount(ctx, resource, count, time.Now().UnixMilli())
+		err = dtw.rs.InternalUpdateRowCount(ctx, nil, resource, count, time.Now().UnixMilli())
 	}
 	if err != nil {
 		if errors.Is(err, interfaces.ErrRowCountUnavailable) && task.ResourceID == "" {

@@ -697,3 +697,21 @@ func Test_CatalogRestHandler_DiscoverRejectsLogicalCatalog(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "discover only supports physical catalogs")
 	})
 }
+
+func TestCatalogDiscoverCountsLogicalCatalog(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+	engine, cs, dts := setupCatalogHandlerTest(t)
+	cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypeLogical, Enabled: true}, nil)
+	dts.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.CreateDiscoverTaskRequest) (string, error) {
+		require.Equal(t, interfaces.DiscoverStrategyCountOnly, req.Strategy)
+		require.Equal(t, "catalog-1", req.CatalogID)
+		return "task-1", nil
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/discover", strings.NewReader(`{"strategy":"count_only"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "task-1")
+}

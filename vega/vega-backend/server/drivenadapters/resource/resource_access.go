@@ -64,6 +64,8 @@ var resourceColumns = []string{
 	"f_status_message",
 	"f_last_discover_status",
 	"f_last_discover_time",
+	"f_row_count",
+	"f_row_count_time",
 	"f_schema",
 	"f_source_identifier",
 	"f_source_metadata",
@@ -131,6 +133,8 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 		&resource.StatusMessage,
 		&resource.LastDiscoverStatus,
 		&resource.LastDiscoverTime,
+		&resource.RowCount,
+		&resource.RowCountTime,
 		&resource.Schema,
 		&resource.SourceIdentifier,
 		&sourceMetadata,
@@ -257,6 +261,9 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			"f_status_message",
 			"f_last_discover_status",
 			"f_last_discover_time",
+			"f_row_count",
+			"f_row_count_time",
+
 			"f_schema",
 			"f_source_identifier",
 			"f_source_metadata",
@@ -290,6 +297,9 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			resource.StatusMessage,
 			resource.LastDiscoverStatus,
 			resource.LastDiscoverTime,
+			resource.RowCount,
+			resource.RowCountTime,
+
 			resource.Schema,
 			resource.SourceIdentifier,
 			string(sourceMetadataBytes),
@@ -645,6 +655,7 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 		Set("f_update_time", resource.UpdateTime).
 		Where(sq.Eq{"f_id": resource.ID}).
 		Where(sq.Eq{"f_update_time": expectedUpdateTime})
+
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		builder = builder.Set("f_source_metadata", string(sourceMetadataBytes))
 	}
@@ -1258,16 +1269,11 @@ func resourceListOrderByClause(sort, direction string) string {
 	}
 }
 
+// UpdateRowCount 仅更新统计，原子保留其他元数据及资源版本。
 func (ra *resourceAccess) UpdateRowCount(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource, expectedUpdateTime int64) (int64, error) {
-	metadata, err := sonic.MarshalString(resource.SourceMetadata)
-	if err != nil {
-		return 0, err
-	}
 	query, args, err := sq.Update(RESOURCE_TABLE_NAME).
-		Set("f_source_metadata", metadata).
-		Set("f_updater", resource.Updater.ID).
-		Set("f_updater_type", resource.Updater.Type).
-		Set("f_update_time", resource.UpdateTime).
+		Set("f_row_count", resource.RowCount).
+		Set("f_row_count_time", resource.RowCountTime).
 		Where(sq.Eq{
 			"f_id":          resource.ID,
 			"f_update_time": expectedUpdateTime,

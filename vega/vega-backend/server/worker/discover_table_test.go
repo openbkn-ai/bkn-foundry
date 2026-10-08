@@ -251,7 +251,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
 			assert.Equal(t, "人工资源说明", updated.Description)
 			assert.Positive(t, updated.LastDiscoverTime)
-			assert.Equal(t, map[string]any{"row_count": int64(42), "row_count_time": int64(100), "estimated_row_count": int64(99)}, updated.SourceMetadata["properties"])
+			assert.Equal(t, map[string]any{"estimated_row_count": int64(99)}, updated.SourceMetadata["properties"])
 			require.Len(t, updated.SchemaDefinition, 2)
 
 			existing := updated.SchemaDefinition[0]

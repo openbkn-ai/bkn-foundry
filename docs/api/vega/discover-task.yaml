@@ -208,7 +208,8 @@ paths:
         defaults to `full_sync`. This RPC-style nested endpoint represents an action on a
         catalog rather than creation of a top-level task.
 
-        Only catalogs with `type=physical` are supported. A logical catalog returns 400.
+        Metadata discovery requires `type=physical`. Logical catalogs accept only `count_only`,
+        which counts their logic views with the registered view service and skips unsupported categories.
       requestBody:
         required: false
         content:

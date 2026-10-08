@@ -8,6 +8,7 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -18,9 +19,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
 func TestDiscoverTaskWorkerSkipsCancelledTask(t *testing.T) {
@@ -429,7 +430,7 @@ func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 			worker := &DiscoverTaskWorker{rs: rs, cf: cf, dts: dts}
 			task := &interfaces.DiscoverTask{ID: "task", CatalogID: "cat", Creator: interfaces.AccountInfo{ID: "user"}, Strategy: interfaces.DiscoverStrategyCountOnly, DiscoverActions: &interfaces.DiscoverActions{Count: true}}
 			catalog := &interfaces.Catalog{ID: "cat", ConnectorType: "test", Type: interfaces.CatalogTypePhysical}
-			resources := []*interfaces.Resource{{ID: "ok", CatalogID: "cat", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "app.orders"}, {ID: "bad", CatalogID: "cat", Category: interfaces.ResourceCategoryTable}, {ID: "skip", Category: interfaces.ResourceCategoryLogicView}}
+			resources := []*interfaces.Resource{{ID: "ok", CatalogID: "cat", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "app.orders"}, {ID: "bad", CatalogID: "cat", Category: interfaces.ResourceCategoryTable}, {ID: "skip", Category: interfaces.ResourceCategoryFileset}}
 			ctx := context.Background()
 			if scenario == "earlier deadline" {
 				var cancel context.CancelFunc
@@ -499,7 +500,7 @@ func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 					base.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
 				}
 				if scenario == "mixed" || scenario == "earlier deadline" || scenario == "single view" {
-					rs.EXPECT().InternalUpdateRowCount(gomock.Any(), resources[0], int64(0), gomock.Any()).DoAndReturn(func(saveCtx context.Context, _ *interfaces.Resource, _ int64, _ int64) error {
+					rs.EXPECT().InternalUpdateRowCount(gomock.Any(), nil, resources[0], int64(0), gomock.Any()).DoAndReturn(func(saveCtx context.Context, _ *sql.Tx, _ *interfaces.Resource, _ int64, _ int64) error {
 						require.NoError(t, saveCtx.Err())
 						return nil
 					})
@@ -560,7 +561,7 @@ func TestDiscoverTaskWorkerCountResourcesIndexes(t *testing.T) {
 			catalog := &interfaces.Catalog{ID: "cat", Type: interfaces.CatalogTypePhysical, ConnectorType: "opensearch"}
 			resource := &interfaces.Resource{ID: "index", CatalogID: "cat", Category: interfaces.ResourceCategoryIndex, SourceIdentifier: "products"}
 			if scenario == "catalog" {
-				rs.EXPECT().InternalGetByCatalogID(gomock.Any(), "cat").Return([]*interfaces.Resource{resource, {Category: interfaces.ResourceCategoryLogicView}}, nil)
+				rs.EXPECT().InternalGetByCatalogID(gomock.Any(), "cat").Return([]*interfaces.Resource{resource, {Category: interfaces.ResourceCategoryFileset}}, nil)
 				connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryIndex)
 			} else {
 				task.ResourceID = resource.ID
@@ -586,9 +587,9 @@ func TestDiscoverTaskWorkerCountResourcesIndexes(t *testing.T) {
 				return 0, nil
 			})
 			if scenario != "query failure" && scenario != "cancelled during query" {
-				rs.EXPECT().InternalUpdateRowCount(gomock.Any(), resource, int64(0), gomock.Any()).DoAndReturn(func(saveCtx context.Context, saved *interfaces.Resource, _ int64, timestamp int64) error {
+				rs.EXPECT().InternalUpdateRowCount(gomock.Any(), nil, resource, int64(0), gomock.Any()).DoAndReturn(func(saveCtx context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64, timestamp int64) error {
 					require.NoError(t, saveCtx.Err())
-					require.Equal(t, task.Creator, saved.Updater)
+					require.Equal(t, interfaces.AccountInfo{}, saved.Updater)
 					require.Positive(t, timestamp)
 					if scenario == "save failure" {
 						return errors.New("write failed")
@@ -694,7 +695,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 					} else {
 						c := vmock.NewMockIndexConnector(ctrl)
 						connector = c
-						index := &interfaces.IndexMeta{Name: "orders", Properties: map[string]any{"row_count": int64(99)}}
+						index := &interfaces.IndexMeta{Name: "orders", Properties: map[string]any{"row_count": int64(99), "row_count_time": int64(100)}}
 						if entry == "resource" {
 							c.EXPECT().GetIndexMetaByIdentifier(gomock.Any(), "orders").Return(index, nil)
 						} else {
@@ -718,23 +719,30 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 						countCall.After(metadataCall)
 					}
 					if countWithoutRefresh {
-						rs.EXPECT().InternalUpdateRowCount(gomock.Any(), resource, int64(0), gomock.Any()).DoAndReturn(func(ctx context.Context, saved *interfaces.Resource, _ int64, _ int64) error {
+						rs.EXPECT().InternalUpdateRowCount(gomock.Any(), nil, resource, int64(0), gomock.Any()).DoAndReturn(func(ctx context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64, _ int64) error {
 							require.NoError(t, ctx.Err())
 							require.Equal(t, int64(10), saved.LastDiscoverTime)
 							return nil
 						}).After(countCall)
 					}
 					if scenario == "success" || scenario == "metadata failure" {
-						save := rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, int64(20)).DoAndReturn(func(saveCtx context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
+						saveTx := gomock.Nil()
+						if scenario == "success" {
+							expectDiscoverResourceTransaction(t, true)
+							saveTx = gomock.Not(gomock.Nil())
+						}
+						save := rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), saveTx, resource, int64(20)).DoAndReturn(func(saveCtx context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
 							require.NoError(t, saveCtx.Err())
 							properties := saved.SourceMetadata["properties"].(map[string]any)
 							if scenario == "success" {
-								count, ok := common.NumberAsInt64(properties["row_count"])
-								require.True(t, ok)
-								require.Equal(t, int64(0), count)
-								countTime, ok := common.NumberAsInt64(properties["row_count_time"])
-								require.True(t, ok)
-								require.Equal(t, saved.LastDiscoverTime, countTime)
+								require.NotNil(t, saved.RowCount)
+								require.Zero(t, *saved.RowCount)
+								require.NotNil(t, saved.RowCountTime)
+								require.Equal(t, saved.LastDiscoverTime, *saved.RowCountTime)
+								if category == interfaces.ResourceCategoryIndex {
+									require.Equal(t, json.Number("99"), properties["row_count"])
+									require.Equal(t, json.Number("100"), properties["row_count_time"])
+								}
 								require.Greater(t, saved.LastDiscoverTime, int64(10))
 							} else {
 								require.Equal(t, oldProperties, properties)
@@ -742,6 +750,9 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 							}
 							return nil
 						})
+						if scenario == "success" {
+							rs.EXPECT().InternalUpdateRowCount(gomock.Any(), gomock.Not(gomock.Nil()), resource, int64(0), gomock.Any()).Return(nil).After(save)
+						}
 						if countCall != nil {
 							save.After(countCall)
 						} else {
@@ -813,7 +824,7 @@ func TestDiscoverTaskWorkerRunCountOnly(t *testing.T) {
 			})
 			connector.EXPECT().Close(gomock.Any()).Return(nil)
 			connector.EXPECT().CountRows(gomock.Any(), gomock.Any()).Return(int64(42), nil)
-			rs.EXPECT().InternalUpdateRowCount(gomock.Any(), resource, int64(42), gomock.Any()).Return(nil)
+			rs.EXPECT().InternalUpdateRowCount(gomock.Any(), nil, resource, int64(42), gomock.Any()).Return(nil)
 			dts.EXPECT().InternalMarkCompleted(gomock.Any(), task.ID, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, result *interfaces.DiscoverResult) (bool, error) {
 				require.Equal(t, 1, result.UpdatedCount)
 				require.Zero(t, result.FailedCount)
@@ -821,6 +832,97 @@ func TestDiscoverTaskWorkerRunCountOnly(t *testing.T) {
 				return true, nil
 			})
 			require.NoError(t, worker.Run(context.Background(), task.ID))
+		})
+	}
+}
+
+func TestDiscoverTaskWorkerCountLogicView(t *testing.T) {
+	for _, scenario := range []string{"exact zero", "filtered table", "filtered index", "query failure", "missing total", "nil result", "negative total", "save failure", "catalog", "cancelled"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			lvs := vmock.NewMockLogicViewService(ctrl)
+			previous := resourcelogic.GetLogicViewService()
+			resourcelogic.SetLogicViewService(lvs)
+			t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
+			view := &interfaces.Resource{ID: "view", CatalogID: "logical", Category: interfaces.ResourceCategoryLogicView, UpdateTime: 10,
+				LogicType:       interfaces.LogicType_Derived,
+				LogicDefinition: &interfaces.DerivedLogicDefinition{SourceResourceID: "source", FilterCondition: map[string]any{"field": "status", "operation": "==", "value": "active"}},
+				SourceMetadata:  map[string]any{"properties": map[string]any{"row_count": int64(99), "row_count_time": int64(20)}},
+			}
+			catalog := &interfaces.Catalog{ID: "logical", Type: interfaces.CatalogTypeLogical}
+			task := &interfaces.DiscoverTask{ID: "task", ResourceID: "view"}
+			worker := &DiscoverTaskWorker{rs: rs}
+			if scenario == "catalog" {
+				task.ResourceID = ""
+				rs.EXPECT().InternalGetByCatalogID(gomock.Any(), "logical").Return([]*interfaces.Resource{view, {Category: interfaces.ResourceCategoryDataset}}, nil)
+				dts := vmock.NewMockDiscoverTaskService(ctrl)
+				worker.dts = dts
+				dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task", gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
+			} else {
+				rs.EXPECT().InternalGetByID(gomock.Any(), nil, "view").Return(view, nil)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			count := int64(7)
+			if scenario == "exact zero" {
+				count = 0
+			}
+			lvs.EXPECT().QueryWithPaging(gomock.Any(), view, gomock.Any()).DoAndReturn(func(queryCtx context.Context, got *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				require.Same(t, view, got)
+				require.Same(t, view.LogicDefinition, got.LogicDefinition, "the view service must receive the complete fixed filter")
+				require.True(t, params.NeedTotal)
+				require.NotNil(t, params.IgnoreLocalIndex)
+				require.True(t, *params.IgnoreLocalIndex)
+				require.Equal(t, 1, params.Paging.Limit)
+				require.Equal(t, interfaces.PagingModeSingle, params.Paging.Mode)
+				require.Equal(t, resourceCountTimeout, params.Timeout)
+				deadline, ok := queryCtx.Deadline()
+				require.True(t, ok)
+				require.InDelta(t, resourceCountTimeout.Seconds(), time.Until(deadline).Seconds(), 1)
+				switch scenario {
+				case "cancelled":
+					cancel()
+					return nil, context.Canceled
+				case "query failure":
+					return nil, errors.New("source failed")
+				case "nil result":
+					return nil, nil //nolint:nilnil // 故意模拟视图服务返回无结果且无错误的异常响应。
+				case "missing total":
+					return &interfaces.ResourceDataQueryResult{TotalCount: 7}, nil
+				case "negative total":
+					return &interfaces.ResourceDataQueryResult{NeedTotal: true, TotalCount: -1}, nil
+				}
+				return &interfaces.ResourceDataQueryResult{NeedTotal: true, TotalCount: count}, nil
+			})
+			success := scenario == "exact zero" || scenario == "filtered table" || scenario == "filtered index" || scenario == "catalog"
+			if success || scenario == "save failure" {
+				rs.EXPECT().InternalUpdateRowCount(gomock.Any(), nil, view, count, gomock.Any()).DoAndReturn(func(saveCtx context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64, timestamp int64) error {
+					require.NoError(t, saveCtx.Err())
+					require.Equal(t, int64(10), saved.UpdateTime)
+					require.Positive(t, timestamp)
+					if scenario == "save failure" {
+						return errors.New("write failed")
+					}
+					return nil
+				})
+			}
+			result, err := worker.countResources(ctx, catalog, task)
+			if scenario == "cancelled" {
+				require.ErrorIs(t, err, context.Canceled)
+				return
+			}
+			require.NoError(t, err)
+			if success {
+				require.Equal(t, 1, result.UpdatedCount)
+				require.Zero(t, result.FailedCount)
+			} else {
+				require.Equal(t, 1, result.FailedCount)
+				require.Equal(t, int64(99), view.SourceMetadata["properties"].(map[string]any)["row_count"])
+			}
+			if scenario == "catalog" {
+				require.Equal(t, 1, result.SkippedCount)
+			}
 		})
 	}
 }

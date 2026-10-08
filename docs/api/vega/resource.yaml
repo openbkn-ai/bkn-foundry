@@ -352,7 +352,10 @@ paths:
         对指定物理资源触发一次元数据刷新。服务端创建 `resource_id` 为该资源 ID 的
         DiscoverTask 并立即返回 task id；实际刷新由 worker 异步执行。刷新不会改变
         Resource 的 `enabled` 值。可选 `count_only` 仅刷新精确数量及采集时间，不刷新元数据。
-        精确计数目前支持 MariaDB/MySQL、PostgreSQL 表与普通视图、PostgreSQL 物化视图及 OpenSearch 索引，每个资源最多执行 5 分钟。
+        精确计数支持 MariaDB/MySQL、PostgreSQL 表与普通视图、PostgreSQL 物化视图及 OpenSearch 索引；
+        logicview 复用已注册的视图查询服务，按完整视图定义及固定过滤条件获取源端精确总数。
+        每个资源使用 5 分钟 ctx 兜底，暂不设置数据库服务端执行时限。
+        统计写回仅更新资源独立的数量及采集时间字段，不改变 source_metadata、update_time 或 updater。
 
         同一 Resource 已有 `pending` 或 `running` 的刷新任务时，返回 409
         `VegaBackend.DiscoverTask.ResourceRefreshInProgress`。不支持按资源标识刷新
@@ -369,7 +372,7 @@ paths:
                   type: string
                   enum: [full_sync, count_only]
                   default: full_sync
-                  description: count_only 对已有源表、视图或索引执行精确计数；单资源不支持时任务失败
+                  description: count_only 对已有源表、源视图、索引或 logicview 执行精确计数；单资源不支持时任务失败
       responses:
         "200":
           description: 已创建并入队 Resource 刷新任务
@@ -759,7 +762,7 @@ components:
             源端配置（JSON）。物理资源由 connector 提供；derived 逻辑视图由服务端生成，
             其中 `source_resource` 是源资源快照对象，包含 `catalog_id`、`category`
             （`table` 或 `index`）、`original_name`，表源可包含 `table_type`；
-            `properties` 保存视图自身的扫描统计等信息。
+            精确数量及采集时间由资源独立字段维护，不保存在 `properties` 中。
           type: object
           additionalProperties: true
         schema_definition:
@@ -783,7 +786,7 @@ components:
           description: "`schema_definition` 的字段数"
           type: integer
         row_count:
-          description: 精确行数；dataset 为当前本地索引文档数，其他资源仅在源端提供精确值时返回；无法计算时省略
+          description: 精确行数；dataset 为当前本地索引文档数，其他资源返回最近成功采集并持久化的精确数量；无法计算时省略
           type: integer
           format: int64
         row_count_time:

@@ -927,7 +927,7 @@ func (c *PostgresqlConnector) CountRows(ctx context.Context, table *interfaces.T
 	}
 
 	query, args, err := sq.Select("COUNT(*)").
-		From(fmt.Sprintf(`"%s"."%s"`, schema, name)).
+		From(fmt.Sprintf("%s.%s", pgQuoteIdent(schema), pgQuoteIdent(name))).
 		ToSql()
 	if err != nil {
 		return 0, err

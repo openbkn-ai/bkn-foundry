@@ -661,7 +661,9 @@ func (c *MariaDBConnector) CountRows(ctx context.Context, table *interfaces.Tabl
 	if !c.databaseAllowed(database) {
 		return 0, fmt.Errorf("database is outside the connector scope")
 	}
-	query, args, err := sq.Select("COUNT(*)").From(fmt.Sprintf("`%s`.`%s`", database, name)).ToSql()
+	query, args, err := sq.Select("COUNT(*)").
+		From(fmt.Sprintf("%s.%s", mariadbQuoteIdent(database), mariadbQuoteIdent(name))).
+		ToSql()
 	if err != nil {
 		return 0, err
 	}

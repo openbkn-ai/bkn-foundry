@@ -16,6 +16,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 )
 
 // LastDiscoverStatus write policy:
@@ -59,19 +60,6 @@ func sourceSnapshotHash(resource *interfaces.Resource) string {
 		return ""
 	}
 	metadata := resource.SourceMetadata
-	if properties, ok := metadata["properties"].(map[string]any); ok {
-		metadata = make(map[string]any, len(resource.SourceMetadata))
-		for key, value := range resource.SourceMetadata {
-			metadata[key] = value
-		}
-		snapshotProperties := make(map[string]any, len(properties))
-		for key, value := range properties {
-			if key != "row_count_time" {
-				snapshotProperties[key] = value
-			}
-		}
-		metadata["properties"] = snapshotProperties
-	}
 	bytes, err := sonic.ConfigStd.Marshal(metadata)
 	if err != nil {
 		return ""
@@ -102,19 +90,27 @@ func formatDiscoverResultMessage(result *interfaces.DiscoverResult) string {
 		result.NewCount, result.StaleCount, result.UnchangedCount, result.UpdatedCount, result.RestoredCount, result.FailedCount)
 }
 
-// discoveredProperties 以已有属性为基础，覆盖本次发现返回的属性。
-func discoveredProperties(previous any, fresh map[string]any) map[string]any {
-	properties, _ := previous.(map[string]any)
-	if properties == nil {
-		properties = make(map[string]any, len(fresh))
-	}
-	for key, value := range fresh {
-		properties[key] = value
-	}
-	return properties
-}
-
 // countOnlyActions 判断是否只执行计数，不排斥其他动作组合。
 func countOnlyActions(actions *interfaces.DiscoverActions) bool {
 	return actions != nil && actions.Count && !actions.Create && !actions.Refresh && !actions.MarkStale
+}
+
+// saveDiscoveredResource 在单个资源事务内编排元数据和精确统计保存。
+func (dtw *DiscoverTaskWorker) saveDiscoveredResource(ctx context.Context, resource *interfaces.Resource, expectedUpdateTime int64, exactCount *int64, countTime int64) error {
+	if exactCount == nil {
+		return dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime)
+	}
+	tx, err := logics.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, tx, resource, expectedUpdateTime); err != nil {
+		return err
+	}
+	if err := dtw.rs.InternalUpdateRowCount(ctx, tx, resource, *exactCount, countTime); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

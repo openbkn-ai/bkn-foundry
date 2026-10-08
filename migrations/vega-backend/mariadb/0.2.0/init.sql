@@ -78,6 +78,10 @@ CREATE TABLE IF NOT EXISTS t_resource (
     f_last_discover_status    VARCHAR(32) NOT NULL DEFAULT '' COMMENT '最近一次扫描观察状态',
     f_last_discover_time      BIGINT NOT NULL DEFAULT 0 COMMENT '最近成功发现时间，Unix毫秒',
 
+    -- 统计信息
+    f_row_count              BIGINT NULL DEFAULT NULL COMMENT '精确数量，NULL表示未统计',
+    f_row_count_time         BIGINT NULL DEFAULT NULL COMMENT '精确数量采集时间，Unix毫秒',
+
     -- 物理数据资源专属字段
     f_schema                  VARCHAR(128) NOT NULL DEFAULT '' COMMENT '所属 schema 名称，由发现流程写入',
     f_source_identifier       VARCHAR(500) NOT NULL DEFAULT '' COMMENT '源端标识(表名/文件路径/索引名等)',

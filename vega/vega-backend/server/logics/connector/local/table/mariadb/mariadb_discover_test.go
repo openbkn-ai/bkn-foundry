@@ -206,12 +206,15 @@ func mariaDBTableRows() *sqlmock.Rows {
 
 func TestMariaDBConnectorCountRows(t *testing.T) {
 	for _, tt := range []struct {
-		name, query string
-		table       *interfaces.TableMeta
-		count       int64
-		sourceErr   bool
-		wantError   string
+		name, query   string
+		connectorType string
+		table         *interfaces.TableMeta
+		count         int64
+		sourceErr     bool
+		wantError     string
 	}{
+		{name: "mysql count", connectorType: interfaces.ConnectorTypeMySQL, table: &interfaces.TableMeta{Database: "app", Name: "orders"}, query: "SELECT COUNT(*) FROM `app`.`orders`", count: 42},
+		{name: "quoted name", table: &interfaces.TableMeta{Database: "app", Name: "ord`ers"}, query: "SELECT COUNT(*) FROM `app`.`ord``ers`", count: 42},
 		{name: "count", table: &interfaces.TableMeta{Database: "app", Name: "orders"}, query: "SELECT COUNT(*) FROM `app`.`orders`", count: 42},
 		{name: "empty", table: &interfaces.TableMeta{Database: "app", Name: "orders"}, query: "SELECT COUNT(*) FROM `app`.`orders`"},
 		{name: "source error", table: &interfaces.TableMeta{Database: "app", Name: "orders"}, query: "SELECT COUNT(*) FROM `app`.`orders`", sourceErr: true, wantError: "source failed"},
@@ -225,6 +228,7 @@ func TestMariaDBConnectorCountRows(t *testing.T) {
 			connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 			defer cleanup()
 			connector.connected = true
+			connector.connectorType = tt.connectorType
 			if tt.query != "" {
 				expect := mock.ExpectQuery(regexp.QuoteMeta(tt.query))
 				if tt.sourceErr {

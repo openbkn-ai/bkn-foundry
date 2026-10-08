@@ -792,7 +792,7 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	if catalog.Type != interfaces.CatalogTypePhysical {
+	if catalog.Type != interfaces.CatalogTypePhysical && strategy != interfaces.DiscoverStrategyCountOnly {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_Type).
 			WithErrorDetails("discover only supports physical catalogs")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

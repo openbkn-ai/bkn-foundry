@@ -483,6 +483,9 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 
 // countResources 独立执行纯计数任务，支持单资源和目录范围。
 func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *interfaces.Catalog, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+	if dtw.stopped.Load() {
+		return nil, ErrWorkerManagerStopping
+	}
 	singleResource := task.ResourceID != ""
 	var resources []*interfaces.Resource
 	if singleResource {
@@ -494,24 +497,29 @@ func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *inte
 			return nil, fmt.Errorf("resource %s not found in catalog %s", task.ResourceID, catalog.ID)
 		}
 		resources = []*interfaces.Resource{resource}
-	} else if catalog.Type != interfaces.CatalogTypePhysical {
-		return nil, fmt.Errorf("count only supports physical catalogs")
 	}
-
-	connector, err := dtw.createAndConnectConnector(ctx, catalog)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to data source: %w", err)
-	}
-	defer func() { _ = connector.Close(ctx) }()
-
-	var category string
 	if !singleResource {
-		category = connector.GetCategory()
+		var err error
 		resources, err = dtw.rs.InternalGetByCatalogID(ctx, catalog.ID)
 		if err != nil {
 			return nil, err
 		}
 	}
+	// 逻辑目录及单个视图由视图服务解析源资源，无须创建所属目录连接器。
+	var connector interfaces.Connector
+	var category string
+	if (singleResource && resources[0].Category != interfaces.ResourceCategoryLogicView) || (!singleResource && catalog.Type == interfaces.CatalogTypePhysical) {
+		var err error
+		connector, err = dtw.createAndConnectConnector(ctx, catalog)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to data source: %w", err)
+		}
+		defer func() { _ = connector.Close(ctx) }()
+		if !singleResource {
+			category = connector.GetCategory()
+		}
+	}
+	var err error
 	result := &interfaces.DiscoverResult{CatalogID: catalog.ID}
 	for i, resource := range resources {
 		if err := ctx.Err(); err != nil {
@@ -521,6 +529,8 @@ func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *inte
 			return nil, ErrWorkerManagerStopping
 		}
 		switch {
+		case resource.Category == interfaces.ResourceCategoryLogicView:
+			err = dtw.enrichResourceLogicViewRowCount(ctx, resource, result)
 		case resource.Category == interfaces.ResourceCategoryTable && (singleResource || category == interfaces.ConnectorCategoryTable):
 			if tableConnector, ok := connector.(interfaces.TableConnector); ok {
 				err = dtw.enrichResourceTableRowCount(ctx, task, resource, tableConnector, tableMetadataForCount(resource), result)
@@ -578,4 +588,37 @@ func finishCountResult(result *interfaces.DiscoverResult) *interfaces.DiscoverRe
 	result.Failed = result.UpdatedCount == 0 && result.FailedCount+result.SkippedCount > 0
 	result.Message = fmt.Sprintf("Exact count finished: %d counted, %d failed, %d skipped", result.UpdatedCount, result.FailedCount, result.SkippedCount)
 	return result
+}
+
+// enrichResourceLogicViewRowCount 复用视图查询解析，按完整视图定义获取精确总数。
+func (dtw *DiscoverTaskWorker) enrichResourceLogicViewRowCount(ctx context.Context, view *interfaces.Resource, result *interfaces.DiscoverResult) error {
+	queryCtx, cancel := context.WithTimeout(ctx, resourceCountTimeout)
+	ignoreLocalIndex := true
+	counted, err := resource.QueryLogicViewWithPaging(queryCtx, view, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{
+			Mode:  interfaces.PagingModeSingle,
+			Limit: 1,
+		},
+		NeedTotal:        true,
+		IgnoreLocalIndex: &ignoreLocalIndex,
+		Timeout:          resourceCountTimeout,
+	})
+	cancel()
+
+	if parentErr := ctx.Err(); parentErr != nil {
+		return parentErr
+	}
+	if err == nil && (counted == nil || !counted.NeedTotal || counted.TotalCount < 0) {
+		err = fmt.Errorf("logic view did not return an exact total count")
+	}
+	if err == nil {
+		err = dtw.rs.InternalUpdateRowCount(ctx, nil, view, counted.TotalCount, time.Now().UnixMilli())
+	}
+	if err != nil {
+		result.FailedCount++
+		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", view.ID, err)
+	} else {
+		result.UpdatedCount++
+	}
+	return nil
 }

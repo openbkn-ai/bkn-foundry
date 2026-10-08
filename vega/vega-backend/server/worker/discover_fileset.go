@@ -205,15 +205,9 @@ func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, task *
 			sourceMetadata = make(map[string]any)
 		}
 		for k, v := range fs.SourceMetadata {
-			if k == "properties" {
-				continue
-			}
 			sourceMetadata[k] = v
 		}
 
-		freshProperties, _ := fs.SourceMetadata["properties"].(map[string]any)
-		properties := discoveredProperties(sourceMetadata["properties"], freshProperties)
-		sourceMetadata["properties"] = properties
 		sourceMetadata["original_name"] = fs.Name
 		sourceMetadata["original_description"] = ""
 		sourceMetadata["columns"] = fs.Columns
