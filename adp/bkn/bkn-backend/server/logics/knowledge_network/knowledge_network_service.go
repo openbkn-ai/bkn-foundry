@@ -1648,12 +1648,18 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 			}
 
 		case interfaces.ImportMode_Ignore:
-			// Skip duplicates without creating or updating.
-			// When only the name matched, retain the identity of the resource that caused
-			// the skip instead of returning the request's non-existent ID.
-			if !idExist && nameExist {
-				kn.KNID = existID
+			// A name owned by another ID is not the same network. Silently redirecting
+			// would let callers mutate that network's capability bindings after this no-op.
+			if nameExist && existID != kn.KNID {
+				errDetails := fmt.Sprintf("KN ID '%s' and name '%s' identify different knowledge networks; the existing name belongs to '%s'",
+					kn.KNID, kn.KNName, existID)
+				logger.Error(errDetails)
+				span.SetStatus(codes.Error, errDetails)
+				return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
+					berrors.BknBackend_KnowledgeNetwork_KNNameExisted).
+					WithErrorDetails(errDetails)
 			}
+			// Skip the existing network without creating or updating it.
 			return false, false, nil
 		case interfaces.ImportMode_Overwrite:
 			if idExist && nameExist {

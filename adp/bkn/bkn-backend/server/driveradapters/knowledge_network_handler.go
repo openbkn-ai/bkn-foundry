@@ -259,8 +259,9 @@ func (r *restHandler) CreateKNByEx(c *gin.Context) {
 
 // parseKnowledgeNetworkImportOptions parses the import behavior shared by JSON and archive imports.
 // strict_mode takes precedence over the deprecated validate_dependency parameter.
-func parseKnowledgeNetworkImportOptions(ctx context.Context, c *gin.Context) (string, bool, *rest.HTTPError) {
-	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, interfaces.ImportMode_Normal)
+func parseKnowledgeNetworkImportOptions(ctx context.Context, c *gin.Context,
+	defaultMode string, defaultStrictMode bool) (string, bool, *rest.HTTPError) {
+	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, defaultMode)
 	if httpErr := validateImportMode(ctx, mode); httpErr != nil {
 		return "", false, httpErr
 	}
@@ -270,7 +271,7 @@ func parseKnowledgeNetworkImportOptions(ctx context.Context, c *gin.Context) (st
 		strictModeStr = c.Query("validate_dependency")
 	}
 	if strictModeStr == "" {
-		strictModeStr = "true"
+		strictModeStr = strconv.FormatBool(defaultStrictMode)
 	}
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
@@ -298,7 +299,8 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c)
+	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c,
+		interfaces.ImportMode_Normal, true)
 	if httpErr != nil {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

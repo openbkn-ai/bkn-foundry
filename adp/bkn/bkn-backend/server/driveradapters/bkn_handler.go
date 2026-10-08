@@ -57,7 +57,10 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c)
+	// Archive uploads predate these query parameters and historically behaved as overwrite +
+	// non-strict. Keep those omission defaults for existing callers while honoring explicit values.
+	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c,
+		interfaces.ImportMode_Overwrite, false)
 	if httpErr != nil {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

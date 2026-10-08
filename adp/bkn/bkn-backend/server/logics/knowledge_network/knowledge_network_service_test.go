@@ -2575,7 +2575,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			So(kn.ObjectTypes[0].OTName, ShouldEqual, "top-level")
 		})
 
-		Convey("Ignore returns the existing KN ID when only the name exists\n", func() {
+		Convey("Ignore rejects a name owned by a different KN ID\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "new-kn-id",
 				KNName: "existing-name",
@@ -2589,9 +2589,11 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				Return("existing-kn-id", true, nil)
 
 			knID, err := service.CreateKN(ctx, kn, interfaces.ImportMode_Ignore, true)
-			So(err, ShouldBeNil)
-			So(knID, ShouldEqual, "existing-kn-id")
-			So(kn.KNID, ShouldEqual, "existing-kn-id")
+			So(err, ShouldNotBeNil)
+			So(knID, ShouldBeEmpty)
+			So(err.(*rest.HTTPError).BaseError.ErrorCode,
+				ShouldEqual, berrors.BknBackend_KnowledgeNetwork_KNNameExisted)
+			So(kn.KNID, ShouldEqual, "new-kn-id")
 		})
 
 		Convey("Success with Overwrite mode when ID exists\n", func() {
