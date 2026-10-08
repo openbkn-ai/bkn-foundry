@@ -1649,6 +1649,11 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 
 		case interfaces.ImportMode_Ignore:
 			// Skip duplicates without creating or updating.
+			// When only the name matched, retain the identity of the resource that caused
+			// the skip instead of returning the request's non-existent ID.
+			if !idExist && nameExist {
+				kn.KNID = existID
+			}
 			return false, false, nil
 		case interfaces.ImportMode_Overwrite:
 			if idExist && nameExist {

@@ -57,6 +57,13 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
+	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c)
+	if httpErr != nil {
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
 	// Read the uploaded file.
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
@@ -85,15 +92,15 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	bindingPolicy := strings.TrimSpace(c.DefaultQuery("binding_policy", bknBindingPolicyPreserve))
 	if bindingPolicy != bknBindingPolicyPreserve && bindingPolicy != bknBindingPolicyDetach {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(commonValidationDetail(ctx, "BindingPolicyInvalid", map[string]any{"value": bindingPolicy}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	logger.Debugf("Upload BKN: branch=%s, binding_policy=%s, filename=%s, size=%d",
-		branch, bindingPolicy, header.Filename, header.Size)
+	logger.Debugf("Upload BKN: branch=%s, import_mode=%s, strict_mode=%t, binding_policy=%s, filename=%s, size=%d",
+		branch, mode, strictMode, bindingPolicy, header.Filename, header.Size)
 
 	// Load the network directly from the tar archive in memory.
 	bknNetwork, err := bknsdk.LoadNetworkFromTar(file)
@@ -143,10 +150,6 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		}
 		kn.Metrics = append(kn.Metrics, logics.ToADPMetricDefinition(kn.KNID, branch, bknM))
 	}
-	if bindingPolicy == bknBindingPolicyDetach {
-		detachBKNExternalBindings(kn)
-	}
-
 	// Validate required knowledge network creation fields, lengths, and enum values.
 	err = ValidateKN(ctx, kn)
 	if err != nil {
@@ -165,7 +168,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 
 	// Validate each populated object type, relation type, action type, and concept group in the knowledge network.
 	if len(kn.ObjectTypes) > 0 {
-		err = ValidateObjectTypes(ctx, kn.KNID, kn.ObjectTypes, false)
+		err = ValidateObjectTypes(ctx, kn.KNID, kn.ObjectTypes, strictMode)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -174,7 +177,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		}
 	}
 	if len(kn.RelationTypes) > 0 {
-		err = ValidateRelationTypes(ctx, kn.KNID, kn.RelationTypes, false)
+		err = ValidateRelationTypes(ctx, kn.KNID, kn.RelationTypes, strictMode)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -183,7 +186,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		}
 	}
 	if len(kn.ActionTypes) > 0 {
-		err = ValidateActionTypes(ctx, kn.KNID, kn.ActionTypes, false)
+		err = ValidateActionTypes(ctx, kn.KNID, kn.ActionTypes, strictMode)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -212,7 +215,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		}
 	}
 	if len(kn.Metrics) > 0 {
-		err = ValidateMetricRequests(ctx, kn.Metrics, false)
+		err = ValidateMetricRequests(ctx, kn.Metrics, strictMode)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -220,9 +223,15 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 			return
 		}
 	}
+	if bindingPolicy == bknBindingPolicyDetach {
+		detachBKNExternalBindings(kn)
+	}
+	// Detached imports have already been structurally validated above. Persist them without
+	// resolving the environment-local dependencies that were removed by the detach policy.
+	persistenceStrictMode := strictMode && bindingPolicy != bknBindingPolicyDetach
 
 	// Create the knowledge network.
-	knID, err := r.kns.CreateKN(ctx, kn, interfaces.ImportMode_Overwrite, false)
+	knID, err := r.kns.CreateKN(ctx, kn, mode, persistenceStrictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 

@@ -60,6 +60,30 @@ func newValidBKNTar(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// newDraftBKNTar creates an archive whose object type is valid only when strict validation is disabled.
+func newDraftBKNTar(t *testing.T) []byte {
+	net := &bknsdk.BknNetwork{
+		BknNetworkFrontmatter: bknsdk.BknNetworkFrontmatter{
+			Type:    "network",
+			ID:      "test-net",
+			Name:    "Test Network",
+			Version: "1.0.0",
+		},
+		ObjectTypes: []*bknsdk.BknObjectType{{
+			BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{
+				Type: "object_type",
+				ID:   "draft-object",
+				Name: "Draft Object",
+			},
+		}},
+	}
+	var buf bytes.Buffer
+	if err := bknsdk.WriteNetworkToTar(net, &buf); err != nil {
+		t.Fatalf("failed to create draft BKN tar: %v", err)
+	}
+	return buf.Bytes()
+}
+
 // newBKNTarWithCapabilities builds a tar whose frontmatter declares one Skill, so a test can tell
 // "the section was passed through" apart from "the file never had one".
 func newBKNTarWithCapabilities(t *testing.T) []byte {
@@ -144,8 +168,8 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 
 		url := "/api/bkn-backend/v1/bkns"
 
-		Convey("Success with authenticated request\n", func() {
-			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
+		Convey("Uses the contract defaults when import options are omitted\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Normal, true).Return("kn1", nil)
 
 			req := newMultipartRequest(t, url, "test.tar", newValidBKNTar(t))
 			w := httptest.NewRecorder()
@@ -154,10 +178,94 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
 
-		Convey("Success without optional headers\n", func() {
-			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
+		Convey("Passes overwrite and non-strict options to CreateKN\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, false).Return("kn1", nil)
 
-			req := newMultipartRequest(t, url, "test.tar", newValidBKNTar(t))
+			req := newMultipartRequest(t, url+"?import_mode=overwrite&strict_mode=false", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Passes ignore mode to CreateKN\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Ignore, true).Return("kn1", nil)
+
+			req := newMultipartRequest(t, url+"?import_mode=ignore", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Passes explicit normal mode to CreateKN\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Normal, true).Return("kn1", nil)
+
+			req := newMultipartRequest(t, url+"?import_mode=normal", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Supports the deprecated validate_dependency option\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Normal, false).Return("kn1", nil)
+
+			req := newMultipartRequest(t, url+"?validate_dependency=false", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("strict_mode takes precedence over validate_dependency\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Normal, true).Return("kn1", nil)
+
+			req := newMultipartRequest(t, url+"?strict_mode=true&validate_dependency=false", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Detach skips persistence dependency checks after strict archive validation\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Normal, false).Return("kn1", nil)
+
+			req := newMultipartRequest(t, url+"?binding_policy=detach", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Rejects an invalid import mode\n", func() {
+			req := newMultipartRequest(t, url+"?import_mode=bogus", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Rejects an invalid strict mode\n", func() {
+			req := newMultipartRequest(t, url+"?strict_mode=notabool", "test.tar", newValidBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Strict validation rejects an incomplete archive\n", func() {
+			req := newMultipartRequest(t, url, "test.tar", newDraftBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Non-strict validation accepts an incomplete archive\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Normal, false).Return("kn1", nil)
+
+			req := newMultipartRequest(t, url+"?strict_mode=false", "test.tar", newDraftBKNTar(t))
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 
@@ -409,8 +517,6 @@ func Test_BKNRestHandler_UploadBKN_BindingPolicyCapabilities(t *testing.T) {
 		bs := bmock.NewMockBKNService(mockCtrl)
 		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
-		kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			AnyTimes().Return("kn1", nil)
 
 		engine := gin.New()
 		engine.Use(gin.Recovery())
@@ -419,6 +525,8 @@ func Test_BKNRestHandler_UploadBKN_BindingPolicyCapabilities(t *testing.T) {
 		url := "/api/bkn-backend/v1/bkns"
 
 		Convey("preserve 时把声明交给解析", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Normal, true).
+				Return("kn1", nil)
 			cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn1", gomock.Any(), gomock.Not(gomock.Nil())).
 				Return(&interfaces.CapabilityImportReport{}, nil, nil)
 
@@ -431,10 +539,26 @@ func Test_BKNRestHandler_UploadBKN_BindingPolicyCapabilities(t *testing.T) {
 		})
 
 		Convey("detach 时不带任何声明", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Normal, false).
+				Return("kn1", nil)
 			cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn1", gomock.Any(), gomock.Nil()).
 				Return(&interfaces.CapabilityImportReport{}, nil, nil)
 
 			req := newMultipartRequest(t, url+"?binding_policy=detach", "test.tar",
+				newBKNTarWithCapabilities(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("ignore 只跳过模型，仍解析能力声明", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Ignore, true).
+				Return("kn1", nil)
+			cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn1", gomock.Any(), gomock.Not(gomock.Nil())).
+				Return(&interfaces.CapabilityImportReport{}, nil, nil)
+
+			req := newMultipartRequest(t, url+"?import_mode=ignore", "test.tar",
 				newBKNTarWithCapabilities(t))
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
