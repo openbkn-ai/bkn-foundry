@@ -219,8 +219,8 @@ func main() {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
 		publisherRuntime, err = bkntrace.NewEvidencePublisherRuntime()
 		if err != nil {
-			logger.Warnf("Evidence Kafka publisher unavailable; evidence will be dropped: %v", err)
-			publisherRuntime = nil
+			logger.Fatalf("Failed to initialize enabled Evidence Kafka publisher: %v", err)
+			return
 		} else {
 			bkntrace.SetEvidencePublisher(publisherRuntime.Runtime)
 		}

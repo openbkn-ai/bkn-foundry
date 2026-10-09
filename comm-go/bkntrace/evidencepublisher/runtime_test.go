@@ -1,15 +1,82 @@
 package evidencepublisher
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestPublisherRuntimeLogsRefreshFailureOnceAndRecovery(t *testing.T) {
+	var output bytes.Buffer
+	previousOutput := log.Writer()
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(previousOutput) })
+	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)
+	reads := make(chan struct{}, 4)
+	policyReads := 0
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case traceEvidencePolicyPath:
+			policyReads++
+			reads <- struct{}{}
+			if policyReads <= 2 {
+				return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader("unavailable"))}, nil
+			}
+			return policyResponse(unsignedPolicySnapshot(t, policySnapshotForTest(now))), nil
+		case traceEvidenceControlPath + "/endpoints:heartbeat":
+			return noContentResponse(), nil
+		case traceEvidenceConfigurationPath:
+			return configurationResponse(`{"kind":"configuration_get","policy_revision":42}`), nil
+		default:
+			t.Errorf("unexpected request: %s", request.URL)
+			return noContentResponse(), nil
+		}
+	})}
+	policy, _ := NewPolicyClient(PolicyClientConfig{BaseURL: "https://trace.internal", HTTPClient: client, Now: func() time.Time { return now }})
+	configuration, _ := NewConfigurationClient(ConfigurationClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	control, _ := NewControlClient(ControlClientConfig{BaseURL: "https://trace.internal", HTTPClient: client})
+	runtime, err := NewPublisherRuntime(context.Background(), PublisherRuntimeConfig{Publisher: publisherTestConfig(), Sender: &fakeSender{}, Policy: policy, Configuration: configuration, Control: control, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ticks := make(chan time.Time)
+	done := make(chan error, 1)
+	go func() { done <- runtime.run(ctx, ticks) }()
+	for i := 0; i < 3; i++ {
+		select {
+		case <-reads:
+		case <-time.After(time.Second):
+			t.Fatal("publisher did not refresh")
+		}
+		// An unbuffered tick waits until the preceding refresh, including its log, completes.
+		select {
+		case ticks <- now:
+		case <-time.After(time.Second):
+			t.Fatal("publisher did not complete refresh")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("publisher did not stop")
+	}
+	if got := output.String(); strings.Count(got, "refresh failed:") != 1 || strings.Count(got, "refresh recovered") != 1 || !strings.Contains(got, "read trace evidence policy: unexpected status 503") {
+		t.Fatalf("expected one actionable failure and one recovery log, got %q", got)
+	}
+	if result := runtime.TryPublish(publisherTestEvent()); result.Disposition != Accepted {
+		t.Fatalf("publisher did not recover admission: %+v", result)
+	}
+}
 
 func TestPublisherRuntimeUsesValidatedSnapshotAndAcknowledgesDisabledBoundary(t *testing.T) {
 	now := time.Date(2026, time.September, 25, 8, 0, 0, 0, time.UTC)

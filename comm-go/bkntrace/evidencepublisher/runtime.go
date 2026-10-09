@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -159,16 +160,36 @@ func (r *PublisherRuntime) Refresh(ctx context.Context) error {
 func (r *PublisherRuntime) Run(ctx context.Context) error {
 	ticker := time.NewTicker(publisherHeartbeatInterval)
 	defer ticker.Stop()
+	return r.run(ctx, ticker.C)
+}
+
+func (r *PublisherRuntime) run(ctx context.Context, ticks <-chan time.Time) error {
+	lastFailure := ""
+	refresh := func() {
+		err := r.Refresh(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			if failure := err.Error(); failure != lastFailure {
+				log.Printf("BKN Trace evidence publisher producer_id=%s refresh failed: %s", r.publisher.config.ProducerID, failure)
+				lastFailure = failure
+			}
+		} else if lastFailure != "" {
+			log.Printf("BKN Trace evidence publisher producer_id=%s refresh recovered", r.publisher.config.ProducerID)
+			lastFailure = ""
+		}
+	}
 	// Do not make service construction depend on the control plane. The first
 	// attempt happens as soon as the lifecycle goroutine starts; transient
 	// failures leave admission closed and are retried on the normal heartbeat.
-	_ = r.Refresh(ctx)
+	refresh()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
-			_ = r.Refresh(ctx)
+		case <-ticks:
+			refresh()
 		}
 	}
 }
