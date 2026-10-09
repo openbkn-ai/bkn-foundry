@@ -496,6 +496,10 @@ func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *inte
 		if resource == nil || resource.CatalogID != catalog.ID {
 			return nil, fmt.Errorf("resource %s not found in catalog %s", task.ResourceID, catalog.ID)
 		}
+		// 历史任务也必须先判断能力，避免为不支持的资源创建连接器。
+		if !interfaces.SupportsResourceCount(resource.Category) {
+			return nil, fmt.Errorf("resource category %q does not support count_only", resource.Category)
+		}
 		resources = []*interfaces.Resource{resource}
 	}
 	if !singleResource {
@@ -508,7 +512,16 @@ func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *inte
 	// 逻辑目录及单个视图由视图服务解析源资源，无须创建所属目录连接器。
 	var connector interfaces.Connector
 	var category string
-	if (singleResource && resources[0].Category != interfaces.ResourceCategoryLogicView) || (!singleResource && catalog.Type == interfaces.CatalogTypePhysical) {
+	needsConnector := false
+	for _, resource := range resources {
+		if resource.Category == interfaces.ResourceCategoryTable || resource.Category == interfaces.ResourceCategoryIndex {
+			needsConnector = singleResource || catalog.Type == interfaces.CatalogTypePhysical
+			if needsConnector {
+				break
+			}
+		}
+	}
+	if needsConnector {
 		var err error
 		connector, err = dtw.createAndConnectConnector(ctx, catalog)
 		if err != nil {

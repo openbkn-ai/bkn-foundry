@@ -652,3 +652,46 @@ func TestReadResourceDiscoverStrategy(t *testing.T) {
 		})
 	}
 }
+
+func TestRestHandlerDiscoverResource(t *testing.T) {
+	for _, tt := range []struct {
+		category string
+		status   int
+	}{
+		{interfaces.ResourceCategoryDataset, http.StatusBadRequest},
+		{interfaces.ResourceCategoryTable, http.StatusOK},
+	} {
+		t.Run(tt.category, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			dts := vmock.NewMockDiscoverTaskService(ctrl)
+			handler := &restHandler{rs: rs, dts: dts}
+			engine := gin.New()
+			engine.POST("/resources/:id/discover", handler.DiscoverResourceByIn)
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, "res").Return(&interfaces.Resource{
+				ID: "res", CatalogID: "cat", Category: tt.category,
+			}, nil)
+			dts.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.CreateDiscoverTaskRequest) (string, error) {
+				assert.Equal(t, "res", req.ResourceID)
+				assert.Equal(t, "cat", req.CatalogID)
+				assert.Equal(t, interfaces.DiscoverStrategyCountOnly, req.Strategy)
+				if tt.status == http.StatusBadRequest {
+					return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+						WithErrorDetails("resource category dataset does not support count_only")
+				}
+				return "task", nil
+			})
+			req := httptest.NewRequest(http.MethodPost, "/resources/res/discover", strings.NewReader(`{"strategy":"count_only"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			assert.Equal(t, tt.status, w.Code)
+			if tt.status == http.StatusBadRequest {
+				assert.Contains(t, w.Body.String(), "does not support count_only")
+				assert.NotContains(t, w.Body.String(), `"id"`)
+			} else {
+				assert.JSONEq(t, `{"id":"task"}`, w.Body.String())
+			}
+		})
+	}
+}

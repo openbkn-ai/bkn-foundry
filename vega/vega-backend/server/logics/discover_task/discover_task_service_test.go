@@ -9,6 +9,7 @@ package discover_task
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -64,6 +65,86 @@ func TestDiscoverTaskServiceCreateRequestsDispatchAfterPersistence(t *testing.T)
 	case <-service.DispatchSignal():
 	default:
 		t.Fatal("expected a dispatch signal after the task was persisted")
+	}
+}
+
+func TestDiscoverTaskServiceCreateCountOnly(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		category     string
+		catalogType  string
+		missing      bool
+		wrongCatalog bool
+		lookupError  bool
+		wantStatus   int
+	}{
+		{name: "logical dataset", category: interfaces.ResourceCategoryDataset, catalogType: interfaces.CatalogTypeLogical, wantStatus: http.StatusBadRequest},
+		{name: "physical dataset", category: interfaces.ResourceCategoryDataset, catalogType: interfaces.CatalogTypePhysical, wantStatus: http.StatusBadRequest},
+		{name: "fileset", category: interfaces.ResourceCategoryFileset, wantStatus: http.StatusBadRequest},
+		{name: "table", category: interfaces.ResourceCategoryTable},
+		{name: "index", category: interfaces.ResourceCategoryIndex},
+		{name: "logicview", category: interfaces.ResourceCategoryLogicView},
+		{name: "missing resource", missing: true, wantStatus: http.StatusNotFound},
+		{name: "wrong catalog", category: interfaces.ResourceCategoryTable, wrongCatalog: true, wantStatus: http.StatusNotFound},
+		{name: "lookup error", lookupError: true},
+		{name: "catalog task"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			cs := vmock.NewMockCatalogService(ctrl)
+			dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+			service := &discoverTaskService{cs: cs, rs: rs, dta: dta, dispatchCh: make(chan struct{}, discoverTaskDispatchBuffer)}
+			cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+				Return(true, &interfaces.Catalog{ID: "catalog-1", Type: tt.catalogType}, nil)
+			req := &interfaces.CreateDiscoverTaskRequest{CatalogID: "catalog-1", ResourceID: "res", Strategy: interfaces.DiscoverStrategyCountOnly}
+			lookupErr := errors.New("resource lookup failed")
+			if tt.name == "catalog task" {
+				req.ResourceID = ""
+			} else {
+				res := &interfaces.Resource{ID: "res", CatalogID: req.CatalogID, Category: tt.category}
+				if tt.missing {
+					res = nil
+				}
+				if tt.wrongCatalog {
+					res.CatalogID = "other-catalog"
+				}
+				if tt.lookupError {
+					rs.EXPECT().InternalGetByID(gomock.Any(), nil, req.ResourceID).Return(nil, lookupErr)
+				} else {
+					rs.EXPECT().InternalGetByID(gomock.Any(), nil, req.ResourceID).Return(res, nil)
+				}
+			}
+			if tt.wantStatus == 0 && !tt.lookupError {
+				if req.ResourceID != "" {
+					dta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+				}
+				dta.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, task *interfaces.DiscoverTask) error {
+					assert.Equal(t, req.ResourceID, task.ResourceID)
+					assert.Equal(t, interfaces.DiscoverStrategyCountOnly, task.Strategy)
+					return nil
+				})
+			}
+			id, err := service.Create(context.Background(), req)
+			if tt.wantStatus != 0 || tt.lookupError {
+				assert.Empty(t, id)
+				assert.Empty(t, service.dispatchCh)
+				if tt.lookupError {
+					require.ErrorIs(t, err, lookupErr)
+					return
+				}
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, tt.wantStatus, httpErr.HTTPCode)
+				if tt.wantStatus == http.StatusBadRequest {
+					assert.Contains(t, httpErr.Error(), "does not support count_only")
+				}
+				return
+			}
+			require.NoError(t, err)
+			assert.NotEmpty(t, id)
+			assert.Len(t, service.dispatchCh, 1)
+		})
 	}
 }
 

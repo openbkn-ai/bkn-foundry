@@ -354,12 +354,14 @@ paths:
         Resource 的 `enabled` 值。可选 `count_only` 仅刷新精确数量及采集时间，不刷新元数据。
         精确计数支持 MariaDB/MySQL、PostgreSQL 表与普通视图、PostgreSQL 物化视图及 OpenSearch 索引；
         logicview 复用已注册的视图查询服务，按完整视图定义及固定过滤条件获取源端精确总数。
+        Dataset 数据量在读取时实时计算，不支持后台 count_only；单资源不支持的 category
+        在创建任务前返回 400，不入库、不调度、不调用连接器。
         每个资源使用 5 分钟 ctx 兜底，暂不设置数据库服务端执行时限。
         统计写回仅更新资源独立的数量及采集时间字段，不改变 source_metadata、update_time 或 updater。
 
         同一 Resource 已有 `pending` 或 `running` 的刷新任务时，返回 409
-        `VegaBackend.DiscoverTask.ResourceRefreshInProgress`。不支持按资源标识刷新
-        的 category，或源端已找不到该资源时，任务会进入 `failed`，请通过
+        `VegaBackend.DiscoverTask.ResourceRefreshInProgress`。full_sync 遇到不支持按资源标识刷新
+        的 category，或支持计数的资源在执行时已从源端消失，任务会进入 `failed`，请通过
         `GET /discover-tasks/{id}` 查看详情。
       requestBody:
         required: false
@@ -372,7 +374,7 @@ paths:
                   type: string
                   enum: [full_sync, count_only]
                   default: full_sync
-                  description: count_only 对已有源表、源视图、索引或 logicview 执行精确计数；单资源不支持时任务失败
+                  description: count_only 对已有源表、源视图、索引或 logicview 执行精确计数；Dataset 等不支持的单资源在创建任务前返回 400
       responses:
         "200":
           description: 已创建并入队 Resource 刷新任务
@@ -380,6 +382,12 @@ paths:
             application/json:
               schema:
                 $ref: "discover-task.yaml#/components/schemas/DiscoverTriggerResponse"
+        "400":
+          description: 请求体或策略非法，或资源类型不支持 count_only；不创建任务
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
