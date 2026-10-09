@@ -60,6 +60,8 @@ jobs:
           working-directory: bkn-trace/agent-observability
       - name: Verify OpenBKN license headers
         run: make license-check
+      - name: Failed-call deployment polling regression
+        run: python3 -m unittest discover -s scripts -p 'test_failed_call_deployment_poll.py' -v
       - name: Unit tests
         run: make test
       - name: Historical upgrade tool tests

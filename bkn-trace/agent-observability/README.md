@@ -119,7 +119,7 @@ Interaction 业务语义图遵循以下口径：
 - `completeness` / `partial_reasons` 描述客观证据组装；`disclosure_partial` / `disclosure_reasons` 描述当前用户授权投影。resolver 不可用、未配置或无法确认权限时，业务节点及其操作边默认不披露。
 - resolver 按 `ref_type + ref_id + source_system` 判定，不使用不匹配的 RefID 前缀推断权限。暂时没有安全实例级授权接口的类型保持 `unresolved`，不能由父类型权限推断实例权限。
 
-失败回执保留生产端明确给出的失败分类：MCP handler 的参数绑定、必填值与格式校验，以及本地搜索、指标、SQL / Cypher 校验，写入顶层 `error.stage=input_validation`。REST 受管调用同样保存执行服务记录的分类，本轮实际覆盖 SQL 校验和后端失败；未将全部 REST handler 的绑定错误纳入此覆盖范围。MCP 的 `IsError`、REST 的 HTTP 状态和原始错误内容保持不变；不会从 HTTP 状态、错误文本或调用者提供的 `structuredContent` 推断阶段。
+失败回执保留生产端明确给出的失败分类：本轮修改的 MCP 查询/模式 handler（`search_instance`、`query_object_instance`、`query_instance_subgraph`、`explore_subgraph`、`query_metric`、`get_kn_detail`、`get_object_types`、`get_relation_types`、`run_sql`、`run_cypher`）中的显式参数绑定、必填值或格式校验拒绝，以及本地搜索、指标、SQL / Cypher 校验，写入顶层 `error.stage=input_validation`。REST 受管调用同样保存执行服务记录的分类，本轮实际覆盖 SQL 校验和后端失败；未将全部 REST handler 的绑定错误纳入此覆盖范围。未修改的 schema search、logic properties、action、network/resource discovery 等 MCP 工具采用 `execution_only` 合同，其 RequiredTraceFields 不要求 `business_refs`；不将本轮结果声明为所有 MCP 校验路径均已适配。MCP 的 `IsError`、REST 的 HTTP 状态和原始错误内容保持不变；不会从 HTTP 状态、错误文本或调用者提供的 `structuredContent` 推断阶段。
 
 `run_sql` 将执行层已有解析器识别的资源 ID 同时保留到受管调用的 `business_refs`，供失败回执归因。这个事实独立于 Kafka 入队或 Ledger 持久化：事件被丢弃仍保留原来的失败持久性状态。目标随既有 evidence expectation 在第一次 Finish 前冻结，迟到回调不能改写重放的目标。`sql_guard` 没有资源目标时仍是策略拒绝；非输入拒绝且缺少回执引用和匹配事件，Core 继续返回 `failed-call target context unavailable; no explicit input rejection`，历史回执不补造事实。
 

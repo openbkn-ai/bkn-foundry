@@ -68,6 +68,16 @@ def poll(check, timeout=25):
     raise RuntimeError("deployment did not converge: " + str(last_error)) from last_error
 
 
+def completed_interaction(core, headers, conversation, interaction):
+    page, _ = request(core + "/business-provenance/interactions?conversation_id=" +
+                      conversation, headers)
+    entry = next((row for row in page["entries"] if row["interaction_id"] == interaction), None)
+    assert entry is not None, "interaction not listed yet"
+    assert entry.get("current_record_integrity", {}).get("status") == "complete"
+    assert not entry.get("record_integrity_check_failed", False)
+    return entry
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mcp-url", required=True)
@@ -164,15 +174,7 @@ def main():
             assert operation["status"] == "unresolved" and "resource_id" in operation["missing_facts"]
             assert fact.get("capability_profile") is None, "REST capability contract changed"
 
-        def complete():
-            page, _ = request(core + "/business-provenance/interactions?conversation_id=" +
-                              identity["conversation_id"], headers)
-            entry = next(row for row in page["entries"] if row["interaction_id"] == interaction)
-            assert entry.get("current_record_integrity", {}).get("status") == "complete"
-            assert not entry.get("record_integrity_check_failed", False)
-            return entry
-
-        poll(complete)
+        poll(lambda: completed_interaction(core, headers, identity["conversation_id"], interaction))
         integrity = "complete (registered call records)"
         report.append({"case": name, "interaction_id": interaction,
                        "operation_id": fact["operation_id"], "stage": stage,
