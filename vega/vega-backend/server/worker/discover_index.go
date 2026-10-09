@@ -274,11 +274,15 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 		var props []*interfaces.Property
 		for _, field := range idx.Mapping {
 			delete(field.Attributes, "type")
+			nativeType := field.Type
+			if field.ResolvedType != "" {
+				nativeType = field.ResolvedType
+			}
 
 			property := &interfaces.Property{
 				Name:        field.Name,
 				DisplayName: field.Name,
-				Type:        indexConnector.MapType(field.Type),
+				Type:        indexConnector.MapType(nativeType),
 				Description: field.Description,
 
 				OriginalName:        field.Name,
@@ -365,11 +369,11 @@ func mergeIndexFeatures(existing, native []interfaces.PropertyFeature) []interfa
 // osSubFieldTypeToFeatureType maps supported OpenSearch multi-field types to VEGA feature types.
 func osSubFieldTypeToFeatureType(osType string) string {
 	switch osType {
-	case "keyword":
+	case "keyword", "constant_keyword":
 		return interfaces.PropertyFeatureType_Keyword
-	case "text":
+	case "text", "match_only_text":
 		return interfaces.PropertyFeatureType_Fulltext
-	case "dense_vector", "knn_vector":
+	case "knn_vector":
 		return interfaces.PropertyFeatureType_Vector
 	default:
 		return ""

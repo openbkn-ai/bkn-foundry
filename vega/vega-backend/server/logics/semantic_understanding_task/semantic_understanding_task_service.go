@@ -711,7 +711,9 @@ func isSemanticUnderstandingExcludedSampleProperty(property *interfaces.Property
 	if property == nil {
 		return false
 	}
-	return property.Type == interfaces.DataType_Binary || property.Type == interfaces.DataType_Other
+	return property.Type == interfaces.DataType_Binary ||
+		property.Type == interfaces.DataType_Other ||
+		property.Type == interfaces.DataType_Vector
 }
 
 func limitSemanticUnderstandingSampleValue(value any) any {

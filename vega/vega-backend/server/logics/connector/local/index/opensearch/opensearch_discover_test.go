@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 func TestPropertyUnmarshalJSON(t *testing.T) {
@@ -294,5 +295,59 @@ func TestOpenSearchConnectorCountRows(t *testing.T) {
 				assert.Equal(t, 1, calls)
 			}
 		})
+	}
+}
+
+func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"products":{"mappings":{"properties":{
+			"age":{"type":"long"},
+			"created":{"type":"date"},
+			"profile":{"properties":{"name":{"type":"text","fields":{"raw":{"type":"keyword"}}}}},
+			"age_alias":{"type":"alias","path":"age"},
+			"date_alias":{"type":"alias","path":"created"},
+			"name_alias":{"type":"alias","path":"profile.name.raw"},
+			"missing_alias":{"type":"alias","path":"missing"},
+			"cycle_alias":{"type":"alias","path":"cycle_alias"},
+			"chain_alias":{"type":"alias","path":"age_alias"},
+			"object_alias":{"type":"alias","path":"profile"},
+			"invalid_alias":{"type":"alias","path":42}
+		}}}}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+	index := &interfaces.IndexMeta{Name: "products"}
+
+	require.NoError(t, connector.fetchMappings(t.Context(), index))
+	queryTypes := map[string]string{}
+	require.NoError(t, connector.fetchMappingsForQuery(t.Context(), "products", queryTypes))
+	for name, want := range map[string]string{
+		"age_alias": "long", "date_alias": "date", "name_alias": "keyword",
+		"missing_alias": "", "cycle_alias": "", "chain_alias": "", "object_alias": "", "invalid_alias": "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			field := index.Mapping[name]
+			assert.Equal(t, "alias", field.Type)
+			assert.Equal(t, want, field.ResolvedType)
+			assert.Contains(t, field.Attributes, "path")
+			assert.Equal(t, connector.MapType(want), queryTypes[name])
+			encoded, err := sonic.Marshal(field)
+			require.NoError(t, err)
+			assert.NotContains(t, string(encoded), "ResolvedType")
+		})
+	}
+	for _, name := range []string{"age_alias", "date_alias"} {
+		property := &interfaces.Property{Name: name, Type: queryTypes[name]}
+		cfg := &interfaces.FilterCondCfg{Name: name, ValueOptCfg: interfaces.ValueOptCfg{
+			ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10},
+		}}
+		condition, err := (&filter_condition.RangeCond{}).New(t.Context(), cfg,
+			map[string]*interfaces.Property{name: property})
+		require.NoError(t, err, name)
+		assert.NotNil(t, condition, name)
 	}
 }
