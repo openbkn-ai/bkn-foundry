@@ -190,7 +190,9 @@ observability:
     interval: 30s
   admissionBudget:
     # Thresholds are deployment/SLO inputs. Empty values intentionally keep
-    # enable fail-closed until the deployment supplies all four values.
+    # configuration reads and enable requests unavailable until the deployment
+    # supplies all four values. Persist overrides in the values file used for
+    # every Helm upgrade; a runtime env patch is not durable.
     profile: default
     collectorMetricsEndpoint: ""
     opensearchCapacityThreshold: ""

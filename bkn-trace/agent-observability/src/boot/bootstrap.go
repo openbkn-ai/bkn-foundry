@@ -216,34 +216,38 @@ func NewApp() (*App, error) {
 		capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			metrics, err := openSearchClient.ReadAdmissionMetrics(ctx)
 			if err != nil {
-				return capturepolicysvc.AdmissionMeasurement{}, err
+				return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_opensearch_capacity", err)
 			}
 			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_opensearch_capacity", Source: "opensearch-cluster-stats", SampleTime: metrics.SampledAt, Value: metrics.Capacity, Fresh: true}, nil
 		}),
 		capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			metrics, err := openSearchClient.ReadAdmissionMetrics(ctx)
 			if err != nil {
-				return capturepolicysvc.AdmissionMeasurement{}, err
+				return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_opensearch_heap", err)
 			}
 			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_opensearch_heap", Source: "opensearch-cluster-stats", SampleTime: metrics.SampledAt, Value: metrics.Heap, Fresh: true}, nil
 		}),
 	)
-	collectorMetricsEndpoint := strings.TrimSpace(observabilityConfig.AdmissionBudgetMetricsEndpoint)
-	if collectorMetricsEndpoint == "" {
-		collectorMetricsEndpoint = strings.TrimSpace(observabilityConfig.SourceCoverageMetricsEndpoint)
+	collectorMetricsEndpoint, collectorEndpointErr := observabilityConfig.AdmissionCollectorMetricsEndpoint()
+	collectorMetricsField := "BKN_TRACE_ADMISSION_COLLECTOR_METRICS_ENDPOINT"
+	if strings.TrimSpace(observabilityConfig.AdmissionBudgetMetricsEndpoint) == "" && strings.TrimSpace(observabilityConfig.SourceCoverageMetricsEndpoint) != "" {
+		collectorMetricsField = "BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT"
 	}
-	if endpoint := collectorMetricsEndpoint; endpoint != "" {
+	if endpoint := collectorMetricsEndpoint; collectorEndpointErr == nil {
 		collectorMetrics := otelcolmetrics.New(endpoint, &http.Client{Timeout: 3 * time.Second})
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			sample, err := collectorMetrics.ReadQueueSample(ctx)
 			if err != nil {
-				return capturepolicysvc.AdmissionMeasurement{}, err
+				return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_collector_queue", err)
 			}
 			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_collector_queue", Source: endpoint, SampleTime: sample.SampledAt, Value: sample.Utilization, Fresh: true}, nil
 		}))
 	} else {
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
-			return capturepolicysvc.AdmissionMeasurement{}, errors.New("collector metrics endpoint is not configured")
+			return capturepolicysvc.AdmissionMeasurement{}, &capturepolicysvc.AdmissionBudgetError{
+				Reason: "invalid_configuration", Metric: "trace_collector_queue",
+				Fields: []string{collectorMetricsField}, Cause: collectorEndpointErr,
+			}
 		}))
 	}
 	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok && databaseStore.Database() != nil {
@@ -251,7 +255,7 @@ func NewApp() (*App, error) {
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			stats := database.Stats()
 			if stats.MaxOpenConnections <= 0 {
-				return capturepolicysvc.AdmissionMeasurement{}, errors.New("trace storage pool max open connections is not configured")
+				return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_storage_connection_pool", errors.New("trace storage pool max open connections is not configured"))
 			}
 			value := float64(stats.InUse) / float64(stats.MaxOpenConnections)
 			if value > 1 {
@@ -261,8 +265,11 @@ func NewApp() (*App, error) {
 		}))
 	} else {
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
-			return capturepolicysvc.AdmissionMeasurement{}, errors.New("trace storage pool is not configured")
+			return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_storage_connection_pool", errors.New("trace storage pool is not configured"))
 		}))
+	}
+	if collectorEndpointErr != nil {
+		log.Printf("Trace admission Collector configuration unavailable (%s): %v", collectorMetricsField, collectorEndpointErr)
 	}
 	budgetConfig := observabilityConfig.AdmissionBudgetThresholds
 	budgetProvider, budgetErr := capturepolicysvc.NewAdmissionBudgetProvider(
@@ -276,6 +283,9 @@ func NewApp() (*App, error) {
 	)
 	if budgetErr != nil {
 		log.Printf("Trace admission budget provider unavailable: %v", budgetErr)
+		capturePolicyHandler.SetAdmissionBudgetReader(httphandler.AdmissionBudgetReaderFunc(func(context.Context) (capturepolicysvc.AdmissionBudget, error) {
+			return capturepolicysvc.AdmissionBudget{}, budgetErr
+		}))
 	} else {
 		capturePolicyHandler.SetAdmissionBudgetReader(budgetProvider)
 	}

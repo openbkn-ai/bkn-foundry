@@ -7,11 +7,14 @@ package otelcolmetrics
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 )
 
 type metricsRoundTripper func(*http.Request) (*http.Response, error)
@@ -60,5 +63,37 @@ func TestClientRejectsMissingQueueCapacity(t *testing.T) {
 	})})
 	if _, err := client.ReadQueueSample(context.Background()); err == nil {
 		t.Fatal("missing queue capacity must fail closed")
+	}
+}
+
+func TestQueueMetricsMustBothBePresentAndValid(t *testing.T) {
+	for _, tc := range []struct{ name, metrics, field, reason string }{
+		{"missing size", "otelcol_exporter_queue_capacity 128\n", queueSizeMetric, "metric_missing"},
+		{"missing capacity", "otelcol_exporter_queue_size 0\n", queueCapacityMetric, "metric_missing"},
+		{"zero capacity", "otelcol_exporter_queue_size 0\notelcol_exporter_queue_capacity 0\n", queueCapacityMetric, "metric_invalid"},
+		{"negative size", "otelcol_exporter_queue_size -1\notelcol_exporter_queue_capacity 128\n", queueSizeMetric, "metric_invalid"},
+		{"invalid size", "otelcol_exporter_queue_size NaN\notelcol_exporter_queue_capacity 128\n", queueSizeMetric, "metric_invalid"},
+		{"infinite capacity", "otelcol_exporter_queue_size 0\notelcol_exporter_queue_capacity +Inf\n", queueCapacityMetric, "metric_invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := New("http://collector/metrics", &http.Client{Transport: metricsRoundTripper(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(tc.metrics))}, nil
+			})})
+			_, err := client.ReadQueueSample(context.Background())
+			var diagnostic *capturepolicysvc.AdmissionBudgetError
+			if !errors.As(err, &diagnostic) || diagnostic.Reason != tc.reason || len(diagnostic.Fields) != 1 || diagnostic.Fields[0] != tc.field {
+				t.Fatalf("unexpected diagnostic: %v", err)
+			}
+		})
+	}
+}
+
+func TestQueueSizeZeroIsAvailable(t *testing.T) {
+	client := New("http://collector/metrics", &http.Client{Transport: metricsRoundTripper(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("otelcol_exporter_queue_size 0\notelcol_exporter_queue_capacity 128\n"))}, nil
+	})})
+	sample, err := client.ReadQueueSample(context.Background())
+	if err != nil || sample.Utilization != 0 {
+		t.Fatalf("zero queue rejected: %+v %v", sample, err)
 	}
 }

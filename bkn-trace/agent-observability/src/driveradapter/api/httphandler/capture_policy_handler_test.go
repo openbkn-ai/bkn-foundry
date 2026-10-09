@@ -1020,3 +1020,55 @@ func TestInternalHeartbeatValidatesBodyStateWithoutAuthentication(t *testing.T) 
 		}
 	}
 }
+
+func TestCapturePolicyBudgetFailuresIncludeSafeDiagnostics(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		err                   error
+		reason, metric, field string
+	}{
+		{name: "source", err: capturepolicysvc.AdmissionSourceError("trace_collector_queue", errors.New("private dependency response")), reason: "source_unavailable", metric: "trace_collector_queue"},
+		{name: "startup configuration", err: (capturepolicysvc.AdmissionBudgetThresholds{}).Validate(), reason: "invalid_configuration", field: "BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD"},
+		{name: "missing metric", err: &capturepolicysvc.AdmissionBudgetError{Reason: "metric_missing", Metric: "trace_collector_queue", Fields: []string{"otelcol_exporter_queue_size"}}, reason: "metric_missing", metric: "trace_collector_queue", field: "otelcol_exporter_queue_size"},
+	} {
+		for _, method := range []string{http.MethodGet, http.MethodPut} {
+			t.Run(tc.name+"/"+method, func(t *testing.T) {
+				handler := NewCapturePolicyHandler(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+					return capturepolicysvc.Snapshot{Revision: 1, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 1, Operation: capturepolicysvc.Operation{ID: "op-1", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled}}, nil
+				}), capturePolicyCommanderFunc(func(context.Context, capturepolicysvc.ChangeRequest) (capturepolicysvc.Snapshot, error) {
+					t.Fatal("budget failure must not issue a command")
+					return capturepolicysvc.Snapshot{}, nil
+				}))
+				handler.SetAdmissionBudgetReader(AdmissionBudgetReaderFunc(func(context.Context) (capturepolicysvc.AdmissionBudget, error) {
+					return capturepolicysvc.AdmissionBudget{}, tc.err
+				}))
+				response := httptest.NewRecorder()
+				request := httptest.NewRequest(method, "/api/agent-observability/v1/trace-evidence-configuration", strings.NewReader(`{"desired_state":"enabled","expected_revision":1}`))
+				handler.HandleTraceEvidenceConfiguration(response, request)
+				if response.Code != 503 {
+					t.Fatalf("status=%d: %s", response.Code, response.Body.String())
+				}
+				var payload struct {
+					Code    string                                `json:"code"`
+					TraceID string                                `json:"trace_id"`
+					Details capturepolicysvc.AdmissionBudgetError `json:"details"`
+				}
+				if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+					t.Fatal(err)
+				}
+				if payload.Code != "POLICY_RECONCILER_UNAVAILABLE" || payload.Details.Reason != tc.reason || payload.Details.Metric != tc.metric {
+					t.Fatalf("unexpected diagnostic: %s", response.Body.String())
+				}
+				if tc.field != "" && (len(payload.Details.Fields) == 0 || payload.Details.Fields[0] != tc.field) {
+					t.Fatalf("configuration field lost: %s", response.Body.String())
+				}
+				if payload.TraceID == "" || payload.TraceID != response.Header().Get("x-trace-id") {
+					t.Fatalf("trace ID lost: %s", response.Body.String())
+				}
+				if strings.Contains(response.Body.String(), "private dependency response") {
+					t.Fatalf("raw cause exposed: %s", response.Body.String())
+				}
+			})
+		}
+	}
+}

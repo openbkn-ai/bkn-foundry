@@ -3478,7 +3478,7 @@ paths:
   /trace-evidence-configuration:
     get:
       description: |-
-        Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.
+        Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements. Unavailable budgets return 503 with optional diagnostic details (reason, metric, fields).
         Requires the existing trace_evidence_configuration:global read permission.
       produces:
       - application/json
@@ -3508,8 +3508,9 @@ paths:
       consumes:
       - application/json
       description: Requires the existing trace_evidence_configuration:global write
-        permission. The requested state is asynchronous; effective_state reports the
-        last observed runtime state.
+        permission. Enable requests with unavailable budgets return 503 with optional
+        diagnostic details (reason, metric, fields). The requested state is asynchronous;
+        effective_state reports the last observed runtime state.
       parameters:
       - description: Desired state and expected policy revision
         in: body

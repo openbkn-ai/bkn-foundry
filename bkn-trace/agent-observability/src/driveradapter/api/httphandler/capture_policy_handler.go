@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -32,6 +33,22 @@ type CapturePolicyControlWriter interface {
 
 type AdmissionBudgetReader interface {
 	ReadAdmissionBudget(context.Context) (capturepolicysvc.AdmissionBudget, error)
+}
+
+type AdmissionBudgetReaderFunc func(context.Context) (capturepolicysvc.AdmissionBudget, error)
+
+func (f AdmissionBudgetReaderFunc) ReadAdmissionBudget(ctx context.Context) (capturepolicysvc.AdmissionBudget, error) {
+	return f(ctx)
+}
+
+func writeAdmissionBudgetUnavailable(w http.ResponseWriter, r *http.Request, err error) {
+	slog.WarnContext(r.Context(), "Trace admission budget unavailable", "trace_id", w.Header().Get("x-trace-id"), "error", err)
+	var diagnostic *capturepolicysvc.AdmissionBudgetError
+	var details any
+	if errors.As(err, &diagnostic) {
+		details = diagnostic
+	}
+	writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "admission budget is not available", Details: details})
 }
 
 // CapturePolicyHandler exposes the frozen Trace/Evidence control-plane
@@ -87,7 +104,7 @@ func NewCapturePolicyHandlerWithInternal(reader capturepolicysvc.Reader, command
 // and returns 202 while effective state converges asynchronously.
 //
 // @Summary Change the unified Trace/Evidence capture configuration
-// @Description Requires the existing trace_evidence_configuration:global write permission. The requested state is asynchronous; effective_state reports the last observed runtime state.
+// @Description Requires the existing trace_evidence_configuration:global write permission. Enable requests with unavailable budgets return 503 with optional diagnostic details (reason, metric, fields). The requested state is asynchronous; effective_state reports the last observed runtime state.
 // @Tags trace-evidence
 // @Accept json
 // @Produce json
@@ -124,16 +141,16 @@ func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseW
 	}
 	if request.DesiredState == capturepolicysvc.StateEnabled {
 		if h.budget == nil {
-			writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "admission budget is not available"})
+			writeAdmissionBudgetUnavailable(w, r, capturepolicysvc.ErrAdmissionBudgetUnavailable)
 			return
 		}
 		budget, budgetErr := h.budget.ReadAdmissionBudget(contextWithRequest(r))
 		if budgetErr != nil {
-			status, code := http.StatusServiceUnavailable, "POLICY_RECONCILER_UNAVAILABLE"
-			if errors.Is(budgetErr, capturepolicysvc.ErrAdmissionBudgetExceeded) {
-				status, code = http.StatusUnprocessableEntity, "ADMISSION_BUDGET_EXCEEDED"
+			if !errors.Is(budgetErr, capturepolicysvc.ErrAdmissionBudgetExceeded) {
+				writeAdmissionBudgetUnavailable(w, r, budgetErr)
+				return
 			}
-			writeJSON(w, r, status, rdto.ErrorResponse{Code: code, Message: "admission budget does not permit enabling Trace/Evidence"})
+			writeJSON(w, r, http.StatusUnprocessableEntity, rdto.ErrorResponse{Code: "ADMISSION_BUDGET_EXCEEDED", Message: "admission budget does not permit enabling Trace/Evidence"})
 			return
 		}
 		if budgetErr = capturepolicysvc.ValidateAdmissionBudgetForEnable(budget, time.Now().UTC()); budgetErr != nil {
@@ -173,7 +190,7 @@ func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseW
 // clients must not infer rollout progress from a boolean enabled field.
 //
 // @Summary Get the unified Trace/Evidence capture configuration
-// @Description Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.
+// @Description Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements. Unavailable budgets return 503 with optional diagnostic details (reason, metric, fields).
 // @Description Requires the existing trace_evidence_configuration:global read permission.
 // @Tags trace-evidence
 // @Produce json
@@ -199,12 +216,12 @@ func (h *CapturePolicyHandler) GetTraceEvidenceConfiguration(w http.ResponseWrit
 		return
 	}
 	if h.budget == nil {
-		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "admission budget is not available"})
+		writeAdmissionBudgetUnavailable(w, r, capturepolicysvc.ErrAdmissionBudgetUnavailable)
 		return
 	}
 	budget, err := h.budget.ReadAdmissionBudget(contextWithRequest(r))
 	if err != nil {
-		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "POLICY_RECONCILER_UNAVAILABLE", Message: "admission budget is not available"})
+		writeAdmissionBudgetUnavailable(w, r, err)
 		return
 	}
 	response, err := frozenConfigurationGetResponse(snapshot, budget)
