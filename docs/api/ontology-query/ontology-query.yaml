@@ -23,7 +23,9 @@ info:
     `ignoring_store_cache` parameter; no compatibility alias is provided. Object
     responses expose Vega's actual `query_source` (`local_index` or `source`)
     instead of `search_from_index`. Clients must migrate these names together
-    with the server; existing cursors must be restarted after the upgrade.
+    with the server. The internal cursor digest encoding remains unchanged.
+    Changing `ignore_local_index` requires a new query rather than continuing
+    an existing cursor.
 security:
   - OAuth2: []
 paths:

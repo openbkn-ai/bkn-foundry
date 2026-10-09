@@ -219,9 +219,10 @@ func objectQueryDigest(query *interfaces.ObjectQueryBaseOnObjectType) (string, e
 		Sort                    []*interfaces.SortParams    `json:"sort,omitempty"`
 		IncludeTypeInfo         bool                        `json:"include_type_info"`
 		IncludeLogicParams      bool                        `json:"include_logic_params"`
-		IgnoreLocalIndex        bool                        `json:"ignore_local_index"`
+		IgnoreLocalIndex        bool                        `json:"ignoring_store"`
 		ExcludeSystemProperties []string                    `json:"exclude_system_properties,omitempty"`
 	}
+	// Keep the internal digest key stable across the public parameter rename.
 	body, err := json.Marshal(digestInput{
 		Branch:                  query.Branch,
 		Condition:               query.Condition,

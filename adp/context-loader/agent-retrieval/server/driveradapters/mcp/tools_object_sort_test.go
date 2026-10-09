@@ -88,3 +88,30 @@ func TestQueryObjectInstanceSchema_SortDescriptionsAreLocalized(t *testing.T) {
 		}
 	})
 }
+
+func TestQueryObjectInstanceSchema_DescribesQuerySource(t *testing.T) {
+	_, output := loadToolSchemas("query_object_instance")
+	var schema struct {
+		Properties map[string]struct {
+			Type string   `json:"type"`
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(output, &schema); err != nil {
+		t.Fatal(err)
+	}
+	field, ok := schema.Properties["query_source"]
+	if !ok || field.Type != "string" || len(field.Enum) != 2 || field.Enum[0] != "local_index" || field.Enum[1] != "source" {
+		t.Fatalf("query_source schema = %#v", field)
+	}
+	for _, required := range schema.Required {
+		if required == "query_source" {
+			t.Fatal("query_source must remain optional")
+		}
+	}
+	bundle := loadMCPLocaleBundle("en-US")
+	if bundle.schemaDescriptions["query_object_instance"]["output_schema.properties.query_source.description"] == "" {
+		t.Fatal("query_source must have an English description")
+	}
+}
