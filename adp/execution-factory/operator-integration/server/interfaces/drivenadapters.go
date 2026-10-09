@@ -521,6 +521,7 @@ type ExecuteCodeReq struct {
 // ExecuteCodeResp execute code response.
 type ExecuteCodeResp struct {
 	ID            string `json:"id"`             // Execution ID.
+	Status        string `json:"status"`         // Sandbox execution status.
 	SessionID     string `json:"session_id"`     // Session ID.
 	Code          string `json:"code"`           // Execute code.
 	Language      string `json:"language"`       // execution language.

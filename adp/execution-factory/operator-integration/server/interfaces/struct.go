@@ -112,11 +112,12 @@ const (
 
 // HTTPRequest API request.
 type HTTPRequest struct {
-	ClientID          string        `json:"client_id"` // Client ID.
-	Timeout           time.Duration `json:"timeout" validate:"gte=0"`
-	ExecutionMode     ExecutionMode `json:"execution_mode" validate:"required,oneof=sync async stream"`
-	HTTPRouter        `json:",inline"`
-	HTTPRequestParams `json:",inline"`
+	ClientID           string        `json:"client_id"` // Client ID.
+	Timeout            time.Duration `json:"timeout" validate:"gte=0"`
+	ClientTimeoutGrace time.Duration `json:"-"` // Time for the downstream to report an execution timeout.
+	ExecutionMode      ExecutionMode `json:"execution_mode" validate:"required,oneof=sync async stream"`
+	HTTPRouter         `json:",inline"`
+	HTTPRequestParams  `json:",inline"`
 }
 
 // HTTPRouter HTTP routing.

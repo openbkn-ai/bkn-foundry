@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	neturl "net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -385,6 +386,37 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 		},
 		HTTPRequestParams: req.HTTPRequestParams,
 		Timeout:           time.Duration(req.Timeout) * time.Second,
+	}
+	if tool.SourceType == model.SourceTypeFunction && isPlatformFunctionTarget(url) {
+		proxyReq.ClientTimeoutGrace = 5 * time.Second
+		// The HTTP client timeout alone does not control sandbox execution. The internal
+		// Function endpoint accepts milliseconds through its timeout query parameter.
+		// Do not allow an existing URL query or a user-supplied query.timeout to
+		// bypass the configured limit.
+		parsedURL, parseErr := neturl.Parse(proxyReq.URL)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		existingQuery := parsedURL.Query()
+		existingQuery.Del("timeout")
+		parsedURL.RawQuery = existingQuery.Encode()
+		proxyReq.URL = parsedURL.String()
+		query := make(map[string]any, len(proxyReq.QueryParams)+1)
+		for key, value := range proxyReq.QueryParams {
+			if key != "timeout" {
+				query[key] = value
+			}
+		}
+		if req.Timeout > 0 {
+			seconds := int64(req.Timeout)
+			if s.ProxyMaxTimeout > 0 && seconds > int64(s.ProxyMaxTimeout/time.Second) {
+				seconds = int64(s.ProxyMaxTimeout / time.Second)
+			}
+			timeout := time.Duration(seconds) * time.Second
+			proxyReq.Timeout = timeout
+			query["timeout"] = strconv.FormatInt(timeout.Milliseconds(), 10)
+		}
+		proxyReq.QueryParams = query
 	}
 	proxyReq.Headers = utils.SanitizeThirdPartyHeaders(proxyReq.Headers)
 	// After sanitizing, never before: the sanitizer strips exactly this header
