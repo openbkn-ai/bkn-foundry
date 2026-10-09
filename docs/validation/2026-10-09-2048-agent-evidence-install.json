@@ -23,5 +23,11 @@
   ],
   "kafka_consumer_lag": 0,
   "scope": "Source-built publisher and Core; isolated Kafka/MariaDB/OpenSearch. Synthetic interaction-started event. Does not certify live LLM/tool execution, production Helm rollout or other issues.",
-  "security_changes": "none; existing internal protocol and Kafka/Artifact contracts retained"
+  "security_changes": "none; existing internal protocol and Kafka/Artifact contracts retained",
+  "review_followup": {
+    "legacy_connections": "Installed effective capture state and queue limits preserved; historical brokers, credentials references and 8080 control routes replaced by current installer/config/CLI connections.",
+    "runtime_preflight": "Broker host:port and seven numeric ranges match EvidenceKafkaConfig; invalid values rejected before rollout.",
+    "ci_scope": "Shared installer paths run pull_request contract checks, not Agent publishing.",
+    "verification": "Agent/Audit installer regressions, 116 trace profile checks, publisher/bootstrap/control chart contracts and Helm lint passed locally; no new service instances started."
+  }
 }

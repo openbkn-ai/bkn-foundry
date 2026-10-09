@@ -617,7 +617,7 @@ _openbkn_trace_profile_sets() {
                 "observability.bknTraceArtifactIngestTokenSecretKey=token"
             )
             # Publisher settings are defaults, not forced overrides of a user's
-            # explicit values or the effective settings of an existing release.
+            # explicit values or preserved capture choices of an existing release.
             CORE_RELEASE_EXTRA_DEFAULT_SETS+=(
                 "observability.evidencePublisher.enabled=true"
                 "observability.evidencePublisher.traceAdmission.policyURL=${OPENBKN_TRACE_ADMISSION_POLICY_URL}"

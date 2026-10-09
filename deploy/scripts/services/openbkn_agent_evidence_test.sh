@@ -30,7 +30,8 @@ old_values='{}'
 helm() {
   case "$1" in
     list) [[ "${test_installed}" != true ]] || printf 'bkn-agent\n' ;;
-    get) printf '%s' "${old_values}" ;;
+    # Effective values must include a historical chart's default disabled state.
+    get) [[ " $* " == *" --all "* ]] || return 1; printf '%s' "${old_values}" ;;
     install) command helm "$@" >"${test_dir}/render.json"; cat "${test_dir}/render.json" ;;
     upgrade) printf '%s\n' upgrade >>"${test_dir}/upgrades" ;;
     *) return 1 ;;
@@ -49,9 +50,9 @@ assert p['enabled'] is True and p['brokers'] == 'profile-kafka:9092'
 assert p['traceAdmission']['policyURL'] == 'http://custom-internal:8081/policy'
 PY
 
-# Upgrade keeps actual publisher choices, not obsolete unrelated chart defaults.
+# Upgrade preserves capture choices, but uses current installer connections.
 test_installed=true
-old_values='{"observability":{"evidencePublisher":{"enabled":false,"brokers":"old-kafka:9092","queueMaxRecords":12,"password":"never-copy"}},"unrelated":"never-copy"}'
+old_values='{"observability":{"evidencePublisher":{"enabled":false,"brokers":"old-kafka:9092","credentialsSecretName":"old-secret","traceAdmission":{"configurationURL":"http://agent-observability:8080/api/agent-observability/v1/trace-evidence-configuration"},"queueMaxRecords":12,"password":"never-copy"}},"unrelated":"never-copy"}'
 rm -f "${test_dir}/secret-calls"
 export AGENT_TEST_SECRET_STATE=missing
 _openbkn_helm_upgrade_release bkn-agent openbkn "${args[@]}"
@@ -60,7 +61,9 @@ python3 - "${test_dir}/render.json" <<'PY'
 import json, sys
 c = json.load(open(sys.argv[1]))['config']
 p = c['observability']['evidencePublisher']
-assert p['enabled'] is False and p['brokers'] == 'old-kafka:9092'
+assert p['enabled'] is False and p['brokers'] == 'profile-kafka:9092'
+assert p['credentialsSecretName'] != 'old-secret'
+assert ':8081/' in p['traceAdmission']['configurationURL']
 assert p['queueMaxRecords'] == 12 and 'password' not in p and 'unrelated' not in c
 PY
 
@@ -89,5 +92,13 @@ if _openbkn_helm_upgrade_release bkn-agent openbkn "${args[@]}" -f "${test_dir}/
   echo 'enabled publisher must reject an empty internal control endpoint' >&2
   exit 1
 fi
+# Reject values which otherwise cause the runtime to disable capture after rollout.
+for invalid in brokers=kafka brokers=kafka:0 brokers=kafka:65536 queueMaxRecords=0 queueMaxRecords=1.5 queueMaxBytes=1073741825 maxRecordBytes=1048577 maxAgeS=0 maxAgeS=NaN maxAttempts=11 retryBackoffMs=-1 retryBackoffMs=60001 drainTimeoutS=0 drainTimeoutS=61; do
+  if _openbkn_helm_upgrade_release bkn-agent openbkn "${args[@]}" -f "${test_dir}/custom.json" --set "observability.evidencePublisher.${invalid}" 2>/dev/null; then
+    echo "enabled publisher must reject invalid ${invalid%%=*} before rollout" >&2
+    exit 1
+  fi
+done
 [[ "$(wc -l <"${test_dir}/upgrades")" -eq 4 ]]
+printf 'null' | python3 "${SCRIPT_DIR}/scripts/lib/agent_evidence.py" preserve | python3 -c 'import json,sys; assert json.load(sys.stdin) == {}'
 echo 'Agent Evidence defaults, upgrades and Secret preflight checks passed'

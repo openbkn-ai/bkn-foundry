@@ -14,18 +14,17 @@ from audit_consumer import check_secret
 
 
 def preserved_values(values):
+    if values is None:
+        return {}
     publisher = values.get("observability", {}).get("evidencePublisher")
     if not isinstance(publisher, dict):
         return {}
-    keys = ("enabled", "brokers", "credentialsSecretName", "usernameSecretKey",
-            "passwordSecretKey", "queueMaxRecords", "queueMaxBytes", "maxRecordBytes",
+    # Saved connection values may be old installer-forced defaults (including
+    # the retired authenticated 8080 route), not operator choices. Resolve them
+    # from today's installer/config/CLI. Keep capture and sizing choices only.
+    keys = ("enabled", "queueMaxRecords", "queueMaxBytes", "maxRecordBytes",
             "maxAgeS", "maxAttempts", "retryBackoffMs", "drainTimeoutS")
     result = {key: publisher[key] for key in keys if key in publisher}
-    admission = publisher.get("traceAdmission")
-    if isinstance(admission, dict):
-        result["traceAdmission"] = {key: admission[key] for key in
-                                    ("policyURL", "configurationURL", "heartbeatURL", "ackURLBase")
-                                    if key in admission}
     return {"observability": {"evidencePublisher": result}}
 
 
@@ -44,6 +43,17 @@ def defaults(pairs):
     return values
 
 
+def valid_broker(broker):
+    host, separator, port = broker.rpartition(":")
+    if not separator or not host or not port.isdecimal():
+        return False
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    elif ":" in host:
+        return False
+    return bool(host) and 1 <= int(port) <= 65535
+
+
 def validate(values, namespace):
     publisher = values.get("observability", {}).get("evidencePublisher", {})
     enabled = publisher.get("enabled", False)
@@ -51,8 +61,29 @@ def validate(values, namespace):
         raise ValueError("observability.evidencePublisher.enabled must be a boolean")
     if not enabled:
         return
-    if not publisher.get("brokers"):
-        raise ValueError("Agent Evidence publisher requires Kafka brokers")
+    brokers = publisher.get("brokers", "")
+    if not isinstance(brokers, str) or not all(valid_broker(part.strip()) for part in brokers.split(",")):
+        raise ValueError("Agent Evidence publisher requires valid Kafka host:port brokers")
+    # Mirror EvidenceKafkaConfig.validate bounds. Helm numeric defaults and
+    # --set-string are both supported; do not accept fractional integer limits.
+    for key, lower, upper, integer in (
+        ("queueMaxRecords", 1, 1_000_000, True),
+        ("queueMaxBytes", 1, 1 << 30, True),
+        ("maxRecordBytes", 1, 1 << 20, True),
+        ("maxAgeS", 0.1, 3600, False),
+        ("maxAttempts", 1, 10, True),
+        ("retryBackoffMs", 0, 60000, False),
+        ("drainTimeoutS", 0.1, 60, False),
+    ):
+        raw = publisher.get(key)
+        try:
+            if isinstance(raw, bool):
+                raise ValueError()
+            value = int(str(raw)) if integer else float(raw)
+            if not lower <= value <= upper:
+                raise ValueError()
+        except (ValueError, TypeError, OverflowError):
+            raise ValueError("observability.evidencePublisher.{} is outside runtime bounds".format(key)) from None
     for key in ("policyURL", "configurationURL", "heartbeatURL", "ackURLBase"):
         value = publisher.get("traceAdmission", {}).get(key, "")
         parsed = urlparse(value)
