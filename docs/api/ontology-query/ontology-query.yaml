@@ -3354,10 +3354,7 @@ components:
       type: object
       properties:
         analyzer:
-          description: 分词器
-          enum:
-          - standard
-          - ik_max_word
+          description: 分词器 ID。可用值由 GET /api/vega-backend/v1/index-capabilities 的 fulltext_analyzers 返回，取决于集群实际支持的分词器。
           type: string
         field_keyword:
           description: 是否保留原始字符串，保留原始字符串可用于精确匹配。默认是false

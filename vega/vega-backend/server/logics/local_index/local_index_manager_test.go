@@ -22,6 +22,43 @@ import (
 )
 
 func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		standard, index bool
+	}{
+		{name: "both HanLP analyzers installed", standard: true, index: true},
+		{name: "only hanlp_standard installed", standard: true},
+		{name: "only hanlp_index installed", index: true},
+		{name: "neither HanLP analyzer installed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+			manager := &localIndexManager{lic: connector}
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(false, nil)
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(tc.standard, nil)
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(tc.index, nil)
+			want := []interfaces.AnalyzerCapability{{ID: "standard"}, {ID: "english"}}
+			if tc.standard {
+				want = append(want, interfaces.AnalyzerCapability{ID: "hanlp_standard"})
+			}
+			if tc.index {
+				want = append(want, interfaces.AnalyzerCapability{ID: "hanlp_index"})
+			}
+			capabilities, err := manager.GetIndexCapabilities(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, want, capabilities.FulltextAnalyzers)
+			for analyzer, expected := range map[string]bool{"hanlp_standard": tc.standard, "hanlp_index": tc.index} {
+				available, err := manager.ValidateAnalyzer(context.Background(), analyzer)
+				require.NoError(t, err)
+				assert.Equal(t, expected, available)
+			}
+			cached, err := manager.GetIndexCapabilities(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, capabilities, cached)
+		})
+	}
 	t.Run("refreshes an expired error after OpenSearch recovers", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -47,6 +84,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(false, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
 
 		capabilities, err = manager.GetIndexCapabilities(ctx)
@@ -69,6 +107,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(false, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
 
 		capabilities, err := manager.GetIndexCapabilities(ctx)
@@ -96,6 +135,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		})
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(false, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
 
 		const callers = 8
@@ -132,6 +172,7 @@ func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(false, nil)
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
 
 	available, err := manager.ValidateAnalyzer(ctx, "ik_max_word")

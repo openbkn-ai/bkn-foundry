@@ -6,9 +6,10 @@ Stock OpenSearch plus the IK Chinese analyzer, installed by
 ## Why this exists
 
 vega-backend probes a fixed candidate list of full-text analyzers at startup
-(`standard`, `english`, `ik_max_word`, `hanlp_index`) and caches a successful
-snapshot. Startup performs one probe with a 10-second timeout. If OpenSearch is
-not ready in time, the failure is cached for 30 seconds; a later capability
+(`standard`, `english`, `ik_max_word`, `hanlp_standard`, `hanlp_index`) and caches
+a successful snapshot. Startup performs one probe with a 10-second timeout. If
+OpenSearch is not ready in time, the failure is cached for 30 seconds; a later
+capability
 request probes once after that cache expires instead of retaining the startup
 failure for the process lifetime. The result is served by
 `GET /api/vega-backend/v1/index-capabilities` and drives
@@ -36,14 +37,15 @@ The plugin descriptor pins `opensearch.version=2.19.4`. OpenSearch refuses to
 load a plugin whose version does not match the node exactly, so the base image
 tag and `IK_VERSION` must be bumped together.
 
-`hanlp_index` stays in vega-backend's candidate list but is not shipped.
+`hanlp_standard` and `hanlp_index` stay in vega-backend's candidate list but are
+not shipped.
 OpenSearch has no equivalent of IK's maintained release line for HanLP: every
 implementation is a personal port of KennFalcon's Elasticsearch plugin, and
 the most active one (`Canva/opensearch-hanlp-plugin`) publishes releases only
 for 2.10.0 / 2.19.1 / 2.19.2 — none of which loads on a 2.19.4 node, since the
 descriptor version must match exactly. Shipping it would mean building from
 source against every OpenSearch bump plus distributing the HanLP dictionaries.
-The probe simply drops it, same as today.
+The probe simply drops unavailable analyzers from the capability snapshot.
 
 ## Startup and readiness strategy
 
