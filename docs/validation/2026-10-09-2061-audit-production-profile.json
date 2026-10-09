@@ -9,7 +9,8 @@
     "Read-only verifier: six tests",
     "Delegated actor/effective subject separation and display name does not change authorization fingerprint",
     "Producer snapshot regression first failed on main then passed",
-    "Independent review and final review corrections"
+    "Independent review and final review corrections",
+    "CI golangci-lint v2.12.2 full module: 0 issues; trusted-name fixture race tests passed"
   ],
   "live": {
     "disabled": {

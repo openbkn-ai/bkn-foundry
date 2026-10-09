@@ -212,11 +212,13 @@ func TestActorDisplayNameDoesNotChangeAuthorizationScope(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/safe/v1/me":
-			json.NewEncoder(w).Encode(map[string]any{"id": "actor-a", "name": name, "enabled": true, "roles": []string{"audit"}})
+			if err := json.NewEncoder(w).Encode(map[string]any{"id": "actor-a", "name": name, "enabled": true, "roles": []string{"audit"}}); err != nil {
+				t.Errorf("write trusted identity fixture: %v", err)
+			}
 		case "/api/safe/v1/me/permissions":
-			w.Write([]byte(`{"permissions":[]}`))
+			_, _ = w.Write([]byte(`{"permissions":[]}`))
 		default:
-			w.Write([]byte(`{"grants":[]}`))
+			_, _ = w.Write([]byte(`{"grants":[]}`))
 		}
 	}))
 	defer server.Close()
