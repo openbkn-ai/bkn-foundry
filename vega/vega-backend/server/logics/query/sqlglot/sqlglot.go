@@ -121,7 +121,7 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 }
 
 // TranspileSQL 转换 SQL 方言；SQL Server 目标（含同方言编译）的非 ASCII
-// 字符串字面量按 Unicode 保留。
+// 字符串字面量按 Unicode 保留，ASCII 字面量保留 varchar 类型。
 func TranspileSQL(ctx context.Context, sql string, fromDialect string, dataSourceType string) (*SQLParseResult, error) {
 
 	// Map the data source type to the sqlglot dialect
@@ -144,7 +144,6 @@ try:
     to_dialect = sys.argv[3]
     if to_dialect == "tsql":
         def preserve_unicode(node):
-            # ASCII 字面量保留 varchar 类型，避免不必要的类型变化。
             if isinstance(node, exp.Literal) and node.is_string and not node.this.isascii():
                 national = exp.National(this=node.this)
                 national.add_comments(node.comments)
