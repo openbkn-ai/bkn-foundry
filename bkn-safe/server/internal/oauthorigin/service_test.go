@@ -142,7 +142,19 @@ func TestReconcileImportsLegacyAndPreservesUnknownURIs(t *testing.T) {
 }
 
 func TestDeleteStoredOutOfRangeOriginRemovesHydraURIs(t *testing.T) {
-	const invalidOrigin = "http://port-repro.example.test:65536"
+	testDeleteStoredOrigin(t, "http://port-repro.example.test:65536", false)
+}
+
+func TestRemoveStoredOutOfRangeCallbackRemovesHydraURIs(t *testing.T) {
+	testDeleteStoredOrigin(t, "http://port-repro.example.test:65536", true)
+}
+
+func TestRemoveStoredUnnormalizedCallbackRemovesHydraURIs(t *testing.T) {
+	testDeleteStoredOrigin(t, "http://port-repro.example.test:0080", true)
+}
+
+func testDeleteStoredOrigin(t *testing.T, invalidOrigin string, viaCallback bool) {
+	t.Helper()
 	const unknownCallback = "https://plugin.example/opaque-callback"
 	client := &fakeClient{uris: auth.OAuthClientURIs{
 		RedirectURIs:           []string{callbackURI(invalidOrigin), unknownCallback},
@@ -156,10 +168,19 @@ func TestDeleteStoredOutOfRangeOriginRemovesHydraURIs(t *testing.T) {
 	if err := db.Create(&row).Error; err != nil {
 		t.Fatalf("insert old origin: %v", err)
 	}
+	if err := db.Create(&model.OAuthClientSyncState{ClientID: StudioClientID, LegacyImported: true}).Error; err != nil {
+		t.Fatalf("insert old sync state: %v", err)
+	}
 
-	synced, err := service.Delete(context.Background(), row.ID)
-	if err != nil || !synced {
-		t.Fatalf("delete old origin: synced=%v err=%v", synced, err)
+	if viaCallback {
+		if _, err := service.RemoveCallback(context.Background(), callbackURI(invalidOrigin)); err != nil {
+			t.Fatalf("remove old callback: %v", err)
+		}
+	} else {
+		synced, err := service.Delete(context.Background(), row.ID)
+		if err != nil || !synced {
+			t.Fatalf("delete old origin: synced=%v err=%v", synced, err)
+		}
 	}
 	if !slices.Equal(client.uris.RedirectURIs, []string{unknownCallback}) || len(client.uris.PostLogoutRedirectURIs) != 0 {
 		t.Fatalf("Hydra URIs after delete = %+v", client.uris)

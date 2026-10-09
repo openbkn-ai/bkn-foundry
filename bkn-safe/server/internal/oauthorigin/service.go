@@ -359,22 +359,34 @@ func (s *Service) AddCallback(ctx context.Context, uri, actorID string) ([]strin
 // RemoveCallback removes a runtime callback through the durable origin API.
 // Missing callbacks remain a no-op for compatibility with the old endpoint.
 func (s *Service) RemoveCallback(ctx context.Context, uri string) ([]string, error) {
-	origin, err := OriginFromCallback(uri)
-	if err != nil {
-		return nil, err
-	}
-	if _, ok := s.baselineByOrigin(origin); ok {
+	origin, originErr := OriginFromCallback(uri)
+	if _, ok := s.baselineByOrigin(origin); originErr == nil && ok {
 		return nil, ErrReadOnly
 	}
-	var row model.OAuthAccessOrigin
-	if err := s.db.WithContext(ctx).Where("origin = ?", origin).First(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return s.Callbacks(ctx)
-		}
-		return nil, err
+	// Prefer the exact stored URI from the legacy listing. Older records may
+	// fail current validation or use a port spelling now normalized differently.
+	candidates := []string{}
+	if strings.HasSuffix(uri, callbackPath) {
+		candidates = append(candidates, strings.TrimSuffix(uri, callbackPath))
 	}
-	if _, err := s.Delete(ctx, row.ID); err != nil {
-		return nil, err
+	if originErr == nil {
+		candidates = appendUnique(candidates, origin)
+	}
+	for _, candidate := range candidates {
+		var row model.OAuthAccessOrigin
+		if err := s.db.WithContext(ctx).Where("origin = ?", candidate).First(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		if _, err := s.Delete(ctx, row.ID); err != nil {
+			return nil, err
+		}
+		return s.Callbacks(ctx)
+	}
+	if originErr != nil {
+		return nil, originErr
 	}
 	return s.Callbacks(ctx)
 }
