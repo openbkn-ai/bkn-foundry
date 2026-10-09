@@ -54,6 +54,7 @@ const (
 	executeActionsURI = "/in/v1/knowledge-networks/%s/action-types/%s/execute"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/action-executions/:execution_id
 	getActionExecutionURI = "/in/v1/knowledge-networks/%s/action-executions/%s"
+	getActionLogURI       = "/in/v1/knowledge-networks/%s/action-logs/%s"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/action-logs
 	listActionExecutionsURI = "/in/v1/knowledge-networks/%s/action-logs"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/subgraph
@@ -484,6 +485,17 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 // GetActionExecution queries the status and result of a single action execution.
 func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
 	uri := fmt.Sprintf(getActionExecutionURI, req.KnID, req.ExecutionID)
+	if req.ResultsLimit != nil || req.ResultsOffset != nil {
+		uri = fmt.Sprintf(getActionLogURI, url.PathEscape(req.KnID), url.PathEscape(req.ExecutionID))
+		query := url.Values{}
+		if req.ResultsLimit != nil {
+			query.Set("results_limit", strconv.Itoa(*req.ResultsLimit))
+		}
+		if req.ResultsOffset != nil {
+			query.Set("results_offset", strconv.Itoa(*req.ResultsOffset))
+		}
+		uri += "?" + query.Encode()
+	}
 	reqURL := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#GetActionExecution] URL: %s", reqURL)

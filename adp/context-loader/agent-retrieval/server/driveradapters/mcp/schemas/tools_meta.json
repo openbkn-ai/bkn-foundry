@@ -256,7 +256,7 @@
     "group": "action",
     "group_title": "行动",
     "order": 330,
-    "description": "查询单次行动执行的状态与结果。用 execute_action 返回的 execution_id 查询整体 status 与逐对象 results。",
+    "description": "查询单次行动执行的状态与结果。用 execute_action 返回的 execution_id 查询整体 status 与逐条 results；通过 results_total、results_offset 与本页条数判断是否还需翻页。传分页参数后每页默认 100 条、最多 1000 条；最多可翻到第 10000 条。",
     "gateway": {
       "summary": "按执行 ID 查看一次行动执行的状态和逐对象结果。",
       "use_when": "已经有执行 ID，想知道它成功了没有、每个对象的结果是什么。",

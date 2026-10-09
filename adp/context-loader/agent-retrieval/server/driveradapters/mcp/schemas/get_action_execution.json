@@ -18,6 +18,16 @@
       "execution_id": {
         "type": "string",
         "description": "行动执行 ID，由 execute_action 返回。"
+      },
+      "results_limit": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "逐条结果每页条数；传 0 时默认 100，超过 1000 时钳制为 1000。传入任一分页参数即启用分页查询。"
+      },
+      "results_offset": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "逐条结果偏移量，默认 0。results_offset + 实际 results_limit 不得超过 10000。"
       }
     },
     "required": [
@@ -39,15 +49,27 @@
       },
       "total_count": {
         "type": "integer",
-        "description": "本次执行涉及的对象总数"
+        "description": "计划执行的工具调用总数；once 模式下不等于目标对象数。"
       },
       "success_count": {
         "type": "integer",
-        "description": "成功对象数"
+        "description": "成功的工具调用数"
       },
       "failed_count": {
         "type": "integer",
-        "description": "失败对象数"
+        "description": "失败的工具调用数"
+      },
+      "results_total": {
+        "type": "integer",
+        "description": "本次执行已存储的逐条结果总数；结合 results_offset 和本页 results 数量判断是否还有下一页。"
+      },
+      "results_offset": {
+        "type": "integer",
+        "description": "本页逐条结果的起始偏移量。"
+      },
+      "results_limit": {
+        "type": "integer",
+        "description": "本页实际使用的逐条结果条数上限。"
       },
       "results": {
         "type": "array",
