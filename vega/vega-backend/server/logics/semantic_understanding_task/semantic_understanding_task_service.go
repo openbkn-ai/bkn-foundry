@@ -247,6 +247,21 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
+	if task.Input != "" {
+		if task.ResourceID == "" {
+			task.Input = ""
+		} else {
+			err := suts.rs.CheckResourcePermission(ctx, task.ResourceID, interfaces.OPERATION_TYPE_QUERY_DATA)
+			if err != nil {
+				if !interfaces.IsPermissionRefusal(err) {
+					span.SetStatus(codes.Error, "Check resource permission failed")
+					return nil, err
+				}
+				task.Input = ""
+			}
+		}
+	}
+
 	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, []*interfaces.SemanticUnderstandingTask{task}); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
