@@ -137,6 +137,7 @@ type SourceStatus struct {
 	SourceID            string     `json:"source_id"`
 	Status              string     `json:"status"`
 	Reason              string     `json:"reason,omitempty"`
+	RequiredAction      string     `json:"required_action,omitempty"`
 	Reliability         string     `json:"reliability"`
 	LastReceivedAt      *time.Time `json:"last_received_at"`
 	Watermark           *string    `json:"watermark"`

@@ -404,6 +404,44 @@ func TestListDoesNotMarkAvailableResultsPartialForNotIntegratedSources(t *testin
 	}
 }
 
+func TestDisabledAuditConsumerIsDiagnosable(t *testing.T) {
+	service := NewWithOptions([]Source{NewUnconfiguredAuditSource()}, Options{OperationAuditOnly: true})
+	profile := activeProfile("audit-a", "audit")
+	for _, page := range []int{1, 2, 181} {
+		_, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Categories: []string{"audit.admin"}, Page: page})
+		if !errors.Is(err, ErrAuditNotConfigured) {
+			t.Fatalf("page %d: want audit configuration error, got %v", page, err)
+		}
+	}
+	statuses, err := service.Sources(context.Background(), profile)
+	if err != nil || len(statuses) != 1 || statuses[0].Reason != "audit_consumer_not_configured" || statuses[0].RequiredAction == "" {
+		t.Fatalf("missing audit configuration diagnosis: %+v, %v", statuses, err)
+	}
+	_, err = service.List(context.Background(), activeProfile("reader-a", "viewer"), observabilityvo.LogQuery{Categories: []string{"audit.admin"}})
+	if !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("existing permission error must take precedence: %v", err)
+	}
+}
+
+func TestDisabledAuditConsumerMakesMixedResultsPartial(t *testing.T) {
+	service := NewWithOptions([]Source{NewUnconfiguredAuditSource(), fakeSource{id: "runtime"}}, Options{
+		CoverageStore: &coverageStore{err: errors.New("coverage database unavailable")}, CoverageDeploymentID: "local",
+	})
+	result, err := service.List(context.Background(), activeProfile("admin-a", "super_admin"), observabilityvo.LogQuery{})
+	if err != nil || !result.Partial || result.CountExact || len(result.SourceStatus) != 2 {
+		t.Fatalf("available results must disclose the audit gap: %+v, %v", result, err)
+	}
+	if result.SourceStatus[0].Reason != "audit_consumer_not_configured" {
+		t.Fatalf("coverage probe failure must not overwrite the deployment diagnosis: %+v", result.SourceStatus)
+	}
+	// A failed configured source is still a retryable availability failure.
+	service = New([]Source{NewUnconfiguredAuditSource(), fakeSource{id: "runtime", err: errors.New("connection refused")}})
+	_, err = service.List(context.Background(), activeProfile("admin-a", "super_admin"), observabilityvo.LogQuery{})
+	if !errors.Is(err, ErrSourcesUnavailable) {
+		t.Fatalf("configured source failure must retain its availability error: %v", err)
+	}
+}
+
 func TestListQueriesIndependentSourcesConcurrently(t *testing.T) {
 	started := make(chan string, 2)
 	release := make(chan struct{})

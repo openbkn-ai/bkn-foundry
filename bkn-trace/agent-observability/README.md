@@ -20,6 +20,54 @@
 
 ## Development
 
+### 系统审计配置
+
+`kafkaConsumers.audit.enabled` 默认关闭。此时 `/api/observability/v1/log-sources`
+仍返回 `audit-ledger`，状态为 `not_integrated`，原因为
+`audit_consumer_not_configured`，并提供 `required_action`。
+单独查询 `audit.admin` / `audit.security` 返回 HTTP 503，错误码相同，
+`retryable=false`；完成配置前反复刷新不会恢复。混合查询保留可用记录，
+同时返回审计配置状态并将结果标记为 partial。
+
+需要系统审计的部署，在安装器使用的配置文件中显式加入：
+
+```yaml
+core:
+  store: mariadb
+  autoMigrate: true
+  mariadb:
+    existingSecret: bkn-trace-core-mariadb
+    dsnKey: dsn
+kafkaConsumers:
+  audit:
+    enabled: true
+    brokers: ["<kafka-host>:<port>"]
+    topic: openbkn.audit.v1
+    consumerGroup: bkn-trace-audit-ledger-v1
+    saslMechanism: PLAIN
+    existingSecret:
+      name: <audit-kafka-credentials-secret>
+      usernameKey: username
+      passwordKey: password
+```
+
+先准备配置引用的 Secret、MariaDB 数据库与 `openbkn.audit.v1` topic，
+再执行正常安装/升级。相同 Chart 版本的配置更新需要传 `--force-upgrade`。
+安装器通过 Helm dry-run 校验 consumer 配置，再检查凭据与 MariaDB DSN
+Secret 的 key 是否存在且非空；关闭 consumer 时不会读取它的凭据。
+Kafka 认证、topic 可访问性和网络故障仍由现有 consumer 运行时处理；
+此 preflight 不表示 Kafka 已连通。
+
+升级时仅保留已记录的 Audit consumer 配置，当前配置文件和显式 `--set`
+优先；配置文件中写 `enabled: false` 可关闭它。使用独立 Chart 升级时，
+仍需在 values 文件中保存并传入上述配置。通过临时修改 Deployment 环境变量
+开启 consumer 不会保存配置。
+
+部署后先检查源状态，再发送一条真实审计事件，确认其入账且可由
+`GET /api/observability/v1/logs?categories=audit.admin` 查询。
+HTTP 200 空列表只能证明查询源可用，不能证明 Kafka 采集已经完成。
+
+
 本地测试：
 
 ```bash

@@ -707,9 +707,10 @@ func (c memoryCapturePolicyCommander) Request(ctx context.Context, request captu
 
 func assembleLogSources(runtimeSources []logsvc.Source, centerAuditSource logsvc.Source) []logsvc.Source {
 	sources := make([]logsvc.Source, 0, len(runtimeSources)+1)
-	if centerAuditSource != nil {
-		sources = append(sources, centerAuditSource)
+	if centerAuditSource == nil {
+		centerAuditSource = logsvc.NewUnconfiguredAuditSource()
 	}
+	sources = append(sources, centerAuditSource)
 	sources = append(sources, runtimeSources...)
 	return sources
 }

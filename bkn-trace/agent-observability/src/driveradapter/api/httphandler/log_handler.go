@@ -81,6 +81,8 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 			writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", "the log time window exceeds the supported range")
 		case errors.Is(err, logsvc.ErrAccessDenied):
 			writeObservabilityError(w, r, http.StatusForbidden, "observability_access_denied", "the current access profile cannot search the requested logs")
+		case errors.Is(err, logsvc.ErrAuditNotConfigured):
+			writeAuditNotConfigured(w, r)
 		case errors.Is(err, logsvc.ErrSourcesUnavailable):
 			writeObservabilityError(w, r, http.StatusServiceUnavailable, "sources_unavailable", "all authorized log sources are unavailable")
 		default:
@@ -265,6 +267,8 @@ func writeLogServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", "the log time window exceeds the supported range")
 	case errors.Is(err, logsvc.ErrAccessDenied):
 		writeObservabilityError(w, r, http.StatusForbidden, "observability_access_denied", "the current access profile cannot access the requested logs")
+	case errors.Is(err, logsvc.ErrAuditNotConfigured):
+		writeAuditNotConfigured(w, r)
 	case errors.Is(err, logsvc.ErrSourcesUnavailable):
 		writeObservabilityError(w, r, http.StatusServiceUnavailable, "sources_unavailable", "all authorized log sources are unavailable")
 	default:
@@ -276,6 +280,13 @@ func writeObservabilityError(w http.ResponseWriter, r *http.Request, status int,
 	retryable := status == http.StatusServiceUnavailable || status == http.StatusInternalServerError
 	writeJSON(w, r, status, observabilityErrorEnvelope{Error: observabilityError{
 		Code: code, Message: message, Retryable: retryable, RequestID: requestIDFromRequest(r),
+	}})
+}
+
+func writeAuditNotConfigured(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, r, http.StatusServiceUnavailable, observabilityErrorEnvelope{Error: observabilityError{
+		Code: "audit_consumer_not_configured", Message: "audit Kafka consumer is not configured",
+		Retryable: false, RequiredAction: logsvc.AuditConfigurationAction, RequestID: requestIDFromRequest(r),
 	}})
 }
 

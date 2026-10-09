@@ -116,6 +116,25 @@ func TestNumberedLogPagesQueryTargetDirectly(t *testing.T) {
 	}
 }
 
+func TestDisabledAuditInventoryPreservesDirectPaginationAndCursor(t *testing.T) {
+	source := newNumberedPageSource(5000)
+	service := New([]Source{NewUnconfiguredAuditSource(), source})
+	profile := activeProfile("admin-a", "super_admin")
+	query := observabilityvo.LogQuery{Page: 181, Limit: 20}
+	page, err := service.List(context.Background(), profile, query)
+	if err != nil || source.calls != 1 || len(page.Records) != 20 || !page.Partial || page.CountExact {
+		t.Fatalf("disabled Audit must preserve direct jumps and disclose the gap: %+v, calls=%d, err=%v", page, source.calls, err)
+	}
+	if page.NextCursor == "" {
+		t.Fatal("expected a continuation cursor")
+	}
+	query.Page, query.Cursor = 1, page.NextCursor
+	next, err := service.List(context.Background(), profile, query)
+	if err != nil || len(next.Records) != 20 || next.Records[0].LogID == page.Records[0].LogID || !next.Partial {
+		t.Fatalf("disabled Audit must preserve cursor continuation: %+v, err=%v", next, err)
+	}
+}
+
 type filteredNumberedPageSource struct{ calls int }
 
 func (source *filteredNumberedPageSource) ID() string { return "filtered-numbered-pages" }

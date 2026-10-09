@@ -26,6 +26,12 @@ type handlerLogSource struct {
 	records []observabilityvo.LogRecord
 }
 
+type emptyAuditLogSource struct{ handlerLogSource }
+
+func (emptyAuditLogSource) Metadata() observabilityvo.SourceStatus {
+	return observabilityvo.SourceStatus{SourceID: "audit-ledger", Status: "healthy", Categories: []string{"audit.admin"}}
+}
+
 type authCapturingLogSource struct {
 	authorization string
 }
@@ -482,6 +488,35 @@ func containsJSONCode(payload []byte, expected string) bool {
 	}
 	errorBody, _ := body["error"].(map[string]any)
 	return errorBody["code"] == expected
+}
+
+func TestLogHandlerReportsAuditConsumerNotConfigured(t *testing.T) {
+	profile := evidencevo.AccessProfile{ActorID: "audit-a", EffectiveSubjectID: "audit-a", Roles: []string{"audit"}, AccountActive: true}
+	handler := newTestLogHandler(profile, nil)
+	handler.service = logsvc.NewWithOptions([]logsvc.Source{logsvc.NewUnconfiguredAuditSource()}, logsvc.Options{OperationAuditOnly: true})
+	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?categories=audit.admin", nil)
+	setLogTestIdentity(request, "audit-a")
+	response := httptest.NewRecorder()
+	handler.ListLogs(response, request)
+	var body observabilityErrorEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusServiceUnavailable || body.Error.Code != "audit_consumer_not_configured" || body.Error.Retryable || body.Error.RequiredAction == "" {
+		t.Fatalf("unexpected audit configuration response: %d %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	writeLogServiceError(response, request, logsvc.ErrSourcesUnavailable)
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || !body.Error.Retryable || body.Error.Code != "sources_unavailable" {
+		t.Fatalf("temporary source failure must remain retryable: %s", response.Body.String())
+	}
+	// An empty but configured source is a successful query, not a configuration error.
+	handler.service = logsvc.NewWithOptions([]logsvc.Source{emptyAuditLogSource{}}, logsvc.Options{OperationAuditOnly: true})
+	response = httptest.NewRecorder()
+	handler.ListLogs(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"data":[]`) {
+		t.Fatalf("configured empty Audit must return 200 with an empty list: %d %s", response.Code, response.Body.String())
+	}
 }
 
 func setLogTestIdentity(request *http.Request, subject string) {
