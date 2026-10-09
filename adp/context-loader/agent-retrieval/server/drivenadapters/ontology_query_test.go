@@ -70,7 +70,7 @@ func TestOntologyQueryIdentityIsStablePerConcreteQuery(t *testing.T) {
 	if ontologyQueryIdentity(target, first) == ontologyQueryIdentity(target, different) {
 		t.Fatal("different queries must not share an identity")
 	}
-	if ontologyQueryIdentity(target, first) == ontologyQueryIdentity(target+"&ignoring_store_cache=true", first) {
+	if ontologyQueryIdentity(target, first) == ontologyQueryIdentity(target+"&ignore_local_index=true", first) {
 		t.Fatal("different query parameters must not share an identity")
 	}
 }

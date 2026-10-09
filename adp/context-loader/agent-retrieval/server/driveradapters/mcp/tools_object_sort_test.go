@@ -45,7 +45,7 @@ func TestHandleQueryObjectInstance_ForwardsSort(t *testing.T) {
 	})
 }
 
-// The tool surface only opens sort. exclude_system_properties and ignoring_store_cache are internal parameters:
+// The tool surface only opens sort. exclude_system_properties and ignore_local_index are internal parameters:
 // Which system fields are lost in the former depends on whether the caller wants to drill down later, while the latter is an escape channel when the index is abnormal (a bit slower)
 // order of magnitude), it will be misused if left to model judgment.
 func TestQueryObjectInstanceSchema_ExposesSortButNotInternalParams(t *testing.T) {
@@ -62,7 +62,7 @@ func TestQueryObjectInstanceSchema_ExposesSortButNotInternalParams(t *testing.T)
 
 		_, hasExclude := schema.Properties["exclude_system_properties"]
 		convey.So(hasExclude, convey.ShouldBeFalse)
-		_, hasIgnoring := schema.Properties["ignoring_store_cache"]
+		_, hasIgnoring := schema.Properties["ignore_local_index"]
 		convey.So(hasIgnoring, convey.ShouldBeFalse)
 		// need_total is unconditionally set to true by the driven adapter and is not an option on the caller's part.
 		_, hasNeedTotal := schema.Properties["need_total"]

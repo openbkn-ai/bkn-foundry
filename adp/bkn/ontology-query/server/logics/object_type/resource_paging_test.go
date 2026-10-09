@@ -6,9 +6,11 @@ package object_type
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -229,5 +231,54 @@ func TestNextResourceOffset(t *testing.T) {
 		if got := nextResourceOffset(tc.offset, tc.limit, tc.needTotal, tc.resp); got != tc.want {
 			t.Errorf("%s: got %d, want %d", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestObjectQueryLocalIndexContract(t *testing.T) {
+	for _, ignore := range []bool{false, true} {
+		t.Run(fmt.Sprint(ignore), func(t *testing.T) {
+			source := "local_index"
+			if ignore {
+				source = "source"
+			}
+			vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+				Entries: []map[string]any{{"customer_id": "customer-1"}}, TotalCount: 5,
+				QuerySource: source, Paging: &interfaces.ResourceDataPagingResponse{},
+			}}
+			service := resourcePagingService(t, vega, 3)
+			query := resourcePagingQuery(1)
+			query.IgnoreLocalIndex = ignore
+			first, err := service.GetObjectsByObjectTypeID(resourcePagingContext(), query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, marshalErr := json.Marshal(first)
+			if marshalErr != nil || strings.Contains(string(encoded), "search_from_index") {
+				t.Fatalf("obsolete response field or invalid response: %s, %v", encoded, marshalErr)
+			}
+			if first.QuerySource != source || first.Cursor == "" {
+				t.Fatalf("first page = %#v", first)
+			}
+			if vega.lastParams.IgnoreLocalIndex == nil || *vega.lastParams.IgnoreLocalIndex != ignore {
+				t.Fatalf("Vega params = %#v", vega.lastParams)
+			}
+			next := resourcePagingQuery(1)
+			next.IgnoreLocalIndex = ignore
+			next.Cursor = first.Cursor
+			second, err := service.GetObjectsByObjectTypeID(resourcePagingContext(), next)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if second.QuerySource != source || vega.lastParams.IgnoreLocalIndex == nil || *vega.lastParams.IgnoreLocalIndex != ignore {
+				t.Fatalf("second page = %#v, params = %#v", second, vega.lastParams)
+			}
+			next.IgnoreLocalIndex = !ignore
+			if _, err := service.GetObjectsByObjectTypeID(resourcePagingContext(), next); err == nil {
+				t.Fatal("cursor accepted a changed query channel")
+			}
+			if len(vega.paramsHistory) != 2 {
+				t.Fatalf("unexpected Vega requests: %d", len(vega.paramsHistory))
+			}
+		})
 	}
 }

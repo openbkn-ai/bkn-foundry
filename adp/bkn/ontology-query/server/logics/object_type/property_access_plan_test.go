@@ -53,9 +53,7 @@ func TestObjectQueryRejectsEmptyReturnBeforeProxyOrVega(t *testing.T) {
 	}
 }
 
-func TestVegaAndOpenSearchUseSamePropertyProjection(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	search := omock.NewMockOpenSearchAccess(ctrl)
+func TestVegaUsesPropertyProjection(t *testing.T) {
 	objectType := accessPlanObjectType()
 	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
 	objectType.Status = &interfaces.ObjectTypeStatus{Index: "customer-index"}
@@ -77,28 +75,15 @@ func TestVegaAndOpenSearchUseSamePropertyProjection(t *testing.T) {
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{Entries: []map[string]any{
 		{"customer_id": "customer-1", "phone": "13812345678", "notes": "raw-notes", "secret": "raw-secret"},
 	}}}
-	service := &objectTypeService{vba: vega, osa: search}
+	service := &objectTypeService{vba: vega}
 	var vegaResult interfaces.Objects
 	if err := service.getObjectsFromResource(context.Background(), query, objectType, &vegaResult, plan.fieldPropertyMap(), plan); err != nil {
 		t.Fatal(err)
 	}
-	search.EXPECT().SearchData(gomock.Any(), "customer-index", gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, dsl any) ([]interfaces.Hit, error) {
-			fields, ok := dsl.(map[string]any)["_source"].([]string)
-			if !ok || len(fields) != 2 {
-				t.Fatalf("OpenSearch _source = %#v", dsl)
-			}
-			return []interfaces.Hit{{Source: map[string]any{
-				"id": "customer-1", "mobile": "13812345678", "notes": "raw-notes", "secret": "raw-secret",
-			}}}, nil
-		})
-	var searchResult interfaces.Objects
-	if err := service.getObjectsFromObjectIndex(context.Background(), query, objectType, &searchResult,
-		map[string]string{"id": "id", "mobile": "mobile"}, plan); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(vegaResult.Datas, searchResult.Datas) {
-		t.Fatalf("Vega and OpenSearch differ: %#v %#v", vegaResult.Datas, searchResult.Datas)
+	if len(vegaResult.Datas) != 1 || vegaResult.Datas[0]["id"] != "customer-1" ||
+		vegaResult.Datas[0]["mobile"] != "1*********8" ||
+		vegaResult.Datas[0]["notes"] != nil || vegaResult.Datas[0]["secret"] != nil {
+		t.Fatalf("property projection failed: %#v", vegaResult.Datas)
 	}
 	if vega.lastParams == nil || len(vega.lastParams.OutputFields) != 2 {
 		t.Fatalf("Vega output fields = %#v", vega.lastParams)

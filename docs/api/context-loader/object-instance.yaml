@@ -497,6 +497,10 @@ components:
         对象实例查询结果。本接口固定不返回对象类定义（`object_type`）——需要定义
         请走 [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types`。
       properties:
+        query_source:
+          type: string
+          enum: [local_index, source]
+          description: Vega 实际查询来源；未执行资源查询时省略。不会据此改变分页方式。
         datas:
           type: array
           items:

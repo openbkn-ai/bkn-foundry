@@ -12,6 +12,7 @@ import (
 
 // DatasetQueryResponse matches bkn-backend / vega resource data response shape.
 type DatasetQueryResponse struct {
+	QuerySource string                      `json:"query_source"`
 	Entries     []map[string]any            `json:"entries"`
 	TotalCount  int64                       `json:"total_count"`
 	SearchAfter []any                       `json:"search_after"`
@@ -53,12 +54,13 @@ const (
 // Analytics fields align with resource_data_query_analytics_schema.md (aggregate mode).
 // Pagination must be sent via Paging to match the Vega HTTP contract.
 type ResourceDataQueryParams struct {
-	FilterCondition map[string]any            `json:"filter_condition,omitempty"`
-	SearchAfter     []any                     `json:"search_after,omitempty"`
-	Paging          ResourceDataPagingRequest `json:"paging,omitempty"`
-	NeedTotal       bool                      `json:"need_total,omitempty"`
-	Sort            []*SortParams             `json:"sort,omitempty"`
-	OutputFields    []string                  `json:"output_fields,omitempty"`
+	IgnoreLocalIndex *bool                     `json:"ignore_local_index,omitempty"`
+	FilterCondition  map[string]any            `json:"filter_condition,omitempty"`
+	SearchAfter      []any                     `json:"search_after,omitempty"`
+	Paging           ResourceDataPagingRequest `json:"paging,omitempty"`
+	NeedTotal        bool                      `json:"need_total,omitempty"`
+	Sort             []*SortParams             `json:"sort,omitempty"`
+	OutputFields     []string                  `json:"output_fields,omitempty"`
 
 	Aggregation map[string]any   `json:"aggregation,omitempty"`
 	GroupBy     []map[string]any `json:"group_by,omitempty"`
