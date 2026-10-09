@@ -115,6 +115,45 @@ func TestLegacyStudioRedirectEndpointKeepsUnmanagedCallbacksVisibleAndRemovable(
 	}
 }
 
+func TestLegacyStudioRedirectEndpointRejectsOutOfRangePort(t *testing.T) {
+	router, client := newAccessOriginAdminServer(t)
+	const legacy = "/api/safe/v1/admin/clients/openbkn-studio/redirect-uris"
+	const collection = "/api/safe/v1/admin/oauth/access-origins"
+
+	for _, uri := range []string{
+		"http://port-repro.example.test:65536/studio/callback",
+		"http://port-repro.example.test:0/studio/callback",
+		"http://[2001:db8::1]:65536/other-callback",
+	} {
+		response := adminReq(t, router, http.MethodPost, legacy, map[string]string{"redirect_uri": uri})
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("out-of-range callback %q status = %d: %s", uri, response.Code, response.Body.String())
+		}
+	}
+
+	response := adminReq(t, router, http.MethodGet, legacy, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("legacy list status = %d: %s", response.Code, response.Body.String())
+	}
+	for _, uri := range redirectURIs(t, response.Body.Bytes()) {
+		if strings.Contains(uri, ":65536") {
+			t.Fatalf("invalid callback persisted in Hydra: %q", uri)
+		}
+	}
+
+	response = adminReq(t, router, http.MethodGet, collection, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list status = %d: %s", response.Code, response.Body.String())
+	}
+	entries := decodeOriginEntries(t, response.Body.Bytes())
+	if len(entries) != 1 || entries[0].Origin != "https://public.example" {
+		t.Fatalf("entries after invalid callback = %+v", entries)
+	}
+	if client.sets != 0 {
+		t.Fatalf("Hydra sync called %d times after invalid callback", client.sets)
+	}
+}
+
 func decodeOriginEntries(t *testing.T, body []byte) []oauthorigin.Entry {
 	t.Helper()
 	var response struct {

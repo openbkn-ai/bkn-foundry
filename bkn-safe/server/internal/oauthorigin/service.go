@@ -146,9 +146,11 @@ func NormalizeOrigin(raw string) (string, error) {
 	hostname := strings.ToLower(u.Hostname())
 	port := u.Port()
 	if port != "" {
-		if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+		n, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || n == 0 {
 			return "", ErrInvalidOrigin
 		}
+		port = strconv.FormatUint(n, 10)
 	}
 	if port == "80" && scheme == "http" || port == "443" && scheme == "https" {
 		port = ""
@@ -423,15 +425,30 @@ func (s *Service) reconcile(ctx context.Context) error {
 		s.markFailure(ctx, err)
 		return err
 	}
+	// Older versions could persist origins with out-of-range ports. They no
+	// longer pass OriginFromCallback, but remain managed until deleted. Keep
+	// their URI shapes out of the unmanaged-preservation path so deletion also
+	// removes their callback and logout URI from Hydra.
+	var stored []model.OAuthAccessOrigin
+	if err := s.db.WithContext(ctx).Find(&stored).Error; err != nil {
+		s.markFailure(ctx, err)
+		return err
+	}
+	storedCallbacks := make(map[string]bool, len(stored))
+	storedLogouts := make(map[string]bool, len(stored))
+	for _, row := range stored {
+		storedCallbacks[callbackURI(row.Origin)] = true
+		storedLogouts[logoutURI(row.Origin)] = true
+	}
 
 	next := auth.OAuthClientURIs{}
 	for _, uri := range current.RedirectURIs {
-		if _, err := OriginFromCallback(uri); err != nil {
+		if _, err := OriginFromCallback(uri); err != nil && !storedCallbacks[uri] {
 			next.RedirectURIs = appendUnique(next.RedirectURIs, uri)
 		}
 	}
 	for _, uri := range current.PostLogoutRedirectURIs {
-		if _, err := originFromLogout(uri); err != nil {
+		if _, err := originFromLogout(uri); err != nil && !storedLogouts[uri] {
 			next.PostLogoutRedirectURIs = appendUnique(next.PostLogoutRedirectURIs, uri)
 		}
 	}

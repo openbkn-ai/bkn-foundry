@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -171,6 +172,12 @@ func validRedirectURI(raw string) bool {
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return false
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || n == 0 {
+			return false
+		}
 	}
 	return u.Host != "" && u.Fragment == ""
 }
