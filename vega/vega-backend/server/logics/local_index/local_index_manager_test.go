@@ -291,11 +291,48 @@ func TestSchemaForQueryUsesManagedFieldNames(t *testing.T) {
 		Name:         "body",
 		OriginalName: "source_body",
 		Type:         interfaces.DataType_Text,
-	}}
+	}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "blob", Type: interfaces.DataType_Binary}, {Name: "unknown", Type: interfaces.DataType_Other}, nil}
 
 	got := SchemaForQuery(schema)
 
 	require.Len(t, got, 1)
 	assert.Equal(t, "body", got[0].OriginalName)
 	assert.Equal(t, "source_body", schema[0].OriginalName)
+}
+
+func TestLocalIndexManagerRejectsUnavailableQueryFields(t *testing.T) {
+	for _, fieldType := range []string{interfaces.DataType_Json, interfaces.DataType_Binary, interfaces.DataType_Other} {
+		t.Run(fieldType, func(t *testing.T) {
+			for _, params := range []*interfaces.ResourceDataQueryParams{
+				{Sort: []*interfaces.SortField{{Field: "payload"}}},
+				{Aggregation: &interfaces.Aggregation{Property: "payload", Aggr: "count"}},
+				{GroupBy: []*interfaces.GroupByItem{{Property: "payload"}}},
+			} {
+				connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+				manager := &localIndexManager{lic: connector}
+				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: fieldType}}}
+				rows, total, err := manager.ListDocuments(context.Background(), "idx", resource, params)
+				assert.Nil(t, rows)
+				assert.Zero(t, total)
+				var conditionError *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &conditionError)
+				assert.ErrorContains(t, err, `field "payload" not found in schema`)
+			}
+		})
+	}
+}
+
+func TestValidateQueryFieldsAggregationAliases(t *testing.T) {
+	for _, alias := range []string{"payload", "__value"} {
+		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: alias, Type: interfaces.DataType_Json}, {Name: "amount", Type: interfaces.DataType_Integer}}}
+		for _, declared := range []string{alias, ""} {
+			if declared == "" && alias != "__value" {
+				continue
+			}
+			params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: declared}, Sort: []*interfaces.SortField{{Field: alias}}}
+			require.NoError(t, validateQueryFields(resource, params))
+			params.Aggregation.Property = alias
+			require.ErrorContains(t, validateQueryFields(resource, params), "not found")
+		}
+	}
 }

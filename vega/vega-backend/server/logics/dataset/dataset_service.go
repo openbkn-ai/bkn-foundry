@@ -63,6 +63,7 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 			WithErrorDetails("generate dataset index UUIDv7 failed")
 	}
 	indexName := fmt.Sprintf("%s-%s", interfaces.DatasetIndexPrefix, indexID)
+	resourcelogic.InitializeJSONIndexAttributes(res.SchemaDefinition)
 	err = ds.lim.CreateIndex(ctx, indexName, res.SchemaDefinition, map[string]string{"resource_id": res.ID})
 	if err != nil {
 		otellog.LogError(ctx, "Create dataset index failed", err)

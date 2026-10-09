@@ -3199,3 +3199,70 @@ func TestResourceServiceRowCountReusesCallerTransaction(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyMutableSchemaFields(t *testing.T) {
+	for _, attributes := range []map[string]any{nil, {"enabled": true}, {"enabled": false}} {
+		t.Run(fmt.Sprintf("existing attributes %v", attributes), func(t *testing.T) {
+			originalEnabled := attributes["enabled"]
+			existing := &interfaces.Property{Name: "payload", Type: interfaces.DataType_Json, Attributes: attributes}
+			requested := []*interfaces.Property{
+				{Name: "payload", Type: interfaces.DataType_Json, DisplayName: "Updated", Attributes: map[string]any{"enabled": originalEnabled != true}},
+				{Name: "new_payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true, "source": "jsonb"}},
+				{Name: "new_without_attributes", Type: interfaces.DataType_Json},
+			}
+			got := applyMutableSchemaFields([]*interfaces.Property{existing}, requested, true)
+			require.Len(t, got, 3)
+			assert.Equal(t, attributes, got[0].Attributes)
+			assert.Equal(t, originalEnabled, got[0].Attributes["enabled"])
+			assert.Equal(t, "Updated", got[0].DisplayName)
+			assert.Equal(t, map[string]any{"enabled": false, "source": "jsonb"}, got[1].Attributes)
+			assert.Equal(t, map[string]any{"enabled": false}, got[2].Attributes)
+		})
+	}
+	t.Run("table updates cannot add properties", func(t *testing.T) {
+		got := applyMutableSchemaFields(nil, []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}, false)
+		assert.Empty(t, got)
+	})
+}
+
+func TestValidateMutableSchemaUpdateJSONEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		current, requested map[string]any
+		wantError          bool
+	}{
+		{"omitted attributes", map[string]any{"enabled": false}, nil, true},
+		{"empty attributes", map[string]any{"enabled": false}, map[string]any{}, true},
+		{"explicit unchanged", map[string]any{"enabled": false}, map[string]any{"enabled": false}, false},
+		{"explicit change", map[string]any{"enabled": false}, map[string]any{"enabled": true}, true},
+		{"legacy unchanged", nil, nil, false},
+		{"legacy enabled omitted", map[string]any{"enabled": true}, nil, true},
+		{"legacy explicit change", nil, map[string]any{"enabled": false}, true},
+		{"omitted enabled", map[string]any{"enabled": false, "source": "jsonb"}, map[string]any{"source": "jsonb"}, true},
+		{"preserves all attributes", map[string]any{"enabled": false, "source": "jsonb"}, map[string]any{"enabled": false, "source": "jsonb"}, false},
+		{"rejects other attribute change", map[string]any{"enabled": false, "source": "jsonb"}, map[string]any{"source": "json"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			originalAttributes, err := json.Marshal(tc.current)
+			require.NoError(t, err)
+			current := []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: tc.current}}
+			requested := []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: tc.requested, DisplayName: "Updated"}}
+			changed, err := validateMutableSchemaUpdate(context.Background(), current, requested, true)
+			if tc.wantError {
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			} else {
+				require.NoError(t, err)
+				assert.False(t, changed)
+				updated := applyMutableSchemaFields(current, requested, true)
+				assert.Equal(t, tc.current, updated[0].Attributes)
+				assert.Equal(t, "Updated", updated[0].DisplayName)
+			}
+			assert.Equal(t, tc.current, current[0].Attributes)
+			actualAttributes, err := json.Marshal(current[0].Attributes)
+			require.NoError(t, err)
+			assert.Equal(t, string(originalAttributes), string(actualAttributes))
+		})
+	}
+}

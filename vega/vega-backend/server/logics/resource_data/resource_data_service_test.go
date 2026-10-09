@@ -1034,3 +1034,36 @@ func assertUnsupportedOperationHTTPError(t *testing.T, err error) {
 		"算子不支持是请求侧问题：包成 500 会让 ontology-query 判成依赖故障")
 	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
 }
+
+func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
+	for _, fieldType := range []string{interfaces.DataType_Json, interfaces.DataType_Binary, interfaces.DataType_Other} {
+		for _, stored := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stored=%v", fieldType, stored), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				cs := mock_interfaces.NewMockCatalogService(ctrl)
+				lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+				service := &resourceDataService{cs: cs, lim: lim}
+				resource := tableResource("index")
+				resource.CatalogID = "catalog-1"
+				resource.SchemaDefinition = []*interfaces.Property{{Name: "payload", Type: fieldType}}
+				cfg := &interfaces.FilterCondCfg{Name: "payload", Operation: "exist"}
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+				expected := http.StatusBadRequest
+				if stored {
+					params.FixedFilterCondCfg = cfg
+					expected = http.StatusInternalServerError
+				}
+				rows, total, err := service.QuerySourcePage(context.Background(), resource, params)
+				require.Nil(t, rows)
+				assert.Zero(t, total)
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, expected, httpErr.HTTPCode)
+				if !stored {
+					assert.Contains(t, httpErr.BaseError.ErrorDetails, "not found")
+				}
+			})
+		}
+	}
+}

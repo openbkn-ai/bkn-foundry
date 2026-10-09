@@ -1934,6 +1934,22 @@ func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool 
 	return jsonNumbersEqual(currentCopy, requestedCopy)
 }
 
+// InitializeJSONIndexAttributes 为新建索引的 JSON 字段记录仅保存原值的策略。
+// 已有 Dataset 字段不调用此函数，避免改变不可变的 enabled 参数。
+func InitializeJSONIndexAttributes(schema []*interfaces.Property) {
+	for _, prop := range schema {
+		if prop == nil || prop.Type != interfaces.DataType_Json {
+			continue
+		}
+		attributes := make(map[string]any, len(prop.Attributes)+1)
+		for key, value := range prop.Attributes {
+			attributes[key] = value
+		}
+		attributes["enabled"] = false
+		prop.Attributes = attributes
+	}
+}
+
 func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) []*interfaces.Property {
 	if requested == nil {
 		return current
@@ -1955,6 +1971,7 @@ func applyMutableSchemaFields(current []*interfaces.Property, requested []*inter
 			continue
 		}
 		if allowPropertyAdditions {
+			InitializeJSONIndexAttributes([]*interfaces.Property{requestedProp})
 			current = append(current, requestedProp)
 		}
 	}

@@ -195,6 +195,9 @@ func cloneIndexCapabilities(capabilities interfaces.IndexCapabilities) *interfac
 }
 
 func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	if err := validateQueryFields(res, params); err != nil {
+		return nil, 0, err
+	}
 	queryResult, err := lim.lic.ExecuteQuery(ctx, indexName, resourceForQuery(res), params)
 	if err != nil {
 		return nil, 0, err
@@ -238,12 +241,16 @@ func (lim *localIndexManager) DeleteDocumentsByQuery(ctx context.Context, indexN
 	return lim.lic.DeleteDocumentsByQuery(ctx, indexName, params, SchemaForQuery(res.SchemaDefinition))
 }
 
-// SchemaForQuery returns the physical schema exposed by a managed local index.
+// SchemaForQuery returns the searchable physical schema exposed by a managed local index.
+// JSON is stored only in _source; binary and other are unavailable for index queries.
 // Managed documents and mappings are keyed by Property.Name; OriginalName only
 // belongs to source connectors and must not leak into local-index DSL.
 func SchemaForQuery(schema []*interfaces.Property) []*interfaces.Property {
 	result := make([]*interfaces.Property, 0, len(schema))
 	for _, property := range schema {
+		if property == nil || !isQueryableFieldType(property.Type) {
+			continue
+		}
 		cloned := *property
 		cloned.OriginalName = property.Name
 		result = append(result, &cloned)
@@ -258,4 +265,47 @@ func resourceForQuery(resource *interfaces.Resource) *interfaces.Resource {
 	cloned := *resource
 	cloned.SchemaDefinition = SchemaForQuery(resource.SchemaDefinition)
 	return &cloned
+}
+
+// validateQueryFields 校验不经过条件构造器的排序和聚合字段，沿用字段不存在的错误口径。
+func validateQueryFields(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
+	if resource == nil || params == nil {
+		return nil
+	}
+	fields := make([]string, 0, len(params.Sort)+len(params.GroupBy)+1)
+	for _, sort := range params.Sort {
+		if sort != nil {
+			// 聚合结果别名不是源字段，不能按源字段类型拒绝排序。
+			if params.Aggregation != nil && (sort.Field == params.Aggregation.Alias || sort.Field == "__value") {
+				continue
+			}
+			fields = append(fields, sort.Field)
+		}
+	}
+	if params.Aggregation != nil {
+		fields = append(fields, params.Aggregation.Property)
+	}
+	for _, group := range params.GroupBy {
+		if group != nil {
+			fields = append(fields, group.Property)
+		}
+	}
+	for _, field := range fields {
+		for _, property := range resource.SchemaDefinition {
+			if property != nil && !isQueryableFieldType(property.Type) && property.Name == field {
+				return interfaces.NewConditionBuildError("field %q not found in schema", field)
+			}
+		}
+	}
+	return nil
+}
+
+// isQueryableFieldType 统一托管索引条件、排序和聚合可使用的字段类型。
+func isQueryableFieldType(fieldType string) bool {
+	switch fieldType {
+	case interfaces.DataType_Json, interfaces.DataType_Binary, interfaces.DataType_Other:
+		return false
+	default:
+		return true
+	}
 }

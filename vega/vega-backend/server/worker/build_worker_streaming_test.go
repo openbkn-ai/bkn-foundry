@@ -6,6 +6,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -178,6 +179,7 @@ func TestHandleCreateOperationExcludesUnsupportedFields(t *testing.T) {
 		buildTask,
 		&embeddingPipeline{},
 		[]string{"id", "title"},
+		nil,
 	))
 }
 
@@ -211,6 +213,7 @@ func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *test
 		buildTask,
 		&embeddingPipeline{},
 		[]string{"id", "title"},
+		nil,
 	))
 }
 
@@ -241,6 +244,7 @@ func TestHandleUpdateOperationExcludesUnsupportedFields(t *testing.T) {
 		buildTask,
 		&embeddingPipeline{},
 		[]string{"id"},
+		nil,
 	))
 }
 
@@ -269,6 +273,7 @@ func TestHandleUpdateOperationKeepsOldDocumentWhenReplacementWriteFails(t *testi
 		buildTask,
 		&embeddingPipeline{},
 		[]string{"id"},
+		nil,
 	)
 	require.ErrorContains(t, err, "write failed")
 }
@@ -295,4 +300,51 @@ func TestBuildConnectorConfigUsesCaptureDatabase(t *testing.T) {
 
 		assert.Equal(t, "app", config["config"].(map[string]any)["database.dbname"])
 	})
+}
+
+func TestStreamingHandlersNormalizeJSON(t *testing.T) {
+	for _, operation := range []string{"create", "update"} {
+		for _, tc := range []struct {
+			name    string
+			value   any
+			want    any
+			invalid bool
+		}{
+			{"object array", `{"items":[{"id":9007199254740993}]}`, map[string]any{"items": []any{map[string]any{"id": json.Number("9007199254740993")}}}, false},
+			{"scalar array", []byte(`{"items":["a","b"]}`), map[string]any{"items": []any{"a", "b"}}, false},
+			{"scalar root", `"value"`, "value", false},
+			{"null", `null`, nil, false},
+			{"invalid", `{`, nil, true},
+		} {
+			t.Run(operation+"/"+tc.name, func(t *testing.T) {
+				lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
+				worker := &streamingBuildWorker{lim: lim}
+				task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}}}}
+				schema := []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}
+				after := map[string]any{"id": 2, "payload": tc.value}
+				if !tc.invalid {
+					docID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
+					require.NoError(t, err)
+					lim.EXPECT().IndexDocuments(gomock.Any(), "index", map[string]map[string]any{docID: {"id": 2, "payload": tc.want}}).Return(nil, nil)
+					if operation == "update" {
+						oldID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 1}})
+						require.NoError(t, err)
+						lim.EXPECT().DeleteDocument(gomock.Any(), "index", oldID).Return(nil)
+					}
+				}
+				var err error
+				if operation == "create" {
+					err = worker.handleCreateOperation(context.Background(), map[string]any{"id": 2}, after, "index", task, &embeddingPipeline{}, []string{"id", "payload"}, schema)
+				} else {
+					err = worker.handleUpdateOperation(context.Background(), map[string]any{"id": 1}, after, "index", task, &embeddingPipeline{}, []string{"id", "payload"}, schema)
+				}
+				if tc.invalid {
+					require.ErrorContains(t, err, `JSON field "payload"`)
+				} else {
+					require.NoError(t, err)
+				}
+				assert.Equal(t, tc.value, after["payload"])
+			})
+		}
+	}
 }
