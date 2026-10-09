@@ -48,6 +48,7 @@ func (e responseStatusError) Error() string {
 type meResponse struct {
 	ID      string   `json:"id"`
 	Name    string   `json:"name"`
+	Account string   `json:"account"`
 	Enabled bool     `json:"enabled"`
 	Roles   []string `json:"roles"`
 }
@@ -131,9 +132,15 @@ func (c *Client) Resolve(
 		ManagedKnowledgeNetworkIDs: managedNetworks,
 		Permissions:                permissionProjection,
 	}
+	// Safe's own audit uses name -> login account. Both are trusted display
+	// attributes of the verified actor; neither participates in authorization.
+	actorName := strings.TrimSpace(me.Name)
+	if actorName == "" {
+		actorName = strings.TrimSpace(me.Account)
+	}
 	return evidencevo.AccessProfile{
 		ActorID:                    identity.ActorID,
-		ActorNameSnapshot:          strings.TrimSpace(me.Name),
+		ActorNameSnapshot:          actorName,
 		EffectiveSubjectID:         identity.EffectiveSubjectID,
 		ApplicationPrincipalID:     identity.ApplicationPrincipalID,
 		DelegationID:               identity.DelegationID,

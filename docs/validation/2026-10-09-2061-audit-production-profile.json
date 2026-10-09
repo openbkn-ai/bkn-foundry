@@ -61,5 +61,9 @@
     "Isolated real Kafka/MariaDB and source-built Core, not target production rollout",
     "Safe OAuth/name/role responses and control endpoint leases modeled as test fixtures, not full platform IAM/Collector convergence",
     "Real control configuration-change request event verified; asynchronous convergence success not claimed"
-  ]
+  ],
+  "review_followup": {
+    "actor_snapshot": "Verified Safe actor display name falls back to its login account, matching Safe audit semantics; never falls back to opaque actor ID. Both missing retains coverage gap.",
+    "verification": "New account-fallback tests failed before fix, then clients/boot/handler race tests passed; full Core golangci-lint v2.12.2 reports 0 issues. Identity mismatch still rejects; display changes do not change authorization fingerprint. No new product instances or containers."
+  }
 }

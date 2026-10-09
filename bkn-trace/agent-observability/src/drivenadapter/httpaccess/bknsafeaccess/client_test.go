@@ -138,7 +138,7 @@ func TestResolveKeepsOwnerScopeWhenDirectGrantEndpointIsNotDeployed(t *testing.T
 func TestResolveFailsClosedForDisabledOrMismatchedIdentity(t *testing.T) {
 	for _, body := range []string{
 		`{"id":"actor-a","account_type":"user","enabled":false,"roles":["normal_user"]}`,
-		`{"id":"different-actor","account_type":"user","enabled":true,"roles":["normal_user"]}`,
+		`{"id":"different-actor","account":"legitimate-login","account_type":"user","enabled":true,"roles":["normal_user"]}`,
 	} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/api/safe/v1/me" {
@@ -209,10 +209,11 @@ func TestResolveFingerprintIsStableAndChangesWithManagedScope(t *testing.T) {
 
 func TestActorDisplayNameDoesNotChangeAuthorizationScope(t *testing.T) {
 	name := "Before name"
+	account := "Before account"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/safe/v1/me":
-			if err := json.NewEncoder(w).Encode(map[string]any{"id": "actor-a", "name": name, "enabled": true, "roles": []string{"audit"}}); err != nil {
+			if err := json.NewEncoder(w).Encode(map[string]any{"id": "actor-a", "name": name, "account": account, "enabled": true, "roles": []string{"audit"}}); err != nil {
 				t.Errorf("write trusted identity fixture: %v", err)
 			}
 		case "/api/safe/v1/me/permissions":
@@ -228,7 +229,8 @@ func TestActorDisplayNameDoesNotChangeAuthorizationScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name = "After name"
+	name = ""
+	account = "After account"
 	after, err := client.Resolve(context.Background(), "Bearer token", identity)
 	if err != nil {
 		t.Fatal(err)
@@ -239,5 +241,37 @@ func TestActorDisplayNameDoesNotChangeAuthorizationScope(t *testing.T) {
 	before.ActorNameSnapshot = after.ActorNameSnapshot
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("display name changed authorization scope or fingerprint")
+	}
+}
+
+func TestActorSnapshotUsesTrustedAccountWhenNameMissing(t *testing.T) {
+	for _, test := range []struct{ name, account, want string }{
+		{" Named operator ", "login-a", "Named operator"},
+		{"", " login-a ", "login-a"},
+		{"   ", "login-a", "login-a"},
+		{"", "", ""},
+	} {
+		t.Run(test.name+test.account, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/safe/v1/me":
+					if err := json.NewEncoder(w).Encode(map[string]any{"id": "actor-a", "name": test.name, "account": test.account, "enabled": true, "roles": []string{"audit"}}); err != nil {
+						t.Errorf("write trusted identity fixture: %v", err)
+					}
+				case "/api/safe/v1/me/permissions":
+					_, _ = w.Write([]byte(`{"permissions":[]}`))
+				default:
+					_, _ = w.Write([]byte(`{"grants":[]}`))
+				}
+			}))
+			defer server.Close()
+			profile, err := New(server.URL, server.Client()).Resolve(context.Background(), "Bearer token", iauthorizationscope.TrustedIdentity{ActorID: "actor-a", EffectiveSubjectID: "delegated-user"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if profile.ActorNameSnapshot != test.want {
+				t.Fatalf("snapshot = %q, want %q", profile.ActorNameSnapshot, test.want)
+			}
+		})
 	}
 }

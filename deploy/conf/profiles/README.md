@@ -76,7 +76,8 @@ an event outside that first page fails the check rather than being guessed.
 A normal user must still receive 403 for an unauthorized global audit query.
 
 Control configuration events preserve the current actor name from the already
-verified Safe `/me` response and the server-owned configuration/operation name
+verified Safe `/me` response (display name, or the trusted login account when
+name is blank, matching Safe audit behavior) and the server-owned configuration/operation name
 at production time. Missing actor names remain an explicit publisher coverage
 gap; management requests remain fail-open for Audit delivery. No ID fallback or
 query-time name repair is used. Existing rows without snapshots remain unchanged.
