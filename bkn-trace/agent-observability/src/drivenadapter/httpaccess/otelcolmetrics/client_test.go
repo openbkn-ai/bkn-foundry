@@ -97,3 +97,29 @@ func TestQueueSizeZeroIsAvailable(t *testing.T) {
 		t.Fatalf("zero queue rejected: %+v %v", sample, err)
 	}
 }
+
+func TestInvalidQueueMetricsDoNotBlockSourceCoverage(t *testing.T) {
+	for _, line := range []string{
+		"otelcol_exporter_queue_size -1",
+		"otelcol_exporter_queue_size NaN",
+		"otelcol_exporter_queue_size invalid",
+		"otelcol_exporter_queue_capacity +Inf",
+		"otelcol_exporter_queue_capacity -1",
+	} {
+		t.Run(line, func(t *testing.T) {
+			metrics := "otelcol_receiver_refused_log_records_total 3\n" + line + "\notelcol_exporter_send_failed_log_records_total 4\n"
+			client := New("http://collector/metrics", &http.Client{Transport: metricsRoundTripper(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(metrics))}, nil
+			})})
+			coverage, err := client.Read(context.Background())
+			if err != nil || coverage.RefusedLogs != 3 || coverage.FailedLogs != 4 {
+				t.Fatalf("coverage counters lost: %+v %v", coverage, err)
+			}
+			_, err = client.ReadQueueSample(context.Background())
+			var diagnostic *capturepolicysvc.AdmissionBudgetError
+			if !errors.As(err, &diagnostic) || diagnostic.Reason != "metric_invalid" {
+				t.Fatalf("invalid queue must still reject admission: %v", err)
+			}
+		})
+	}
+}

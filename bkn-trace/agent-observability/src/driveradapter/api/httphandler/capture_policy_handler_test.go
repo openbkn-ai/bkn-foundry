@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1070,5 +1071,31 @@ func TestCapturePolicyBudgetFailuresIncludeSafeDiagnostics(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestRepeatedBudgetFailuresLogOnlyAtDebug(t *testing.T) {
+	original := slog.Default()
+	defer slog.SetDefault(original)
+	for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {
+		t.Run(level.String(), func(t *testing.T) {
+			var logs bytes.Buffer
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: level})))
+			for i := 0; i < 3; i++ {
+				response := httptest.NewRecorder()
+				response.Header().Set("x-trace-id", "budget-request")
+				request := httptest.NewRequest(http.MethodGet, "/internal/trace-evidence/configuration", nil)
+				writeAdmissionBudgetUnavailable(response, request, capturepolicysvc.AdmissionSourceError("trace_collector_queue", errors.New("collector unavailable")))
+				if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "trace_collector_queue") {
+					t.Fatalf("response diagnostics lost: %s", response.Body.String())
+				}
+			}
+			if level == slog.LevelInfo && logs.Len() != 0 {
+				t.Fatalf("poll failures flooded normal logs: %s", logs.String())
+			}
+			if level == slog.LevelDebug && !strings.Contains(logs.String(), "trace_id=budget-request") {
+				t.Fatalf("debug trace diagnostic missing: %s", logs.String())
+			}
+		})
 	}
 }

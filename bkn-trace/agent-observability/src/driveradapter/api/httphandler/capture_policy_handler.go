@@ -42,7 +42,9 @@ func (f AdmissionBudgetReaderFunc) ReadAdmissionBudget(ctx context.Context) (cap
 }
 
 func writeAdmissionBudgetUnavailable(w http.ResponseWriter, r *http.Request, err error) {
-	slog.WarnContext(r.Context(), "Trace admission budget unavailable", "trace_id", w.Header().Get("x-trace-id"), "error", err)
+	// Internal clients poll configuration regularly. Keep request diagnostics at
+	// Debug; static configuration failures are already reported at startup.
+	slog.DebugContext(r.Context(), "Trace admission budget unavailable", "trace_id", w.Header().Get("x-trace-id"), "error", err)
 	var diagnostic *capturepolicysvc.AdmissionBudgetError
 	var details any
 	if errors.As(err, &diagnostic) {

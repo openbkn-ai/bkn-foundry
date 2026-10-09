@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Trace/Evidence admission-budget failures now report configuration fields or metric sources through existing error details and diagnostic logs. Collector queue sampling rejects missing size and invalid values instead of treating missing data as a healthy zero.
+- Trace/Evidence admission-budget failures now report configuration fields or metric sources through existing error details and Debug diagnostics without repeated polling WARNs. Collector queue sampling rejects missing size and invalid values instead of treating missing data as a healthy zero, while source coverage continues reading refused/failed counters.
 
 - Trace Core now owns creation of `bkn_trace_ee_provenance_analyses` in the versioned MariaDB migration manifest, so Community and Enterprise images initialize the same schema before optional Enterprise routes use it.
 - Renamed the module directory from `trace-ai/` to `bkn-trace/` to align with the platform-wide `bkn-*` naming (display name: BKN Trace). The Go module path changed to `github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability`; CI/release workflows, CODEOWNERS, and issue routing were updated accordingly. Image and chart names (`agent-observability`, `otelcol-contrib`) are unchanged.
