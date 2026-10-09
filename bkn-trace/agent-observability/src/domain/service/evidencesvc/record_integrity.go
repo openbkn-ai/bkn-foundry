@@ -216,6 +216,14 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 		}
 		if !found {
 			add(f, "record_content_missing", "evidence.result_completeness")
+			if completion := f.EvidenceCompletion; completion != nil && completion.RejectionReason == "" && completion.Expectation != nil {
+				for _, expected := range completion.Expectation.Events {
+					if expected.EventType == eventType && expected.PublishDisposition == "dropped" {
+						report.Missing[len(report.Missing)-1].DropReason = expected.DropReason
+						break
+					}
+				}
+			}
 		}
 	}
 	for _, r := range snapshot.Receipts {

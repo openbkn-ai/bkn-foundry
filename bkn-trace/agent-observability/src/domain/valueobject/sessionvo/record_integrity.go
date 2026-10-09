@@ -22,6 +22,8 @@ type MissingRecord struct {
 	ToolName    string `json:"tool_name,omitempty"`
 	Reason      string `json:"reason"`
 	Field       string `json:"field"`
+	// DropReason preserves the recorded publisher outcome for missing result evidence.
+	DropReason string `json:"drop_reason,omitempty"`
 }
 
 // StoredRecordIntegrity is derived metadata, never a lifecycle state. A nil
