@@ -4,6 +4,33 @@ generate_config_yaml() {
     local out="${CONFIG_YAML_PATH}"
     mkdir -p "$(dirname "${out}")"
 
+    # These are deployment/SLO choices, not discoverable middleware defaults.
+    # Use the installer's existing YAML parser so flow mappings, quoted keys,
+    # scalar types and explicit false values survive regeneration.
+    local observability_section="" preserve_dir=""
+    if [[ -f "${out}" ]]; then
+        if ! command -v helm >/dev/null 2>&1; then
+            log_error "Helm is required to preserve existing YAML configuration; original file was retained"
+            return 1
+        fi
+        preserve_dir="$(mktemp -d)" || return 1
+        mkdir -p "${preserve_dir}/templates"
+        printf 'apiVersion: v2\nname: preserve-observability\nversion: 0.1.0\n' >"${preserve_dir}/Chart.yaml"
+        cat >"${preserve_dir}/templates/config.yaml" <<'YAML'
+{{- if hasKey .Values "observability" }}
+{{ toYaml (dict "observability" .Values.observability) }}
+{{- end }}
+YAML
+        if ! command helm template preserve "${preserve_dir}" -f "${out}" \
+            >"${preserve_dir}/rendered.yaml" 2>"${preserve_dir}/error.log"; then
+            rm -rf "${preserve_dir}"
+            log_error "Cannot parse existing configuration; original file was retained"
+            return 1
+        fi
+        observability_section="$(sed '/^---$/d; /^# Source:/d' "${preserve_dir}/rendered.yaml")"
+        rm -rf "${preserve_dir}"
+    fi
+
     load_image_registry_from_config
 
     local cfg_namespace="openbkn"
@@ -525,6 +552,7 @@ accessAddress:
   scheme: ${access_scheme}
   path: ${access_path}
 ${dep_services_section}
+${observability_section}
 EOF
 
     # The file holds credentials (middleware + platform initial password):
