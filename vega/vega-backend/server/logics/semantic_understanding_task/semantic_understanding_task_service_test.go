@@ -727,6 +727,90 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 }
 
 func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
+	t.Run("rejects detail without task_manage before checking query_data", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService, rs: resourceService}
+		task := &interfaces.SemanticUnderstandingTask{ID: "task-1", CatalogID: "c-1", ResourceID: "r-1", Input: "stored input"}
+		taskAccess.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID,
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
+
+		got, err := service.GetByID(context.Background(), task.ID)
+
+		require.Error(t, err)
+		assert.True(t, interfaces.IsPermissionRefusal(err))
+		assert.Nil(t, got)
+		assert.Equal(t, "stored input", task.Input)
+	})
+
+	for _, tc := range []struct {
+		name          string
+		resourceID    string
+		emptyInput    bool
+		permissionErr error
+		wantInput     bool
+	}{
+		{name: "retains input with query_data", resourceID: "r-1", wantInput: true},
+		{name: "clears input without query_data", resourceID: "r-1", permissionErr: rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)},
+		{name: "propagates authorization failure", resourceID: "r-1", permissionErr: errors.New("authorization unavailable")},
+		{name: "clears input without a resource"},
+		{name: "skips query_data check for empty input", resourceID: "r-1", emptyInput: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+			resourceService := mock_interfaces.NewMockResourceService(ctrl)
+			catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+			userService := mock_interfaces.NewMockUserMgmtService(ctrl)
+			service := &semanticUnderstandingTaskService{suta: taskAccess, rs: resourceService, cs: catalogService, ums: userService}
+			task := &interfaces.SemanticUnderstandingTask{
+				ID: "task-1", CatalogID: "c-1", ResourceID: tc.resourceID,
+				Input:  `{"sample_rows":[{"order_id":"sample-order"}]}`,
+				Status: interfaces.SemanticUnderstandingTaskStatusPending,
+			}
+			if tc.emptyInput {
+				task.Input = ""
+			}
+			originalInput := task.Input
+			taskAccess.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
+			catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID,
+				[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
+			if tc.resourceID != "" && !tc.emptyInput {
+				resourceService.EXPECT().CheckResourcePermission(gomock.Any(), tc.resourceID,
+					interfaces.OPERATION_TYPE_QUERY_DATA).Return(tc.permissionErr)
+			}
+			failed := tc.permissionErr != nil && !interfaces.IsPermissionRefusal(tc.permissionErr)
+			if !failed {
+				catalogService.EXPECT().InternalGetByIDs(gomock.Any(), []string{task.CatalogID}).Return(nil, nil)
+				if tc.resourceID != "" {
+					resourceService.EXPECT().InternalGetByIDs(gomock.Any(), []string{tc.resourceID}).Return(nil, nil)
+				}
+				userService.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+			}
+
+			got, err := service.GetByID(context.Background(), task.ID)
+
+			if failed {
+				assert.Equal(t, originalInput, task.Input)
+				require.ErrorIs(t, err, tc.permissionErr)
+				assert.Nil(t, got)
+				return
+			}
+			require.NoError(t, err)
+			require.Same(t, task, got)
+			assert.Equal(t, "task-1", got.ID)
+			assert.Equal(t, task.Status, got.Status)
+			if tc.wantInput {
+				assert.Equal(t, originalInput, got.Input)
+			} else {
+				assert.Empty(t, got.Input)
+			}
+		})
+	}
+
 	t.Run("enriches creator name", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)

@@ -104,6 +104,12 @@ paths:
         schema: { type: string }
     get:
       summary: Get semantic-understanding task details
+      description: |
+        Requires task_manage on the task's Catalog. The input field is returned
+        as an empty string when the caller lacks query_data on the task's
+        Resource, or when the task has no resource_id. Authorization service
+        failures return an error rather than exposing the input. Empty input
+        does not require a query_data check.
       responses:
         "200":
           description: ok
