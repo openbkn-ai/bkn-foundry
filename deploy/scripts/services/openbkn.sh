@@ -731,6 +731,39 @@ _openbkn_helm_upgrade_release() {
     shift 2
     local -a helm_args=("$@")
 
+    local audit_values="" audit_render="" installed
+    if [[ "${release_name}" == "agent-observability" ]]; then
+        # Preserve only Audit consumer settings; explicit config/--set overrides
+        # this first values file. Do not reuse unrelated historical chart defaults.
+        audit_values="$(mktemp)"
+        if ! installed="$(helm list --all -q -n "${namespace}" --filter '^agent-observability$')"; then
+            rm -f "${audit_values}"
+            log_error "Cannot inspect the installed Audit consumer configuration"
+            return 1
+        fi
+        if [[ -n "${installed}" ]]; then
+            if ! (set -o pipefail; helm get values "${release_name}" -n "${namespace}" --all -o json |
+                python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" preserve >"${audit_values}"); then
+                rm -f "${audit_values}"
+                log_error "Cannot preserve the installed Audit consumer configuration"
+                return 1
+            fi
+        else
+            printf '{}\n' >"${audit_values}"
+        fi
+        helm_args=("${helm_args[@]:0:4}" -f "${audit_values}" "${helm_args[@]:4}")
+        audit_render="$(mktemp)"
+        # Client-side install rendering avoids release adoption checks and does
+        # not run hooks. The Audit values are the same for installs and upgrades.
+        if ! helm install "${helm_args[@]:2}" --dry-run=client --hide-secret -o json >"${audit_render}" ||
+            ! python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" validate "${namespace}" <"${audit_render}"; then
+            rm -f "${audit_values}" "${audit_render}"
+            log_error "Audit consumer preflight failed; correct Helm values and existing Secret references before installation"
+            return 1
+        fi
+        rm -f "${audit_render}"
+    fi
+
     # Here rather than at either call site: both the repository and the local
     # --charts-dir paths reach helm through this function, and a cleanup wired
     # to only one of them leaves the other stuck on exactly the error it exists
@@ -748,6 +781,7 @@ _openbkn_helm_upgrade_release() {
         helm_status=${PIPESTATUS[0]}
     fi
     rm -f "${helm_log}"
+    [[ -z "${audit_values}" ]] || rm -f "${audit_values}"
 
     if [[ ${helm_status} -eq 0 ]]; then
         log_info "✓ ${release_name} installed successfully"

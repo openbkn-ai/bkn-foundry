@@ -60,6 +60,48 @@ func TestRecordIntegrityUsesStoredEvidenceNotPendingFlag(t *testing.T) {
 	}
 }
 
+func TestRecordIntegrityPreservesResultPublishDropReason(t *testing.T) {
+	for _, tool := range []struct{ name, contract, eventType string }{
+		{"query_object_instance", "ontology_result/v1", "retrieval.completed"},
+		{"run_cypher", "semantic_query_descriptor/v1", "data.query.observed"},
+	} {
+		for _, test := range []struct{ name, disposition, eventType, dropReason, rejection, want string }{
+			{"unavailable", "dropped", tool.eventType, "publisher_unavailable", "", "publisher_unavailable"},
+			{"queue_full", "dropped", tool.eventType, "queue_full", "", "queue_full"},
+			{"accepted", "accepted", tool.eventType, "", "", ""},
+			{"unrelated_event", "dropped", "unrelated", "publisher_unavailable", "", ""},
+			{"rejected_expectation", "dropped", tool.eventType, "publisher_unavailable", "evidence_expectation_invalid", ""},
+			{"legacy", "", "", "", "", ""},
+		} {
+			t.Run(tool.name+"/"+test.name, func(t *testing.T) {
+				snapshot, owner, now := integrityFixture()
+				fact := &snapshot.CallFacts[0]
+				fact.ToolName = tool.name
+				fact.CapabilityProfile = &sessionvo.CapabilityProfile{Resolution: "matched", EvidenceContract: tool.contract, RequiredTraceFields: []string{"business_refs", "result_completeness"}}
+				if test.disposition != "" {
+					fact.EvidenceCompletion = &sessionvo.EvidenceCompletion{RejectionReason: test.rejection, Expectation: &sessionvo.EvidenceExpectation{Version: 1, Closed: true, Events: []sessionvo.ExpectedEvidenceEvent{{EventType: test.eventType, PublishDisposition: test.disposition, DropReason: test.dropReason}}}}
+				}
+				report, err := evaluateRecordIntegrity(snapshot, owner, now, nil)
+				if err != nil || report == nil || report.Status != "missing" || len(report.Missing) != 2 {
+					t.Fatalf("unexpected integrity report: %+v %v", report, err)
+				}
+				for _, missing := range report.Missing {
+					if missing.Field == "business_refs" && (missing.Reason != "business_target_missing" || missing.DropReason != "") {
+						t.Fatalf("publish failure contaminated business target diagnosis: %+v", missing)
+					}
+					if missing.Field == "evidence.result_completeness" && (missing.Reason != "record_content_missing" || missing.DropReason != test.want) {
+						t.Fatalf("result publish diagnosis lost: %+v; want drop reason %q", missing, test.want)
+					}
+				}
+				wire, err := json.Marshal(report)
+				if err != nil || strings.Contains(string(wire), `"drop_reason"`) != (test.want != "") {
+					t.Fatalf("unexpected optional drop_reason serialization: %s %v", wire, err)
+				}
+			})
+		}
+	}
+}
+
 func TestRecordIntegrityFailedCallNeedsErrorNotSuccessEvidence(t *testing.T) {
 	snapshot, owner, now := integrityFixture()
 	snapshot.Interaction.ExecutionStatus = sessionvo.InteractionFailed

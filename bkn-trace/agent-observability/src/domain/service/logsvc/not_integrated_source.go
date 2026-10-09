@@ -7,9 +7,30 @@ package logsvc
 
 import (
 	"context"
+	"errors"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
+
+var ErrAuditNotConfigured = errors.New("audit Kafka consumer is not configured")
+
+const AuditConfigurationAction = "Configure kafkaConsumers.audit in Helm values with brokers, an independent consumer group, SASL and an existing credentials Secret; use Core MariaDB with autoMigrate enabled."
+
+// Keep the disabled ledger visible without querying it or falling back to runtime logs.
+type unconfiguredAuditSource struct{ *NotIntegratedSource }
+
+func NewUnconfiguredAuditSource() Source {
+	return &unconfiguredAuditSource{NewNotIntegratedSource("audit-ledger", []string{
+		observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity,
+	}, []string{"system_management"})}
+}
+
+func (source *unconfiguredAuditSource) Metadata() observabilityvo.SourceStatus {
+	status := source.NotIntegratedSource.Metadata()
+	status.Reason = "audit_consumer_not_configured"
+	status.RequiredAction = AuditConfigurationAction
+	return status
+}
 
 type NotIntegratedSource struct {
 	id         string

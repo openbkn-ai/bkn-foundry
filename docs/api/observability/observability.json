@@ -1430,6 +1430,10 @@
           "reason": {
             "type": "string"
           },
+          "required_action": {
+            "type": "string",
+            "description": "Deployment action required to configure this source. A disabled audit-ledger reports status=not_integrated and reason=audit_consumer_not_configured."
+          },
           "reliability": {
             "$ref": "#/components/schemas/Reliability"
           },
@@ -1912,7 +1916,7 @@
         }
       },
       "SourcesUnavailable": {
-        "description": "All authorized sources failed; code=sources_unavailable.",
+        "description": "All authorized sources failed: code=sources_unavailable, retryable=true. If the only authorized source is an unconfigured audit-ledger: code=audit_consumer_not_configured, retryable=false, with required_action describing Helm configuration. Mixed queries retain available records, report the audit configuration gap in source_status, and mark results partial.",
         "content": {
           "application/json": {
             "schema": {

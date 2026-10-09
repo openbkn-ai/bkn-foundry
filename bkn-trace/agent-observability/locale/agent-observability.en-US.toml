@@ -13,6 +13,7 @@
 "agent_name does not match the conversation declaration" = "agent_name does not match the conversation declaration"
 "agent_name must not exceed 128 characters" = "agent_name must not exceed 128 characters"
 "all authorized log sources are unavailable" = "all authorized log sources are unavailable"
+"audit Kafka consumer is not configured" = "audit Kafka consumer is not configured"
 "another terminal transition already won" = "another terminal transition already won"
 "archive cleanup cannot be retried" = "archive cleanup cannot be retried"
 "archive did not complete" = "archive did not complete"

@@ -13,6 +13,7 @@
 "agent_name does not match the conversation declaration" = "agent_name 与会话声明不一致"
 "agent_name must not exceed 128 characters" = "agent_name 不能超过 128 个字符"
 "all authorized log sources are unavailable" = "所有已授权的日志源均不可用"
+"audit Kafka consumer is not configured" = "审计 Kafka consumer 未配置"
 "another terminal transition already won" = "另一个终态转换已先完成"
 "archive cleanup cannot be retried" = "无法重试归档清理"
 "archive did not complete" = "归档未完成"
