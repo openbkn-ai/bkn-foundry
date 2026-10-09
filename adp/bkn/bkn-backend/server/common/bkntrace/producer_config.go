@@ -22,6 +22,8 @@ type evidencePublisherConfig struct {
 	Password  string
 }
 
+var ErrInvalidEvidencePublisherConfiguration = errors.New("invalid BKN Trace Evidence publisher configuration")
+
 type EvidencePublisherRuntime struct {
 	Publisher *evidencepublisher.Publisher
 	Runtime   *evidencepublisher.PublisherRuntime
@@ -38,7 +40,7 @@ func CloseEvidenceProducer(producer interface{ Close() error }) error {
 func newEvidencePublisher() (*EvidencePublisherRuntime, error) {
 	cfg, err := loadEvidencePublisherConfig()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrInvalidEvidencePublisherConfiguration, err)
 	}
 	producer, err := kafkasender.NewProducer(kafkasender.Config{Brokers: cfg.Brokers, Mechanism: cfg.Mechanism, Username: cfg.Username, Password: cfg.Password})
 	if err != nil {
@@ -47,7 +49,7 @@ func newEvidencePublisher() (*EvidencePublisherRuntime, error) {
 	runtime, err := evidencepublisher.NewPublisherRuntimeFromEnvironment(context.Background(), cfg.Publisher, kafkasender.NewEvidence(producer))
 	if err != nil {
 		_ = producer.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrInvalidEvidencePublisherConfiguration, err)
 	}
 	return &EvidencePublisherRuntime{Publisher: runtime.UnderlyingPublisher(), Runtime: runtime, Producer: producer}, nil
 }
