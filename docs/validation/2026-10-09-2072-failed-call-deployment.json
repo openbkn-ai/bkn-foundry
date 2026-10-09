@@ -1,0 +1,125 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "case": "validation failure",
+      "interaction_id": "int_035a9ce186e4db0b9f3a9c62979be2ce",
+      "operation_id": "op_4e024b6300755903a25fd2170ac861ce",
+      "stage": "input_validation",
+      "business_refs": [],
+      "record_integrity": "complete (registered call records)",
+      "projection": "receipt and consumed events matched",
+      "observed_evidence_refs": [],
+      "capability_profile_present": true,
+      "passed": true
+    },
+    {
+      "case": "empty SQL",
+      "interaction_id": "int_3c0707f6639813a30e2a63df4b8eca1e",
+      "operation_id": "op_74aa436fd6bf367c1e0f541513c87a65",
+      "stage": "input_validation",
+      "business_refs": [],
+      "record_integrity": "complete (registered call records)",
+      "projection": "receipt and consumed events matched",
+      "observed_evidence_refs": [
+        "evt_de9e68f52de99539bdb9488aa324673a04697873c97adb2e05d7e87ec76d643e"
+      ],
+      "capability_profile_present": false,
+      "passed": true
+    },
+    {
+      "case": "missing SQL resource",
+      "interaction_id": "int_04f8ef5d02d6ebd1f524e67891c91662",
+      "operation_id": "op_a633017b2455afa25e9a49eeab262483",
+      "stage": "input_validation",
+      "business_refs": [],
+      "record_integrity": "complete (registered call records)",
+      "projection": "receipt and consumed events matched",
+      "observed_evidence_refs": [
+        "evt_cbe935681054df0d112c676839df57cb13c0dfdc1d0d53b4e6b219bca8f80f48"
+      ],
+      "capability_profile_present": false,
+      "passed": true
+    },
+    {
+      "case": "SQL backend failure",
+      "interaction_id": "int_a20ddef2ac677f3d693cbe7ec753413e",
+      "operation_id": "op_b8e2182f82daadcac4750498a6f940c1",
+      "stage": "vega_query",
+      "business_refs": [
+        "resource:inventory"
+      ],
+      "record_integrity": "complete (registered call records)",
+      "projection": "receipt and consumed events matched",
+      "observed_evidence_refs": [
+        "evt_0fd63c04f1fc5f7406f736a2474740f125ae39b37fac024a2526268ff8a1d8dc"
+      ],
+      "capability_profile_present": false,
+      "passed": true
+    },
+    {
+      "case": "SQL policy without target",
+      "interaction_id": "int_68c82034659c0cbe6add8070fc2e710c",
+      "operation_id": "op_b125da19acf80741b5ca846e0b5504c8",
+      "stage": "sql_guard",
+      "business_refs": [],
+      "record_integrity": "complete (registered call records)",
+      "projection": "receipt and consumed events matched",
+      "observed_evidence_refs": [
+        "evt_859471dfbf7dde7ec4a4d9cefb5355376fbe71f67158fcb9310586d6d3430e2e"
+      ],
+      "capability_profile_present": false,
+      "passed": true
+    }
+  ],
+  "baseline": {
+    "commit": "71c7591b47ff5a9a32f05d05b3651ab33bcfa7f8",
+    "branch": "fix/2072-failed-call-attribution",
+    "mcp_sql_retired_by": "8bd6c5fce (#1841)",
+    "retirement_changed": false
+  },
+  "environment": {
+    "scope": "isolated local development deployment",
+    "real_services": [
+      "Retrieval community binary",
+      "Core with local EE ee_dev route assembly",
+      "Kafka 3.9.0",
+      "MariaDB 11.4.7",
+      "OpenSearch 2.19.4"
+    ],
+    "fixtures": [
+      "OAuth identity",
+      "Vega backend failure",
+      "Collector queue metrics"
+    ],
+    "excluded": [
+      "Helm upgrade",
+      "production license",
+      "live upstream systems",
+      "shared deployment"
+    ]
+  },
+  "verification": {
+    "deployment_cases": 5,
+    "kafka_consumer_committed_offset": 50,
+    "kafka_log_end_offset": 50,
+    "kafka_consumer_lag": 0,
+    "projection_outbox_delivered": 264,
+    "projection_outbox_pending": 0,
+    "producer_contract_cases": 5,
+    "producer_contract_includes": [
+      "real Kafka duplicate delivery",
+      "real MariaDB persistence and replay",
+      "real OpenSearch outbox consumption and snapshot equality",
+      "matched capability profile strict targetless policy rejection"
+    ],
+    "retrieval_unit_tests": "passed",
+    "retrieval_race_tests": "passed",
+    "core_unit_tests": "passed",
+    "builds": "passed",
+    "retrieval_vet": "passed",
+    "core_lint": "passed",
+    "retrieval_lint": "6 previously verified baseline findings; no new findings",
+    "independent_review": "no remaining important findings"
+  }
+}

@@ -11,9 +11,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -27,6 +29,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
 
 func TestLifecycleSuccessTextContainsStructuredIdentifiers(t *testing.T) {
@@ -632,12 +638,26 @@ func TestFinishInteractionRetryReusesCommittedResultArtifact(t *testing.T) {
 
 func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	type finishAttemptBody struct {
-		ReceiptID string                   `json:"receipt_id"`
-		Error     bkntrace.PayloadEnvelope `json:"error"`
-		RequestID string                   `json:"request_id"`
-		TraceID   string                   `json:"trace_id"`
-		Retryable bool                     `json:"retryable"`
+		ReceiptID            string                        `json:"receipt_id"`
+		Error                bkntrace.PayloadEnvelope      `json:"error"`
+		RequestID            string                        `json:"request_id"`
+		TraceID              string                        `json:"trace_id"`
+		Retryable            bool                          `json:"retryable"`
+		BusinessRefs         []bkntrace.BusinessRef        `json:"business_refs"`
+		EvidenceExpectation  *bkntrace.EvidenceExpectation `json:"evidence_expectation"`
+		SpanID               string                        `json:"span_id"`
+		EvidenceDurability   string                        `json:"evidence_durability"`
+		PartialReasons       []string                      `json:"partial_reasons"`
+		ObservedEvidenceRefs []string                      `json:"observed_evidence_refs"`
+		ArtifactRefs         []string                      `json:"artifact_refs"`
 	}
+	var profiles []json.RawMessage
+	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "context-loader", BaseStreamID: "failed-call-test", WorkloadIdentity: "test", ProcessBootID: "2072", CapturePolicyRevision: "1", QueueMaxRecords: 128, QueueMaxBytes: 1 << 24, MaxRecordBytes: 1 << 20}, failedCallSender{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bkntrace.SetEvidencePublisher(publisher)
+	t.Cleanup(func() { bkntrace.SetEvidencePublisher(nil); publisher.Close(context.Background()) })
 	var mu sync.Mutex
 	failPaths := []string{}
 	finishBodies := []finishAttemptBody{}
@@ -651,9 +671,10 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
 			var body struct {
-				Protocol     string                   `json:"protocol"`
-				SourceModule string                   `json:"source_module"`
-				Input        bkntrace.PayloadEnvelope `json:"input"`
+				Protocol          string                   `json:"protocol"`
+				SourceModule      string                   `json:"source_module"`
+				Input             bkntrace.PayloadEnvelope `json:"input"`
+				CapabilityProfile json.RawMessage          `json:"capability_profile"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Errorf("decode ensure body: %v", err)
@@ -664,12 +685,14 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 				t.Errorf("MCP ensure lost producer identity: %#v", body)
 			}
 			ensureInputs = append(ensureInputs, body.Input)
+			profiles = append(profiles, body.CapabilityProfile)
 			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
 				Created: true,
 				Execute: true,
 				Operation: bkntrace.Operation{
-					OperationID: "op-1", ConversationID: "conv-1", InteractionID: "int-1",
-					Attempt: 1, AttemptStatus: "pending",
+					OperationID: "op-" + strconv.Itoa(len(ensureInputs)), ConversationID: "conv-1", InteractionID: "int-1",
+					CreatedAt: time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC),
+					Attempt:   1, AttemptStatus: "pending",
 				},
 				Receipt: bkntrace.Receipt{ReceiptID: "receipt-1", ReceiptStatus: "pending"},
 			})
@@ -705,6 +728,8 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	tests := []struct {
 		name          string
 		wantRetryable bool
+		wantStage     string
+		wantResource  string
 		wantCode      string
 		wantMessage   string
 		toolName      string
@@ -712,13 +737,33 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 		next          func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error)
 	}{
 		{
-			name: "validation failure", wantCode: "tool_error", wantMessage: "kn_id and ot_id are required",
+			name: "validation failure", wantStage: "input_validation", wantCode: "invalid_arguments", wantMessage: "kn_id and ot_id are required",
 			toolName: "query_object_instance", input: map[string]any{"kn_id": "supplychain_hd0202", "condition": map[string]any{"operation": "and"}},
-			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-				result := mcpsdk.NewToolResultError("kn_id and ot_id are required")
-				return result, nil
-			},
+			next: handleQueryObjectInstance(nil, nil),
 		},
+		{name: "malformed object input", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "query_object_instance", input: map[string]any{"limit": "invalid"}, next: handleQueryObjectInstance(nil, nil)},
+		{name: "invalid response format", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "query_object_instance", input: map[string]any{"response_format": "invalid"}, next: handleQueryObjectInstance(nil, nil)},
+		{name: "missing subgraph paths", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "query_instance_subgraph", input: map[string]any{}, next: handleQueryInstanceSubgraph(nil)},
+		{name: "missing exploration source", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "explore_subgraph", input: map[string]any{}, next: handleExploreSubgraph(nil)},
+		{name: "missing network detail", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "get_kn_detail", input: map[string]any{}, next: handleGetKnDetail(nil, nil, nil, nil)},
+		{name: "missing object network", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "get_object_types", input: map[string]any{}, next: handleGetObjectTypes(nil, nil, nil)},
+		{name: "missing relation network", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "get_relation_types", input: map[string]any{}, next: handleGetRelationTypes(nil)},
+		{name: "missing metric network", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "query_metric", input: map[string]any{}, next: handleQueryMetric(knmetrics.NewKnMetricsServiceWith(nil, nil, nil))},
+		{name: "missing Cypher network", wantStage: "input_validation", wantCode: "RUN_CYPHER_KN_ID_REQUIRED", wantMessage: kncypher.ErrKnIDRequired.Error(), toolName: "run_cypher", input: map[string]any{}, next: handleRunCypher(kncypher.NewKnCypherServiceWith(nil))},
+
+		{name: "missing search network", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "search_instance", input: map[string]any{}, next: handleSearchInstance(knsearch.NewKnSearchService())},
+		{name: "SQL policy without target", wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED", toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM inventory"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
+		{name: "SQL policy with target", wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED", wantResource: "resource:inventory", toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{.inventory}}"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
+		{name: "untrusted failure stage", wantCode: "tool_error", wantMessage: "untrusted failure", toolName: "run_sql", input: map[string]any{}, next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			result := mcpsdk.NewToolResultError("untrusted failure")
+			result.StructuredContent = map[string]any{"stage": "input_validation"}
+			return result, nil
+		}},
+
+		{name: "empty SQL", wantStage: "input_validation", wantCode: "RUN_SQL_SQL_REQUIRED", wantMessage: knrunsql.ErrSQLRequired.Error(), toolName: "run_sql", input: map[string]any{"sql": ""}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
+		{name: "missing SQL resource", wantStage: "input_validation", wantCode: "RUN_SQL_RESOURCE_PLACEHOLDER_REQUIRED", wantMessage: knrunsql.ErrNoResourcePlaceholder.Error(), toolName: "run_sql", input: map[string]any{"sql": "SELECT 1"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
+		{name: "SQL backend failure", wantStage: "vega_query", wantCode: "RUN_SQL_VEGA_QUERY_FAILED", wantMessage: "backend unavailable", wantResource: "resource:inventory", toolName: "run_sql", input: map[string]any{"sql": "SELECT * FROM {{.inventory}}"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(&failedCallVega{}))},
+
 		{
 			name: "policy rejection", wantCode: "tool_error", wantMessage: "run_sql is read-only",
 			toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{.purchase_order_resource}} WHERE status = 'closed'"},
@@ -796,14 +841,34 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 			Stage   string `json:"stage"`
 		}
 		if err := json.Unmarshal(body.Error.Inline, &failure); err != nil ||
-			failure.Code != tests[index].wantCode || failure.Message != tests[index].wantMessage ||
-			failure.Stage != "tool_execution" {
-			t.Fatalf("%s error fact=%#v err=%v", tests[index].name, failure, err)
+			failure.Code != tests[index].wantCode || (tests[index].wantMessage != "" && failure.Message != tests[index].wantMessage) || failure.Message == "" ||
+			failure.Stage != expectedFailureStage(tests[index].wantStage) {
+			t.Errorf("%s error fact=%#v err=%v", tests[index].name, failure, err)
+		}
+		if tests[index].wantResource != "" && !reflect.DeepEqual(body.BusinessRefs, []bkntrace.BusinessRef{{RefType: "data_resource", RefID: tests[index].wantResource, Version: "unversioned"}}) {
+			t.Errorf("%s refs=%+v", tests[index].name, body.BusinessRefs)
+		}
+		if tests[index].wantStage == "input_validation" && len(body.BusinessRefs) != 0 {
+			t.Errorf("rejected input invented refs: %+v", body.BusinessRefs)
 		}
 		if body.Retryable != tests[index].wantRetryable {
 			t.Fatalf("%s retryable=%t, want %t", tests[index].name, body.Retryable, tests[index].wantRetryable)
 		}
 	}
+	if destination := os.Getenv("BKN_TRACE_FAILED_CALL_CONTRACT"); destination != "" {
+		rows := make([]map[string]any, 0, len(tests))
+		for index, test := range tests {
+			rows = append(rows, map[string]any{"name": test.name, "tool_name": test.toolName, "operation_id": "op-" + strconv.Itoa(index+1), "input": ensureInputs[index], "finish": finishBodies[index], "capability_profile": profiles[index]})
+		}
+		raw, err := json.Marshal(map[string]any{"calls": rows, "records": publisher.SnapshotQueue()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(destination, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 }
 
 func TestNormalizedBusinessInputPreservesOnlyRealToolArguments(t *testing.T) {
@@ -1400,5 +1465,125 @@ func TestFunctionReadsPreserveParentThroughLifecycle(t *testing.T) {
 	}
 	if len(children) != len(parents) {
 		t.Fatalf("children=%v", children)
+	}
+}
+
+func expectedFailureStage(stage string) string {
+	if stage == "" {
+		return "tool_execution"
+	}
+	return stage
+}
+
+type failedCallVega struct{ interfaces.DrivenVega }
+
+func (*failedCallVega) RawQuery(context.Context, *interfaces.VegaRawQueryReq) (*interfaces.VegaRawQueryResp, error) {
+	return nil, errors.New("backend unavailable")
+}
+
+type failedCallSender struct{}
+
+func (failedCallSender) Send(context.Context, evidencepublisher.Record) error { return nil }
+
+func TestFailedCallKeepsBusinessResultWithoutTrace(t *testing.T) {
+	for _, mode := range []string{"unmanaged", "capture_disabled", "core_unavailable"} {
+		t.Run(mode, func(t *testing.T) {
+			bkntrace.SetEvidencePublisher(nil)
+			if mode == "capture_disabled" {
+				bkntrace.SetEvidencePublisher(disabledCapturePublisher{})
+			}
+			t.Cleanup(func() { bkntrace.SetEvidencePublisher(nil) })
+			coreCalls := 0
+			client := bkntrace.NewLifecycleClient("http://trace.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(*http.Request) (*http.Response, error) {
+				coreCalls++
+				if mode != "core_unavailable" {
+					t.Error("unmanaged/disabled call contacted Core")
+				}
+				return lifecycleAdapterJSONResponse(http.StatusServiceUnavailable, map[string]any{"error": map[string]any{"code": "unavailable", "retryable": true}}), nil
+			})})
+			calls := 0
+			business := handleQueryObjectInstance(nil, nil)
+			handler := lifecycleToolMiddleware(client)(func(ctx context.Context, request mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+				calls++
+				return business(ctx, request)
+			})
+			arguments := map[string]any{}
+			if mode != "unmanaged" {
+				arguments["bkn_context"] = map[string]any{"conversation_id": "conv-1", "interaction_id": "int-1"}
+			}
+			ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{AccountID: "user-1", AccountType: interfaces.AccessorTypeUser})
+			ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{RequestID: "req_failed_compatibility_2072"})
+			result, err := handler(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Name: "query_object_instance", Arguments: arguments}})
+			if err != nil || result == nil || !result.IsError || calls != 1 {
+				t.Fatalf("business failure changed: result=%+v err=%v calls=%d", result, err, calls)
+			}
+			text, ok := mcpsdk.AsTextContent(result.Content[0])
+			if !ok || text.Text != "kn_id and ot_id are required" {
+				t.Fatalf("original error content changed: %+v", result.Content)
+			}
+			if mode == "core_unavailable" && coreCalls == 0 {
+				t.Fatal("outage path was not exercised")
+			}
+		})
+	}
+}
+
+// An asynchronous callback at serialization time must not change the failure
+// classification or target after the adapter has selected the terminal fact.
+type lateFailureContent struct{ ctx context.Context }
+
+func (value lateFailureContent) MarshalJSON() ([]byte, error) {
+	bkntrace.RecordToolFailure(value.ctx, "late_backend_error", "backend")
+	bkntrace.EmitRunSQLFailure(value.ctx, nil, "late", []string{"late"}, bkntrace.RunSQLFailure{Code: "late_backend_error", Stage: "backend"})
+	return []byte(`{"message":"original failure"}`), nil
+}
+
+func TestAdapterFreezesFailureBeforeSerializationAndReplay(t *testing.T) {
+	bkntrace.SetEvidencePublisher(nil)
+	t.Cleanup(func() { bkntrace.SetEvidencePublisher(nil) })
+	var bodies []struct {
+		Error        bkntrace.PayloadEnvelope `json:"error"`
+		BusinessRefs []bkntrace.BusinessRef   `json:"business_refs"`
+	}
+	client := bkntrace.NewLifecycleClient("http://trace.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(r.URL.Path, "/operations:ensure") {
+			return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.OperationResult{Execute: true, Operation: bkntrace.Operation{OperationID: "op", Attempt: 1, CreatedAt: time.Now()}, Receipt: bkntrace.Receipt{ReceiptID: "receipt", ReceiptStatus: "pending"}}), nil
+		}
+		if r.Method == http.MethodGet {
+			return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.Interaction{InteractionID: "int", ConversationID: "conv", ExecutionStatus: "active", LeaseToken: "lease", LeaseEpoch: 1}), nil
+		}
+		var body struct {
+			Error        bkntrace.PayloadEnvelope `json:"error"`
+			BusinessRefs []bkntrace.BusinessRef   `json:"business_refs"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		bodies = append(bodies, body)
+		return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.OperationResult{Operation: bkntrace.Operation{OperationID: "op", Attempt: 1}, Receipt: bkntrace.Receipt{ReceiptID: "receipt", ReceiptStatus: "failed"}}), nil
+	})})
+	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{AccountID: "user", AccountType: interfaces.AccessorTypeUser})
+	ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{RequestID: "req_failure_freeze_2072"})
+	ctx, state, _, apiErr, err := bkntrace.NewGuard(client).Begin(ctx, bkntrace.GuardIntent{Context: bkntrace.BusinessContext{ConversationID: "conv", InteractionID: "int", OperationKey: "failure"}, ToolName: "query_object_instance", Input: json.RawMessage(`{}`)})
+	if err != nil || apiErr != nil {
+		t.Fatalf("begin: %v %v", apiErr, err)
+	}
+	bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
+	result := mcpsdk.NewToolResultError("original failure")
+	result.StructuredContent = lateFailureContent{ctx: ctx}
+	ensured := &operationResult{Operation: state.Result.Operation, Receipt: state.Result.Receipt}
+	for i := 0; i < 2; i++ {
+		if _, apiErr, err := completeOperationAdapter(client)(ctx, ensured, result); apiErr != nil || err != nil {
+			t.Fatalf("complete: %v %v", apiErr, err)
+		}
+	}
+	if len(bodies) != 2 || !reflect.DeepEqual(bodies[0], bodies[1]) {
+		t.Fatalf("late classification changed replay: %+v", bodies)
+	}
+	var failure struct {
+		Stage string `json:"stage"`
+	}
+	if err := json.Unmarshal(bodies[0].Error.Inline, &failure); err != nil || failure.Stage != "input_validation" || len(bodies[0].BusinessRefs) != 0 {
+		t.Fatalf("late callback changed terminal fact: %+v %v", bodies[0], err)
 	}
 }

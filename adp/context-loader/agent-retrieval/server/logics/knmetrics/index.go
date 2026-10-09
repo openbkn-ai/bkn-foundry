@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -139,17 +140,21 @@ func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
 // QueryMetric forwards ontology-query's metric fetching endpoint after verifying the input parameters.
 func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.QueryMetricReq) (*interfaces.QueryMetricResp, error) {
 	if req == nil {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, ErrKnIDRequired
 	}
 	knID := strings.TrimSpace(req.KnID)
 	metricID := strings.TrimSpace(req.MetricID)
 	if knID == "" {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, ErrKnIDRequired
 	}
 	if metricID == "" {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, ErrMetricIDRequired
 	}
 	if err := validateTimeWindow(req.Time, req.FillNull); err != nil {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, err
 	}
 

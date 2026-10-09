@@ -109,6 +109,9 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 					Code: "tool_error", Message: toolResultErrorMessage(downstream), Stage: "tool_execution",
 				}
 			}
+			if code, stage := bkntrace.FreezeToolFailure(ctx); !ok && stage != "" {
+				failure.Code, failure.Stage = code, stage
+			}
 			failure.Result = downstream
 			payload = failure
 		}

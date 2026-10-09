@@ -161,6 +161,9 @@ func TraceAvailabilityFromContext(ctx context.Context) map[string]any {
 // ClearManagedTraceContext preserves authenticated business context and technical request correlation;
 // supplied or unconfirmed managed identities must not reach a child as facts.
 func ClearManagedTraceContext(ctx context.Context) context.Context {
+	// An unregistered child must not retain or mutate its parent attempt facts.
+	ctx = context.WithValue(ctx, evidenceOutcomeContextKey{}, (*evidenceOutcome)(nil))
+	ctx = withRequestDerivedBusinessRefs(ctx, nil)
 	value, ok := common.GetTraceContextFromCtx(ctx)
 	if !ok {
 		return ctx
