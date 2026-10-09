@@ -55,9 +55,10 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			})
 			return
 		}
-		// REST executions require a stated managed context. Reads and proxy calls
-		// retain the optional Trace boundary; a malformed stated context is checked.
-		if !hasBusinessContext(input) && requiresManagedHTTPContext(c.Request) {
+		// REST executions require a stated managed context while capture is enabled.
+		// Disabled capture cannot issue lifecycle IDs, so it admits ad-hoc calls.
+		// A malformed stated context is still validated below.
+		if !hasBusinessContext(input) && requiresManagedHTTPContext(c.Request) && !bkntrace.CaptureDisabled() {
 			writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
 				Code: "conversation_required", Message: "conversation_id is required",
 				RequiredAction: "create_conversation",

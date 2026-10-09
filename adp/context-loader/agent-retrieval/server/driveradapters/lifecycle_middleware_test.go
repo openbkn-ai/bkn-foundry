@@ -25,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
 
 // TestRESTExecutionRequiresManagedContext verifies that side-effecting REST calls
@@ -91,6 +92,47 @@ func TestRESTExecutionRequiresManagedContext(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+type disabledRESTCapturePublisher struct{}
+
+func (disabledRESTCapturePublisher) CaptureDisabled() bool { return true }
+func (disabledRESTCapturePublisher) TryPublish(evidencepublisher.Event) evidencepublisher.PublishResult {
+	panic("disabled capture must not publish")
+}
+
+func TestRESTExecutionRemainsAvailableWhenCaptureDisabled(t *testing.T) {
+	bkntrace.SetEvidencePublisher(disabledRESTCapturePublisher{})
+	t.Cleanup(func() { bkntrace.SetEvidencePublisher(nil) })
+	gin.SetMode(gin.TestMode)
+	for _, path := range []string{
+		"/api/agent-retrieval/v1/kn/execute_action",
+		"/api/agent-retrieval/in/v1/kn/execute_tool",
+		"/api/agent-retrieval/v1/kn/execute_skill",
+	} {
+		for _, body := range []string{`{"query":"q"}`, `{"query":"q","bkn_context":{}}`} {
+			t.Run(path+"/"+body, func(t *testing.T) {
+				calls := 0
+				router := gin.New()
+				router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
+				router.POST("/*path", func(c *gin.Context) {
+					calls++
+					var input map[string]any
+					if err := c.ShouldBindJSON(&input); err != nil || input["query"] != "q" {
+						t.Errorf("handler body = %#v, bind error = %v", input, err)
+					}
+					c.Status(http.StatusNoContent)
+				})
+				request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+				request.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				if response.Code != http.StatusNoContent || calls != 1 {
+					t.Fatalf("status=%d calls=%d body=%s", response.Code, calls, response.Body.String())
+				}
+			})
+		}
 	}
 }
 

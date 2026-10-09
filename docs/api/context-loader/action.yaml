@@ -117,6 +117,8 @@ paths:
         （由下游决定命中范围），不是「不执行」。
         必须提供有效的 `bkn_context`；缺失或传空时，执行前返回 400
         `conversation_required`，附 `required_action: create_conversation`。
+        平台明确关闭证据采集时，`bkn_start_interaction` 不签发 ID，本接口可不带
+        `bkn_context` 执行，且不生成受管 Trace 记录。
       requestBody:
         required: true
         content:

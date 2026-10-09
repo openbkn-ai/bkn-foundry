@@ -28,6 +28,8 @@ info:
     **托管 Interaction**：`execute_tool` 必须在请求体中提供有效的 `bkn_context`。
     `conversation_id` 与 `interaction_id` 会随调用透传到执行工厂，使执行和证据
     归属于同一个 Interaction。`search_capabilities` 仍可不带上下文临时读取。
+    平台明确关闭证据采集时不签发 Interaction ID，`execute_tool` 可不带
+    `bkn_context` 执行，且不生成受管 Trace 记录。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
   version: 0.1.6
@@ -208,6 +210,7 @@ paths:
         `execute` 权限时会拒绝，`message` 说明原因，请求不会执行目标工具。
         缺少或传空 `bkn_context` 返回 400 `conversation_required`，并附
         `required_action: create_conversation`；执行前应先建立受管 Interaction。
+        平台明确关闭证据采集时，此上下文要求不适用。
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
