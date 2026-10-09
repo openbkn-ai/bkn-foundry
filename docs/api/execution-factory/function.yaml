@@ -56,10 +56,9 @@ paths:
         `https://pypi.org/simple/`），内网环境建议指向私有镜像。已经预装在沙箱基础
         镜像里的库不用声明——用 `GET /function/dependencies` 看有哪些。
 
-        **响应永远是 200**：代码自身抛异常不算接口失败，异常栈在 `stderr` 里，
-        `exit_code` 非 0，`result` 为 `null`。只有参数不合法、无权限（403）、
-        权限校验服务不可用（503）、沙箱不可用才返回 4xx/5xx——**判断执行成败看
-        `exit_code`，不要看 HTTP 状态码**。
+        代码自身抛异常仍返回 200，异常栈在 `stderr` 里，`exit_code` 非 0；
+        沙箱执行超时返回 504。判断代码执行成败需同时检查 HTTP 状态与
+        `exit_code`。
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -153,6 +152,12 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/AuthorizationUnavailable'
+        '504':
+          description: 沙箱函数执行超时
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
 
   /function/infer-schema:
     post:

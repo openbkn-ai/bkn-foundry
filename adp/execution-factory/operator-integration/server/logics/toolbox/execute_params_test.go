@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -22,8 +23,18 @@ type debugToolFixture struct {
 	captured **interfaces.HTTPRequest
 }
 
-func newDebugToolFixture(t *testing.T, toolStatus string) *debugToolFixture {
+func newDebugToolFixture(t *testing.T, toolStatus string, sourceTypes ...model.SourceType) *debugToolFixture {
 	ctrl := gomock.NewController(t)
+	sourceType := model.SourceTypeOpenAPI
+	serverURL := "http://metadata-svc"
+	path := "/api/v1/executions/sessions/{session_id}/execute-sync"
+	if len(sourceTypes) > 0 {
+		sourceType = sourceTypes[0]
+	}
+	if sourceType == model.SourceTypeFunction {
+		serverURL = interfaces.AOIServerURL
+		path = interfaces.SetAOIFuncExecPath("11111111-1111-4111-8111-111111111111")
+	}
 
 	mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 	mockToolBoxDB := mocks.NewMockIToolboxDB(ctrl)
@@ -46,13 +57,13 @@ func newDebugToolFixture(t *testing.T, toolStatus string) *debugToolFixture {
 			BoxID:      "b1",
 			Name:       "tool",
 			SourceID:   "s1",
-			SourceType: model.SourceTypeOpenAPI,
+			SourceType: sourceType,
 			Status:     toolStatus,
 		}, nil).AnyTimes()
-	mockMetadataService.EXPECT().GetMetadataBySource(gomock.Any(), "s1", model.SourceTypeOpenAPI).
+	mockMetadataService.EXPECT().GetMetadataBySource(gomock.Any(), "s1", sourceType).
 		Return(true, mockMetadata, nil).AnyTimes()
-	mockMetadata.EXPECT().GetServerURL().Return("http://metadata-svc").AnyTimes()
-	mockMetadata.EXPECT().GetPath().Return("/api/v1/executions/sessions/{session_id}/execute-sync").AnyTimes()
+	mockMetadata.EXPECT().GetServerURL().Return(serverURL).AnyTimes()
+	mockMetadata.EXPECT().GetPath().Return(path).AnyTimes()
 	mockMetadata.EXPECT().GetMethod().Return(http.MethodPost).AnyTimes()
 
 	var captured *interfaces.HTTPRequest
@@ -70,9 +81,50 @@ func newDebugToolFixture(t *testing.T, toolStatus string) *debugToolFixture {
 			ToolDB:          mockToolDB,
 			MetadataService: mockMetadataService,
 			Proxy:           mockProxy,
+			ProxyMaxTimeout: 120 * time.Second,
 			AuditLog:        mockAuditLog,
 		},
 		captured: &captured,
+	}
+}
+
+func TestFunctionToolTimeoutForwarding(t *testing.T) {
+	for _, method := range []string{"debug", "execute"} {
+		for _, tc := range []struct {
+			name        string
+			timeout     int
+			wantQuery   any
+			wantTimeout time.Duration
+		}{
+			{name: "explicit", timeout: 60, wantQuery: "60000", wantTimeout: 60 * time.Second},
+			{name: "capped", timeout: 180, wantQuery: "120000", wantTimeout: 120 * time.Second},
+			{name: "default", timeout: 0, wantQuery: nil, wantTimeout: 0},
+		} {
+			t.Run(method+"/"+tc.name, func(t *testing.T) {
+				fixture := newDebugToolFixture(t, string(interfaces.ToolStatusTypeEnabled), model.SourceTypeFunction)
+				query := map[string]any{"timeout": "999999", "filter": "x"}
+				req := &interfaces.ExecuteToolReq{
+					UserID: "u1", BoxID: "b1", ToolID: "t1", Timeout: tc.timeout,
+					HTTPRequestParams: interfaces.HTTPRequestParams{QueryParams: query},
+				}
+				var err error
+				if method == "debug" {
+					_, err = fixture.service.DebugTool(context.Background(), req)
+				} else {
+					_, err = fixture.service.ExecuteTool(context.Background(), req)
+				}
+				if err != nil {
+					t.Fatalf("%s: %v", method, err)
+				}
+				got := *fixture.captured
+				if got == nil || got.QueryParams["timeout"] != tc.wantQuery || got.Timeout != tc.wantTimeout {
+					t.Fatalf("forwarded request = %+v, want timeout %v and query %v", got, tc.wantTimeout, tc.wantQuery)
+				}
+				if got.QueryParams["filter"] != "x" || query["timeout"] != "999999" {
+					t.Fatalf("query was lost or caller query changed: forwarded=%v original=%v", got.QueryParams, query)
+				}
+			})
+		}
 	}
 }
 

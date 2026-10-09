@@ -191,6 +191,15 @@ func (c *sandBoxControlPlaneClient) ListSessions(ctx context.Context, req *inter
 // ExecuteCodeSync execution function (synchronization)
 func (c *sandBoxControlPlaneClient) ExecuteCodeSync(ctx context.Context, sessionID string, req *interfaces.ExecuteCodeReq) (*interfaces.ExecuteCodeResp, error) {
 	src := fmt.Sprintf("%s/executions/sessions/%s/execute-sync", c.baseURL, sessionID)
+	// The control plane defaults to a 300-second polling deadline. Leave time for
+	// it to return the terminal execution status when the requested limit is near it.
+	if req.Timeout > 295 {
+		syncTimeout := 3600 // Control plane's maximum sync_timeout.
+		if req.Timeout <= 3595 {
+			syncTimeout = req.Timeout + 5
+		}
+		src = fmt.Sprintf("%s?sync_timeout=%d", src, syncTimeout)
+	}
 	headers := common.GetHeaderFromCtx(ctx)
 	respCode, respData, err := c.httpClient.PostNoUnmarshal(ctx, src, headers, req)
 	if err != nil {

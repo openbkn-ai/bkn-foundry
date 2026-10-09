@@ -108,6 +108,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 - **The entry function must be named `handler`** with the signature `handler(event: Dict[str, Any]) -> Any`. A different name does not necessarily produce a missing-entry error; behavior may simply be incorrect.
 - **A code exception still returns HTTP 200.** Use `exit_code`—zero means success—and `stderr` to determine the execution result.
+- **A sandbox execution timeout returns HTTP 504** from `/function/execute`. A Function Tool call keeps the outer HTTP 200 envelope and reports `status_code: 504` inside it.
 - **Public `timeout` values are seconds.** The internal `POST /internal-v1/function/exec/{version}` operation uses milliseconds.
 
 ## Conventions

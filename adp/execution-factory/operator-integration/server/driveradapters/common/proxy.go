@@ -112,7 +112,7 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 		return
 	}
 	h.Logger.Infof("FunctionExecute response summary: %v", summarizeExecutionResponse(resp))
-	rest.ReplyOK(c, http.StatusOK, newFunctionExecuteResp(resp))
+	replyFunctionExecutionResult(c, resp, execReq.Timeout)
 }
 
 // All keys of the execution context. The sandbox session is pooled and reused, and the value of the previous caller is retained in the container environment.
@@ -306,6 +306,22 @@ func newFunctionExecuteResp(resp *interfaces.ExecuteCodeResp) *FunctionExecuteRe
 	}
 }
 
+func replyFunctionExecutionResult(c *gin.Context, resp *interfaces.ExecuteCodeResp, timeout int) {
+	if resp.Status == "timeout" {
+		if timeout <= 0 {
+			timeout = resp.Timeout
+		}
+		detail := "function execution timed out"
+		if timeout > 0 {
+			detail = fmt.Sprintf("%s after %d seconds", detail, timeout)
+		}
+		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusGatewayTimeout,
+			detail))
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, newFunctionExecuteResp(resp))
+}
+
 func buildFunctionExecutionEnv(c *gin.Context, req *interfaces.FunctionProxyExecuteCodeReq) map[string]any {
 	env := newExecutionEnv()
 	env["source"] = "function_debug"
@@ -343,7 +359,7 @@ func buildFunctionExecutionEnv(c *gin.Context, req *interfaces.FunctionProxyExec
 // FunctionExecuteProxyReq function execution proxy request parameters.
 type FunctionExecuteProxyReq struct {
 	Version string `uri:"version" validate:"required,uuid"`
-	Timeout int64  `query:"timeout"` // milliseconds.
+	Timeout int64  `form:"timeout" validate:"gte=0"` // milliseconds.
 }
 
 // FunctionExecuteProxy executes proxy requests.
@@ -352,6 +368,10 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 	req := &FunctionExecuteProxyReq{}
 	if err = c.ShouldBindUri(req); err != nil {
 		rest.ReplyError(c, err)
+		return
+	}
+	if err = c.ShouldBindQuery(req); err != nil {
+		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
 		return
 	}
 	// Read request body.
@@ -421,7 +441,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		return
 	}
 	h.Logger.Infof("FunctionExecuteProxy response summary: %v", summarizeExecutionResponse(resp))
-	rest.ReplyOK(c, http.StatusOK, newFunctionExecuteResp(resp))
+	replyFunctionExecutionResult(c, resp, execReq.Timeout)
 }
 
 func summarizeExecutionResponse(resp *interfaces.ExecuteCodeResp) map[string]any {

@@ -87,11 +87,20 @@ func NewClientPool() *clientPool {
 
 // GetClient Gets the synchronization type client.
 func (p *clientPool) GetClient(timeout time.Duration) *http.Client {
+	return p.GetClientWithGrace(timeout, 0)
+}
+
+// GetClientWithGrace allows an internal execution to report its timeout before
+// the HTTP client stops waiting. The configured maximum still caps execution time.
+func (p *clientPool) GetClientWithGrace(timeout, grace time.Duration) *http.Client {
 	if timeout <= 0 {
 		timeout = p.config.DefaultTimeout
 	}
 	if timeout > p.config.MaxTimeout {
 		timeout = p.config.MaxTimeout
+	}
+	if grace > 0 {
+		timeout += grace
 	}
 	key := GetClientKey(interfaces.ExecutionModeSync, "", timeout)
 	p.mu.Lock()
