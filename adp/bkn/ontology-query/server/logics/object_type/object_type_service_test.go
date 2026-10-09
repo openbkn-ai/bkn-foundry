@@ -245,7 +245,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 		service := &objectTypeService{
 			appSetting:     appSetting,
 			omAccess:       omAccess,
-			osa:            osa,
 			mfa:            mfa,
 			aoAccess:       aoAccess,
 			proxy:          &objectTypeProxyResolverStub{},
@@ -395,7 +394,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.SearchFromIndex, ShouldBeFalse)
 			So(len(result.Datas), ShouldEqual, 1)
 		})
 
@@ -500,7 +498,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.SearchFromIndex, ShouldBeFalse)
 			So(len(result.Datas), ShouldEqual, 1)
 		})
 
@@ -699,7 +696,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(result.Datas, ShouldBeNil)
 		})
 
-		Convey("成功 - IgnoringStore=true 时走 resource 数据源", func() {
+		Convey("成功 - IgnoreLocalIndex=true 时走 resource 数据源", func() {
 			objectType := interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: objectTypeID,
@@ -728,7 +725,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				Branch:       branch,
 				ObjectTypeID: objectTypeID,
 				CommonQueryParameters: interfaces.CommonQueryParameters{
-					IgnoringStore: true,
+					IgnoreLocalIndex: true,
 				},
 				PageQuery: interfaces.PageQuery{
 					Limit: 10,
@@ -748,7 +745,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.SearchFromIndex, ShouldBeFalse)
 			So(len(result.Datas), ShouldEqual, 1)
 		})
 
@@ -1218,73 +1214,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 	})
 }
 
-func Test_objectTypeService_GetTotal(t *testing.T) {
-	Convey("Test objectTypeService GetTotal", t, func() {
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-
-		service := &objectTypeService{
-			osa: omock.NewMockOpenSearchAccess(mockCtrl),
-		}
-
-		ctx := context.Background()
-		index := "index1"
-		dsl := map[string]any{
-			"query": map[string]any{
-				"match_all": map[string]any{},
-			},
-			"from": 0,
-			"size": 10,
-			"sort": []any{},
-		}
-
-		Convey("成功 - 获取总数", func() {
-			mockOSA := service.osa.(*omock.MockOpenSearchAccess)
-			mockOSA.EXPECT().Count(gomock.Any(), gomock.Any(), gomock.Any()).Return([]byte(`{"count":100}`), nil)
-
-			result, err := service.GetTotal(ctx, index, dsl)
-			So(err, ShouldBeNil)
-			So(result, ShouldEqual, 100)
-		})
-
-		Convey("失败 - Count错误", func() {
-			mockOSA := service.osa.(*omock.MockOpenSearchAccess)
-			mockOSA.EXPECT().Count(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
-
-			result, err := service.GetTotal(ctx, index, dsl)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldEqual, 0)
-		})
-
-		Convey("失败 - 无效JSON", func() {
-			mockOSA := service.osa.(*omock.MockOpenSearchAccess)
-			mockOSA.EXPECT().Count(gomock.Any(), gomock.Any(), gomock.Any()).Return([]byte(`invalid json`), nil)
-
-			result, err := service.GetTotal(ctx, index, dsl)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldEqual, 0)
-		})
-
-		Convey("失败 - 获取count字段失败", func() {
-			mockOSA := service.osa.(*omock.MockOpenSearchAccess)
-			mockOSA.EXPECT().Count(gomock.Any(), gomock.Any(), gomock.Any()).Return([]byte(`{"total":100}`), nil)
-
-			result, err := service.GetTotal(ctx, index, dsl)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldEqual, 0)
-		})
-
-		Convey("失败 - 转换为int64失败", func() {
-			mockOSA := service.osa.(*omock.MockOpenSearchAccess)
-			mockOSA.EXPECT().Count(gomock.Any(), gomock.Any(), gomock.Any()).Return([]byte(`{"count":"not_a_number"}`), nil)
-
-			result, err := service.GetTotal(ctx, index, dsl)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldEqual, 0)
-		})
-	})
-}
-
 func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 	Convey("Test objectTypeService GetObjectPropertyValue", t, func() {
 		mockCtrl := gomock.NewController(t)
@@ -1308,7 +1237,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		service := &objectTypeService{
 			appSetting:     appSetting,
 			omAccess:       omAccess,
-			osa:            osa,
 			vba:            vba,
 			mqs:            mqs,
 			mfa:            mfa,

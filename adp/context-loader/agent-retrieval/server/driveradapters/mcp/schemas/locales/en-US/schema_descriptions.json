@@ -172,6 +172,7 @@
     "output_schema.properties.search_after.description": "Cursor for the next batch of source instances; empty when the source instances are exhausted."
   },
   "query_object_instance": {
+    "output_schema.properties.query_source.description": "Actual Vega query source: local_index means the resource local index; source means its data source. Omitted when no resource was queried. Use cursor for pagination, not this field.",
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.ot_id.description": "Object type id to query.",

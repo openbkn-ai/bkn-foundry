@@ -17,6 +17,15 @@ info:
     endpoint. Proxy identity and target bindings are always server-derived from
     the current published `main` model. See `../knowledge-network-authorization.md`
     and `trusted-proxy-context.md`.
+    Instance and subgraph reads use `ignore_local_index` (default false) to bypass
+    a resource's local index where supported. Applicability and operator support
+    depend on the resource's query capabilities in Vega. This replaces the ineffective
+    `ignoring_store_cache` parameter; no compatibility alias is provided. Object
+    responses expose Vega's actual `query_source` (`local_index` or `source`)
+    instead of `search_from_index`. Clients must migrate these names together
+    with the server. The internal cursor digest encoding remains unchanged.
+    Changing `ignore_local_index` requires a new query rather than continuing
+    an existing cursor.
 security:
   - OAuth2: []
 paths:
@@ -233,8 +242,8 @@ paths:
         explode: true
         in: query
         required: false
-      - name: ignoring_store_cache
-        description: 是否忽略索引查询，默认false，不忽略，即走索引查询
+      - name: ignore_local_index
+        description: 是否跳过资源的本地索引并查询数据源，默认 false；参数是否适用及 match/knn 等算子是否受支持，由 Vega 根据资源的查询能力决定。
         schema:
           type: boolean
         in: query
@@ -1177,8 +1186,8 @@ paths:
           type: string
         in: query
         required: false
-      - name: ignoring_store_cache
-        description: 是否忽略索引查询，默认false，不忽略，即走索引查询
+      - name: ignore_local_index
+        description: 是否跳过资源的本地索引并查询数据源，默认 false；参数是否适用及 match/knn 等算子是否受支持，由 Vega 根据资源的查询能力决定。
         schema:
           type: boolean
         in: query
@@ -2275,8 +2284,8 @@ paths:
           type: boolean
         in: query
         required: false
-      - name: ignoring_store_cache
-        description: 是否忽略索引查询，默认是false，不忽略，即走索引查询
+      - name: ignore_local_index
+        description: 是否跳过资源的本地索引并查询数据源，默认 false；参数是否适用及 match/knn 等算子是否受支持，由 Vega 根据资源的查询能力决定。
         schema:
           type: boolean
         in: query
@@ -4279,6 +4288,10 @@ components:
       - datas
       type: object
       properties:
+        query_source:
+          description: Vega 实际查询来源，local_index 表示资源本地索引，source 表示原始数据源。未执行资源查询时省略。替代旧 search_from_index 字段。
+          type: string
+          enum: [local_index, source]
         object_type:
           $ref: '#/components/schemas/ObjectTypeDetail'
           description: 对象类信息

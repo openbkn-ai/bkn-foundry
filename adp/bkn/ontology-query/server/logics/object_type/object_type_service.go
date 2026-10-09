@@ -25,7 +25,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/tidwall/sjson"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 
 	"ontology-query/common"
 	cond "ontology-query/common/condition"
@@ -47,7 +46,6 @@ type objectTypeService struct {
 	aoAccess       interfaces.AgentOperatorAccess
 	mfa            interfaces.ModelFactoryAccess
 	omAccess       interfaces.OntologyManagerAccess
-	osa            interfaces.OpenSearchAccess
 	vba            interfaces.VegaBackendAccess
 	mqs            interfaces.MetricQueryService
 	proxy          interfaces.ProxyContextResolver
@@ -63,7 +61,6 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			aoAccess:       logics.AOA,
 			mfa:            logics.MFA,
 			omAccess:       logics.OMA,
-			osa:            logics.OSA,
 			vba:            logics.VBA,
 			mqs:            metric.NewMetricQueryService(appSetting),
 			proxy:          logics.PCR,
@@ -581,11 +578,12 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	}
 	sort.Strings(outputFields)
 	params := &interfaces.ResourceDataQueryParams{
-		NeedTotal:       query.NeedTotal,
-		Sort:            resourceSort,
-		SearchAfter:     query.SearchAfter,
-		FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),
-		OutputFields:    outputFields,
+		IgnoreLocalIndex: &query.IgnoreLocalIndex,
+		NeedTotal:        query.NeedTotal,
+		Sort:             resourceSort,
+		SearchAfter:      query.SearchAfter,
+		FilterCondition:  logics.CondCfgToFilterMap(viewQuery.Filters),
+		OutputFields:     outputFields,
 	}
 	resp, nextOffset, err := ots.queryResourcePage(ctx, objectType.DataSource.ID, query, params, stable)
 	if err != nil {
@@ -624,6 +622,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			logger.Warnf("resource row could not produce a sanitized object for object type [%s/%s]", query.KNID, objectType.OTID)
 		}
 	}
+	resps.QuerySource = resp.QuerySource
 	resps.TotalCount = resp.TotalCount
 	resps.ResourceNextOffset = nextOffset
 	if resp.Paging != nil {
@@ -690,7 +689,7 @@ func (ots *objectTypeService) queryResourcePage(ctx context.Context, resourceID 
 	}
 	if resp.Paging == nil || resp.Paging.NextCursor == nil {
 		// The data shrank below the requested offset since the first page.
-		return &interfaces.DatasetQueryResponse{TotalCount: resp.TotalCount,
+		return &interfaces.DatasetQueryResponse{TotalCount: resp.TotalCount, QuerySource: resp.QuerySource,
 			Paging: &interfaces.ResourceDataPagingResponse{}}, 0, nil
 	}
 	resp, err = ots.vba.QueryResourceData(ctx, resourceID, &interfaces.ResourceDataQueryParams{
@@ -768,140 +767,6 @@ func appendResourceSortTieBreakers(sorts []*interfaces.SortParams, objectType in
 		present[mappedField] = struct{}{}
 	}
 	return result, true
-}
-
-// getObjectsFromObjectIndex retrieves object data from the object-type index.
-func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	objectType interfaces.ObjectType, resps *interfaces.Objects, indexPropMap map[string]string,
-	plan *propertyAccessPlan) error {
-
-	objects := []map[string]any{}
-
-	// Build the DSL filter condition.
-	conditionDslStr := "{}"
-	if query.ActualCondition != nil {
-		condtion, err := cond.NewCondition(ctx, query.ActualCondition, 1, logics.TransferPropsToPropMap(objectType.DataProperties))
-		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails(locale.ValidationDetail(ctx, "QueryConditionInvalid", map[string]any{"error": err.Error()}))
-		}
-
-		// Convert the condition to DSL.
-		conditionDslStr, err = condtion.Convert(ctx, logics.MemoizeVectorizer(
-			func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
-				return ots.handlerVector(ctx, property, word)
-			}))
-		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails(locale.ValidationDetail(ctx, "ConditionToDSLFailed", map[string]any{"error": err.Error()}))
-		}
-
-	}
-
-	dsl, err := logics.BuildDslQuery(ctx, conditionDslStr, query)
-	if err != nil {
-		return err
-	}
-	sourceFields := make([]string, 0, len(indexPropMap))
-	for field := range indexPropMap {
-		sourceFields = append(sourceFields, field)
-	}
-	sort.Strings(sourceFields)
-	dsl["_source"] = sourceFields
-	// Query OpenSearch.
-	osHits, err := ots.osa.SearchData(ctx, objectType.Status.Index, dsl)
-	if err != nil {
-		logger.Errorf("OpenSearch object query failed for index [%s]", objectType.Status.Index)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_InternalError_SearchDataFromOpensearchFailed).
-			WithErrorDetails("OpenSearch object query failed")
-	}
-
-	// Decide whether to query the total based on NeedTotal.
-	if query.NeedTotal {
-		total, err := ots.GetTotal(ctx, objectType.Status.Index, dsl)
-		if err != nil {
-			return err
-		}
-		resps.TotalCount = total
-	}
-
-	// Append each data row to the result.
-	for _, hit := range osHits {
-		// One row is one object.
-		rawObject := map[string]any{}
-		for k, v := range hit.Source {
-			// k is the view field name, and v is this field's value.
-			if propName, exists := indexPropMap[k]; exists {
-				// Set the field only when it belongs to requested properties.
-				// If a mapping exists, assemble it into object properties.
-				rawObject[propName] = v
-			}
-		}
-		// Add the _score field.
-		rawObject[interfaces.SORT_FIELD_SCORE] = hit.Score
-		if err := ots.addLogicProperties(ctx, rawObject, objectType, plan); err != nil {
-			return err
-		}
-		object := plan.projectRow(rawObject, &objectType, query)
-
-		if len(object) > 0 {
-			objects = append(objects, object)
-		} else {
-			logger.Warnf("OpenSearch row could not produce a sanitized object for object type [%s/%s]", query.KNID, objectType.OTID)
-		}
-	}
-
-	var searchAfter []any
-	if len(osHits) > 0 {
-		searchAfter = osHits[len(osHits)-1].Sort
-	} else {
-		searchAfter = nil
-	}
-	resps.SearchAfter = searchAfter
-
-	resps.Datas = objects
-
-	return nil
-}
-
-func (ots *objectTypeService) GetTotal(ctx context.Context, index string, dsl map[string]any) (total int64, err error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "logic layer: search object type total ")
-	defer span.End()
-
-	// delete(dsl, "pit")
-	delete(dsl, "from")
-	delete(dsl, "size")
-	delete(dsl, "sort")
-	delete(dsl, "track_scores")
-	totalBytes, err := ots.osa.Count(ctx, index, dsl)
-	if err != nil {
-		otellog.LogError(ctx, "Search total documents count failed", err)
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
-			WithErrorDetails(err.Error())
-		return total, httpErr
-	}
-
-	totalNode, err := sonic.Get(totalBytes, "count")
-	if err != nil {
-		otellog.LogError(ctx, "Get total documents count failed", err)
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
-			WithErrorDetails(err.Error())
-		return total, httpErr
-	}
-
-	total, err = totalNode.Int64()
-	if err != nil {
-		otellog.LogError(ctx, "Convert total documents count to type int64 failed", err)
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
-			WithErrorDetails(err.Error())
-		return total, httpErr
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return total, nil
 }
 
 // Vectorize the query statement.

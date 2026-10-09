@@ -219,15 +219,23 @@ func objectQueryDigest(query *interfaces.ObjectQueryBaseOnObjectType) (string, e
 		Sort                    []*interfaces.SortParams    `json:"sort,omitempty"`
 		IncludeTypeInfo         bool                        `json:"include_type_info"`
 		IncludeLogicParams      bool                        `json:"include_logic_params"`
-		IgnoringStore           bool                        `json:"ignoring_store"`
+		IgnoreLocalIndex        bool                        `json:"ignoring_store"`
 		ExcludeSystemProperties []string                    `json:"exclude_system_properties,omitempty"`
 	}
+	// Keep the internal digest key stable across the public parameter rename.
 	body, err := json.Marshal(digestInput{
-		Branch: query.Branch, Condition: query.Condition, Properties: query.Properties,
-		ObjectQueryInfo: query.ObjectQueryInfo,
-		NeedTotal:       query.NeedTotal, Limit: query.Limit, Offset: query.Offset, Sort: query.Sort,
-		IncludeTypeInfo: query.IncludeTypeInfo, IncludeLogicParams: query.IncludeLogicParams,
-		IgnoringStore: query.IgnoringStore, ExcludeSystemProperties: query.ExcludeSystemProperties,
+		Branch:                  query.Branch,
+		Condition:               query.Condition,
+		Properties:              query.Properties,
+		ObjectQueryInfo:         query.ObjectQueryInfo,
+		NeedTotal:               query.NeedTotal,
+		Limit:                   query.Limit,
+		Offset:                  query.Offset,
+		Sort:                    query.Sort,
+		IncludeTypeInfo:         query.IncludeTypeInfo,
+		IncludeLogicParams:      query.IncludeLogicParams,
+		IgnoreLocalIndex:        query.IgnoreLocalIndex,
+		ExcludeSystemProperties: query.ExcludeSystemProperties,
 	})
 	if err != nil {
 		return "", fmt.Errorf("encode query digest: %w", err)

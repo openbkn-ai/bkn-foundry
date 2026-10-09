@@ -9,8 +9,8 @@ Description = "是否包含类信息参数无效"
 Solution = "请检查参数是否正确。"
 ErrorLink = ""
 
-[OntologyQuery.ObjectType.InvalidParameter.IgnoringStoreCache]
-Description = "是否忽略索引数据的参数无效"
+[OntologyQuery.ObjectType.InvalidParameter.IgnoreLocalIndex]
+Description = "ignore_local_index 参数无效"
 Solution = "请检查参数是否正确。"
 ErrorLink = ""
 

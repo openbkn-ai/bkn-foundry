@@ -71,7 +71,7 @@ const (
 	SearchAfter_Limit = 10000
 
 	// Default use of cached persistent data for object-type queries.
-	DEFAULT_IGNORING_STORE_CACHE = "false"
+	DEFAULT_IGNORE_LOCAL_INDEX = "false"
 )
 
 const (

@@ -194,13 +194,13 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	includeTypeInfo := c.DefaultQuery("include_type_info", interfaces.DEFAULT_INCLUDE_TYPE_INFO)
 	// Whether to include logical-property calculation parameters.
 	IncludeLogicParams := c.DefaultQuery("include_logic_params", interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS)
-	// Whether to ignore persisted data and use virtual queries; default is false.
-	ignoringStoreCache := c.DefaultQuery("ignoring_store_cache", interfaces.DEFAULT_IGNORING_STORE_CACHE)
+	// Whether to bypass the table resource local index; default is false.
+	ignoreLocalIndex := c.DefaultQuery("ignore_local_index", interfaces.DEFAULT_IGNORE_LOCAL_INDEX)
 	// List of system fields to exclude.
 	excludeSystemProperties := c.QueryArray("exclude_system_properties")
 
 	// Validate query parameters.
-	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo, ignoringStoreCache, IncludeLogicParams, excludeSystemProperties)
+	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo, ignoreLocalIndex, IncludeLogicParams, excludeSystemProperties)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
@@ -375,7 +375,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 
 	// Validate query parameters.
 	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo,
-		interfaces.DEFAULT_IGNORING_STORE_CACHE,
+		interfaces.DEFAULT_IGNORE_LOCAL_INDEX,
 		interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS,
 		excludeSystemProperties)
 	if err != nil {

@@ -41,7 +41,7 @@ const (
 	//
 	// Query parameters are assembled with url.Values at call time rather than baked
 	// into this format string: the set is no longer fixed (exclude_system_properties
-	// repeats, ignoring_store_cache is conditional), and ot_id reaches us straight
+	// repeats, ignore_local_index is conditional), and ot_id reaches us straight
 	// from an agent, so an unescaped "?" or "&" in it would smuggle parameters into
 	// the downstream request — the same hazard queryMetricDataURI documents below.
 	queryObjectInstancesURI  = "/in/v1/knowledge-networks/%s/object-types/%s"
@@ -190,8 +190,8 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	query := url.Values{}
 	query.Set("include_type_info", strconv.FormatBool(req.IncludeTypeInfo))
 	query.Set("include_logic_params", strconv.FormatBool(req.IncludeLogicParams))
-	if req.IgnoringStoreCache {
-		query.Set("ignoring_store_cache", "true")
+	if req.IgnoreLocalIndex {
+		query.Set("ignore_local_index", "true")
 	}
 	for _, prop := range req.ExcludeSystemProperties {
 		query.Add("exclude_system_properties", prop)
@@ -587,8 +587,8 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	// Query_type is explicitly left blank: the downstream selects the exploration branch according to the empty string, and it becomes another mode when written as relation_path.
 	query.Set("query_type", "")
 	query.Set("include_logic_params", strconv.FormatBool(req.IncludeLogicParams))
-	if req.IgnoringStoreCache {
-		query.Set("ignoring_store_cache", "true")
+	if req.IgnoreLocalIndex {
+		query.Set("ignore_local_index", "true")
 	}
 	for _, prop := range req.ExcludeSystemProperties {
 		query.Add("exclude_system_properties", prop)

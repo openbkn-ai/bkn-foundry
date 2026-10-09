@@ -145,10 +145,10 @@ func TestExploreSubgraph_InternalParamsAndEscaping(t *testing.T) {
 			})
 
 		_, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
-			KnID: "kn1?ignoring_store_cache=true", SourceObjectTypeID: "ot1",
+			KnID: "kn1?ignore_local_index=true", SourceObjectTypeID: "ot1",
 			Direction: "bidirectional", PathLength: 3, Limit: 10,
 			ExcludeSystemProperties: []string{"_display"},
-			IgnoringStoreCache:      true,
+			IgnoreLocalIndex:        true,
 		})
 		convey.So(err, convey.ShouldBeNil)
 
@@ -156,17 +156,17 @@ func TestExploreSubgraph_InternalParamsAndEscaping(t *testing.T) {
 		convey.So(perr, convey.ShouldBeNil)
 		// The entire injection string remains in the path segment and fails to remove the parameters given by this layer.
 		convey.So(parsed.Path, convey.ShouldEqual,
-			"/api/ontology-query/in/v1/knowledge-networks/kn1?ignoring_store_cache=true/subgraph")
-		convey.So(parsed.Query()["ignoring_store_cache"], convey.ShouldResemble, []string{"true"})
+			"/api/ontology-query/in/v1/knowledge-networks/kn1?ignore_local_index=true/subgraph")
+		convey.So(parsed.Query()["ignore_local_index"], convey.ShouldResemble, []string{"true"})
 		// exclude_system_properties is effective in the exploration branch: clipping occurs at the subgraph assembly layer.
 		// (expandObjectPathsBatch), not the commented out starting point object query.
 		convey.So(parsed.Query()["exclude_system_properties"], convey.ShouldResemble, []string{"_display"})
 
 		// Both are query parameternot request-body fields.
 		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "exclude_system_properties")
-		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "ignoring_store_cache")
+		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "ignore_local_index")
 		// kn_id goes through the URL and must not leak into the body.
-		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "kn1?ignoring_store_cache")
+		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "kn1?ignore_local_index")
 		// The three required fields for exploration mode are indeed in the body.
 		convey.So(string(bodyJSON), convey.ShouldContainSubstring, `"source_object_type_id":"ot1"`)
 		convey.So(string(bodyJSON), convey.ShouldContainSubstring, `"direction":"bidirectional"`)

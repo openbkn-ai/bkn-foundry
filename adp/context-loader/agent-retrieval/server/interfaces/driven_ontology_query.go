@@ -76,9 +76,9 @@ type QueryObjectInstancesReq struct {
 	// _instance_identity/_display. These three fields are pure context overhead during batch recall, but which ones can be lost?.
 	// It depends on whether the caller wants to use them for drill-down later, and whether it should be left to the model to judge.
 	ExcludeSystemProperties []string `json:"-" form:"exclude_system_properties"`
-	// IgnoringStoreCache skips the index query and goes directly to the data source. Escape channel when index is stale or abnormal,
-	// The price is an order of magnitude slower; exposing it to models can be abused as "try again".
-	IgnoringStoreCache bool `json:"-" form:"ignoring_store_cache"`
+	// IgnoreLocalIndex bypasses a table resource local index and reads its source.
+	// Source queries cannot execute full-text or vector operators. Internal callers only.
+	IgnoreLocalIndex bool `json:"-" form:"ignore_local_index"`
 }
 
 // SortSpec is a single sort field. Same shape as downstream interfaces.SortParams, direction is asc / desc.
@@ -102,6 +102,7 @@ type FlatFilter struct {
 }
 
 type QueryObjectInstancesResp struct {
+	QuerySource          string                         `json:"query_source,omitempty"`
 	Data                 []any                          `json:"datas"`                 // List of object instances
 	ObjectConcept        map[string]any                 `json:"object_type,omitempty"` // Object type definition, controlled by req.include_type_info whether to return.
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
@@ -229,7 +230,7 @@ type ExploreSubgraphReq struct {
 	// The following fields go to the URL and not to the request body: the entire structure will be directly serialized into a body and sent to the downstream.
 	KnID               string `json:"-" form:"kn_id"`
 	IncludeLogicParams bool   `json:"-" form:"include_logic_params"`
-	// ExcludeSystemProperties / IgnoringStoreCache is only used by service internal callers and does not enter MCP.
+	// ExcludeSystemProperties / IgnoreLocalIndex is only used by service internal callers and does not enter MCP.
 	// Tool schema, rationale is consistent with the field of the same name on QueryObjectInstancesReq.
 	//
 	// Regarding whether ExcludeSystemProperties takes effect in this interface: the downstream does query the nested starting point object.
@@ -238,7 +239,7 @@ type ExploreSubgraphReq struct {
 	// When expandObjectPathsBatch assembles ObjectInfoInSubgraph, it reads exactly.
 	// query.ExcludeSystemProperties. So pass through as usual.
 	ExcludeSystemProperties []string `json:"-" form:"exclude_system_properties"`
-	IgnoringStoreCache      bool     `json:"-" form:"ignoring_store_cache"`
+	IgnoreLocalIndex        bool     `json:"-" form:"ignore_local_index"`
 
 	// SourceObjectTypeID The object type of the starting point for exploration.
 	SourceObjectTypeID string `json:"source_object_type_id"`

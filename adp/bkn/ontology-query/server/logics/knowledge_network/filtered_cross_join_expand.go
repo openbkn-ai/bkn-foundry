@@ -94,7 +94,7 @@ func (kns *knowledgeNetworkService) expandFilteredCrossJoin(ctx context.Context,
 		CommonQueryParameters: interfaces.CommonQueryParameters{
 			IncludeTypeInfo:    true,
 			IncludeLogicParams: query.IncludeLogicParams,
-			IgnoringStore:      query.IgnoringStore,
+			IgnoreLocalIndex:   query.IgnoreLocalIndex,
 		},
 	}
 

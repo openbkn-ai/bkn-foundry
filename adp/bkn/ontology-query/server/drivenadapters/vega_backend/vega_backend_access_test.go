@@ -3,6 +3,7 @@ package vega_backend
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -291,4 +292,48 @@ func trustedResourceProxyContext(ctx context.Context, resourceID string) context
 			Operation:  interfaces.PermissionOperationQueryData,
 		},
 	})
+}
+
+func TestQueryResourceDataLocalIndexContract(t *testing.T) {
+	for _, ignore := range []bool{false, true} {
+		t.Run(fmt.Sprint(ignore), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			client := rmock.NewMockHTTPClient(ctrl)
+			params := &interfaces.ResourceDataQueryParams{}
+			if err := json.Unmarshal([]byte(fmt.Sprintf(`{"ignore_local_index":%t}`, ignore)), params); err != nil {
+				t.Fatal(err)
+			}
+			client.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, _ map[string]string, request any) (int, []byte, error) {
+					encoded, err := json.Marshal(request)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var sent map[string]any
+					if err := json.Unmarshal(encoded, &sent); err != nil {
+						t.Fatal(err)
+					}
+					if sent["ignore_local_index"] != ignore {
+						t.Errorf("ignore_local_index = %v, want %v", sent["ignore_local_index"], ignore)
+					}
+					return http.StatusOK, []byte(`{"entries":[],"query_source":"local_index"}`), nil
+				})
+			result, err := (&vegaBackendAccess{baseURL: "http://vega", httpClient: client}).QueryResourceData(
+				trustedResourceProxyContext(context.Background(), "resource-1"), "resource-1", params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var received map[string]any
+			if err := json.Unmarshal(encoded, &received); err != nil {
+				t.Fatal(err)
+			}
+			if received["query_source"] != "local_index" {
+				t.Errorf("query_source lost: %s", encoded)
+			}
+		})
+	}
 }
