@@ -8,6 +8,9 @@ fullnameOverride: ""
 
 replicaCount: 1
 
+# Runtime diagnostic logging: debug, info, warn, or error.
+logLevel: info
+
 image:
   registry: ghcr.io/openbkn-ai
   repository: agent-observability

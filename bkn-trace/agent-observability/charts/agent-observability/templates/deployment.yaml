@@ -54,6 +54,8 @@ spec:
               containerPort: 8081
               protocol: TCP
           env:
+            - name: BKN_TRACE_LOG_LEVEL
+              value: {{ .Values.logLevel | default "info" | quote }}
             - name: OPENSEARCH_ENDPOINT
               value: {{ .Values.opensearch.endpoint | quote }}
             - name: OPENSEARCH_TRACE_INDEX
