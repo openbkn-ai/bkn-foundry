@@ -70,7 +70,9 @@ observability:
   bknTraceArtifactIngestTokenSecretName: "bkn-trace-evidence-ingest"
   bknTraceArtifactIngestTokenSecretKey: "token"
   evidencePublisher:
-    enabled: false
+    # New installs collect Evidence. Set false explicitly for a deployment that
+    # does not provide Kafka; the installer preserves that choice on upgrades.
+    enabled: true
     brokers: "kafka.resource.svc.cluster.local:9092"
     credentialsSecretName: "bkn-trace-evidence-kafka"
     usernameSecretKey: "username"

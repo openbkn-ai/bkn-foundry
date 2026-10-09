@@ -93,6 +93,22 @@ async def test_disabled_chart_does_not_start_evidence_publisher(monkeypatch):
     assert evidence._publisher is None
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("component", ["configuration", "control"])
+async def test_publisher_initialization_failure_keeps_agent_available(monkeypatch, caplog, component):
+    monkeypatch.setenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED", "true")
+    def fail():
+        raise ValueError("sensitive-test-password")
+    monkeypatch.setattr(evidence.EvidenceKafkaConfig, "from_env", fail if component == "configuration" else lambda: config())
+    monkeypatch.setattr(evidence.TraceAdmissionClient, "from_env", fail)
+    with caplog.at_level(logging.ERROR):
+        await evidence.start_publisher()
+    assert evidence._publisher is None
+    assert "Evidence publisher initialization failed" in caplog.text
+    assert "sensitive-test-password" not in caplog.text
+    assert await evidence.drain_pending() is True
+
+
 class RecordingSender:
     def __init__(self, failures=0):
         self.failures = failures
