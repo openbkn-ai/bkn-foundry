@@ -7,6 +7,12 @@ on:
       - 'comm-go/**'
       - 'deploy/scripts/services/config.sh'
       - 'deploy/scripts/services/config_observability_test.sh'
+      - 'deploy/scripts/lib/agent_evidence.py'
+      - 'deploy/scripts/lib/audit_consumer.py'
+      - 'deploy/scripts/services/openbkn.sh'
+      - 'deploy/scripts/services/openbkn_agent_evidence_test.sh'
+      - 'infra/bkn-agent/charts/**'
+      - 'infra/bkn-agent/scripts/test_evidence_kafka_chart.sh'
       - 'docs/api/agent-observability/**'
       - 'deploy/scripts/upgrades/0.2.0/historical_trace_data/**'
       - 'deploy/scripts/upgrades/0.2.0/evidence_outbox_to_kafka/**'
@@ -111,3 +117,6 @@ jobs:
           bash deploy/scripts/services/test_internal_trace_admission.sh
           bash deploy/scripts/services/test_internal_trace_admission_charts.sh
           bash deploy/scripts/services/openbkn_trace_profile_test.sh
+          bash infra/bkn-agent/scripts/test_evidence_kafka_chart.sh infra/bkn-agent/charts
+          bash deploy/scripts/services/openbkn_agent_evidence_test.sh
+          bash deploy/scripts/services/openbkn_audit_consumer_test.sh

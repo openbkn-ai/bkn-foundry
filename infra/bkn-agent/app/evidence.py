@@ -1037,10 +1037,17 @@ async def start_publisher() -> None:
     if os.getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED", "true").lower() == "false":
         _publisher = None
         return
-    publisher_config = EvidenceKafkaConfig.from_env()
-    control = TraceAdmissionClient.from_env()
-    publisher = EvidenceKafkaPublisher(publisher_config, policy_controlled=True)
-    runtime = EvidencePolicyRuntime(publisher, control)
+    _publisher = None
+    try:
+        publisher_config = EvidenceKafkaConfig.from_env()
+        control = TraceAdmissionClient.from_env()
+        publisher = EvidenceKafkaPublisher(publisher_config, policy_controlled=True)
+        runtime = EvidencePolicyRuntime(publisher, control)
+    except Exception as exc:
+        # Configuration failure is a coverage gap, not an Agent startup failure.
+        # Exception messages can contain connection strings or credentials.
+        logger.error("Evidence publisher initialization failed (%s); check Kafka and internal control configuration", type(exc).__name__)
+        return
     runtime.start()
     _publisher = runtime
 
