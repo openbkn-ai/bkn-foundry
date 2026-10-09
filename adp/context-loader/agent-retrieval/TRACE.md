@@ -14,7 +14,11 @@
 
 ## 2. Managed lifecycle
 
-Every MCP business tool call must belong to an active Conversation and an active Interaction. A REST call under `/kn/` may, and then is managed the same way; with no `bkn_context` it runs ad hoc instead, which §2.1 sets out. The exception is `/mcp/proxy/.../call`, an agent calling a tool under another name, where the managed context is mandatory whatever the transport.
+MCP business tool calls and the REST execution endpoints `execute_action`,
+`execute_tool`, and `execute_skill` require an active Conversation and
+Interaction in `bkn_context`. REST reads, including `run_sql` and `run_cypher`,
+and `/mcp/proxy/.../call` may run ad hoc without it; when supplied, the context
+is validated and Trace capture is attempted:
 
 ```json
 {
@@ -28,35 +32,35 @@ Every MCP business tool call must belong to an active Conversation and an active
 ```
 
 - Conversation and Interaction must be created through `bkn_start_interaction`, `Mcp-Session-Id` cannot replace business Conversation.
-- When the context is invalid, unauthorized, expired or final, the Context Loader returns a stable error code, `required_action` and a security prompt, and the number of downstream business calls must be 0. A context that is missing altogether is refused the same way on MCP and on `/mcp/proxy/.../call`; on the other REST routes it selects the ad-hoc mode of §2.1 instead.
+- When required context is missing, or stated context is invalid, unauthorized, expired or final, the Context Loader returns a stable error code and `required_action`, and the number of downstream business calls is 0. A REST execution with an absent or empty context returns HTTP 400 `conversation_required` and `required_action: create_conversation`.
 - The Context Loader uses a trusted authentication context to determine the application principal and effective subject; the caller cannot override the Owner in JSON.
 - The Context Loader derives the Operation idempotent identity from the trusted request association, tool name, and normalized input. Network retry reuses `bkn-request-id`, or carries a stable `X-OpenBKN-Client-Invocation-Id`; an existing pending Receipt returns `receipt_pending`, and downstream side effects must not be repeated.
 
 ### 2.1 Managed and ad-hoc calls
 
-A REST business call states a managed interaction or it does not, and that choice
-decides what is recorded.
+A REST read or proxy call may state a managed interaction. The three REST
+execution endpoints must state one.
 
 | | Managed | Ad hoc |
 |---|---|---|
-| How it is chosen | `bkn_context` carries `conversation_id` and `interaction_id` | `bkn_context` is absent or empty |
+| How it is chosen | `bkn_context` carries `conversation_id` and `interaction_id` | On eligible reads and proxy calls, `bkn_context` is absent or empty |
 | What is recorded | an Operation under that Interaction, a Receipt on the response, evidence for what was read | nothing |
-| What it depends on | BKN Trace Core, besides the downstream the call queries | only that downstream |
+| What it depends on | BKN Trace Core when available, besides the downstream the call queries | only that downstream |
 
-Only those two shapes are ad hoc. A `bkn_context` holding one id and not the
+Only those two shapes select ad hoc mode on eligible routes. A `bkn_context` holding one id and not the
 other, only `parent_operation_id`, or a misspelt field is a caller wiring the
 context up and getting it wrong, and is refused rather than quietly downgraded.
 
 Use a managed call when the answer has to enter the evidence chain: an agent turn
-someone may audit, anything that executes an action, any reading a later decision
-will be justified by. Use an ad-hoc call for everything else — and the callers of
-the REST surface usually are everything else: Studio answering a click, an
+someone may audit, or any reading a later decision will be justified by. REST
+action, tool, and Skill execution always requires the context. Use an ad-hoc
+call for ordinary reads, such as Studio answering a click, an
 operator at the CLI, one service asking another for a schema. An Interaction
 records one agent turn, so minting a Conversation and an Interaction to satisfy
 the guard produces single-operation records that dilute the concept rather than
 document anything.
 
-The MCP surface keeps the requirement because that is where agents call, and an
+The MCP tool surface keeps the requirement because that is where agents call, and an
 agent turn is exactly what an Interaction records. A Skill has no choice to make
 here: its sandbox calls Context Loader over MCP with the session's own context
 injected, so everything a Skill reads is on the evidence chain.
@@ -116,7 +120,7 @@ Different transports preserve the native shape of the business response, so Rece
 
 ## 7. Acceptance
 
-- Given a missing or invalid managed context, when any business tool is called, then a stable lifecycle error is returned and the number of downstream calls is 0.
+- Given a missing or invalid managed context, when an MCP business tool or REST execution endpoint is called, then a stable lifecycle error is returned and the number of downstream calls is 0. A REST read without context remains admitted.
 - Given the same managed call correlation and normalized input are replayed, when the Receipt is terminal, then the original Receipt is returned and the number of downstream calls remains 1.
 - Given the downstream returns an error or panic, when Context Loader completes the Attempt, then the Receipt becomes failed, no permanent pending state remains, and panic details are not leaked to the caller.
 - Given a retryable failed Attempt, when the trusted adapter creates the next Attempt and re-invokes the business tool, then the new Attempt executes only once; concurrent replays return only the pending Receipt.

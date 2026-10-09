@@ -115,6 +115,8 @@ paths:
         `dynamic_params` 填 `get_action_info` 返回的 schema 里 `value_from=input`
         的那些参数。`_instance_identities` 留空表示按行动类自身的条件扫描目标实例
         （由下游决定命中范围），不是「不执行」。
+        必须提供有效的 `bkn_context`；缺失或传空时，执行前返回 400
+        `conversation_required`，附 `required_action: create_conversation`。
       requestBody:
         required: true
         content:
@@ -124,6 +126,9 @@ paths:
             examples:
               指定实例执行:
                 value:
+                  bkn_context:
+                    conversation_id: conv_01J8Z
+                    interaction_id: int_01J8Z
                   kn_id: kn_ops
                   at_id: at_restart_pod
                   _instance_identities:

@@ -140,6 +140,7 @@ paths:
             examples:
               example:
                 value:
+                  kn_id: kn_legal
                   skill_id: skill_contract_review
       responses:
         '200':
@@ -214,6 +215,7 @@ paths:
             examples:
               example:
                 value:
+                  kn_id: kn_legal
                   skill_id: skill_contract_review
                   rel_path: refs/checklist.md
       responses:
@@ -281,6 +283,9 @@ paths:
 
         `stdout` / `stderr` 各自超过 8000 字符会截断（`truncated=true`）。
 
+        必须提供有效的 `bkn_context`；缺失或传空时，执行前返回 400
+        `conversation_required`，附 `required_action: create_conversation`。
+
         **本端点由技能执行总闸控制**：`EXECUTE_SKILL_ENABLED=true` 时才注册这条
         路由，同名 MCP 工具也才出现在 `tools/list` 与 `GET /mcp/info`。默认关闭，
         此时这条路径返回 404——「这个部署没有技能执行能力」在路由表上成立。
@@ -296,6 +301,10 @@ paths:
             examples:
               example:
                 value:
+                  bkn_context:
+                    conversation_id: conv_01J8Z
+                    interaction_id: int_01J8Z
+                  kn_id: kn_legal
                   skill_id: skill_contract_review
                   entry_shell: python main.py --input contract.txt
                   timeout: 60

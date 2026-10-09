@@ -27,26 +27,26 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// TestRESTCapabilityRoutesDoNotRequireManagedContext pins the split between the
-// two surfaces this middleware covers.
-//
-// A managed Interaction records one agent turn. The /kn/ routes are the capability
-// layer - Studio answering a click, a CLI operator, one service asking another -
-// and minting a conversation and an interaction for each of those produced
-// single-operation records that documented nothing. They pass through now.
-//
-// A tool call proxied over HTTP is an agent calling a tool by another name, so it
-// keeps the requirement even though it arrives on the same transport.
-func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
+// TestRESTExecutionRequiresManagedContext verifies that side-effecting REST calls
+// cannot reach their handlers without an Operation, while reads still run ad hoc.
+func TestRESTExecutionRequiresManagedContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cases := []struct {
 		path      string
+		body      string
 		wantCalls int
+		wantCode  string
 	}{
-		{"/api/agent-retrieval/v1/kn/execute_action", 1},
-		{"/api/agent-retrieval/v1/kn/run_sql", 1},
-		{"/api/agent-retrieval/internal-v1/kn/search_schema", 1},
-		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", 1},
+		{"/api/agent-retrieval/v1/kn/execute_action", `{"query":"q"}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/v1/kn/execute_action", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q"}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q"}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/v1/kn/run_sql", `{"query":"q"}`, 1, ""},
+		{"/api/agent-retrieval/v1/kn/run_cypher", `{"query":"q"}`, 1, ""},
+		{"/api/agent-retrieval/internal-v1/kn/search_schema", `{"query":"q"}`, 1, ""},
+		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", `{"query":"q"}`, 1, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -66,7 +66,7 @@ func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
 				c.Status(http.StatusNoContent)
 			})
 
-			request := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewBufferString(`{"query":"q"}`))
+			request := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewBufferString(tc.body))
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
@@ -77,6 +77,18 @@ func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
 			}
 			if tc.wantCalls > 0 && seenBody["query"] != "q" {
 				t.Fatalf("%s: handler saw %#v, want the original body", tc.path, seenBody)
+			}
+			if tc.wantCode != "" {
+				var envelope struct {
+					Error bkntrace.APIError `json:"error"`
+				}
+				if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+					t.Fatalf("invalid error envelope: %v body=%s", err, response.Body.String())
+				}
+				if response.Code != http.StatusBadRequest || envelope.Error.Code != tc.wantCode ||
+					envelope.Error.RequiredAction != "create_conversation" {
+					t.Fatalf("status=%d error=%#v, want 400 conversation_required/create_conversation", response.Code, envelope.Error)
+				}
 			}
 		})
 	}

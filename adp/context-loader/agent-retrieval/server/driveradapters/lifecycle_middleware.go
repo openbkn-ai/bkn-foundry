@@ -55,9 +55,15 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			})
 			return
 		}
-		// Capability requests may execute without a managed Trace context.
-		// Their business authorization remains in the existing handlers; request
-		// headers alone do not establish registered lifecycle identities.
+		// REST executions require a stated managed context. Reads and proxy calls
+		// retain the optional Trace boundary; a malformed stated context is checked.
+		if !hasBusinessContext(input) && requiresManagedHTTPContext(c.Request) {
+			writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
+				Code: "conversation_required", Message: "conversation_id is required",
+				RequiredAction: "create_conversation",
+			})
+			return
+		}
 		if !hasBusinessContext(input) {
 			// io.ReadAll above drained the body. The managed path rebuilds it after
 			// stripping bkn_context; this path has nothing to strip but still has to
@@ -224,11 +230,22 @@ func isProxyToolCall(request *http.Request) bool {
 		strings.HasSuffix(request.URL.Path, "/call")
 }
 
+func requiresManagedHTTPContext(request *http.Request) bool {
+	if !strings.Contains(request.URL.Path, "/kn/") {
+		return false
+	}
+	switch path.Base(request.URL.Path) {
+	case "execute_action", "execute_tool", "execute_skill":
+		return true
+	default:
+		return false
+	}
+}
+
 // hasBusinessContext reports whether this call has to go through the guard.
 //
-// The rule the caller has to remember is one line: state an id and the call is
-// managed, state none and it is ad hoc. Only two shapes are ad hoc - no
-// bkn_context at all, and an empty one. Everything else goes to
+// Missing or empty bkn_context is eligible for ad-hoc reads and proxy calls.
+// Everything else goes to
 // parseHTTPBusinessContext to be judged, including the shapes that carry no id:
 // one id and not the other, a bkn_context that is not an object, and an object
 // holding only parent_operation_id, business_refs or a misspelt field. Each of
