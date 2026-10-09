@@ -364,6 +364,39 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	t.Run("preserves ASCII TSQL without recompilation", func(t *testing.T) {
+		requireRawQuerySQLGlotRuntime(t)
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		resource := &interfaces.Resource{
+			ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
+			Schema: "dbo", SourceIdentifier: "dbo.orders", Status: interfaces.ResourceStatusActive,
+			SchemaDefinition: []*interfaces.Property{{Name: "created_at"}},
+		}
+		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
+		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
+		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
+		}, nil)
+
+		previousPolicy := rawQueryPolicy
+		rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
+		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+
+		patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
+			func(context.Context, string, string, string) (*sqlglot.SQLParseResult, error) {
+				t.Error("ASCII TSQL must not be recompiled")
+				return nil, errors.New("unexpected compilation")
+			})
+		defer patches.Reset()
+
+		prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
+			Query: "select DATEPART(YEAR, created_at) as year_value from {{resource-1}} where status = 'active'", QueryFormat: interfaces.QueryFormatSQL, InputDialect: "tsql",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "select DATEPART(YEAR, created_at) as year_value from [dbo].[orders] where status = 'active'", prepared.sql)
+	})
 	for _, inputDialect := range []string{"mysql", "postgres", "tsql"} {
 		t.Run("normalizes SQL Server Unicode literals from "+inputDialect, func(t *testing.T) {
 			requireRawQuerySQLGlotRuntime(t)

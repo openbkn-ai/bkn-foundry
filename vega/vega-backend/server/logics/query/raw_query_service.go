@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -284,8 +285,11 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		return nil, err
 	}
 	finalSQL := replacedSQL
-	// SQL Server 同方言查询也需编译，以保留 Unicode 字面量。
-	if inputDialect != targetDialect || targetDialect == "tsql" {
+	// 仅含非 ASCII 字符的 SQL Server 同方言查询需额外编译；纯 ASCII 查询保持直通。
+	needsUnicodeNormalization := targetDialect == "tsql" && strings.ContainsFunc(replacedSQL, func(r rune) bool {
+		return r > unicode.MaxASCII
+	})
+	if inputDialect != targetDialect || needsUnicodeNormalization {
 		result, err := sqlglot.TranspileSQL(ctx, replacedSQL, inputDialect, targetDialect)
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
