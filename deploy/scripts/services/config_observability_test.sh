@@ -64,7 +64,10 @@ grep -Eq '^    opensearchCapacityThreshold: 0[.]8$' "${CONFIG_YAML_PATH}"
 grep -Eq '^    opensearchHeapThreshold: "0[.]81"$' "${CONFIG_YAML_PATH}"
 grep -Eq '^    storagePoolThreshold: "0[.]83"$' "${CONFIG_YAML_PATH}"
 [[ "$(grep -c '^    enabled: false$' "${CONFIG_YAML_PATH}")" == 2 ]]
-! grep -q '^unrelated:' "${CONFIG_YAML_PATH}"
+if grep -q '^unrelated:' "${CONFIG_YAML_PATH}"; then
+  echo 'unrelated values must not be preserved' >&2
+  exit 1
+fi
 [[ "$(ls -l "${CONFIG_YAML_PATH}" | cut -c2-10)" == rw------- ]]
 generate_config_yaml
 canonical "${CONFIG_YAML_PATH}" >"${test_dir}/preserved.yaml"
@@ -94,7 +97,10 @@ done
 # A distinct quoted key must not be mistaken for observability.
 printf '"ob servability": {enabled: false}\n' >"${CONFIG_YAML_PATH}"
 generate_config_yaml
-! grep -q '^observability:' "${CONFIG_YAML_PATH}"
+if grep -q '^observability:' "${CONFIG_YAML_PATH}"; then
+  echo 'absent observability must not be invented' >&2
+  exit 1
+fi
 # Invalid YAML fails before overwriting reviewed input (without logging values).
 printf 'observability: {\n' >"${CONFIG_YAML_PATH}"
 cp "${CONFIG_YAML_PATH}" "${test_dir}/invalid.yaml"
@@ -102,5 +108,8 @@ if generate_config_yaml; then echo 'Invalid YAML was accepted' >&2; exit 1; fi
 cmp "${CONFIG_YAML_PATH}" "${test_dir}/invalid.yaml"
 printf 'namespace: openbkn\n' >"${CONFIG_YAML_PATH}"
 generate_config_yaml
-! grep -q '^observability:' "${CONFIG_YAML_PATH}"
+if grep -q '^observability:' "${CONFIG_YAML_PATH}"; then
+  echo 'absent observability must not be invented' >&2
+  exit 1
+fi
 echo 'Foundry observability config regeneration checks passed'
