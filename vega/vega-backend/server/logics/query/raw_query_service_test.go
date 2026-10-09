@@ -435,6 +435,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		{name: "generic input for HANA", inputDialect: "generic", connectorType: interfaces.ConnectorTypeHANA, wantDialect: sqlglot.GenericDialect, wantSQL: `SELECT id FROM "APP"."orders"`},
 		{name: "Oracle input for Oracle", inputDialect: "oracle", connectorType: interfaces.ConnectorTypeOracle, wantDialect: "oracle", wantSQL: `SELECT id FROM "APP"."orders"`},
 		{name: "MariaDB input for MariaDB", inputDialect: "mariadb", connectorType: interfaces.ConnectorTypeMariaDB, wantDialect: "mysql", wantSQL: "SELECT id FROM `APP`.`orders`"},
+		{name: "ASCII TSQL input for SQL Server", inputDialect: "tsql", connectorType: interfaces.ConnectorTypeSQLServer, wantDialect: "tsql", wantSQL: "SELECT id FROM [APP].[orders]"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
