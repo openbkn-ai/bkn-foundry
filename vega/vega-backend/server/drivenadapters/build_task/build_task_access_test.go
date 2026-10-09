@@ -604,7 +604,7 @@ func TestBuildTaskAccessList(t *testing.T) {
 			WithArgs(interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending, interfaces.BuildTaskModeBatch, interfaces.BuildTaskExecuteTypeIncremental, task.ResourceID, task.CatalogID).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
 		rows := sqlmock.NewRows(buildTaskSummaryColumns()).AddRow(buildTaskSummaryRowValues(task)...)
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinBuildTaskSummaryColumns()+" FROM t_build_task WHERE f_status IN (?,?) AND f_mode = ? AND f_execute_type = ? AND f_resource_id = ? AND f_catalog_id = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinBuildTaskSummaryColumns()+" FROM t_build_task WHERE f_status IN (?,?) AND f_mode = ? AND f_execute_type = ? AND f_resource_id = ? AND f_catalog_id = ? ORDER BY f_create_time ASC, f_id ASC LIMIT 10 OFFSET 5")).
 			WithArgs(interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending, interfaces.BuildTaskModeBatch, interfaces.BuildTaskExecuteTypeIncremental, task.ResourceID, task.CatalogID).
 			WillReturnRows(rows)
 
@@ -642,7 +642,7 @@ func TestBuildTaskAccessList(t *testing.T) {
 
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_build_task")).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskSummaryColumns() + " FROM t_build_task ORDER BY f_create_time DESC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskSummaryColumns() + " FROM t_build_task ORDER BY f_create_time DESC, f_id DESC")).
 			WillReturnError(errors.New("list failed"))
 
 		got, total, err := access.List(context.Background(), interfaces.BuildTasksQueryParams{})
@@ -659,7 +659,7 @@ func TestBuildTaskAccessInternalList(t *testing.T) {
 		defer func() { _ = db.Close() }()
 		task := sampleBuildTask()
 		rows := sqlmock.NewRows(buildTaskSummaryColumns()).AddRow(buildTaskSummaryRowValues(task)...)
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + strings.Join(buildTaskSummaryColumns(), ", ") + " FROM t_build_task ORDER BY f_create_time DESC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + strings.Join(buildTaskSummaryColumns(), ", ") + " FROM t_build_task ORDER BY f_create_time DESC, f_id DESC")).
 			WillReturnRows(rows)
 
 		got, err := access.InternalList(context.Background(), interfaces.BuildTasksQueryParams{})
@@ -671,7 +671,7 @@ func TestBuildTaskAccessInternalList(t *testing.T) {
 	t.Run("returns query error", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + strings.Join(buildTaskSummaryColumns(), ", ") + " FROM t_build_task ORDER BY f_create_time DESC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + strings.Join(buildTaskSummaryColumns(), ", ") + " FROM t_build_task ORDER BY f_create_time DESC, f_id DESC")).
 			WillReturnError(errors.New("list failed"))
 
 		got, err := access.InternalList(context.Background(), interfaces.BuildTasksQueryParams{})
@@ -739,33 +739,50 @@ func TestBuildTaskAccessDeleteByIDs(t *testing.T) {
 }
 
 func TestBuildOrderByClause(t *testing.T) {
-	t.Run("empty sort defaults to create_time desc", func(t *testing.T) {
-		assert.Equal(t, "f_create_time DESC", buildOrderByClause("", "asc"))
+	t.Run("empty sort uses create_time and requested direction", func(t *testing.T) {
+		assert.Equal(t, "f_create_time ASC, f_id ASC", buildOrderByClause("", "ASC"))
 	})
 
-	t.Run("unknown sort falls back to create_time desc", func(t *testing.T) {
-		assert.Equal(t, "f_create_time DESC", buildOrderByClause("bogus", "asc"))
+	t.Run("unknown sort uses create_time and requested direction", func(t *testing.T) {
+		assert.Equal(t, "f_create_time ASC, f_id ASC", buildOrderByClause("bogus", "ASC"))
 	})
 
 	t.Run("create_time follows direction", func(t *testing.T) {
-		assert.Equal(t, "f_create_time ASC", buildOrderByClause(interfaces.BuildTaskSortCreateTime, "asc"))
-		assert.Equal(t, "f_create_time DESC", buildOrderByClause(interfaces.BuildTaskSortCreateTime, "desc"))
+		assert.Equal(t, "f_create_time ASC, f_id ASC", buildOrderByClause(interfaces.BuildTaskSortCreateTime, "asc"))
+		assert.Equal(t, "f_create_time DESC, f_id DESC", buildOrderByClause(interfaces.BuildTaskSortCreateTime, "desc"))
 	})
 
 	t.Run("start_time follows direction", func(t *testing.T) {
-		assert.Equal(t, "f_start_time ASC", buildOrderByClause(interfaces.BuildTaskSortStartTime, "asc"))
-		assert.Equal(t, "f_start_time DESC", buildOrderByClause(interfaces.BuildTaskSortStartTime, "desc"))
+		assert.Equal(t, "f_start_time ASC, f_id ASC", buildOrderByClause(interfaces.BuildTaskSortStartTime, "asc"))
+		assert.Equal(t, "f_start_time DESC, f_id DESC", buildOrderByClause(interfaces.BuildTaskSortStartTime, "desc"))
 	})
 
 	t.Run("finish_time follows direction", func(t *testing.T) {
-		assert.Equal(t, "f_finish_time ASC", buildOrderByClause(interfaces.BuildTaskSortFinishTime, "asc"))
-		assert.Equal(t, "f_finish_time DESC", buildOrderByClause(interfaces.BuildTaskSortFinishTime, "desc"))
+		assert.Equal(t, "f_finish_time ASC, f_id ASC", buildOrderByClause(interfaces.BuildTaskSortFinishTime, "asc"))
+		assert.Equal(t, "f_finish_time DESC, f_id DESC", buildOrderByClause(interfaces.BuildTaskSortFinishTime, "desc"))
 	})
 
 	t.Run("last_progress_time follows direction", func(t *testing.T) {
-		assert.Equal(t, "f_last_progress_time ASC", buildOrderByClause(interfaces.BuildTaskSortLastProgressTime, "asc"))
-		assert.Equal(t, "f_last_progress_time DESC", buildOrderByClause(interfaces.BuildTaskSortLastProgressTime, "desc"))
+		assert.Equal(t, "f_last_progress_time ASC, f_id ASC", buildOrderByClause(interfaces.BuildTaskSortLastProgressTime, "asc"))
+		assert.Equal(t, "f_last_progress_time DESC, f_id DESC", buildOrderByClause(interfaces.BuildTaskSortLastProgressTime, "desc"))
 	})
+	t.Run("uses a unique ID to break ties for every supported sort", func(t *testing.T) {
+		for _, field := range []string{"create_time", "start_time", "finish_time", "last_progress_time"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				t.Run(field+"/"+direction, func(t *testing.T) {
+					assert.Equal(t, "f_"+field+" "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+				})
+			}
+		}
+	})
+	t.Run("default column preserves direction", func(t *testing.T) {
+		for _, field := range []string{"", "unknown"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				assert.Equal(t, "f_create_time "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+			}
+		}
+	})
+
 }
 
 func newBuildTaskAccessMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *buildTaskAccess) {

@@ -94,7 +94,7 @@ func TestCatalogHealthCheckScheduleAccessListDue(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT s.f_catalog_id, s.f_mode, s.f_cron_expr, s.f_last_run, s.f_next_run, s.f_creator, s.f_creator_type, s.f_create_time, s.f_updater, s.f_updater_type, s.f_update_time FROM t_catalog_health_check_schedule s JOIN t_catalog c ON c.f_id = s.f_catalog_id WHERE s.f_mode IN (?,?) AND s.f_next_run <= ? AND c.f_enabled = ? AND c.f_type = ? ORDER BY s.f_next_run ASC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT s.f_catalog_id, s.f_mode, s.f_cron_expr, s.f_last_run, s.f_next_run, s.f_creator, s.f_creator_type, s.f_create_time, s.f_updater, s.f_updater_type, s.f_update_time FROM t_catalog_health_check_schedule s JOIN t_catalog c ON c.f_id = s.f_catalog_id WHERE s.f_mode IN (?,?) AND s.f_next_run <= ? AND c.f_enabled = ? AND c.f_type = ? ORDER BY s.f_next_run ASC, s.f_catalog_id ASC")).
 			WithArgs("inherit", "enabled", int64(100), true, "physical").
 			WillReturnRows(sqlmock.NewRows(scheduleColumns()).AddRow("catalog-1", "inherit", "", 0, 0, "", "", 0, "", "", 0))
 

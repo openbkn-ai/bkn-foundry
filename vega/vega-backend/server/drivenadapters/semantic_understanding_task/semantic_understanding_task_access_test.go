@@ -111,7 +111,7 @@ func TestSemanticUnderstandingTaskAccessFindActiveByInputHash(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	task := sampleSemanticUnderstandingTask()
 
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_input_hash = ? AND f_status IN (?,?) ORDER BY f_create_time DESC LIMIT 1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_input_hash = ? AND f_status IN (?,?) ORDER BY f_create_time DESC, f_id DESC LIMIT 1")).
 		WithArgs(task.Scope, task.InputHash, interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning).
 		WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskColumns()).AddRow(semanticUnderstandingTaskRowValues(task)...))
 
@@ -145,7 +145,7 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ?")).
 			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning, interfaces.SemanticUnderstandingApplyModeFillEmpty, true).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskSummaryColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskSummaryColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ? ORDER BY f_create_time ASC, f_id ASC LIMIT 10 OFFSET 5")).
 			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning, interfaces.SemanticUnderstandingApplyModeFillEmpty, true).
 			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskSummaryColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
 
@@ -190,7 +190,7 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 			Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusPending},
 		}
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinSemanticUnderstandingTaskSummaryColumns() + " FROM t_semantic_understanding_task WHERE f_status IN (?) ORDER BY f_create_time DESC LIMIT 1 OFFSET 0")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinSemanticUnderstandingTaskSummaryColumns() + " FROM t_semantic_understanding_task WHERE f_status IN (?) ORDER BY f_create_time DESC, f_id DESC LIMIT 1 OFFSET 0")).
 			WithArgs(interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskSummaryColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
 
@@ -401,4 +401,24 @@ func semanticUnderstandingTaskListRowValues(task *interfaces.SemanticUnderstandi
 
 func joinSemanticUnderstandingTaskSummaryColumns() string {
 	return strings.Join(semanticUnderstandingTaskSummaryColumns(), ", ")
+}
+
+func TestBuildOrderByClause(t *testing.T) {
+	t.Run("uses a unique ID to break ties for every supported sort", func(t *testing.T) {
+		for _, field := range []string{"create_time", "start_time", "finish_time"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				t.Run(field+"/"+direction, func(t *testing.T) {
+					assert.Equal(t, "f_"+field+" "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+				})
+			}
+		}
+	})
+	t.Run("default sort preserves the requested direction", func(t *testing.T) {
+		for _, field := range []string{"", "unknown"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				assert.Equal(t, "f_create_time "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+			}
+		}
+	})
+
 }
