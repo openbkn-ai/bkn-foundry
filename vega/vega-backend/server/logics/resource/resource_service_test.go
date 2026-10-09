@@ -3224,3 +3224,45 @@ func TestApplyMutableSchemaFields(t *testing.T) {
 		assert.Empty(t, got)
 	})
 }
+
+func TestValidateMutableSchemaUpdateJSONEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		current, requested map[string]any
+		wantError          bool
+	}{
+		{"omitted attributes", map[string]any{"enabled": false}, nil, true},
+		{"empty attributes", map[string]any{"enabled": false}, map[string]any{}, true},
+		{"explicit unchanged", map[string]any{"enabled": false}, map[string]any{"enabled": false}, false},
+		{"explicit change", map[string]any{"enabled": false}, map[string]any{"enabled": true}, true},
+		{"legacy unchanged", nil, nil, false},
+		{"legacy enabled omitted", map[string]any{"enabled": true}, nil, true},
+		{"legacy explicit change", nil, map[string]any{"enabled": false}, true},
+		{"omitted enabled", map[string]any{"enabled": false, "source": "jsonb"}, map[string]any{"source": "jsonb"}, true},
+		{"preserves all attributes", map[string]any{"enabled": false, "source": "jsonb"}, map[string]any{"enabled": false, "source": "jsonb"}, false},
+		{"rejects other attribute change", map[string]any{"enabled": false, "source": "jsonb"}, map[string]any{"source": "json"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			originalAttributes, err := json.Marshal(tc.current)
+			require.NoError(t, err)
+			current := []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: tc.current}}
+			requested := []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: tc.requested, DisplayName: "Updated"}}
+			changed, err := validateMutableSchemaUpdate(context.Background(), current, requested, true)
+			if tc.wantError {
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			} else {
+				require.NoError(t, err)
+				assert.False(t, changed)
+				updated := applyMutableSchemaFields(current, requested, true)
+				assert.Equal(t, tc.current, updated[0].Attributes)
+				assert.Equal(t, "Updated", updated[0].DisplayName)
+			}
+			assert.Equal(t, tc.current, current[0].Attributes)
+			actualAttributes, err := json.Marshal(current[0].Attributes)
+			require.NoError(t, err)
+			assert.Equal(t, string(originalAttributes), string(actualAttributes))
+		})
+	}
+}
