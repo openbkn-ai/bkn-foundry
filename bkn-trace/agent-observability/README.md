@@ -119,6 +119,38 @@ Interaction 业务语义图遵循以下口径：
 - `completeness` / `partial_reasons` 描述客观证据组装；`disclosure_partial` / `disclosure_reasons` 描述当前用户授权投影。resolver 不可用、未配置或无法确认权限时，业务节点及其操作边默认不披露。
 - resolver 按 `ref_type + ref_id + source_system` 判定，不使用不匹配的 RefID 前缀推断权限。暂时没有安全实例级授权接口的类型保持 `unresolved`，不能由父类型权限推断实例权限。
 
+失败回执保留生产端明确给出的失败分类：本轮修改的 MCP 查询/模式 handler（`search_instance`、`query_object_instance`、`query_instance_subgraph`、`explore_subgraph`、`query_metric`、`get_kn_detail`、`get_object_types`、`get_relation_types`、`run_sql`、`run_cypher`）中的显式参数绑定、必填值或格式校验拒绝，以及本地搜索、指标、SQL / Cypher 校验，写入顶层 `error.stage=input_validation`。REST 受管调用同样保存执行服务记录的分类，本轮实际覆盖 SQL 校验和后端失败；未将全部 REST handler 的绑定错误纳入此覆盖范围。未修改的 schema search、logic properties、action、network/resource discovery 等 MCP 工具采用 `execution_only` 合同，其 RequiredTraceFields 不要求 `business_refs`；不将本轮结果声明为所有 MCP 校验路径均已适配。MCP 的 `IsError`、REST 的 HTTP 状态和原始错误内容保持不变；不会从 HTTP 状态、错误文本或调用者提供的 `structuredContent` 推断阶段。
+
+`run_sql` 将执行层已有解析器识别的资源 ID 同时保留到受管调用的 `business_refs`，供失败回执归因。这个事实独立于 Kafka 入队或 Ledger 持久化：事件被丢弃仍保留原来的失败持久性状态。目标随既有 evidence expectation 在第一次 Finish 前冻结，迟到回调不能改写重放的目标。`sql_guard` 没有资源目标时仍是策略拒绝；非输入拒绝且缺少回执引用和匹配事件，Core 继续返回 `failed-call target context unavailable; no explicit input rejection`，历史回执不补造事实。
+
+可用下列命令验证真实 MCP handler → Finish / publisher 原始消息 → Kafka consumer → Ledger 服务 → 完整性判定。默认使用合成输入和 memory Ledger store，验证原始消息头、准入、所有者解析与重复消费。设置 `BKN_TRACE_TEST_MARIADB_DSN` 后，每个案例创建并清理独立数据库，通过真实生命周期服务保存和重放失败请求，核对事件到达前后的数据库快照及 Ledger / projection outbox 单行幂等性；该测试 DSN 必须允许创建和删除临时数据库。
+
+```bash
+bash bkn-trace/agent-observability/scripts/test_failed_call_contract.sh
+```
+
+同时设置 `BKN_TRACE_TEST_KAFKA_BROKERS`（单个 broker 地址）后，原始消息经真实 Kafka 两次投递，再由生产 `KafkaProcessor` 写入 MariaDB。broker 必须是隔离测试实例，预先创建单分区 `openbkn.evidence.v1` topic 并配置 `message.timestamp.type=LogAppendTime`。此契约测试不验证 consumer group offset 提交。
+
+设置 `BKN_TRACE_TEST_OPENSEARCH_ENDPOINT` 后，同一测试通过真实 projection outbox worker 消费 MariaDB 记录，对比事件到达前后 receipt / evidence_event 文档与数据库快照，并确认已交付记录不再被租赁。每个案例使用独立索引并清理；若需要认证，设置 `BKN_TRACE_TEST_OPENSEARCH_USERNAME` 和 `BKN_TRACE_TEST_OPENSEARCH_PASSWORD`。
+
+部署验收使用实际 MCP 生命周期入口和 REST SQL 入口。主线已通过 #1841 将 `run_sql` 从所有 MCP profiles 退役，直接 handler 契约测试不代表该工具仍对外发布。REST 当前不附加 MCP capability profile，因此其 registered call records 完整性不能替代 MCP 合同中的严格目标判定；无目标 `sql_guard` 的严格 Core 负例由前述契约测试验证，实际 REST 业务溯源保留 `unresolved/resource_id`。
+
+在独立测试部署上运行（脚本会创建五组测试会话，不应指向生产环境）：
+
+```bash
+# Token 从测试环境提供，勿写入仓库或报告。
+python3 bkn-trace/agent-observability/scripts/test_failed_call_deployment.py \
+  --mcp-url http://127.0.0.1:23376/api/agent-retrieval/v1/mcp/ \
+  --retrieval-url http://127.0.0.1:23376 \
+  --core-url http://127.0.0.1:23375 \
+  --opensearch-url http://127.0.0.1:23374 \
+  --projection-index issue2072-core --report /tmp/2072-deployment-report.json
+```
+
+环境需提供 `BKN_TRACE_TEST_DEPLOYMENT_TOKEN`、业务溯源路由装配、artifact writer、真实 Kafka consumer 和 projection worker；Vega 测试依赖应对 inventory 查询返回失败。脚本核对输入、终态错误阶段、资源引用、持久回执与实际消费事件的 OpenSearch 投影，并验证业务溯源查询。仅 receipt 投影成功不会被视为 Kafka 事件消费成功。
+
+本地验收使用 Core/检索实际二进制、真实 Kafka/MariaDB/OpenSearch，认证、Vega 故障和 Collector 队列指标由固定测试依赖提供；业务溯源使用本地 EE `ee_dev` 装配。这是开发部署验收，不包括 Helm 升级、生产许可证或真实上游系统验收。结果与边界见 [#2072 本地验证记录](../../docs/validation/2026-10-09-2072-failed-call-deployment.json)。
+
 `ref_type` 与 `ref_id` 的规范结构是一一对应的写入合同。事件与 operation receipt 两条写入路径都必须使用完整限定格式；前缀、段数或版本不合法时会拒绝写入，避免业务节点在查询时静默消失。
 
 | `ref_type` | `ref_id` 规范结构 |

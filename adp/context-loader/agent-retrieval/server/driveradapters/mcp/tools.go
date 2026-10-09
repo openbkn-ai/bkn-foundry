@@ -89,7 +89,7 @@ func handleSearchInstance(knSearchService knsearch.KnSearchService) func(ctx con
 
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		instanceReq := &interfaces.SearchInstanceReq{}
@@ -124,12 +124,12 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery,
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		queryReq := &interfaces.QueryObjectInstancesReq{}
 		if err := bindPreciseArguments(req, queryReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		queryReq.KnID = getStringArg(req, "kn_id", queryReq.KnID)
@@ -143,10 +143,10 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery,
 			queryReq.Limit = 10
 		}
 		if queryReq.KnID == "" || queryReq.OtID == "" {
-			return mcp.NewToolResultError("kn_id and ot_id are required"), nil
+			return inputValidationToolError(ctx, "kn_id and ot_id are required"), nil
 		}
 		if err := validator.New().Struct(queryReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		resp, err := ontologyQuery.QueryObjectInstances(ctx, queryReq)
@@ -177,12 +177,12 @@ func handleQueryInstanceSubgraph(service logicsKqs.KnQuerySubgraphService) func(
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		subgraphReq := &interfaces.QueryInstanceSubgraphReq{}
 		if err := bindPreciseArguments(req, subgraphReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		subgraphReq.KnID = getStringArg(req, "kn_id", subgraphReq.KnID)
@@ -191,10 +191,10 @@ func handleQueryInstanceSubgraph(service logicsKqs.KnQuerySubgraphService) func(
 		}
 		subgraphReq.IncludeLogicParams = req.GetBool("include_logic_params", subgraphReq.IncludeLogicParams)
 		if subgraphReq.RelationTypePaths == nil {
-			return mcp.NewToolResultError("relation_type_paths is required"), nil
+			return inputValidationToolError(ctx, "relation_type_paths is required"), nil
 		}
 		if subgraphReq.KnID == "" {
-			return mcp.NewToolResultError("kn_id is required"), nil
+			return inputValidationToolError(ctx, "kn_id is required"), nil
 		}
 
 		resp, err := service.QueryInstanceSubgraph(ctx, subgraphReq)
@@ -214,12 +214,12 @@ func handleExploreSubgraph(service logicsKqs.KnQuerySubgraphService) func(ctx co
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		exploreReq := &interfaces.ExploreSubgraphReq{}
 		if err := bindPreciseArguments(req, exploreReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		exploreReq.KnID = getStringArg(req, "kn_id", exploreReq.KnID)
@@ -240,14 +240,14 @@ func handleExploreSubgraph(service logicsKqs.KnQuerySubgraphService) func(ctx co
 			{exploreReq.Direction == "", "direction"},
 		} {
 			if missing.empty {
-				return mcp.NewToolResultError(missing.name + " is required"), nil
+				return inputValidationToolError(ctx, missing.name+" is required"), nil
 			}
 		}
 		// The value range of path_length is controlled downstream (>3 back to 400), but 0 has to be blocked here: it is int.
 		// With a zero value, it is unclear whether "no transmission" or "0 was passed", and the downstream does not report an error for 0, but only returns an empty subgraph.
 		// Let the caller think "nothing is connected".
 		if exploreReq.PathLength <= 0 {
-			return mcp.NewToolResultError("path_length is required and must be at least 1"), nil
+			return inputValidationToolError(ctx, "path_length is required and must be at least 1"), nil
 		}
 
 		resp, err := service.ExploreSubgraph(ctx, exploreReq)
@@ -495,12 +495,12 @@ func handleRunSQL(svc knrunsql.KnRunSQLService) func(ctx context.Context, req mc
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		sqlReq := &knrunsql.RunSQLReq{}
 		if err := bindArguments(req, sqlReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		resp, err := svc.RunSQL(ctx, sqlReq)
@@ -525,7 +525,7 @@ func handleRunCypher(svc kncypher.KnCypherService) func(ctx context.Context, req
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		// Precise binding: parameters carry the caller's own values, and a
@@ -533,7 +533,7 @@ func handleRunCypher(svc kncypher.KnCypherService) func(ctx context.Context, req
 		// was meant to select.
 		cypherReq := &kncypher.RunCypherReq{}
 		if err := bindPreciseArguments(req, cypherReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		resp, err := svc.RunCypher(ctx, cypherReq)
@@ -610,14 +610,14 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 		knID := getStringArg(req, "kn_id", "")
 		if knID == "" {
 			knID = getKnIDFromHeader(req)
 		}
 		if knID == "" {
-			return mcp.NewToolResultError("kn_id is required"), nil
+			return inputValidationToolError(ctx, "kn_id is required"), nil
 		}
 
 		resp, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
@@ -711,15 +711,15 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 		args := &knObjectTypesArgs{}
 		if err := bindArguments(req, args); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 		knID := args.resolveKnID(req)
 		if knID == "" {
-			return mcp.NewToolResultError("kn_id is required"), nil
+			return inputValidationToolError(ctx, "kn_id is required"), nil
 		}
 
 		// No ids means the caller has none to give. That happens on a network past
@@ -800,18 +800,18 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 		args := &knDrillArgs{}
 		if err := bindArguments(req, args); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 		knID := args.resolveKnID(req)
 		if knID == "" {
-			return mcp.NewToolResultError("kn_id is required"), nil
+			return inputValidationToolError(ctx, "kn_id is required"), nil
 		}
 		if len(args.IDs) == 0 {
-			return mcp.NewToolResultError("ids is required (relation type ids from get_kn_detail)"), nil
+			return inputValidationToolError(ctx, "ids is required (relation type ids from get_kn_detail)"), nil
 		}
 
 		matched, err := bkn.GetRelationTypeDetail(ctx, knID, args.IDs, true)
@@ -898,12 +898,12 @@ func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Cont
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 
 		args := &interfaces.QueryMetricReq{}
 		if err := bindPreciseArguments(req, args); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return inputValidationToolError(ctx, err.Error()), nil
 		}
 		if args.KnID == "" {
 			args.KnID = getKnIDFromHeader(req)
@@ -940,4 +940,11 @@ func missingObjectTypeIDs(requested []string, matched []*interfaces.ObjectType) 
 		}
 	}
 	return missing
+}
+
+// inputValidationToolError preserves the public MCP result while retaining a
+// producer-owned classification for the managed attempt's terminal fact.
+func inputValidationToolError(ctx context.Context, message string) *mcp.CallToolResult {
+	bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
+	return mcp.NewToolResultError(message)
 }

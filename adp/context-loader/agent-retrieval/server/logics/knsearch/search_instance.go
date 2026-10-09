@@ -26,6 +26,7 @@ func (s *knSearchService) SearchInstance(
 ) (*interfaces.SearchInstanceResp, error) {
 	knReq, err := NormalizeSearchInstanceReq(req)
 	if err != nil {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, aerrors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 	}
 

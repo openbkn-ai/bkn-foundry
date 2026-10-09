@@ -200,8 +200,18 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		}()
 		c.Writer = originalWriter
 
-		payload := traceLifecyclePayload(buffered.body.Bytes(), buffered.status)
 		failed := buffered.status >= http.StatusBadRequest
+		code, stage := bkntrace.FreezeToolFailure(ctx)
+		payload := traceLifecyclePayload(buffered.body.Bytes(), buffered.status)
+		if failed && stage != "" {
+			// Classify the recorded failure from the executing service, while
+			// preserving the original REST body and status for the caller.
+			payload, _ = sonic.Marshal(struct {
+				Code   string          `json:"code"`
+				Stage  string          `json:"stage"`
+				Result json.RawMessage `json:"result"`
+			}{code, stage, payload})
+		}
 		finished, coreErr, err := guard.Finish(
 			ctx, state, payload, failed, buffered.status >= http.StatusInternalServerError,
 		)

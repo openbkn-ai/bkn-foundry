@@ -352,6 +352,7 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 	var finishActions []string
 	var operationKeys []string
 	var finishedBusinessRefs [][]bkntrace.BusinessRef
+	var finishedErrors []bkntrace.PayloadEnvelope
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/agent-observability/v1/interactions/int-1":
@@ -407,6 +408,7 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			mu.Lock()
 			finishActions = append(finishActions, action)
 			finishedBusinessRefs = append(finishedBusinessRefs, body.BusinessRefs)
+			finishedErrors = append(finishedErrors, body.Error)
 			mu.Unlock()
 			status := "completed"
 			if action == "fail" {
@@ -426,9 +428,12 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 		name       string
 		status     int
 		wantAction string
+		stage      string
 	}{
-		{"success", http.StatusOK, "complete"},
-		{"handler error", http.StatusBadRequest, "fail"},
+		{"success", http.StatusOK, "complete", ""},
+		{"unclassified handler error", http.StatusBadRequest, "fail", ""},
+		{"validation failure", http.StatusBadRequest, "fail", "input_validation"},
+		{"backend failure", http.StatusBadGateway, "fail", "vega_query"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			router := gin.New()
@@ -447,7 +452,8 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 				if bytes.Contains(raw, []byte("bkn_context")) {
 					t.Fatalf("caller lifecycle context leaked into downstream body: %s", raw)
 				}
-				c.JSON(test.status, gin.H{"answer": "ok"})
+				bkntrace.RecordToolFailure(c.Request.Context(), "trusted_code", test.stage)
+				c.JSON(test.status, gin.H{"answer": "ok", "stage": "untrusted_body_stage"})
 			})
 			request := httptest.NewRequest(http.MethodPost, "/kn/execute_action", bytes.NewBufferString(`{
 				"query":"value",
@@ -468,7 +474,23 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			gotAction := finishActions[len(finishActions)-1]
 			gotOperationKey := operationKeys[len(operationKeys)-1]
 			gotBusinessRefs := finishedBusinessRefs[len(finishedBusinessRefs)-1]
+			gotError := finishedErrors[len(finishedErrors)-1]
 			mu.Unlock()
+			if test.stage != "" {
+				var recorded map[string]any
+				if err := json.Unmarshal(gotError.Inline, &recorded); err != nil || recorded["stage"] != test.stage || recorded["code"] != "trusted_code" {
+					t.Fatalf("trusted REST classification lost: error=%s decode=%v", gotError.Inline, err)
+				}
+			}
+			if test.status >= http.StatusBadRequest && test.stage == "" {
+				var recorded map[string]any
+				if err := json.Unmarshal(gotError.Inline, &recorded); err != nil || recorded["stage"] != "untrusted_body_stage" || recorded["code"] != nil {
+					t.Fatalf("unclassified REST error was inferred: error=%s decode=%v", gotError.Inline, err)
+				}
+			}
+			if response.Code != test.status || body["stage"] != "untrusted_body_stage" {
+				t.Fatalf("business response changed: status=%d body=%s", response.Code, response.Body)
+			}
 			if gotAction != test.wantAction {
 				t.Fatalf("finish action = %q, want %q", gotAction, test.wantAction)
 			}
