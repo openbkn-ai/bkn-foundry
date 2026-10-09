@@ -46,3 +46,14 @@ func ActionsFromDiscoverStrategy(strategy string) DiscoverActions {
 		return DiscoverActions{Create: true, Refresh: true, MarkStale: true}
 	}
 }
+
+// SupportsResourceCount 判断资源类型是否支持后台精确计数。
+// Dataset 在读取时实时统计，不参与后台计数任务。
+func SupportsResourceCount(category string) bool {
+	switch category {
+	case ResourceCategoryTable, ResourceCategoryIndex, ResourceCategoryLogicView:
+		return true
+	default:
+		return false
+	}
+}

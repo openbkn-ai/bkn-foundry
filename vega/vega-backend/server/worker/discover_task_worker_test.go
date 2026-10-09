@@ -431,6 +431,9 @@ func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 			task := &interfaces.DiscoverTask{ID: "task", CatalogID: "cat", Creator: interfaces.AccountInfo{ID: "user"}, Strategy: interfaces.DiscoverStrategyCountOnly, DiscoverActions: &interfaces.DiscoverActions{Count: true}}
 			catalog := &interfaces.Catalog{ID: "cat", ConnectorType: "test", Type: interfaces.CatalogTypePhysical}
 			resources := []*interfaces.Resource{{ID: "ok", CatalogID: "cat", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "app.orders"}, {ID: "bad", CatalogID: "cat", Category: interfaces.ResourceCategoryTable}, {ID: "skip", Category: interfaces.ResourceCategoryFileset}}
+			if scenario == "mixed" {
+				resources[2].Category = interfaces.ResourceCategoryDataset
+			}
 			ctx := context.Background()
 			if scenario == "earlier deadline" {
 				var cancel context.CancelFunc
@@ -466,7 +469,7 @@ func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 			default:
 				rs.EXPECT().InternalGetByCatalogID(gomock.Any(), "cat").Return(resources, nil)
 			}
-			{
+			if scenario != "single unsupported" && scenario != "all skipped" && scenario != "empty" {
 				counter := &testTableCounter{TableConnector: base, count: func(queryCtx context.Context, table *interfaces.TableMeta) (int64, error) {
 					id := (&DiscoverTaskWorker{}).buildSourceIdentifier(table)
 					if id == "app.orders" {
@@ -518,6 +521,12 @@ func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 				require.ErrorIs(t, err, context.Canceled)
 				return
 			}
+			if scenario == "single unsupported" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "does not support count_only")
+				assert.Nil(t, result)
+				return
+			}
 			require.NoError(t, err)
 			switch scenario {
 			case "mixed":
@@ -536,13 +545,51 @@ func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 				require.True(t, result.Failed)
 				require.Zero(t, result.FailedCount)
 				require.Equal(t, 1, result.SkippedCount)
-			case "single unsupported", "single connector unsupported":
+			case "single connector unsupported":
 				require.True(t, result.Failed)
 				require.Equal(t, 1, result.FailedCount)
 			case "empty":
 				require.Zero(t, result.UpdatedCount)
 				require.False(t, result.Failed)
 			}
+		})
+	}
+}
+
+func TestDiscoverTaskWorkerCountDataset(t *testing.T) {
+	for _, catalogType := range []string{interfaces.CatalogTypeLogical, interfaces.CatalogTypePhysical} {
+		t.Run(catalogType+" single", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			worker := &DiscoverTaskWorker{rs: rs, cf: cf}
+			catalog := &interfaces.Catalog{ID: "cat", Type: catalogType}
+			dataset := &interfaces.Resource{ID: "dataset", CatalogID: "cat", Category: interfaces.ResourceCategoryDataset}
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, dataset.ID).Return(dataset, nil)
+			result, err := worker.countResources(context.Background(), catalog, &interfaces.DiscoverTask{
+				ResourceID: dataset.ID, Strategy: interfaces.DiscoverStrategyCountOnly,
+			})
+			assert.Nil(t, result)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "does not support count_only")
+		})
+		t.Run(catalogType+" catalog", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			dts := vmock.NewMockDiscoverTaskService(ctrl)
+			worker := &DiscoverTaskWorker{rs: rs, cf: cf, dts: dts}
+			catalog := &interfaces.Catalog{ID: "cat", Type: catalogType}
+			dataset := &interfaces.Resource{ID: "dataset", CatalogID: catalog.ID, Category: interfaces.ResourceCategoryDataset}
+			rs.EXPECT().InternalGetByCatalogID(gomock.Any(), catalog.ID).Return([]*interfaces.Resource{dataset}, nil)
+			dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task", gomock.Any(), gomock.Any()).Return(true, nil)
+			result, err := worker.countResources(context.Background(), catalog, &interfaces.DiscoverTask{ID: "task"})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Equal(t, 1, result.SkippedCount)
+			assert.Zero(t, result.UpdatedCount)
+			assert.Zero(t, result.FailedCount)
+			assert.True(t, result.Failed)
 		})
 	}
 }

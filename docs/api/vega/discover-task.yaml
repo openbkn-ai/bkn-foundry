@@ -12,6 +12,11 @@ info:
       [discover-schedule.yaml](discover-schedule.yaml).
     - Resource refresh: `POST /resources/{id}/discover`; see [resource.yaml](resource.yaml).
 
+    Single-resource `count_only` supports table, index, and logicview categories.
+    Dataset counts are computed during reads; unsupported single-resource categories
+    return 400 before task creation. Catalog-level count tasks skip Dataset resources
+    and include them in `skipped_count`.
+
     `queue_priority` is a read-only integer computed by the server; larger values have
     higher priority. The default priorities are 10 for scheduled catalog discovery,
     20 for manual catalog discovery, and 30 for resource refresh. Workers dequeue tasks
