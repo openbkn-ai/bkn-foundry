@@ -5,6 +5,8 @@ on:
     paths:
       - 'bkn-trace/**'
       - 'comm-go/**'
+      - 'deploy/scripts/services/config.sh'
+      - 'deploy/scripts/services/config_observability_test.sh'
       - 'deploy/scripts/lib/agent_evidence.py'
       - 'deploy/scripts/lib/audit_consumer.py'
       - 'deploy/scripts/services/openbkn.sh'
@@ -101,6 +103,9 @@ jobs:
       - name: Build
         run: make build
       - uses: azure/setup-helm@v4
+      - name: Preserve admission budget values during configuration regeneration
+        working-directory: .
+        run: bash deploy/scripts/services/config_observability_test.sh
       - name: Helm lint
         run: make helm-lint
       - name: Internal Trace control client/server contract
