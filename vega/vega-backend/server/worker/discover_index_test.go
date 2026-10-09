@@ -23,13 +23,25 @@ func TestOpenSearchSubFieldFeatures(t *testing.T) {
 	t.Run("maps opensearch sub field types to features", func(t *testing.T) {
 		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("keyword"))
 		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("constant_keyword"))
-		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("wildcard"))
-		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("icu_collation_keyword"))
+		assert.Empty(t, osSubFieldTypeToFeatureType("wildcard"))
+		assert.Empty(t, osSubFieldTypeToFeatureType("icu_collation_keyword"))
 		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, osSubFieldTypeToFeatureType("match_only_text"))
 		assert.Empty(t, osSubFieldTypeToFeatureType("dense_vector"))
 		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, osSubFieldTypeToFeatureType("text"))
 		assert.Equal(t, interfaces.PropertyFeatureType_Vector, osSubFieldTypeToFeatureType("knn_vector"))
 		assert.Empty(t, osSubFieldTypeToFeatureType("object"))
+	})
+
+	t.Run("keeps raw keyword when specialized subfields precede it", func(t *testing.T) {
+		features := buildSubFieldFeatures("title", []interfaces.IndexSubFieldMeta{
+			{Name: "de", Type: "icu_collation_keyword"},
+			{Name: "grep", Type: "wildcard"},
+			{Name: "raw", Type: "keyword", Attributes: map[string]any{"ignore_above": 256}},
+		})
+		require.Len(t, features, 1)
+		assert.Equal(t, "raw", features[0].FeatureName)
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, features[0].FeatureType)
+		assert.Equal(t, map[string]any{"ignore_above": 256}, features[0].Config)
 	})
 
 	t.Run("builds supported sub field features", func(t *testing.T) {

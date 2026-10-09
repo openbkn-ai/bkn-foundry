@@ -283,7 +283,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		assert.Equal(t, inputHash, task.InputHash)
 	})
 
-	t.Run("omits binary columns from the task input after connector conversion", func(t *testing.T) {
+	t.Run("omits binary other and vector columns from the task input", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
@@ -298,6 +298,11 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			OriginalName: "shape",
 			OriginalType: "geometry",
 			Type:         interfaces.DataType_Other,
+		}, &interfaces.Property{
+			Name:         "embedding",
+			OriginalName: "embedding_vector",
+			OriginalType: "knn_vector",
+			Type:         interfaces.DataType_Vector,
 		})
 		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
@@ -309,9 +314,10 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.Equal(t, []string{"order_id"}, params.OutputFields)
 				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{
-					"order_id":        "o-1",
-					"attachment_blob": string([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
-					"shape":           string([]byte{0x07, 0x08, 0x09}),
+					"order_id":         "o-1",
+					"embedding_vector": []float32{0.1, 0.2},
+					"attachment_blob":  string([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+					"shape":            string([]byte{0x07, 0x08, 0x09}),
 				}}}, nil
 			})
 
@@ -323,6 +329,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		assert.Equal(t, "o-1", input.SampleRows[0]["order_id"])
 		assert.NotContains(t, input.SampleRows[0], "attachment_blob")
 		assert.NotContains(t, input.SampleRows[0], "shape")
+		assert.NotContains(t, input.SampleRows[0], "embedding_vector")
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusAvailable, input.SampleContext.Status)
 		assert.Equal(t, []interfaces.SemanticUnderstandingSampleOmission{
 			{
@@ -335,6 +342,12 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 				Name:         "shape",
 				OriginalName: "shape",
 				Type:         interfaces.DataType_Other,
+				Reason:       interfaces.SemanticUnderstandingSampleOmissionReasonPolicy,
+			},
+			{
+				Name:         "embedding",
+				OriginalName: "embedding_vector",
+				Type:         interfaces.DataType_Vector,
 				Reason:       interfaces.SemanticUnderstandingSampleOmissionReasonPolicy,
 			},
 		}, input.SampleContext.OmittedFields)
@@ -378,6 +391,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resource.SchemaDefinition = []*interfaces.Property{
 			{Name: "attachmentBlob", OriginalName: "attachment_blob", Type: interfaces.DataType_Binary},
 			{Name: "shape", OriginalName: "shape", Type: interfaces.DataType_Other},
+			{Name: "embedding", OriginalName: "embedding", Type: interfaces.DataType_Vector},
 		}
 		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
@@ -391,7 +405,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
 		assert.Empty(t, input.SampleRows)
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy, input.SampleContext.Status)
-		require.Len(t, input.SampleContext.OmittedFields, 2)
+		require.Len(t, input.SampleContext.OmittedFields, 3)
 	})
 
 	t.Run("writes an empty sample_rows array when the query has no rows", func(t *testing.T) {
@@ -700,6 +714,22 @@ func TestLimitSemanticUnderstandingSampleRows(t *testing.T) {
 		require.Len(t, rows, 1)
 		assert.NotContains(t, rows[0], "shape")
 		assert.Equal(t, "kept", rows[0]["note"])
+	})
+
+	t.Run("excludes vectors before enforcing the payload budget without mutating source rows", func(t *testing.T) {
+		schema := []*interfaces.Property{
+			{Name: "embedding", OriginalName: "embedding_vector", Type: interfaces.DataType_Vector},
+		}
+		source := []map[string]any{{
+			"embedding_vector": make([]float32, interfaces.MaxSemanticUnderstandingSamplePayloadBytes),
+			"note":             "kept",
+		}}
+		rows, truncated, err := limitSemanticUnderstandingSampleRows(source, schema)
+		require.NoError(t, err)
+		assert.False(t, truncated)
+		require.Len(t, rows, 1)
+		assert.Equal(t, map[string]any{"note": "kept"}, rows[0])
+		assert.Contains(t, source[0], "embedding_vector")
 	})
 
 	t.Run("drops trailing rows when the payload exceeds the limit", func(t *testing.T) {

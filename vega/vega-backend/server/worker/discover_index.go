@@ -369,7 +369,7 @@ func mergeIndexFeatures(existing, native []interfaces.PropertyFeature) []interfa
 // osSubFieldTypeToFeatureType maps supported OpenSearch multi-field types to VEGA feature types.
 func osSubFieldTypeToFeatureType(osType string) string {
 	switch osType {
-	case "keyword", "constant_keyword", "wildcard", "icu_collation_keyword":
+	case "keyword", "constant_keyword":
 		return interfaces.PropertyFeatureType_Keyword
 	case "text", "match_only_text":
 		return interfaces.PropertyFeatureType_Fulltext
