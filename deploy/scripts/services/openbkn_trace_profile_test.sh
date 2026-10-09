@@ -347,7 +347,7 @@ not_contains "operator integration has no legacy HTTP Evidence Secret" "${operat
 CORE_RELEASE_EXTRA_SETS=()
 CORE_RELEASE_EXTRA_SET_STRINGS=()
 _openbkn_release_extra_sets bkn-agent openbkn
-bkn_agent_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+bkn_agent_sets="${CORE_RELEASE_EXTRA_SETS[*]:-} ${CORE_RELEASE_EXTRA_DEFAULT_SETS[*]:-}"
 contains "bkn-agent posts artifacts to the artifact route" "${bkn_agent_sets}" "observability.bknTraceArtifactIngestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
 contains "bkn-agent uses Kafka brokers" "${bkn_agent_sets}" "observability.evidencePublisher.brokers="
 contains "bkn-agent uses Kafka credential Secret" "${bkn_agent_sets}" "observability.evidencePublisher.credentialsSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"

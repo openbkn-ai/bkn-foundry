@@ -616,9 +616,14 @@ _openbkn_trace_profile_sets() {
                 "observability.bknTraceArtifactIngestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
                 "observability.bknTraceArtifactIngestTokenSecretKey=token"
             )
-            _openbkn_trace_admission_values "observability.evidencePublisher" bkn-agent
-            CORE_RELEASE_EXTRA_SETS+=(
+            # Publisher settings are defaults, not forced overrides of a user's
+            # explicit values or preserved capture choices of an existing release.
+            CORE_RELEASE_EXTRA_DEFAULT_SETS+=(
                 "observability.evidencePublisher.enabled=true"
+                "observability.evidencePublisher.traceAdmission.policyURL=${OPENBKN_TRACE_ADMISSION_POLICY_URL}"
+                "observability.evidencePublisher.traceAdmission.configurationURL=${OPENBKN_TRACE_ADMISSION_CONFIGURATION_URL}"
+                "observability.evidencePublisher.traceAdmission.heartbeatURL=${OPENBKN_TRACE_ADMISSION_HEARTBEAT_URL}"
+                "observability.evidencePublisher.traceAdmission.ackURLBase=${OPENBKN_TRACE_ADMISSION_ACK_URL_BASE}"
                 "observability.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
                 "observability.evidencePublisher.credentialsSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
                 "observability.evidencePublisher.usernameSecretKey=username"
@@ -731,6 +736,37 @@ _openbkn_helm_upgrade_release() {
     shift 2
     local -a helm_args=("$@")
 
+    local agent_defaults="" agent_values="" agent_render="" installed
+    if [[ "${release_name}" == "bkn-agent" ]]; then
+        agent_defaults="$(mktemp)"
+        agent_values="$(mktemp)"
+        agent_render="$(mktemp)"
+        if ! python3 "${SCRIPT_DIR}/scripts/lib/agent_evidence.py" defaults "${CORE_RELEASE_EXTRA_DEFAULT_SETS[@]:-}" >"${agent_defaults}" ||
+           ! installed="$(helm list --all -q -n "${namespace}" --filter '^bkn-agent$')"; then
+            rm -f "${agent_defaults}" "${agent_values}" "${agent_render}"
+            log_error "Cannot inspect Agent Evidence installation defaults or release"
+            return 1
+        fi
+        if [[ -n "${installed}" ]]; then
+            if ! (set -o pipefail; helm get values "${release_name}" -n "${namespace}" --all -o json |
+                python3 "${SCRIPT_DIR}/scripts/lib/agent_evidence.py" preserve >"${agent_values}"); then
+                rm -f "${agent_defaults}" "${agent_values}" "${agent_render}"
+                log_error "Cannot preserve installed Agent Evidence configuration"
+                return 1
+            fi
+        else
+            printf '{}\n' >"${agent_values}"
+        fi
+        helm_args=("${helm_args[@]:0:4}" -f "${agent_defaults}" -f "${agent_values}" "${helm_args[@]:4}")
+        if ! helm install "${helm_args[@]:2}" --dry-run=client --hide-secret -o json >"${agent_render}" ||
+            ! python3 "${SCRIPT_DIR}/scripts/lib/agent_evidence.py" validate "${namespace}" <"${agent_render}"; then
+            rm -f "${agent_defaults}" "${agent_values}" "${agent_render}"
+            log_error "Agent Evidence preflight failed; correct publisher values and existing Kafka Secret references before installation"
+            return 1
+        fi
+        rm -f "${agent_render}"
+    fi
+
     local audit_values="" audit_render="" installed
     if [[ "${release_name}" == "agent-observability" ]]; then
         # Preserve only Audit consumer settings; explicit config/--set overrides
@@ -782,6 +818,7 @@ _openbkn_helm_upgrade_release() {
     fi
     rm -f "${helm_log}"
     [[ -z "${audit_values}" ]] || rm -f "${audit_values}"
+    [[ -z "${agent_defaults}" ]] || rm -f "${agent_defaults}" "${agent_values}"
 
     if [[ ${helm_status} -eq 0 ]]; then
         log_info "✓ ${release_name} installed successfully"
@@ -868,7 +905,7 @@ _openbkn_warn_unwired_evidence_producers() {
         has_artifact_secret=false
         has_audit_kafka_publisher=false
         has_audit_kafka_secret=false
-        for set_value in "${CORE_RELEASE_EXTRA_SETS[@]:-}"; do
+        for set_value in "${CORE_RELEASE_EXTRA_SETS[@]:-}" "${CORE_RELEASE_EXTRA_DEFAULT_SETS[@]:-}"; do
             [[ "${set_value}" == *"=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}" ]] && has_ingest_url=true
             case "${set_value}" in
                 *"ingestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"|\
@@ -1124,6 +1161,7 @@ _openbkn_release_extra_sets() {
     local namespace="${2:-${CORE_NAMESPACE}}"
     CORE_RELEASE_EXTRA_SETS=()
     CORE_RELEASE_EXTRA_SET_STRINGS=()
+    CORE_RELEASE_EXTRA_DEFAULT_SETS=()
     if [[ "${release_name}" == "agent-observability" ]]; then
         _openbkn_trace_profile_sets "${release_name}"
         if ! kubectl get secret "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" >/dev/null 2>&1; then

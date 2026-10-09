@@ -25,19 +25,19 @@ def preserved_values(values):
     return {"kafkaConsumers": {"audit": preserved}}
 
 
-def check_secret(namespace, name, keys):
+def check_secret(namespace, name, keys, component="Audit consumer"):
     if not name:
-        raise ValueError("Audit consumer requires an existing Secret reference")
+        raise ValueError("{} requires an existing Secret reference".format(component))
     result = subprocess.run(
         ["kubectl", "get", "secret", name, "-n", namespace, "-o", "json", "--request-timeout=10s"],
         capture_output=True, text=True, check=False, timeout=15,
     )
     if result.returncode:
-        raise ValueError(f"Audit consumer cannot read Secret {namespace}/{name}; create it before installation")
+        raise ValueError(f"{component} cannot read Secret {namespace}/{name}; create it before installation")
     data = json.loads(result.stdout).get("data", {})
     for key in keys:
         if not key or not data.get(key):
-            raise ValueError(f"Audit consumer Secret {namespace}/{name} is missing a non-empty key {key}")
+            raise ValueError(f"{component} Secret {namespace}/{name} is missing a non-empty key {key}")
 
 
 def validate(values, namespace):
