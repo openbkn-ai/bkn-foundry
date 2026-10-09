@@ -21,10 +21,11 @@ import (
 
 // Sandbox control service Client.
 type sandBoxControlPlaneClient struct {
-	baseURL    string
-	logger     interfaces.Logger
-	httpClient interfaces.HTTPClient
-	templateID string // Template ID.
+	baseURL           string
+	logger            interfaces.Logger
+	httpClient        interfaces.HTTPClient
+	executeHTTPClient interfaces.HTTPClient
+	templateID        string // Template ID.
 }
 
 var (
@@ -39,9 +40,10 @@ func NewSandBoxControlPlaneClient() interfaces.SandBoxControlPlane {
 		sbcpInstance = &sandBoxControlPlaneClient{
 			baseURL: fmt.Sprintf("%s://%s:%d/api/v1", conf.SandboxControlPlane.PrivateProtocol,
 				conf.SandboxControlPlane.PrivateHost, conf.SandboxControlPlane.PrivatePort),
-			logger:     conf.GetLogger(),
-			httpClient: rest.NewHTTPClient(),
-			templateID: conf.SandboxControlPlane.PrivateHost,
+			logger:            conf.GetLogger(),
+			httpClient:        rest.NewHTTPClient(),
+			executeHTTPClient: rest.NewHTTPClientWithOptions(rest.HTTPClientOptions{TimeOut: 3605}),
+			templateID:        conf.SandboxControlPlane.PrivateHost,
 		}
 	})
 	return sbcpInstance
@@ -201,7 +203,7 @@ func (c *sandBoxControlPlaneClient) ExecuteCodeSync(ctx context.Context, session
 		src = fmt.Sprintf("%s?sync_timeout=%d", src, syncTimeout)
 	}
 	headers := common.GetHeaderFromCtx(ctx)
-	respCode, respData, err := c.httpClient.PostNoUnmarshal(ctx, src, headers, req)
+	respCode, respData, err := c.executeHTTPClient.PostNoUnmarshal(ctx, src, headers, req)
 	if err != nil {
 		c.logger.WithContext(ctx).Errorf("ExecuteCodeSync failed, err: %v", err)
 		return nil, err

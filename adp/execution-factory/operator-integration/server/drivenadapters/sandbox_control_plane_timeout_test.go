@@ -21,11 +21,12 @@ func TestExecuteCodeSyncAllowsSandboxTimeoutResponse(t *testing.T) {
 	} {
 		t.Run(tc.url, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			httpClient := mocks.NewMockHTTPClient(ctrl)
-			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), tc.url, gomock.Any(), gomock.Any()).
+			executeHTTPClient := mocks.NewMockHTTPClient(ctrl)
+			executeHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), tc.url, gomock.Any(), gomock.Any()).
 				Return(http.StatusOK, []byte(`{"status":"timeout"}`), nil)
 			client := &sandBoxControlPlaneClient{
-				baseURL: "http://sandbox/api/v1", logger: logger.DefaultLogger(), httpClient: httpClient,
+				baseURL: "http://sandbox/api/v1", logger: logger.DefaultLogger(),
+				httpClient: mocks.NewMockHTTPClient(ctrl), executeHTTPClient: executeHTTPClient,
 			}
 			resp, err := client.ExecuteCodeSync(context.Background(), "s1", &interfaces.ExecuteCodeReq{Timeout: tc.timeout})
 			if err != nil || resp == nil || resp.Status != "timeout" {

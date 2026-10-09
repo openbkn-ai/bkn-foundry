@@ -359,18 +359,22 @@ func buildFunctionExecutionEnv(c *gin.Context, req *interfaces.FunctionProxyExec
 // FunctionExecuteProxyReq function execution proxy request parameters.
 type FunctionExecuteProxyReq struct {
 	Version string `uri:"version" validate:"required,uuid"`
-	Timeout int64  `form:"timeout" validate:"gte=0"` // milliseconds.
+}
+
+type functionExecuteProxyQuery struct {
+	Timeout int64 `form:"timeout" validate:"gte=0"` // milliseconds.
 }
 
 // FunctionExecuteProxy executes proxy requests.
 func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 	var err error
 	req := &FunctionExecuteProxyReq{}
+	query := &functionExecuteProxyQuery{}
 	if err = c.ShouldBindUri(req); err != nil {
 		rest.ReplyError(c, err)
 		return
 	}
-	if err = c.ShouldBindQuery(req); err != nil {
+	if err = c.ShouldBindQuery(query); err != nil {
 		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
 		return
 	}
@@ -384,6 +388,10 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 	}
 	err = validator.New().Struct(req)
 	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = validator.New().Struct(query); err != nil {
 		rest.ReplyError(c, err)
 		return
 	}
@@ -424,7 +432,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 	execReq := &interfaces.ExecuteCodeReq{
 		Code:                  code,
 		Event:                 event,
-		Timeout:               int(req.Timeout / 1000),
+		Timeout:               int(query.Timeout / 1000),
 		Language:              scriptType,
 		EnvVars:               executionEnv,
 		Dependencies:          dependencies,

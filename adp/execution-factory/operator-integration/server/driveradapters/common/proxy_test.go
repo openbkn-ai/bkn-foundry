@@ -40,6 +40,7 @@ func TestFunctionExecuteProxyTimeout(t *testing.T) {
 		wantResult string
 	}{
 		{name: "timeout passed to sandbox", query: "?timeout=60000", status: "completed", wantCode: http.StatusOK, wantTime: 60, wantResult: `"ok":true`},
+		{name: "query Version cannot override path", query: "?Version=22222222-2222-4222-8222-222222222222&timeout=60000", status: "completed", wantCode: http.StatusOK, wantTime: 60, wantResult: `"ok":true`},
 		{name: "sandbox timeout is an error", query: "?timeout=10000", status: "timeout", wantCode: http.StatusGatewayTimeout, wantTime: 10, wantResult: "timed out"},
 		{name: "no timeout keeps sandbox default", status: "completed", wantCode: http.StatusOK, wantTime: 0, wantResult: `"ok":true`},
 		{name: "default timeout reports sandbox duration", status: "timeout", wantCode: http.StatusGatewayTimeout, wantTime: 0, wantResult: "after 30 seconds"},
