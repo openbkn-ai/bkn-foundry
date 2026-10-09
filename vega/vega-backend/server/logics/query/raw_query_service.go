@@ -284,7 +284,8 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		return nil, err
 	}
 	finalSQL := replacedSQL
-	if inputDialect != targetDialect {
+	// SQL Server 同方言查询也需编译，以保留 Unicode 字面量。
+	if inputDialect != targetDialect || targetDialect == "tsql" {
 		result, err := sqlglot.TranspileSQL(ctx, replacedSQL, inputDialect, targetDialect)
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).

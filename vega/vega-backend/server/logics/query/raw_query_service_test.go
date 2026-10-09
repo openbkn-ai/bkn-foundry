@@ -364,6 +364,34 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	for _, inputDialect := range []string{"mysql", "postgres", "tsql"} {
+		t.Run("normalizes SQL Server Unicode literals from "+inputDialect, func(t *testing.T) {
+			requireRawQuerySQLGlotRuntime(t)
+			ctrl := gomock.NewController(t)
+			mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+			mockRS := mock_interfaces.NewMockResourceService(ctrl)
+			resource := &interfaces.Resource{
+				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
+				Schema: "dbo", SourceIdentifier: "dbo.orders", Status: interfaces.ResourceStatusActive,
+				SchemaDefinition: []*interfaces.Property{{Name: "name"}},
+			}
+			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
+			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(3)
+			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+				ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
+			}, nil)
+
+			previousPolicy := rawQueryPolicy
+			rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
+			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+
+			prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
+				Query: "SELECT name FROM {{resource-1}} WHERE name = '刘🙂备'", QueryFormat: interfaces.QueryFormatSQL, InputDialect: inputDialect,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, "SELECT name FROM [dbo].[orders] WHERE name = N'刘🙂备'", prepared.sql)
+		})
+	}
 	for _, tc := range []struct {
 		name          string
 		inputDialect  string
