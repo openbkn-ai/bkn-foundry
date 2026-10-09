@@ -21,7 +21,16 @@ not_contains() {
 }
 
 contains 'name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED'
-contains 'value: "false"'
+if ! grep -A1 'name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED' <<<"${rendered}" | grep -Fq 'value: "true"'; then
+  echo 'new installs must enable the Evidence publisher by default' >&2
+  exit 1
+fi
+contains 'name: BKN_TRACE_KAFKA_BROKERS'
+rendered="$(helm template bkn-agent "${chart_dir}" --set observability.evidencePublisher.enabled=false)"
+if ! grep -A1 'name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED' <<<"${rendered}" | grep -Fq 'value: "false"'; then
+  echo 'explicit disablement must be preserved' >&2
+  exit 1
+fi
 not_contains 'name: BKN_TRACE_KAFKA_BROKERS'
 not_contains 'name: TRACE_ADMISSION_POLICY_URL'
 contains 'name: BKN_TRACE_ARTIFACT_INGEST_URL'

@@ -12,6 +12,10 @@ on:
     branches: ['**']
     paths:
       - 'infra/bkn-agent/**'
+      - 'deploy/scripts/lib/agent_evidence.py'
+      - 'deploy/scripts/lib/audit_consumer.py'
+      - 'deploy/scripts/services/openbkn.sh'
+      - 'deploy/scripts/services/openbkn_agent_evidence_test.sh'
       - '.github/workflows/release-infra-bkn-agent.yml'
       - '.github/workflows/reusable-*.yml'
       # 版本冻结提交（release/<x.y.z> 分支）触发全量重建
@@ -46,6 +50,12 @@ jobs:
       - name: Verify provenance bootstrap credential contract
         working-directory: infra/bkn-agent
         run: bash scripts/test_business_provenance_bootstrap_chart.sh charts
+      - name: Verify Evidence publisher chart and installation contract
+        run: |
+          bash infra/bkn-agent/scripts/test_evidence_kafka_chart.sh infra/bkn-agent/charts
+          bash deploy/scripts/services/openbkn_agent_evidence_test.sh
+          bash deploy/scripts/services/openbkn_audit_consumer_test.sh
+          bash deploy/scripts/services/openbkn_trace_profile_test.sh
 
   build:
     needs: [version, verify]

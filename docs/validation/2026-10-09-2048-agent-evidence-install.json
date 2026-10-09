@@ -1,0 +1,27 @@
+{
+  "conversation_id": "conv_eaf3cc7744fc93f203594ca4e7df3e43",
+  "interaction_id": "int_88b3762531be84cd8be3d646f9d87f57",
+  "event_id": "evt_28f1c87befee1e0f45efe241a1032cfd",
+  "agent_runtime_started": true,
+  "policy_admitted": true,
+  "queue_drained": true,
+  "ledger_consumed": true,
+  "opensearch_projected": true,
+  "event_type": "agent.interaction.started",
+  "producer_id": "bkn-agent",
+  "issue": 2048,
+  "baseline": "155accd4448a6b4fb16ea9b4c58de81df979cf78",
+  "agent_unit_tests": 303,
+  "installer_checks": [
+    "fresh install",
+    "preserve disabled upgrade",
+    "preserve supported fields only",
+    "current values override",
+    "CLI override",
+    "missing or empty Kafka Secret",
+    "custom internal endpoints"
+  ],
+  "kafka_consumer_lag": 0,
+  "scope": "Source-built publisher and Core; isolated Kafka/MariaDB/OpenSearch. Synthetic interaction-started event. Does not certify live LLM/tool execution, production Helm rollout or other issues.",
+  "security_changes": "none; existing internal protocol and Kafka/Artifact contracts retained"
+}
