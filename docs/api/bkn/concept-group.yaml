@@ -1023,10 +1023,7 @@ components:
       type: object
       properties:
         analyzer:
-          description: Analyzer
-          enum:
-            - standard
-            - ik_max_word
+          description: Analyzer ID. Available values come from fulltext_analyzers returned by GET /api/vega-backend/v1/index-capabilities and depend on the cluster capabilities.
           type: string
         enabled:
           description: Whether enabled

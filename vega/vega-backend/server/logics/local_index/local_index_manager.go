@@ -39,7 +39,7 @@ type localIndexManager struct {
 	capabilityErrorExpires time.Time
 }
 
-var analyzerCandidates = []string{"standard", "english", "ik_max_word", "hanlp_index"}
+var analyzerCandidates = []string{"standard", "english", "ik_max_word", "hanlp_standard", "hanlp_index"}
 
 // NewLocalIndexManager creates a LocalIndexManager.
 func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexManager {
