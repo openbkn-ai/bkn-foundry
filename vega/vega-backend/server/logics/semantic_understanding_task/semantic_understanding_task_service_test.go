@@ -25,6 +25,46 @@ import (
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
 
+func TestSemanticUnderstandingTaskServiceList(t *testing.T) {
+	t.Run("reports task query failure instead of permission filter failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService}
+		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(),
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL,
+			interfaces.CatalogsQueryParams{}).Return([]string{"catalog-1"}, nil)
+		taskAccess.EXPECT().List(gomock.Any(), gomock.Any()).
+			Return(nil, int64(0), errors.New("task query failed"))
+
+		tasks, total, err := service.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, "VegaBackend.SemanticUnderstandingTask.InternalError.GetFailed", httpErr.BaseError.ErrorCode)
+		assert.Nil(t, tasks)
+		assert.Zero(t, total)
+	})
+
+	t.Run("preserves permission filter failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService}
+		permissionErr := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_FilterResourcesFailed)
+		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, permissionErr)
+
+		tasks, total, err := service.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+
+		assert.Same(t, permissionErr, err)
+		assert.Nil(t, tasks)
+		assert.Zero(t, total)
+	})
+}
+
 /* Catalog 输入组装暂停；保留原测试。
 func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	threshold := 0.75
