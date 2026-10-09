@@ -55,9 +55,24 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			})
 			return
 		}
-		// Capability requests may execute without a managed Trace context.
-		// Their business authorization remains in the existing handlers; request
-		// headers alone do not establish registered lifecycle identities.
+		// A caller cannot obtain lifecycle IDs when capture is disabled or Core
+		// is unavailable. Probe Core before refusing a contextless execution so
+		// the existing nonblocking business fallback remains usable during outages.
+		outageCode := ""
+		if !hasBusinessContext(input) && requiresManagedHTTPContext(c.Request) && !bkntrace.CaptureDisabled() {
+			outageCode = restTraceCoreOutage(c.Request.Context(), client)
+			if c.Request.Context().Err() != nil {
+				c.Abort()
+				return
+			}
+			if outageCode == "" {
+				writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
+					Code: "conversation_required", Message: "conversation_id is required",
+					RequiredAction: "create_conversation",
+				})
+				return
+			}
+		}
 		if !hasBusinessContext(input) {
 			// io.ReadAll above drained the body. The managed path rebuilds it after
 			// stripping bkn_context; this path has nothing to strip but still has to
@@ -67,7 +82,11 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			c.Request.ContentLength = int64(len(raw))
 			ctx, _ := bkntrace.EnsureTraceCorrelation(bkntrace.WithTraceAvailability(c.Request.Context()))
 			if !bkntrace.CaptureDisabled() {
-				bkntrace.MarkTraceUnavailable(ctx, "context", lifecycleHTTPToolName(c), "trace_context_absent")
+				code := "trace_context_absent"
+				if outageCode != "" {
+					code = outageCode
+				}
+				bkntrace.MarkTraceUnavailable(ctx, "context", lifecycleHTTPToolName(c), code)
 			}
 			c.Request = c.Request.WithContext(bkntrace.ClearManagedTraceContext(ctx))
 			writeTraceAvailabilityHeaders(c, ctx)
@@ -209,6 +228,25 @@ func traceLifecyclePayload(raw []byte, status int) json.RawMessage {
 	return encoded
 }
 
+// restTraceCoreOutage makes no lifecycle mutation. A missing operation is an
+// expected healthy response; only a transport or Core infrastructure failure
+// permits a contextless execution to take the established unrecorded path.
+func restTraceCoreOutage(ctx context.Context, client *bkntrace.LifecycleClient) string {
+	if client == nil || !client.Enabled() {
+		return "feature_not_installed"
+	}
+	probeCtx, release := bkntrace.TraceIOContext(bkntrace.WithTraceAvailability(ctx), "pre")
+	apiErr, err := client.Call(probeCtx, http.MethodGet, "/operations/__rest_context_probe__", nil, nil)
+	release()
+	if !bkntrace.IsTraceInfrastructureFailure(apiErr, err) {
+		return ""
+	}
+	if apiErr != nil {
+		return apiErr.Code
+	}
+	return lifecycleUnavailableError(client).Code
+}
+
 func isLifecycleBusinessRequest(request *http.Request) bool {
 	if request.Method != http.MethodPost {
 		return false
@@ -224,11 +262,22 @@ func isProxyToolCall(request *http.Request) bool {
 		strings.HasSuffix(request.URL.Path, "/call")
 }
 
+func requiresManagedHTTPContext(request *http.Request) bool {
+	if !strings.Contains(request.URL.Path, "/kn/") {
+		return false
+	}
+	switch path.Base(request.URL.Path) {
+	case "execute_action", "execute_tool", "execute_skill":
+		return true
+	default:
+		return false
+	}
+}
+
 // hasBusinessContext reports whether this call has to go through the guard.
 //
-// The rule the caller has to remember is one line: state an id and the call is
-// managed, state none and it is ad hoc. Only two shapes are ad hoc - no
-// bkn_context at all, and an empty one. Everything else goes to
+// Missing or empty bkn_context is eligible for ad-hoc reads and proxy calls.
+// Everything else goes to
 // parseHTTPBusinessContext to be judged, including the shapes that carry no id:
 // one id and not the other, a bkn_context that is not an object, and an object
 // holding only parent_operation_id, business_refs or a misspelt field. Each of
