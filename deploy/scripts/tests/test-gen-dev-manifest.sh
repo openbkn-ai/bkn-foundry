@@ -53,3 +53,30 @@ legacy = "0.1.5-release.sha1643ce0"
 assert newest_branch_build([legacy], "release", "0.1.5") == legacy
 assert newest_branch_build([legacy, "0.1.5-release.sha2aa3ce0"], "release", "0.1.5") is None
 PY
+
+test_bin="$(mktemp -d)"
+trap 'rm -rf "${test_bin}"' EXIT
+cat > "${test_bin}/git" <<'SH'
+#!/usr/bin/env bash
+if [[ "$1 $2 $3 $4" == "symbolic-ref --quiet --short HEAD" && -n "${TEST_GIT_BRANCH:-}" ]]; then
+    printf '%s\n' "${TEST_GIT_BRANCH}"
+    exit 0
+fi
+exit 1
+SH
+chmod +x "${test_bin}/git"
+
+assert_latest_branch() {
+    local branch="$1" expected="$2"
+    local output status
+    set +e
+    output="$(PATH="${test_bin}:${PATH}" TEST_GIT_BRANCH="${branch}" bash "${script_dir}/gen-dev-manifest.sh" --latest --template=/missing 2>&1)"
+    status=$?
+    set -e
+    [[ ${status} -ne 0 ]] || { echo "--latest unexpectedly succeeded for ${branch}" >&2; exit 1; }
+    [[ "${output}" == *"${expected}"* ]] || { echo "unexpected --latest output for ${branch}: ${output}" >&2; exit 1; }
+}
+
+assert_latest_branch "main" "current branch is main; resolving newest main builds"
+assert_latest_branch "release/0.1.5" "current branch is release/0.1.5; resolving its newest builds"
+assert_latest_branch "feature/my-work" "only supports main or release/X.Y.Z"

@@ -22,13 +22,11 @@
 #
 # With no --branch it is pure stable: every chart = highest clean semver.
 #
-# --latest overrides the above: resolve EACH chart to its NEWEST main build,
-# i.e. among tags of the form <semver>-main.<YYYYMMDDHHMMSS>.sha<7hex>, pick the
-# one with the most recent embedded commit time (a plain string compare on the
-# fixed-width date — no local git history needed). If a chart has no such build,
-# fall back to stable (highest clean semver), then to the normal missing/error
-# handling. --latest is independent of --branch; if both are given, --latest
-# wins. Use this for "newest of everything from main", restricted-network safe.
+# --latest resolves builds for the current Git branch. On main it selects each
+# chart's newest main build. On release/X.Y.Z it composes the newest build from
+# that release branch per chart, with the normal stable/main fallbacks for
+# components untouched by incremental release builds. Other branches and a
+# detached HEAD are rejected so --latest cannot silently install main builds.
 #
 # Requires: python3 (queries GHCR OCI registry anonymously; no gh/PAT for public packages). On macOS the system python3 may lack CA certs; set SSL_CERT_FILE=/etc/ssl/cert.pem (or `pip install certifi`) if every chart resolves NOT FOUND.
 #
@@ -36,7 +34,7 @@
 #   ./gen-dev-manifest.sh                          # latest stable, all charts
 #   ./gen-dev-manifest.sh --branch=fix/my-thing    # my branch + stable fallback
 #   ./gen-dev-manifest.sh --branch=feat/x --base=release/0.2 --out=/tmp/m.yaml
-#   ./gen-dev-manifest.sh --latest --out=/tmp/m.yaml  # newest main build per chart
+#   ./gen-dev-manifest.sh --latest --out=/tmp/m.yaml  # newest builds for main or release/X.Y.Z
 # =============================================================================
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,8 +64,36 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-if [ -n "${LATEST}" ] && [ -n "${BRANCH}" ]; then
-    echo "Note: --latest overrides --branch ('${BRANCH}'); resolving newest main build per chart." >&2
+if [ -n "${LATEST}" ]; then
+    if [ -n "${BRANCH}" ]; then
+        echo "Note: --latest ignores --branch ('${BRANCH}') and uses the current Git branch." >&2
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        echo "Error: --latest requires git to identify the current branch." >&2
+        exit 1
+    fi
+    if ! CURRENT_BRANCH="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)"; then
+        echo "Error: --latest requires a checked-out main or release/X.Y.Z branch; detached HEAD is not supported." >&2
+        exit 1
+    fi
+    case "${CURRENT_BRANCH}" in
+        main)
+            echo "--latest: current branch is main; resolving newest main builds per chart." >&2
+            ;;
+        release/[0-9]*.[0-9]*.[0-9]*)
+            if [[ ! "${CURRENT_BRANCH}" =~ ^release/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "Error: --latest only supports main or release/X.Y.Z; current branch is '${CURRENT_BRANCH}'." >&2
+                exit 1
+            fi
+            BRANCH="${CURRENT_BRANCH}"
+            LATEST=""
+            echo "--latest: current branch is ${CURRENT_BRANCH}; resolving its newest builds per chart." >&2
+            ;;
+        *)
+            echo "Error: --latest only supports main or release/X.Y.Z; current branch is '${CURRENT_BRANCH}'. Use --branch=<branch> to generate an explicit branch manifest." >&2
+            exit 1
+            ;;
+    esac
 fi
 
 command -v python3 >/dev/null 2>&1 || { echo "Error: python3 required." >&2; exit 1; }

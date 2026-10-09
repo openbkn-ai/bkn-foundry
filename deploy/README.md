@@ -173,8 +173,11 @@ The generated manifest annotates each chart's source (`branch` / `stable` /
 `base`). Requires `python3`; see `./scripts/gen-dev-manifest.sh -h`.
 
 Before a release is cut there is **no clean stable**, so to install the **newest
-build of every component** use `--latest` — it resolves each chart to its newest
-`…-main.<date>.sha…` build (ordered by the commit time embedded in the tag), else latest stable:
+build of every component** use `--latest`. It resolves according to the checked-out
+Git branch: on `main`, each chart uses its newest `…-main.<date>.sha…` build; on
+`release/X.Y.Z`, it uses that release line's newest build for each chart. Release
+charts not rebuilt by an incremental push retain the normal stable, then main,
+fallback. Other branches and a detached HEAD fail explicitly:
 
 ```bash
 ./scripts/gen-dev-manifest.sh --latest --out=/tmp/m.yaml
@@ -182,7 +185,8 @@ build of every component** use `--latest` — it resolves each chart to its newe
 
 > macOS note: the system `python3` may lack CA certs and silently resolve every
 > chart as `NOT FOUND`. Set `SSL_CERT_FILE=/etc/ssl/cert.pem` (or `pip install certifi`).
-> `--latest` orders builds via local `git`, so run it from a repo checkout.
+> `--latest` identifies the current branch with local `git`, so run it from a
+> checkout on `main` or `release/X.Y.Z`.
 
 ### Install behind a restricted network (CN / no docker.io / slow GHCR)
 
@@ -192,7 +196,7 @@ On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts
 
 - **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** and the bundled **data-service / ingress** images (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr` (when config file does not set `image.registry`). SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
 - **`--dockerhub-mirror=<auto / host / off>`** — containerd `docker.io` mirror for **third-party images** (otel/hydra/postgres/minio). Writes `/etc/containerd/certs.d/docker.io/hosts.toml` (needs root + a containerd `config_path` certs.d; else it warns and skips, never fails). **Defaults to `auto`** — probes a candidate list and picks the first mirror that serves this stack's docker.io images over the mirror (`?ns=docker.io`) protocol (sentinel `oryd/hydra`; `docker.m.daocloud.io` 403s namespaced repos there, so a fixed default isn't safe). Pass a host to pin one (e.g. `docker.1panel.live`); `off` disables. Candidate list overridable via `OPENBKN_DOCKERHUB_MIRROR_CANDIDATES`.
-- **`--latest`** — when no `--version_file` is given, auto-runs `gen-dev-manifest.sh --latest` and installs the result (run from a repo checkout — it needs `git`).
+- **`--latest`** — when no `--version_file` is given, auto-runs `gen-dev-manifest.sh --latest` for the checked-out `main` or `release/X.Y.Z` branch and installs the result (run from a repo checkout — it needs `git`).
 
 ```bash
 # Newest builds + BKN images from SWR + docker.io third-party via the default mirror:

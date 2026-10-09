@@ -22,8 +22,8 @@ CORE_IMAGE_REGISTRY="${CORE_IMAGE_REGISTRY:-}"
 # fixed default isn't safe). Pass a host to pin one; "off" to disable.
 CORE_DOCKERHUB_MIRROR="${CORE_DOCKERHUB_MIRROR:-auto}"
 
-# --latest: when set and no --version_file is given, auto-generate a latest manifest
-# via scripts/gen-dev-manifest.sh --latest and use it as the version_file.
+# --latest: when set and no --version_file is given, generate a manifest for the
+# current main or release/X.Y.Z branch and use it as the version_file.
 CORE_USE_LATEST_MANIFEST="${CORE_USE_LATEST_MANIFEST:-false}"
 
 # Global --set values array
@@ -1673,10 +1673,10 @@ EOF
 
 # Resolve the working manifest for install/download. Default (no --version /
 # --version_file / --latest): the newest embedded release manifest; when the
-# repo carries none (pre-first-release), fall back to following the newest
-# main build per chart (same resolution as --latest).
+# repo carries none (pre-first-release), fall back to following builds for the
+# current main or release/X.Y.Z branch (same resolution as --latest).
 _openbkn_resolve_latest_manifest() {
-    # --version=dev: named alias for the follow-main channel (same as --latest).
+    # --version=dev: named alias for the current-branch channel (same as --latest).
     # Cleared so downstream chart-version resolution never sees "dev" as a version.
     if [[ "${HELM_CHART_VERSION:-}" == "dev" ]]; then
         HELM_CHART_VERSION=""
@@ -1690,10 +1690,10 @@ _openbkn_resolve_latest_manifest() {
         newest_release="$(resolve_latest_embedded_release_manifest "bkn-foundry")"
         if [[ -n "${newest_release}" ]]; then
             CORE_VERSION_MANIFEST_FILE="${newest_release}"
-            log_info "Defaulting to newest release manifest: ${newest_release} (pass --latest to follow main builds instead)."
+            log_info "Defaulting to newest release manifest: ${newest_release} (pass --latest to follow builds for the current branch instead)."
             return 0
         fi
-        log_info "No release manifest in this repo yet — following the newest main builds (pass --version_file=<manifest> for a pinned set)."
+        log_info "No release manifest in this repo yet — following newest builds for the current branch (pass --version_file=<manifest> for a pinned set)."
         CORE_USE_LATEST_MANIFEST="true"
     fi
     if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then

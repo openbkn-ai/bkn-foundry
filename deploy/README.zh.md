@@ -169,8 +169,11 @@ release 分支先由一次全量构建建立基线，后续差异构建只替换
 `X.Y.Z-release-X.Y.Z` tag。需要 `python3`；详见
 `./scripts/gen-dev-manifest.sh -h`。
 
-发版之前没有干净 stable，要装**每个组件的最新构建**用 `--latest` —— 逐 chart 取
-其最新 `…-main.<日期>.sha…` 构建（按 tag 内嵌的提交时间排序），否则回退最新 stable：
+发版之前没有干净 stable，要装**每个组件的最新构建**用 `--latest`。它按当前 Git
+分支解析：在 `main` 上，逐 chart 取最新 `…-main.<日期>.sha…` 构建；在
+`release/X.Y.Z` 上，逐 chart 取该 release 分支的最新构建。release 的增量构建中未
+重建的 chart 仍按既有规则回退到最新 stable、再回退 main；其他分支和 detached HEAD
+会明确报错：
 
 ```bash
 ./scripts/gen-dev-manifest.sh --latest --out=/tmp/m.yaml
@@ -178,7 +181,7 @@ release 分支先由一次全量构建建立基线，后续差异构建只替换
 
 > macOS 注意：系统自带 `python3` 可能缺 CA 证书，导致逐 chart 静默解析成 `NOT FOUND`。
 > 设 `SSL_CERT_FILE=/etc/ssl/cert.pem`（或 `pip install certifi`）。`--latest` 用本地 `git`
-> 排序构建，需在仓库 checkout 内运行。
+> 识别当前分支，需在 `main` 或 `release/X.Y.Z` 的仓库 checkout 内运行。
 
 ### 受限网络安装（国内 / 连不上 docker.io / GHCR 拉取慢）
 
@@ -187,7 +190,7 @@ release 分支先由一次全量构建建立基线，后续差异构建只替换
 
 - **`--registry=<swr / ghcr / host/ns>`** —— **BKN 镜像**以及内置 **数据服务 / ingress** 镜像的 registry（`--set image.registry` 的糖）。`swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`，`ghcr` → `ghcr.io/openbkn-ai`。优先级：显式 `--set image.registry=…` > `--registry` > `--config` YAML 里已有的 `image.registry`（尊重，如 `dev/conf/mac-config.yaml`）> 默认 `swr`（当配置文件未设置 `image.registry` 时）。SWR 与 GHCR 同步同样的 `…-main.<日期>.sha…` 构建 tag。
 - **`--dockerhub-mirror=<auto / host / off>`** —— **第三方镜像**（otel/hydra/postgres/minio）的 containerd `docker.io` mirror。写 `/etc/containerd/certs.d/docker.io/hosts.toml`（需 root + containerd 配了 `config_path` certs.d；否则告警跳过、不报错）。**默认 `auto`** —— 探测候选列表，选第一个能经 mirror（`?ns=docker.io`）协议服务本栈 docker.io 镜像的（标志镜像 `oryd/hydra`；`docker.m.daocloud.io` 对带 namespace 的仓库会 403，所以固定默认不安全）。传 host 钉死某个（如 `docker.1panel.live`）；`off` 关闭。候选列表可用 `OPENBKN_DOCKERHUB_MIRROR_CANDIDATES` 覆盖。
-- **`--latest`** —— 没给 `--version_file` 时自动跑 `gen-dev-manifest.sh --latest` 并安装结果（需在仓库 checkout 内运行，依赖 `git`）。
+- **`--latest`** —— 没给 `--version_file` 时，按当前 checkout 的 `main` 或 `release/X.Y.Z` 自动跑 `gen-dev-manifest.sh --latest` 并安装结果（依赖 `git`）。
 
 ```bash
 # 最新构建 + BKN 镜像走 SWR + docker.io 第三方走默认 mirror：
