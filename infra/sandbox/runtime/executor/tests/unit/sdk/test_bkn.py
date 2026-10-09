@@ -214,6 +214,25 @@ def test_shipped_artifact_is_importable_and_versioned():
         assert not hasattr(_bkn_tools, name), name
 
 
+def test_action_execution_pagination_is_available_from_bkn(monkeypatch):
+    """The shipped surface must accept and forward result pagination from user code."""
+    from sandbox_sdk import _bkn_tools
+
+    calls = []
+    monkeypatch.setattr(_bkn_tools, "_configure", lambda event: None)
+    monkeypatch.setattr(_bkn_tools, "_call", lambda tool, args: calls.append((tool, args)))
+    bkn.configure_runtime({"token": "tok", "mcp": "http://svc/mcp/"})
+
+    bkn.get_action_execution(
+        execution_id="exec_1", kn_id="kn_1", results_limit=10, results_offset=20
+    )
+
+    assert calls == [("get_action_execution", {
+        "execution_id": "exec_1", "kn_id": "kn_1", "response_format": "json",
+        "results_limit": 10, "results_offset": 20,
+    })]
+
+
 def test_internal_queries_carry_parent_without_reusing_operation_id(monkeypatch):
     from sandbox_sdk import _bkn_tools
 
