@@ -75,7 +75,7 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_task WHERE f_catalog_id = ? AND f_status IN (?,?) AND f_strategy = ? AND f_trigger_type = ?").
 			WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskStatusPending, interfaces.DiscoverStrategyFullSync, interfaces.DiscoverTaskTriggerScheduled).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectQuery("SELECT "+strings.Join(discoverTaskSummaryColumns(), ", ")+" FROM t_discover_task WHERE f_catalog_id = ? AND f_status IN (?,?) AND f_strategy = ? AND f_trigger_type = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5").
+		mock.ExpectQuery("SELECT "+strings.Join(discoverTaskSummaryColumns(), ", ")+" FROM t_discover_task WHERE f_catalog_id = ? AND f_status IN (?,?) AND f_strategy = ? AND f_trigger_type = ? ORDER BY f_create_time ASC, f_id ASC LIMIT 10 OFFSET 5").
 			WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskStatusPending, interfaces.DiscoverStrategyFullSync, interfaces.DiscoverTaskTriggerScheduled).
 			WillReturnRows(discoverTaskSummaryRows().AddRow("task-1", "catalog-1", "", "schedule-1", "full_sync", interfaces.DiscoverTaskTriggerScheduled, interfaces.DiscoverTaskQueuePriorityLow, interfaces.DiscoverTaskStatusRunning, 10, int64(0), int64(0), int64(0), `{"catalog_id":"catalog-1","new_count":2,"message":"large detail"}`, "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
 
@@ -101,7 +101,7 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
 			Statuses:              []string{interfaces.DiscoverTaskStatusPending},
 		}
-		mock.ExpectQuery("SELECT " + strings.Join(discoverTaskSummaryColumns(), ", ") + " FROM t_discover_task WHERE f_status IN (?) ORDER BY f_create_time DESC LIMIT 1 OFFSET 0").
+		mock.ExpectQuery("SELECT " + strings.Join(discoverTaskSummaryColumns(), ", ") + " FROM t_discover_task WHERE f_status IN (?) ORDER BY f_create_time DESC, f_id DESC LIMIT 1 OFFSET 0").
 			WithArgs(interfaces.DiscoverTaskStatusPending).
 			WillReturnRows(discoverTaskSummaryRows().AddRow("task-1", "catalog-1", "", "", "full_sync", "manual", interfaces.DiscoverTaskQueuePriorityNormal, interfaces.DiscoverTaskStatusPending, 0, int64(0), int64(0), int64(0), "", "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
 
@@ -123,7 +123,7 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 			},
 			Statuses: []string{interfaces.DiscoverTaskStatusPending},
 		}
-		mock.ExpectQuery("SELECT " + strings.Join(discoverTaskSummaryColumns(), ", ") + " FROM t_discover_task WHERE f_status IN (?) ORDER BY f_queue_priority DESC, f_create_time ASC LIMIT 1 OFFSET 0").
+		mock.ExpectQuery("SELECT " + strings.Join(discoverTaskSummaryColumns(), ", ") + " FROM t_discover_task WHERE f_status IN (?) ORDER BY f_queue_priority DESC, f_create_time ASC, f_id ASC LIMIT 1 OFFSET 0").
 			WithArgs(interfaces.DiscoverTaskStatusPending).
 			WillReturnRows(discoverTaskSummaryRows().AddRow("task-1", "catalog-1", "", "", "full_sync", "manual", interfaces.DiscoverTaskQueuePriorityHigh, interfaces.DiscoverTaskStatusPending, 0, int64(0), int64(0), int64(0), "", "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
 
@@ -141,7 +141,7 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 				Limit: 1, Sort: interfaces.DiscoverTaskSortLastProgressTime, Direction: interfaces.ASC_DIRECTION,
 			},
 		}
-		mock.ExpectQuery("SELECT " + strings.Join(discoverTaskSummaryColumns(), ", ") + " FROM t_discover_task ORDER BY f_last_progress_time ASC LIMIT 1 OFFSET 0").
+		mock.ExpectQuery("SELECT " + strings.Join(discoverTaskSummaryColumns(), ", ") + " FROM t_discover_task ORDER BY f_last_progress_time ASC, f_id ASC LIMIT 1 OFFSET 0").
 			WillReturnRows(discoverTaskSummaryRows().AddRow("task-1", "catalog-1", "", "", "full_sync", "manual", interfaces.DiscoverTaskQueuePriorityNormal, interfaces.DiscoverTaskStatusRunning, 25, int64(1), int64(0), int64(2), "", "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
 
 		got, err := access.InternalList(context.Background(), params)
@@ -406,4 +406,29 @@ func discoverTaskRows() *sqlmock.Rows {
 
 func discoverTaskSummaryRows() *sqlmock.Rows {
 	return sqlmock.NewRows(discoverTaskSummaryColumns())
+}
+
+func TestBuildOrderByClause(t *testing.T) {
+	t.Run("uses a unique ID to break ties for every supported sort", func(t *testing.T) {
+		for _, field := range []string{"create_time", "start_time", "finish_time", "last_progress_time"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				t.Run(field+"/"+direction, func(t *testing.T) {
+					assert.Equal(t, "f_"+field+" "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+				})
+			}
+		}
+	})
+	t.Run("preserves queue priority and FIFO before the unique ID", func(t *testing.T) {
+		for _, direction := range []string{"ASC", "DESC"} {
+			assert.Equal(t, "f_queue_priority DESC, f_create_time ASC, f_id ASC", buildOrderByClause("queue_priority", direction))
+		}
+	})
+	t.Run("default sort preserves the requested direction", func(t *testing.T) {
+		for _, field := range []string{"", "unknown"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				assert.Equal(t, "f_create_time "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+			}
+		}
+	})
+
 }

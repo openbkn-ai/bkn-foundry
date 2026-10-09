@@ -85,7 +85,7 @@ func TestCatalogAccessListPermissionRefs(t *testing.T) {
 			Enabled:               &enabled,
 			HealthCheckStatus:     interfaces.CatalogHealthStatusHealthy,
 		}
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog WHERE f_builtin = ? AND f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog WHERE f_builtin = ? AND f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC, f_id ASC")).
 			WithArgs(false, "%cat%", "%tag%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("catalog-1").AddRow("catalog-2"))
 
@@ -169,7 +169,7 @@ func TestCatalogAccessList(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_builtin = ? AND f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ?")).
 			WithArgs(false, "%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta(catalogSummarySelectSQL("f_builtin = ? AND f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC"))).
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSummarySelectSQL("f_builtin = ? AND f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC, f_id ASC"))).
 			WithArgs(false, "%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(catalogSummaryRows().AddRow(catalogSummaryRowValues(sampleCatalog())...))
 
@@ -491,18 +491,35 @@ func TestCatalogAccessDeleteByID(t *testing.T) {
 	})
 }
 
-func TestCatalogListOrderByClause(t *testing.T) {
+func TestBuildOrderByClause(t *testing.T) {
 	t.Run("maps supported API fields", func(t *testing.T) {
-		assert.Equal(t, "f_name ASC", catalogListOrderByClause(interfaces.CatalogSortName, "ASC"))
-		assert.Equal(t, "f_create_time DESC", catalogListOrderByClause(interfaces.CatalogSortCreateTime, "desc"))
-		assert.Equal(t, "f_update_time ASC", catalogListOrderByClause(interfaces.CatalogSortUpdateTime, "asc"))
+		assert.Equal(t, "f_name ASC, f_id ASC", buildOrderByClause(interfaces.CatalogSortName, "ASC"))
+		assert.Equal(t, "f_create_time DESC, f_id DESC", buildOrderByClause(interfaces.CatalogSortCreateTime, "desc"))
+		assert.Equal(t, "f_update_time ASC, f_id ASC", buildOrderByClause(interfaces.CatalogSortUpdateTime, "asc"))
 	})
 
 	t.Run("falls back for empty or invalid values", func(t *testing.T) {
-		assert.Equal(t, "f_update_time DESC", catalogListOrderByClause("", "ASC"))
-		assert.Equal(t, "f_update_time DESC", catalogListOrderByClause("f_name", "ASC"))
-		assert.Equal(t, "f_name DESC", catalogListOrderByClause(interfaces.CatalogSortName, "invalid"))
+		assert.Equal(t, "f_update_time ASC, f_id ASC", buildOrderByClause("", "ASC"))
+		assert.Equal(t, "f_update_time ASC, f_id ASC", buildOrderByClause("f_name", "ASC"))
+		assert.Equal(t, "f_name DESC, f_id DESC", buildOrderByClause(interfaces.CatalogSortName, "invalid"))
 	})
+	t.Run("uses a unique ID to break ties for every supported sort", func(t *testing.T) {
+		for _, field := range []string{"name", "create_time", "update_time"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				t.Run(field+"/"+direction, func(t *testing.T) {
+					assert.Equal(t, "f_"+field+" "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+				})
+			}
+		}
+	})
+	t.Run("default column preserves direction", func(t *testing.T) {
+		for _, field := range []string{"", "unknown"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				assert.Equal(t, "f_update_time "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+			}
+		}
+	})
+
 }
 
 func newCatalogAccessMock(t *testing.T) (*catalogAccess, sqlmock.Sqlmock, func()) {

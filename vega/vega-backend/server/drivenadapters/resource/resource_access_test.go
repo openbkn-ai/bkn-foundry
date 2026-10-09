@@ -406,7 +406,7 @@ func TestResourceAccessList(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_builtin = ? AND (f_name LIKE ? OR f_source_identifier LIKE ?) AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_enabled = ? AND f_last_discover_status = ? AND f_schema = ?")).
 			WithArgs(false, "%order%", "%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, true, interfaces.DiscoverStatusUpdated, "db1").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta(resourceSummarySelectSQL("f_builtin = ? AND (f_name LIKE ? OR f_source_identifier LIKE ?) AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_enabled = ? AND f_last_discover_status = ? AND f_schema = ? ORDER BY f_name ASC"))).
+		mock.ExpectQuery(regexp.QuoteMeta(resourceSummarySelectSQL("f_builtin = ? AND (f_name LIKE ? OR f_source_identifier LIKE ?) AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_enabled = ? AND f_last_discover_status = ? AND f_schema = ? ORDER BY f_name ASC, f_id ASC"))).
 			WithArgs(false, "%order%", "%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, true, interfaces.DiscoverStatusUpdated, "db1").
 			WillReturnRows(resourceSummaryRows().AddRow(resourceSummaryRowValues(sampleResource())...))
 
@@ -665,7 +665,7 @@ func TestResourceAccessListPermissionRefs(t *testing.T) {
 			CatalogID:             "catalog-1",
 			Category:              interfaces.ResourceCategoryTable,
 		}
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id FROM t_resource WHERE f_builtin = ? AND f_catalog_id = ? AND f_category = ? ORDER BY f_update_time DESC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id FROM t_resource WHERE f_builtin = ? AND f_catalog_id = ? AND f_category = ? ORDER BY f_update_time DESC, f_id DESC")).
 			WithArgs(false, "catalog-1", interfaces.ResourceCategoryTable).
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_catalog_id"}).AddRow("resource-1", "catalog-1"))
 
@@ -680,7 +680,7 @@ func TestResourceAccessListPermissionRefs(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id FROM t_resource ORDER BY f_update_time DESC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id FROM t_resource ORDER BY f_update_time DESC, f_id DESC")).
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_catalog_id"}).
 				AddRow("resource-internal", "catalog-internal"))
 
@@ -954,18 +954,35 @@ func TestResourceAccessDeleteByCatalogID(t *testing.T) {
 	})
 }
 
-func TestResourceListOrderByClause(t *testing.T) {
+func TestBuildOrderByClause(t *testing.T) {
 	t.Run("maps supported API fields", func(t *testing.T) {
-		assert.Equal(t, "f_name ASC", resourceListOrderByClause(interfaces.ResourceSortName, "ASC"))
-		assert.Equal(t, "f_create_time DESC", resourceListOrderByClause(interfaces.ResourceSortCreateTime, "desc"))
-		assert.Equal(t, "f_update_time ASC", resourceListOrderByClause(interfaces.ResourceSortUpdateTime, "asc"))
+		assert.Equal(t, "f_name ASC, f_id ASC", buildOrderByClause(interfaces.ResourceSortName, "ASC"))
+		assert.Equal(t, "f_create_time DESC, f_id DESC", buildOrderByClause(interfaces.ResourceSortCreateTime, "desc"))
+		assert.Equal(t, "f_update_time ASC, f_id ASC", buildOrderByClause(interfaces.ResourceSortUpdateTime, "asc"))
 	})
 
 	t.Run("falls back for empty or invalid values", func(t *testing.T) {
-		assert.Equal(t, "f_update_time DESC", resourceListOrderByClause("", "ASC"))
-		assert.Equal(t, "f_update_time DESC", resourceListOrderByClause("f_name", "ASC"))
-		assert.Equal(t, "f_name DESC", resourceListOrderByClause(interfaces.ResourceSortName, "invalid"))
+		assert.Equal(t, "f_update_time ASC, f_id ASC", buildOrderByClause("", "ASC"))
+		assert.Equal(t, "f_update_time ASC, f_id ASC", buildOrderByClause("f_name", "ASC"))
+		assert.Equal(t, "f_name DESC, f_id DESC", buildOrderByClause(interfaces.ResourceSortName, "invalid"))
 	})
+	t.Run("uses a unique ID to break ties for every supported sort", func(t *testing.T) {
+		for _, field := range []string{"name", "create_time", "update_time"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				t.Run(field+"/"+direction, func(t *testing.T) {
+					assert.Equal(t, "f_"+field+" "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+				})
+			}
+		}
+	})
+	t.Run("default column preserves direction", func(t *testing.T) {
+		for _, field := range []string{"", "unknown"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				assert.Equal(t, "f_update_time "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+			}
+		}
+	})
+
 }
 
 func newResourceAccessMock(t *testing.T) (*resourceAccess, sqlmock.Sqlmock, func()) {

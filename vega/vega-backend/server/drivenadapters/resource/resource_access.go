@@ -526,7 +526,7 @@ func (ra *resourceAccess) ListPermissionRefs(ctx context.Context, params interfa
 	builder := sq.Select("f_id", "f_catalog_id").From(RESOURCE_TABLE_NAME)
 	builder = applyResourceFilters(builder, params)
 
-	builder = builder.OrderBy(resourceListOrderByClause(params.Sort, params.Direction))
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -581,7 +581,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	}
 
 	// Pagination is applied in service after permission filtering.
-	builder = builder.OrderBy(resourceListOrderByClause(params.Sort, params.Direction))
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -1249,24 +1249,26 @@ func applyResourceFilters(builder sq.SelectBuilder, params interfaces.ResourcesQ
 	return builder
 }
 
-// resourceListOrderByClause translates API sort fields into a safe ORDER BY clause.
-// Empty or unknown sort values fall back to update time descending.
-func resourceListOrderByClause(sort, direction string) string {
+// buildOrderByClause translates API sort fields into a safe ORDER BY clause.
+// Empty or unknown sort values fall back to update time, preserving direction.
+// The unique ID makes pagination deterministic when primary sort values tie.
+func buildOrderByClause(sort, direction string) string {
 	dir := "DESC"
 	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
 		dir = "ASC"
 	}
-
+	var column string
 	switch sort {
 	case interfaces.ResourceSortName:
-		return "f_name " + dir
+		column = "f_name"
 	case interfaces.ResourceSortCreateTime:
-		return "f_create_time " + dir
+		column = "f_create_time"
 	case interfaces.ResourceSortUpdateTime:
-		return "f_update_time " + dir
+		column = "f_update_time"
 	default:
-		return "f_update_time DESC"
+		column = "f_update_time"
 	}
+	return fmt.Sprintf("%s %s, f_id %s", column, dir, dir)
 }
 
 // UpdateRowCount 仅更新统计，原子保留其他元数据及资源版本。

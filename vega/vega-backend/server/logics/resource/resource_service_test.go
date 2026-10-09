@@ -702,6 +702,61 @@ func TestResourceServiceInternalGetByCatalogID(t *testing.T) {
 }
 
 func TestResourceServiceList(t *testing.T) {
+	t.Run("preserves page prefixes and covers authorized resources with tied timestamps", func(t *testing.T) {
+		allIDs := []string{"r4", "r3", "r2", "r1"}
+		listPage := func(offset, limit int) []string {
+			rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
+			params := interfaces.ResourcesQueryParams{
+				PaginationQueryParams: interfaces.PaginationQueryParams{
+					Sort: interfaces.ResourceSortUpdateTime, Direction: interfaces.DESC_DIRECTION,
+					Offset: offset, Limit: limit,
+				},
+			}
+			// The access layer supplies the full order including the ID tiebreaker.
+			refs := []interfaces.ResourcePermissionRef{{ResourceID: "r4"}, {ResourceID: "hidden"},
+				{ResourceID: "r3"}, {ResourceID: "r2"}, {ResourceID: "r1"}}
+			mockRA.EXPECT().ListPermissionRefs(gomock.Any(), params).Return(refs, nil)
+			mockPS.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(),
+				[]string{"r4", "hidden", "r3", "r2", "r1"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).
+				Return(map[string]interfaces.PermissionResourceOps{
+					"r1": {ResourceID: "r1"}, "r3": {ResourceID: "r3"},
+					"r2": {ResourceID: "r2"}, "r4": {ResourceID: "r4"},
+				}, nil)
+			end := offset + limit
+			if end > len(allIDs) {
+				end = len(allIDs)
+			}
+			pageIDs := allIDs[offset:end]
+			mockRA.EXPECT().GetSummariesByIDs(gomock.Any(), pageIDs).
+				DoAndReturn(func(_ context.Context, ids []string) (map[string]*interfaces.ResourceSummary, error) {
+					result := make(map[string]*interfaces.ResourceSummary, len(ids))
+					for i := len(ids) - 1; i >= 0; i-- {
+						result[ids[i]] = &interfaces.ResourceSummary{ID: ids[i], UpdateTime: 100}
+					}
+					return result, nil
+				})
+			mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+			result, total, err := rs.List(context.Background(), params)
+			require.NoError(t, err)
+			assert.Equal(t, int64(len(allIDs)), total)
+			ids := make([]string, 0, len(result))
+			for _, summary := range result {
+				ids = append(ids, summary.ID)
+			}
+			return ids
+		}
+		full := listPage(0, 4)
+		assert.Equal(t, allIDs, full)
+		for _, limit := range []int{1, 2, 3} {
+			assert.Equal(t, full[:limit], listPage(0, limit))
+			var traversed []string
+			for offset := 0; offset < len(allIDs); offset += limit {
+				traversed = append(traversed, listPage(offset, limit)...)
+			}
+			assert.Equal(t, allIDs, traversed)
+		}
+	})
+
 	t.Run("includes internal candidates for built-in admin", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
 		mockRA.EXPECT().ListPermissionRefs(gomock.Any(), interfaces.ResourcesQueryParams{IncludeBuiltin: true}).
