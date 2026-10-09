@@ -22,6 +22,11 @@ import (
 func TestOpenSearchSubFieldFeatures(t *testing.T) {
 	t.Run("maps opensearch sub field types to features", func(t *testing.T) {
 		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("keyword"))
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("constant_keyword"))
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("wildcard"))
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("icu_collation_keyword"))
+		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, osSubFieldTypeToFeatureType("match_only_text"))
+		assert.Empty(t, osSubFieldTypeToFeatureType("dense_vector"))
 		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, osSubFieldTypeToFeatureType("text"))
 		assert.Equal(t, interfaces.PropertyFeatureType_Vector, osSubFieldTypeToFeatureType("knn_vector"))
 		assert.Empty(t, osSubFieldTypeToFeatureType("object"))
@@ -296,5 +301,36 @@ func TestEnrichIndexMetadataSynchronizesFieldDescriptions(t *testing.T) {
 		indexMeta: &interfaces.IndexMeta{Name: "products"},
 	}}, &interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
 
+	require.NoError(t, err)
+}
+
+func TestEnrichIndexMetadataResolvesAliasWithoutLosingSourceType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := vmock.NewMockResourceService(ctrl)
+	connector := vmock.NewMockIndexConnector(ctrl)
+	resource := &interfaces.Resource{ID: "r1"}
+	connector.EXPECT().GetIndexMeta(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, index *interfaces.IndexMeta) error {
+			index.Mapping = map[string]interfaces.IndexFieldMeta{
+				"age_alias": {Name: "age_alias", Type: "alias", ResolvedType: "long",
+					Attributes: map[string]any{"type": "alias", "path": "profile.age"}},
+			}
+			return nil
+		})
+	connector.EXPECT().MapType("long").Return(interfaces.DataType_Integer)
+	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
+			require.Len(t, updated.SchemaDefinition, 1)
+			field := updated.SchemaDefinition[0]
+			assert.Equal(t, interfaces.DataType_Integer, field.Type)
+			assert.Equal(t, "alias", field.OriginalType)
+			assert.Equal(t, "age_alias", field.OriginalName)
+			assert.Equal(t, map[string]any{"path": "profile.age"}, field.Attributes)
+			return nil
+		})
+	worker := &DiscoverTaskWorker{rs: rs}
+	err := worker.enrichIndexMetadata(t.Context(), &interfaces.DiscoverTask{}, connector,
+		[]indexDiscoverItem{{resource: resource, indexMeta: &interfaces.IndexMeta{Name: "products"}}},
+		&interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
 	require.NoError(t, err)
 }

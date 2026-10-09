@@ -227,8 +227,32 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 		}
 		parseProperties("", idxData.Mappings.Properties, fieldMap)
 	}
+	resolveIndexAliasTypes(fieldMap)
 	index.Mapping = fieldMap
 	return nil
+}
+
+// resolveIndexAliasTypes 解析别名的有效类型，保留原生 alias 类型和 path 元数据。
+// 无效目标和别名链不作猜测，由 MapType 将未解析的 alias 归为 other。
+func resolveIndexAliasTypes(fields map[string]interfaces.IndexFieldMeta) {
+	targetTypes := make(map[string]string, len(fields))
+	for name, field := range fields {
+		if field.Type == "alias" || field.Type == "object" || field.Type == "nested" {
+			continue
+		}
+		targetTypes[name] = field.Type
+		for _, sub := range field.SubFields {
+			targetTypes[name+"."+sub.Name] = sub.Type
+		}
+	}
+	for name, field := range fields {
+		if field.Type != "alias" {
+			continue
+		}
+		path, _ := field.Attributes["path"].(string)
+		field.ResolvedType = targetTypes[path]
+		fields[name] = field
+	}
 }
 
 // Property defines the complete set of field properties.

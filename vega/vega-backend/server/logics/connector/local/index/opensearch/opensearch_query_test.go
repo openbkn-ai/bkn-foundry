@@ -86,58 +86,68 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 }
 
 func TestOpenSearchQueryUsesTextKeywordField(t *testing.T) {
-	queries := make(chan map[string]any, 3)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		var query map[string]any
-		require.NoError(t, sonic.Unmarshal(body, &query))
-		queries <- query
-		w.Header().Set("Content-Type", "application/json")
-		_, err = w.Write([]byte(`{"hits":{"total":{"value":0},"hits":[]},"aggregations":{"__value":{"value":0},"group_by_body":{"buckets":[]}}}`))
-		require.NoError(t, err)
-	}))
-	t.Cleanup(server.Close)
+	for _, fieldName := range []string{"body", "body_alias"} {
+		t.Run(fieldName, func(t *testing.T) {
+			queries := make(chan map[string]any, 3)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				var query map[string]any
+				require.NoError(t, sonic.Unmarshal(body, &query))
+				queries <- query
+				w.Header().Set("Content-Type", "application/json")
+				_, err = w.Write([]byte(`{"hits":{"total":{"value":0},"hits":[]},"aggregations":{"__value":{"value":0},"group_by_body":{"buckets":[]},"group_by_body_alias":{"buckets":[]}}}`))
+				require.NoError(t, err)
+			}))
+			t.Cleanup(server.Close)
 
-	serverURL, err := url.Parse(server.URL)
-	require.NoError(t, err)
-	host, portText, err := net.SplitHostPort(serverURL.Host)
-	require.NoError(t, err)
-	port, err := strconv.Atoi(portText)
-	require.NoError(t, err)
-	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
-	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{
-		Name: "body",
-		Type: interfaces.DataType_Text,
-		Features: []interfaces.PropertyFeature{{
-			FeatureName: "raw",
-			FeatureType: interfaces.PropertyFeatureType_Keyword,
-		}},
-	}}}
+			serverURL, err := url.Parse(server.URL)
+			require.NoError(t, err)
+			host, portText, err := net.SplitHostPort(serverURL.Host)
+			require.NoError(t, err)
+			port, err := strconv.Atoi(portText)
+			require.NoError(t, err)
+			connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{
+				Name: "body",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "raw",
+					FeatureType: interfaces.PropertyFeatureType_Keyword,
+				}},
+			}}}
 
-	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
-		Sort: []*interfaces.SortField{{Field: "body", Direction: "asc"}},
-	})
-	require.NoError(t, err)
-	sortQuery := <-queries
-	sortFields := sortQuery["sort"].([]any)
-	assert.Contains(t, sortFields[0].(map[string]any), "body.raw")
+			resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
+				Name: "body_alias", OriginalName: "body_alias", OriginalType: "alias", Type: interfaces.DataType_Text,
+				Attributes: map[string]any{"path": "body"},
+			})
 
-	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
-		Aggregation: &interfaces.Aggregation{Property: "body", Aggr: "count_distinct"},
-	})
-	require.NoError(t, err)
-	aggregationQuery := <-queries
-	aggregation := aggregationQuery["aggs"].(map[string]any)["__value"].(map[string]any)
-	assert.Equal(t, "body.raw", aggregation["cardinality"].(map[string]any)["field"])
+			_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+				Sort: []*interfaces.SortField{{Field: fieldName, Direction: "asc"}},
+			})
+			require.NoError(t, err)
+			sortQuery := <-queries
+			sortFields := sortQuery["sort"].([]any)
+			assert.Contains(t, sortFields[0].(map[string]any), "body.raw")
 
-	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
-		GroupBy: []*interfaces.GroupByItem{{Property: "body"}},
-	})
-	require.NoError(t, err)
-	groupQuery := <-queries
-	group := groupQuery["aggs"].(map[string]any)["group_by_body"].(map[string]any)
-	assert.Equal(t, "body.raw", group["terms"].(map[string]any)["field"])
+			_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+				Aggregation: &interfaces.Aggregation{Property: fieldName, Aggr: "count_distinct"},
+			})
+			require.NoError(t, err)
+			aggregationQuery := <-queries
+			aggregation := aggregationQuery["aggs"].(map[string]any)["__value"].(map[string]any)
+			assert.Equal(t, "body.raw", aggregation["cardinality"].(map[string]any)["field"])
+
+			_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+				GroupBy: []*interfaces.GroupByItem{{Property: fieldName}},
+			})
+			require.NoError(t, err)
+			groupQuery := <-queries
+			group := groupQuery["aggs"].(map[string]any)["group_by_"+fieldName].(map[string]any)
+			assert.Equal(t, "body.raw", group["terms"].(map[string]any)["field"])
+
+		})
+	}
 }
 
 func TestOpenSearchQueryRejectsTextSortWithoutKeyword(t *testing.T) {

@@ -233,7 +233,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 	if fieldName == "" {
 		fieldName = cond.Lfield.Name
 	}
-	keyword, err := c.getKeywordSuffix(fieldName, schemaDefinition)
+	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
 	if err != nil {
 		return nil, err
 	}
@@ -244,16 +244,16 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 		}
 		return map[string]any{
 			"term": map[string]any{
-				fieldName + keyword: cond.Value,
+				exactField: cond.Value,
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
 		rightFieldName := propertyPhysicalFieldName(cond.Rfield)
-		rightKeyword, err := c.getKeywordSuffix(rightFieldName, schemaDefinition)
+		rightExactField, err := c.exactMatchFieldName(rightFieldName, schemaDefinition)
 		if err != nil {
 			return nil, err
 		}
-		return fieldComparisonScript(fieldName+keyword, "==", rightFieldName+rightKeyword), nil
+		return fieldComparisonScript(exactField, "==", rightExactField), nil
 	default:
 		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -271,7 +271,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 	if fieldName == "" {
 		fieldName = cond.Lfield.Name
 	}
-	keyword, err := c.getKeywordSuffix(fieldName, schemaDefinition)
+	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
 	if err != nil {
 		return nil, err
 	}
@@ -284,18 +284,18 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 			"bool": map[string]any{
 				"must_not": map[string]any{
 					"term": map[string]any{
-						fieldName + keyword: cond.Value,
+						exactField: cond.Value,
 					},
 				},
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
 		rightFieldName := propertyPhysicalFieldName(cond.Rfield)
-		rightKeyword, err := c.getKeywordSuffix(rightFieldName, schemaDefinition)
+		rightExactField, err := c.exactMatchFieldName(rightFieldName, schemaDefinition)
 		if err != nil {
 			return nil, err
 		}
-		return fieldComparisonScript(fieldName+keyword, "!=", rightFieldName+rightKeyword), nil
+		return fieldComparisonScript(exactField, "!=", rightExactField), nil
 	default:
 		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -429,7 +429,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionIn(condition interfaces.Filt
 	if fieldName == "" {
 		fieldName = cond.Lfield.Name
 	}
-	keyword, err := c.getKeywordSuffix(fieldName, schemaDefinition)
+	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
 	if err != nil {
 		return nil, err
 	}
@@ -439,7 +439,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionIn(condition interfaces.Filt
 
 	return map[string]any{
 		"terms": map[string]any{
-			fieldName + keyword: cond.Value,
+			exactField: cond.Value,
 		},
 	}, nil
 }
@@ -460,7 +460,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	if fieldName == "" {
 		fieldName = cond.Lfield.Name
 	}
-	keyword, err := c.getKeywordSuffix(fieldName, schemaDefinition)
+	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +472,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 		"bool": map[string]any{
 			"must_not": map[string]any{
 				"terms": map[string]any{
-					fieldName + keyword: cond.Value,
+					exactField: cond.Value,
 				},
 			},
 		},
@@ -492,7 +492,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionLike(condition interfaces.Fi
 	}
 
 	fieldName := cond.Lfield.OriginalName
-	keyword, err := c.getKeywordSuffix(fieldName, schemaDefinition)
+	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
 	if err != nil {
 		return nil, err
 	}
@@ -500,14 +500,14 @@ func (c *OpenSearchConnector) ConvertFilterConditionLike(condition interfaces.Fi
 	if cond.LegacyWildcards {
 		return map[string]any{
 			"regexp": map[string]any{
-				fieldName + keyword: c.legacyLikeWildcardRegexp(cond.Value),
+				exactField: c.legacyLikeWildcardRegexp(cond.Value),
 			},
 		}, nil
 	}
 
 	return map[string]any{
 		"wildcard": map[string]any{
-			fieldName + keyword: c.likeContainsPattern(cond.Value),
+			exactField: c.likeContainsPattern(cond.Value),
 		},
 	}, nil
 }
@@ -525,20 +525,20 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotLike(condition interfaces
 	}
 
 	fieldName := cond.Lfield.OriginalName
-	keyword, err := c.getKeywordSuffix(fieldName, schemaDefinition)
+	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
 	if err != nil {
 		return nil, err
 	}
 
 	inner := map[string]any{
 		"wildcard": map[string]any{
-			fieldName + keyword: c.likeContainsPattern(cond.Value),
+			exactField: c.likeContainsPattern(cond.Value),
 		},
 	}
 	if cond.LegacyWildcards {
 		inner = map[string]any{
 			"regexp": map[string]any{
-				fieldName + keyword: c.legacyLikeWildcardRegexp(cond.Value),
+				exactField: c.legacyLikeWildcardRegexp(cond.Value),
 			},
 		}
 	}
@@ -1215,51 +1215,71 @@ func (c *OpenSearchConnector) legacyLikeWildcardRegexp(input string) string {
 	return result.String()
 }
 
-// In exact-match query scenarios, text fields use their configured keyword multi-field.
-func (c *OpenSearchConnector) getKeywordSuffix(fieldName string, schemaDefinition []*interfaces.Property) (string, error) {
+// exactMatchProperty 为别名查找目标字段，复用目标的 keyword 配置和校验元数据。
+// 别名不能指向另一个别名；目标不在 schema 中时保留原字段，由调用方保守校验。
+func exactMatchProperty(fieldName string, schemaDefinition []*interfaces.Property) *interfaces.Property {
 	for _, prop := range schemaDefinition {
-		if propertyPhysicalFieldName(prop) == fieldName && prop.Type == interfaces.DataType_Text {
-			for _, feature := range prop.Features {
-				if feature.FeatureType == interfaces.PropertyFeatureType_Keyword {
-					physicalName := featurePhysicalFieldName(fieldName, feature.FeatureName, interfaces.LocalIndexKeywordSubfieldName)
-					return strings.TrimPrefix(physicalName, fieldName), nil
+		if prop == nil || propertyPhysicalFieldName(prop) != fieldName {
+			continue
+		}
+		if prop.OriginalType == "alias" {
+			path, _ := prop.Attributes["path"].(string)
+			for _, target := range schemaDefinition {
+				if target != nil && target.OriginalType != "alias" && propertyPhysicalFieldName(target) == path {
+					return target
 				}
 			}
-			return "", interfaces.NewConditionBuildError("text field %s has no keyword feature; re-save the resource configuration and rebuild the local index, or use match", fieldName)
+		}
+		return prop
+	}
+	return nil
+}
+
+// exactMatchFieldName 将 text 字段或其别名路由到目标字段的 keyword 子字段。
+func (c *OpenSearchConnector) exactMatchFieldName(fieldName string, schemaDefinition []*interfaces.Property) (string, error) {
+	prop := exactMatchProperty(fieldName, schemaDefinition)
+	if prop == nil {
+		return fieldName, nil
+	}
+	physicalName := propertyPhysicalFieldName(prop)
+	if prop.Type != interfaces.DataType_Text {
+		return physicalName, nil
+	}
+	for _, feature := range prop.Features {
+		if feature.FeatureType == interfaces.PropertyFeatureType_Keyword {
+			return featurePhysicalFieldName(physicalName, feature.FeatureName, interfaces.LocalIndexKeywordSubfieldName), nil
 		}
 	}
-	return "", nil
+	return "", interfaces.NewConditionBuildError("text field %s has no keyword feature; re-save the resource configuration and rebuild the local index, or use match", fieldName)
 }
 
 func validateKeywordValues(fieldName string, value any, schemaDefinition []*interfaces.Property) error {
-	for _, prop := range schemaDefinition {
-		if prop == nil || propertyPhysicalFieldName(prop) != fieldName ||
-			(prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text) {
+	prop := exactMatchProperty(fieldName, schemaDefinition)
+	if prop == nil || (prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text) {
+		return nil
+	}
+	for _, feature := range prop.Features {
+		if feature.FeatureType != interfaces.PropertyFeatureType_Keyword {
 			continue
 		}
-		for _, feature := range prop.Features {
-			if feature.FeatureType != interfaces.PropertyFeatureType_Keyword {
-				continue
-			}
-			limit, ok := positiveInt(feature.Config["ignore_above"])
-			if !ok {
-				return nil
-			}
-			values, ok := value.([]any)
-			if !ok {
-				values = []any{value}
-			}
-			for _, candidate := range values {
-				text, ok := candidate.(string)
-				// OpenSearch compares ignore_above with Java String.length(), whose
-				// unit is UTF-16 code units rather than Unicode code points.
-				if ok && len(utf16.Encode([]rune(text))) > limit {
-					return interfaces.NewConditionBuildError(
-						"value for %s field %s exceeds keyword ignore_above %d and cannot be compared exactly", prop.Type, fieldName, limit)
-				}
-			}
+		limit, ok := positiveInt(feature.Config["ignore_above"])
+		if !ok {
 			return nil
 		}
+		values, ok := value.([]any)
+		if !ok {
+			values = []any{value}
+		}
+		for _, candidate := range values {
+			text, ok := candidate.(string)
+			// OpenSearch compares ignore_above with Java String.length(), whose
+			// unit is UTF-16 code units rather than Unicode code points.
+			if ok && len(utf16.Encode([]rune(text))) > limit {
+				return interfaces.NewConditionBuildError(
+					"value for %s field %s exceeds keyword ignore_above %d and cannot be compared exactly", prop.Type, fieldName, limit)
+			}
+		}
+		return nil
 	}
 	return nil
 }
