@@ -7,6 +7,7 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -306,6 +307,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		lim.EXPECT().CheckIndexExist(gomock.Any(), "current-index").Return(true, nil)
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
+		payloads := []string{`{"items":[{"sku":"BOX-01","count":2}]}`, `{"items":["SENSOR-A","SENSOR-B"]}`, `{"items":[]}`, `{"items":null}`}
 		queryCount := 0
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Times(73).DoAndReturn(
 			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
@@ -321,7 +323,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 				for index := range entries {
 					entries[index] = map[string]any{
 						"id":      firstID + int64(index),
-						"payload": `{"region":"cn"}`,
+						"payload": payloads[(index+queryCount)%len(payloads)],
 					}
 				}
 				result := &interfaces.QueryResult{Entries: entries}
@@ -343,7 +345,11 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {
 				require.Len(t, documents, 1000)
 				for _, document := range documents {
-					assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
+					encoded, err := json.Marshal(document["payload"])
+					require.NoError(t, err)
+					id := document["id"].(int64)
+					expected := payloads[(int(id-8001)%1000+indexedBatches+1)%len(payloads)]
+					assert.JSONEq(t, expected, string(encoded))
 				}
 				indexedBatches++
 				return nil, nil

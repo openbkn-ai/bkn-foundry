@@ -3199,3 +3199,28 @@ func TestResourceServiceRowCountReusesCallerTransaction(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyMutableSchemaFields(t *testing.T) {
+	for _, attributes := range []map[string]any{nil, {"enabled": true}, {"enabled": false}} {
+		t.Run(fmt.Sprintf("existing attributes %v", attributes), func(t *testing.T) {
+			originalEnabled := attributes["enabled"]
+			existing := &interfaces.Property{Name: "payload", Type: interfaces.DataType_Json, Attributes: attributes}
+			requested := []*interfaces.Property{
+				{Name: "payload", Type: interfaces.DataType_Json, DisplayName: "Updated", Attributes: map[string]any{"enabled": originalEnabled != true}},
+				{Name: "new_payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true, "source": "jsonb"}},
+				{Name: "new_without_attributes", Type: interfaces.DataType_Json},
+			}
+			got := applyMutableSchemaFields([]*interfaces.Property{existing}, requested, true)
+			require.Len(t, got, 3)
+			assert.Equal(t, attributes, got[0].Attributes)
+			assert.Equal(t, originalEnabled, got[0].Attributes["enabled"])
+			assert.Equal(t, "Updated", got[0].DisplayName)
+			assert.Equal(t, map[string]any{"enabled": false, "source": "jsonb"}, got[1].Attributes)
+			assert.Equal(t, map[string]any{"enabled": false}, got[2].Attributes)
+		})
+	}
+	t.Run("table updates cannot add properties", func(t *testing.T) {
+		got := applyMutableSchemaFields(nil, []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}, false)
+		assert.Empty(t, got)
+	})
+}

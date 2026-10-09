@@ -17,6 +17,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/mohae/deepcopy"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
@@ -79,7 +80,7 @@ func extractKeyValues(fields []string, document map[string]any) ([]interfaces.Ke
 	return values, nil
 }
 
-// normalizeJSONDocumentFields 将数据库 JSON 值转换为托管 OpenSearch 索引 mapping 所需的对象形态。
+// normalizeJSONDocumentFields 将数据库 JSON 值解析为仅保存在 _source 中的 JSON 值，保留结构和数值精度。
 func normalizeJSONDocumentFields(document map[string]any, properties []*interfaces.Property) error {
 	for _, property := range properties {
 		if property == nil || property.Type != interfaces.DataType_Json {
@@ -90,20 +91,17 @@ func normalizeJSONDocumentFields(document map[string]any, properties []*interfac
 			continue
 		}
 
-		object, err := normalizeJSONObject(value)
+		normalized, err := normalizeJSONValue(value)
 		if err != nil {
 			return fmt.Errorf("JSON field %q: %w", property.Name, err)
 		}
-		document[property.Name] = object
+		document[property.Name] = normalized
 	}
 	return nil
 }
 
-func normalizeJSONObject(value any) (map[string]any, error) {
-	if object, ok := value.(map[string]any); ok {
-		return object, nil
-	}
-
+// normalizeJSONValue 解析数据库返回的 JSON 文本或字节，也接受已解码的 JSON 值。
+func normalizeJSONValue(value any) (any, error) {
 	var text string
 	switch typed := value.(type) {
 	case string:
@@ -111,24 +109,20 @@ func normalizeJSONObject(value any) (map[string]any, error) {
 	case []byte:
 		text = string(typed)
 	default:
-		return nil, fmt.Errorf("expected object, JSON text, or null; got %T", value)
+		// 已解码值保持原形；拒绝无法编码的值，避免在 bulk 写入时才发现。
+		if _, err := sonic.Marshal(value); err != nil {
+			return nil, fmt.Errorf("invalid JSON value: %w", err)
+		}
+		return value, nil
 	}
 	if strings.TrimSpace(text) == "" {
-		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
+		return nil, nil //nolint:nilnil // Nil represents an absent database JSON value.
 	}
-
 	var parsed any
-	if err := sonic.Unmarshal([]byte(text), &parsed); err != nil {
+	if err := common.UnmarshalPreciseJSON([]byte(text), &parsed); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
-	if parsed == nil {
-		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
-	}
-	object, ok := parsed.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("expected JSON object or null; got %T", parsed)
-	}
-	return object, nil
+	return parsed, nil
 }
 
 // updateResourceIndexName updates the index name of a resource
@@ -233,6 +227,7 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 	// fail ref type validation (keyword requires string), preventing build task creation. Apply this only
 	// to the deep copy above; leave the resource row unchanged so its next update can repair it.
 	resourcelogic.NormalizeSelfReferencingFeatures(schema)
+	resourcelogic.InitializeJSONIndexAttributes(schema)
 
 	if err := validateBuildTaskSchemaFeatures(resource.Category, schema); err != nil {
 		return nil, err

@@ -59,6 +59,15 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 			fieldProps["scaling_factor"] = 1000000000000000000.0
 		}
 
+		if prop.Type == interfaces.DataType_Json {
+			// 仅透传 schema 中显式记录的策略，历史字段缺省时不补写 enabled。
+			if enabled, exists := prop.Attributes["enabled"]; exists {
+				fieldProps["enabled"] = enabled
+			}
+			properties[prop.Name] = fieldProps
+			continue
+		}
+
 		for _, feature := range prop.Features {
 			if feature.FeatureType == interfaces.PropertyFeatureType_Fulltext {
 				applyFulltextFeature(fieldProps, prop, feature)

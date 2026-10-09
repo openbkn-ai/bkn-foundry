@@ -192,6 +192,12 @@ func TestUpdateIndexOnlyUpdatesMapping(t *testing.T) {
 		case r.Method == http.MethodHead && r.URL.Path == "/dataset-1":
 			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodPut && r.URL.Path == "/dataset-1/_mapping":
+			var body struct {
+				Properties map[string]any `json:"properties"`
+			}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			assert.Equal(t, map[string]any{"type": "object"}, body.Properties["legacy_payload"])
+			assert.Equal(t, map[string]any{"type": "object", "enabled": false}, body.Properties["new_payload"])
 			_, err := w.Write([]byte(`{"acknowledged":true}`))
 			require.NoError(t, err)
 		default:
@@ -206,6 +212,8 @@ func TestUpdateIndexOnlyUpdatesMapping(t *testing.T) {
 
 	err = connector.UpdateIndex(context.Background(), "dataset-1", map[string]any{
 		"content_vector": map[string]any{"type": "knn_vector", "dimension": 3},
+		"legacy_payload": map[string]any{"type": "object"},
+		"new_payload":    map[string]any{"type": "object", "enabled": false},
 	})
 
 	require.NoError(t, err)
