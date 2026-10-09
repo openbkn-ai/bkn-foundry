@@ -157,7 +157,7 @@ func (s *captureAuditSink) emit(in captureAuditInput) {
 	}
 }
 
-func (s *captureAuditSink) requested(actorID, actorType string, before, after capturepolicysvc.Snapshot) {
+func (s *captureAuditSink) requested(actorID, actorType, actorName, effectiveSubjectID string, before, after capturepolicysvc.Snapshot) {
 	if before.Revision == 0 {
 		log.Print("audit coverage_gap: prior capture state unavailable")
 		return
@@ -169,7 +169,7 @@ func (s *captureAuditSink) requested(actorID, actorType string, before, after ca
 	s.emit(captureAuditInput{EventName: "trace_evidence.configuration_change_requested", Phase: phase,
 		Action: "update", Outcome: "success", OperationID: after.Operation.ID, PolicyRevision: after.Revision,
 		DesiredState: string(after.DesiredState), EffectiveState: string(after.EffectiveState),
-		ActorID: actorID, ActorType: actorType, BeforeHash: captureStateHash(before), AfterHash: captureStateHash(after), OccurredAt: time.Now().UTC()})
+		ActorID: actorID, ActorType: actorType, ActorNameSnapshot: actorName, EffectiveSubjectID: effectiveSubjectID, BeforeHash: captureStateHash(before), AfterHash: captureStateHash(after), OccurredAt: time.Now().UTC()})
 }
 
 func (s *captureAuditSink) terminal(event capturecontrollersvc.TerminalEvent) {
@@ -193,7 +193,7 @@ func (s *captureAuditSink) terminal(event capturecontrollersvc.TerminalEvent) {
 	s.emit(captureAuditInput{EventName: name, Phase: phase, Action: action, Outcome: outcome,
 		OperationID: event.OperationID, PolicyRevision: event.PolicyRevision,
 		DesiredState: event.DesiredState, EffectiveState: event.EffectiveState,
-		ActorID: "agent-observability-control-controller", ActorType: "service_account", FailureCode: event.FailureCode, OccurredAt: event.At})
+		ActorID: "agent-observability-control-controller", ActorNameSnapshot: "Trace/Evidence capture controller", EffectiveSubjectID: "agent-observability-control-controller", ActorType: "service_account", FailureCode: event.FailureCode, OccurredAt: event.At})
 }
 
 func captureStateHash(snapshot capturepolicysvc.Snapshot) string {
@@ -211,13 +211,15 @@ type captureAuditInput struct {
 	OperationID, DesiredState, EffectiveState string
 	PolicyRevision                            uint64
 	ActorID, ActorType, Environment           string
+	ActorNameSnapshot, EffectiveSubjectID     string
 	BeforeHash, AfterHash                     string
 	FailureCode                               string
 	OccurredAt                                time.Time
 }
 
 func buildCaptureControlAudit(in captureAuditInput) ([]byte, error) {
-	if in.OperationID == "" || in.PolicyRevision == 0 || in.ActorID == "" ||
+	if in.OperationID == "" || in.PolicyRevision == 0 || in.ActorID == "" || in.EffectiveSubjectID == "" ||
+		strings.TrimSpace(in.ActorNameSnapshot) == "" || len([]rune(in.ActorNameSnapshot)) > 256 ||
 		in.Environment == "" || in.OccurredAt.IsZero() {
 		return nil, errors.New("capture Audit identity and time are required")
 	}
@@ -258,8 +260,8 @@ func buildCaptureControlAudit(in captureAuditInput) ([]byte, error) {
 		"schema_version": "1.0", "event_id": id, "source_id": "agent-observability",
 		"category": "audit.admin", "event_name": in.EventName,
 		"occurred_at": in.OccurredAt.UTC().Format(time.RFC3339Nano),
-		"actor":       map[string]any{"id": in.ActorID, "type": actorType, "auth_method": "oauth", "effective_subject": in.ActorID},
-		"target":      map[string]any{"type": targetType, "id": targetID},
+		"actor":       map[string]any{"id": in.ActorID, "type": actorType, "auth_method": "oauth", "effective_subject": in.EffectiveSubjectID, "display_name_snapshot": in.ActorNameSnapshot},
+		"target":      map[string]any{"type": targetType, "id": targetID, "name": "Trace/Evidence capture configuration"},
 		"outcome":     in.Outcome,
 		"scope": map[string]any{"business_module": "observability", "environment": in.Environment,
 			"platform_scope": true, "knowledge_network_ids": []string{}},
@@ -268,7 +270,8 @@ func buildCaptureControlAudit(in captureAuditInput) ([]byte, error) {
 		"facts":           facts,
 	}
 	if in.EventName != "trace_evidence.configuration_change_requested" {
-		event["actor"] = map[string]any{"id": in.ActorID, "type": "service_account", "auth_method": "internal", "effective_subject": in.ActorID}
+		event["actor"] = map[string]any{"id": in.ActorID, "type": "service_account", "auth_method": "internal", "effective_subject": in.EffectiveSubjectID, "display_name_snapshot": in.ActorNameSnapshot}
+		event["target"].(map[string]any)["name"] = "Trace/Evidence capture operation"
 	} else {
 		event["http_status"] = 202
 	}

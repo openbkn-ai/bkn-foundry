@@ -780,14 +780,14 @@ func TestCapturePolicyHandlerAuditsOnlyAcceptedTrustedChange(t *testing.T) {
 		return after, nil
 	}))
 	calls := 0
-	handler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType string, previous, accepted capturepolicysvc.Snapshot) {
+	handler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType, actorName, effectiveSubjectID string, previous, accepted capturepolicysvc.Snapshot) {
 		calls++
-		if actorID != "user-1" || actorType != "user" || previous.Revision != 9 || accepted.Operation.ID != "op-10" {
+		if actorID != "user-1" || actorType != "user" || actorName != "Trusted operator" || effectiveSubjectID != "delegated-user" || previous.Revision != 9 || accepted.Operation.ID != "op-10" {
 			t.Fatalf("wrong audit identity or state: %s %s %+v %+v", actorID, actorType, previous, accepted)
 		}
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/agent-observability/v1/trace-evidence-configuration", bytes.NewBufferString(`{"desired_state":"disabled","expected_revision":9}`))
-	request = request.WithContext(context.WithValue(request.Context(), trustedQueryScopeContextKey{}, evidencevo.QueryScope{AccountID: "user-1", AccountType: "user"}))
+	request = request.WithContext(context.WithValue(request.Context(), trustedQueryScopeContextKey{}, evidencevo.QueryScope{AccountID: "delegated-user", AccountType: "user", AccessProfile: &evidencevo.AccessProfile{ActorID: "user-1", ActorNameSnapshot: "Trusted operator", EffectiveSubjectID: "delegated-user"}}))
 	response := httptest.NewRecorder()
 	handler.HandleTraceEvidenceConfiguration(response, request)
 	if response.Code != http.StatusAccepted || calls != 1 {

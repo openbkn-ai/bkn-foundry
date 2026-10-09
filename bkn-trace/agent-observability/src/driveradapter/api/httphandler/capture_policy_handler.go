@@ -64,12 +64,12 @@ type CapturePolicyHandler struct {
 	snapshotBuilder CapturePolicySnapshotBuilder
 	writer          CapturePolicyControlWriter
 	budget          AdmissionBudgetReader
-	auditRequested  func(context.Context, string, string, capturepolicysvc.Snapshot, capturepolicysvc.Snapshot)
+	auditRequested  func(context.Context, string, string, string, string, capturepolicysvc.Snapshot, capturepolicysvc.Snapshot)
 }
 
 // SetAuditRequestedObserver observes only accepted, non-noop commands. Audit
 // delivery is best effort and must not change the control API result.
-func (h *CapturePolicyHandler) SetAuditRequestedObserver(observer func(context.Context, string, string, capturepolicysvc.Snapshot, capturepolicysvc.Snapshot)) {
+func (h *CapturePolicyHandler) SetAuditRequestedObserver(observer func(context.Context, string, string, string, string, capturepolicysvc.Snapshot, capturepolicysvc.Snapshot)) {
 	if h != nil {
 		h.auditRequested = observer
 	}
@@ -181,8 +181,9 @@ func (h *CapturePolicyHandler) HandleTraceEvidenceConfiguration(w http.ResponseW
 	}
 	if h.auditRequested != nil && snapshot.Operation.ID != "noop" {
 		scope, ok := trustedQueryScopeFromContext(r.Context())
-		if ok && scope.AccountID != "" {
-			h.auditRequested(r.Context(), scope.AccountID, scope.AccountType, before, snapshot)
+		if ok && scope.AccessProfile != nil {
+			actor := scope.AccessProfile
+			h.auditRequested(r.Context(), actor.ActorID, scope.AccountType, actor.ActorNameSnapshot, actor.EffectiveSubjectID, before, snapshot)
 		}
 	}
 	writeJSON(w, r, http.StatusAccepted, rdto.TraceEvidenceConfigurationResponse(snapshot))

@@ -208,8 +208,8 @@ func NewApp() (*App, error) {
 			TTL: coreConfig.CapturePolicySnapshotTTL,
 		}, capturePolicyWriter,
 	)
-	capturePolicyHandler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType string, before, after capturepolicysvc.Snapshot) {
-		captureAudit.requested(actorID, actorType, before, after)
+	capturePolicyHandler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType, actorName, effectiveSubjectID string, before, after capturepolicysvc.Snapshot) {
+		captureAudit.requested(actorID, actorType, actorName, effectiveSubjectID, before, after)
 	})
 	var admissionBudgetSources []capturepolicysvc.AdmissionMeasurementSource
 	admissionBudgetSources = append(admissionBudgetSources,
