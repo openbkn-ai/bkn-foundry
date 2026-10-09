@@ -27,6 +27,7 @@ import (
 type fakeOAuthClient struct {
 	uris   auth.OAuthClientURIs
 	getErr error
+	sets   int
 }
 
 func (f *fakeOAuthClient) GetOAuthClientURIs(context.Context, string) (auth.OAuthClientURIs, error) {
@@ -37,6 +38,7 @@ func (f *fakeOAuthClient) GetOAuthClientURIs(context.Context, string) (auth.OAut
 }
 
 func (f *fakeOAuthClient) SetOAuthClientURIs(_ context.Context, _ string, uris auth.OAuthClientURIs) error {
+	f.sets++
 	f.uris = uris
 	return nil
 }
@@ -184,6 +186,33 @@ func TestOAuthAccessOriginAdminValidationAndOwnership(t *testing.T) {
 	}
 	if response := tokReq(t, router, http.MethodGet, collection, nil, ""); response.Code != http.StatusUnauthorized {
 		t.Fatalf("anonymous list status = %d", response.Code)
+	}
+}
+
+func TestOAuthAccessOriginAdminRejectsOutOfRangePortWithoutSync(t *testing.T) {
+	router, client := newAccessOriginAdminServer(t)
+	const collection = "/api/safe/v1/admin/oauth/access-origins"
+
+	response := adminReq(t, router, http.MethodPost, collection, map[string]string{
+		"origin": "http://port-repro.example.test:65536",
+	})
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("out-of-range port status = %d: %s", response.Code, response.Body.String())
+	}
+
+	response = adminReq(t, router, http.MethodGet, collection, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list status = %d: %s", response.Code, response.Body.String())
+	}
+	entries := decodeOriginEntries(t, response.Body.Bytes())
+	if len(entries) != 1 || entries[0].Origin != "https://public.example" {
+		t.Fatalf("entries after invalid add = %+v", entries)
+	}
+	if len(client.uris.RedirectURIs) != 0 || len(client.uris.PostLogoutRedirectURIs) != 0 {
+		t.Fatalf("Hydra URIs changed after invalid add: %+v", client.uris)
+	}
+	if client.sets != 0 {
+		t.Fatalf("Hydra sync called %d times after invalid add", client.sets)
 	}
 }
 

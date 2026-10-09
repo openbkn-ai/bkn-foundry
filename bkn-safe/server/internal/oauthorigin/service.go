@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -144,6 +145,11 @@ func NormalizeOrigin(raw string) (string, error) {
 	}
 	hostname := strings.ToLower(u.Hostname())
 	port := u.Port()
+	if port != "" {
+		if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+			return "", ErrInvalidOrigin
+		}
+	}
 	if port == "80" && scheme == "http" || port == "443" && scheme == "https" {
 		port = ""
 	}
