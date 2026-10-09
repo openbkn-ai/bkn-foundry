@@ -7,6 +7,7 @@ package bknsafeaccess
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -31,7 +32,7 @@ func TestResolveBuildsProfileFromCurrentSafeIdentityAndNetworkGrants(t *testing.
 		}
 		switch r.URL.Path {
 		case "/api/safe/v1/me":
-			_, _ = w.Write([]byte(`{"id":"actor-a","account_type":"user","enabled":true,"roles":["network_builder","unknown-role"]}`))
+			_, _ = w.Write([]byte(`{"id":"actor-a","name":"Trusted operator","account_type":"user","enabled":true,"roles":["network_builder","unknown-role"]}`))
 		case "/api/safe/v1/me/permissions":
 			_, _ = w.Write([]byte(`{"is_admin":true,"permissions":[
 				{"resource":{"type":"*","id":"*"},"operations":["*"]},
@@ -59,6 +60,9 @@ func TestResolveBuildsProfileFromCurrentSafeIdentityAndNetworkGrants(t *testing.
 	})
 	if err != nil {
 		t.Fatalf("resolve profile: %v", err)
+	}
+	if profile.ActorNameSnapshot != "Trusted operator" {
+		t.Fatal("trusted Safe name was not retained for Audit")
 	}
 	if !profile.AccountActive || profile.ActorID != "actor-a" ||
 		profile.EffectiveSubjectID != "user-a" || profile.ApplicationPrincipalID != "app-a" {
@@ -200,5 +204,38 @@ func TestResolveFingerprintIsStableAndChangesWithManagedScope(t *testing.T) {
 	second.ManagedKnowledgeNetworkIDs = []string{"kn-a"}
 	if accessScopeFingerprint(first) == accessScopeFingerprint(second) {
 		t.Fatal("managed network revocation must change the fingerprint")
+	}
+}
+
+func TestActorDisplayNameDoesNotChangeAuthorizationScope(t *testing.T) {
+	name := "Before name"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/safe/v1/me":
+			json.NewEncoder(w).Encode(map[string]any{"id": "actor-a", "name": name, "enabled": true, "roles": []string{"audit"}})
+		case "/api/safe/v1/me/permissions":
+			w.Write([]byte(`{"permissions":[]}`))
+		default:
+			w.Write([]byte(`{"grants":[]}`))
+		}
+	}))
+	defer server.Close()
+	client := New(server.URL, server.Client())
+	identity := iauthorizationscope.TrustedIdentity{ActorID: "actor-a", EffectiveSubjectID: "delegated-user"}
+	before, err := client.Resolve(context.Background(), "Bearer token", identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name = "After name"
+	after, err := client.Resolve(context.Background(), "Bearer token", identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.ActorNameSnapshot == after.ActorNameSnapshot {
+		t.Fatal("display snapshot did not change")
+	}
+	before.ActorNameSnapshot = after.ActorNameSnapshot
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("display name changed authorization scope or fingerprint")
 	}
 }

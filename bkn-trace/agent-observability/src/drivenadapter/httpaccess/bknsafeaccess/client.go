@@ -47,6 +47,7 @@ func (e responseStatusError) Error() string {
 
 type meResponse struct {
 	ID      string   `json:"id"`
+	Name    string   `json:"name"`
 	Enabled bool     `json:"enabled"`
 	Roles   []string `json:"roles"`
 }
@@ -132,6 +133,7 @@ func (c *Client) Resolve(
 	}
 	return evidencevo.AccessProfile{
 		ActorID:                    identity.ActorID,
+		ActorNameSnapshot:          strings.TrimSpace(me.Name),
 		EffectiveSubjectID:         identity.EffectiveSubjectID,
 		ApplicationPrincipalID:     identity.ApplicationPrincipalID,
 		DelegationID:               identity.DelegationID,

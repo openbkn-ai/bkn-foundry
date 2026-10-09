@@ -29,7 +29,7 @@
 `retryable=false`；完成配置前反复刷新不会恢复。混合查询保留可用记录，
 同时返回审计配置状态并将结果标记为 partial。
 
-需要系统审计的部署，在安装器使用的配置文件中显式加入：
+正式 opt-in profile 与部署后只读事件验收见 [System Audit deployment profile](../../deploy/conf/profiles/README.md)。需要系统审计的部署，在安装器使用的配置文件中显式加入：
 
 ```yaml
 core:

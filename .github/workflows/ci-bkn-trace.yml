@@ -8,6 +8,9 @@ on:
       - 'docs/api/agent-observability/**'
       - 'deploy/scripts/upgrades/0.2.0/historical_trace_data/**'
       - 'deploy/scripts/upgrades/0.2.0/evidence_outbox_to_kafka/**'
+      - 'deploy/conf/profiles/**'
+      - 'deploy/scripts/services/system_audit_profile_test.sh'
+      - 'deploy/scripts/audit/*verify_system_audit.py'
       - '.github/workflows/ci-bkn-trace.yml'
 
 permissions:
@@ -95,6 +98,12 @@ jobs:
       - name: Build
         run: make build
       - uses: azure/setup-helm@v4
+      - name: System Audit deployment and acceptance contract
+        working-directory: .
+        run: |
+          bash deploy/scripts/services/system_audit_profile_test.sh
+          bash deploy/scripts/services/openbkn_audit_consumer_test.sh
+          python3 -m unittest discover -s deploy/scripts/audit -p 'test_verify_system_audit.py'
       - name: Helm lint
         run: make helm-lint
       - name: Internal Trace control client/server contract

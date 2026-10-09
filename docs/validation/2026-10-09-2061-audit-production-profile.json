@@ -1,0 +1,64 @@
+{
+  "issue": 2061,
+  "base_main": "155accd4448a6b4fb16ea9b4c58de81df979cf78",
+  "design": "bkn-docs main 5e661c73f3c33fe2092185337d4be70c46c2fe72: 020 observability convergence design, production readable snapshots and no ID fallback",
+  "tests": [
+    "Core go test ./... passed",
+    "Actual Helm opt-in profile/default-off/incomplete/group/SASL/autoMigrate cases",
+    "Existing installer upgrade and Secret preflight checks",
+    "Read-only verifier: six tests",
+    "Delegated actor/effective subject separation and display name does not change authorization fingerprint",
+    "Producer snapshot regression first failed on main then passed",
+    "Independent review and final review corrections"
+  ],
+  "live": {
+    "disabled": {
+      "status": 503,
+      "code": "audit_consumer_not_configured",
+      "retryable": false,
+      "source_status": "not_integrated"
+    },
+    "enabled_empty": {
+      "status": 200,
+      "count": 0
+    },
+    "ordinary_user_denied": 403,
+    "configuration_change": {
+      "status": 202,
+      "desired_state": "disabled"
+    },
+    "event": {
+      "event_id": "8f26fc2a-04c0-4eea-acc0-b4501d03dcb6",
+      "source_id": "agent-observability",
+      "log_category": "audit.admin",
+      "event_name": "trace_evidence.configuration_change_requested",
+      "actor_id": "user-1",
+      "outcome": "success",
+      "target_type": "trace_evidence_configuration"
+    },
+    "readonly_verifier": {
+      "audit_source_ready": true,
+      "expected_event_visible": true,
+      "read_only": true
+    },
+    "unreachable_kafka": {
+      "startup_exit_code": 1,
+      "public_server_started": false,
+      "reason": "connect Kafka Admin API to verify topic timestamp policy"
+    },
+    "ledger_name_snapshots_verified": true,
+    "consumer_lag": 0
+  },
+  "security_boundary": [
+    "No role/permission/grant/authentication changes",
+    "No consumer credential reuse for producer",
+    "Profile not automatically loaded; default remains disabled",
+    "Public query guards unchanged",
+    "No ID name fallback or historical row modification"
+  ],
+  "limitations": [
+    "Isolated real Kafka/MariaDB and source-built Core, not target production rollout",
+    "Safe OAuth/name/role responses and control endpoint leases modeled as test fixtures, not full platform IAM/Collector convergence",
+    "Real control configuration-change request event verified; asynchronous convergence success not claimed"
+  ]
+}

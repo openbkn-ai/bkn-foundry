@@ -18,7 +18,10 @@ const (
 // AccessProfile is derived from trusted gateway identity and current BKN Safe grants.
 // Callers cannot supply roles or managed knowledge networks in request payloads.
 type AccessProfile struct {
-	ActorID                    string
+	ActorID string
+	// Display-only snapshot from the same trusted Safe identity response.
+	// It never participates in permission or capability decisions.
+	ActorNameSnapshot          string
 	EffectiveSubjectID         string
 	ApplicationPrincipalID     string
 	DelegationID               string

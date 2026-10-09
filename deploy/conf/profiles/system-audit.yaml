@@ -1,0 +1,22 @@
+# Copyright openbkn.ai
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+# Explicit opt-in for reviewed System Audit deployments. Never applied by default.
+# Fill broker addresses and existing Secret names before installation/upgrade.
+# Secrets, Kafka topic and permissions remain externally managed.
+core:
+  store: mariadb
+  autoMigrate: true
+  mariadb:
+    existingSecret: ""
+    dsnKey: dsn
+kafkaConsumers:
+  audit:
+    enabled: true
+    brokers: []
+    topic: openbkn.audit.v1
+    consumerGroup: bkn-trace-audit-ledger-v1
+    saslMechanism: PLAIN
+    existingSecret:
+      name: ""
+      usernameKey: username
+      passwordKey: password
