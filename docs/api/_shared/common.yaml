@@ -34,10 +34,13 @@ components:
       description: |
         BKN Trace business-provenance context identifying the business
         conversation and interaction to which this call belongs. Required on
-        MCP business tools and REST execution APIs while capture is enabled;
+        MCP business tools and REST execution APIs while capture is enabled
+        and Trace Core is available;
         optional on REST reads and `/mcp/proxy/.../call`. A verified disabled
         capture policy admits business calls without this context because no
-        Conversation or Interaction IDs are issued.
+        Conversation or Interaction IDs are issued. A verified Trace Core
+        infrastructure outage also admits unrecorded REST execution after
+        a bounded, read-only availability probe.
 
         Naming it makes the call managed: the service records an Operation under
         that interaction and attempts to return a receipt and capture evidence.

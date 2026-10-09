@@ -30,6 +30,8 @@ info:
     归属于同一个 Interaction。`search_capabilities` 仍可不带上下文临时读取。
     平台明确关闭证据采集时不签发 Interaction ID，`execute_tool` 可不带
     `bkn_context` 执行，且不生成受管 Trace 记录。
+    Trace Core 基础设施故障时，本接口经只读探测确认后可不带上下文执行，
+    并标记本次调用未记录 Trace。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
   version: 0.1.6
@@ -211,6 +213,8 @@ paths:
         缺少或传空 `bkn_context` 返回 400 `conversation_required`，并附
         `required_action: create_conversation`；执行前应先建立受管 Interaction。
         平台明确关闭证据采集时，此上下文要求不适用。
+        Trace Core 基础设施故障且只读探测确认不可用时，此要求也不适用，
+        本次执行会标记为未记录 Trace。
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:

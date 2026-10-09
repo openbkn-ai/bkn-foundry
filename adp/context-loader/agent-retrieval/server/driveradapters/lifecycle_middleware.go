@@ -55,15 +55,23 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			})
 			return
 		}
-		// REST executions require a stated managed context while capture is enabled.
-		// Disabled capture cannot issue lifecycle IDs, so it admits ad-hoc calls.
-		// A malformed stated context is still validated below.
+		// A caller cannot obtain lifecycle IDs when capture is disabled or Core
+		// is unavailable. Probe Core before refusing a contextless execution so
+		// the existing nonblocking business fallback remains usable during outages.
+		outageCode := ""
 		if !hasBusinessContext(input) && requiresManagedHTTPContext(c.Request) && !bkntrace.CaptureDisabled() {
-			writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
-				Code: "conversation_required", Message: "conversation_id is required",
-				RequiredAction: "create_conversation",
-			})
-			return
+			outageCode = restTraceCoreOutage(c.Request.Context(), client)
+			if c.Request.Context().Err() != nil {
+				c.Abort()
+				return
+			}
+			if outageCode == "" {
+				writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
+					Code: "conversation_required", Message: "conversation_id is required",
+					RequiredAction: "create_conversation",
+				})
+				return
+			}
 		}
 		if !hasBusinessContext(input) {
 			// io.ReadAll above drained the body. The managed path rebuilds it after
@@ -74,7 +82,11 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			c.Request.ContentLength = int64(len(raw))
 			ctx, _ := bkntrace.EnsureTraceCorrelation(bkntrace.WithTraceAvailability(c.Request.Context()))
 			if !bkntrace.CaptureDisabled() {
-				bkntrace.MarkTraceUnavailable(ctx, "context", lifecycleHTTPToolName(c), "trace_context_absent")
+				code := "trace_context_absent"
+				if outageCode != "" {
+					code = outageCode
+				}
+				bkntrace.MarkTraceUnavailable(ctx, "context", lifecycleHTTPToolName(c), code)
 			}
 			c.Request = c.Request.WithContext(bkntrace.ClearManagedTraceContext(ctx))
 			writeTraceAvailabilityHeaders(c, ctx)
@@ -214,6 +226,25 @@ func traceLifecyclePayload(raw []byte, status int) json.RawMessage {
 		"body":        string(raw),
 	})
 	return encoded
+}
+
+// restTraceCoreOutage makes no lifecycle mutation. A missing operation is an
+// expected healthy response; only a transport or Core infrastructure failure
+// permits a contextless execution to take the established unrecorded path.
+func restTraceCoreOutage(ctx context.Context, client *bkntrace.LifecycleClient) string {
+	if client == nil || !client.Enabled() {
+		return "feature_not_installed"
+	}
+	probeCtx, release := bkntrace.TraceIOContext(bkntrace.WithTraceAvailability(ctx), "pre")
+	apiErr, err := client.Call(probeCtx, http.MethodGet, "/operations/__rest_context_probe__", nil, nil)
+	release()
+	if !bkntrace.IsTraceInfrastructureFailure(apiErr, err) {
+		return ""
+	}
+	if apiErr != nil {
+		return apiErr.Code
+	}
+	return lifecycleUnavailableError(client).Code
 }
 
 func isLifecycleBusinessRequest(request *http.Request) bool {

@@ -32,29 +32,30 @@ is validated and Trace capture is attempted:
 ```
 
 - Conversation and Interaction must be created through `bkn_start_interaction`, `Mcp-Session-Id` cannot replace business Conversation.
-- When required context is missing, or stated context is invalid, unauthorized, expired or final, the Context Loader returns a stable error code and `required_action`, and the number of downstream business calls is 0. A REST execution with an absent or empty context returns HTTP 400 `conversation_required` and `required_action: create_conversation`.
+- When required context is missing while Trace Core is available, or stated context is invalid, unauthorized, expired or final, the Context Loader returns a stable error code and `required_action`, and the number of downstream business calls is 0. A REST execution with an absent or empty context returns HTTP 400 `conversation_required` and `required_action: create_conversation` while Trace Core is available.
 - When the verified capture policy is disabled, `bkn_start_interaction` issues no IDs and directs callers to continue without `bkn_context`. REST execution and MCP business calls then run without managed Trace capture; the missing-context refusal above applies only while capture is enabled.
+- When Trace Core cannot issue IDs because it is unavailable, REST execution uses a bounded, read-only Core probe. A verified infrastructure failure admits the call without managed Trace and reports Trace as unavailable. A healthy Core response, including a missing probe operation, still requires context.
 - The Context Loader uses a trusted authentication context to determine the application principal and effective subject; the caller cannot override the Owner in JSON.
 - The Context Loader derives the Operation idempotent identity from the trusted request association, tool name, and normalized input. Network retry reuses `bkn-request-id`, or carries a stable `X-OpenBKN-Client-Invocation-Id`; an existing pending Receipt returns `receipt_pending`, and downstream side effects must not be repeated.
 
 ### 2.1 Managed and ad-hoc calls
 
 A REST read or proxy call may state a managed interaction. The three REST
-execution endpoints must state one while capture is enabled.
+execution endpoints must state one while capture is enabled and Trace Core is available.
 
 | | Managed | Ad hoc |
 |---|---|---|
-| How it is chosen | `bkn_context` carries `conversation_id` and `interaction_id` | On eligible reads and proxy calls, or when capture is disabled, `bkn_context` is absent or empty |
+| How it is chosen | `bkn_context` carries `conversation_id` and `interaction_id` | On eligible reads and proxy calls, when capture is disabled, or while Trace Core is unavailable, `bkn_context` is absent or empty |
 | What is recorded | an Operation under that Interaction, a Receipt on the response, evidence for what was read | nothing |
 | What it depends on | BKN Trace Core when available, besides the downstream the call queries | only that downstream |
 
-Only those two shapes select ad hoc mode on eligible routes or when capture is disabled. A `bkn_context` holding one id and not the
+Only those two shapes select ad hoc mode on eligible routes, when capture is disabled, or while Trace Core is unavailable. A `bkn_context` holding one id and not the
 other, only `parent_operation_id`, or a misspelt field is a caller wiring the
 context up and getting it wrong, and is refused rather than quietly downgraded.
 
 Use a managed call when the answer has to enter the evidence chain: an agent turn
 someone may audit, or any reading a later decision will be justified by. REST
-action, tool, and Skill execution requires the context while capture is enabled. Use an ad-hoc
+action, tool, and Skill execution requires the context while capture is enabled and Trace Core is available. Use an ad-hoc
 call for ordinary reads, such as Studio answering a click, an
 operator at the CLI, one service asking another for a schema. An Interaction
 records one agent turn, so minting a Conversation and an Interaction to satisfy
@@ -121,7 +122,7 @@ Different transports preserve the native shape of the business response, so Rece
 
 ## 7. Acceptance
 
-- Given a missing or invalid managed context while capture is enabled, when an MCP business tool or REST execution endpoint is called, then a stable lifecycle error is returned and the number of downstream calls is 0. A REST read without context remains admitted; all business calls remain admitted without context when verified capture policy is disabled.
+- Given a missing or invalid managed context while capture is enabled and Trace Core is available, when an MCP business tool or REST execution endpoint is called, then a stable lifecycle error is returned and the number of downstream calls is 0. A REST read without context remains admitted; business calls remain admitted without context when verified capture policy is disabled or Trace Core is unavailable.
 - Given the same managed call correlation and normalized input are replayed, when the Receipt is terminal, then the original Receipt is returned and the number of downstream calls remains 1.
 - Given the downstream returns an error or panic, when Context Loader completes the Attempt, then the Receipt becomes failed, no permanent pending state remains, and panic details are not leaked to the caller.
 - Given a retryable failed Attempt, when the trusted adapter creates the next Attempt and re-invokes the business tool, then the new Attempt executes only once; concurrent replays return only the pending Receipt.

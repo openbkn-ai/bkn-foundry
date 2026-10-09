@@ -287,6 +287,8 @@ paths:
         `conversation_required`，附 `required_action: create_conversation`。
         平台明确关闭证据采集时，`bkn_start_interaction` 不签发 ID，本接口可不带
         `bkn_context` 执行，且不生成受管 Trace 记录。
+        Trace Core 基础设施故障时，本接口经只读探测确认后可不带上下文执行，
+        并标记本次调用未记录 Trace。
 
         **本端点由技能执行总闸控制**：`EXECUTE_SKILL_ENABLED=true` 时才注册这条
         路由，同名 MCP 工具也才出现在 `tools/list` 与 `GET /mcp/info`。默认关闭，

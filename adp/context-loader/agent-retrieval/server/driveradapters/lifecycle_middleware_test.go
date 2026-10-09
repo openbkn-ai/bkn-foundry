@@ -54,7 +54,7 @@ func TestRESTExecutionRequiresManagedContext(t *testing.T) {
 			downstreamCalls := 0
 			var seenBody map[string]any
 			router := gin.New()
-			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
+			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("http://core.test", nil)))
 			// The handler binds its body the way the real ones do. A stub that
 			// ignores the body cannot tell a request that was let through from one
 			// that arrived drained, which is exactly the gap that let a middleware
@@ -133,6 +133,53 @@ func TestRESTExecutionRemainsAvailableWhenCaptureDisabled(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestRESTExecutionFallsBackWhenTraceCoreUnavailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, status := range []int{http.StatusNotFound, http.StatusServiceUnavailable} {
+		core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet || r.URL.Path != "/api/agent-observability/v1/operations/__rest_context_probe__" {
+				t.Errorf("unexpected probe: %s %s", r.Method, r.URL.Path)
+			}
+			code := "operation_not_found"
+			if status == http.StatusServiceUnavailable {
+				code = "trace_core_unavailable"
+			}
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":{"code":"` + code + `"}}`))
+		}))
+		for _, path := range []string{
+			"/api/agent-retrieval/v1/kn/execute_action",
+			"/api/agent-retrieval/in/v1/kn/execute_tool",
+			"/api/agent-retrieval/v1/kn/execute_skill",
+		} {
+			for _, body := range []string{`{"query":"q"}`, `{"query":"q","bkn_context":{}}`} {
+				calls := 0
+				router := gin.New()
+				router.Use(trustedLifecycleHTTPContext(), middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
+				router.POST("/*path", func(c *gin.Context) {
+					calls++
+					var input map[string]any
+					if err := c.ShouldBindJSON(&input); err != nil || input["query"] != "q" {
+						t.Errorf("handler body = %#v, bind error = %v", input, err)
+					}
+					c.Status(http.StatusNoContent)
+				})
+				request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+				request.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				if status == http.StatusServiceUnavailable && (response.Code != http.StatusNoContent || calls != 1 || response.Header().Get("X-BKN-Trace-Available") == "true") {
+					t.Errorf("outage status=%d calls=%d headers=%v", response.Code, calls, response.Header())
+				}
+				if status == http.StatusNotFound && (response.Code != http.StatusBadRequest || calls != 0) {
+					t.Errorf("healthy Core status=%d calls=%d body=%s", response.Code, calls, response.Body.String())
+				}
+			}
+		}
+		core.Close()
 	}
 }
 
