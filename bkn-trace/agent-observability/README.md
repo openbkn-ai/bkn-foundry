@@ -167,6 +167,16 @@ GET /api/agent-observability/v1/traces/{trace_id}
 
 Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会使用 `limit+1` 查询探测截断，响应返回 `partial=true`、`partial_reason=["trace_query_truncated"]`，并设置 `page.truncated=true`。当 span 指向缺失父节点时，Trace Graph 不生成悬空边，并返回 `partial_reason=["orphan_span"]`。当 span 时间戳缺失、非法或结束时间早于开始时间时，节点耗时会归零，整体耗时不会返回负数，并返回 `partial_reason=["invalid_span_timestamp"]`。
 
+### Trace/Evidence admission budget configuration
+
+Configure `observability.admissionBudget` in the persistent values file used for every Helm install and upgrade. The four thresholds are deployment/SLO inputs, must be finite numbers in `(0, 1]`, and have no implicit defaults. The required keys are `opensearchCapacityThreshold`, `opensearchHeapThreshold`, `collectorQueueThreshold`, and `storagePoolThreshold`.
+
+Set `collectorMetricsEndpoint` to the Collector's complete Prometheus URL, including the metrics path (the bundled Collector exposes `/metrics` on port 8888). This dedicated endpoint takes precedence. If it is empty, the service retains the `BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT` fallback; the Chart injects that fallback only when `observability.sourceCoverage.enabled` is true. An invalid dedicated endpoint is reported rather than silently replaced by the fallback.
+
+The endpoint must return both `otelcol_exporter_queue_size` and `otelcol_exporter_queue_capacity`, with a nonnegative size and positive capacity. A zero size is valid; a missing size is unavailable. The remaining measurements come from OpenSearch filesystem/JVM statistics and the configured MariaDB connection pool.
+
+Configuration errors are reported at startup. Configuration GET and enable requests retain `503 POLICY_RECONCILER_UNAVAILABLE` when the budget is unavailable, with optional `details.reason`, `details.metric`, and `details.fields` identifying the failure. Reasons are `invalid_configuration`, `source_unavailable`, `metric_missing`, or `metric_invalid`. Full dependency errors are available at Debug level and associated with the response `trace_id`. Set `BKN_TRACE_LOG_LEVEL=debug` (Helm value `logLevel: debug`) and restart the service to enable them; the default is `info`, and `warn`/`error` are also supported. Invalid levels fail startup with the configuration field name; repeated polling failures do not emit WARN logs. Strict queue validation applies only to admission reads, so invalid queue samples do not prevent source-coverage monitoring from reading refused/failed counters. A valid budget over a threshold remains readable through GET, while an enable request returns `422 ADMISSION_BUDGET_EXCEEDED`. Disabling does not require a budget. Budget availability does not change the service's liveness or readiness probes.
+
 ### Evidence 写入安全边界
 
 受管 Conversation、Interaction、Operation 生命周期继续监听于集群内部的 `agent-observability-internal:8081`，同时在公开 8080 接口为 OAuth SDK 客户端开放。公开写入由服务端根据 OAuth 与 BKN Safe 身份派生 owner，不接受客户端伪造 owner。Evidence Event 经 Kafka 进入 Ledger；Artifact 继续使用独立的 8080 HTTP 接口和凭据。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认允许带 `app.kubernetes.io/name=agent-retrieval` 或现有 `app=agent-retrieval`、`app=agent-operator-integration`、`app=bkn-agent` 标签的 Pod 访问 8081；默认还允许 `openbkn` namespace 的 `module=bkn-backend`、`module=ontology-query` 及本 namespace 的 `app.kubernetes.io/name=otelcol-contrib`；其他布局通过 `networkPolicy.allowedClients` 显式配置。

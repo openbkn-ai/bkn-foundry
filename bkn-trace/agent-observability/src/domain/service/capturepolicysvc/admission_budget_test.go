@@ -8,6 +8,7 @@ package capturepolicysvc
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -132,5 +133,33 @@ func TestValidateAdmissionBudgetRejectsThresholdBreach(t *testing.T) {
 	budget.Measurements[0].Value = 0.9
 	if err := ValidateAdmissionBudgetForEnable(budget, now); !errors.Is(err, ErrAdmissionBudgetExceeded) {
 		t.Fatalf("threshold breach error = %v, want ErrAdmissionBudgetExceeded", err)
+	}
+}
+
+func TestAdmissionBudgetReportsAllInvalidThresholds(t *testing.T) {
+	err := (AdmissionBudgetThresholds{OpenSearchCapacity: 0.9, OpenSearchHeap: 0, CollectorQueue: -1, StoragePool: 2}).Validate()
+	var diagnostic *AdmissionBudgetError
+	if !errors.Is(err, ErrAdmissionBudgetUnavailable) || !errors.As(err, &diagnostic) {
+		t.Fatalf("missing diagnostic: %v", err)
+	}
+	want := []string{"BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD", "BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD", "BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD"}
+	if diagnostic.Reason != "invalid_configuration" || !reflect.DeepEqual(diagnostic.Fields, want) {
+		t.Fatalf("unexpected diagnostic: %+v", diagnostic)
+	}
+}
+
+func TestAdmissionBudgetPreservesSourceDiagnostic(t *testing.T) {
+	sources := admissionMetricSources(time.Now().UTC())
+	sources[2] = admissionMetricSourceFunc(func(context.Context) (AdmissionMeasurement, error) {
+		return AdmissionMeasurement{}, AdmissionSourceError("trace_collector_queue", errors.New("connection refused"))
+	})
+	provider, err := NewAdmissionBudgetProvider("default", admissionBudgetThresholds(), sources...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.ReadAdmissionBudget(context.Background())
+	var diagnostic *AdmissionBudgetError
+	if !errors.Is(err, ErrAdmissionBudgetUnavailable) || !errors.As(err, &diagnostic) || diagnostic.Metric != "trace_collector_queue" {
+		t.Fatalf("source diagnostic lost: %v", err)
 	}
 }

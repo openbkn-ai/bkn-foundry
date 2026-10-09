@@ -2176,7 +2176,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements.\nRequires the existing trace_evidence_configuration:global read permission.",
+                "description": "Returns desired and effective state separately, the active operation when present, and the current admission-budget measurements. Unavailable budgets return 503 with optional diagnostic details (reason, metric, fields).\nRequires the existing trace_evidence_configuration:global read permission.",
                 "produces": [
                     "application/json"
                 ],
@@ -2217,7 +2217,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Requires the existing trace_evidence_configuration:global write permission. The requested state is asynchronous; effective_state reports the last observed runtime state.",
+                "description": "Requires the existing trace_evidence_configuration:global write permission. Enable requests with unavailable budgets return 503 with optional diagnostic details (reason, metric, fields). The requested state is asynchronous; effective_state reports the last observed runtime state.",
                 "consumes": [
                     "application/json"
                 ],

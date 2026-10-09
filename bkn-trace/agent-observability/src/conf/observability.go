@@ -6,7 +6,10 @@
 package conf
 
 import (
+	"errors"
 	"log/slog"
+	"math"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -34,6 +37,20 @@ type AdmissionBudgetThresholdsConfig struct {
 	OpenSearchHeap     float64
 	CollectorQueue     float64
 	StoragePool        float64
+}
+
+// AdmissionCollectorMetricsEndpoint keeps the source-coverage endpoint as a
+// fallback for existing installations.
+func (config ObservabilityConfig) AdmissionCollectorMetricsEndpoint() (string, error) {
+	endpoint := strings.TrimSpace(config.AdmissionBudgetMetricsEndpoint)
+	if endpoint == "" {
+		endpoint = strings.TrimSpace(config.SourceCoverageMetricsEndpoint)
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return endpoint, errors.New("collector metrics endpoint must be a complete HTTP(S) URL")
+	}
+	return endpoint, nil
 }
 
 func NewObservabilityConfig() ObservabilityConfig {
@@ -100,7 +117,7 @@ func admissionBudgetThreshold(name string) float64 {
 		return 0
 	}
 	parsed, err := strconv.ParseFloat(value, 64)
-	if err != nil || parsed <= 0 || parsed > 1 {
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed <= 0 || parsed > 1 {
 		slog.Warn("invalid Trace admission budget threshold; leaving source unavailable", "name", name, "value", value)
 		return 0
 	}

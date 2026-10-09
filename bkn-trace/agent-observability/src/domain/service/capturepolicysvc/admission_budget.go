@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -25,17 +26,48 @@ type AdmissionBudgetThresholds struct {
 	StoragePool        float64
 }
 
-func (t AdmissionBudgetThresholds) Validate() error {
-	values := map[string]float64{
-		"trace_opensearch_capacity":     t.OpenSearchCapacity,
-		"trace_opensearch_heap":         t.OpenSearchHeap,
-		"trace_collector_queue":         t.CollectorQueue,
-		"trace_storage_connection_pool": t.StoragePool,
+// AdmissionBudgetError carries actionable diagnostics without exposing a
+// dependency's response body or connection details in the public API.
+type AdmissionBudgetError struct {
+	Reason string   `json:"reason"`
+	Metric string   `json:"metric,omitempty"`
+	Fields []string `json:"fields,omitempty"`
+	Cause  error    `json:"-"`
+}
+
+func (e *AdmissionBudgetError) Error() string {
+	return fmt.Sprintf("%s: %s %s %s: %v", ErrAdmissionBudgetUnavailable, e.Reason, e.Metric, strings.Join(e.Fields, ", "), e.Cause)
+}
+
+func (e *AdmissionBudgetError) Unwrap() error { return ErrAdmissionBudgetUnavailable }
+
+func AdmissionSourceError(metric string, err error) error {
+	var diagnostic *AdmissionBudgetError
+	if errors.As(err, &diagnostic) {
+		return err
 	}
-	for metric, value := range values {
+	return &AdmissionBudgetError{Reason: "source_unavailable", Metric: metric, Cause: err}
+}
+
+func (t AdmissionBudgetThresholds) Validate() error {
+	values := []struct {
+		field string
+		value float64
+	}{
+		{"BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD", t.OpenSearchCapacity},
+		{"BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD", t.OpenSearchHeap},
+		{"BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD", t.CollectorQueue},
+		{"BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD", t.StoragePool},
+	}
+	var invalid []string
+	for _, item := range values {
+		value := item.value
 		if math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 || value > 1 {
-			return fmt.Errorf("%w: threshold for %s must be in (0,1]", ErrAdmissionBudgetUnavailable, metric)
+			invalid = append(invalid, item.field)
 		}
+	}
+	if len(invalid) > 0 {
+		return &AdmissionBudgetError{Reason: "invalid_configuration", Fields: invalid, Cause: errors.New("thresholds must be finite numbers in (0,1]")}
 	}
 	return nil
 }
@@ -85,7 +117,7 @@ func (p *AdmissionBudgetProvider) ReadAdmissionBudget(ctx context.Context) (Admi
 		}
 		measurement, err := source.Read(ctx)
 		if err != nil {
-			return AdmissionBudget{}, fmt.Errorf("%w: %v", ErrAdmissionBudgetUnavailable, err)
+			return AdmissionBudget{}, fmt.Errorf("%w: %w", ErrAdmissionBudgetUnavailable, err)
 		}
 		if _, exists := seen[measurement.Metric]; exists {
 			return AdmissionBudget{}, fmt.Errorf("%w: duplicate metric %q", ErrAdmissionBudgetExceeded, measurement.Metric)
