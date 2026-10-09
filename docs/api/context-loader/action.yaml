@@ -167,6 +167,13 @@ paths:
       description: |
         按 `execute_action` 返回的 `execution_id` 查这次执行的状态与逐对象结果。
 
+        不传分页参数时沿用原有查询路径（最多返回 1000 条结果）。传入
+        `results_limit` 或 `results_offset` 时按结果分页；每页默认 100 条，
+        `results_limit > 1000` 会钳制为 1000，且偏移量与实际页大小之和
+        不得超过 10000。比较 `results_offset + len(results)` 与
+        `results_total` 可判断是否还有下一页；超过 10000 条时当前接口
+        无法继续翻页。
+
         `status` 为 `pending` / `running` 时结果尚未齐全；`completed` 表示执行流程
         结束，**不代表全部成功**——逐对象成败看 `success_count` / `failed_count`
         与 `results[].status`。
@@ -455,6 +462,14 @@ components:
         execution_id:
           type: string
           description: '`execute_action` 返回的执行 ID。'
+        results_limit:
+          type: integer
+          minimum: 0
+          description: 逐条结果每页条数；传 0 时默认 100，超过 1000 时钳制为 1000。
+        results_offset:
+          type: integer
+          minimum: 0
+          description: 逐条结果偏移量，默认 0；传入后启用分页查询。
 
     ListActionExecutionsRequest:
       type: object
@@ -566,6 +581,15 @@ components:
         failed_count:
           type: integer
           description: 失败的工具调用次数。
+        results_total:
+          type: integer
+          description: 已存储的逐条结果总数；始终返回，包含 0。
+        results_offset:
+          type: integer
+          description: 本页逐条结果的起始偏移量。
+        results_limit:
+          type: integer
+          description: 本页实际使用的逐条结果条数上限。
         start_time:
           type: integer
           format: int64

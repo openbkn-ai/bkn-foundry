@@ -100,7 +100,7 @@
   "get_action_execution": {
     "title": "Action Result",
     "group_title": "Actions",
-    "description": "Query the status and results of a single action execution. Use the execution_id returned by execute_action to fetch the overall status and per-object results.",
+    "description": "Query one action execution by its execution_id. Use results_total, results_offset, and the current results length to decide whether to fetch another page. When pagination is requested, the default page size is 100 and the maximum is 1000; pages cannot pass result 10000.",
     "gateway": {
       "summary": "Look up one action execution by its ID: overall status and the result for each object.",
       "use_when": "You have an execution ID and want to know whether it succeeded and what each object's result was.",
