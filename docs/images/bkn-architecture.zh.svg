@@ -95,7 +95,7 @@
 <rect x="124" y="748" width="316" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
 <text x="282" y="764" fill="white" font-size="12" font-weight="600" text-anchor="middle">VEGA</text>
 <text x="282" y="779" fill="#94a3b8" font-size="9" text-anchor="middle">数据映射 → 逻辑视图</text>
-<text x="282" y="792" fill="#94a3b8" font-size="9" text-anchor="middle">内容索引 · 图索引 · 数据质量</text>
+<text x="282" y="792" fill="#94a3b8" font-size="9" text-anchor="middle">内容索引 · 图索引</text>
 <rect x="452" y="748" width="348" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
 <text x="626" y="773" fill="white" font-size="12" font-weight="600" text-anchor="middle">Exec Factory</text>
 <text x="626" y="788" fill="#94a3b8" font-size="9" text-anchor="middle">算子 · 函数 · API 接口 · 工具 · MCP · Skill</text>

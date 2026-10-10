@@ -163,7 +163,7 @@ BKN Foundry is positioned as a **production-grade ontology development platform 
 | &emsp;**BKN Eval** | Quality and test evaluation on a released BKN — checks across data, ontology, and agent. Ontology quality rules (missing-edge rate, dangling edges, property completeness, ambiguity, …) produce an automatic report once a network is built and bound to data, which feeds back into BKN Project; also semantic alignment, logical consistency, function and schema evaluation, benchmarks |
 | &emsp;**BKN Workshop** | Business application development on a released BKN — metrics, functions, graph visualization widgets, and assembling AI applications |
 | **BKN Engine** | The Business Knowledge Network engine: **Context Loader** (Retrieval recall + Reranker reordering) over the **BKN**, which describes the business through four elements — Data / Logic / Risk / Action — and maps concepts down to the foundation layer |
-| **VEGA** | Data virtualization: maps data into logical views, provides content and graph indexes, and owns data quality checks |
+| **VEGA** | Data virtualization: maps data into logical views and provides content and graph indexes |
 | **Exec Factory** | Registers and executes operators and functions; orchestrates APIs, tools, MCP, and Skills |
 | **BKN Safe** | Access control — unified identity, permissions, and policy entry point; security controls and auditing per business object / action |
 | **BKN Agent** | Cross-cutting — the built-in agent runtime, kept simple; ontology building, graph analysis, and evaluation all run on it, and it consumes the BKN Engine over MCP |
