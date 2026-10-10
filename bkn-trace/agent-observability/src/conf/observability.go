@@ -111,10 +111,12 @@ func admissionBudgetProfile() string {
 	return profile
 }
 
+const defaultAdmissionBudgetThreshold = 0.90
+
 func admissionBudgetThreshold(name string) float64 {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
-		return 0
+		return defaultAdmissionBudgetThreshold
 	}
 	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed <= 0 || parsed > 1 {

@@ -79,7 +79,7 @@ func TestObservabilityConfigReadsAdmissionBudgetProfileAndThresholds(t *testing.
 	}
 }
 
-func TestObservabilityConfigLeavesMissingAdmissionThresholdUnavailable(t *testing.T) {
+func TestObservabilityConfigDefaultsMissingAdmissionThresholds(t *testing.T) {
 	for _, name := range []string{
 		"BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD",
 		"BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD",
@@ -89,8 +89,8 @@ func TestObservabilityConfigLeavesMissingAdmissionThresholdUnavailable(t *testin
 		t.Setenv(name, "")
 	}
 	config := NewObservabilityConfig()
-	if config.AdmissionBudgetThresholds.OpenSearchCapacity != 0 || config.AdmissionBudgetThresholds.OpenSearchHeap != 0 || config.AdmissionBudgetThresholds.CollectorQueue != 0 || config.AdmissionBudgetThresholds.StoragePool != 0 {
-		t.Fatalf("missing thresholds must remain unavailable: %+v", config.AdmissionBudgetThresholds)
+	if config.AdmissionBudgetThresholds.OpenSearchCapacity != defaultAdmissionBudgetThreshold || config.AdmissionBudgetThresholds.OpenSearchHeap != defaultAdmissionBudgetThreshold || config.AdmissionBudgetThresholds.CollectorQueue != defaultAdmissionBudgetThreshold || config.AdmissionBudgetThresholds.StoragePool != defaultAdmissionBudgetThreshold {
+		t.Fatalf("missing thresholds must use the default: %+v", config.AdmissionBudgetThresholds)
 	}
 }
 
