@@ -192,16 +192,16 @@ observability:
     deploymentID: observability/otelcol-contrib
     interval: 30s
   admissionBudget:
-    # Thresholds are deployment/SLO inputs. Empty values intentionally keep
-    # configuration reads and enable requests unavailable until the deployment
-    # supplies all four values. Persist overrides in the values file used for
-    # every Helm upgrade; a runtime env patch is not durable.
+    # Initial defaults are 90%; review them against deployment capacity/SLOs.
+    # Explicit valid values override defaults; invalid values stay unavailable.
+    # Persist overrides in the values file used for every Helm upgrade.
+    # These defaults do not replace the four required fresh metric sources.
     profile: default
     collectorMetricsEndpoint: ""
-    opensearchCapacityThreshold: ""
-    opensearchHeapThreshold: ""
-    collectorQueueThreshold: ""
-    storagePoolThreshold: ""
+    opensearchCapacityThreshold: "0.90"
+    opensearchHeapThreshold: "0.90"
+    collectorQueueThreshold: "0.90"
+    storagePoolThreshold: "0.90"
 
 core:
   # Keep existing trace/evidence reads available after an upgrade. Enable

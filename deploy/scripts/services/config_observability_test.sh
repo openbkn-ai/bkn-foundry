@@ -112,4 +112,31 @@ if grep -q '^observability:' "${CONFIG_YAML_PATH}"; then
   echo 'absent observability must not be invented' >&2
   exit 1
 fi
+# A new generated config inherits Chart defaults without inventing an
+# observability block. Both the first render and regeneration must agree.
+for iteration in 1 2; do
+  command helm template budget-test "${SCRIPT_DIR}/../bkn-trace/agent-observability/charts/agent-observability" \
+    -f "${CONFIG_YAML_PATH}" --show-only templates/deployment.yaml >"${test_dir}/deployment.yaml"
+  assert_env BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD 0.90
+  assert_env BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD 0.90
+  assert_env BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD 0.90
+  assert_env BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD 0.90
+  generate_config_yaml
+done
+# Explicit invalid values must reach the runtime validator, not be silently
+# replaced by defaults; partial values inherit defaults only for missing keys.
+cat >"${CONFIG_YAML_PATH}" <<'YAML'
+observability:
+  admissionBudget:
+    opensearchCapacityThreshold: 0
+    opensearchHeapThreshold: "invalid"
+    collectorQueueThreshold: "0.95"
+YAML
+generate_config_yaml
+command helm template budget-test "${SCRIPT_DIR}/../bkn-trace/agent-observability/charts/agent-observability" \
+  -f "${CONFIG_YAML_PATH}" --show-only templates/deployment.yaml >"${test_dir}/deployment.yaml"
+assert_env BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD 0
+assert_env BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD invalid
+assert_env BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD 0.95
+assert_env BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD 0.90
 echo 'Foundry observability config regeneration checks passed'

@@ -79,18 +79,42 @@ func TestObservabilityConfigReadsAdmissionBudgetProfileAndThresholds(t *testing.
 	}
 }
 
-func TestObservabilityConfigLeavesMissingAdmissionThresholdUnavailable(t *testing.T) {
+func TestAdmissionThresholdDefaultsAndOverrides(t *testing.T) {
 	for _, name := range []string{
 		"BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD",
 		"BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD",
 		"BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD",
 		"BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD",
 	} {
-		t.Setenv(name, "")
+		t.Run(name, func(t *testing.T) {
+			for _, tc := range []struct {
+				value string
+				want  float64
+			}{
+				{"", 0.90}, {" \t", 0.90}, {" 0.75 ", 0.75}, {"0.95", 0.95},
+				{"1", 1}, {"0.01", 0.01},
+				{"0", 0}, {"-0.1", 0}, {"1.01", 0}, {"NaN", 0},
+				{"+Inf", 0}, {"-Inf", 0}, {"invalid", 0},
+			} {
+				t.Run(tc.value, func(t *testing.T) {
+					t.Setenv(name, tc.value)
+					if got := admissionBudgetThreshold(name); got != tc.want {
+						t.Fatalf("threshold %q = %v, want %v", tc.value, got, tc.want)
+					}
+				})
+			}
+		})
 	}
-	config := NewObservabilityConfig()
-	if config.AdmissionBudgetThresholds.OpenSearchCapacity != 0 || config.AdmissionBudgetThresholds.OpenSearchHeap != 0 || config.AdmissionBudgetThresholds.CollectorQueue != 0 || config.AdmissionBudgetThresholds.StoragePool != 0 {
-		t.Fatalf("missing thresholds must remain unavailable: %+v", config.AdmissionBudgetThresholds)
+}
+
+func TestObservabilityConfigDefaultsOnlyMissingThresholds(t *testing.T) {
+	t.Setenv("BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD", "")
+	t.Setenv("BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD", "0.75")
+	t.Setenv("BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD", "invalid")
+	t.Setenv("BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD", " ")
+	want := AdmissionBudgetThresholdsConfig{OpenSearchCapacity: 0.90, OpenSearchHeap: 0.75, CollectorQueue: 0, StoragePool: 0.90}
+	if got := NewObservabilityConfig().AdmissionBudgetThresholds; got != want {
+		t.Fatalf("thresholds = %+v, want %+v", got, want)
 	}
 }
 
