@@ -594,8 +594,16 @@ Kafka Ledger 事件的 `envelope` 是生产者原始内容，Core 在 OpenSearch
 新增字段映射。查询使用顶层 ID、owner、状态和时间；020 完整性检查读取
 权威 Ledger，而不是通过 envelope 子字段搜索推断记录完整。
 
-新建版本索引与已有投影 alias 的 bootstrap 都应用该边界。已有 alias 仅
+新建版本索引应用该边界；已有投影 alias 的 bootstrap 在 envelope 类型兼容时
+应用该边界。已有 alias 仅
 合并兼容 mapping，不替换索引、不修改历史字段类型、不提高字段上限。
 已有 envelope 字段仍按原映射索引；新字段只保存在 `_source`。既有字段的
 类型冲突仍可能拒绝文档，本修复不自动重试已经标记 dead 的 outbox，也不
 改写历史证据。未来需要检索的 envelope 字段必须按明确的产品需求显式定义。
+
+已有 alias 升级前先只读每个具体索引的 mapping，并按索引分别应用兼容补丁。
+未映射或 object envelope 接受上述 dynamic 边界；已映射 scalar/nested 类型
+保持原状，仅更新会话审计字段并记录诊断，不会因强制改成 object 阻止 Core
+启动。该历史索引仍不能存储与既有 envelope 类型不兼容的新文档。新索引的
+object 边界也不承诺支持任意 scalar envelope。已有子对象显式 `dynamic:true`
+覆盖父级的情况不会被递归重写；这些历史映射仍需单独评估。

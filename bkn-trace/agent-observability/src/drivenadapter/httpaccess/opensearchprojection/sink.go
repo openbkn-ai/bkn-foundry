@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
@@ -99,10 +100,7 @@ func (s *Sink) EnsureBootstrap(ctx context.Context, indexVersion string) error {
 		return fmt.Errorf("check projection alias: %w", err)
 	}
 	if aliasExists {
-		if err := s.client.EnsureMapping(ctx, s.index, []byte(conversationAuditProjectionMapping)); err != nil {
-			return fmt.Errorf("update conversation audit mapping for existing alias: %w", err)
-		}
-		return nil
+		return s.ensureExistingAliasMappings(ctx)
 	}
 	indexExists, err := s.client.IndexExists(ctx, s.index)
 	if err != nil {
@@ -116,6 +114,60 @@ func (s *Sink) EnsureBootstrap(ctx context.Context, indexVersion string) error {
 	}
 	if err := s.SwitchAlias(ctx, s.index, indexVersion); err != nil {
 		return fmt.Errorf("switch initial projection alias: %w", err)
+	}
+	return nil
+}
+
+// Inspect all alias targets before selecting additive, type-compatible patches.
+func (s *Sink) ensureExistingAliasMappings(ctx context.Context) error {
+	mappings, err := s.client.GetMappings(ctx, s.index)
+	if err != nil {
+		return fmt.Errorf("read existing projection mappings: %w", err)
+	}
+	var definition struct {
+		Mappings struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"mappings"`
+	}
+	if err := json.Unmarshal([]byte(conversationAuditProjectionMapping), &definition); err != nil {
+		return err
+	}
+	delete(definition.Mappings.Properties, "envelope")
+	legacyPatch, err := json.Marshal(definition)
+	if err != nil {
+		return err
+	}
+	type patch struct {
+		index      string
+		definition []byte
+		legacyType string
+	}
+	patches := make([]patch, 0, len(mappings))
+	for index, mapping := range mappings {
+		var existing struct {
+			Properties map[string]struct {
+				Type string `json:"type"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(mapping, &existing); err != nil {
+			return fmt.Errorf("decode existing projection mapping: %w", err)
+		}
+		envelopeType := existing.Properties["envelope"].Type
+		item := patch{index: index, definition: []byte(conversationAuditProjectionMapping)}
+		if envelopeType != "" && envelopeType != "object" {
+			item.definition = legacyPatch
+			item.legacyType = envelopeType
+		}
+		patches = append(patches, item)
+	}
+	sort.Slice(patches, func(i, j int) bool { return patches[i].index < patches[j].index })
+	for _, item := range patches {
+		if err := s.client.EnsureMapping(ctx, item.index, item.definition); err != nil {
+			return fmt.Errorf("update compatible projection mapping for index %q: %w", item.index, err)
+		}
+		if item.legacyType != "" {
+			slog.WarnContext(ctx, "projection index retains legacy envelope mapping; opaque object mapping was not applied", "index", item.index, "envelope_type", item.legacyType)
+		}
 	}
 	return nil
 }

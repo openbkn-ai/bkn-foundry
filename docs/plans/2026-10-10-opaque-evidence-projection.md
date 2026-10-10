@@ -27,3 +27,12 @@ legacy envelope field mappings, and left the field count at 980. No existing
 envelope child object explicitly enabled dynamic mapping. Independent review
 found no blocking issues. Production alias/data/outbox were not changed by this
 reproduction; fresh deployed acceptance remains required.
+
+## Legacy mapping compatibility follow-up
+
+- [x] Red: mixed alias targets and failed/empty mapping reads demonstrate blind object mapping is unsafe.
+- [x] Read concrete target mappings first; stable per-index additive patch preserves scalar/nested types and applies conversation audit fields, with a safe diagnostic.
+- [x] Object/unmapped targets retain the opaque object mapping boundary; malformed mapping reads cannot trigger a write.
+- [x] Follow-up focused tests, full Core `go test ./... -count=1`, build, vet, golangci-lint (0 issues), and both affected packages under race pass.
+
+The object mapping supports opaque object envelopes, not every arbitrary JSON value allowed in the authoritative Ledger. Existing scalar/nested mappings are preserved rather than migrated. Existing child objects explicitly overriding `dynamic:true` are not recursively rewritten. No old data or dead outbox rows are changed.

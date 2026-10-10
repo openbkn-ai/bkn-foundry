@@ -582,6 +582,43 @@ func (c *Client) EnsureMapping(ctx context.Context, index string, indexDefinitio
 	return c.ensureMapping(ctx, index, indexDefinition)
 }
 
+// GetMappings reads each concrete target's mappings without modifying an alias.
+func (c *Client) GetMappings(ctx context.Context, index string) (map[string]json.RawMessage, error) {
+	requestURL := fmt.Sprintf("%s/%s/_mapping", c.baseURL, url.PathEscape(strings.TrimLeft(index, "/")))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create opensearch mapping read request: %w", err)
+	}
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute opensearch mapping read request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("opensearch mapping read failed with status %d", resp.StatusCode)
+	}
+	var payload map[string]struct {
+		Mappings json.RawMessage `json:"mappings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode opensearch mappings: %w", err)
+	}
+	if len(payload) == 0 {
+		return nil, errors.New("opensearch mappings contain no concrete targets")
+	}
+	mappings := make(map[string]json.RawMessage, len(payload))
+	for target, entry := range payload {
+		if strings.TrimSpace(target) == "" || len(entry.Mappings) == 0 || string(entry.Mappings) == "null" {
+			return nil, errors.New("opensearch concrete target mapping is missing")
+		}
+		mappings[target] = entry.Mappings
+	}
+	return mappings, nil
+}
+
 func (c *Client) AliasExists(ctx context.Context, alias string) (bool, error) {
 	return c.resourceExists(ctx, http.MethodGet, "_alias/"+strings.TrimLeft(alias, "/"))
 }
