@@ -718,6 +718,12 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		span.SetStatus(codes.Error, "Invalid resource update scope")
 		return err
 	}
+	if resource.Category == interfaces.ResourceCategoryDataset && resource.LocalIndexName != "" {
+		if field := changedDatasetFulltextAnalyzer(resource, req); field != "" {
+			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(fmt.Sprintf("dataset fulltext analyzer for field %q cannot be changed on an existing index; rebuild the dataset instead", field))
+		}
+	}
 	// Older Dataset rows can have a vector feature without its persisted
 	// dimension. Completing that metadata must also pass through the index
 	// mapping update; otherwise the Resource row and physical index contract
@@ -1652,6 +1658,62 @@ func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, sch
 		}
 	}
 	return nil
+}
+
+// OpenSearch 区分缺省 analyzer 和显式 standard，二者之间也不能原地改写。
+type analyzerConfig struct {
+	configured string
+	effective  string
+}
+
+func fulltextAnalyzerConfigFor(prop *interfaces.Property, config *interfaces.ResourceIndexConfig) (analyzerConfig, bool) {
+	if prop == nil {
+		return analyzerConfig{}, false
+	}
+	for _, feature := range prop.Features {
+		if feature.FeatureType != interfaces.PropertyFeatureType_Fulltext {
+			continue
+		}
+		configured := strings.TrimSpace(fulltextAnalyzerConfigValue(feature.Config))
+		analyzer := configured
+		if analyzer == "" && config != nil {
+			analyzer = strings.TrimSpace(config.DefaultFulltextAnalyzer)
+		}
+		if analyzer == "" {
+			analyzer = "standard"
+		}
+		return analyzerConfig{configured: configured, effective: analyzer}, true
+	}
+	return analyzerConfig{}, false
+}
+
+// changedDatasetFulltextAnalyzer 检查已有全文字段的有效分词器是否改变。
+// 空索引也不能通过更新 mapping 修改 analyzer；字段配置优先于资源默认值。
+func changedDatasetFulltextAnalyzer(resource *interfaces.Resource, req *interfaces.ResourceRequest) string {
+	requestedSchema := req.SchemaDefinition
+	if requestedSchema == nil {
+		requestedSchema = resource.SchemaDefinition
+	}
+	requestedConfig := req.IndexConfig
+	if requestedConfig == nil {
+		requestedConfig = resource.IndexConfig
+	}
+	current := make(map[string]analyzerConfig, len(resource.SchemaDefinition))
+	for _, prop := range resource.SchemaDefinition {
+		if analyzer, exists := fulltextAnalyzerConfigFor(prop, resource.IndexConfig); exists {
+			current[prop.Name] = analyzer
+		}
+	}
+	for _, prop := range requestedSchema {
+		analyzer, exists := fulltextAnalyzerConfigFor(prop, requestedConfig)
+		if !exists {
+			continue
+		}
+		if previous, exists := current[prop.Name]; exists && previous != analyzer {
+			return prop.Name
+		}
+	}
+	return ""
 }
 
 func fulltextAnalyzerConfigValue(config map[string]any) string {

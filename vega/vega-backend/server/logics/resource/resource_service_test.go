@@ -1991,6 +1991,51 @@ func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfac
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("rejects existing dataset analyzer changes before side effects", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, current, next string
+			defaultOnly         bool
+		}{
+			{"standard to english", "standard", "english", false},
+			{"default mapping to english", "", "english", false},
+			{"default mapping to explicit standard", "", "standard", false},
+			{"english to standard", "english", "standard", false},
+			{"standard to ik_max_word", "standard", "ik_max_word", false},
+			{"inherited default change", "standard", "english", true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				rs, _, mockPS, _, _, _, _ := newTestService(t)
+				mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				property := func(analyzer string) *interfaces.Property {
+					return &interfaces.Property{Name: "content", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+						{FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove}},
+						{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": analyzer}},
+					}}
+				}
+				resource := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset,
+					LocalIndexName: "dataset-index", SchemaDefinition: []*interfaces.Property{property(tc.current)}}
+				req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset,
+					SchemaDefinition: []*interfaces.Property{property(tc.next)}}
+				if tc.defaultOnly {
+					resource.SchemaDefinition = []*interfaces.Property{property("")}
+					resource.IndexConfig = &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: tc.current}
+					req.SchemaDefinition = nil
+					req.IndexConfig = &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: tc.next}
+				}
+				err := updateResourceForTest(t, rs, resource, req)
+				httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+				assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+				assert.Contains(t, httpErr.BaseError.ErrorDetails, "content")
+				assert.Contains(t, httpErr.BaseError.ErrorDetails, "rebuild")
+				assert.Equal(t, "dataset-index", resource.LocalIndexName)
+				if tc.defaultOnly {
+					assert.Equal(t, tc.current, resource.IndexConfig.DefaultFulltextAnalyzer)
+				} else {
+					assert.Equal(t, tc.current, resource.SchemaDefinition[0].Features[1].Config["analyzer"])
+				}
+			})
+		}
+	})
 	t.Run("authorizes before rejecting an enabled change", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, _ := newTestService(t)
 		resource := &interfaces.Resource{ID: "r1", Enabled: true}
@@ -3263,6 +3308,40 @@ func TestValidateMutableSchemaUpdateJSONEnabled(t *testing.T) {
 			actualAttributes, err := json.Marshal(current[0].Attributes)
 			require.NoError(t, err)
 			assert.Equal(t, string(originalAttributes), string(actualAttributes))
+		})
+	}
+}
+
+func TestChangedDatasetFulltextAnalyzer(t *testing.T) {
+	property := func(name, fieldType, analyzer string) *interfaces.Property {
+		return &interfaces.Property{Name: name, Type: fieldType, Features: []interfaces.PropertyFeature{{
+			FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			Config: map[string]any{"analyzer": analyzer},
+		}}}
+	}
+	for _, tc := range []struct {
+		name                        string
+		current, requested          []*interfaces.Property
+		currentDefault, nextDefault string
+		changedField                string
+	}{
+		{name: "same explicit analyzer", current: []*interfaces.Property{property("content", "string", "english")}, requested: []*interfaces.Property{property("content", "string", "english")}},
+		{name: "description only", current: []*interfaces.Property{property("content", "string", "english")}},
+		{name: "explicit override ignores default change", current: []*interfaces.Property{property("content", "string", "english")}, currentDefault: "standard", nextDefault: "ik_max_word"},
+		{name: "unused default", current: []*interfaces.Property{{Name: "id", Type: "integer"}}, currentDefault: "standard", nextDefault: "english"},
+		{name: "same inherited default", current: []*interfaces.Property{property("content", "text", "")}, currentDefault: "english", nextDefault: "english"},
+		{name: "text analyzer change", current: []*interfaces.Property{property("content", "text", "standard")}, requested: []*interfaces.Property{property("content", "text", "english")}, changedField: "content"},
+		{name: "new fulltext field", current: []*interfaces.Property{{Name: "content", Type: "string"}}, requested: []*interfaces.Property{property("content", "string", "english")}},
+		{name: "removes feature", current: []*interfaces.Property{property("content", "string", "standard")}, requested: []*interfaces.Property{{Name: "content", Type: "string"}}},
+		{name: "normalizes whitespace", current: []*interfaces.Property{property("content", "string", "english")}, requested: []*interfaces.Property{property("content", "string", " english ")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resource := &interfaces.Resource{SchemaDefinition: tc.current, IndexConfig: &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: tc.currentDefault}}
+			req := &interfaces.ResourceRequest{SchemaDefinition: tc.requested}
+			if tc.nextDefault != "" {
+				req.IndexConfig = &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: tc.nextDefault}
+			}
+			assert.Equal(t, tc.changedField, changedDatasetFulltextAnalyzer(resource, req))
 		})
 	}
 }

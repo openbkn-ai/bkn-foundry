@@ -304,6 +304,10 @@ paths:
           `update_time`；若资源已被其他请求更新，返回 409 `VegaBackend.Resource.UpdateConflict`。
         - Dataset 已有文档时，不允许通过普通更新改变字段、Feature、embedding 模型或其他索引
           结构；请求返回 409，需通过显式重建流程处理历史数据。
+        - Dataset 已有物理索引时，即使没有文档，也不允许通过普通更新改变已有全文字段的有效
+          analyzer（字段配置优先于资源默认值）；请求返回 409
+          `VegaBackend.InvalidParameter.RequestBody`，错误详情标明字段并提示重建 Dataset。
+          同值保存、仅修改描述以及未影响字段有效 analyzer 的默认值变更不受此限制。
         - 逻辑视图更新要求 EE 专业版及以上授权；未安装 EE 扩展返回 501，
           授权版本不足返回 403 `Public.Forbidden`。
           若提交复合视图定义，也暂时返回 501；已保存的复合视图仍可读取。
