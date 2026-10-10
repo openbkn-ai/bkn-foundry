@@ -56,12 +56,12 @@
 <rect x="132" y="392" width="308" height="96" rx="8" fill="#0f172a"/>
 <rect x="132" y="392" width="308" height="96" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
 <text x="286.0" y="420" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Eval</text>
-<text x="286.0" y="440" fill="#67e8f9" font-size="9.5" text-anchor="middle">Quality &amp; test evaluation</text>
+<text x="286.0" y="440" fill="#67e8f9" font-size="9.5" text-anchor="middle">Ontology quality &amp; evaluation</text>
 <text x="286.0" y="464" fill="#e2e8f0" font-size="9" text-anchor="middle">Data / ontology / agent checks · benchmarks</text>
 <rect x="460" y="392" width="308" height="96" rx="8" fill="#0f172a"/>
 <rect x="460" y="392" width="308" height="96" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
 <text x="614.0" y="420" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Workshop</text>
-<text x="614.0" y="440" fill="#67e8f9" font-size="9.5" text-anchor="middle">Business application development</text>
+<text x="614.0" y="440" fill="#67e8f9" font-size="9.5" text-anchor="middle">Ontology application development</text>
 <text x="614.0" y="457" fill="#e2e8f0" font-size="9" text-anchor="middle">Analysis · reasoning · simulation &amp; decision-making</text>
 <text x="614.0" y="472" fill="#e2e8f0" font-size="9" text-anchor="middle">Execution &amp; feedback</text>
 <text x="450" y="504" fill="#94a3b8" font-size="9" text-anchor="middle">Eval and Workshop open inside a given BKN · peers</text>
