@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/creasty/defaults"
@@ -108,8 +109,10 @@ func FilterSearchInstanceResp(resp *interfaces.KnSearchResp, includeObjectTypes 
 		return out
 	}
 	out.Nodes = toAnySlice(resp.Nodes)
+	hitObjectTypes := objectTypesOfNodes(toAnySlice(resp.ObjectTypes), out.Nodes)
+	out.PermissionImpacts = permissionImpactsOfObjectTypes(hitObjectTypes)
 	if includeObjectTypes {
-		out.ObjectTypes = objectTypesOfNodes(toAnySlice(resp.ObjectTypes), out.Nodes)
+		out.ObjectTypes = hitObjectTypes
 	}
 	// Pass the message through whenever retrieval wrote one, empty result or not.
 	//
@@ -122,6 +125,36 @@ func FilterSearchInstanceResp(resp *interfaces.KnSearchResp, includeObjectTypes 
 		out.Message = strings.TrimSpace(*resp.Message)
 	}
 	return out
+}
+
+func permissionImpactsOfObjectTypes(objectTypes []any) []interfaces.ObjectPermissionImpact {
+	var impacts []interfaces.ObjectPermissionImpact
+	for _, objectType := range objectTypes {
+		entry, ok := objectType.(map[string]any)
+		if !ok {
+			continue
+		}
+		objectTypeID, _ := entry["concept_id"].(string)
+		effective, _ := entry["effective_permissions"].(map[string]any)
+		if strings.TrimSpace(objectTypeID) == "" || len(effective) == 0 {
+			continue
+		}
+		properties := make([]string, 0, len(effective))
+		for property, rawLevel := range effective {
+			level, _ := rawLevel.(string)
+			if level != string(interfaces.PropertyAccessFull) && level != string(interfaces.PropertyAccessNone) {
+				properties = append(properties, property)
+			}
+		}
+		if len(properties) == 0 {
+			continue
+		}
+		sort.Strings(properties)
+		impacts = append(impacts, interfaces.ObjectPermissionImpact{
+			ObjectTypeID: objectTypeID, Properties: properties,
+		})
+	}
+	return impacts
 }
 
 // objectTypesOfNodes only retains those object types that actually have instances.

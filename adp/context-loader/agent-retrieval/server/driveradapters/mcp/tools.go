@@ -83,7 +83,8 @@ func buildSearchSchemaReqFromMCP(req mcp.CallToolRequest, authCtx *interfaces.Ac
 }
 
 // handleSearchInstance returns a tool handler for search_instance.
-func handleSearchInstance(knSearchService knsearch.KnSearchService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleSearchInstance(knSearchService knsearch.KnSearchService,
+	guide *permissionguide.Guide) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		authCtx, _ := common.GetAccountAuthContextFromCtx(ctx)
 
@@ -106,6 +107,9 @@ func handleSearchInstance(knSearchService knsearch.KnSearchService) func(ctx con
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		resp.PermissionGuidance = permissionGuidancesForObjectImpacts(ctx, guide,
+			instanceReq.ResolvedKnID(), resp.PermissionImpacts)
+		resp.PermissionImpacts = nil
 
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
@@ -300,6 +304,8 @@ func handleGetLogicPropertiesValues(service interfaces.IKnLogicPropertyResolverS
 			return toolErrorWithPermissionGuidance(err,
 				guide.ForObjectTypeDenial(ctx, err, resolveReq.KnID, resolveReq.OtID)), nil
 		}
+		resp.PermissionGuidance = guide.ForObjectQuery(ctx, resolveReq.KnID, resolveReq.OtID,
+			resolveReq.Properties, resp.EffectivePermissions, false)
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -521,7 +527,8 @@ func handleRunSQL(svc knrunsql.KnRunSQLService) func(ctx context.Context, req mc
 // query against the object and relation types and runs the SQL it produces.
 // A refusal names the construct it refused, so it is returned to the caller
 // verbatim rather than folded into a generic failure.
-func handleRunCypher(svc kncypher.KnCypherService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleRunCypher(svc kncypher.KnCypherService,
+	guide *permissionguide.Guide) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
@@ -538,8 +545,11 @@ func handleRunCypher(svc kncypher.KnCypherService) func(ctx context.Context, req
 
 		resp, err := svc.RunCypher(ctx, cypherReq)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolErrorWithPermissionGuidances(err, permissionGuidancesForObjectImpacts(ctx, guide,
+				cypherReq.KnID, cypherPermissionImpactsFromError(err))), nil
 		}
+		resp.PermissionGuidance = permissionGuidancesForObjectImpacts(ctx, guide, cypherReq.KnID, resp.PermissionImpacts)
+		resp.PermissionImpacts = nil
 
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
@@ -547,6 +557,35 @@ func handleRunCypher(svc kncypher.KnCypherService) func(ctx context.Context, req
 		}
 		return result, nil
 	}
+}
+
+func permissionGuidancesForObjectImpacts(ctx context.Context, guide *permissionguide.Guide, knID string,
+	impacts []interfaces.ObjectPermissionImpact) []*interfaces.PermissionGuidance {
+	merged := make(map[string]interfaces.ObjectPermissionImpact, len(impacts))
+	order := make([]string, 0, len(impacts))
+	for _, impact := range impacts {
+		if impact.ObjectTypeID == "" {
+			continue
+		}
+		current, exists := merged[impact.ObjectTypeID]
+		if !exists {
+			current.ObjectTypeID = impact.ObjectTypeID
+			order = append(order, impact.ObjectTypeID)
+		}
+		current.Properties = append(current.Properties, impact.Properties...)
+		current.RowFilterApplied = current.RowFilterApplied || impact.RowFilterApplied
+		merged[impact.ObjectTypeID] = current
+	}
+	guidance := make([]*interfaces.PermissionGuidance, 0, len(merged))
+	for _, objectTypeID := range order {
+		impact := merged[objectTypeID]
+		entry := guide.ForObjectTypeImpact(ctx, knID, objectTypeID,
+			impact.Properties, impact.RowFilterApplied)
+		if entry != nil {
+			guidance = append(guidance, entry)
+		}
+	}
+	return guidance
 }
 
 // handleListResources handles list_resources tool calls.

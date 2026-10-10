@@ -86,6 +86,9 @@ func TestRunCypherQueryOnBothFaces(t *testing.T) {
 					Columns:         []interfaces.RawQueryColumn{{Name: "id", Type: "string"}},
 					Entries:         []map[string]any{{"id": "1"}},
 					TraceDescriptor: json.RawMessage(`{"version":"semantic-query-descriptor/v1"}`),
+					PermissionImpacts: []interfaces.CypherPermissionImpact{{
+						ObjectTypeID: "ot-order", RowFilterApplied: true,
+					}},
 				}, nil)
 
 			recorder := postCypher(engine, cypherURL(face, cypherKNID),
@@ -106,6 +109,10 @@ func TestRunCypherQueryOnBothFaces(t *testing.T) {
 			hasTrace := bytes.Contains(recorder.Body.Bytes(), []byte(`"_trace"`))
 			if (face == "in/") != hasTrace {
 				t.Fatalf("body = %s, internal trace metadata presence = %v", recorder.Body.String(), hasTrace)
+			}
+			hasPermissionImpacts := bytes.Contains(recorder.Body.Bytes(), []byte(`"permission_impacts"`))
+			if (face == "in/") != hasPermissionImpacts {
+				t.Fatalf("body = %s, internal permission metadata presence = %v", recorder.Body.String(), hasPermissionImpacts)
 			}
 		})
 	}

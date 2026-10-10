@@ -140,6 +140,37 @@ func (g *Guide) ForObjectQuery(ctx context.Context, knID, otID string, requested
 	return g.build(ctx, knID, otID, shortfalls)
 }
 
+// ForObjectTypeImpact builds guidance from an explicit permission impact. It
+// is used by multi-object queries, where each object type needs its own request
+// link and there is no single effective-permissions map.
+func (g *Guide) ForObjectTypeImpact(ctx context.Context, knID, otID string,
+	properties []string, rowFilterApplied bool) *interfaces.PermissionGuidance {
+	if g == nil || knID == "" || otID == "" {
+		return nil
+	}
+	var shortfalls []interfaces.PermissionShortfall
+	if len(properties) > 0 {
+		properties = append([]string(nil), properties...)
+		sort.Strings(properties)
+		unique := properties[:0]
+		for _, property := range properties {
+			if len(unique) == 0 || unique[len(unique)-1] != property {
+				unique = append(unique, property)
+			}
+		}
+		shortfalls = append(shortfalls, interfaces.PermissionShortfall{
+			Scope: interfaces.PermissionScopePropertyGrants, Properties: unique,
+		})
+	}
+	if rowFilterApplied {
+		shortfalls = append(shortfalls, interfaces.PermissionShortfall{Scope: interfaces.PermissionScopeRowFilter})
+	}
+	if len(shortfalls) == 0 {
+		return nil
+	}
+	return g.build(ctx, knID, otID, shortfalls)
+}
+
 // restrictedProperties lists properties whose raw value was withheld. A
 // property the caller cannot see at all (none) is absent from the map by
 // design and stays unmentioned.
@@ -211,6 +242,9 @@ func message(ctx context.Context, guidance *interfaces.PermissionGuidance, linke
 	}
 	if linked {
 		parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceRequestHint"))
+		if actions := requestActions(ctx, guidance.Shortfalls); actions != "" {
+			parts = append(parts, actions)
+		}
 	} else {
 		parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceContactAdmin"))
 	}
@@ -219,6 +253,43 @@ func message(ctx context.Context, guidance *interfaces.PermissionGuidance, linke
 		separator = " "
 	}
 	return strings.Join(parts, separator)
+}
+
+// requestActions makes the localized user-facing message actionable by
+// carrying the same URLs as the structured shortfalls. Models that summarize
+// a successful business result often quote message but omit sibling fields;
+// keeping the links in both places prevents that lossy presentation without
+// changing what permissions are requested.
+func requestActions(ctx context.Context, shortfalls []interfaces.PermissionShortfall) string {
+	const separator, suffix = "; ", "."
+	var actions []string
+	for _, shortfall := range shortfalls {
+		if shortfall.RequestPermissionURL == "" {
+			continue
+		}
+		var labelKey string
+		switch shortfall.Scope {
+		case interfaces.PermissionScopeGrant:
+			labelKey = "PermissionGuidanceActionGrant"
+		case interfaces.PermissionScopePropertyGrants:
+			labelKey = "PermissionGuidanceActionPropertyGrants"
+		case interfaces.PermissionScopeRowFilter:
+			labelKey = "PermissionGuidanceActionRowFilter"
+		default:
+			continue
+		}
+		label := infraErr.LocalizedDetail(ctx, labelKey)
+		if strings.HasPrefix(shortfall.RequestPermissionURL, "http://") ||
+			strings.HasPrefix(shortfall.RequestPermissionURL, "https://") {
+			actions = append(actions, fmt.Sprintf("[%s](%s)", label, shortfall.RequestPermissionURL))
+		} else {
+			actions = append(actions, label+": "+shortfall.RequestPermissionURL)
+		}
+	}
+	if len(actions) == 0 {
+		return ""
+	}
+	return strings.Join(actions, separator) + suffix
 }
 
 // canRequest reports whether a request link can help this caller. Studio

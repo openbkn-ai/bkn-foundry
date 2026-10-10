@@ -45,13 +45,14 @@ func IsAuthorizationError(err error) bool {
 
 // HTTPError represents a public HTTP error.
 type HTTPError struct {
-	HTTPCode     int         `json:"-"`
-	Language     string      `json:"-"`
-	Code         string      `json:"code,omitempty"`
-	Description  string      `json:"description,omitempty"` // Localized error description.
-	Solution     string      `json:"solution,omitempty"`    // Localized remediation guidance.
-	ErrorLink    string      `json:"link,omitempty"`        // Error reference link.
-	ErrorDetails interface{} `json:"details,omitempty"`     // Additional public detail.
+	HTTPCode     int            `json:"-"`
+	Language     string         `json:"-"`
+	Code         string         `json:"code,omitempty"`
+	Description  string         `json:"description,omitempty"` // Localized error description.
+	Solution     string         `json:"solution,omitempty"`    // Localized remediation guidance.
+	ErrorLink    string         `json:"link,omitempty"`        // Error reference link.
+	ErrorDetails interface{}    `json:"details,omitempty"`     // Additional public detail.
+	Metadata     map[string]any `json:"metadata,omitempty"`    // Machine-readable downstream context.
 	// DownstreamBody is the raw body of the non-2xx dependency response this error
 	// was raised for, so an adapter that knows the dependency's error format can read
 	// its code and details. Never serialized.

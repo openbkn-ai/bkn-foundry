@@ -60,6 +60,6 @@ ContextLoader 知识网络查询工具集使用指南。
 
 成员资格、多条件阈值、求和、计数和去重也必须下推到 run_cypher 或已建模指标。用户同时要求总数和明细时，让同一次可重算查询返回聚合结果及对应明细，或用共享条件的两次查询分别返回。不能先用 query_object_instance 拉回多页数据，再在 Agent 上下文里自行筛选、计数或去重；这种上下文计算无法形成完整、可重放的业务证据。
 
-权限不足：query_object_instance 与 get_logic_properties_values 的结果或报错里带 permission_guidance 时，说明访问权限影响了这次调用。把其中的 message 原样告诉用户（它说明缺哪类权限、结果受什么影响、下一步怎么做），不要猜测、补全或推断被隐藏的数据。request_permission_url 以 http 开头时作为「申请权限」链接给用户；以 / 开头时请用户在 BKN Studio 中打开该路径，不要自行拼接域名；没有该字段就请用户联系管理员。申请提交后需等审核，通过后重新执行原任务，不要假定权限已生效。没有 permission_guidance 时，空结果或空值不能当作权限不足。
+权限不足：query_object_instance、search_instance、get_logic_properties_values 与 run_cypher 的结果或报错里带 permission_guidance 时，说明访问权限影响了这次调用。即使查询成功并返回了业务数据，最终回答也必须逐项展示 permission_guidance.message 及每个可用的 request_permission_url，不能只展示业务数据。search_instance 与 run_cypher 的 permission_guidance 是列表（多对象查询可能有多项），其余工具是单项；逐项把 message 原样告诉用户（它说明缺哪类权限、结果受什么影响、下一步怎么做），不要猜测、补全或推断被隐藏的数据。request_permission_url 以 http 开头时作为「申请权限」链接给用户；以 / 开头时请用户在 BKN Studio 中打开该路径，不要自行拼接域名；没有该字段就请用户联系管理员。申请提交后需等审核，通过后重新执行原任务，不要假定权限已生效。没有 permission_guidance 时，空结果或空值不能当作权限不足。
 
 若 Trace 元数据 lifecycle_recorded=true，保留 start 返回的真实 ID，捕获故障不取消已登记交互。若 start 未返回 ID 且 trace_recorded=false，省略 bkn_context，继续已授权业务调用，不因 Trace 故障重试业务。结束时，将本轮工具 _meta["openbkn.ai/trace"] 中全部 trace_call_unrecorded 的 partial_reasons 原样传入 finish.partial_reasons；宿主丢弃 _meta 时，降级结果可能在独立 content 文本块重复该诊断。若 start 未返回 interaction_id，finish 可以省略该字段并明确未记录。Trace 恢复后的下一轮正常 start。

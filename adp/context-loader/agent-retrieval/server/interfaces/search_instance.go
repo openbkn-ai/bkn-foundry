@@ -68,5 +68,7 @@ type SearchInstanceResp struct {
 	// Not all of them are scanned by concept recall - there are often dozens of them, and most of them have no examples.
 	ObjectTypes []any `json:"object_types,omitempty"`
 	// Message only appears if there are no hits, explaining why it is empty.
-	Message string `json:"message,omitempty"`
+	Message            string                   `json:"message,omitempty"`
+	PermissionImpacts  []ObjectPermissionImpact `json:"-"`
+	PermissionGuidance []*PermissionGuidance    `json:"permission_guidance,omitempty"`
 }

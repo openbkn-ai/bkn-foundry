@@ -102,10 +102,15 @@ type FlatFilter struct {
 }
 
 type QueryObjectInstancesResp struct {
-	QuerySource          string                         `json:"query_source,omitempty"`
-	Data                 []any                          `json:"datas"`                 // List of object instances
-	ObjectConcept        map[string]any                 `json:"object_type,omitempty"` // Object type definition, controlled by req.include_type_info whether to return.
-	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+	// PermissionGuidance intentionally leads the wire representation. Successful
+	// object queries can return useful rows and still be masked or row-filtered;
+	// putting the actionable notice before a large result/cursor keeps MCP hosts
+	// from overlooking it while summarizing the business data.
+	PermissionGuidance   *PermissionGuidance            `json:"permission_guidance,omitempty" toon:"permission_guidance,omitempty"`
+	QuerySource          string                         `json:"query_source,omitempty" toon:"query_source,omitempty"`
+	Data                 []any                          `json:"datas" toon:"datas"`                                 // List of object instances
+	ObjectConcept        map[string]any                 `json:"object_type,omitempty" toon:"object_type,omitempty"` // Object type definition, controlled by req.include_type_info whether to return.
+	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty" toon:"effective_permissions,omitempty"`
 	// TotalCount The total number of instances that meet the filter conditions, not limited by limit.
 	//
 	// Pointer + omitempty, three-state:
@@ -117,15 +122,87 @@ type QueryObjectInstancesResp struct {
 	// (BuildDslQuery of ontology-query logics/common.go) when the decoded cursor contains a search position.
 	// Will force NeedTotal=false, that is, the total will not be calculated at all from the second page of the cursor. At this time, if according to the value type.
 	// Serializing to 0 is to use "uncalculated" as "zero hit", and it will be inconsistent with non-empty datas.
-	TotalCount *int64 `json:"total_count,omitempty"`
+	TotalCount *int64 `json:"total_count,omitempty" toon:"total_count,omitempty"`
 	// Cursor is an opaque next-page token. Pass it back unchanged; an empty value means there is no more data.
-	Cursor string `json:"cursor,omitempty"`
+	Cursor string `json:"cursor,omitempty" toon:"cursor,omitempty"`
 	// RowFilterApplied is ontology-query's report that the caller's row filter
 	// narrowed this query. It is consumed into PermissionGuidance and not echoed.
-	RowFilterApplied bool `json:"row_filter_applied,omitempty"`
-	// PermissionGuidance is added by the MCP layer when masking or a row filter
-	// shaped the result.
-	PermissionGuidance *PermissionGuidance `json:"permission_guidance,omitempty"`
+	RowFilterApplied bool `json:"row_filter_applied,omitempty" toon:"row_filter_applied,omitempty"`
+}
+
+// TOONValue keeps permission guidance first in the text representation shown
+// to models. The generic TOON path round-trips structs through a map (whose
+// keys are sorted), which would otherwise bury permission_guidance after the
+// business rows and opaque cursor. Dynamic row values still receive the same
+// wide-integer protection as the generic formatter.
+func (r *QueryObjectInstancesResp) TOONValue() any {
+	if r == nil {
+		return r
+	}
+	data := r.Data
+	if safe, changed := toonSafeValue(r.Data); changed {
+		data = safe.([]any)
+	}
+	objectConcept := r.ObjectConcept
+	if safe, changed := toonSafeValue(r.ObjectConcept); changed {
+		objectConcept = safe.(map[string]any)
+	}
+	effective := make(map[string]string, len(r.EffectivePermissions))
+	for name, level := range r.EffectivePermissions {
+		effective[name] = string(level)
+	}
+	return &queryObjectInstancesTOON{
+		PermissionGuidance:   permissionGuidanceTOONValue(r.PermissionGuidance),
+		QuerySource:          r.QuerySource,
+		Data:                 data,
+		ObjectConcept:        objectConcept,
+		EffectivePermissions: effective,
+		TotalCount:           r.TotalCount,
+		Cursor:               r.Cursor,
+		RowFilterApplied:     r.RowFilterApplied,
+	}
+}
+
+type queryObjectInstancesTOON struct {
+	PermissionGuidance   *permissionGuidanceTOON `toon:"permission_guidance,omitempty"`
+	QuerySource          string                  `toon:"query_source,omitempty"`
+	Data                 []any                   `toon:"datas"`
+	ObjectConcept        map[string]any          `toon:"object_type,omitempty"`
+	EffectivePermissions map[string]string       `toon:"effective_permissions,omitempty"`
+	TotalCount           *int64                  `toon:"total_count,omitempty"`
+	Cursor               string                  `toon:"cursor,omitempty"`
+	RowFilterApplied     bool                    `toon:"row_filter_applied,omitempty"`
+}
+
+type permissionGuidanceTOON struct {
+	Message    string                            `toon:"message"`
+	Resource   PermissionGuidanceResource        `toon:"resource"`
+	Shortfalls []permissionGuidanceShortfallTOON `toon:"shortfalls"`
+}
+
+type permissionGuidanceShortfallTOON struct {
+	Scope                string   `toon:"scope"`
+	Operations           []string `toon:"operations,omitempty"`
+	Properties           []string `toon:"properties,omitempty"`
+	RequestPermissionURL string   `toon:"request_permission_url,omitempty"`
+}
+
+func permissionGuidanceTOONValue(guidance *PermissionGuidance) *permissionGuidanceTOON {
+	if guidance == nil {
+		return nil
+	}
+	shortfalls := make([]permissionGuidanceShortfallTOON, 0, len(guidance.Shortfalls))
+	for _, shortfall := range guidance.Shortfalls {
+		shortfalls = append(shortfalls, permissionGuidanceShortfallTOON{
+			Scope:                string(shortfall.Scope),
+			Operations:           shortfall.Operations,
+			Properties:           shortfall.Properties,
+			RequestPermissionURL: shortfall.RequestPermissionURL,
+		})
+	}
+	return &permissionGuidanceTOON{
+		Message: guidance.Message, Resource: guidance.Resource, Shortfalls: shortfalls,
+	}
 }
 
 // StripInstanceScores removes the _score field from each object instance result.

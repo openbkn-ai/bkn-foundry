@@ -79,7 +79,8 @@ func TestForbiddenQueryGetsGrantLinkOnTheCallersHost(t *testing.T) {
 	link := got.Shortfalls[0].RequestPermissionURL
 	got.Shortfalls[0].RequestPermissionURL = ""
 	want := &interfaces.PermissionGuidance{
-		Message: "你暂无「客户信息」的数据查询权限，无法完成本次查询。可通过申请权限链接提交申请；提交后请等待管理员完成授权，再重新发起任务。",
+		Message: "你暂无「客户信息」的数据查询权限，无法完成本次查询。可通过申请权限链接提交申请；提交后请等待管理员完成授权，再重新发起任务。" +
+			"[申请数据查询权限](" + link + ").",
 		Resource: interfaces.PermissionGuidanceResource{
 			Type: "object_type", ID: "55555/6666", KnID: "55555", OtID: "6666", Name: "客户信息",
 		},
@@ -290,11 +291,17 @@ func TestMessageFollowsTheRequestLanguage(t *testing.T) {
 		"phone": interfaces.PropertyAccessMasked, "salary": interfaces.PropertyAccessSchema,
 	}, true)
 
-	want := "In “客户信息”, the raw values of phone, salary are not available to you. " +
+	wantPrefix := "In “客户信息”, the raw values of phone, salary are not available to you. " +
 		"You can access only part of the data in “客户信息”, so the result may be incomplete. " +
 		"You can submit a request through the request link; after submitting, wait for an administrator to approve it, then rerun the task."
-	if got.Message != want {
-		t.Fatalf("message = %q\nwant      %q", got.Message, want)
+	if !strings.HasPrefix(got.Message, wantPrefix) {
+		t.Fatalf("message = %q\nwant prefix = %q", got.Message, wantPrefix)
+	}
+	for i, action := range []string{"Request raw field access", "Request a broader row-access scope"} {
+		if !strings.Contains(got.Message, action) ||
+			!strings.Contains(got.Message, got.Shortfalls[i].RequestPermissionURL) {
+			t.Fatalf("message = %q; missing action %q or its URL", got.Message, action)
+		}
 	}
 	_, query := splitLink(t, got.Shortfalls[0].RequestPermissionURL)
 	if reason := query.Get("reason"); reason != "The agent needs raw values in “客户信息” for phone, salary" {

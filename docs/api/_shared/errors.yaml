@@ -72,6 +72,10 @@ components:
             Error details with a service-defined type. Strict dependency failures use an object
             containing `dependency_kind` and may include a safe nested `detail`; raw downstream
             response bodies and network errors are never included.
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional machine-readable context that supplements, but does not replace, the localized error details.
 
     ErrorCompact:
       description: |
@@ -120,6 +124,10 @@ components:
           description: Link to error documentation; may indicate that no link is available.
         details:
           description: Error details, commonly a string or object.
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional machine-readable context propagated from a downstream service.
 
     ErrorOpenAI:
       description: |

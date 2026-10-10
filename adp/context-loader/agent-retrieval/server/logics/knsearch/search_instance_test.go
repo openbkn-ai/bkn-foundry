@@ -6,11 +6,41 @@
 package knsearch
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
+
+func TestFilterSearchInstanceRespReportsMaskedHitFields(t *testing.T) {
+	resp := &interfaces.KnSearchResp{
+		Nodes: []map[string]any{{"object_type_id": "ot-order"}},
+		ObjectTypes: []map[string]any{
+			{
+				"concept_id": "ot-order",
+				"effective_permissions": map[string]any{
+					"id": "full", "customer_name": "masked", "internal_note": "schema",
+				},
+			},
+			{
+				"concept_id":            "ot-no-hit",
+				"effective_permissions": map[string]any{"secret": "masked"},
+			},
+		},
+	}
+
+	got := FilterSearchInstanceResp(resp, false)
+	want := []interfaces.ObjectPermissionImpact{{
+		ObjectTypeID: "ot-order", Properties: []string{"customer_name", "internal_note"},
+	}}
+	if !reflect.DeepEqual(got.PermissionImpacts, want) {
+		t.Fatalf("permission impacts = %+v, want %+v", got.PermissionImpacts, want)
+	}
+	if got.ObjectTypes != nil {
+		t.Fatalf("object_types = %+v, want omitted when include_object_types=false", got.ObjectTypes)
+	}
+}
 
 func intPtr(v int) *int { return &v }
 
