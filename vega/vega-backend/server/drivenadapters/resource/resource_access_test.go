@@ -125,7 +125,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
-		values[5] = interfaces.ResourceCategoryLogicView
+		values[5] = interfaces.ResourceCategoryLogicalView
 		values[22] = interfaces.LogicType_Derived
 		values[23] = `{"source_resource_id":"source-1","filter_condition":{"field":"amount","operation":">","value":9007199254740993}}`
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
@@ -142,11 +142,11 @@ func TestResourceAccessGetByID(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("keeps legacy composite definition for logic views", func(t *testing.T) {
+	t.Run("keeps legacy composite definition for logical views", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
-		values[5] = interfaces.ResourceCategoryLogicView
+		values[5] = interfaces.ResourceCategoryLogicalView
 		values[22] = interfaces.LogicType_Composite
 		values[23] = `[{"id":"source","type":"resource"}]`
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
@@ -425,7 +425,7 @@ func TestResourceAccessUpdate(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		res := sampleResource()
-		res.Category = interfaces.ResourceCategoryLogicView
+		res.Category = interfaces.ResourceCategoryLogicalView
 		res.LogicType = interfaces.LogicType_Derived
 		res.LogicDefinition = &interfaces.DerivedLogicDefinition{SourceResourceID: "source-1"}
 		res.SourceMetadata = map[string]any{

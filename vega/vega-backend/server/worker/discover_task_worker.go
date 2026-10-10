@@ -542,8 +542,8 @@ func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *inte
 			return nil, ErrWorkerManagerStopping
 		}
 		switch {
-		case resource.Category == interfaces.ResourceCategoryLogicView:
-			err = dtw.enrichResourceLogicViewRowCount(ctx, resource, result)
+		case resource.Category == interfaces.ResourceCategoryLogicalView:
+			err = dtw.enrichResourceLogicalViewRowCount(ctx, resource, result)
 		case resource.Category == interfaces.ResourceCategoryTable && (singleResource || category == interfaces.ConnectorCategoryTable):
 			if tableConnector, ok := connector.(interfaces.TableConnector); ok {
 				err = dtw.enrichResourceTableRowCount(ctx, task, resource, tableConnector, tableMetadataForCount(resource), result)
@@ -603,11 +603,11 @@ func finishCountResult(result *interfaces.DiscoverResult) *interfaces.DiscoverRe
 	return result
 }
 
-// enrichResourceLogicViewRowCount 复用视图查询解析，按完整视图定义获取精确总数。
-func (dtw *DiscoverTaskWorker) enrichResourceLogicViewRowCount(ctx context.Context, view *interfaces.Resource, result *interfaces.DiscoverResult) error {
+// enrichResourceLogicalViewRowCount 复用视图查询解析，按完整视图定义获取精确总数。
+func (dtw *DiscoverTaskWorker) enrichResourceLogicalViewRowCount(ctx context.Context, view *interfaces.Resource, result *interfaces.DiscoverResult) error {
 	queryCtx, cancel := context.WithTimeout(ctx, resourceCountTimeout)
 	ignoreLocalIndex := true
-	counted, err := resource.QueryLogicViewWithPaging(queryCtx, view, &interfaces.ResourceDataQueryParams{
+	counted, err := resource.QueryLogicalViewWithPaging(queryCtx, view, &interfaces.ResourceDataQueryParams{
 		Paging: interfaces.PagingRequest{
 			Mode:  interfaces.PagingModeSingle,
 			Limit: 1,
@@ -622,7 +622,7 @@ func (dtw *DiscoverTaskWorker) enrichResourceLogicViewRowCount(ctx context.Conte
 		return parentErr
 	}
 	if err == nil && (counted == nil || !counted.NeedTotal || counted.TotalCount < 0) {
-		err = fmt.Errorf("logic view did not return an exact total count")
+		err = fmt.Errorf("logical view did not return an exact total count")
 	}
 	if err == nil {
 		err = dtw.rs.InternalUpdateRowCount(ctx, nil, view, counted.TotalCount, time.Now().UnixMilli())

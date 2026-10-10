@@ -1897,7 +1897,7 @@ func expectCatalogDeletionImpact(
 ) {
 	resources := []*interfaces.Resource(nil)
 	if resourceBlocked {
-		resources = []*interfaces.Resource{{ID: "protected", Category: interfaces.ResourceCategoryLogicView}}
+		resources = []*interfaces.Resource{{ID: "protected", Category: interfaces.ResourceCategoryLogicalView}}
 	} else if includeBuildCascade {
 		resources = []*interfaces.Resource{{ID: "r1"}, {ID: "r2"}}
 	}

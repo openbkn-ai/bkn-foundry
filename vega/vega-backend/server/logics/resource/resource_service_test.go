@@ -664,13 +664,13 @@ func TestResourceUpdateUsesFeatureSemanticsForEverySupportedCategory(t *testing.
 
 func TestValidateResourceUpdateScopeRejectsLogicTypeChange(t *testing.T) {
 	resource := &interfaces.Resource{
-		CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicView,
+		CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicalView,
 		LogicType: interfaces.LogicType_Derived,
 	}
 	for _, logicType := range []string{"", interfaces.LogicType_Composite} {
 		changed, err := (&resourceService{}).validateResourceUpdateScope(context.Background(), resource,
 			&interfaces.ResourceRequest{
-				CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicView, LogicType: logicType,
+				CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicalView, LogicType: logicType,
 			})
 		assert.False(t, changed)
 		require.Error(t, err)
@@ -1041,7 +1041,7 @@ func TestResourceServiceValidateIndexConfigModelsRejectsReferencedVectorConfig(t
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, `vector feature on field "content" that references "embedding" must not define config`)
 }
 
-func TestResourceServiceValidateIndexConfigModelsLogicViewHiddenVectorReference(t *testing.T) {
+func TestResourceServiceValidateIndexConfigModelsLogicalViewHiddenVectorReference(t *testing.T) {
 	schema := []*interfaces.Property{{
 		Name: "content_alias",
 		Type: interfaces.DataType_Text,
@@ -1055,7 +1055,7 @@ func TestResourceServiceValidateIndexConfigModelsLogicViewHiddenVectorReference(
 	// The EE view preparation has already checked the reference against the full
 	// source schema. The target may be omitted from the public view schema.
 	require.NoError(t, rs.validateIndexConfigModels(context.Background(), schema, nil,
-		interfaces.ResourceCategoryLogicView))
+		interfaces.ResourceCategoryLogicalView))
 
 	err := rs.validateIndexConfigModels(context.Background(), schema, nil,
 		interfaces.ResourceCategoryTable)
@@ -1065,7 +1065,7 @@ func TestResourceServiceValidateIndexConfigModelsLogicViewHiddenVectorReference(
 
 	schema[0].Features[0].Config = map[string]any{"embedding_model": "invalid"}
 	err = rs.validateIndexConfigModels(context.Background(), schema, nil,
-		interfaces.ResourceCategoryLogicView)
+		interfaces.ResourceCategoryLogicalView)
 	httpErr = requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, "must not define config")
 }
@@ -3141,7 +3141,7 @@ func TestResourceServicePopulateResourceRowCounts(t *testing.T) {
 }
 
 func TestResourceServiceInternalUpdateRowCount(t *testing.T) {
-	for _, scenario := range []string{"atomic merge", "logic view", "dataset", "unknown category", "nil metadata", "missing properties", "invalid properties", "resource changed or deleted", "write failure"} {
+	for _, scenario := range []string{"atomic merge", "logical view", "dataset", "unknown category", "nil metadata", "missing properties", "invalid properties", "resource changed or deleted", "write failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			ra := vmock.NewMockResourceAccess(gomock.NewController(t))
 			rs := &resourceService{ra: ra}
@@ -3149,8 +3149,8 @@ func TestResourceServiceInternalUpdateRowCount(t *testing.T) {
 				"properties": map[string]any{"estimated_row_count": int64(99), "row_count": int64(40), "row_count_time": int64(100)}, "custom": "keep",
 			}}
 			switch scenario {
-			case "logic view":
-				source.Category = interfaces.ResourceCategoryLogicView
+			case "logical view":
+				source.Category = interfaces.ResourceCategoryLogicalView
 			case "dataset":
 				source.Category = interfaces.ResourceCategoryDataset
 			case "unknown category":

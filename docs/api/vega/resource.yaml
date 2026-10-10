@@ -16,7 +16,7 @@ info:
     | `fileset` | 物理 | 文件集（计划中） |
     | `metric` | 物理 | 指标（计划中） |
     | `api` | 物理 | API 数据源（计划中） |
-    | `logicview` | 逻辑 | 专业版及以上可用；由 `logic_definition` 定义，目前仅支持衍生视图 |
+    | `logical_view` | 逻辑 | 专业版及以上可用；由 `logic_definition` 定义，目前仅支持衍生视图 |
     | `dataset` | 逻辑 | 文档集合（RAG 索引），documents 子资源走 [resource-data.yaml] |
 
     `enabled` 和 `status` 相互独立：`enabled=false` 表示该资源不可用于查询或构建；
@@ -68,7 +68,7 @@ paths:
               - metric
               - topic
               - index
-              - logicview
+              - logical_view
               - dataset
         - name: status
           description: 按状态过滤
@@ -155,18 +155,18 @@ paths:
         `VegaBackend.Resource.CatalogNotFound`。
 
         - `id` 字段可选；后端在不指定时生成。
-        - `category` 必须为支持的取值之一。**仅 `dataset` 与 `logicview` 允许通过本 API 创建**；
+        - `category` 必须为支持的取值之一。**仅 `dataset` 与 `logical_view` 允许通过本 API 创建**；
           其他类别（`table` / `file` / `fileset` / `api` / `metric` / `topic` / `index`）由 discover 任务产出，
           直接调用本接口创建会返回 400 `VegaBackend.Resource.CategoryNotCreatable`。
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
-        - `category=logicview` 仅在 EE 专业版及以上授权可创建，且必须提交
+        - `category=logical_view` 仅在 EE 专业版及以上授权可创建，且必须提交
           `logic_type=derived` 与对应的
           `logic_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`、
           `type` 与非空 `display_name` 必填，`type` 必须等于绑定的源 Resource 字段类型。
           `display_name` 是 View 自身的显示名，可与源字段不同，最多 255 个字符；
           不提供自动继承。同一 View 内输出字段的 `name` 与 `display_name` 均不得重复；
           `display_name` 去重比较忽略首尾空白，保存时保留请求值。
-          重复显示名返回 400 `VegaBackend.LogicView.Duplicated.FieldDisplayName`。
+          重复显示名返回 400 `VegaBackend.LogicalView.Duplicated.FieldDisplayName`。
           源资源仅支持 table/index。
           `source_metadata` 由服务端从源资源生成，请求值不参与写入；
           未安装 EE 扩展返回 501；授权版本不足返回 403 `Public.Forbidden`。
@@ -358,7 +358,7 @@ paths:
         DiscoverTask 并立即返回 task id；实际刷新由 worker 异步执行。刷新不会改变
         Resource 的 `enabled` 值。可选 `count_only` 仅刷新精确数量及采集时间，不刷新元数据。
         精确计数支持 MariaDB/MySQL、PostgreSQL 表与普通视图、PostgreSQL 物化视图及 OpenSearch 索引；
-        logicview 复用已注册的视图查询服务，按完整视图定义及固定过滤条件获取源端精确总数。
+        logical_view 复用已注册的视图查询服务，按完整视图定义及固定过滤条件获取源端精确总数。
         Dataset 数据量在读取时实时计算，不支持后台 count_only；单资源不支持的 category
         在创建任务前返回 400，不入库、不调度、不调用连接器。
         每个资源使用 5 分钟 ctx 兜底，暂不设置数据库服务端执行时限。
@@ -379,7 +379,7 @@ paths:
                   type: string
                   enum: [full_sync, count_only]
                   default: full_sync
-                  description: count_only 对已有源表、源视图、索引或 logicview 执行精确计数；Dataset 等不支持的单资源在创建任务前返回 400
+                  description: count_only 对已有源表、源视图、索引或 logical_view 执行精确计数；Dataset 等不支持的单资源在创建任务前返回 400
       responses:
         "200":
           description: 已创建并入队 Resource 刷新任务
@@ -460,14 +460,14 @@ components:
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.Resource.InvalidParameter.*`：具体字段非法
         - `VegaBackend.Resource.Duplicated.FieldFeatureType`：同一字段存在多个相同类型的特征
-        - `VegaBackend.Resource.CategoryNotCreatable`：尝试通过 API 创建非 `dataset`/`logicview` 类资源
+        - `VegaBackend.Resource.CategoryNotCreatable`：尝试通过 API 创建非 `dataset`/`logical_view` 类资源
         - `VegaBackend.Dataset.*`：dataset 创建时 `schema_definition` 为空 / 字段名 / 长度 / 重复 / 类型 / 特征校验失败
-        - `VegaBackend.LogicView.InvalidParameter.LogicDefinition`：derived 定义或输出字段非法，
+        - `VegaBackend.LogicalView.InvalidParameter.LogicDefinition`：derived 定义或输出字段非法，
           包括缺失或空白的 `display_name`
-        - `VegaBackend.LogicView.LengthExceeded.FieldDisplayName`：derived 输出字段的
+        - `VegaBackend.LogicalView.LengthExceeded.FieldDisplayName`：derived 输出字段的
           `display_name` 超过 255 个字符
-        - `VegaBackend.LogicView.Duplicated.FieldDisplayName`：derived 输出字段显示名重复
-        - `VegaBackend.LogicView.*`：其他 logicview 定义 / 字段 / 特征校验失败
+        - `VegaBackend.LogicalView.Duplicated.FieldDisplayName`：derived 输出字段显示名重复
+        - `VegaBackend.LogicalView.*`：其他 logical_view 定义 / 字段 / 特征校验失败
       content:
         application/json:
           schema:
@@ -634,7 +634,7 @@ components:
           additionalProperties: true
     LogicDefinitionNode:
       description: |
-        逻辑视图（`category=logicview`）定义图中的一个节点。
+        逻辑视图（`category=logical_view`）定义图中的一个节点。
 
         节点类型 `type` 已知取值（不限于）：
 
@@ -738,7 +738,7 @@ components:
             - metric
             - topic
             - index
-            - logicview
+            - logical_view
             - dataset
         built_in:
           description: 是否为平台内置资源；仅内置管理员可见，且必须与所属 Catalog 的 `built_in` 一致
@@ -811,7 +811,7 @@ components:
           type: integer
           format: int64
         logic_type:
-          description: 逻辑视图类型（仅 category=logicview 有意义）
+          description: 逻辑视图类型（仅 category=logical_view 有意义）
           type: string
           enum:
             - derived
@@ -891,7 +891,7 @@ components:
             - metric
             - topic
             - index
-            - logicview
+            - logical_view
             - dataset
         built_in:
           description: 仅创建时可传；必须与所属 Catalog 的 `built_in` 一致，更新时不可修改
@@ -1019,7 +1019,7 @@ components:
         category:
           description: 资源类型
           type: string
-          enum: [table, file, fileset, api, metric, topic, index, logicview, dataset]
+          enum: [table, file, fileset, api, metric, topic, index, logical_view, dataset]
         built_in:
           description: 是否为平台内置资源
           type: boolean

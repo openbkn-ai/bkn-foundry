@@ -12,7 +12,7 @@ info:
       [discover-schedule.yaml](discover-schedule.yaml).
     - Resource refresh: `POST /resources/{id}/discover`; see [resource.yaml](resource.yaml).
 
-    Single-resource `count_only` supports table, index, and logicview categories.
+    Single-resource `count_only` supports table, index, and logical_view categories.
     Dataset counts are computed during reads; unsupported single-resource categories
     return 400 before task creation. Catalog-level count tasks skip Dataset resources
     and include them in `skipped_count`.

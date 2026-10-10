@@ -10,7 +10,7 @@ ErrorLink = ""
 
 [VegaBackend.Resource.CategoryNotCreatable]
 Description = "Resource category cannot be created via API"
-Solution = "Only 'dataset' and 'logicview' resources can be created via this API. Other categories must be created via a discover task."
+Solution = "Only 'dataset' and 'logical_view' resources can be created via this API. Other categories must be created via a discover task."
 ErrorLink = ""
 
 [VegaBackend.Resource.InvalidParameter.Type]

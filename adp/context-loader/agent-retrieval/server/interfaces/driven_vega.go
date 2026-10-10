@@ -139,7 +139,7 @@ func toonSafeValue(value any) (any, bool) {
 // Empty fields do not participate in filtering; when Offset/Limit is 0, vega takes the default value (offset=0, limit=20).
 type VegaListResourcesReq struct {
 	CatalogID string // Limit a catalog.
-	Category  string // Resource category: table/file/fileset/api/metric/topic/index/logicview/dataset.
+	Category  string // Resource category: table/file/fileset/api/metric/topic/index/logical_view/dataset.
 	Offset    int
 	Limit     int
 }

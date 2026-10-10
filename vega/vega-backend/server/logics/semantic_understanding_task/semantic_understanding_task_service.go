@@ -876,7 +876,7 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 			Description: catalog.Description,
 		},
 		Resources:          []interfaces.SemanticUnderstandingCatalogAgentInputResource{},
-		ExistingLogicViews: []interfaces.SemanticUnderstandingCatalogAgentInputExistingView{},
+		ExistingLogicalViews: []interfaces.SemanticUnderstandingCatalogAgentInputExistingView{},
 		Options: interfaces.SemanticUnderstandingCatalogAgentInputOptions{
 			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 			ApplyMode:           req.ApplyMode,
@@ -887,8 +887,8 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 		if resource == nil {
 			continue
 		}
-		if resource.Category == interfaces.ResourceCategoryLogicView {
-			input.ExistingLogicViews = append(input.ExistingLogicViews, buildCatalogAgentInputExistingView(resource))
+		if resource.Category == interfaces.ResourceCategoryLogicalView {
+			input.ExistingLogicalViews = append(input.ExistingLogicalViews, buildCatalogAgentInputExistingView(resource))
 			continue
 		}
 		input.Resources = append(input.Resources, buildCatalogAgentInputResource(resource))

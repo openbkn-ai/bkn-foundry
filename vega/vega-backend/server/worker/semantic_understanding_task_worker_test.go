@@ -636,7 +636,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 	for _, category := range []string{
 		interfaces.ResourceCategoryTable,
 		interfaces.ResourceCategoryDataset,
-		interfaces.ResourceCategoryLogicView,
+		interfaces.ResourceCategoryLogicalView,
 	} {
 		t.Run("trims field display name for "+category, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -1082,7 +1082,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 		InternalGetByCatalogID(gomock.Any(), "catalog-1").
 		Return([]*interfaces.Resource{
 			{ID: "resource-1", CatalogID: "catalog-1", Name: "orders", Category: interfaces.ResourceCategoryTable},
-			{ID: "view-2", CatalogID: "catalog-1", Name: "old_view", Category: interfaces.ResourceCategoryLogicView},
+			{ID: "view-2", CatalogID: "catalog-1", Name: "old_view", Category: interfaces.ResourceCategoryLogicalView},
 		}, nil)
 	resourceService.EXPECT().
 		InternalCreate(gomock.Any(), gomock.Not(gomock.Nil()), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
@@ -1091,7 +1091,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 			assert.Equal(t, "customer_order_summary", req.Name)
 			assert.Equal(t, "customer_order_summary", req.SourceIdentifier)
 			assert.Equal(t, "summary view", req.Description)
-			assert.Equal(t, interfaces.ResourceCategoryLogicView, req.Category)
+			assert.Equal(t, interfaces.ResourceCategoryLogicalView, req.Category)
 			assert.Equal(t, logicDefinition, req.LogicDefinition)
 			require.NotNil(t, req.Builtin)
 			assert.True(t, *req.Builtin)
@@ -1101,7 +1101,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 		InternalUpdateStatus(gomock.Any(), gomock.Not(gomock.Nil()), "view-2", interfaces.ResourceStatusStale, "obsolete").
 		Return(nil)
 
-	resultJSON := `{"confidence":0.84,"logic_views":[{"action":"create","name":"customer_order_summary","source_identifier":"customer_order_summary","description":"summary view","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"},{"id":"output","type":"output","inputs":["source"]}],"confidence":0.82}],"obsolete_logic_views":[{"target_resource_id":"view-2","reason":"obsolete","confidence":0.91}]}`
+	resultJSON := `{"confidence":0.84,"logical_views":[{"action":"create","name":"customer_order_summary","source_identifier":"customer_order_summary","description":"summary view","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"},{"id":"output","type":"output","inputs":["source"]}],"confidence":0.82}],"obsolete_logical_views":[{"target_resource_id":"view-2","reason":"obsolete","confidence":0.91}]}`
 	got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, resultJSON, 0.84)
 
 	require.NoError(t, err)
@@ -1128,7 +1128,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResultRejectsInvalidSourceId
 		InternalGetByCatalogID(gomock.Any(), "catalog-1").
 		Return([]*interfaces.Resource{{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}}, nil)
 
-	resultJSON := `{"logic_views":[{"action":"create","name":"订单汇总","source_identifier":"order-summary","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"}]}]}`
+	resultJSON := `{"logical_views":[{"action":"create","name":"订单汇总","source_identifier":"order-summary","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"}]}]}`
 	_, err := worker.applyCatalogResult(context.Background(), &sql.Tx{}, task, resultJSON)
 
 	require.ErrorContains(t, err, "source_identifier must be lower snake_case")
@@ -1149,13 +1149,13 @@ func TestParseBknAgentResult(t *testing.T) {
 
 	t.Run("extracts json object from agent text", func(t *testing.T) {
 		gotResult, gotConfidence, gotDetail, err := parseBknAgentResult(&interfaces.BknAgentTask{
-			Result: []byte(`No knowledge networks exist. {"confidence":0.8,"logic_views":[],"warnings":["keep {braces} in string"],"obsolete_logic_views":[]} extra text`),
+			Result: []byte(`No knowledge networks exist. {"confidence":0.8,"logical_views":[],"warnings":["keep {braces} in string"],"obsolete_logical_views":[]} extra text`),
 		})
 
 		require.NoError(t, err)
-		assert.JSONEq(t, `{"confidence":0.8,"logic_views":[],"warnings":["keep {braces} in string"],"obsolete_logic_views":[]}`, gotResult)
+		assert.JSONEq(t, `{"confidence":0.8,"logical_views":[],"warnings":["keep {braces} in string"],"obsolete_logical_views":[]}`, gotResult)
 		assert.Equal(t, 0.8, gotConfidence)
-		assert.JSONEq(t, `{"logic_views":[],"warnings":["keep {braces} in string"],"obsolete_logic_views":[]}`, gotDetail)
+		assert.JSONEq(t, `{"logical_views":[],"warnings":["keep {braces} in string"],"obsolete_logical_views":[]}`, gotDetail)
 	})
 }
 

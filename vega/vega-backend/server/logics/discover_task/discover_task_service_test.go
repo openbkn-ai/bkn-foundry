@@ -83,7 +83,7 @@ func TestDiscoverTaskServiceCreateCountOnly(t *testing.T) {
 		{name: "fileset", category: interfaces.ResourceCategoryFileset, wantStatus: http.StatusBadRequest},
 		{name: "table", category: interfaces.ResourceCategoryTable},
 		{name: "index", category: interfaces.ResourceCategoryIndex},
-		{name: "logicview", category: interfaces.ResourceCategoryLogicView},
+		{name: "logical_view", category: interfaces.ResourceCategoryLogicalView},
 		{name: "missing resource", missing: true, wantStatus: http.StatusNotFound},
 		{name: "wrong catalog", category: interfaces.ResourceCategoryTable, wrongCatalog: true, wantStatus: http.StatusNotFound},
 		{name: "lookup error", lookupError: true},

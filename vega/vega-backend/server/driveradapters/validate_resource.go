@@ -45,8 +45,8 @@ func validateResourceRequestBase(ctx context.Context, req *interfaces.ResourceRe
 
 func validateResourceRequestSchema(ctx context.Context, req *interfaces.ResourceRequest) error {
 	switch req.Category {
-	case interfaces.ResourceCategoryLogicView:
-		return resourcelogic.ValidateLogicViewRequest(ctx, req)
+	case interfaces.ResourceCategoryLogicalView:
+		return resourcelogic.ValidateLogicalViewRequest(ctx, req)
 	case interfaces.ResourceCategoryDataset:
 		if req.IndexConfig != nil {
 			if len(req.IndexConfig.PrimaryKeyFields) > 0 {
@@ -256,15 +256,15 @@ func ValidateResourceListQueryParams(ctx context.Context, params interfaces.Reso
 }
 
 // validateCreateResourceCategory enforces the business boundary that only
-// 'dataset' and 'logicview' resources can be created via the REST API.
+// 'dataset' and 'logical_view' resources can be created via the REST API.
 // Other categories must be produced by a discover task.
 func validateCreateResourceCategory(ctx context.Context, category string) error {
 	switch category {
-	case interfaces.ResourceCategoryDataset, interfaces.ResourceCategoryLogicView:
+	case interfaces.ResourceCategoryDataset, interfaces.ResourceCategoryLogicalView:
 		return nil
 	default:
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_CategoryNotCreatable).
-			WithErrorDetails(fmt.Sprintf("category %q cannot be created via API; only 'dataset' and 'logicview' are allowed, other categories must be created via discover task", category))
+			WithErrorDetails(fmt.Sprintf("category %q cannot be created via API; only 'dataset' and 'logical_view' are allowed, other categories must be created via discover task", category))
 	}
 }
 
@@ -281,7 +281,7 @@ func validateResourceCategoryQueryParam(ctx context.Context, category string) er
 		interfaces.ResourceCategoryMetric,
 		interfaces.ResourceCategoryTopic,
 		interfaces.ResourceCategoryIndex,
-		interfaces.ResourceCategoryLogicView,
+		interfaces.ResourceCategoryLogicalView,
 		interfaces.ResourceCategoryDataset:
 		return nil
 	default:

@@ -18,7 +18,7 @@
       },
       "type": {
         "type": "string",
-        "description": "可选。按资源类别过滤（table / file / fileset / api / metric / topic / index / logicview / dataset）。与 kn_id 同时传时，对该网络绑定的资源生效。"
+        "description": "可选。按资源类别过滤（table / file / fileset / api / metric / topic / index / logical_view / dataset）。与 kn_id 同时传时，对该网络绑定的资源生效。"
       },
       "offset": {
         "type": "integer",
