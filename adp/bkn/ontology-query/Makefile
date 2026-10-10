@@ -26,11 +26,16 @@ test-cover:
 	cd server && I18N_MODE_UT=true go test $(UT_PACKAGES) -gcflags=all=-l \
 		-coverprofile=../test-result/coverage.out \
 		-covermode=atomic
-	go tool cover -func=test-result/coverage.out
-	go tool cover -html=test-result/coverage.out -o test-result/coverage.html
-	@command -v gocover-cobertura >/dev/null 2>&1 && \
-		gocover-cobertura < test-result/coverage.out > test-result/coverage.xml || \
-		echo "WARN: gocover-cobertura not found, coverage.xml not generated"
+	cd server && go tool cover -func=../test-result/coverage.out
+	cd server && go tool cover -html=../test-result/coverage.out -o ../test-result/coverage.html
+	@if command -v gocover-cobertura >/dev/null 2>&1; then \
+		(cd server && gocover-cobertura < ../test-result/coverage.out > ../test-result/coverage.xml) || exit $$?; \
+		grep -Eq 'lines-valid="[1-9][0-9]*"' test-result/coverage.xml || { \
+			echo "ERROR: coverage.xml contains no valid coverage data"; exit 1; \
+		}; \
+	else \
+		echo "WARN: gocover-cobertura not found, coverage.xml not generated"; \
+	fi
 
 test-race:
 	cd server && I18N_MODE_UT=true go test $(UT_PACKAGES) -gcflags=all=-l -race -count=1

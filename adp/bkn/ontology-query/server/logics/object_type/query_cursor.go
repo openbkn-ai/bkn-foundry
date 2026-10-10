@@ -104,7 +104,7 @@ func (codec *queryCursorCodec) cursorExpiresAt(resourceCursorExpiry *int64) (tim
 	if resourceCursorExpiry != nil {
 		vegaExpiresAt := time.Unix(*resourceCursorExpiry, 0)
 		if !vegaExpiresAt.After(now) {
-			return time.Time{}, fmt.Errorf("Vega resource cursor is already expired")
+			return time.Time{}, fmt.Errorf("vega resource cursor is already expired")
 		}
 		if vegaExpiresAt.Before(expiresAt) {
 			expiresAt = vegaExpiresAt

@@ -576,6 +576,9 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	for k := range fieldPropMap {
 		outputFields = append(outputFields, k)
 	}
+	if plan.scoreVisible {
+		outputFields = append(outputFields, interfaces.SORT_FIELD_SCORE)
+	}
 	sort.Strings(outputFields)
 	params := &interfaces.ResourceDataQueryParams{
 		IgnoreLocalIndex: &query.IgnoreLocalIndex,
@@ -608,7 +611,10 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	for _, col := range resp.Entries {
 		rawObject := map[string]any{}
 		for k, v := range col {
-			if propName, exists := fieldPropMap[k]; exists {
+			if k == interfaces.SORT_FIELD_SCORE {
+				// Score is query metadata; projectRow applies its visibility policy.
+				rawObject[k] = v
+			} else if propName, exists := fieldPropMap[k]; exists {
 				rawObject[propName] = v
 			}
 		}

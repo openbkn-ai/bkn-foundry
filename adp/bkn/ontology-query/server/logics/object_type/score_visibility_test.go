@@ -13,7 +13,90 @@ import (
 
 	cond "ontology-query/common/condition"
 	"ontology-query/interfaces"
+	"ontology-query/logics"
 )
+
+func TestResourceQueryPreservesScoreMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		search       bool
+		exclude      bool
+		withScore    bool
+		operation    string
+		nested       bool
+		explicitSort bool
+	}{
+		{name: "search returns score", search: true, withScore: true},
+		{name: "knn returns score", search: true, withScore: true, operation: cond.OperationKNN},
+		{name: "nested match returns score", search: true, withScore: true, nested: true},
+		{name: "nested knn returns score", search: true, withScore: true, operation: cond.OperationKNN, nested: true},
+		{name: "explicit primary key sort retains score", search: true, withScore: true, explicitSort: true},
+		{name: "explicitly excluded", search: true, exclude: true, withScore: true},
+		{name: "ordinary read omits score", withScore: true},
+		{name: "source does not fabricate score", search: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			objectType := accessPlanObjectType()
+			objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
+			query := &interfaces.ObjectQueryBaseOnObjectType{Properties: []string{"id"}, PageQuery: interfaces.PageQuery{Limit: 10}}
+			if tc.search {
+				query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationMatch,
+					ValueOptCfg: cond.ValueOptCfg{Value: "customer", ValueFrom: "const"}}
+				if tc.operation != "" {
+					query.ActualCondition.Operation = tc.operation
+				}
+				if tc.nested {
+					query.ActualCondition = &cond.CondCfg{Operation: cond.OperationAnd, SubConds: []*cond.CondCfg{query.ActualCondition}}
+				}
+			}
+			if tc.exclude {
+				query.ExcludeSystemProperties = []string{interfaces.SORT_FIELD_SCORE}
+			}
+			plan, err := buildPropertyAccessPlan(context.Background(), fullPropertyAccessStub{}, objectType, query, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			query.Sort = logics.BuildViewSort(objectType)
+			if tc.explicitSort {
+				query.Sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+			}
+			row := map[string]any{"customer_id": "customer-1", "secret": "hidden"}
+			if tc.withScore {
+				row[interfaces.SORT_FIELD_SCORE] = 0.875
+			}
+			vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{Entries: []map[string]any{row}}}
+			var result interfaces.Objects
+			if err := (&objectTypeService{vba: vega}).getObjectsFromResource(context.Background(), query, objectType, &result, plan.fieldPropertyMap(), plan); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Datas) != 1 {
+				t.Fatalf("rows = %#v", result.Datas)
+			}
+			score, exists := result.Datas[0][interfaces.SORT_FIELD_SCORE]
+			wantScore := tc.search && !tc.exclude && tc.withScore
+			if exists != wantScore || (exists && score != 0.875) {
+				t.Fatalf("score = %#v, exists = %v", score, exists)
+			}
+			if _, leaked := result.Datas[0]["secret"]; leaked {
+				t.Fatal("unmapped source field leaked")
+			}
+			requestedScore := false
+			for _, field := range vega.lastParams.OutputFields {
+				requestedScore = requestedScore || field == interfaces.SORT_FIELD_SCORE
+			}
+			if requestedScore != (tc.search && !tc.exclude) {
+				t.Fatalf("output fields = %#v", vega.lastParams.OutputFields)
+			}
+			wantSortField := interfaces.SORT_FIELD_SCORE
+			if tc.explicitSort {
+				wantSortField = "customer_id"
+			}
+			if vega.lastParams.Sort[0].Field != wantSortField {
+				t.Fatalf("sort = %#v", vega.lastParams.Sort)
+			}
+		})
+	}
+}
 
 func TestScoreIsOnlyReturnedForExplicitFullPropertySearch(t *testing.T) {
 	objectType := accessPlanObjectType()

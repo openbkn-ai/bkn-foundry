@@ -180,6 +180,31 @@ func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
 	assert.True(t, available)
 }
 
+func TestLocalIndexManagerListDocuments(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	connector := vmock.NewMockIndexConnector(ctrl)
+	resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable,
+		SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "SOURCE_ID", Type: interfaces.DataType_Integer}}}
+	params := &interfaces.ResourceDataQueryParams{
+		Sort:         []*interfaces.SortField{{Field: "_score", Direction: "desc"}, {Field: "id", Direction: "asc"}},
+		OutputFields: []string{"id", "_score"}, SearchAfter: []any{0.875, 1}}
+	rows := []map[string]any{{"id": 2, "_score": 0.875}}
+	connector.EXPECT().ExecuteQuery(gomock.Any(), "table-index", gomock.Any(), params).DoAndReturn(
+		func(_ context.Context, _ string, physical *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+			assert.Equal(t, "id", physical.SchemaDefinition[0].OriginalName)
+			assert.Equal(t, "_score", actual.Sort[0].Field)
+			assert.Equal(t, []string{"id", "_score"}, actual.OutputFields)
+			assert.Equal(t, []any{0.875, 1}, actual.SearchAfter)
+			return &interfaces.QueryResult{Entries: rows, Total: 3, SearchAfter: []any{0.875, 2}}, nil
+		})
+	entries, total, err := (&localIndexManager{lic: connector}).ListDocuments(context.Background(), "table-index", resource, params)
+	require.NoError(t, err)
+	assert.Equal(t, rows, entries)
+	assert.Equal(t, int64(3), total)
+	assert.Equal(t, []any{0.875, 2}, params.SearchAfter)
+	assert.Equal(t, "SOURCE_ID", resource.SchemaDefinition[0].OriginalName)
+}
+
 func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 	t.Run("local index manager delegates to index connector", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
