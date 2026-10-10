@@ -15,15 +15,82 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/bytedance/sonic"
+	osclient "github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
+
+func TestOpenSearchQueryScoreAndSearchAfter(t *testing.T) {
+	for _, scoreSort := range []bool{true, false} {
+		name := "explicit primary key sort"
+		if scoreSort {
+			name = "relevance sort with primary key tie breaker"
+		}
+		t.Run(name, func(t *testing.T) {
+			requests := 0
+			client, err := osclient.NewClient(osclient.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					assert.Equal(t, "/table-index/_search", request.URL.Path)
+					var body map[string]any
+					require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+					assert.Equal(t, true, body["track_scores"])
+					assert.Equal(t, []any{"id"}, body["_source"])
+					wantSort := []any{map[string]any{"id": map[string]any{"order": "asc"}}}
+					if scoreSort {
+						wantSort = append([]any{map[string]any{"_score": map[string]any{"order": "desc"}}}, wantSort...)
+					}
+					assert.Equal(t, wantSort, body["sort"])
+					response := `{"hits":{"total":{"value":3},"hits":[{"_id":"1","_score":0.875,"_source":{"id":1},"sort":[0.875,1]},{"_id":"2","_score":0.875,"_source":{"id":2},"sort":[0.875,2]}]}}`
+					if requests == 0 {
+						assert.NotContains(t, body, "search_after")
+					} else {
+						wantAfter := []any{float64(2)}
+						if scoreSort {
+							wantAfter = []any{0.875, float64(2)}
+						}
+						assert.Equal(t, wantAfter, body["search_after"])
+						response = `{"hits":{"total":{"value":3},"hits":[{"_id":"3","_score":0.5,"_source":{"id":3},"sort":[0.5,3]}]}}`
+					}
+					if !scoreSort {
+						response = strings.ReplaceAll(response, `"sort":[0.875,1]`, `"sort":[1]`)
+						response = strings.ReplaceAll(response, `"sort":[0.875,2]`, `"sort":[2]`)
+						response = strings.ReplaceAll(response, `"sort":[0.5,3]`, `"sort":[3]`)
+					}
+					requests++
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(response))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			connector := &OpenSearchConnector{client: client}
+			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+			params := &interfaces.ResourceDataQueryParams{OutputFields: []string{"id", "_score"},
+				Sort: []*interfaces.SortField{{Field: "id", Direction: "asc"}}, Paging: interfaces.PagingRequest{Limit: 2}}
+			if scoreSort {
+				params.Sort = append([]*interfaces.SortField{{Field: "_score", Direction: "desc"}}, params.Sort...)
+			}
+			first, err := connector.ExecuteQuery(context.Background(), "table-index", resource, params)
+			require.NoError(t, err)
+			require.Len(t, first.Entries, 2)
+			assert.Equal(t, 0.875, first.Entries[0]["_score"])
+			assert.Equal(t, 0.875, first.Entries[1]["_score"])
+			params.SearchAfter = first.SearchAfter
+			last, err := connector.ExecuteQuery(context.Background(), "table-index", resource, params)
+			require.NoError(t, err)
+			require.Len(t, last.Entries, 1)
+			assert.Equal(t, json.Number("3"), last.Entries[0]["id"])
+			assert.Equal(t, 0.5, last.Entries[0]["_score"])
+			assert.Equal(t, 2, requests)
+		})
+	}
+}
 
 func TestValidateStoredFilterConditionPreservesErrorSource(t *testing.T) {
 	field := &interfaces.Property{Name: "body", OriginalName: "BODY", Type: interfaces.DataType_Text}

@@ -339,12 +339,16 @@ components:
         paging:
           $ref: "#/components/schemas/PagingRequest"
         sort:
-          description: 排序字段
+          description: |
+            排序字段。派生逻辑视图的非聚合查询支持保留元字段 `_score`，无需在视图 Schema
+            中发布；索引通道按真实相关性分数排序，source 表查询忽略该项并保留其余排序项。
           type: array
           items:
             $ref: "#/components/schemas/SortField"
         output_fields:
-          description: 指定输出字段列表
+          description: |
+            指定输出字段列表。派生逻辑视图的非聚合查询可指定 `_score`；索引通道返回真实
+            相关性分数，source 表查询不返回该元字段，不补零或伪造分数。
           type: array
           items:
             type: string

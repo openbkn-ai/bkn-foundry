@@ -265,6 +265,36 @@ func TestResourceDataServiceQueryWithPagingPreservesLogicViewQuerySource(t *test
 }
 
 func TestResourceDataServiceQuery(t *testing.T) {
+	t.Run("public table query preserves local index score and cursor position", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		resources := mock_interfaces.NewMockResourceService(ctrl)
+		index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable,
+			Enabled: true, Status: interfaces.ResourceStatusActive,
+			LocalIndexName: "table-index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+		params := &interfaces.ResourceDataQueryParams{NeedTotal: true,
+			Paging:       interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Limit: 2},
+			Sort:         []*interfaces.SortField{{Field: "_score", Direction: "desc"}, {Field: "id", Direction: "asc"}},
+			OutputFields: []string{"id", "_score"}, SearchAfter: []any{0.875, 1}}
+		resources.EXPECT().CheckResourcePermission(gomock.Any(), "table-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+		index.EXPECT().ListDocuments(gomock.Any(), "table-index", resource, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, _ *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				assert.Equal(t, []*interfaces.SortField{{Field: "_score", Direction: "desc"}, {Field: "id", Direction: "asc"}}, actual.Sort)
+				assert.Equal(t, []string{"id", "_score"}, actual.OutputFields)
+				assert.Equal(t, []any{0.875, 1}, actual.SearchAfter)
+				actual.SearchAfter = []any{0.875, 2}
+				return []map[string]any{{"id": 2, "_score": 0.875}}, 3, nil
+			})
+		result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: index}).QueryWithPaging(context.Background(), resource, params)
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.ResourceQuerySourceLocalIndex, result.QuerySource)
+		assert.Equal(t, []map[string]any{{"id": 2, "_score": 0.875}}, result.Entries)
+		assert.Equal(t, int64(3), result.TotalCount)
+		assert.Equal(t, []any{0.875, 2}, params.SearchAfter)
+	})
 	t.Run("query rejects disabled catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)

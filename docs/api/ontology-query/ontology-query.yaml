@@ -232,12 +232,12 @@ paths:
           type: boolean
         in: query
       - name: exclude_system_properties
-        description: 需要排除的系统字段列表。可选值：_instance_id（实例ID）、_instance_identity（实例唯一标识）、_display（显示值）。如果指定了某个字段，则在返回的对象数据中不包含该字段。可以传递多个值，例如：?exclude_system_properties=_instance_id&exclude_system_properties=_display
+        description: 需要排除的系统字段列表。可选值：_instance_id（实例ID）、_instance_identity（实例唯一标识）、_display（显示值）、_score（相关性分数）。如果指定了某个字段，则在返回的对象数据中不包含该字段。可以传递多个值，例如：?exclude_system_properties=_instance_id&exclude_system_properties=_display
         schema:
           type: array
           items:
             type: string
-            enum: ["_instance_id", "_instance_identity", "_display"]
+            enum: ["_instance_id", "_instance_identity", "_display", "_score"]
         style: form
         explode: true
         in: query
@@ -4379,6 +4379,11 @@ components:
       description: 对象信息
       type: object
       properties:
+        _score:
+          description: |
+            match、knn 等打分查询由索引返回的真实相关性分数，不受视图字段别名映射影响。
+            普通读取、底层未返回分数，或 exclude_system_properties 排除 _score 时不返回。
+          type: number
         _instance_id:
           description: 实例id。默认返回，当 exclude_system_properties 排除时，不返回。
           type: string
