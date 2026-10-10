@@ -93,8 +93,9 @@
 <line x1="626" y1="724" x2="626" y2="748" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <text x="120" y="740" fill="#94a3b8" font-size="9" text-anchor="start">mapping</text>
 <rect x="124" y="748" width="316" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="282" y="773" fill="white" font-size="12" font-weight="600" text-anchor="middle">VEGA</text>
-<text x="282" y="788" fill="#94a3b8" font-size="9" text-anchor="middle">Data virtualization · data quality</text>
+<text x="282" y="764" fill="white" font-size="12" font-weight="600" text-anchor="middle">VEGA</text>
+<text x="282" y="779" fill="#94a3b8" font-size="9" text-anchor="middle">Data mapping → logical view</text>
+<text x="282" y="792" fill="#94a3b8" font-size="9" text-anchor="middle">Content index · graph index · data quality</text>
 <rect x="452" y="748" width="348" height="54" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
 <text x="626" y="773" fill="white" font-size="12" font-weight="600" text-anchor="middle">Exec Factory</text>
 <text x="626" y="788" fill="#94a3b8" font-size="9" text-anchor="middle">Operators · functions · APIs · tools · MCP · Skill</text>
