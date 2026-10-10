@@ -25,10 +25,15 @@ log_info() { :; }
 log_error() { :; }
 _openbkn_drop_literal_env_now_from_secret() { :; }
 _openbkn_adopt_unowned_resources() { return 1; }
+config_yaml_dep_field() {
+    case "$2" in mqHost) printf 'kafka' ;; mqPort) printf '9092' ;; mechanism) printf 'PLAIN' ;; esac
+}
+_openbkn_prepare_audit_topic() { return 0; }
+should_skip_upgrade_same_chart_version() { return 1; }
 touch "${test_dir}/upgrades"
 assert_upgrades() { [[ "$(wc -l <"${test_dir}/upgrades")" -eq "$1" ]]; }
 test_installed=true
-old_values='{"kafkaConsumers":{"audit":{"enabled":true,"brokers":["kafka:9092"],"consumerGroup":"audit-ledger-v1","topic":"openbkn.audit.v1","saslMechanism":"PLAIN","existingSecret":{"name":"audit-kafka","usernameKey":"username","passwordKey":"password"},"password":"must-not-be-preserved"}},"unrelated":"must-not-be-preserved"}'
+old_values='{"kafkaConsumers":{"audit":{"enabled":true,"brokers":["kafka:9092"],"consumerGroup":"audit-ledger-v1","topic":"openbkn.audit.v1","saslMechanism":"PLAIN","existingSecret":{"name":"audit-kafka","usernameKey":"username","passwordKey":"password"},"password":"must-not-be-preserved"}},"auditPublisher":{"enabled":true,"environment":"test","brokers":["publisher:9092"],"saslMechanism":"PLAIN","existingSecret":{"name":"approved-publisher","usernameKey":"username","passwordKey":"password"}},"unrelated":"must-not-be-preserved"}'
 helm() {
     case "$1" in
         list) [[ "${test_installed}" != true ]] || printf 'agent-observability\n' ;;
@@ -40,7 +45,7 @@ helm() {
 }
 chart="${SCRIPT_DIR}/../bkn-trace/agent-observability/charts/agent-observability"
 args=(upgrade --install agent-observability "${chart}" --namespace openbkn
-    --set core.store=mariadb --set core.mariadb.existingSecret=core-db)
+    --set core.store=mariadb --set core.mariadb.existingSecret=core-db --set auditPublisher.environment=test)
 
 # An enabled consumer survives upgrades, without carrying unrelated settings.
 _openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}"
@@ -52,14 +57,18 @@ audit = config["kafkaConsumers"]["audit"]
 assert audit["enabled"] and audit["brokers"] == ["kafka:9092"]
 assert audit["consumerGroup"] == "audit-ledger-v1"
 assert "password" not in audit and "unrelated" not in config
+assert config["auditPublisher"]["brokers"] == ["publisher:9092"]
 PY
 
-# Explicit CLI and config-file changes override the preserved settings.
+# Complete installation does not expose an Audit disable option.
 printf '{"kafkaConsumers":{"audit":{"enabled":false}}}' >"${test_dir}/disabled.json"
 export AUDIT_TEST_SECRET_STATE=missing
-_openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}" -f "${test_dir}/disabled.json"
-_openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}" --set kafkaConsumers.audit.enabled=false
-assert_upgrades 3
+for override in kafkaConsumers.audit.enabled=false auditPublisher.enabled=false; do
+    if _openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}" --set "${override}" 2>/dev/null; then
+        echo 'Complete platform installation cannot disable Audit' >&2; exit 1
+    fi
+done
+assert_upgrades 1
 
 for state in missing missing-key missing-dsn; do
     export AUDIT_TEST_SECRET_STATE="${state}"
@@ -68,7 +77,7 @@ for state in missing missing-key missing-dsn; do
         exit 1
     fi
 done
-assert_upgrades 3
+assert_upgrades 1
 
 # Helm treats a non-empty string as enabled too; it must not bypass preflight.
 export AUDIT_TEST_SECRET_STATE=missing
@@ -76,7 +85,7 @@ if _openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}" --set-
     echo "string-valued Audit enablement must still validate Secret references" >&2
     exit 1
 fi
-assert_upgrades 3
+assert_upgrades 1
 
 python3 - "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" <<'PY'
 import contextlib, io, json, runpy, subprocess, sys
@@ -92,8 +101,64 @@ with patch.object(sys, "argv", ["audit_consumer.py", "validate", "openbkn"]), \
 assert "Secret lookup timed out" in stderr.getvalue()
 PY
 
-# First install remains opt-in and does not read Audit credentials when disabled.
+# Complete first install fills both sides, while the standalone Chart stays opt-in.
 test_installed=false
+export AUDIT_TEST_SECRET_STATE=ready
 _openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}"
+assert_upgrades 2
+python3 - "${AUDIT_TEST_RENDER}" <<'PY'
+import json, sys
+values = json.load(open(sys.argv[1]))["config"]
+assert values["kafkaConsumers"]["audit"]["enabled"] is True
+assert values["auditPublisher"]["enabled"] is True
+assert values["kafkaConsumers"]["audit"]["existingSecret"]["name"] == "bkn-trace-evidence-kafka"
+PY
+test_installed=true
+old_values='{"kafkaConsumers":{"audit":{"enabled":false,"brokers":[],"consumerGroup":"","saslMechanism":"","existingSecret":{"name":""}}},"auditPublisher":{"enabled":false,"brokers":[],"saslMechanism":"","existingSecret":{"name":""}}}'
+_openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}"
+assert_upgrades 3
+# An unchanged version still renders/checks, but does not roll out again.
+old_values="$(python3 - "${AUDIT_TEST_RENDER}" "${SCRIPT_DIR}/scripts/lib" <<'PY'
+import json, sys
+sys.path.insert(0, sys.argv[2])
+from audit_consumer import rendered_system_values
+print(json.dumps(rendered_system_values(json.load(open(sys.argv[1])))))
+PY
+)"
+should_skip_upgrade_same_chart_version() { return 0; }
+_openbkn_agent_observability_has_durable_profile() { return 0; }
+_openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}"
+assert_upgrades 3
+_openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}" --set auditPublisher.environment=staging
 assert_upgrades 4
+# Topic failure must stop before any Helm upgrade, including equal versions.
+_openbkn_prepare_audit_topic() { return 1; }
+if _openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}"; then
+    echo 'Topic preparation failure must stop installation' >&2; exit 1
+fi
+assert_upgrades 4
+# A caller may invoke install_openbkn in an if-condition, disabling Bash's
+# implicit errexit throughout the function. Failure must still propagate.
+OFFLINE_MODE=true
+_openbkn_resolve_latest_manifest() { :; }
+_openbkn_require_version_manifest() { :; }
+_openbkn_apply_default_set_values() { :; }
+ensure_platform_prerequisites() { :; }
+_openbkn_resolve_target_namespace() { printf openbkn; }
+_openbkn_resolve_charts_dir() { printf '%s' "${test_dir}"; }
+_openbkn_release_exists() { return 1; }
+init_openbkn_databases() { :; }
+bkn_mapfile_compat() { release_names=(agent-observability); }
+_openbkn_prepare_trace_profile() { :; }
+_openbkn_warn_unwired_evidence_producers() { :; }
+_openbkn_resolve_release_version() { printf 0.1.0; }
+_install_openbkn_release_local() { return 1; }
+_openbkn_uninstall_retired_releases() { :; }
+gen_install_status_json() { :; }
+_read_access_address_field() { :; }
+config_yaml_top_field() { :; }
+_openbkn_should_show_bkn_safe_initial_password() { return 1; }
+if install_openbkn >"${test_dir}/install.log" 2>&1; then
+    echo 'Installation driver must propagate failed Audit preflight' >&2; exit 1
+fi
 echo "Audit consumer preservation and preflight checks passed"

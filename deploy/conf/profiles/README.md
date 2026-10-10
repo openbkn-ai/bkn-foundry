@@ -1,5 +1,56 @@
 # System Audit deployment profile
 
+## Complete platform installation and upgrades
+
+System Audit is a required platform capability, independent of Trace/Evidence
+capture configuration. The complete `deploy.sh openbkn install` path prepares
+Audit consumer/publisher defaults and validates both before rollout. It repairs
+historical disabled deployment settings; current explicit disable settings fail
+preflight rather than report a complete installation. The standalone Chart and
+the manual profile below retain their development defaults.
+
+The installer reuses the Kafka client Secret already prepared in the platform
+namespace; it creates no Kafka account, rotates no credentials and changes no
+ACLs. Saved connection configuration is preserved below current config/CLI.
+An explicit registered `auditPublisher.environment` is required on first install
+when there is no saved value; the installer does not guess `production`. For
+production, supply an existing independently approved publisher Secret reference
+with the required write authorization. A different Secret name alone is not
+proof of a distinct principal or correct permissions; deployment owners must
+confirm the existing identity/ACL policy and real-event acceptance below.
+
+For example, using actual owner-approved values (replace both placeholders):
+
+```bash
+bash deploy/deploy.sh openbkn install \
+  --set auditPublisher.environment=<registered-environment> \
+  --set auditPublisher.existingSecret.name=<approved-existing-publisher-secret>
+```
+
+These non-sensitive settings become durable Helm values. Later upgrades do not
+require repeating them. An equal Chart version still renders the final values
+and checks both components; identical reconciled settings skip rollout, changed
+settings do not. Secret lookup and Kafka topic failures stop installation.
+
+Topic preparation uses the existing bundled Kafka broker tools with the Audit
+consumer credentials, supplied through stdin and a private temporary properties
+file. Only a missing `openbkn.audit.v1` is created (one partition, one replica,
+`LogAppendTime`); an existing topic's settings/partitions/retention/offsets are
+not modified. An existing `CreateTime` topic or inaccessible topic configuration
+fails preflight. This preparation path is scoped to the bundled Kafka deployment;
+external-only deployments without its tooling receive an explicit diagnostic.
+
+Topic preflight proves authentication and visible timestamp configuration, not
+publisher write authorization or consumer group consumption. Real event
+acceptance remains necessary. Close and restore Trace/Evidence capture through
+the normal authorized API in a disposable test environment, and verify both
+requested events and their legitimate terminal events remain publicly queryable.
+Audit must continue while capture is disabled. Empty HTTP 200 results are not
+acceptance evidence. Keep the existing no-op/GET/401/403/validation-rejection
+semantics; do not create synthetic audit events to replace real action testing.
+
+## Separately managed Chart releases
+
 `system-audit.yaml` is an explicit opt-in profile for deployments requiring
 `audit.admin`. It is never loaded automatically. The bare Chart remains disabled.
 Copy it into the deployment's reviewed values and fill the broker addresses and

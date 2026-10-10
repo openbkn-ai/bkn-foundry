@@ -767,35 +767,57 @@ _openbkn_helm_upgrade_release() {
         rm -f "${agent_render}"
     fi
 
-    local audit_values="" audit_render="" installed
+    local audit_values="" audit_defaults="" audit_render="" audit_current="" installed
     if [[ "${release_name}" == "agent-observability" ]]; then
-        # Preserve only Audit consumer settings; explicit config/--set overrides
-        # this first values file. Do not reuse unrelated historical chart defaults.
+        # System Audit is required by the complete installer. Standalone Chart
+        # defaults remain disabled. Current connection settings still win.
         audit_values="$(mktemp)"
+        audit_defaults="$(mktemp)"
+        audit_current="$(mktemp)"
+        if ! python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" defaults \
+            "$(_openbkn_trace_kafka_brokers)" "$(config_yaml_dep_field mq mechanism)" \
+            "${OPENBKN_TRACE_KAFKA_SECRET}" >"${audit_defaults}"; then
+            rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
+            return 1
+        fi
         if ! installed="$(helm list --all -q -n "${namespace}" --filter '^agent-observability$')"; then
-            rm -f "${audit_values}"
+            rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
             log_error "Cannot inspect the installed Audit consumer configuration"
             return 1
         fi
         if [[ -n "${installed}" ]]; then
-            if ! (set -o pipefail; helm get values "${release_name}" -n "${namespace}" --all -o json |
-                python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" preserve >"${audit_values}"); then
-                rm -f "${audit_values}"
+            if ! (set -o pipefail; helm get values "${release_name}" -n "${namespace}" -o json |
+                python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" preserve-system >"${audit_values}") ||
+                ! helm get values "${release_name}" -n "${namespace}" --all -o json >"${audit_current}"; then
+                rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
                 log_error "Cannot preserve the installed Audit consumer configuration"
                 return 1
             fi
         else
             printf '{}\n' >"${audit_values}"
         fi
-        helm_args=("${helm_args[@]:0:4}" -f "${audit_values}" "${helm_args[@]:4}")
+        helm_args=("${helm_args[@]:0:4}" -f "${audit_defaults}" -f "${audit_values}" "${helm_args[@]:4}")
         audit_render="$(mktemp)"
         # Client-side install rendering avoids release adoption checks and does
         # not run hooks. The Audit values are the same for installs and upgrades.
         if ! helm install "${helm_args[@]:2}" --dry-run=client --hide-secret -o json >"${audit_render}" ||
-            ! python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" validate "${namespace}" <"${audit_render}"; then
-            rm -f "${audit_values}" "${audit_render}"
-            log_error "Audit consumer preflight failed; correct Helm values and existing Secret references before installation"
+            ! python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" validate-system "${namespace}" <"${audit_render}" ||
+            ! _openbkn_prepare_audit_topic "${namespace}" "${audit_render}"; then
+            rm -f "${audit_values}" "${audit_defaults}" "${audit_current}" "${audit_render}"
+            log_error "System Audit preflight failed; correct environment, Kafka/Secret and MariaDB prerequisites before installation"
             return 1
+        fi
+        # Decide version skipping only after resolving the same values which
+        # the real upgrade will receive. A changed environment/Secret/group must
+        # reconcile even if the Chart version is unchanged.
+        local audit_chart_name audit_chart_version
+        audit_chart_name="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["chart"]["metadata"]["name"])' <"${audit_render}")"
+        audit_chart_version="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["chart"]["metadata"]["version"])' <"${audit_render}")"
+        if [[ -n "${installed}" ]] &&
+            python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" same-system "${audit_current}" <"${audit_render}" &&
+            _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${audit_chart_name}" "${audit_chart_version}"; then
+            rm -f "${audit_values}" "${audit_defaults}" "${audit_current}" "${audit_render}"
+            return 0
         fi
         rm -f "${audit_render}"
     fi
@@ -817,7 +839,7 @@ _openbkn_helm_upgrade_release() {
         helm_status=${PIPESTATUS[0]}
     fi
     rm -f "${helm_log}"
-    [[ -z "${audit_values}" ]] || rm -f "${audit_values}"
+    [[ -z "${audit_values}" ]] || rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
     [[ -z "${agent_defaults}" ]] || rm -f "${agent_defaults}" "${agent_values}"
 
     if [[ ${helm_status} -eq 0 ]]; then
@@ -1033,6 +1055,11 @@ _openbkn_prepare_trace_kafka_secret() {
         log_error "BKN Trace cannot create Kafka client Secret ${OPENBKN_TRACE_KAFKA_SECRET}"
         return 1
     fi
+}
+
+_openbkn_prepare_audit_topic() {
+    python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" prepare-topic "$1" \
+        "${KAFKA_NAMESPACE:-resource}" "${KAFKA_RELEASE_NAME:-kafka}" <"$2"
 }
 
 _openbkn_prepare_trace_opensearch_secret() {
@@ -1373,7 +1400,7 @@ _install_openbkn_release_local() {
     if [[ -z "${target_version}" ]]; then
         target_version="$(get_local_chart_version "${chart_tgz}")"
     fi
-    if _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+    if [[ "${release_name}" != "agent-observability" ]] && _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 0
     fi
 
@@ -1419,7 +1446,7 @@ _install_openbkn_release_repo() {
         target_version=$(get_repo_chart_latest_version "${helm_repo_name}" "${chart_name}")
     fi
 
-    if _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+    if [[ "${release_name}" != "agent-observability" ]] && _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 0
     fi
 
@@ -1761,9 +1788,9 @@ install_openbkn() {
     for release_name in "${release_names[@]}"; do
         release_version="$(_openbkn_resolve_release_version "${release_name}")"
         if [[ "${use_local}" == "true" ]]; then
-            _install_openbkn_release_local "${release_name}" "${charts_dir}" "${namespace}"
+            _install_openbkn_release_local "${release_name}" "${charts_dir}" "${namespace}" || return 1
         else
-            _install_openbkn_release_repo "${release_name}" "${namespace}" "${HELM_CHART_REPO_NAME}" "${release_version}"
+            _install_openbkn_release_repo "${release_name}" "${namespace}" "${HELM_CHART_REPO_NAME}" "${release_version}" || return 1
         fi
     done
 
