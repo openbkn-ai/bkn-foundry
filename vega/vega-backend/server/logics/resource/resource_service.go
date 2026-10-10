@@ -1660,52 +1660,35 @@ func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, sch
 	return nil
 }
 
-// OpenSearch 区分缺省 analyzer 和显式 standard，二者之间也不能原地改写。
-type analyzerConfig struct {
-	configured string
-	effective  string
-}
-
-func fulltextAnalyzerConfigFor(prop *interfaces.Property, config *interfaces.ResourceIndexConfig) (analyzerConfig, bool) {
+// fulltextAnalyzerConfigFor 返回 Dataset mapping 使用的字段级 analyzer 配置。
+// 缺省配置与显式 standard 必须区分；Dataset mapping 不读取资源默认 analyzer。
+func fulltextAnalyzerConfigFor(prop *interfaces.Property) (string, bool) {
 	if prop == nil {
-		return analyzerConfig{}, false
+		return "", false
 	}
 	for _, feature := range prop.Features {
-		if feature.FeatureType != interfaces.PropertyFeatureType_Fulltext {
-			continue
+		if feature.FeatureType == interfaces.PropertyFeatureType_Fulltext {
+			return strings.TrimSpace(fulltextAnalyzerConfigValue(feature.Config)), true
 		}
-		configured := strings.TrimSpace(fulltextAnalyzerConfigValue(feature.Config))
-		analyzer := configured
-		if analyzer == "" && config != nil {
-			analyzer = strings.TrimSpace(config.DefaultFulltextAnalyzer)
-		}
-		if analyzer == "" {
-			analyzer = "standard"
-		}
-		return analyzerConfig{configured: configured, effective: analyzer}, true
 	}
-	return analyzerConfig{}, false
+	return "", false
 }
 
-// changedDatasetFulltextAnalyzer 检查已有全文字段的有效分词器是否改变。
-// 空索引也不能通过更新 mapping 修改 analyzer；字段配置优先于资源默认值。
+// changedDatasetFulltextAnalyzer 检查已有全文字段的 mapping 分词器配置是否改变。
+// 空索引也不能通过更新 mapping 修改 analyzer。
 func changedDatasetFulltextAnalyzer(resource *interfaces.Resource, req *interfaces.ResourceRequest) string {
 	requestedSchema := req.SchemaDefinition
 	if requestedSchema == nil {
 		requestedSchema = resource.SchemaDefinition
 	}
-	requestedConfig := req.IndexConfig
-	if requestedConfig == nil {
-		requestedConfig = resource.IndexConfig
-	}
-	current := make(map[string]analyzerConfig, len(resource.SchemaDefinition))
+	current := make(map[string]string, len(resource.SchemaDefinition))
 	for _, prop := range resource.SchemaDefinition {
-		if analyzer, exists := fulltextAnalyzerConfigFor(prop, resource.IndexConfig); exists {
+		if analyzer, exists := fulltextAnalyzerConfigFor(prop); exists {
 			current[prop.Name] = analyzer
 		}
 	}
 	for _, prop := range requestedSchema {
-		analyzer, exists := fulltextAnalyzerConfigFor(prop, requestedConfig)
+		analyzer, exists := fulltextAnalyzerConfigFor(prop)
 		if !exists {
 			continue
 		}
