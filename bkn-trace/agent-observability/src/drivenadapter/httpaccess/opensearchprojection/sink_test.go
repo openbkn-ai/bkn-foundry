@@ -110,6 +110,7 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyProjectionQueries(t *testin
 	if !ok {
 		t.Fatalf("receipt projection mapping must define properties: %#v", mapping)
 	}
+	assertOpaqueEnvelopeMapping(t, properties)
 	issuedAt, ok := properties["issued_at"].(map[string]any)
 	if !ok || issuedAt["type"] != "date" {
 		t.Fatalf("issued_at must be mapped as date for empty-index sorting: %#v", issuedAt)
@@ -148,6 +149,7 @@ func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testin
 	t.Parallel()
 
 	requests := make([]string, 0, 4)
+	var mapping map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.Path)
 		switch r.Method + " " + r.URL.Path {
@@ -158,6 +160,9 @@ func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testin
 		case http.MethodHead + " /bkn-trace-core-v015-r1":
 			w.WriteHeader(http.StatusNotFound)
 		case http.MethodPut + " /bkn-trace-core-v015-r1":
+			if err := json.NewDecoder(r.Body).Decode(&mapping); err != nil {
+				t.Fatalf("decode bootstrap mapping: %v", err)
+			}
 			w.WriteHeader(http.StatusCreated)
 		case http.MethodPost + " /_aliases":
 			w.WriteHeader(http.StatusOK)
@@ -171,6 +176,7 @@ func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testin
 	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v015-r1"); err != nil {
 		t.Fatalf("bootstrap projection alias: %v", err)
 	}
+	assertOpaqueEnvelopeMapping(t, mapping["mappings"].(map[string]any)["properties"].(map[string]any))
 	want := []string{
 		"GET /_alias/bkn-trace-core",
 		"HEAD /bkn-trace-core",
@@ -193,8 +199,10 @@ func TestEnsureBootstrapDoesNotReplaceAnExistingAlias(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
-		case http.MethodGet + " /_alias/bkn-trace-core", http.MethodPut + " /bkn-trace-core/_mapping":
+		case http.MethodGet + " /_alias/bkn-trace-core", http.MethodPut + " /existing/_mapping":
 			w.WriteHeader(http.StatusOK)
+		case http.MethodGet + " /bkn-trace-core/_mapping":
+			_, _ = w.Write([]byte(`{"existing":{"mappings":{"properties":{}}}}`))
 		default:
 			t.Fatalf("bootstrap changed an existing alias: %s %s", r.Method, r.URL.Path)
 		}
@@ -217,7 +225,9 @@ func TestEnsureBootstrapAddsConversationMappingToExistingAlias(t *testing.T) {
 		switch r.Method + " " + r.URL.Path {
 		case http.MethodGet + " /_alias/bkn-trace-core":
 			w.WriteHeader(http.StatusOK)
-		case http.MethodPut + " /bkn-trace-core/_mapping":
+		case http.MethodGet + " /bkn-trace-core/_mapping":
+			_, _ = w.Write([]byte(`{"existing":{"mappings":{"properties":{}}}}`))
+		case http.MethodPut + " /existing/_mapping":
 			if err := json.NewDecoder(r.Body).Decode(&mapping); err != nil {
 				t.Fatalf("decode mapping update: %v", err)
 			}
@@ -232,7 +242,7 @@ func TestEnsureBootstrapAddsConversationMappingToExistingAlias(t *testing.T) {
 	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v015-r1"); err != nil {
 		t.Fatalf("upgrade existing projection alias: %v", err)
 	}
-	want := []string{"GET /_alias/bkn-trace-core", "PUT /bkn-trace-core/_mapping"}
+	want := []string{"GET /_alias/bkn-trace-core", "GET /bkn-trace-core/_mapping", "PUT /existing/_mapping"}
 	if len(requests) != len(want) {
 		t.Fatalf("unexpected existing-alias upgrade requests: got=%v want=%v", requests, want)
 	}
@@ -245,6 +255,7 @@ func TestEnsureBootstrapAddsConversationMappingToExistingAlias(t *testing.T) {
 	if !ok {
 		t.Fatalf("mapping update must define properties: %#v", mapping)
 	}
+	assertOpaqueEnvelopeMapping(t, properties)
 	createdAt, ok := properties["created_at"].(map[string]any)
 	if !ok || createdAt["type"] != "date" {
 		t.Fatalf("created_at must be mapped as date for empty-index conversation sorting: %#v", createdAt)
@@ -553,4 +564,142 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return f(request)
+}
+
+func assertOpaqueEnvelopeMapping(t *testing.T, properties map[string]any) {
+	t.Helper()
+	envelope, ok := properties["envelope"].(map[string]any)
+	if !ok || envelope["type"] != "object" || envelope["dynamic"] != false {
+		t.Fatalf("opaque producer envelopes must preserve source without expanding the index mapping: %#v", envelope)
+	}
+	if _, found := envelope["enabled"]; found {
+		t.Fatal("envelope must retain already mapped legacy fields, rather than disabling the object")
+	}
+	if _, found := envelope["properties"]; found {
+		t.Fatal("compatible envelope mapping must not redefine legacy field types")
+	}
+}
+
+func TestOpaqueEnvelopeProjectionPreservesCompleteSource(t *testing.T) {
+	t.Parallel()
+	payload := []byte(`{"event_id":"evt-opaque","owner":{"application_principal_id":"sdk","effective_subject_id":"user"},"envelope":{"event":{"payload":{"arbitrary_key":{"nested_value":[1,"two",null]}}},"owner":{"application_principal_id":"sdk"}}}`)
+	var stored []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "PUT /bkn-trace-core/_doc/evidence_event:evt-opaque":
+			stored, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"result":"created"}`))
+		case "POST /bkn-trace-core/_mget":
+			_ = json.NewEncoder(w).Encode(map[string]any{"docs": []any{map[string]any{"_id": "evidence_event:evt-opaque", "found": true, "_source": json.RawMessage(stored)}}})
+		default:
+			t.Errorf("unexpected projection request: %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
+	item := iprojectionoutbox.Item{AggregateType: "evidence_event", AggregateID: "evt-opaque", AggregateVersion: 1, Payload: payload}
+	if err := sink.Project(context.Background(), item); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, payload) {
+		t.Fatal("projection must not flatten, redact, or remove opaque envelope content")
+	}
+	if err := sink.ValidateVersion(context.Background(), "bkn-trace-core", []iprojectionoutbox.Item{item}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnsureBootstrapPreservesMixedAliasEnvelopeTypes(t *testing.T) {
+	t.Parallel()
+	patches := map[string]map[string]any{}
+	var writes []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "GET /_alias/bkn-trace-core":
+			w.WriteHeader(http.StatusOK)
+		case "GET /bkn-trace-core/_mapping":
+			_, _ = w.Write([]byte(`{"legacy":{"mappings":{"properties":{"envelope":{"type":"keyword"}}}},"object":{"mappings":{"properties":{"envelope":{"properties":{"legacy_field":{"type":"long"}}}}}},"unmapped":{"mappings":{"properties":{}}},"explicit":{"mappings":{"properties":{"envelope":{"type":"object"}}}},"nested":{"mappings":{"properties":{"envelope":{"type":"nested"}}}},"disabled":{"mappings":{"properties":{"envelope":{"type":"object","enabled":false}}}}}`))
+		case "PUT /legacy/_mapping", "PUT /object/_mapping", "PUT /unmapped/_mapping", "PUT /explicit/_mapping", "PUT /nested/_mapping", "PUT /disabled/_mapping":
+			var patch map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+				t.Error(err)
+			}
+			patches[r.URL.Path] = patch
+			writes = append(writes, r.URL.Path)
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("bootstrap must patch each concrete index compatibly without replacing alias: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(server.Close)
+	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
+	if err := sink.EnsureBootstrap(context.Background(), "unused-new-version"); err != nil {
+		t.Fatal(err)
+	}
+	if len(patches) != 6 {
+		t.Fatalf("expected all six alias targets, got %v", patches)
+	}
+	wantWrites := []string{"/disabled/_mapping", "/explicit/_mapping", "/legacy/_mapping", "/nested/_mapping", "/object/_mapping", "/unmapped/_mapping"}
+	for i, path := range wantWrites {
+		if writes[i] != path {
+			t.Fatalf("alias targets must be patched in stable order: %v", writes)
+		}
+	}
+	for path, patch := range patches {
+		props := patch["properties"].(map[string]any)
+		if path == "/legacy/_mapping" || path == "/nested/_mapping" || path == "/disabled/_mapping" {
+			if _, present := props["envelope"]; present {
+				t.Fatal("legacy scalar envelope type must not be changed")
+			}
+		} else {
+			assertOpaqueEnvelopeMapping(t, props)
+		}
+		if _, present := props["created_at"]; !present {
+			t.Fatal("audit query mapping must still be applied")
+		}
+	}
+}
+
+func TestEnsureBootstrapStopsBeforeMappingWriteWhenMappingReadFails(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"outage", http.StatusServiceUnavailable, `{}`},
+		{"invalid JSON", http.StatusOK, `invalid`},
+		{"empty targets", http.StatusOK, `{}`},
+		{"missing mapping", http.StatusOK, `{"legacy":{}}`},
+		{"empty body", http.StatusOK, ``},
+		{"malformed target mapping", http.StatusOK, `{"legacy":{"mappings":{"properties":{"envelope":{"type":12}}}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			writes := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet && r.URL.Path == "/_alias/bkn-trace-core" {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				if r.Method == http.MethodGet && r.URL.Path == "/bkn-trace-core/_mapping" {
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(tc.body))
+					return
+				}
+				writes++
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
+			if err := sink.EnsureBootstrap(context.Background(), "unused-new-version"); err == nil {
+				t.Fatal("unknown existing mappings must not be assumed compatible")
+			}
+			if writes != 0 {
+				t.Fatal("mapping read failure must not mutate existing index")
+			}
+		})
+	}
 }
