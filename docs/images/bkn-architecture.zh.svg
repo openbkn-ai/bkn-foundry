@@ -62,7 +62,7 @@
 <rect x="460" y="392" width="308" height="96" rx="8" fill="rgba(8, 51, 68, 0.45)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5 4"/>
 <text x="614.0" y="420" fill="white" font-size="12" font-weight="600" text-anchor="middle">BKN Workshop</text>
 <text x="614.0" y="440" fill="#67e8f9" font-size="9.5" text-anchor="middle">业务应用开发</text>
-<text x="614.0" y="464" fill="#e2e8f0" font-size="9" text-anchor="middle">指标 · 函数 · 图可视化组件 · AI 应用搭建</text>
+<text x="614.0" y="464" fill="#e2e8f0" font-size="9" text-anchor="middle">分析、推理、模拟与决策、执行与反馈</text>
 <text x="450" y="504" fill="#94a3b8" font-size="9" text-anchor="middle">Eval 与 Workshop 进入具体 BKN 后可见 · 二者平级</text>
 <line x1="450" y1="516" x2="450" y2="536" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <rect x="112" y="536" width="676" height="188" rx="12" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
