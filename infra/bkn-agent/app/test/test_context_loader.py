@@ -51,11 +51,18 @@ def _start_tool():
 
 
 def _install(monkeypatch, tools):
+    credentials = []
+
     class _Client:
         async def get_tools(self):
             return tools
 
-    monkeypatch.setattr(context_loader, "_client", lambda *_a, **_k: _Client())
+    def client(authorization, *_a, **_k):
+        credentials.append(authorization)
+        return _Client()
+
+    monkeypatch.setattr(context_loader, "_client", client)
+    return credentials
 
 
 def test_no_credential_skips_and_warns(monkeypatch, caplog):
@@ -610,13 +617,13 @@ def test_session_owner_comes_from_same_structured_lifecycle_result(monkeypatch):
 def test_legacy_or_invalid_lifecycle_owner_does_not_change_tool_auth(monkeypatch, caplog, owner):
     start = _start_tool()
     start._result[1]["structured_content"]["owner"] = owner
-    _install(monkeypatch, [start, _FakeTool("search_schema")])
+    credentials = _install(monkeypatch, [start, _FakeTool("search_schema")])
     token = auth.set_caller_token("Bearer t")
     try:
         session = asyncio.run(context_loader.open_session("acceptance"))
-        assert auth.caller_token() == "Bearer t"
     finally:
         auth._caller_token.reset(token)
+    assert credentials == ["Bearer t"]
     assert session.owner is None
     assert session.interaction_id == "int_real"
     assert len(session.tools()) == 1
