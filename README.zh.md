@@ -165,7 +165,7 @@ BKN Foundry 定位为**面向 AI 应用开发者的生产级本体开发平台**
 | &emsp;**BKN Workshop** | 基于已发布的 BKN 做业务应用开发——指标、函数、图可视化组件，以及 AI 应用搭建 |
 | **BKN Engine** | 业务知识网络引擎：**Context Loader**（Retrieval 召回 + Reranker 精排）作用于 **BKN**——以数据 / 逻辑 / 风险 / 行动四要素描述业务，并经映射下达到基础层 |
 | **VEGA** | 数据虚拟化——屏蔽底层多源 & 多模态数据差异，承担数据质量校验 |
-| **算子层 / Exec Factory** | 算子与函数的注册和执行；Exec Factory 调度 API 接口、工具、MCP 与 Skill |
+| **Exec Factory** | 注册与执行算子和函数，调度 API 接口、工具、MCP 与 Skill |
 | **BKN Safe** | 权限管控——统一身份、权限与策略入口，按业务对象 / 动作做安全管控与审计 |
 | **BKN Agent** | 贯穿能力——平台内置 Agent 运行时，保持简单；本体构建、智能图分析与评测都以它为执行载体，它自身经 MCP 消费 BKN Engine |
 | **BKN Trace** | 证据链——追踪 BKN 调用链路（意图 → 知识节点 → 数据源 → 映射 / 算子），可追溯、可解释 |
