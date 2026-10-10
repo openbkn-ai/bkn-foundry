@@ -6,8 +6,8 @@ import pytest
 from app import evidence, observability
 
 
-@pytest.mark.parametrize("subject_type", ["user", "service"])
-def test_question_and_result_artifact_body_preserves_lifecycle_owner(subject_type):
+@pytest.mark.parametrize("subject_type,account_type", [("user", "user"), ("service", "app")])
+def test_question_and_result_artifact_body_preserves_lifecycle_owner(subject_type, account_type):
     ctx = replace(
         _ctx(), application_principal_id="fallback-app",
         effective_subject_id="fallback-subject",
@@ -24,16 +24,17 @@ def test_question_and_result_artifact_body_preserves_lifecycle_owner(subject_typ
     )
     try:
         artifacts = [
-            evidence.question_artifact("acct-1", "user"),
+            evidence.question_artifact("acct-1", account_type),
             evidence.result_artifact(
                 "answer", claim_id_value="claim-1", business_refs=[],
-                account_id="acct-1", account_type="user",
+                account_id="acct-1", account_type=account_type,
             ),
         ]
         for artifact in artifacts:
             assert artifact["application_principal_id"] == "oauth-client"
             assert artifact["effective_subject_id"] == "lifecycle-subject"
             assert artifact["bkn.account.id"] == "acct-1"
+            assert artifact["bkn.account.type"] == account_type
             assert artifact["content_hash"] == evidence.artifact_content_hash(artifact["content"])
         assert ctx.application_principal_id == "fallback-app"
         assert ctx.effective_subject_id == "fallback-subject"
