@@ -369,6 +369,14 @@ def _artifact(
         "content": content,
         "bkn.account.id": account_id,
         "bkn.account.type": account_type,
+        "application_principal_id": (
+            current.owner["application_principal_id"]
+            if current.owner else ctx.application_principal_id or account_id
+        ),
+        "effective_subject_id": (
+            current.owner["effective_subject_id"]
+            if current.owner else ctx.effective_subject_id or account_id
+        ),
         "agent_or_app": current.agent_id,
     }
 

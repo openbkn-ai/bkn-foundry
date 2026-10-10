@@ -1,6 +1,64 @@
 import asyncio
+from dataclasses import replace
+
+import pytest
 
 from app import evidence, observability
+
+
+@pytest.mark.parametrize("subject_type,account_type", [("user", "user"), ("service", "app")])
+def test_question_and_result_artifact_body_preserves_lifecycle_owner(subject_type, account_type):
+    ctx = replace(
+        _ctx(), application_principal_id="fallback-app",
+        effective_subject_id="fallback-subject",
+    )
+    owner = {
+        "application_principal_id": "oauth-client",
+        "effective_subject_type": subject_type,
+        "effective_subject_id": "lifecycle-subject",
+        "delegation_id": "",
+    }
+    token = observability.set_context(ctx)
+    interaction_token = evidence.begin_interaction(
+        "question", "chat", "agent-1", "bkn.agent.chat", owner=owner
+    )
+    try:
+        artifacts = [
+            evidence.question_artifact("acct-1", account_type),
+            evidence.result_artifact(
+                "answer", claim_id_value="claim-1", business_refs=[],
+                account_id="acct-1", account_type=account_type,
+            ),
+        ]
+        for artifact in artifacts:
+            assert artifact["application_principal_id"] == "oauth-client"
+            assert artifact["effective_subject_id"] == "lifecycle-subject"
+            assert artifact["bkn.account.id"] == "acct-1"
+            assert artifact["bkn.account.type"] == account_type
+            assert artifact["content_hash"] == evidence.artifact_content_hash(artifact["content"])
+        assert ctx.application_principal_id == "fallback-app"
+        assert ctx.effective_subject_id == "fallback-subject"
+    finally:
+        evidence.end_interaction(interaction_token)
+        observability.reset_context(token)
+
+
+@pytest.mark.parametrize("app_id,subject_id", [("trace-app", "trace-subject"), (None, None)])
+def test_artifact_without_lifecycle_owner_uses_trace_identity(app_id, subject_id):
+    ctx = replace(
+        _ctx(), application_principal_id=app_id, effective_subject_id=subject_id,
+    )
+    token = observability.set_context(ctx)
+    interaction_token = evidence.begin_interaction(
+        "question", "task", "agent-1", "bkn.agent.task"
+    )
+    try:
+        artifact = evidence.question_artifact("acct-1", "user")
+        assert artifact["application_principal_id"] == (app_id or "acct-1")
+        assert artifact["effective_subject_id"] == (subject_id or "acct-1")
+    finally:
+        evidence.end_interaction(interaction_token)
+        observability.reset_context(token)
 
 
 def _ctx():
