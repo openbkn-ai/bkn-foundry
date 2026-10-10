@@ -40,18 +40,18 @@ func (viewService *queryViewService) QueryWithPaging(_ context.Context, resource
 	return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": "row-1"}}, Paging: &interfaces.PagingResponse{}}, nil
 }
 
-func TestResourceDataServiceQueryWithPagingUsesLogicViewService(t *testing.T) {
+func TestResourceDataServiceQueryWithPagingUsesLogicalViewService(t *testing.T) {
 	viewService := &queryViewService{}
-	previous := resourcelogic.GetLogicViewService()
-	resourcelogic.SetLogicViewService(viewService)
-	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
+	previous := resourcelogic.GetLogicalViewService()
+	resourcelogic.SetLogicalViewService(viewService)
+	t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
 
 	ctrl := gomock.NewController(t)
 	resources := vmock.NewMockResourceService(ctrl)
 	resources.EXPECT().CheckResourcePermission(gomock.Any(), "view-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
 	service := &resourceDataService{rs: resources}
 	view := &interfaces.Resource{
-		ID: "view-1", Category: interfaces.ResourceCategoryLogicView,
+		ID: "view-1", Category: interfaces.ResourceCategoryLogicalView,
 		Enabled: true, Status: interfaces.ResourceStatusActive,
 		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 	}
@@ -65,16 +65,16 @@ func TestResourceDataServiceQueryWithPagingUsesLogicViewService(t *testing.T) {
 	assert.Equal(t, []map[string]any{{"id": "row-1"}}, result.Entries)
 }
 
-func TestResourceDataServiceQueryWithPagingWithoutLogicViewService(t *testing.T) {
-	previous := resourcelogic.GetLogicViewService()
-	resourcelogic.SetLogicViewService(nil)
-	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
+func TestResourceDataServiceQueryWithPagingWithoutLogicalViewService(t *testing.T) {
+	previous := resourcelogic.GetLogicalViewService()
+	resourcelogic.SetLogicalViewService(nil)
+	t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
 
 	ctrl := gomock.NewController(t)
 	resources := vmock.NewMockResourceService(ctrl)
 	resources.EXPECT().CheckResourcePermission(gomock.Any(), "view-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
 	service := &resourceDataService{rs: resources}
-	view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView,
+	view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicalView,
 		Enabled: true, Status: interfaces.ResourceStatusActive,
 		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}}}
 

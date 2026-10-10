@@ -883,16 +883,16 @@ func TestDiscoverTaskWorkerRunCountOnly(t *testing.T) {
 	}
 }
 
-func TestDiscoverTaskWorkerCountLogicView(t *testing.T) {
+func TestDiscoverTaskWorkerCountLogicalView(t *testing.T) {
 	for _, scenario := range []string{"exact zero", "filtered table", "filtered index", "query failure", "missing total", "nil result", "negative total", "save failure", "catalog", "cancelled"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			rs := vmock.NewMockResourceService(ctrl)
-			lvs := vmock.NewMockLogicViewService(ctrl)
-			previous := resourcelogic.GetLogicViewService()
-			resourcelogic.SetLogicViewService(lvs)
-			t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
-			view := &interfaces.Resource{ID: "view", CatalogID: "logical", Category: interfaces.ResourceCategoryLogicView, UpdateTime: 10,
+			lvs := vmock.NewMockLogicalViewService(ctrl)
+			previous := resourcelogic.GetLogicalViewService()
+			resourcelogic.SetLogicalViewService(lvs)
+			t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
+			view := &interfaces.Resource{ID: "view", CatalogID: "logical", Category: interfaces.ResourceCategoryLogicalView, UpdateTime: 10,
 				LogicType:       interfaces.LogicType_Derived,
 				LogicDefinition: &interfaces.DerivedLogicDefinition{SourceResourceID: "source", FilterCondition: map[string]any{"field": "status", "operation": "==", "value": "active"}},
 				SourceMetadata:  map[string]any{"properties": map[string]any{"row_count": int64(99), "row_count_time": int64(20)}},

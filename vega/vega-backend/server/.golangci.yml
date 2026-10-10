@@ -49,7 +49,7 @@ linters:
     generated: lax
     paths:
       - interfaces/mock
-      - logics/resource_data/logic_view/sql/parsing
+      - logics/resource_data/logical_view/sql/parsing
       - tests
 
 formatters:
@@ -59,7 +59,7 @@ formatters:
     generated: lax
     paths:
       - interfaces/mock
-      - logics/resource_data/logic_view/sql/parsing
+      - logics/resource_data/logical_view/sql/parsing
       - tests
 
 issues:

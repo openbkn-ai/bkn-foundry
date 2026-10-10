@@ -51,7 +51,7 @@ func ActionsFromDiscoverStrategy(strategy string) DiscoverActions {
 // Dataset 在读取时实时统计，不参与后台计数任务。
 func SupportsResourceCount(category string) bool {
 	switch category {
-	case ResourceCategoryTable, ResourceCategoryIndex, ResourceCategoryLogicView:
+	case ResourceCategoryTable, ResourceCategoryIndex, ResourceCategoryLogicalView:
 		return true
 	default:
 		return false

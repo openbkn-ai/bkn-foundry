@@ -25,11 +25,11 @@ import (
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
-func registerMockLogicViewService(t *testing.T, service interfaces.LogicViewService) {
+func registerMockLogicalViewService(t *testing.T, service interfaces.LogicalViewService) {
 	t.Helper()
-	previous := resourcelogic.GetLogicViewService()
-	resourcelogic.SetLogicViewService(service)
-	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
+	previous := resourcelogic.GetLogicalViewService()
+	resourcelogic.SetLogicalViewService(service)
+	t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
 }
 
 func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
@@ -245,13 +245,13 @@ func TestResourceDataServiceQueryWithPagingRequiresQueryDataPermission(t *testin
 	require.ErrorIs(t, err, denied)
 }
 
-func TestResourceDataServiceQueryWithPagingPreservesLogicViewQuerySource(t *testing.T) {
+func TestResourceDataServiceQueryWithPagingPreservesLogicalViewQuerySource(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	rs := mock_interfaces.NewMockResourceService(ctrl)
-	lvs := mock_interfaces.NewMockLogicViewService(ctrl)
-	registerMockLogicViewService(t, lvs)
+	lvs := mock_interfaces.NewMockLogicalViewService(ctrl)
+	registerMockLogicalViewService(t, lvs)
 	rds := &resourceDataService{rs: rs}
-	view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView,
+	view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicalView,
 		Enabled: true, SchemaDefinition: []*interfaces.Property{{Name: "name"}}}
 	params := &interfaces.ResourceDataQueryParams{}
 	rs.EXPECT().CheckResourcePermission(gomock.Any(), view.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
@@ -532,17 +532,17 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 	})
 
-	t.Run("query logic view filters sort and output fields before delegating", func(t *testing.T) {
+	t.Run("query logical view filters sort and output fields before delegating", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
-		registerMockLogicViewService(t, mockLVS)
+		mockLVS := mock_interfaces.NewMockLogicalViewService(ctrl)
+		registerMockLogicalViewService(t, mockLVS)
 		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID:        "logic-view-1",
 			Enabled:   true,
 			CatalogID: "catalog-1",
-			Category:  interfaces.ResourceCategoryLogicView,
+			Category:  interfaces.ResourceCategoryLogicalView,
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "name"},
 			},
@@ -573,15 +573,15 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 	})
 
-	t.Run("query logic view passes the logic view service HTTP error through", func(t *testing.T) {
+	t.Run("query logical view passes the logical view service HTTP error through", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
-		registerMockLogicViewService(t, mockLVS)
+		mockLVS := mock_interfaces.NewMockLogicalViewService(ctrl)
+		registerMockLogicalViewService(t, mockLVS)
 		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID: "logic-view-1", Enabled: true, CatalogID: "catalog-1",
-			Category:         interfaces.ResourceCategoryLogicView,
+			Category:         interfaces.ResourceCategoryLogicalView,
 			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
 		}
 		params := &interfaces.ResourceDataQueryParams{}

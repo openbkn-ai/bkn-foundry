@@ -25,11 +25,11 @@ func TestSemanticUnderstandingResponseFormat(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "object", format["type"])
-		assert.Equal(t, []string{"confidence", "logic_views", "obsolete_logic_views", "warnings"}, format["required"])
-		logicViews := format["properties"].(map[string]any)["logic_views"].(map[string]any)
-		assert.NotContains(t, logicViews, "maxItems")
-		logicView := logicViews["items"].(map[string]any)
-		assert.Equal(t, []string{"create", "update"}, logicView["properties"].(map[string]any)["action"].(map[string]any)["enum"])
+		assert.Equal(t, []string{"confidence", "logical_views", "obsolete_logical_views", "warnings"}, format["required"])
+		logicalViews := format["properties"].(map[string]any)["logical_views"].(map[string]any)
+		assert.NotContains(t, logicalViews, "maxItems")
+		logicalView := logicalViews["items"].(map[string]any)
+		assert.Equal(t, []string{"create", "update"}, logicalView["properties"].(map[string]any)["action"].(map[string]any)["enum"])
 	})
 
 	t.Run("unsupported scope", func(t *testing.T) {

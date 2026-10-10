@@ -7,15 +7,15 @@
 package interfaces
 
 const (
-	ResourceCategoryTable     string = "table"
-	ResourceCategoryFile      string = "file"
-	ResourceCategoryFileset   string = "fileset"
-	ResourceCategoryAPI       string = "api"
-	ResourceCategoryMetric    string = "metric"
-	ResourceCategoryTopic     string = "topic"
-	ResourceCategoryIndex     string = "index"
-	ResourceCategoryLogicView string = "logicview"
-	ResourceCategoryDataset   string = "dataset"
+	ResourceCategoryTable       string = "table"
+	ResourceCategoryFile        string = "file"
+	ResourceCategoryFileset     string = "fileset"
+	ResourceCategoryAPI         string = "api"
+	ResourceCategoryMetric      string = "metric"
+	ResourceCategoryTopic       string = "topic"
+	ResourceCategoryIndex       string = "index"
+	ResourceCategoryLogicalView string = "logical_view"
+	ResourceCategoryDataset     string = "dataset"
 
 	ResourceSortName       string = "name"
 	ResourceSortCreateTime string = "create_time"
@@ -216,7 +216,7 @@ type ResourceRequest struct {
 
 	IndexConfig *ResourceIndexConfig `json:"index_config,omitempty"` // Local index configuration
 
-	LogicType       string `json:"logic_type,omitempty"`       // Required for logic views; selects the definition shape
+	LogicType       string `json:"logic_type,omitempty"`       // Required for logical views; selects the definition shape
 	LogicDefinition any    `json:"logic_definition,omitempty"` // Definition shape depends on logic_type
 
 	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`

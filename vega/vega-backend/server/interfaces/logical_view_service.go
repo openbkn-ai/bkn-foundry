@@ -73,7 +73,7 @@ var (
 	}
 )
 
-type LogicView struct {
+type LogicalView struct {
 	Resource
 	IsSingleSource bool                 `json:"is_single_source,omitempty" mapstructure:"-"`
 	RefResources   map[string]*Resource `json:"ref_resources,omitempty" mapstructure:"-"`
@@ -293,8 +293,8 @@ type SearchAfterParams struct {
 	PitKeepAlive string `json:"pit_keep_alive"`
 }
 
-//go:generate mockgen -source ../interfaces/logic_view_service.go -destination ../interfaces/mock/mock_logic_view_service.go
-type LogicViewService interface {
+//go:generate mockgen -source ../interfaces/logical_view_service.go -destination ../interfaces/mock/mock_logical_view_service.go
+type LogicalViewService interface {
 	// ValidateRequest checks the logic-view definition before persistence.
 	ValidateRequest(ctx context.Context, req *ResourceRequest) error
 

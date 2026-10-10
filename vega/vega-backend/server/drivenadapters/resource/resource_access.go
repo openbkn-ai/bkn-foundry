@@ -165,7 +165,7 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 	if indexConfig.Valid && indexConfig.String != "" {
 		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
 	}
-	if resource.Category == interfaces.ResourceCategoryLogicView && logicDefinition.Valid && logicDefinition.String != "" {
+	if resource.Category == interfaces.ResourceCategoryLogicalView && logicDefinition.Valid && logicDefinition.String != "" {
 		_ = common.UnmarshalPreciseJSON([]byte(logicDefinition.String), &resource.LogicDefinition)
 	}
 	return resource, nil
@@ -656,7 +656,7 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 		Where(sq.Eq{"f_id": resource.ID}).
 		Where(sq.Eq{"f_update_time": expectedUpdateTime})
 
-	if resource.Category == interfaces.ResourceCategoryLogicView {
+	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		builder = builder.Set("f_source_metadata", string(sourceMetadataBytes))
 	}
 

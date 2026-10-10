@@ -23,7 +23,7 @@ func TestErrCodeLists(t *testing.T) {
 		"build_task":        BuildTaskErrCodeList,
 		"discover_task":     DiscoverTaskErrCodeList,
 		"query":             QueryErrCodeList,
-		"logic_view":        LogicViewErrCodeList,
+		"logical_view":      LogicalViewErrCodeList,
 		"dataset":           DatasetErrCodeList,
 		"discover_schedule": DiscoverScheduleErrCodeList,
 	}

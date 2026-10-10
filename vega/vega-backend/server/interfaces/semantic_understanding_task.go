@@ -199,10 +199,10 @@ type SemanticUnderstandingResourceQuality struct {
 // SemanticUnderstandingCatalogAgentInput is the audited payload sent to the
 // catalog semantic-understanding agent.
 type SemanticUnderstandingCatalogAgentInput struct {
-	Catalog            SemanticUnderstandingCatalogAgentInputCatalog        `json:"catalog"`
-	Resources          []SemanticUnderstandingCatalogAgentInputResource     `json:"resources"`
-	ExistingLogicViews []SemanticUnderstandingCatalogAgentInputExistingView `json:"existing_logic_views"`
-	Options            SemanticUnderstandingCatalogAgentInputOptions        `json:"options"`
+	Catalog              SemanticUnderstandingCatalogAgentInputCatalog        `json:"catalog"`
+	Resources            []SemanticUnderstandingCatalogAgentInputResource     `json:"resources"`
+	ExistingLogicalViews []SemanticUnderstandingCatalogAgentInputExistingView `json:"existing_logical_views"`
+	Options              SemanticUnderstandingCatalogAgentInputOptions        `json:"options"`
 }
 
 type SemanticUnderstandingCatalogAgentInputCatalog struct {
@@ -299,11 +299,11 @@ type SemanticUnderstandingResourceResultField struct {
 }
 
 type SemanticUnderstandingCatalogResult struct {
-	LogicViews         []SemanticUnderstandingCatalogLogicView    `json:"logic_views"`
-	ObsoleteLogicViews []SemanticUnderstandingCatalogObsoleteView `json:"obsolete_logic_views"`
+	LogicalViews         []SemanticUnderstandingCatalogLogicalView  `json:"logical_views"`
+	ObsoleteLogicalViews []SemanticUnderstandingCatalogObsoleteView `json:"obsolete_logical_views"`
 }
 
-type SemanticUnderstandingCatalogLogicView struct {
+type SemanticUnderstandingCatalogLogicalView struct {
 	Action           string                 `json:"action"`
 	TargetResourceID string                 `json:"target_resource_id"`
 	Name             string                 `json:"name"`

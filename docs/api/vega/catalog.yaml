@@ -280,7 +280,7 @@ paths:
 
         传入 `dry_run=true` 时仅执行权限、存在性和影响分析，不写入任何数据；返回该 catalog
         的资源、构建任务、探查计划、健康检查计划、探查任务和语义理解任务计数；
-        `protected_resources` 返回不能随 Catalog 级联删除的 dataset/logicview 数量，`blockers`
+        `protected_resources` 返回不能随 Catalog 级联删除的 dataset/logical_view 数量，`blockers`
         返回稳定的机器可读阻断原因。`can_delete` 严格反映当前 DELETE 的阻断规则，调用方仍须
         以不带 `dry_run` 的请求结果为准，因为预检与实际删除之间可能有并发变更。
       parameters:
@@ -611,7 +611,7 @@ components:
           description: 将随 Catalog 删除的全部资源数（包含受保护资源）。
         protected_resources:
           type: integer
-          description: 不允许随 Catalog 级联删除的 dataset/logicview 资源数。
+          description: 不允许随 Catalog 级联删除的 dataset/logical_view 资源数。
         build_tasks:
           $ref: "#/components/schemas/CatalogDeletionTaskImpact"
         catalog_health_check_schedules:

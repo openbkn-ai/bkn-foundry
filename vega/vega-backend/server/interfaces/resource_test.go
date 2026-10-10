@@ -64,7 +64,7 @@ func TestDerivedLogicDefinitionJSON(t *testing.T) {
 		t.Fatalf("filter value lost precision: %v", condition["value"])
 	}
 	var request ResourceRequest
-	err = json.Unmarshal([]byte(`{"category":"logicview","logic_definition":{"source_resource_id":"source","distinct":false}}`), &request)
+	err = json.Unmarshal([]byte(`{"category":"logical_view","logic_definition":{"source_resource_id":"source","distinct":false}}`), &request)
 	if err != nil {
 		t.Fatalf("decode generic definition: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestDerivedLogicDefinitionJSON(t *testing.T) {
 			t.Fatalf("derived conversion must reject missing source_resource_id: %#v", raw)
 		}
 	}
-	err = json.Unmarshal([]byte(`{"category":"logicview","logic_definition":{"source_resource_id":"source"}}`), &request)
+	err = json.Unmarshal([]byte(`{"category":"logical_view","logic_definition":{"source_resource_id":"source"}}`), &request)
 	definition, decodeErr := DecodeDerivedLogicDefinition(request.LogicDefinition)
 	if err != nil || decodeErr != nil || definition.SourceResourceID != "source" {
 		t.Fatalf("decode derived definition: definition=%+v, err=%v", request.LogicDefinition, err)

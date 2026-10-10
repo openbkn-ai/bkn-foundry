@@ -155,10 +155,10 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 
 	var logicType string
 	switch req.Category {
-	case interfaces.ResourceCategoryLogicView:
+	case interfaces.ResourceCategoryLogicalView:
 		var viewFields []*interfaces.Property
 		req.SourceMetadata = nil
-		logicType, viewFields, err = PrepareLogicView(ctx, req)
+		logicType, viewFields, err = PrepareLogicalView(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -764,7 +764,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	}
 
 	switch resource.Category {
-	case interfaces.ResourceCategoryLogicView:
+	case interfaces.ResourceCategoryLogicalView:
 		resource.SchemaDefinition = req.SchemaDefinition
 		resource.LogicType = req.LogicType
 		resource.LogicDefinition = req.LogicDefinition
@@ -860,7 +860,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		span.SetStatus(codes.Error, "Resource update conflict")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
-	if resource.Category == interfaces.ResourceCategoryLogicView && buildRelevantChanged {
+	if resource.Category == interfaces.ResourceCategoryLogicalView && buildRelevantChanged {
 		resource.RowCount = nil
 		resource.RowCountTime = nil
 		if _, err := rs.ra.UpdateRowCount(ctx, tx, resource, resource.UpdateTime); err != nil {
@@ -1390,8 +1390,8 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		logicType string
 		err       error
 	)
-	if req.Category == interfaces.ResourceCategoryLogicView {
-		logicType, req.SchemaDefinition, err = PrepareLogicView(ctx, req)
+	if req.Category == interfaces.ResourceCategoryLogicalView {
+		logicType, req.SchemaDefinition, err = PrepareLogicalView(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -1512,12 +1512,12 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 	if req.Category != resource.Category {
 		return false, unsupportedResourceUpdateError(ctx, "category cannot be updated")
 	}
-	if resource.Category == interfaces.ResourceCategoryLogicView {
+	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		if req.LogicType != resource.LogicType {
 			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
 		}
 		req.SourceMetadata = nil
-		logicType, viewFields, err := PrepareLogicView(ctx, req)
+		logicType, viewFields, err := PrepareLogicalView(ctx, req)
 		if err != nil {
 			return false, err
 		}
@@ -1608,7 +1608,7 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 	// A derived view may expose only the field carrying a source Feature while
 	// its referenced vector field remains private. EE preparation validates the
 	// reference against the complete source schema before reaching this point.
-	if category != interfaces.ResourceCategoryLogicView {
+	if category != interfaces.ResourceCategoryLogicalView {
 		if err := ValidateVectorFeatureReferences(schema); err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 				WithErrorDetails(err.Error())

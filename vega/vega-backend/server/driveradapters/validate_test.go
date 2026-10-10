@@ -171,7 +171,7 @@ func TestValidateCreateResourceCategory(t *testing.T) {
 
 	t.Run("allows creatable categories", func(t *testing.T) {
 		require.NoError(t, validateCreateResourceCategory(ctx, interfaces.ResourceCategoryDataset))
-		require.NoError(t, validateCreateResourceCategory(ctx, interfaces.ResourceCategoryLogicView))
+		require.NoError(t, validateCreateResourceCategory(ctx, interfaces.ResourceCategoryLogicalView))
 	})
 
 	t.Run("rejects discover-owned categories", func(t *testing.T) {
@@ -191,6 +191,10 @@ func TestValidateCreateResourceCategory(t *testing.T) {
 
 	t.Run("rejects empty category", func(t *testing.T) {
 		require.Error(t, validateCreateResourceCategory(ctx, ""))
+	})
+
+	t.Run("rejects obsolete logical view spelling", func(t *testing.T) {
+		require.Error(t, validateCreateResourceCategory(ctx, "logicview"))
 	})
 
 	t.Run("rejects unknown category", func(t *testing.T) {

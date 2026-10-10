@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     f_tags                    VARCHAR(255) NOT NULL DEFAULT '[]' COMMENT '标签，JSON数组格式',
     f_description             VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '数据资源描述',
 
-    f_category                VARCHAR(20) NOT NULL DEFAULT '' COMMENT '数据资源类型: table, file, fileset, api, metric, topic, index, logicview, dataset',
+    f_category                VARCHAR(20) NOT NULL DEFAULT '' COMMENT '数据资源类型: table, file, fileset, api, metric, topic, index, logical_view, dataset',
     f_builtin                BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否为内置资源',
 
     -- 状态管理
@@ -91,9 +91,9 @@ CREATE TABLE IF NOT EXISTS t_resource (
     f_schema_definition       MEDIUMTEXT NOT NULL COMMENT 'Schema定义（JSON数组格式，包含所有字段信息）',
     f_index_config            MEDIUMTEXT NOT NULL COMMENT '本地索引配置（JSON格式）',
 
-    -- LogicView 专属字段
-    f_logic_type              VARCHAR(20) NOT NULL DEFAULT '' COMMENT '逻辑类型: derived(衍生), composite(复合), 仅LogicView使用',
-    f_logic_definition        MEDIUMTEXT NOT NULL COMMENT '逻辑定义（JSON格式），仅LogicView使用',
+    -- LogicalView 专属字段
+    f_logic_type              VARCHAR(20) NOT NULL DEFAULT '' COMMENT '逻辑类型: derived(衍生), composite(复合), 仅LogicalView使用',
+    f_logic_definition        MEDIUMTEXT NOT NULL COMMENT '逻辑定义（JSON格式），仅LogicalView使用',
 
     -- Local索引已提交状态
     f_local_status            VARCHAR(20) NOT NULL DEFAULT 'unavailable' COMMENT 'Local index status: unavailable, available, stale',
