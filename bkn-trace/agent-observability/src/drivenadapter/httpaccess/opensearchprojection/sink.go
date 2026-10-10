@@ -21,6 +21,7 @@ const receiptProjectionIndexMapping = `{
   "mappings": {
     "dynamic": true,
     "properties": {
+      "envelope": {"type": "object", "dynamic": false},
       "receipt_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "conversation_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "interaction_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
@@ -45,12 +46,13 @@ const receiptProjectionIndexMapping = `{
 }`
 
 // conversationAuditProjectionMapping is deliberately limited to fields used by
-// conversation audit queries. Existing projection aliases can have receipt
-// fields with different historical mappings, so upgrading them with the full
-// receipt mapping is unsafe.
+// conversation audit queries and bounds opaque producer envelope mapping.
+// Existing aliases can have receipt fields with different historical mappings,
+// so upgrading them with the full receipt mapping is unsafe.
 const conversationAuditProjectionMapping = `{
   "mappings": {
     "properties": {
+      "envelope": {"type": "object", "dynamic": false},
       "external_conversation_key": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "generation": {"type": "long"},
       "created_at": {"type": "date"}

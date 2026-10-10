@@ -586,3 +586,16 @@ Chart 会推送到：
 ghcr.io/<github-owner>/charts
 ```
 # test trigger
+
+### Core Evidence 投影的 envelope 边界
+
+Kafka Ledger 事件的 `envelope` 是生产者原始内容，Core 在 OpenSearch 投影中
+使用 `object`、`dynamic: false` 保留完整 `_source`，不为任意嵌套内容自动
+新增字段映射。查询使用顶层 ID、owner、状态和时间；020 完整性检查读取
+权威 Ledger，而不是通过 envelope 子字段搜索推断记录完整。
+
+新建版本索引与已有投影 alias 的 bootstrap 都应用该边界。已有 alias 仅
+合并兼容 mapping，不替换索引、不修改历史字段类型、不提高字段上限。
+已有 envelope 字段仍按原映射索引；新字段只保存在 `_source`。既有字段的
+类型冲突仍可能拒绝文档，本修复不自动重试已经标记 dead 的 outbox，也不
+改写历史证据。未来需要检索的 envelope 字段必须按明确的产品需求显式定义。
