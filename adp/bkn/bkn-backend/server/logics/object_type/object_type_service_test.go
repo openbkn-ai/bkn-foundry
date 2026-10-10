@@ -1666,7 +1666,8 @@ func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *te
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
-	service := &objectTypeService{ota: ota, ps: ps, ums: ums}
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	service := &objectTypeService{ota: ota, ps: ps, ums: ums, vbs: vbs}
 	ctx := context.Background()
 
 	query := interfaces.ObjectTypesQueryParams{
@@ -1683,8 +1684,11 @@ func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *te
 	}, nil)
 	ota.EXPECT().GetObjectTypesTotal(gomock.Any(), visibleQuery).Return(2, nil)
 	page := []*interfaces.ObjectType{{
-		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders", OTName: "Orders"},
-		KNID:                   "kn-1", Branch: interfaces.MAIN_BRANCH,
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "orders", OTName: "Orders",
+			DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-orders"},
+		},
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
 	}}
 	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), visibleQuery).Return(page, nil)
 	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
@@ -1693,6 +1697,9 @@ func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *te
 			"kn-1/orders": {ResourceID: "kn-1/orders", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
 		}, nil)
 	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
+	vbs.EXPECT().GetResourcesByIDs(gomock.Any(), []string{"resource-orders"}).Return([]*interfaces.VegaResource{{
+		ID: "resource-orders", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+	}}, nil)
 
 	items, total, err := service.ListObjectTypeSummaries(ctx, nil, query)
 	require.NoError(t, err)
@@ -1700,6 +1707,8 @@ func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *te
 	require.Len(t, items, 1)
 	assert.Equal(t, "orders", items[0].OTID)
 	assert.Equal(t, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, items[0].Operations)
+	require.NotNil(t, items[0].IndexStatus)
+	assert.Equal(t, interfaces.ObjectTypeIndexStateAvailable, items[0].IndexStatus.State)
 }
 
 func TestObjectTypeServiceListSummariesFallsBackForWildcardScope(t *testing.T) {
@@ -1707,7 +1716,8 @@ func TestObjectTypeServiceListSummariesFallsBackForWildcardScope(t *testing.T) {
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
-	service := &objectTypeService{ota: ota, ps: ps, ums: ums}
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	service := &objectTypeService{ota: ota, ps: ps, ums: ums, vbs: vbs}
 	query := interfaces.ObjectTypesQueryParams{
 		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
 		PaginationQueryParameters: interfaces.PaginationQueryParameters{Offset: 0, Limit: 1},
@@ -1716,8 +1726,12 @@ func TestObjectTypeServiceListSummariesFallsBackForWildcardScope(t *testing.T) {
 	candidateQuery.Offset = 0
 	candidateQuery.Limit = -1
 	candidates := []*interfaces.ObjectType{
-		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "denied"}, KNID: "kn-1"},
-		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "visible"}, KNID: "kn-1"},
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "denied", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-denied"},
+		}, KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "visible", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-visible"},
+		}, KNID: "kn-1", Branch: interfaces.MAIN_BRANCH},
 	}
 	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
@@ -1730,12 +1744,17 @@ func TestObjectTypeServiceListSummariesFallsBackForWildcardScope(t *testing.T) {
 			"kn-1/visible": {ResourceID: "kn-1/visible", Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
 		}, nil)
 	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
+	vbs.EXPECT().GetResourcesByIDs(gomock.Any(), []string{"resource-visible"}).Return([]*interfaces.VegaResource{{
+		ID: "resource-visible", LocalIndexStatus: interfaces.ResourceLocalIndexStatusUnavailable,
+	}}, nil)
 
 	items, total, err := service.ListObjectTypeSummaries(context.Background(), nil, query)
 	require.NoError(t, err)
 	require.Equal(t, 1, total)
 	require.Len(t, items, 1)
 	assert.Equal(t, "visible", items[0].OTID)
+	require.NotNil(t, items[0].IndexStatus)
+	assert.Equal(t, interfaces.ObjectTypeIndexStateUnavailable, items[0].IndexStatus.State)
 }
 
 func Test_objectTypeService_UpdateObjectType(t *testing.T) {
