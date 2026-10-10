@@ -161,7 +161,7 @@ BKN Foundry 定位为**面向 AI 应用开发者的生产级本体开发平台**
 | **接入层** | **BKN SDK / CLI**（统一接入接口）与 **BKN Skill**（平台级技能层，封装 SDK 能力）。**BKN Studio**（Web 控制台）位于独立前端仓库 [openbkn-ai/bkn-studio](https://github.com/openbkn-ai/bkn-studio)，**不属于**本后端 release。 |
 | **BKN Dev**（知识网络的开发、评估与应用；建设中） | BKN Project 产出 BKN，BKN Eval 与 BKN Workshop 基于同一个 BKN，进入具体知识网络后可见，二者平级： |
 | &emsp;**BKN Project** | 本体构建，需求管理 → 本体建模 → 数据映射 → 发布版本，产出并发布 BKN——结构化与非结构化数据接入；自上而下（先做高层设计）与自下而上（从数据归纳）两条构建路径；动态本体，包括版本管理、AI 交互式更新网络、源数据变化后的网络同步 |
-| &emsp;**BKN Eval** | 基于已发布的 BKN 做本体质量与评估——数据、本体与 Agent 三层校验；本体质量规则（边缺失率、悬挂边、属性完整度、歧义等）在网络建成并挂载数据后自动输出检测报告，回流到 BKN Project；语义对齐、逻辑一致性、函数与 schema 评估、Benchmark |
+| &emsp;**BKN Eval** | 基于已发布的 BKN 做本体质量与效果评估——数据、本体与 Agent 三层校验；本体质量规则（边缺失率、悬挂边、属性完整度、歧义等）在网络建成并挂载数据后自动输出检测报告，回流到 BKN Project；语义对齐、逻辑一致性、函数与 schema 评估、Benchmark |
 | &emsp;**BKN Workshop** | 基于已发布的 BKN 做本体应用开发——分析、推理、模拟与决策、执行与反馈 |
 | **BKN Engine** | 业务知识网络引擎：**Context Loader**（Retrieval 召回 + Reranker 精排）作用于 **BKN**——以数据 / 逻辑 / 风险 / 行动四要素描述业务，并经映射下达到基础层 |
 | **VEGA** | 数据虚拟化：通过数据映射形成逻辑视图，提供内容索引和图索引 |
