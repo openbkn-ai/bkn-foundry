@@ -207,19 +207,19 @@ fi
 HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1","traceTimestampPipelineRevision":"index-default-pipeline-v1"}}'
 _install_openbkn_release_local agent-observability /tmp openbkn
 _install_openbkn_release_repo agent-observability openbkn openbkn 0.1.4
-if [[ "${UPGRADE_CALLS}" -eq 2 ]]; then
+if [[ "${UPGRADE_CALLS}" -eq 4 ]]; then
     ok
 else
-    fail "durable runtime profiles must skip both installer paths"
+    fail "both installer paths must resolve Audit configuration before deciding to skip"
 fi
 
 HELM_VALUES='{not-json}'
 _install_openbkn_release_local agent-observability /tmp openbkn
 _install_openbkn_release_repo agent-observability openbkn openbkn 0.1.4
-if [[ "${UPGRADE_CALLS}" -eq 2 ]]; then
+if [[ "${UPGRADE_CALLS}" -eq 6 ]]; then
     ok
 else
-    fail "unreadable Helm values must not roll out either installer path"
+    fail "both installer paths must reach common preflight for unreadable historical values"
 fi
 eval "${ORIGINAL_RELEASE_EXTRA_SETS}"
 
