@@ -36,3 +36,14 @@ reproduction; fresh deployed acceptance remains required.
 - [x] Follow-up focused tests, full Core `go test ./... -count=1`, build, vet, golangci-lint (0 issues), and both affected packages under race pass.
 
 The object mapping supports opaque object envelopes, not every arbitrary JSON value allowed in the authoritative Ledger. Existing scalar/nested mappings are preserved rather than migrated. Existing child objects explicitly overriding `dynamic:true` are not recursively rewritten. No old data or dead outbox rows are changed.
+
+## Disabled object compatibility and real OpenSearch regression
+
+OpenSearch ObjectMapper's mapping-update merge compares enabled values even when the incoming enabled value is only the default. A legacy `enabled:false` object therefore cannot safely receive the default-enabled object patch. Preserve it with the same audit-only patch as other incompatible legacy definitions; it already avoids dynamic field growth.
+
+- [x] Disabled legacy object joins mixed-alias red regression; patch preserves its enabled flag.
+- [x] Add real integration regression for scalar, disabled object and normal object mappings; only randomly named test-owned indexes are created/deleted in the existing OpenSearch instance. Normal-object fixture demonstrates field-limit rejection before bootstrap and source-preserving projection after bootstrap, without raising its limit.
+- [x] Focused regressions, full Core lint/build and integration-tag compile/vet pass.
+- [x] Coordinator ran `TestOpenSearchBootstrapPreservesLegacyEnvelopeMappings` against the existing OpenSearch via localhost:19200: scalar, disabled object and normal object all PASS (0.876s), including repeated bootstrap, actual projection, complete source validation and cleanup of every test-owned index. Compile with an empty endpoint remains distinct from this real integration proof.
+
+[Official ObjectMapper defaults/merge semantics](https://github.com/opensearch-project/OpenSearch/blob/2.19/server/src/main/java/org/opensearch/index/mapper/ObjectMapper.java#L738).

@@ -620,8 +620,8 @@ func TestEnsureBootstrapPreservesMixedAliasEnvelopeTypes(t *testing.T) {
 		case "GET /_alias/bkn-trace-core":
 			w.WriteHeader(http.StatusOK)
 		case "GET /bkn-trace-core/_mapping":
-			_, _ = w.Write([]byte(`{"legacy":{"mappings":{"properties":{"envelope":{"type":"keyword"}}}},"object":{"mappings":{"properties":{"envelope":{"properties":{"legacy_field":{"type":"long"}}}}}},"unmapped":{"mappings":{"properties":{}}},"explicit":{"mappings":{"properties":{"envelope":{"type":"object"}}}},"nested":{"mappings":{"properties":{"envelope":{"type":"nested"}}}}}`))
-		case "PUT /legacy/_mapping", "PUT /object/_mapping", "PUT /unmapped/_mapping", "PUT /explicit/_mapping", "PUT /nested/_mapping":
+			_, _ = w.Write([]byte(`{"legacy":{"mappings":{"properties":{"envelope":{"type":"keyword"}}}},"object":{"mappings":{"properties":{"envelope":{"properties":{"legacy_field":{"type":"long"}}}}}},"unmapped":{"mappings":{"properties":{}}},"explicit":{"mappings":{"properties":{"envelope":{"type":"object"}}}},"nested":{"mappings":{"properties":{"envelope":{"type":"nested"}}}},"disabled":{"mappings":{"properties":{"envelope":{"type":"object","enabled":false}}}}}`))
+		case "PUT /legacy/_mapping", "PUT /object/_mapping", "PUT /unmapped/_mapping", "PUT /explicit/_mapping", "PUT /nested/_mapping", "PUT /disabled/_mapping":
 			var patch map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 				t.Error(err)
@@ -639,10 +639,10 @@ func TestEnsureBootstrapPreservesMixedAliasEnvelopeTypes(t *testing.T) {
 	if err := sink.EnsureBootstrap(context.Background(), "unused-new-version"); err != nil {
 		t.Fatal(err)
 	}
-	if len(patches) != 5 {
-		t.Fatalf("expected all five alias targets, got %v", patches)
+	if len(patches) != 6 {
+		t.Fatalf("expected all six alias targets, got %v", patches)
 	}
-	wantWrites := []string{"/explicit/_mapping", "/legacy/_mapping", "/nested/_mapping", "/object/_mapping", "/unmapped/_mapping"}
+	wantWrites := []string{"/disabled/_mapping", "/explicit/_mapping", "/legacy/_mapping", "/nested/_mapping", "/object/_mapping", "/unmapped/_mapping"}
 	for i, path := range wantWrites {
 		if writes[i] != path {
 			t.Fatalf("alias targets must be patched in stable order: %v", writes)
@@ -650,7 +650,7 @@ func TestEnsureBootstrapPreservesMixedAliasEnvelopeTypes(t *testing.T) {
 	}
 	for path, patch := range patches {
 		props := patch["properties"].(map[string]any)
-		if path == "/legacy/_mapping" || path == "/nested/_mapping" {
+		if path == "/legacy/_mapping" || path == "/nested/_mapping" || path == "/disabled/_mapping" {
 			if _, present := props["envelope"]; present {
 				t.Fatal("legacy scalar envelope type must not be changed")
 			}

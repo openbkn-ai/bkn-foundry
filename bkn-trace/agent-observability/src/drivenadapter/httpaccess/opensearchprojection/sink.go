@@ -146,17 +146,22 @@ func (s *Sink) ensureExistingAliasMappings(ctx context.Context) error {
 	for index, mapping := range mappings {
 		var existing struct {
 			Properties map[string]struct {
-				Type string `json:"type"`
+				Type    string `json:"type"`
+				Enabled *bool  `json:"enabled"`
 			} `json:"properties"`
 		}
 		if err := json.Unmarshal(mapping, &existing); err != nil {
 			return fmt.Errorf("decode existing projection mapping: %w", err)
 		}
-		envelopeType := existing.Properties["envelope"].Type
+		envelope := existing.Properties["envelope"]
+		envelopeType := envelope.Type
 		item := patch{index: index, definition: []byte(conversationAuditProjectionMapping)}
-		if envelopeType != "" && envelopeType != "object" {
+		if (envelopeType != "" && envelopeType != "object") || (envelope.Enabled != nil && !*envelope.Enabled) {
 			item.definition = legacyPatch
 			item.legacyType = envelopeType
+			if envelope.Enabled != nil && !*envelope.Enabled {
+				item.legacyType = "disabled_object"
+			}
 		}
 		patches = append(patches, item)
 	}

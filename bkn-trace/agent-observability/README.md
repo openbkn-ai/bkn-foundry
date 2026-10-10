@@ -602,7 +602,7 @@ Kafka Ledger 事件的 `envelope` 是生产者原始内容，Core 在 OpenSearch
 改写历史证据。未来需要检索的 envelope 字段必须按明确的产品需求显式定义。
 
 已有 alias 升级前先只读每个具体索引的 mapping，并按索引分别应用兼容补丁。
-未映射或 object envelope 接受上述 dynamic 边界；已映射 scalar/nested 类型
+未映射或 object envelope 接受上述 dynamic 边界；已映射 scalar/nested 类型或 `enabled:false` object
 保持原状，仅更新会话审计字段并记录诊断，不会因强制改成 object 阻止 Core
 启动。该历史索引仍不能存储与既有 envelope 类型不兼容的新文档。新索引的
 object 边界也不承诺支持任意 scalar envelope。已有子对象显式 `dynamic:true`
