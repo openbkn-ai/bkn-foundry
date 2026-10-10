@@ -611,3 +611,31 @@ def test_result_count_uses_nested_collections_totals_and_empty_results():
     assert evidence.result_count([]) == 0
     assert evidence.result_count({}) == 0
     assert evidence.result_count({"resource_id": "one"}) == 1
+
+
+def test_lifecycle_owner_scopes_ledger_and_artifacts_without_changing_authentication():
+    ctx = observability.build_context(_headers())
+    context_token = observability.set_context(ctx)
+    outer = evidence.begin_interaction("outer", "task", "a", "bkn.agent.task")
+    owner = {"application_principal_id": "openbkn-sdk", "effective_subject_type": "user", "effective_subject_id": "account-9", "delegation_id": ""}
+    try:
+        auth_headers = observability.outbound_headers()
+        inner = evidence.begin_interaction("input", "task", "a", "bkn.agent.task", conversation_id="conv-owned", interaction_id="int-owned", owner=owner)
+        try:
+            owner["application_principal_id"] = "mutated"
+            batch = evidence.build_batch([evidence.interaction_started_event()], "account-9", "user")
+            event = evidence.build_ledger_events(batch)[0]
+            assert event["envelope"]["owner"] == {"application_principal_id": "openbkn-sdk", "effective_subject_type": "user", "effective_subject_id": "account-9"}
+            artifact_headers = evidence._artifact_headers(ctx)
+            assert artifact_headers["X-BKN-Application-Principal-ID"] == "openbkn-sdk"
+            assert artifact_headers["X-BKN-Effective-Subject-ID"] == "account-9"
+            assert "X-BKN-Delegation-ID" not in artifact_headers
+            assert observability.outbound_headers() == auth_headers
+        finally:
+            evidence.end_interaction(inner)
+        batch = evidence.build_batch([evidence.interaction_started_event()], "account-9", "user")
+        assert batch["trace"]["bkn.application.principal.id"] == "openbkn-studio"
+        assert evidence._artifact_headers(ctx)["X-BKN-Delegation-ID"] == "delegation-1"
+    finally:
+        evidence.end_interaction(outer)
+        observability.reset_context(context_token)

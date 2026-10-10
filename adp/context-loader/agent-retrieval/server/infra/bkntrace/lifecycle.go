@@ -619,10 +619,12 @@ func (c *LifecycleClient) do(
 	return nil, nil
 }
 
-func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error {
+// TrustedLifecycleOwner derives the owner accepted by Core from authenticated
+// service context, never from caller-supplied lifecycle arguments.
+func TrustedLifecycleOwner(ctx context.Context) (Owner, error) {
 	auth, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || auth.AccountID == "" || auth.AccountType == interfaces.AccessorTypeAnonymous {
-		return fmt.Errorf("trusted account context is required")
+		return Owner{}, fmt.Errorf("trusted account context is required")
 	}
 	applicationID := auth.AccountID
 	if auth.TokenInfo != nil && strings.TrimSpace(auth.TokenInfo.ClientID) != "" {
@@ -632,14 +634,23 @@ func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error 
 	if auth.AccountType == interfaces.AccessorTypeApp {
 		subjectType = "service"
 	}
+	return Owner{ApplicationPrincipalID: applicationID, EffectiveSubjectType: subjectType, EffectiveSubjectID: auth.AccountID}, nil
+}
+
+func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error {
+	owner, err := TrustedLifecycleOwner(ctx)
+	if err != nil {
+		return err
+	}
+	auth, _ := common.GetAccountAuthContextFromCtx(ctx)
 	// Core first authorizes the trusted query scope, then validates the richer
 	// lifecycle owner tuple. Both header sets come from this authenticated
 	// service boundary, never from the lifecycle request body.
 	headers.Set("x-account-id", auth.AccountID)
 	headers.Set("x-account-type", string(auth.AccountType))
-	headers.Set("X-BKN-Application-Principal-ID", applicationID)
-	headers.Set("X-BKN-Effective-Subject-Type", subjectType)
-	headers.Set("X-BKN-Effective-Subject-ID", auth.AccountID)
+	headers.Set("X-BKN-Application-Principal-ID", owner.ApplicationPrincipalID)
+	headers.Set("X-BKN-Effective-Subject-Type", owner.EffectiveSubjectType)
+	headers.Set("X-BKN-Effective-Subject-ID", owner.EffectiveSubjectID)
 	if auth.TokenInfo != nil {
 		headers.Set("X-BKN-Effective-Subject-Name", strings.TrimSpace(auth.TokenInfo.VisitorName))
 	}

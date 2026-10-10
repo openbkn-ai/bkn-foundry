@@ -177,6 +177,7 @@ func lifecycleOutputSchema(toolKey string) map[string]any {
 	switch toolKey {
 	case "bkn_start_interaction":
 		return closedSchema(map[string]any{
+			"owner":            ownerOutputSchema(),
 			"interaction_id":   stringSchema(),
 			"conversation_id":  stringSchema(),
 			"execution_status": enumSchema("active"),

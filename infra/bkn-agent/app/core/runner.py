@@ -102,6 +102,7 @@ async def run_agent_once(
         "bkn.agent.task",
         conversation_id=cl_session.conversation_id if cl_session else None,
         interaction_id=cl_session.interaction_id if cl_session else None,
+        owner=cl_session.owner if cl_session else None,
     )
     answer: str | None = None
     failure: str | None = None

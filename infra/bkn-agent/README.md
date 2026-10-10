@@ -48,3 +48,13 @@ agent 定义+prompt 当前版本，保留原 id upsert 幂等，同名不同 id 
 不再有。published agent 曾被自动注册进算子工厂 toolbox（#212），现已移除：
 agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执行工厂里留一份工具描述。
 把某个 agent 挂给另一个 agent 用 `tool_refs` 里的 `type: agent`，不经过工厂。
+
+### Lifecycle owner attribution
+
+For Context Loader interactions, `bkn_start_interaction` returns response-only
+`owner` metadata derived from its authenticated account context after Core accepts
+Start. Agent preserves that owner with the interaction for Kafka evidence and
+private artifact ingress. It does not replace caller authentication, tool headers,
+or model-visible parameters. Older Context Loader responses without owner still
+load tools, but log a coverage warning and cannot establish corrected evidence
+attribution. Upgrade Context Loader together with Agent for this contract.
