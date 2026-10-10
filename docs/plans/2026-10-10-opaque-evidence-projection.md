@@ -15,6 +15,15 @@
 - [x] Add only the two compatible envelope mapping definitions; retain alias sequence and existing query mappings.
 - [x] Focused regression package, full Core `go build ./...`, `go test ./...`, `go vet ./...`, and golangci-lint pass. Changed projection package passes `go test -race ... -count=1`.
 - [ ] Full-module race: existing Swagger parallel tests race inside `swag.Spec.ReadDoc`; reproduced on unchanged baseline. This independent failure is not covered up or repaired in the mapping change.
-- [ ] Independent review, release, and fresh 8081 real-consumer projection acceptance (coordinated separately; no deployment in this change).
+- [x] Independent review found no blocking issues.
+- [ ] Official release and fresh 8081 real-consumer projection acceptance.
 
-Additional acceptance reproduction on the existing 8081 OpenSearch (one unique\nowned temporary index, removed after the test): copied the existing 980-field\nmapping and only our new acceptance event payload. Before the mapping update,\nindexing returned HTTP 400 `Limit of total fields [1000]`. Applying the exact\ncompatibility mapping allowed HTTP 200 indexing, retained exact `_source` and all\nlegacy envelope field mappings, and left the field count at 980. No existing\nenvelope child object explicitly enabled dynamic mapping. Independent review\nfound no blocking issues. Production alias/data/outbox were not changed by this\nreproduction; fresh deployed acceptance remains required.
+Additional acceptance reproduction on the existing 8081 OpenSearch (one unique
+owned temporary index, removed after the test): copied the existing 980-field
+mapping and only our new acceptance event payload. Before the mapping update,
+indexing returned HTTP 400 `Limit of total fields [1000]`. Applying the exact
+compatibility mapping allowed HTTP 200 indexing, retained exact `_source` and all
+legacy envelope field mappings, and left the field count at 980. No existing
+envelope child object explicitly enabled dynamic mapping. Independent review
+found no blocking issues. Production alias/data/outbox were not changed by this
+reproduction; fresh deployed acceptance remains required.
