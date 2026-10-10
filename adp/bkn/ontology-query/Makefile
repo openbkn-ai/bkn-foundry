@@ -26,8 +26,8 @@ test-cover:
 	cd server && I18N_MODE_UT=true go test $(UT_PACKAGES) -gcflags=all=-l \
 		-coverprofile=../test-result/coverage.out \
 		-covermode=atomic
-	go tool cover -func=test-result/coverage.out
-	go tool cover -html=test-result/coverage.out -o test-result/coverage.html
+	cd server && go tool cover -func=../test-result/coverage.out
+	cd server && go tool cover -html=../test-result/coverage.out -o ../test-result/coverage.html
 	@command -v gocover-cobertura >/dev/null 2>&1 && \
 		gocover-cobertura < test-result/coverage.out > test-result/coverage.xml || \
 		echo "WARN: gocover-cobertura not found, coverage.xml not generated"
