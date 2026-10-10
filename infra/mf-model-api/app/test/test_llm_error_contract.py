@@ -48,6 +48,38 @@ async def _collect(stream):
 MESSAGES = [{"role": "user", "content": "hi"}]
 
 
+class TestOtherClientNonStreamMetering:
+    @pytest.mark.asyncio
+    async def test_success_records_status_tokens_and_elapsed_time(self):
+        response = {
+            "choices": [{"message": {"content": "OK"}}],
+            "usage": {"prompt_tokens": 76, "completion_tokens": 36, "total_tokens": 112},
+        }
+        session_cm, _ = _mock_session(200, json.dumps(response))
+        with patch.object(llm_utils.aiohttp, 'ClientSession', return_value=session_cm), \
+                patch.object(llm_utils.time, 'perf_counter', side_effect=[100.0, 102.547]), \
+                patch.object(llm_utils, 'add_llm_model_call_log', new_callable=AsyncMock) as audit:
+            result = await _other_client().chat_completion(MESSAGES, "user1", "test")
+
+        assert result["choices"][0]["message"]["content"] == "OK"
+        audit.assert_awaited_once()
+        record = audit.await_args.args[0]
+        assert record.status == "success"
+        assert record.total_time == pytest.approx(2.547)
+        assert record.input_tokens == 76
+        assert record.output_tokens == 36
+
+    @pytest.mark.asyncio
+    async def test_upstream_error_does_not_record_success(self):
+        session_cm, _ = _mock_session(400, '{"error":{"message":"bad request"}}')
+        with patch.object(llm_utils.aiohttp, 'ClientSession', return_value=session_cm), \
+                patch.object(llm_utils, 'add_llm_model_call_log', new_callable=AsyncMock) as audit:
+            result = await _other_client().chat_completion(MESSAGES, "user1", "test")
+
+        assert llm_utils.openai_error.is_error(result)
+        audit.assert_not_awaited()
+
+
 class TestStreamErrorFrame:
     @pytest.mark.asyncio
     async def test_legacy_stream_logs_raw_connection_error_before_returning_safe_body(self):
