@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permissionproposal"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
 )
 
@@ -23,7 +25,7 @@ func (r *permissionRequestLivenessRecorder) Exists(context.Context, string, stri
 	return false, nil
 }
 
-func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
+func TestWritePermissionRequestErrorMapsBusinessFailures(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	for _, testCase := range []struct {
@@ -36,6 +38,9 @@ func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 		{name: "missing prerequisite", err: permissionrequest.ErrPrerequisiteMissing, status: http.StatusConflict, reason: "missing_prerequisite"},
 		{name: "resource deleted", err: permissionrequest.ErrResourceDeleted, status: http.StatusConflict, reason: "resource_deleted"},
 		{name: "forbidden reviewer", err: permissionrequest.ErrForbidden, status: http.StatusForbidden},
+		{name: "unlicensed proposal", err: permissionproposal.ErrUnavailable, status: http.StatusNotFound, reason: "permission_proposal_unavailable"},
+		{name: "uninstalled proposal", err: permissionrequest.ErrProposalUnavailable, status: http.StatusNotFound, reason: "permission_proposal_unavailable"},
+		{name: "unexpected preview failure", err: errors.New("preview failed"), status: http.StatusInternalServerError},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			router := gin.New()
@@ -61,6 +66,9 @@ func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 			if testCase.status == http.StatusConflict && body.ErrorCode != "BknSafe.Conflict" {
 				t.Errorf("error_code = %q, want BknSafe.Conflict", body.ErrorCode)
 			}
+			if testCase.status == http.StatusInternalServerError && body.ErrorCode != "BknSafe.InternalError" {
+				t.Errorf("error_code = %q, want BknSafe.InternalError", body.ErrorCode)
+			}
 			if testCase.reason != "" {
 				var details map[string]any
 				if err := json.Unmarshal(body.ErrorDetails, &details); err != nil {
@@ -71,6 +79,27 @@ func TestWritePermissionRequestErrorExposesConflictReason(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPermissionRequestProposalPreviewWithoutHandlerReturnsBusinessError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	registerPermissionRequests(router.Group("/api/safe/v1/me"), nil)
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/safe/v1/me/permission-requests/proposal-preview?resource_type=object_type&resource_id=network%2Fshipment", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusNotFound, response.Body.String())
+	}
+	var body struct {
+		ErrorDetails map[string]string `json:"error_details"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ErrorDetails["reason"] != "permission_proposal_unavailable" {
+		t.Fatalf("reason = %q, want permission_proposal_unavailable", body.ErrorDetails["reason"])
 	}
 }
 
