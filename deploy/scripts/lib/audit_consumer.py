@@ -42,9 +42,13 @@ def preserved_system_values(values):
     values = values or {}
     result = preserved_values(values)
     publisher = values.get("auditPublisher", {})
-    keys = ("enabled", "environment", "brokers", "saslMechanism", "existingSecret")
+    keys = ("enabled", "environment", "existingSecret")
     result["auditPublisher"] = {key: copy.deepcopy(publisher[key]) for key in keys if key in publisher}
     for section in (result.get("kafkaConsumers", {}).get("audit", {}), result["auditPublisher"]):
+        # Helm user values include defaults emitted by an earlier installer.
+        # Resolve MQ-derived connections from today's config/CLI, not that copy.
+        section.pop("brokers", None)
+        section.pop("saslMechanism", None)
         if isinstance(section.get("existingSecret"), dict):
             section["existingSecret"] = {key: section["existingSecret"][key] for key in
                                          ("name", "usernameKey", "passwordKey") if key in section["existingSecret"]}

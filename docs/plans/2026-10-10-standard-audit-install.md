@@ -21,4 +21,6 @@ Installer, configuration, prerequisites, standalone Audit profile and Agent Evid
 
 The complete installation driver now propagates release failure even when invoked in a shell conditional; its regression first reproduced false success and then passed after the fix.
 
+PR review follow-up: Helm user values also contain old installer-generated defaults. Complete-install preservation now excludes MQ-derived brokers and SASL mechanism while retaining environment, group and Secret references. Focused regressions first reproduced stale connections, then verified changed shared MQ configuration causes equal-version reconciliation and current component-specific inputs still win.
+
 No live deployment, Kafka mutation or real management action was performed during this repair. Fresh-install and upgrade acceptance must use the changed installer and verify actual event publication, ledger persistence and Studio results. A successful topic preflight alone does not prove producer/group ACLs.

@@ -11,7 +11,11 @@ the manual profile below retain their development defaults.
 
 The installer reuses the Kafka client Secret already prepared in the platform
 namespace; it creates no Kafka account, rotates no credentials and changes no
-ACLs. Saved connection configuration is preserved below current config/CLI.
+ACLs. Saved environment, consumer group and Secret references are preserved
+below current config/CLI. Brokers and SASL mechanism are resolved from the current
+platform MQ configuration on each run; old installer-generated Helm values do
+not override them. For a component-specific connection, supply its brokers and
+mechanism in the current config/CLI on every installation or upgrade.
 An explicit registered `auditPublisher.environment` is required on first install
 when there is no saved value; the installer does not guess `production`. For
 production, supply an existing independently approved publisher Secret reference
@@ -84,7 +88,7 @@ bash deploy/deploy.sh openbkn install --config "$PLATFORM_VALUES" --force-upgrad
 
 The existing installer validates enabled consumer values and nonempty Secret
 keys before upgrading. It preserves the installed Audit consumer values on a
-later upgrade, with the current values/CLI taking precedence. Its Secret
+later upgrade, except MQ-derived brokers/mechanism, with current values/CLI taking precedence. Its Secret
 preflight does not prove Kafka connectivity; the topic check and deployment
 startup remain required. `core.autoMigrate=true` requires the existing database
 migration privileges for the fixed Core and Audit schemas; have the database

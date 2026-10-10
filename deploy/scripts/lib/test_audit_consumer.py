@@ -42,11 +42,16 @@ class SystemAuditTests(unittest.TestCase):
         self.assertNotIn("existingSecret", saved["auditPublisher"])
         self.assertEqual(saved["auditPublisher"]["environment"], "test")
 
-    def test_preserves_connections_but_never_inline_password(self):
+    def test_preserves_operator_choices_without_stale_derived_connections(self):
         values = self.values()
         values["auditPublisher"]["password"] = "do-not-copy"
         saved = audit.preserved_system_values(values)
-        self.assertEqual(saved["auditPublisher"]["brokers"], ["broker:9092"])
+        for section in (saved["auditPublisher"], saved["kafkaConsumers"]["audit"]):
+            self.assertNotIn("brokers", section)
+            self.assertNotIn("saslMechanism", section)
+            self.assertEqual(section["existingSecret"]["name"], "existing-client")
+        self.assertEqual(saved["auditPublisher"]["environment"], "test")
+        self.assertEqual(saved["kafkaConsumers"]["audit"]["consumerGroup"], "bkn-trace-audit-ledger-v1")
         self.assertNotIn("password", saved["auditPublisher"])
         self.assertNotIn("core", saved)
 

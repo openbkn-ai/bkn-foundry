@@ -25,15 +25,16 @@ log_info() { :; }
 log_error() { :; }
 _openbkn_drop_literal_env_now_from_secret() { :; }
 _openbkn_adopt_unowned_resources() { return 1; }
+mq_test_host=kafka
 config_yaml_dep_field() {
-    case "$2" in mqHost) printf 'kafka' ;; mqPort) printf '9092' ;; mechanism) printf 'PLAIN' ;; esac
+    case "$2" in mqHost) printf '%s' "${mq_test_host}" ;; mqPort) printf '9092' ;; mechanism) printf 'PLAIN' ;; esac
 }
 _openbkn_prepare_audit_topic() { return 0; }
 should_skip_upgrade_same_chart_version() { return 1; }
 touch "${test_dir}/upgrades"
 assert_upgrades() { [[ "$(wc -l <"${test_dir}/upgrades")" -eq "$1" ]]; }
 test_installed=true
-old_values='{"kafkaConsumers":{"audit":{"enabled":true,"brokers":["kafka:9092"],"consumerGroup":"audit-ledger-v1","topic":"openbkn.audit.v1","saslMechanism":"PLAIN","existingSecret":{"name":"audit-kafka","usernameKey":"username","passwordKey":"password"},"password":"must-not-be-preserved"}},"auditPublisher":{"enabled":true,"environment":"test","brokers":["publisher:9092"],"saslMechanism":"PLAIN","existingSecret":{"name":"approved-publisher","usernameKey":"username","passwordKey":"password"}},"unrelated":"must-not-be-preserved"}'
+old_values='{"kafkaConsumers":{"audit":{"enabled":true,"brokers":["kafka:9092"],"consumerGroup":"audit-ledger-v1","topic":"openbkn.audit.v1","saslMechanism":"SCRAM-SHA-256","existingSecret":{"name":"audit-kafka","usernameKey":"username","passwordKey":"password"},"password":"must-not-be-preserved"}},"auditPublisher":{"enabled":true,"environment":"test","brokers":["publisher:9092"],"saslMechanism":"SCRAM-SHA-256","existingSecret":{"name":"approved-publisher","usernameKey":"username","passwordKey":"password"}},"unrelated":"must-not-be-preserved"}'
 helm() {
     case "$1" in
         list) [[ "${test_installed}" != true ]] || printf 'agent-observability\n' ;;
@@ -56,8 +57,11 @@ config = json.load(open(sys.argv[1]))["config"]
 audit = config["kafkaConsumers"]["audit"]
 assert audit["enabled"] and audit["brokers"] == ["kafka:9092"]
 assert audit["consumerGroup"] == "audit-ledger-v1"
+assert audit["saslMechanism"] == "PLAIN"
 assert "password" not in audit and "unrelated" not in config
-assert config["auditPublisher"]["brokers"] == ["publisher:9092"]
+assert config["auditPublisher"]["brokers"] == ["kafka:9092"]
+assert config["auditPublisher"]["saslMechanism"] == "PLAIN"
+assert config["auditPublisher"]["existingSecret"]["name"] == "approved-publisher"
 PY
 
 # Complete installation does not expose an Audit disable option.
@@ -131,12 +135,35 @@ _openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}"
 assert_upgrades 3
 _openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}" --set auditPublisher.environment=staging
 assert_upgrades 4
+# Today's MQ config replaces saved derived connections, even at equal versions.
+mq_test_host=new-kafka
+_openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}"
+assert_upgrades 5
+python3 - "${AUDIT_TEST_RENDER}" <<'PY'
+import json, sys
+values = json.load(open(sys.argv[1]))["config"]
+for section in (values["auditPublisher"], values["kafkaConsumers"]["audit"]):
+    assert section["brokers"] == ["new-kafka:9092"]
+    assert section["saslMechanism"] == "PLAIN"
+assert values["auditPublisher"]["environment"] == "test"
+PY
+# Current component-specific inputs still override shared MQ defaults.
+_openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}" \
+    --set 'auditPublisher.brokers[0]=explicit-publisher:9092' \
+    --set 'kafkaConsumers.audit.brokers[0]=explicit-consumer:9092'
+assert_upgrades 6
+python3 - "${AUDIT_TEST_RENDER}" <<'PY'
+import json, sys
+values = json.load(open(sys.argv[1]))["config"]
+assert values["auditPublisher"]["brokers"] == ["explicit-publisher:9092"]
+assert values["kafkaConsumers"]["audit"]["brokers"] == ["explicit-consumer:9092"]
+PY
 # Topic failure must stop before any Helm upgrade, including equal versions.
 _openbkn_prepare_audit_topic() { return 1; }
 if _openbkn_helm_upgrade_release agent-observability openbkn "${args[@]}"; then
     echo 'Topic preparation failure must stop installation' >&2; exit 1
 fi
-assert_upgrades 4
+assert_upgrades 6
 # A caller may invoke install_openbkn in an if-condition, disabling Bash's
 # implicit errexit throughout the function. Failure must still propagate.
 OFFLINE_MODE=true
