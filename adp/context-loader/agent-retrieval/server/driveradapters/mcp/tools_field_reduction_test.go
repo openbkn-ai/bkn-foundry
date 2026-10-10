@@ -79,9 +79,11 @@ type stubMCPKnSearchService struct {
 	knSearchErr  error
 	knSearchReq  *interfaces.KnSearchReq
 
-	searchSchemaResp *interfaces.SearchSchemaResp
-	searchSchemaErr  error
-	searchSchemaReq  *interfaces.SearchSchemaReq
+	searchSchemaResp   *interfaces.SearchSchemaResp
+	searchSchemaErr    error
+	searchSchemaReq    *interfaces.SearchSchemaReq
+	searchInstanceResp *interfaces.SearchInstanceResp
+	searchInstanceErr  error
 }
 
 func (s *stubMCPKnSearchService) KnSearch(_ context.Context, req *interfaces.KnSearchReq) (*interfaces.KnSearchResp, error) {
@@ -109,6 +111,12 @@ func (s *stubMCPKnSearchService) SearchSchema(_ context.Context, req *interfaces
 }
 
 func (s *stubMCPKnSearchService) SearchInstance(_ context.Context, _ *interfaces.SearchInstanceReq) (*interfaces.SearchInstanceResp, error) {
+	if s.searchInstanceErr != nil {
+		return nil, s.searchInstanceErr
+	}
+	if s.searchInstanceResp != nil {
+		return s.searchInstanceResp, nil
+	}
 	return &interfaces.SearchInstanceResp{Nodes: []any{}}, nil
 }
 

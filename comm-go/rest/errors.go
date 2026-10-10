@@ -16,13 +16,14 @@ import (
 )
 
 type BaseError struct {
-	ErrorCode               string         `json:"error_code"`    // Stable error code.
-	Description             string         `json:"description"`   // Human-readable description.
-	Solution                string         `json:"solution"`      // Suggested resolution.
-	ErrorLink               string         `json:"error_link"`    // Documentation link.
-	ErrorDetails            interface{}    `json:"error_details"` // Structured error details.
-	DescriptionTemplateData map[string]any `json:"-"`             // Description template parameters.
-	SolutionTemplateData    map[string]any `json:"-"`             // Solution template parameters.
+	ErrorCode               string         `json:"error_code"`         // Stable error code.
+	Description             string         `json:"description"`        // Human-readable description.
+	Solution                string         `json:"solution"`           // Suggested resolution.
+	ErrorLink               string         `json:"error_link"`         // Documentation link.
+	ErrorDetails            interface{}    `json:"error_details"`      // Structured error details.
+	Metadata                map[string]any `json:"metadata,omitempty"` // Machine-readable error metadata.
+	DescriptionTemplateData map[string]any `json:"-"`                  // Description template parameters.
+	SolutionTemplateData    map[string]any `json:"-"`                  // Solution template parameters.
 }
 
 var (
@@ -97,6 +98,13 @@ func (e *HTTPError) WithSolution(templateData map[string]interface{}) *HTTPError
 // WithErrorDetails sets structured error details.
 func (e *HTTPError) WithErrorDetails(errorDetails interface{}) *HTTPError {
 	e.BaseError.ErrorDetails = errorDetails
+	return e
+}
+
+// WithMetadata adds machine-readable context without changing the localized
+// error details consumed by people and existing clients.
+func (e *HTTPError) WithMetadata(metadata map[string]any) *HTTPError {
+	e.BaseError.Metadata = metadata
 	return e
 }
 

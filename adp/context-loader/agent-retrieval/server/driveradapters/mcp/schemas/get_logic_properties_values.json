@@ -116,6 +116,35 @@
           "type": "string"
         },
         "description": "每个逻辑属性的参数来源：caller（全部由调用方给出）、generated（全部由服务端生成）、merged（调用方给一部分，其余生成）"
+      },
+      "permission_guidance": {
+        "type": "object",
+        "description": "权限说明。仅当本次逻辑属性结果包含脱敏值或只返回字段结构时出现。把 message 原样告诉用户，并提供对应的申请权限链接。",
+        "properties": {
+          "message": {"type": "string"},
+          "resource": {
+            "type": "object",
+            "properties": {
+              "type": {"type": "string"},
+              "id": {"type": "string"},
+              "kn_id": {"type": "string"},
+              "ot_id": {"type": "string"},
+              "name": {"type": "string"}
+            }
+          },
+          "shortfalls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scope": {"type": "string", "enum": ["grant", "row_filter", "property_grants"]},
+                "operations": {"type": "array", "items": {"type": "string"}},
+                "properties": {"type": "array", "items": {"type": "string"}},
+                "request_permission_url": {"type": "string"}
+              }
+            }
+          }
+        }
       }
     }
   }

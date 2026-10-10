@@ -52,6 +52,7 @@ type ResolveOptions struct {
 type ResolveLogicPropertiesResponse struct {
 	Datas                []map[string]any               `json:"datas"`
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+	PermissionGuidance   *PermissionGuidance            `json:"permission_guidance,omitempty"`
 
 	// DynamicParams are the parameters each logic property was resolved with,
 	// and DynamicParamsSource says where they came from: caller, generated, or
