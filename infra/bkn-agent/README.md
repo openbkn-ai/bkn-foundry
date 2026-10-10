@@ -54,7 +54,11 @@ agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执�
 For Context Loader interactions, `bkn_start_interaction` returns response-only
 `owner` metadata derived from its authenticated account context after Core accepts
 Start. Agent preserves that owner with the interaction for Kafka evidence and
-private artifact ingress. It does not replace caller authentication, tool headers,
+private artifact ingress. Question and result artifact bodies also carry the
+existing `application_principal_id` and `effective_subject_id` fields from that
+owner, because Core persists artifact attribution from the body. Without a
+lifecycle owner they retain the trace identity/account fallback used by evidence.
+It does not replace caller authentication, tool headers,
 or model-visible parameters. Older Context Loader responses without owner still
 load tools, but log a coverage warning and cannot establish corrected evidence
 attribution. Upgrade Context Loader together with Agent for this contract.
