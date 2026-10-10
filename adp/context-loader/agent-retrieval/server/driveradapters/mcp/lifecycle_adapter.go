@@ -358,6 +358,13 @@ func handleLifecycleTool(
 				}
 			}
 		}
+		var owner bkntrace.Owner
+		if name == "bkn_start_interaction" {
+			owner, err = bkntrace.TrustedLifecycleOwner(ctx)
+			if err != nil {
+				return lifecycleUnavailable(ctx, name, "trusted_owner", err), nil
+			}
+		}
 		method, path, body := lifecycleRequest(name, args)
 		target := &bkntrace.Interaction{}
 		apiErr, err := client.Call(ctx, method, path, body, target)
@@ -393,7 +400,11 @@ func handleLifecycleTool(
 				)
 			}
 		}
-		result, resultErr := lifecycleSuccessResult(agentLifecycleView(name, target))
+		view := agentLifecycleView(name, target)
+		if name == "bkn_start_interaction" {
+			view.(map[string]any)["owner"] = owner
+		}
+		result, resultErr := lifecycleSuccessResult(view)
 		availability := bkntrace.TraceAvailabilityFromContext(ctx)
 		if availability != nil {
 			availability["lifecycle_recorded"] = true
