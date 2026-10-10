@@ -718,6 +718,12 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		span.SetStatus(codes.Error, "Invalid resource update scope")
 		return err
 	}
+	if resource.Category == interfaces.ResourceCategoryDataset && resource.LocalIndexName != "" {
+		if field := changedDatasetFulltextAnalyzer(resource, req); field != "" {
+			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(fmt.Sprintf("dataset fulltext analyzer for field %q cannot be changed on an existing index; rebuild the dataset instead", field))
+		}
+	}
 	// Older Dataset rows can have a vector feature without its persisted
 	// dimension. Completing that metadata must also pass through the index
 	// mapping update; otherwise the Resource row and physical index contract
@@ -1652,6 +1658,45 @@ func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, sch
 		}
 	}
 	return nil
+}
+
+// fulltextAnalyzerConfigFor 返回 Dataset mapping 使用的字段级 analyzer 配置。
+// 缺省配置与显式 standard 必须区分；Dataset mapping 不读取资源默认 analyzer。
+func fulltextAnalyzerConfigFor(prop *interfaces.Property) (string, bool) {
+	if prop == nil {
+		return "", false
+	}
+	for _, feature := range prop.Features {
+		if feature.FeatureType == interfaces.PropertyFeatureType_Fulltext {
+			return strings.TrimSpace(fulltextAnalyzerConfigValue(feature.Config)), true
+		}
+	}
+	return "", false
+}
+
+// changedDatasetFulltextAnalyzer 检查已有全文字段的 mapping 分词器配置是否改变。
+// 空索引也不能通过更新 mapping 修改 analyzer。
+func changedDatasetFulltextAnalyzer(resource *interfaces.Resource, req *interfaces.ResourceRequest) string {
+	requestedSchema := req.SchemaDefinition
+	if requestedSchema == nil {
+		requestedSchema = resource.SchemaDefinition
+	}
+	current := make(map[string]string, len(resource.SchemaDefinition))
+	for _, prop := range resource.SchemaDefinition {
+		if analyzer, exists := fulltextAnalyzerConfigFor(prop); exists {
+			current[prop.Name] = analyzer
+		}
+	}
+	for _, prop := range requestedSchema {
+		analyzer, exists := fulltextAnalyzerConfigFor(prop)
+		if !exists {
+			continue
+		}
+		if previous, exists := current[prop.Name]; exists && previous != analyzer {
+			return prop.Name
+		}
+	}
+	return ""
 }
 
 func fulltextAnalyzerConfigValue(config map[string]any) string {
