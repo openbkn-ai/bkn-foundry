@@ -1183,32 +1183,6 @@ _secret_is_owned_by_release() {
     [[ "${owner}" == "${release_name}|${namespace}|Helm" ]]
 }
 
-# Sample compatibility facts come from the selected product composition.
-# The sample Chart itself pins its executor image during publication.
-_openbkn_sample_platform_sets() {
-    local backend_version releases
-    backend_version="$(_openbkn_resolve_release_version bkn-backend 2>/dev/null || true)"
-    if [[ ! "${backend_version}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)([-+].*)?$ ]]; then
-        log_warn "Cannot resolve the BKN backend version; remote sample installation remains unavailable."
-        return 0
-    fi
-    local platform_version="${BASH_REMATCH[1]}"
-    CORE_RELEASE_EXTRA_SET_STRINGS+=("platform.version=${platform_version}")
-    # These capabilities are the delivered 0.2 backend API contract.
-    [[ "${platform_version}" == 0.2.* ]] || return 0
-    releases=" $(_openbkn_release_names | tr '\n' ' ') "
-    local -a capabilities=()
-    [[ "${releases}" == *" vega-backend "* ]] && capabilities+=("vega.catalog")
-    [[ "${releases}" == *" bkn-backend "* ]] && capabilities+=(
-        "knowledge-network.import.kn-json" "knowledge-network.import.bkn-directory")
-    [[ "${releases}" == *" agent-operator-integration "* ]] && capabilities+=(
-        "execution.function" "execution.skill")
-    local i
-    for ((i=0; i<${#capabilities[@]}; i++)); do
-        CORE_RELEASE_EXTRA_SET_STRINGS+=("platform.capabilities[${i}]=${capabilities[$i]}")
-    done
-}
-
 _openbkn_release_extra_sets() {
     local release_name="$1"
     local namespace="${2:-${CORE_NAMESPACE}}"
@@ -1238,7 +1212,6 @@ _openbkn_release_extra_sets() {
             CORE_RELEASE_EXTRA_SETS+=("namespace=${namespace}")
         fi
     elif [[ "${release_name}" == "bkn-sample-studio" ]]; then
-        _openbkn_sample_platform_sets
         local base_url
         base_url="$(get_access_address_base_url)"
         if [[ -n "${base_url}" ]]; then

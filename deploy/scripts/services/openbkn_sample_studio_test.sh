@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Product installation supplies the sample service compatibility facts and URL.
+# Verify the existing sample service URL and explicit Helm configuration wiring.
 set -uo pipefail
 
 ONE_FAILED=0
@@ -22,10 +22,6 @@ accessAddress:
   path: /
 EOF
 CONFIG_YAML_PATH="${cfg}"
-fixture_backend_version="0.2.0-main.20261009001912.sha628dd24"
-fixture_releases=$'bkn-backend\nvega-backend\nagent-operator-integration'
-_openbkn_resolve_release_version() { printf '%s\n' "${fixture_backend_version}"; }
-_openbkn_release_names() { printf '%s\n' "${fixture_releases}"; }
 contains() {
     local item
     for item in "${CORE_RELEASE_EXTRA_SET_STRINGS[@]}"; do
@@ -48,24 +44,7 @@ else
     fail "missing host should not set baseURL: got[${CORE_RELEASE_EXTRA_SET_STRINGS[*]}]"
 fi
 
-contains "platform.version=0.2.0" && ok || fail "backend version not normalized"
-contains "platform.capabilities[0]=vega.catalog" && ok || fail "catalog capability missing"
-contains "platform.capabilities[4]=execution.skill" && ok || fail "skill capability missing"
-
-fixture_releases='bkn-backend'
-_openbkn_release_extra_sets bkn-sample-studio openbkn
-contains "platform.capabilities[0]=knowledge-network.import.kn-json" && ok || fail "backend import missing"
-[[ "${CORE_RELEASE_EXTRA_SET_STRINGS[*]}" != *"execution.function"* ]] && ok || fail "absent execution advertised"
-[[ "${CORE_RELEASE_EXTRA_SET_STRINGS[*]}" != *"vega.catalog"* ]] && ok || fail "absent catalog advertised"
-
-fixture_backend_version='main'
-_openbkn_release_extra_sets bkn-sample-studio openbkn
-[[ "${CORE_RELEASE_EXTRA_SET_STRINGS[*]}" != *"platform.version="* ]] && ok || fail "unresolved version advertised"
-
-fixture_backend_version='0.1.5'
-_openbkn_release_extra_sets bkn-sample-studio openbkn
-contains "platform.version=0.1.5" && ok || fail "legacy version changed"
-[[ "${CORE_RELEASE_EXTRA_SET_STRINGS[*]}" != *"platform.capabilities"* ]] && ok || fail "legacy capabilities advertised"
+[[ "${CORE_RELEASE_EXTRA_SET_STRINGS[*]}" != *"platform."* ]] && ok || fail "compatibility must not be inferred from releases"
 
 # Exercise both installation paths with a real product manifest, capturing Helm
 # writes so the test needs no cluster, registry or credentials.
@@ -92,7 +71,7 @@ releases:
 EOF
 CORE_VERSION_MANIFEST_FILE="${fixture_manifest}"
 HELM_CHART_VERSION='test'
-CORE_SET_VALUES=('platform.version=0.2.1')
+CORE_SET_VALUES=()
 cat > "${cfg}" <<'EOF'
 accessAddress:
   host: gateway.example
@@ -111,9 +90,20 @@ for path in local repo; do
         _install_openbkn_release_repo bkn-sample-studio openbkn openbkn 0.1.0-main.20261011025845.sha600e202
     fi
     [[ "${captured_helm_args[*]}" == *"baseURL=https://gateway.example"* ]] && ok || fail "${path}: missing gateway URL"
-    [[ "${captured_helm_args[*]}" == *"platform.version=0.2.0"* ]] && ok || fail "${path}: missing resolved platform version"
-    [[ "${captured_helm_args[*]}" == *"platform.capabilities[4]=execution.skill"* ]] && ok || fail "${path}: missing capabilities"
-    [[ "${captured_helm_args[*]}" == *"platform.version=0.2.0"*"platform.version=0.2.1"* ]] && ok || fail "${path}: explicit override must win"
+    [[ "${captured_helm_args[*]}" != *"platform."* ]] && ok || fail "${path}: compatibility must not be inferred"
+
+    # Existing explicit --set values pass through unchanged. No new declaration
+    # protocol or deployment-derived compatibility facts are introduced.
+    CORE_SET_VALUES=('platform.version=0.2.1' 'platform.capabilities[0]=vega.catalog')
+    if [[ "${path}" == local ]]; then
+        _install_openbkn_release_local bkn-sample-studio /tmp openbkn
+    else
+        _install_openbkn_release_repo bkn-sample-studio openbkn openbkn 0.1.0-main.20261011025845.sha600e202
+    fi
+    [[ "${captured_helm_args[*]}" == *"platform.version=0.2.1"* ]] && ok || fail "${path}: explicit version lost"
+    [[ "${captured_helm_args[*]}" == *"platform.capabilities[0]=vega.catalog"* ]] && ok || fail "${path}: explicit capability lost"
+    [[ "${captured_helm_args[*]}" != *"--set-string platform."* ]] && ok || fail "${path}: platform values must only use the explicit --set path"
+    CORE_SET_VALUES=()
 done
 rm -f "${fixture_manifest}" "${cfg}"
 echo "${PASS} passed"
