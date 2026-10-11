@@ -102,10 +102,10 @@ func guardBusinessToolCallWithCompletion(
 		}
 		arguments := req.GetArguments()
 		if _, supplied := arguments["bkn_context"]; !supplied {
-			if bkntrace.CaptureDisabled() {
-				return executeUntracedBusiness(ctx, req, next, "policy", "capture_disabled")
-			}
-			return executeUntracedBusiness(ctx, req, next, "context", "trace_context_absent")
+			return lifecycleToolError(lifecycleError{
+				Code: "conversation_required", Message: "bkn_context is required",
+				RequiredAction: "bkn_start_interaction",
+			}), nil
 		}
 		rawContext, _ := arguments["bkn_context"].(map[string]any)
 		conversationID, _ := rawContext["conversation_id"].(string)
@@ -430,9 +430,6 @@ func lifecycleUnrecordedResult(ctx context.Context, toolName, stage, code string
 
 func lifecycleAPIResult(ctx context.Context, toolName, stage string, value bkntrace.APIError) *mcpsdk.CallToolResult {
 	if bkntrace.IsCaptureDisabledError(&value) {
-		if toolName == toolKeyStartInteraction || toolName == toolKeyFinishInteraction {
-			return lifecycleCaptureDisabledResult()
-		}
 		return lifecycleToolError(traceCoreError(value))
 	}
 	if bkntrace.IsTraceInfrastructureFailure(&value, nil) {
@@ -750,13 +747,4 @@ func executeUntracedBusiness(ctx context.Context, req mcpsdk.CallToolRequest, ne
 	}
 	attachTraceAvailability(result, ctx)
 	return result, err
-}
-
-// Intentional policy disable creates no lifecycle identity or failure reason.
-func lifecycleCaptureDisabledResult() *mcpsdk.CallToolResult {
-	result, _ := lifecycleSuccessResult(map[string]any{
-		"trace_recorded": false, "capture_enabled": false, "code": "capture_disabled",
-		"required_action": "continue_without_bkn_context",
-	})
-	return result
 }

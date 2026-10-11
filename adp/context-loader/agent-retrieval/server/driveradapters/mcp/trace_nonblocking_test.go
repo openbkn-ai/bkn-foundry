@@ -22,7 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 )
 
-func TestBusinessToolContinuesWithoutManagedContext(t *testing.T) {
+func TestBusinessToolRequiresManagedContext(t *testing.T) {
 	calls := 0
 	expected := mcpsdk.NewToolResultText("actual business value")
 	handler := guardBusinessToolCall(nil, func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
@@ -30,8 +30,8 @@ func TestBusinessToolContinuesWithoutManagedContext(t *testing.T) {
 		return expected, nil
 	})
 	result, err := handler(context.Background(), mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Name: "get_kn_detail", Arguments: map[string]any{"kn_id": "kn-1"}}})
-	if err != nil || calls != 1 || result != expected || result.IsError {
-		t.Fatalf("business prevented by missing Trace context: calls=%d result=%#v err=%v", calls, result, err)
+	if err != nil || calls != 0 || result == expected || !result.IsError {
+		t.Fatalf("business executed without managed context: calls=%d result=%#v err=%v", calls, result, err)
 	}
 }
 

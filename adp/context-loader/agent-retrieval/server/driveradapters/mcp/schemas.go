@@ -436,7 +436,7 @@ func offerBKNContext(input json.RawMessage) json.RawMessage {
 			return raw
 		}
 	}
-	schema["required"] = required
+	schema["required"] = append(required, "bkn_context")
 	raw, err := sonic.ConfigStd.Marshal(schema)
 	if err != nil {
 		panic("marshal business tool input schema: " + err.Error())
@@ -460,7 +460,7 @@ func offerBKNContext(input json.RawMessage) json.RawMessage {
 func bknContextInputSchema() map[string]any {
 	return map[string]any{
 		"type":        "object",
-		"description": "Optional BKN Trace managed context. Use only IDs returned by lifecycle tools. If start reports trace_recorded=false, omit this field and continue business calls without retrying Trace. Copy trace_call_unrecorded partial_reasons from tool Trace metadata to finish.",
+		"description": "Required managed session context. Copy both IDs from bkn_start_interaction, including when Trace capture is disabled. If start fails without IDs, retry start before business calls. Copy trace_call_unrecorded partial_reasons from tool Trace metadata to finish.",
 		"properties": map[string]any{
 			"conversation_id": describedStringSchema(
 				"Conversation this call belongs to. Copy the conversation_id returned by " +

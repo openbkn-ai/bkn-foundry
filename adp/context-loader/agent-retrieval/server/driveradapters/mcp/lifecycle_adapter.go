@@ -258,12 +258,6 @@ func handleLifecycleTool(
 		if validationErr := validateLifecycleArguments(name, args); validationErr != nil {
 			return lifecycleToolError(*validationErr), nil
 		}
-		if bkntrace.CaptureDisabled() && name == "bkn_retry_operation" {
-			return lifecycleToolError(lifecycleError{Code: "capture_disabled", Message: "Capture is disabled; continue business calls without managed Trace context", RequiredAction: "continue_without_bkn_context"}), nil
-		}
-		if bkntrace.CaptureDisabled() && (name == toolKeyStartInteraction || (name == toolKeyFinishInteraction && stringValue(args["interaction_id"]) == "")) {
-			return lifecycleCaptureDisabledResult(), nil
-		}
 		if name == toolKeyFinishInteraction && stringValue(args["interaction_id"]) == "" {
 			return lifecycleUnrecordedResult(ctx, name, "finish_interaction", "interaction_not_registered"), nil
 		}
@@ -460,6 +454,13 @@ func agentLifecycleView(name string, target any) any {
 			"interaction_id":   value.InteractionID,
 			"conversation_id":  value.ConversationID,
 			"execution_status": value.ExecutionStatus,
+		}
+		if bkntrace.CaptureDisabled() {
+			result["capture_enabled"] = false
+			result["trace_recorded"] = false
+			if name == toolKeyStartInteraction {
+				result["code"] = "capture_disabled"
+			}
 		}
 		if name == "bkn_finish_interaction" {
 			result["evidence_status"] = value.EvidenceStatus
