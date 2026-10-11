@@ -535,3 +535,9 @@ See [bkn-safe/docs/oauth-redirect-uris.md](../bkn-safe/docs/oauth-redirect-uris.
 ## 📄 License
 
 [Apache License 2.0](../LICENSE)
+
+### Studio one-click samples
+
+The standard product composition includes `bkn-sample-studio`. For the 0.2 platform, the installer derives its platform version from the selected `bkn-backend` Chart and its sample capabilities from the selected Vega, BKN and execution releases. Published sample Charts pin the service/executor image digest. Customers do not need a second deployment command or manually filled compatibility values. Explicit `--set` overrides still take precedence.
+
+After signing in, open Studio Home → One-click experience. Click **Refresh samples** to scan official releases, inspect a version's release notes and install it. Without an online catalog, administrators can **Import offline package**; its fixed data image must be available to the cluster. The internal `openbkn-samples` Kubernetes namespace is managed by the Chart. The current scope is one OpenBKN instance per environment; in-place sample upgrades and uninstall are not supported. See the [sample development guide](https://github.com/openbkn-ai/bkn-samples/blob/main/docs/SAMPLE_DEVELOPMENT_GUIDE.md).
