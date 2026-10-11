@@ -535,3 +535,11 @@ See [bkn-safe/docs/oauth-redirect-uris.md](../bkn-safe/docs/oauth-redirect-uris.
 ## 📄 License
 
 [Apache License 2.0](../LICENSE)
+
+### Studio one-click samples
+
+The standard product composition includes `bkn-sample-studio`. The installer supplies its gateway URL through the existing Chart `baseURL` value; explicit `--set` overrides remain supported. Published sample Charts pin the service/executor image digest. The installer does not infer API compatibility from Chart versions or component names.
+
+Remote and offline packages currently require explicit `platform.version` and `platform.capabilities` Chart values matching the target platform. The SDK reads the backend version from `GET /api/bkn-backend/v1/health`; `GET /api/safe/v1/capabilities` describes licensed capabilities and does not provide the sample installation API list. Automatic compatibility configuration remains unfinished. Follow the [sample service deployment guide](https://github.com/openbkn-ai/bkn-samples/blob/main/docs/sample-service-deployment.md) for current values; this installation wiring does not prove a fresh product can install remote packages without configuration.
+
+After signing in, open Studio Home → One-click experience. Click **Refresh samples** to scan official releases, inspect a version's release notes and install it. Without an online catalog, administrators can **Import offline package**; its fixed data image must be available to the cluster. The internal `openbkn-samples` Kubernetes namespace is managed by the Chart. The current scope is one OpenBKN instance per environment; in-place sample upgrades and uninstall are not supported. See the [sample development guide](https://github.com/openbkn-ai/bkn-samples/blob/main/docs/SAMPLE_DEVELOPMENT_GUIDE.md).
