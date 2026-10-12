@@ -1110,7 +1110,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 
 	updatedResource := make([]string, 0, 2)
 	if applyStringByMode(task.ApplyMode, &resourceInfo.Name, result.Resource.DisplayName,
-		resourceInfo.Name == resourceInfo.SourceIdentifier) {
+		isDefaultResourceName(resourceInfo)) {
 		updatedResource = append(updatedResource, "name")
 	}
 	if applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Resource.Description,
@@ -1267,10 +1267,40 @@ func normalizeSemanticFieldName(value string) string {
 	}, value)
 }
 
+// isDefaultResourceName 识别发现生成的默认名称，保留人工设置的业务名称。
+func isDefaultResourceName(resource *interfaces.Resource) bool {
+	if resource.Name == resource.SourceIdentifier {
+		return true
+	}
+	for _, key := range []string{"name", "original_name"} {
+		original, _ := resource.SourceMetadata[key].(string)
+		if original != "" && resource.Name == original {
+			return true
+		}
+	}
+	// 旧表名包含 namespace；刷新后 original_name 已被完整 TableMeta 替代。
+	if resource.Category == interfaces.ResourceCategoryTable {
+		name, _ := resource.SourceMetadata["name"].(string)
+		namespace, _ := resource.SourceMetadata["schema"].(string)
+		if namespace == "" {
+			namespace, _ = resource.SourceMetadata["database"].(string)
+		}
+		if name != "" && namespace != "" {
+			unqualified, qualified := strings.CutPrefix(resource.Name, namespace+".")
+			return qualified && unqualified == name
+		}
+	}
+	return false
+}
+
 func sourceOriginalDescription(metadata map[string]any) string {
 	if metadata == nil {
 		return ""
 	}
+	if description, ok := metadata["description"].(string); ok {
+		return description
+	}
+	// 文件集等资源仍使用 original_description。
 	description, _ := metadata["original_description"].(string)
 	return description
 }

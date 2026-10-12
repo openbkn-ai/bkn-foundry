@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -201,7 +202,7 @@ func TestRawQueryServiceExecute(t *testing.T) {
 					ID:               "resource-1",
 					Enabled:          true,
 					CatalogID:        "catalog-1",
-					SourceIdentifier: "dbo.orders",
+					SourceIdentifier: "[dbo].[orders]",
 					Status:           interfaces.ResourceStatusActive,
 					SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 				}
@@ -364,6 +365,7 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+
 	t.Run("preserves ASCII TSQL without recompilation", func(t *testing.T) {
 		requireRawQuerySQLGlotRuntime(t)
 		ctrl := gomock.NewController(t)
@@ -371,7 +373,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		resource := &interfaces.Resource{
 			ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-			Schema: "dbo", SourceIdentifier: "dbo.orders", Status: interfaces.ResourceStatusActive,
+			Schema: "dbo", SourceIdentifier: "[dbo].[orders]", Status: interfaces.ResourceStatusActive,
 			SchemaDefinition: []*interfaces.Property{{Name: "created_at"}},
 		}
 		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
@@ -405,11 +407,11 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			mockRS := mock_interfaces.NewMockResourceService(ctrl)
 			resource := &interfaces.Resource{
 				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-				Schema: "dbo", SourceIdentifier: "dbo.orders", Status: interfaces.ResourceStatusActive,
+				Schema: "dbo", SourceIdentifier: "[dbo].[orders]", Status: interfaces.ResourceStatusActive,
 				SchemaDefinition: []*interfaces.Property{{Name: "name"}},
 			}
 			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(3)
+			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(1)
 			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 				ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
 			}, nil)
@@ -443,7 +445,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			mockRS := mock_interfaces.NewMockResourceService(ctrl)
 			resource := &interfaces.Resource{
 				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-				Schema: "APP", SourceIdentifier: "APP.orders", Status: interfaces.ResourceStatusActive,
+				Schema: "APP", SourceIdentifier: strings.TrimPrefix(tc.wantSQL, "SELECT id FROM "), Status: interfaces.ResourceStatusActive,
 				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 			}
 			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
@@ -498,7 +500,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			ID:               "resource-1",
 			Enabled:          true,
 			CatalogID:        "catalog-1",
-			SourceIdentifier: "orders",
+			SourceIdentifier: "`orders`",
 			Status:           interfaces.ResourceStatusActive,
 			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}
@@ -514,9 +516,15 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
 		patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
 			func(context.Context, string, string, string) (*sqlglot.SQLParseResult, error) {
-				return &sqlglot.SQLParseResult{SQL: "SELECT * FROM `orders`"}, nil
+				return &sqlglot.SQLParseResult{SQL: "SELECT * FROM __vega_resource_0"}, nil
 			})
 		defer patches.Reset()
+		patches.ApplyFunc(sqlglot.BindTableReferences, func(_ context.Context, sql, dialect string, bindings map[string]string) (*sqlglot.SQLParseResult, error) {
+			assert.Equal(t, "SELECT * FROM __vega_resource_0", sql)
+			assert.Equal(t, "mysql", dialect)
+			assert.Equal(t, map[string]string{"__vega_resource_0": "`orders`"}, bindings)
+			return &sqlglot.SQLParseResult{SQL: "SELECT * FROM `orders`", Dialect: "mysql"}, nil
+		})
 
 		prepared, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
 			Query:        "SELECT * FROM {{resource-1}}",
@@ -573,7 +581,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 			ID:               "resource-1",
 			Enabled:          true,
 			CatalogID:        "catalog-1",
-			SourceIdentifier: "public.orders",
+			SourceIdentifier: `"public"."orders"`,
 			Status:           interfaces.ResourceStatusActive,
 			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}
@@ -581,7 +589,6 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL,
 		}, nil)
-		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
 
 		policy := &deadlineInspectingPolicy{}
 		previousPolicy := rawQueryPolicy
@@ -1412,6 +1419,16 @@ func TestHasOpenSearchAggregation(t *testing.T) {
 }
 
 func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
+	t.Run("preserves already quoted source reference", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		reference := `"public"."orders.part"`
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{Schema: "public", SourceIdentifier: reference}, nil)
+		got, err := (&rawQueryService{rs: rs}).replaceResourceIDWithSchemaTable(context.Background(), "SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{ConnectorType: interfaces.ConnectorTypePostgreSQL}, "postgres")
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM "+reference, got)
+	})
+
 	t.Run("raw query service replace resource idwith schema table", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := mock_interfaces.NewMockResourceService(ctrl)
@@ -1420,18 +1437,18 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
 			ID:               "r1",
 			Schema:           "schema",
-			SourceIdentifier: "schema.table_one",
+			SourceIdentifier: `"schema"."table_one"`,
 		}, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r2").Return(&interfaces.Resource{
 			ID:               "r2",
 			Schema:           "schema",
-			SourceIdentifier: "schema.table_two",
+			SourceIdentifier: `"schema"."table_two"`,
 		}, nil)
 
 		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
 			"select * from {{.r1}} join {{r2}} on {{.r1}}.id = {{r2}}.id",
 			[]string{"r1", "r2"},
-			&interfaces.Catalog{Name: "catalog"},
+			&interfaces.Catalog{Name: "catalog", ConnectorType: interfaces.ConnectorTypePostgreSQL},
 			"postgres",
 		)
 
@@ -1446,13 +1463,13 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
 			ID:               "r1",
 			Schema:           "sales data",
-			SourceIdentifier: "sales data.Order.Archive]",
+			SourceIdentifier: "[sales data].[Order.Archive]]]",
 		}, nil)
 
 		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
 			"SELECT * FROM {{r1}}",
 			[]string{"r1"},
-			&interfaces.Catalog{Name: "catalog"},
+			&interfaces.Catalog{Name: "catalog", ConnectorType: interfaces.ConnectorTypeSQLServer},
 			"tsql",
 		)
 
@@ -1467,11 +1484,11 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
 			ID:               "r1",
 			Schema:           "sales.archive",
-			SourceIdentifier: "sales.archive.orders",
+			SourceIdentifier: "[sales.archive].[orders]",
 		}, nil)
 
 		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
-			"SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{Name: "catalog"}, "tsql")
+			"SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{Name: "catalog", ConnectorType: interfaces.ConnectorTypeSQLServer}, "tsql")
 
 		require.NoError(t, err)
 		assert.Equal(t, "SELECT * FROM [sales.archive].[orders]", got)

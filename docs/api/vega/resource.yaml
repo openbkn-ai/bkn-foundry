@@ -768,13 +768,20 @@ components:
           description: 所属 schema，由发现流程写入
           type: string
         source_identifier:
-          description: 源端标识（原始表名 / 路径 / topic 名等）
+          description: |
+            SQL 表在 0.2.1 起保存源方言可直接执行的限定表引用（含数据库引用符）；
+            原始 database/schema/name 保存在 source_metadata，不拆分此字段。
+            非 SQL 资源继续使用路径、topic、index 等既有标识。
           type: string
         source_metadata:
           description: |
             源端配置（JSON）。物理资源由 connector 提供；derived 逻辑视图由服务端生成，
+            SQL 表的 source_metadata 保存完整 TableMeta 原始元数据，database/schema/name 为未引用、保留大小写的原始名称组件；
+            description 是源端描述，新写入不额外保存 original_description 或 original_name。
+            旧源元数据允许读取 original_name、original_description 恢复缺失字段，刷新成功后保存为完整新格式。
+            索引的 source_metadata 同样完整保存 IndexMeta，使用 name、description、creation_time、properties、mapping、mapping_meta。
             其中 `source_resource` 是源资源快照对象，包含 `catalog_id`、`category`
-            （`table` 或 `index`）、`original_name`，表源可包含 `table_type`；
+            （`table` 或 `index`）、`original_name`（取表或索引源元数据的 name），表源可包含 `table_type`；
             精确数量及采集时间由资源独立字段维护，不保存在 `properties` 中。
           type: object
           additionalProperties: true
@@ -912,9 +919,14 @@ components:
           description: 所属 schema，由发现流程写入
           type: string
         source_identifier:
+          description: |
+            物理资源由发现流程写入，SQL 表保存连接器生成的源方言表引用；
+            API 不允许创建物理表资源。PUT 时忽略此字段。
           type: string
         source_metadata:
-          description: 服务端维护；请求中的值不参与 derived 逻辑视图写入
+          description: |
+            物理资源的源元数据由发现流程维护，API 不允许创建物理表资源。
+            请求中的值不参与 derived 逻辑视图写入；PUT 时由内部流程维护。
           type: object
           additionalProperties: true
         schema_definition:
@@ -1044,7 +1056,7 @@ components:
           description: 所属 schema
           type: string
         source_identifier:
-          description: 源端标识
+          description: SQL 表为源方言限定表引用（含引用符），其他资源为既有源端标识
           type: string
         local_status:
           description: 本地索引状态

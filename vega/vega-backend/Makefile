@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help generate-mock lint test test-cover test-race test-at test-at-catalog test-at-verbose test-at-catalog-verbose test-at-setup ci clean-test
+.PHONY: help generate-mock lint test test-cover test-race test-at test-at-catalog test-at-verbose test-at-catalog-verbose test-at-setup test-sqlglot-integration ci clean-test
 
 COVERAGE_THRESHOLD ?= 10
 GOCOVER_COBERTURA_VERSION ?= v1.5.0
@@ -14,6 +14,7 @@ help:
 	@echo "  make test-cover       - 运行单元测试 + 覆盖率"
 	@echo "  make test-race        - 运行单元测试并检查数据竞争"
 	@echo "  make lint             - 静态检查"
+	@echo "  make test-sqlglot-integration - 验证真实 SQLGlot 绑定（需先准备 Python 运行时）"
 	@echo "  make ci               - CI 入口 (lint + test-cover)"
 	@echo "  make generate-mock    - 重新生成 mock"
 	@echo "  make test-at          - 运行所有 AT 测试"
@@ -36,6 +37,9 @@ endef
 
 test:
 	$(call run-unit-tests,-gcflags=all=-l -v -count=1)
+
+test-sqlglot-integration:
+	cd server && go test -tags=integration -gcflags=all=-l ./logics/query ./logics/query/sqlglot -run Integration -count=1
 
 $(GOCOVER_COBERTURA):
 	@mkdir -p "$(dir $@)"

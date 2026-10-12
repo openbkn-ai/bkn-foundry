@@ -235,6 +235,17 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 		require.Equal(t, http.StatusCreated, w.Code)
 	})
 
+	t.Run("rejects manual physical table creation", func(t *testing.T) {
+		engine, _, _ := setupResourceHandlerTest(t)
+		body := `{"catalog_id":"catalog-1","name":"orders","category":"table","schema":"app","source_identifier":"app.orders"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.CategoryNotCreatable")
+	})
+
 	t.Run("creates dataset resource", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Create(gomock.Any(), gomock.Any()).

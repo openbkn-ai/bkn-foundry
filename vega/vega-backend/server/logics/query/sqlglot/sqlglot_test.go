@@ -7,9 +7,12 @@ package sqlglot
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os/exec"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -165,5 +168,52 @@ func requireSQLGlotRuntime(t *testing.T) {
 	if err := exec.Command("python3", "-c",
 		"import sqlglot; assert callable(getattr(sqlglot, 'transpile', None))").Run(); err != nil {
 		t.Skip("sqlglot Python runtime is not installed")
+	}
+}
+
+func TestBindTableReferences(t *testing.T) {
+	for _, tc := range []struct {
+		name, response string
+		commandError   error
+		wantError      bool
+	}{
+		{name: "returns bound SQL", response: `{"sql":"SELECT * FROM \"public\".\"orders\"","dialect":"postgres"}`},
+		{name: "returns command failure", commandError: errors.New("command failed"), wantError: true},
+		{name: "rejects malformed response", response: "invalid JSON", wantError: true},
+		{name: "returns binding rejection", response: `{"error":"invalid SQL resource binding"}`, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			commandCalled := false
+			patches := gomonkey.ApplyFunc(exec.CommandContext, func(_ context.Context, name string, args ...string) *exec.Cmd {
+				commandCalled = true
+				assert.Equal(t, "python3", name)
+				require.Len(t, args, 5)
+				assert.Equal(t, "SELECT * FROM marker", args[2])
+				assert.Equal(t, "postgres", args[3])
+				assert.JSONEq(t, `{"marker":"\"public\".\"orders\""}`, args[4])
+				return &exec.Cmd{}
+			})
+			defer patches.Reset()
+			patches.ApplyMethod((*exec.Cmd)(nil), "Run", func(cmd *exec.Cmd) error {
+				if tc.commandError != nil {
+					return tc.commandError
+				}
+				_, err := io.WriteString(cmd.Stdout, tc.response)
+				return err
+			})
+			got, err := BindTableReferences(context.Background(), "SELECT * FROM marker", "postgres", map[string]string{"marker": `"public"."orders"`})
+			assert.True(t, commandCalled)
+			if tc.wantError {
+				require.Error(t, err)
+				assert.Nil(t, got)
+				if tc.commandError != nil {
+					assert.ErrorIs(t, err, tc.commandError)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, `SELECT * FROM "public"."orders"`, got.SQL)
+				assert.Equal(t, "postgres", got.Dialect)
+			}
+		})
 	}
 }

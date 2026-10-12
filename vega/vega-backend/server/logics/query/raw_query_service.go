@@ -273,37 +273,58 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	if err != nil {
 		return nil, err
 	}
-	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog, inputDialect)
-	if err != nil {
-		return nil, err
-	}
-	allowedReferences, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs, inputDialect)
-	if err != nil {
-		return nil, err
-	}
-	if err := validateSQLPolicy(ctx, replacedSQL, inputDialect, allowedReferences, inputDialect == targetDialect); err != nil {
-		return nil, err
-	}
-	finalSQL := replacedSQL
-	// 仅含非 ASCII 字符的 SQL Server 同方言查询需额外编译；纯 ASCII 查询保持直通。
-	needsUnicodeNormalization := targetDialect == "tsql" && strings.ContainsFunc(replacedSQL, func(r rune) bool {
+	// Compile temporary table references before binding source-dialect names.
+	needsUnicodeNormalization := targetDialect == "tsql" && strings.ContainsFunc(req.Query.(string), func(r rune) bool {
 		return r > unicode.MaxASCII
 	})
-	if inputDialect != targetDialect || needsUnicodeNormalization {
-		result, err := sqlglot.TranspileSQL(ctx, replacedSQL, inputDialect, targetDialect)
+	var finalSQL string
+	if inputDialect == targetDialect && !needsUnicodeNormalization {
+		finalSQL, err = rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog, inputDialect)
+		if err != nil {
+			return nil, err
+		}
+		allowed, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, allowed, true); err != nil {
+			return nil, err
+		}
+	} else {
+		query := req.Query.(string)
+		markers := make([]string, len(resourceIDs))
+		for i, resourceID := range resourceIDs {
+			marker := fmt.Sprintf("__vega_resource_%d", i)
+			for strings.Contains(query, marker) {
+				marker += "_"
+			}
+			markers[i] = marker
+			query = replacePlaceholderInSQLCode(query, "{{"+resourceID+"}}", marker, inputDialect)
+			query = replacePlaceholderInSQLCode(query, "{{."+resourceID+"}}", marker, inputDialect)
+		}
+		if err := validateSQLPolicy(ctx, query, inputDialect, markers, inputDialect == targetDialect); err != nil {
+			return nil, err
+		}
+		compiled, err := sqlglot.TranspileSQL(ctx, query, inputDialect, targetDialect)
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 				WithErrorDetails("failed to compile SQL query")
 		}
-		finalSQL = result.SQL
-		targetReferences, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs, targetDialect)
+		references, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
 		if err != nil {
 			return nil, err
 		}
-		// The connector executes finalSQL, not the input-dialect SQL validated
-		// above. Revalidate the target-dialect output so the read-only and
-		// table-reference boundaries apply to the executable statement.
-		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, targetReferences, true); err != nil {
+		bindings := make(map[string]string, len(markers))
+		for i, marker := range markers {
+			bindings[marker] = references[i]
+		}
+		bound, err := sqlglot.BindTableReferences(ctx, compiled.SQL, targetDialect, bindings)
+		if err != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails("failed to bind SQL resource references")
+		}
+		finalSQL = bound.SQL
+		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, references, true); err != nil {
 			return nil, err
 		}
 	}
@@ -334,7 +355,7 @@ func validateSQLPolicy(ctx context.Context, sql, dialect string, allowedReferenc
 	return nil
 }
 
-func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resourceIDs []string, dialect string) ([]string, error) {
+func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resourceIDs []string) ([]string, error) {
 	identifiers := make([]string, 0, len(resourceIDs))
 	for _, resourceID := range resourceIDs {
 		resource, err := rqs.rs.InternalGetByID(ctx, nil, resourceID)
@@ -345,7 +366,7 @@ func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resou
 			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 				WithErrorDetails(fmt.Sprintf("resource %s has no queryable source", resourceID))
 		}
-		identifiers = append(identifiers, quotedResourceSourceIdentifier(resource, dialect))
+		identifiers = append(identifiers, resource.SourceIdentifier)
 	}
 	return identifiers, nil
 }
@@ -903,13 +924,10 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 		}
 
-		// Use the resource source identifier as the table reference.
-		// schemaTable := fmt.Sprintf(`%s.%s`, catalog.Name, resource.SourceIdentifier)
-
 		// Replace both supported placeholder forms with the quoted identifier.
 		placeholder1 := fmt.Sprintf("{{.%s}}", resourceID)
 		placeholder2 := fmt.Sprintf("{{%s}}", resourceID)
-		quotedIdentifier := quotedResourceSourceIdentifier(resource, inputDialect)
+		quotedIdentifier := resource.SourceIdentifier
 		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder1, quotedIdentifier, inputDialect)
 		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder2, quotedIdentifier, inputDialect)
 	}
@@ -923,39 +941,6 @@ func (rqs *rawQueryService) resourceForQuery(ctx context.Context, resourceID str
 		return nil, err
 	}
 	return rqs.rs.InternalGetByID(ctx, nil, resourceID)
-}
-
-func quotedResourceSourceIdentifier(resource *interfaces.Resource, dialect string) string {
-	sourceIdentifier := strings.TrimSpace(resource.SourceIdentifier)
-	schema := strings.TrimSpace(resource.Schema)
-	table := sourceIdentifier
-	if schema != "" {
-		prefixLength := len(schema) + 1
-		if len(sourceIdentifier) >= prefixLength &&
-			strings.EqualFold(sourceIdentifier[:prefixLength], schema+".") {
-			table = sourceIdentifier[prefixLength:]
-		} else if separator := strings.IndexByte(sourceIdentifier, '.'); separator >= 0 &&
-			strings.EqualFold(strings.TrimSpace(sourceIdentifier[:separator]), schema) {
-			table = sourceIdentifier[separator+1:]
-		}
-	} else if separator := strings.IndexByte(sourceIdentifier, '.'); separator >= 0 {
-		schema, table = sourceIdentifier[:separator], sourceIdentifier[separator+1:]
-	}
-	if schema == "" {
-		return quoteSQLIdentifier(strings.TrimSpace(table), dialect)
-	}
-	return quoteSQLIdentifier(schema, dialect) + "." + quoteSQLIdentifier(strings.TrimSpace(table), dialect)
-}
-
-func quoteSQLIdentifier(identifier, dialect string) string {
-	switch dialect {
-	case "mysql":
-		return "`" + strings.ReplaceAll(identifier, "`", "``") + "`"
-	case "tsql":
-		return "[" + strings.ReplaceAll(identifier, "]", "]]") + "]"
-	default:
-		return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
-	}
 }
 
 // replacePlaceholderInSQLCode preserves comments and quoted literals. They

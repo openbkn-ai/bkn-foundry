@@ -152,9 +152,9 @@ func (c *PostgresqlConnector) ConvertFilterConditionEqual(condition interfaces.F
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, "=", cond.Value)
 		}
-		return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+		return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quoteColumnName(cond.Lfield.OriginalName) + " = " + quoteColumnName(cond.Rfield.OriginalName)), nil
+		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " = " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -172,9 +172,9 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotEqual(condition interface
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, "<>", cond.Value)
 		}
-		return sq.NotEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+		return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quoteColumnName(cond.Lfield.OriginalName) + " <> " + quoteColumnName(cond.Rfield.OriginalName)), nil
+		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " <> " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -192,9 +192,9 @@ func (c *PostgresqlConnector) ConvertFilterConditionGt(condition interfaces.Filt
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, ">", cond.Value)
 		}
-		return sq.Gt{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+		return sq.Gt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quoteColumnName(cond.Lfield.OriginalName) + " > " + quoteColumnName(cond.Rfield.OriginalName)), nil
+		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " > " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -212,9 +212,9 @@ func (c *PostgresqlConnector) ConvertFilterConditionGte(condition interfaces.Fil
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, ">=", cond.Value)
 		}
-		return sq.GtOrEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+		return sq.GtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quoteColumnName(cond.Lfield.OriginalName) + " >= " + quoteColumnName(cond.Rfield.OriginalName)), nil
+		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " >= " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -232,9 +232,9 @@ func (c *PostgresqlConnector) ConvertFilterConditionLt(condition interfaces.Filt
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, "<", cond.Value)
 		}
-		return sq.Lt{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+		return sq.Lt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quoteColumnName(cond.Lfield.OriginalName) + " < " + quoteColumnName(cond.Rfield.OriginalName)), nil
+		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " < " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -252,9 +252,9 @@ func (c *PostgresqlConnector) ConvertFilterConditionLte(condition interfaces.Fil
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, "<=", cond.Value)
 		}
-		return sq.LtOrEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+		return sq.LtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quoteColumnName(cond.Lfield.OriginalName) + " <= " + quoteColumnName(cond.Rfield.OriginalName)), nil
+		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " <= " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -274,7 +274,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionIn(condition interfaces.Filt
 		return dateSetExpr(cond.Lfield, "IN", cond.Value)
 	}
 
-	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 }
 
 // ConvertFilterConditionNotIn builds a predicate excluding the supplied values.
@@ -291,7 +291,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotIn(condition interfaces.F
 		return dateSetExpr(cond.Lfield, "NOT IN", cond.Value)
 	}
 
-	return sq.NotEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 }
 
 // ConvertFilterConditionLike builds a substring LIKE predicate with escaped input.
@@ -306,7 +306,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionLike(condition interfaces.Fi
 	}
 
 	vStr := "%" + Special.Replace(cond.Value) + "%"
-	return sq.Like{quoteColumnName(cond.Lfield.OriginalName): vStr}, nil
+	return sq.Like{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
 }
 
 // ConvertFilterConditionNotLike builds a negated substring LIKE predicate with escaped input.
@@ -321,7 +321,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotLike(condition interfaces
 	}
 
 	vStr := "%" + Special.Replace(cond.Value) + "%"
-	return sq.NotLike{quoteColumnName(cond.Lfield.OriginalName): vStr}, nil
+	return sq.NotLike{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
 }
 
 // ConvertFilterConditionRegex builds a regular-expression predicate.
@@ -335,7 +335,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionRegex(condition interfaces.F
 		return nil, fmt.Errorf("condition [regex] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
-	return sq.Expr(quoteColumnName(cond.Lfield.OriginalName)+" ~ ?", cond.Value), nil
+	return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName)+" ~ ?", cond.Value), nil
 }
 
 // ConvertFilterConditionContain requires every supplied item to occur in a comma-separated field.
@@ -350,7 +350,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionContain(condition interfaces
 	}
 
 	exprs := make(sq.And, 0, len(cond.Value))
-	column := quoteColumnName(cond.Lfield.OriginalName)
+	column := pgQuoteColumnName(cond.Lfield.OriginalName)
 	for _, value := range cond.Value {
 		exprs = append(exprs, sq.Expr("? = ANY(string_to_array("+column+"::text, ','))", fmt.Sprint(value)))
 	}
@@ -369,7 +369,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotContain(condition interfa
 	}
 
 	exprs := make(sq.Or, 0, len(cond.Value))
-	column := quoteColumnName(cond.Lfield.OriginalName)
+	column := pgQuoteColumnName(cond.Lfield.OriginalName)
 	for _, value := range cond.Value {
 		exprs = append(exprs, sq.Expr("NOT (? = ANY(string_to_array("+column+"::text, ',')))", fmt.Sprint(value)))
 	}
@@ -404,8 +404,8 @@ func (c *PostgresqlConnector) ConvertFilterConditionRange(condition interfaces.F
 	}
 
 	return sq.And{
-		sq.GtOrEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
-		sq.LtOrEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
+		sq.GtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
+		sq.LtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
 	}, nil
 }
 
@@ -437,8 +437,8 @@ func (c *PostgresqlConnector) ConvertFilterConditionOutRange(condition interface
 	}
 
 	return sq.Or{
-		sq.Lt{quoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
-		sq.Gt{quoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
+		sq.Lt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
+		sq.Gt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
 	}, nil
 }
 
@@ -472,8 +472,8 @@ func (c *PostgresqlConnector) ConvertFilterConditionBetween(condition interfaces
 
 	// For non-time type fields, parameterized queries can be directly used
 	return sq.And{
-		sq.GtOrEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
-		sq.LtOrEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
+		sq.GtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
+		sq.LtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
 	}, nil
 }
 
@@ -484,7 +484,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNull(condition interfaces.Fi
 		return nil, fmt.Errorf("condition is not *filter_condition.NullCond")
 	}
 
-	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): nil}, nil
+	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): nil}, nil
 }
 
 // ConvertFilterConditionNotNull builds an IS NOT NULL predicate.
@@ -494,7 +494,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotNull(condition interfaces
 		return nil, fmt.Errorf("condition is not *filter_condition.NotNullCond")
 	}
 
-	return sq.NotEq{quoteColumnName(cond.Lfield.OriginalName): nil}, nil
+	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): nil}, nil
 }
 
 // ConvertFilterConditionEmpty matches an empty string.
@@ -504,7 +504,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionEmpty(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.EmptyCond")
 	}
 
-	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): ""}, nil
+	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): ""}, nil
 }
 
 // ConvertFilterConditionNotEmpty excludes empty strings.
@@ -514,7 +514,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotEmpty(condition interface
 		return nil, fmt.Errorf("condition is not *filter_condition.NotEmptyCond")
 	}
 
-	return sq.NotEq{quoteColumnName(cond.Lfield.OriginalName): ""}, nil
+	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): ""}, nil
 }
 
 // ConvertFilterConditionPrefix builds a prefix LIKE predicate with escaped input.
@@ -529,7 +529,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionPrefix(condition interfaces.
 	}
 
 	vStr := Special.Replace(cond.Value) + "%"
-	return sq.Like{quoteColumnName(cond.Lfield.OriginalName): vStr}, nil
+	return sq.Like{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
 }
 
 // ConvertFilterConditionNotPrefix builds a negated prefix LIKE predicate with escaped input.
@@ -544,7 +544,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotPrefix(condition interfac
 	}
 
 	vStr := Special.Replace(cond.Value) + "%"
-	return sq.NotLike{quoteColumnName(cond.Lfield.OriginalName): vStr}, nil
+	return sq.NotLike{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
 }
 
 // ConvertFilterConditionExist matches non-NULL field values.
@@ -554,7 +554,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionExist(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.ExistCond")
 	}
 
-	return sq.NotEq{quoteColumnName(cond.Lfield.OriginalName): nil}, nil
+	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): nil}, nil
 }
 
 // ConvertFilterConditionNotExist matches NULL field values.
@@ -564,7 +564,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotExist(condition interface
 		return nil, fmt.Errorf("condition is not *filter_condition.NotExistCond")
 	}
 
-	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): nil}, nil
+	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): nil}, nil
 }
 
 // ConvertFilterConditionTrue matches a true Boolean value.
@@ -578,7 +578,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionTrue(condition interfaces.Fi
 		return nil, fmt.Errorf("postgresql true condition requires BOOLEAN: %s", cond.Lfield.Name)
 	}
 
-	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): true}, nil
+	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): true}, nil
 }
 
 // ConvertFilterConditionFalse matches a false Boolean value.
@@ -592,7 +592,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionFalse(condition interfaces.F
 		return nil, fmt.Errorf("postgresql false condition requires BOOLEAN: %s", cond.Lfield.Name)
 	}
 
-	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): false}, nil
+	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): false}, nil
 }
 
 // ConvertFilterConditionBefore matches values before the specified interval relative to now.
@@ -622,7 +622,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionBefore(condition interfaces.
 	if err != nil {
 		return nil, err
 	}
-	col := quoteColumnName(cond.Lfield.OriginalName)
+	col := pgQuoteColumnName(cond.Lfield.OriginalName)
 	return sq.Expr(fmt.Sprintf("%s < NOW() - (?::bigint * INTERVAL '1 %s')", col, pgUnit), n), nil
 }
 
@@ -637,7 +637,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionCurrent(condition interfaces
 		return nil, fmt.Errorf("condition [current] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
-	col := quoteColumnName(cond.Lfield.OriginalName)
+	col := pgQuoteColumnName(cond.Lfield.OriginalName)
 	var trunc string
 	switch cond.Value {
 	case filter_condition.CurrentYear:
@@ -783,7 +783,7 @@ func dateCompareExpr(field *interfaces.Property, op string, value any) (sq.Sqliz
 		return nil, err
 	}
 	return sq.Expr(
-		quoteColumnName(field.OriginalName)+" "+op+" "+dateValueExpr(field, value),
+		pgQuoteColumnName(field.OriginalName)+" "+op+" "+dateValueExpr(field, value),
 		normalizeTimestampValue(value),
 	), nil
 }
@@ -800,7 +800,7 @@ func dateSetExpr(field *interfaces.Property, op string, values []any) (sq.Sqlize
 		args[i] = normalizeTimestampValue(value)
 	}
 	return sq.Expr(
-		quoteColumnName(field.OriginalName)+" "+op+" ("+strings.Join(valueExprs, ", ")+")",
+		pgQuoteColumnName(field.OriginalName)+" "+op+" ("+strings.Join(valueExprs, ", ")+")",
 		args...,
 	), nil
 }
