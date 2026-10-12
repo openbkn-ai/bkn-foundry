@@ -1183,6 +1183,58 @@ _secret_is_owned_by_release() {
     [[ "${owner}" == "${release_name}|${namespace}|Helm" ]]
 }
 
+# Safe uses the same Kafka connection/Secret as the complete Audit install,
+# but its Chart takes a broker string and flat Secret-reference keys.
+_openbkn_safe_audit_profile_sets() {
+    local key value
+    CORE_RELEASE_EXTRA_SETS+=("auditPublisher.enabled=true")
+    for key in environment brokers credentialsSecretName usernameSecretKey passwordSecretKey; do
+        value="$(config_yaml_top_field auditPublisher "${key}")"
+        # AO uses an array at this shared key; Safe needs the MQ broker string.
+        [[ "${key}" != brokers || "${value}" != \[* ]] || value=""
+        if [[ -z "${value}" ]]; then
+            case "${key}" in
+                environment) value=development ;;
+                brokers) value="$(_openbkn_trace_kafka_brokers)" ;;
+                credentialsSecretName) value="${OPENBKN_TRACE_KAFKA_SECRET}" ;;
+                usernameSecretKey) value=username ;;
+                passwordSecretKey) value=password ;;
+            esac
+        fi
+        # Escape the broker-list separator for Helm's strvals parser.
+        CORE_RELEASE_EXTRA_SETS+=("auditPublisher.${key}=${value//,/\\,}")
+    done
+}
+
+_openbkn_safe_audit_profile_matches() {
+    local namespace="$1" values item key override
+    local -a CORE_RELEASE_EXTRA_SETS=() expected=()
+    if ! values="$(helm get values bkn-safe -n "${namespace}" --all -o json 2>/dev/null)"; then
+        return 2
+    fi
+    _openbkn_safe_audit_profile_sets
+    for item in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
+        key="${item%%=*}"
+        if override="$(_openbkn_last_set_value "${key}" "${CORE_SET_VALUES[@]-}")"; then
+            item="${key}=${override}"
+        fi
+        expected+=("${item}")
+    done
+    python3 -c '
+import json, sys
+try:
+    publisher = json.load(sys.stdin).get("auditPublisher", {})
+    for item in sys.argv[1:]:
+        key, expected = item.split("=", 1)
+        actual = publisher.get(key.split(".", 1)[1])
+        actual = str(actual).lower() if isinstance(actual, bool) else str(actual)
+        if actual != expected.replace("\\,", ","):
+            sys.exit(1)
+except (ValueError, TypeError, AttributeError):
+    sys.exit(2)
+' "${expected[@]}" <<<"${values}"
+}
+
 _openbkn_release_extra_sets() {
     local release_name="$1"
     local namespace="${2:-${CORE_NAMESPACE}}"
@@ -1220,6 +1272,7 @@ _openbkn_release_extra_sets() {
             log_warn "accessAddress is not recorded; bkn-sample-studio has no gateway URL, so sample install cannot call OpenBKN."
         fi
     elif [[ "${release_name}" == "bkn-safe" ]]; then
+        _openbkn_safe_audit_profile_sets
         local initial_pwd
         initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
         if [[ -n "${initial_pwd}" ]]; then
@@ -1336,6 +1389,20 @@ _openbkn_should_skip_upgrade() {
 
     if ! should_skip_upgrade_same_chart_version "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 1
+    fi
+    if [[ "${release_name}" == "bkn-safe" ]]; then
+        _openbkn_safe_audit_profile_matches "${namespace}"
+        case "$?" in
+            0) ;;
+            1)
+                log_info "Reconcile bkn-safe: installed Audit publisher profile differs."
+                return 1
+                ;;
+            *)
+                log_warn "Cannot read bkn-safe Helm values; preserving the version-skip decision."
+                return 0
+                ;;
+        esac
     fi
     if [[ "${release_name}" == "agent-observability" ]]; then
         _openbkn_agent_observability_has_durable_profile "${namespace}"
