@@ -167,8 +167,21 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 			}
 			knName := c.GetString("operation_audit_kn_name")
 			for _, binding := range list.Entries {
-				if binding != nil && selected[binding.ID] && knName != "" && binding.Name != "" && binding.Name != binding.CapabilityID {
-					auditNames = append(auditNames, knName+" / "+binding.Name)
+				if binding == nil || !selected[binding.ID] || knName == "" {
+					continue
+				}
+				name := binding.Name
+				if binding.CapabilityType == interfaces.CAPABILITY_TYPE_MCP_TOOL {
+					// MCP references persist tool_name in CapabilityID, not an opaque ID.
+					// It remains the binding's business name when metadata is unavailable.
+					if name == "" {
+						name = binding.CapabilityID
+					}
+				} else if name == binding.CapabilityID {
+					continue
+				}
+				if name != "" {
+					auditNames = append(auditNames, knName+" / "+name)
 				}
 			}
 		}

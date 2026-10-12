@@ -8,7 +8,6 @@ package driveradapters
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"bkn-backend/common/operationaudit"
 	"bkn-backend/interfaces"
@@ -574,8 +574,32 @@ func TestOperationAuditMetricDeletionRealHandler(t *testing.T) {
 }
 
 func TestOperationAuditCapabilityDetachRealHandler(t *testing.T) {
-	for _, scenario := range []string{"disabled", "success", "lookup_failure", "no_change"} {
-		t.Run(scenario, func(t *testing.T) {
+	function := &interfaces.CapabilityBinding{ID: "binding-function", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, CapabilityID: "tool-1", Name: "Invoice lookup"}
+	skill := &interfaces.CapabilityBinding{ID: "binding-skill", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1", Name: "Invoice review"}
+	mcp := &interfaces.CapabilityBinding{ID: "binding-mcp", CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, OwnerID: "mcp-1", CapabilityID: "search", Name: "search"}
+	tests := []struct {
+		name                                     string
+		entries                                  []*interfaces.CapabilityBinding
+		disabled, lookupFailure, mutationFailure bool
+		rows                                     int64
+		wantName                                 string
+	}{
+		{name: "disabled", entries: []*interfaces.CapabilityBinding{function}, disabled: true, rows: 1},
+		{name: "function", entries: []*interfaces.CapabilityBinding{function}, rows: 1, wantName: "Sales / Invoice lookup"},
+		{name: "skill", entries: []*interfaces.CapabilityBinding{skill}, rows: 1, wantName: "Sales / Invoice review"},
+		{name: "mcp_tool", entries: []*interfaces.CapabilityBinding{mcp}, rows: 1, wantName: "Sales / search"},
+		{name: "mixed_batch", entries: []*interfaces.CapabilityBinding{function, skill, mcp}, rows: 3, wantName: "Sales / Invoice lookup、Sales / Invoice review、Sales / search，共3个"},
+		{name: "missing_mcp_metadata", entries: []*interfaces.CapabilityBinding{{ID: "binding-mcp", CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, CapabilityID: "search", Status: interfaces.CAPABILITY_STATUS_MISSING}}, rows: 1, wantName: "Sales / search"},
+		{name: "missing_function_name", entries: []*interfaces.CapabilityBinding{{ID: "binding-function", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, CapabilityID: "tool-1", Status: interfaces.CAPABILITY_STATUS_MISSING}}, rows: 1},
+		{name: "technical_id_is_not_function_name", entries: []*interfaces.CapabilityBinding{{ID: "binding-function", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, CapabilityID: "tool-1", Name: "tool-1"}}, rows: 1},
+		{name: "lookup_failure", entries: []*interfaces.CapabilityBinding{function}, lookupFailure: true, rows: 1},
+		{name: "mutation_denied", entries: []*interfaces.CapabilityBinding{mcp}, mutationFailure: true},
+		{name: "missing_mcp_tool_name", entries: []*interfaces.CapabilityBinding{{ID: "binding-mcp", CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL}}, rows: 1},
+		{name: "no_change", entries: []*interfaces.CapabilityBinding{function}, rows: 0},
+		{name: "partial_change", entries: []*interfaces.CapabilityBinding{function, skill, mcp}, rows: 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			kns := bmock.NewMockKNService(ctrl)
 			bindings := bmock.NewMockCapabilityBindingService(ctrl)
@@ -583,24 +607,28 @@ func TestOperationAuditCapabilityDetachRealHandler(t *testing.T) {
 			handler := &restHandler{kns: kns, cbs: bindings, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
 				return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
 			}}
-			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
-			if scenario != "disabled" {
+			previous := kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
+			if !test.disabled {
 				handler.auditRecorder = store
-				lookup := bindings.EXPECT().ListCapabilities(gomock.Any(), interfaces.CapabilityBindingsQueryParams{
+				previous = bindings.EXPECT().ListCapabilities(gomock.Any(), interfaces.CapabilityBindingsQueryParams{
 					KNID: "kn-1", Branch: "main", WithDetail: true,
 					PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
-				})
-				if scenario == "lookup_failure" {
-					lookup.Return(nil, fmt.Errorf("metadata unavailable"))
+				}).After(previous)
+				if test.lookupFailure {
+					previous.Return(nil, fmt.Errorf("metadata unavailable"))
 				} else {
-					lookup.Return(&interfaces.CapabilityBindingsList{Entries: []*interfaces.CapabilityBinding{{ID: "binding-1", CapabilityID: "tool-1", Name: "Invoice lookup"}}}, nil)
+					previous.Return(&interfaces.CapabilityBindingsList{Entries: test.entries}, nil)
 				}
 			}
-			rows := int64(1)
-			if scenario == "no_change" {
-				rows = 0
+			ids := make([]string, 0, len(test.entries))
+			for _, binding := range test.entries {
+				ids = append(ids, binding.ID)
 			}
-			bindings.EXPECT().DetachCapabilities(gomock.Any(), gomock.Any(), "kn-1", "main", []string{"binding-1"}).DoAndReturn(func(_ context.Context, _ *sql.Tx, _, _ string, _ []string) (int64, error) { return rows, nil })
+			var mutationErr error
+			if test.mutationFailure {
+				mutationErr = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+			}
+			bindings.EXPECT().DetachCapabilities(gomock.Any(), gomock.Any(), "kn-1", "main", ids).After(previous).Return(test.rows, mutationErr)
 			engine := gin.New()
 			engine.Use(handler.OperationAudit())
 			engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id/capabilities/:binding_ids", func(c *gin.Context) {
@@ -609,16 +637,43 @@ func TestOperationAuditCapabilityDetachRealHandler(t *testing.T) {
 				handler.DetachCapabilities(c, v)
 			})
 			response := httptest.NewRecorder()
-			engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/capabilities/binding-1", nil))
-			if response.Code != 204 {
+			engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/capabilities/"+strings.Join(ids, ","), nil))
+			wantStatus := http.StatusNoContent
+			if test.mutationFailure {
+				wantStatus = http.StatusForbidden
+			}
+			if response.Code != wantStatus {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 			}
-			if scenario == "success" {
-				if len(store.entries) != 1 || store.entries[0].TargetName != "Sales / Invoice lookup" {
+			if test.wantName == "" {
+				if len(store.entries) != 0 {
 					t.Fatalf("entries=%+v", store.entries)
 				}
-			} else if len(store.entries) != 0 {
+				return
+			}
+			if len(store.entries) != 1 {
 				t.Fatalf("entries=%+v", store.entries)
+			}
+			entry := store.entries[0]
+			if entry.TargetName != test.wantName || entry.Action != "detach" || entry.ActorName != "Alice" {
+				t.Fatalf("entry=%+v", entry)
+			}
+			// Exercise the production event builder, including the Audit SDK's schema validation.
+			payload, err := operationaudit.BuildKafkaAuditRecord(entry, "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var event struct {
+				Summary string `json:"summary"`
+				Target  struct {
+					Name string `json:"name"`
+				} `json:"target"`
+			}
+			if err := json.Unmarshal(payload, &event); err != nil {
+				t.Fatal(err)
+			}
+			if event.Target.Name != test.wantName || !strings.Contains(event.Summary, test.wantName) || strings.Contains(event.Summary, "binding-") {
+				t.Fatalf("event=%s", payload)
 			}
 		})
 	}
