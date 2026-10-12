@@ -9,6 +9,7 @@ import (
 	"container/heap"
 	"context"
 	"errors"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -304,7 +305,6 @@ func (service *Service) listPage(
 	succeeded := 0
 	failed := 0
 	coveragePartial := false
-	sourcePageSizes := make(map[string]int)
 	sourceCandidates := make(map[string]int)
 	sourceLastRawPosition := make(map[string]observabilityvo.SourcePosition)
 	candidateBatches := make([][]logCandidate, 0, len(visibleSources))
@@ -330,14 +330,13 @@ func (service *Service) listPage(
 		page := sourceResult.page
 		result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 		coveragePartial = coveragePartial || sourceResult.status.Status == "degraded"
-		sourcePageSizes[source.ID()] = len(page.Records)
 		countExact = countExact && normalizedAccuracy(page.CountAccuracy) == "exact"
 		if page.LastPosition != nil {
 			sourceLastRawPosition[source.ID()] = *page.LastPosition
 		} else if len(page.Records) > 0 {
 			sourceLastRawPosition[source.ID()] = positionForRecord(page.Records[len(page.Records)-1])
 		}
-		if page.NextCursor != "" || page.Count > int64(len(page.Records)) {
+		if page.NextCursor != "" {
 			sourceHasMore = true
 		}
 		candidates := make([]logCandidate, 0, len(page.Records))
@@ -391,12 +390,11 @@ func (service *Service) listPage(
 	for _, candidate := range merged {
 		result.Records = append(result.Records, candidate.record)
 	}
-	for _, size := range sourcePageSizes {
-		if size >= sourceQuery.Limit {
-			hasMore = true
-		}
-	}
 	if hasMore {
+		previousPositions := make(map[string]observabilityvo.SourcePosition, len(positions))
+		for sourceID, position := range positions {
+			previousPositions[sourceID] = position
+		}
 		includedBySource := make(map[string]int)
 		for _, candidate := range merged {
 			positions[candidate.adapterSourceID] = positionForRecord(candidate.record)
@@ -407,7 +405,17 @@ func (service *Service) listPage(
 				positions[sourceID] = rawPosition
 			}
 		}
-		if len(positions) > 0 {
+		// Empty projected pages may advance raw positions, but refreshing only the
+		// expiry of an unchanged cursor would create an endless continuation.
+		progressed := false
+		for sourceID, position := range positions {
+			previous, existed := previousPositions[sourceID]
+			if !existed || !position.EventTimestamp.Equal(previous.EventTimestamp) ||
+				position.LogID != previous.LogID || !reflect.DeepEqual(position.SearchAfter, previous.SearchAfter) {
+				progressed = true
+			}
+		}
+		if progressed {
 			result.NextCursor = encodeCursor(service.cursorKey, cursorPayload{
 				Version:          cursorVersion,
 				SortVersion:      cursorSortVersion,

@@ -8,6 +8,7 @@ package opensearchconversationaudit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -120,4 +121,37 @@ func containsString(value, expected string) bool {
 		}
 	}
 	return false
+}
+
+func TestSearchContinuationUsesLookaheadInsteadOfGlobalTotal(t *testing.T) {
+	for _, count := range []int{0, 19, 20, 21} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			hits := make([]any, count)
+			for i := range hits {
+				hits[i] = map[string]any{"_id": fmt.Sprint(i), "_source": map[string]any{}, "sort": []any{float64(100 - i), fmt.Sprint(i)}}
+			}
+			payload, err := json.Marshal(map[string]any{"hits": map[string]any{"total": map[string]any{"value": 1000, "relation": "eq"}, "hits": hits}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend := &fakeSearchClient{result: payload}
+			page, err := New(backend, "conversations").Search(context.Background(), observabilityvo.LogQuery{Limit: 20, PageBefore: &observabilityvo.SourcePosition{SearchAfter: []any{float64(101), "before"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page.Records) != min(count, 20) || (page.NextCursor != "") != (count > 20) || page.Count != 1000 {
+				t.Fatalf("count=%d page=%+v", count, page)
+			}
+			var query map[string]any
+			if err := json.Unmarshal(backend.body, &query); err != nil {
+				t.Fatal(err)
+			}
+			if query["size"] != float64(21) || query["search_after"] == nil {
+				t.Fatalf("query=%v", query)
+			}
+			if count > 20 && page.Records[19].CursorPosition.SearchAfter[1] != "19" {
+				t.Fatal("lookahead hit must not be consumed")
+			}
+		})
+	}
 }
