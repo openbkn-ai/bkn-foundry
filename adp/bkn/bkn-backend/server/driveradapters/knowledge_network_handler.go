@@ -446,6 +446,10 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	if r.auditRecorder != nil {
+		c.Set("operation_audit_skip", kn.ImportSkipped)
+	}
+
 	logger.Debug("Handler CreateKN Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusCreated, map[string]any{"id": knID})
