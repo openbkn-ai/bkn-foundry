@@ -420,3 +420,39 @@ func TestMariaDBConnectorFetchTableStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestMariaDBConnectorGetTableMetaRejectsOutsideScope(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"app"}}, connected: true, db: db}
+	table := &interfaces.TableMeta{Database: "other", Schema: "other", Name: "orders"}
+	err = connector.GetTableMeta(context.Background(), table)
+	require.ErrorContains(t, err, "outside")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMariaDBConnectorListTablesFiltersOutsideScope(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"Sales"}}, connected: true, db: db}
+	mock.ExpectQuery("SELECT").WithArgs("Sales").WillReturnRows(
+		sqlmock.NewRows([]string{"c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"}).AddRow("sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil).AddRow("Sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil))
+	tables, err := connector.listTables(context.Background(), "", "")
+	require.NoError(t, err)
+	require.Len(t, tables, 1)
+	assert.Equal(t, "Sales", tables[0].Database)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+func TestMariaDBConnectorListSchemasFiltersOutsideScope(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"Sales"}}, connected: true, db: db}
+	mock.ExpectQuery("SELECT").WithArgs("Sales").WillReturnRows(sqlmock.NewRows([]string{"name"}).AddRow("sales").AddRow("Sales"))
+	schemas, err := connector.listSchemas(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Sales"}, schemas)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
