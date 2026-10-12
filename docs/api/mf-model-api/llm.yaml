@@ -1,0 +1,349 @@
+openapi: 3.1.0
+info:
+  title: mf-model-api llm
+  version: 0.1.0
+  description: Public HTTP contract derived from the current route signatures and Pydantic request models.
+    Internal /api/private routes are excluded. Dynamic controller results remain an open JSON schema.
+paths:
+  /chat/completions:
+    post:
+      summary: Chat Completions
+      operationId: llm_used_openai2_28_api_mf_model_api_v1_chat_completions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMUsedOpenAI'
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          description: 'OpenAI-compatible {error: {message, type, param, code}} error; stable business
+            code is preserved in error.code.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '408':
+          description: Caller, quota, rate limit or upstream dependency error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '413':
+          description: Caller, quota, rate limit or upstream dependency error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '422':
+          description: Caller, quota, rate limit or upstream dependency error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '429':
+          description: Caller, quota, rate limit or upstream dependency error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '502':
+          description: Caller, quota, rate limit or upstream dependency error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '503':
+          description: Caller, quota, rate limit or upstream dependency error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+        '504':
+          description: Caller, quota, rate limit or upstream dependency error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIError'
+      description: OpenAI-compatible chat completion. stream=true returns an SSE stream; otherwise the
+        upstream completion is returned as JSON. Public calls require large_model:execute permission.
+        Request validation errors use the OpenAI error envelope. Provider 401/403/404 errors normalize
+        to HTTP 502; retry exhaustion can return HTTP 503. Streaming failures appear in SSE error frames.
+      x-implementation: infra/mf-model-api/app/routers/llm_router.py
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LLMTool:
+      properties:
+        type:
+          type: string
+          title: Type
+        function:
+          $ref: '#/components/schemas/LLMToolsFunction'
+      type: object
+      required:
+      - type
+      - function
+      title: LLMTool
+    LLMToolsFunction:
+      properties:
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+          default: ''
+        parameters:
+          $ref: '#/components/schemas/LLMToolsFunctionParameters'
+      type: object
+      required:
+      - name
+      - parameters
+      title: LLMToolsFunction
+    LLMToolsFunctionParameters:
+      properties:
+        type:
+          type: string
+          title: Type
+        properties:
+          type: object
+          title: Properties
+        required:
+          items:
+            type: string
+          type: array
+          title: Required
+          default: []
+      type: object
+      required:
+      - type
+      - properties
+      title: LLMToolsFunctionParameters
+    LLMUsedOpenAI:
+      properties:
+        model:
+          type: string
+          pattern: ^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9\u4e00-\u9fa5]{,50}$
+          title: Model
+        top_p:
+          type: number
+          maximum: 1.0
+          exclusiveMinimum: 0.0
+          title: Top P
+          default: 1
+        top_k:
+          type: integer
+          minimum: 1.0
+          title: Top K
+          default: 1
+        temperature:
+          type: number
+          maximum: 2.0
+          minimum: 0.0
+          title: Temperature
+          default: 1
+        presence_penalty:
+          type: number
+          maximum: 2.0
+          minimum: -2.0
+          title: Presence Penalty
+          default: 0
+        frequency_penalty:
+          type: number
+          maximum: 2.0
+          minimum: -2.0
+          title: Frequency Penalty
+          default: 0
+        max_tokens:
+          type: integer
+          minimum: 10.0
+          title: Max Tokens
+          default: 1024
+        max_completion_tokens:
+          type: integer
+          minimum: 10.0
+          title: Max Completion Tokens
+        messages:
+          items:
+            $ref: '#/components/schemas/Message'
+          type: array
+          title: Messages
+        response_format:
+          type: object
+          title: Response Format
+          default: {}
+        stream:
+          type: boolean
+          title: Stream
+          default: false
+        cache:
+          type: boolean
+          title: Cache
+          default: false
+        stop:
+          anyOf:
+          - type: string
+          - items:
+              type: string
+            type: array
+          title: Stop
+        system:
+          items:
+            type: object
+          type: array
+          title: System
+          default: []
+        tools:
+          items:
+            $ref: '#/components/schemas/LLMTool'
+          type: array
+          title: Tools
+        tool_choice:
+          anyOf:
+          - type: string
+          - type: object
+          title: Tool Choice
+        model_id:
+          type: string
+          title: Model Id
+          default: ''
+      type: object
+      required:
+      - messages
+      title: LLMUsedOpenAI
+    Message:
+      properties:
+        role:
+          type: string
+          pattern: ^(user|assistant|system|tool)$
+          title: Role
+        content:
+          anyOf:
+          - type: string
+          - items:
+              additionalProperties:
+                anyOf:
+                - type: string
+                - additionalProperties:
+                    type: string
+                  type: object
+              type: object
+            type: array
+          title: Content
+        tool_calls:
+          items:
+            type: object
+          type: array
+          title: Tool Calls
+        tool_call_id:
+          type: string
+          title: Tool Call Id
+      type: object
+      required:
+      - role
+      title: Message
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    FastApiError:
+      type: object
+      additionalProperties: true
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        detail:
+          type: string
+        solution:
+          type: string
+        link:
+          type: string
+    OpenAIError:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - message
+          - type
+          - param
+          - code
+          properties:
+            message:
+              type: string
+            type:
+              type: string
+            param: {}
+            code: {}
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+servers:
+- url: /api/mf-model-api/v1
+security:
+- BearerAuth: []

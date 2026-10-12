@@ -1,0 +1,49 @@
+openapi: 3.1.0
+info:
+  title: VEGA index capabilities
+  version: 0.1.0
+servers:
+- url: /api/vega-backend/v1
+security:
+- BearerAuth: []
+paths:
+  /index-capabilities:
+    get:
+      operationId: getIndexCapabilities
+      summary: Get currently available local fulltext analyzers
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - fulltext_analyzers
+                - checked_at
+                properties:
+                  fulltext_analyzers:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - id
+                      properties:
+                        id:
+                          type: string
+                  checked_at:
+                    type: integer
+                    format: int64
+        '401':
+          description: Unauthenticated
+        '503':
+          description: Index capability lookup unavailable (VegaBackend.IndexCapability.InternalError.Unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer

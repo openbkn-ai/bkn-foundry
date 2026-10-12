@@ -11,12 +11,12 @@ TPL_DIR      := $(API_DIR)/_templates
 # 发布的模块及其展示顺序。手写列表而非目录通配：通配按目录名排序，出来的是
 # "bkn-agent 排在 bkn 前面" 这种字典序巧合，且无法把某个模块暂时撤下发布面。
 # 顺序即站点首页的卡片分组顺序，改这里就改了线上顺序。
-MODULES      := bkn bkn-safe-admin context-loader ontology-query vega execution-factory mf-model-manager \
+MODULES      := bkn bkn-safe-admin context-loader ontology-query vega execution-factory mf-model-manager mf-model-api \
                 agent-observability bkn-agent
 # 暂不发布的模块目录（YAML 保留在仓库，只是不进站点、不参与 lint）：
 #   bkn-safe      Self-service reads and cluster-internal authz / managed-proxy contracts are not published as general integration APIs
 #   observability 只有 observability.json，没有可发布的 YAML，渲染出来是空分组
-MODULES_UNPUBLISHED := bkn-safe observability
+MODULES_UNPUBLISHED := bkn-safe observability sandbox-control-plane sandbox-executor
 # Unpublished modules are linted too, so service-to-service request and error
 # schemas cannot drift silently.
 LINT_MODULES := $(MODULES) $(MODULES_UNPUBLISHED)
@@ -111,7 +111,9 @@ MODDESC_bkn-agent         := Agent 运行时：Agent 增删改查 / 对话与调
 MODDESC_execution-factory := 执行工厂：函数与沙箱执行 / 算子 / 工具箱 / MCP / Skill / 导入导出
 MODDESC_agent-observability := BKN Trace：受管会话生命周期 / 业务证据 / 技术链路 / 快照
 MODDESC_context-loader    := Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP
-MODDESC_mf-model-manager  := 模型工厂：大模型连通性测试 / 默认模型设置 / 调用监控
+MODDESC_mf-model-manager  := 模型工厂：大小模型 / 配额 / 提示词 / 默认模型 / 监控
+MODTITLE_mf-model-api      := 模型调用
+MODDESC_mf-model-api       := 模型调用：聊天补全 / embedding / rerank
 MODDESC_ontology-query    := 本体查询与语义检索
 MODDESC_vega              := 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
 

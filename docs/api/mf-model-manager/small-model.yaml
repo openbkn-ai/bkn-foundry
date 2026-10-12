@@ -1,0 +1,727 @@
+openapi: 3.1.0
+info:
+  title: mf-model-manager small model
+  version: 0.1.0
+  description: Public HTTP contract derived from the current route signatures and Pydantic request models.
+    Internal /api/private routes are excluded. Dynamic controller results remain an open JSON schema.
+paths:
+  /small-model/add:
+    post:
+      summary: Small Model Add
+      operationId: add_model_11_api_mf_model_manager_v1_small_model_add_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddExternalSmallModel'
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+  /small-model/edit:
+    post:
+      summary: Small Model Edit
+      operationId: edit_model_17_api_mf_model_manager_v1_small_model_edit_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditExternalSmallModel'
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+  /small-model/list:
+    get:
+      summary: Small Model List
+      operationId: get_info_list_23_api_mf_model_manager_v1_small_model_list_get
+      parameters:
+      - required: false
+        schema:
+          type: string
+          pattern: ^(desc|asc)$
+          title: Order
+          default: desc
+        name: order
+        in: query
+      - required: false
+        schema:
+          type: string
+          pattern: ^(create_time|update_time|model_name)$
+          title: Rule
+          default: update_time
+        name: rule
+        in: query
+      - required: false
+        schema:
+          type: integer
+          minimum: 1.0
+          title: Page
+          default: 1
+        name: page
+        in: query
+      - required: false
+        schema:
+          type: integer
+          minimum: 1.0
+          title: Size
+          default: 20
+        name: size
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Model Name
+          default: ''
+        name: model_name
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Model Type
+          default: ''
+        name: model_type
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Model Series
+          default: ''
+        name: model_series
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+  /small-model/get:
+    get:
+      summary: Small Model Get
+      operationId: get_info_34_api_mf_model_manager_v1_small_model_get_get
+      parameters:
+      - required: true
+        schema:
+          title: Model Id
+        name: model_id
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+  /small-model/get_default:
+    get:
+      summary: Small Model Get_Default
+      operationId: get_default_40_api_mf_model_manager_v1_small_model_get_default_get
+      parameters:
+      - required: false
+        schema:
+          type: string
+          title: Model Type
+          default: embedding
+        name: model_type
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+  /small-model/set-default:
+    post:
+      summary: Small Model Set Default
+      operationId: set_default_45_api_mf_model_manager_v1_small_model_set_default_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+  /small-model/names:
+    post:
+      summary: Small Model Names
+      operationId: get_names_51_api_mf_model_manager_v1_small_model_names_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+  /small-model/delete:
+    post:
+      summary: Small Model Delete
+      operationId: delete_model_57_api_mf_model_manager_v1_small_model_delete_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+  /small-model/test:
+    post:
+      summary: Small Model Test
+      operationId: model_used_87_api_mf_model_manager_v1_small_model_test_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestSmallModel'
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
+components:
+  schemas:
+    AddExternalSmallModel:
+      properties:
+        model_name:
+          type: string
+          title: Model Name
+          description: Model name
+        model_type:
+          type: string
+          pattern: ^(reranker|embedding)$
+          title: Model Type
+          description: Model type
+        model_config:
+          type: object
+          title: Model Config
+          description: Third-party model service configuration
+          default: {}
+        adapter:
+          type: boolean
+          title: Adapter
+          description: Whether to enable the adapter service
+          default: false
+        adapter_code:
+          type: string
+          title: Adapter Code
+          description: Adapter code
+        batch_size:
+          type: integer
+          title: Batch Size
+          description: Batch size
+        max_tokens:
+          type: integer
+          title: Max Tokens
+          description: Maximum token count
+        embedding_dim:
+          type: integer
+          title: Embedding Dim
+          description: Embedding dimension
+        default:
+          type: boolean
+          title: Default
+          description: Whether to set this model as the system default
+          default: false
+        is_private:
+          type: boolean
+          title: Is Private
+          description: Whether this is a private route used to control validation
+          default: false
+      type: object
+      required:
+      - model_name
+      - model_type
+      - batch_size
+      title: AddExternalSmallModel
+    EditExternalSmallModel:
+      properties:
+        model_id:
+          type: string
+          maxLength: 19
+          minLength: 19
+          title: Model Id
+          description: Configuration ID
+        model_name:
+          type: string
+          title: Model Name
+          description: Model name
+        model_type:
+          type: string
+          pattern: ^(reranker|embedding)$
+          title: Model Type
+          description: Model type
+        model_config:
+          type: object
+          title: Model Config
+          description: Third-party model service configuration
+          default: {}
+        adapter:
+          type: boolean
+          title: Adapter
+          description: Whether to enable the adapter service
+          default: false
+        adapter_code:
+          type: string
+          title: Adapter Code
+          description: Adapter code
+        batch_size:
+          type: integer
+          title: Batch Size
+          description: Batch size
+        max_tokens:
+          type: integer
+          title: Max Tokens
+          description: Maximum token count
+        embedding_dim:
+          type: integer
+          title: Embedding Dim
+          description: Embedding dimension
+        change:
+          type: boolean
+          title: Change
+          description: Whether api_key in model_config was changed
+          default: false
+      type: object
+      required:
+      - model_id
+      - model_name
+      - model_type
+      - batch_size
+      title: EditExternalSmallModel
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    TestSmallModel:
+      properties:
+        model_id:
+          type: string
+          maxLength: 19
+          minLength: 19
+          title: Model Id
+          description: Configuration ID
+        model_name:
+          type: string
+          title: Model Name
+          description: Model name
+          default: ''
+        model_type:
+          type: string
+          pattern: ^(reranker|embedding)$
+          title: Model Type
+          description: Model type
+          default: ''
+        model_config:
+          type: object
+          title: Model Config
+          description: Third-party model service configuration
+          default: {}
+        adapter:
+          type: boolean
+          title: Adapter
+          description: Whether to enable the adapter service
+          default: false
+        adapter_code:
+          type: string
+          title: Adapter Code
+          description: Adapter code
+        batch_size:
+          type: integer
+          title: Batch Size
+          description: Batch size
+        max_tokens:
+          type: integer
+          title: Max Tokens
+          description: Maximum token count
+        embedding_dim:
+          type: integer
+          title: Embedding Dim
+          description: Embedding dimension
+        change:
+          type: boolean
+          title: Change
+          description: Whether api_key in model_config was changed
+          default: false
+      type: object
+      title: TestSmallModel
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    FastApiError:
+      type: object
+      additionalProperties: true
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        detail:
+          type: string
+        solution:
+          type: string
+        link:
+          type: string
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+servers:
+- url: /api/mf-model-manager/v1
+security:
+- BearerAuth: []

@@ -1,295 +1,83 @@
-# API 参考文档
+# Sandbox Executor API 参考
 
-本文档提供 Sandbox Executor RESTful API 的详细参考。
+以 [`interfaces/http/rest.py`](../interfaces/http/rest.py) 为准；机器可读合同见
+[executor OpenAPI](../../../../../docs/api/sandbox-executor/sandbox-executor.yaml)。
+基础地址示例：`http://sandbox-executor:8080`。该服务供集群内部调用，当前 REST
+适配器没有实现 `INTERNAL_API_TOKEN` 或 Bearer 令牌校验，访问边界由部署网络控制。
 
-## 目录
+## 提交代码
 
-- [概述](#概述)
-- [执行代码](#执行代码)
-- [健康检查](#健康检查)
-- [服务信息](#服务信息)
-- [错误码](#错误码)
-
----
-
-## 概述
-
-### 基础 URL
-
-```
-http://localhost:8080
-```
-
-### 认证
-
-内部 API 使用 `INTERNAL_API_TOKEN` 环境变量配置的令牌进行认证：
-
-```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8080/execute
-```
-
-### 支持的语言
-
-- `python` - Python 3.11+
-- `javascript` - Node.js
-- `shell` - Bash shell
-
----
-
-## 执行代码
-
-执行用户代码并返回结果。
-
-### 端点
-
-```
-POST /execute
-```
-
-### 请求头
-
-| 头部 | 值 |
-|------|-----|
-| Content-Type | application/json |
-| Authorization | Bearer YOUR_TOKEN (可选) |
-
-### 请求体
+`POST /execute`，请求头 `Content-Type: application/json`。
 
 | 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `execution_id` | string | 是 | 唯一执行标识符 |
-| `session_id` | string | 是 | 会话标识符 |
-| `code` | string | 是 | 要执行的代码 |
-| `language` | string | 是 | `python`, `javascript`, `shell` |
-| `timeout` | int | 否 | 超时时间（秒），范围 1-3600，默认 300 |
-| `event` | object | 否 | 传递给 handler 的事件数据 |
-| `env_vars` | object | 否 | 额外的环境变量 |
+| --- | --- | --- | --- |
+| execution_id | string | 是 | 执行标识 |
+| session_id | string | 是 | 会话标识 |
+| code | string | 是 | 要执行的代码 |
+| language | string | 是 | python、javascript 或 shell |
+| timeout | integer | 否 | 秒，1–3600，默认 300 |
+| event | object | 否 | handler 输入，默认空对象 |
+| env_vars | object | 否 | 环境变量，默认空对象 |
+| working_directory | string 或 null | 否 | 相对 workspace 根目录的执行目录，默认 null；拒绝越界路径 |
 
-### 响应
-
-**成功 (200 OK)**
-
-```json
-{
-  "execution_id": "exec_001",
-  "status": "completed",
-  "message": "Execution completed"
-}
-```
-
-**错误 (4xx/5xx)**
+HTTP 200 表示已安排后台执行，响应如下：
 
 ```json
-{
-  "detail": "Error message"
-}
+{"execution_id":"exec_20240115_abc12345","status":"PENDING","message":"Execution submitted"}
 ```
 
-### 示例
-
-#### Python 代码
+最终执行结果通过回调上报 control plane；调用方可从 control plane 的
+`GET /api/v1/executions/{execution_id}/status` 或 `/result` 查询。
+提交成功不代表执行完成。
 
 ```bash
-curl -X POST http://localhost:8080/execute \
+curl -X POST http://sandbox-executor:8080/execute \
   -H 'Content-Type: application/json' \
-  -d '{
-    "execution_id": "exec_001",
-    "session_id": "session_001",
-    "code": "def handler(event):\n    name = event.get(\"name\", \"World\")\n    return {\"message\": f\"Hello, {name}!\"}",
-    "language": "python",
-    "timeout": 10,
-    "event": {"name": "Alice"}
-  }'
+  -d '{"execution_id":"exec_20240115_abc12345","session_id":"sess_test_001","code":"def handler(event): return event","language":"python","event":{"name":"Alice"},"timeout":10}'
 ```
-
-#### JavaScript 代码
-
-```bash
-curl -X POST http://localhost:8080/execute \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "execution_id": "exec_js_001",
-    "session_id": "session_001",
-    "code": "module.exports.handler = (event) => ({ message: `Hello ${event.name}!` });",
-    "language": "javascript",
-    "timeout": 10,
-    "event": {"name": "Bob"}
-  }'
-```
-
-#### Shell 代码
-
-```bash
-curl -X POST http://localhost:8080/execute \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "execution_id": "exec_shell_001",
-    "session_id": "session_001",
-    "code": "echo \"Hello from shell!\" && ls -la /tmp",
-    "language": "shell",
-    "timeout": 10
-  }'
-```
-
----
 
 ## 健康检查
 
-检查服务健康状态。
-
-### 端点
-
-```
-GET /health
-```
-
-### 响应
-
-**成功 (200 OK)**
+`GET /health` 的 HTTP 200 响应：
 
 ```json
-{
-  "status": "healthy",
-  "version": "1.0.0",
-  "isolation": "bubblewrap",
-  "platform": "Linux"
-}
+{"status":"healthy","version":"1.0.0","uptime_seconds":42.5,"active_executions":0}
 ```
 
-### 字段说明
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `status` | string | 服务状态：`healthy` 或 `unhealthy` |
-| `version` | string | 版本号 |
-| `isolation` | string | 隔离技术：`bubblewrap` 或 `seatbelt` |
-| `platform` | string | 操作系统：`Linux` 或 `Darwin` |
-
-### 示例
-
-```bash
-curl http://localhost:8080/health
-```
-
----
+隔离机制或 workspace 不可用时返回 HTTP 503，响应使用
+`{"detail":{"status":"unhealthy","reason":"..."}}`。
 
 ## 服务信息
 
-获取服务详细信息和当前状态。
-
-### 端点
-
-```
-GET /info
-```
-
-### 响应
-
-**成功 (200 OK)**
+`GET /` 返回：
 
 ```json
-{
-  "version": "1.0.0",
-  "platform": "Linux",
-  "isolation": "bubblewrap",
-  "workspace_path": "/workspace",
-  "active_executions": 0
-}
+{"service":"sandbox-executor","version":"1.0.0","docs":"/docs","health":"/health","execute":"/execute"}
 ```
 
-### 字段说明
+## 同步会话依赖
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `version` | string | 版本号 |
-| `platform` | string | 操作系统 |
-| `isolation` | string | 隔离技术 |
-| `workspace_path` | string | 工作目录路径 |
-| `active_executions` | int | 当前活跃执行数量 |
+`POST /internal/session-config/sync`，仅供 control plane 调用。
 
-### 示例
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| session_id | string | 是 | 会话标识 |
+| language_runtime | string | 是 | 运行时，例如 python3.11 |
+| python_package_index_url | string | 是 | Python 包索引地址 |
+| sync_mode | string | 是 | replace 或 merge |
+| dependencies | string[] | 否 | pip 依赖列表，默认空数组 |
 
-```bash
-curl http://localhost:8080/info
-```
+HTTP 200 返回 `status`、`installed_dependencies`、`error`、`started_at`、
+`completed_at`。每项依赖包含 `name`、`version`、`install_location`、`install_time`、
+`is_from_template`。
 
----
+## 错误响应
 
-## 错误码
+| 状态码 | 情况及响应 |
+| --- | --- |
+| 400 | ValueError/Pydantic 异常处理器返回 `error_code/description/error_detail/solution`；依赖同步的业务校验失败返回 `detail` 对象 |
+| 422 | FastAPI 请求校验失败返回 `detail` 数组；依赖安装失败返回含 `error_code/description/error_detail` 的 `detail` 对象 |
+| 500 | 通用异常返回 `error_code/description/error_detail/solution`；依赖同步失败返回 `detail` 对象 |
+| 503 | 服务未初始化返回 `detail` 字符串；健康检查失败返回 `detail` 对象 |
 
-### HTTP 状态码
-
-| 状态码 | 说明 |
-|--------|------|
-| 200 | 请求成功 |
-| 400 | 请求参数错误 |
-| 401 | 未授权（令牌无效） |
-| 404 | 资源不存在 |
-| 422 | 请求体验证失败 |
-| 500 | 服务器内部错误 |
-
-### 常见错误响应
-
-#### 请求参数错误 (400)
-
-```json
-{
-  "detail": "Missing required field: execution_id"
-}
-```
-
-#### 请求体验证失败 (422)
-
-```json
-{
-  "detail": [
-    {
-      "loc": ["body", "language"],
-      "msg": "value is not a valid enumeration member",
-      "type": "type_error.enum"
-    }
-  ]
-}
-```
-
-#### 服务器内部错误 (500)
-
-```json
-{
-  "detail": "Internal server error: Bwrap execution failed"
-}
-```
-
----
-
-## Python 客户端示例
-
-```python
-import httpx
-import asyncio
-
-async def execute_code(code: str, language: str = "python"):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "http://localhost:8080/execute",
-            json={
-                "execution_id": "exec_001",
-                "session_id": "session_001",
-                "code": code,
-                "language": language,
-                "timeout": 10
-            }
-        )
-        return response.json()
-
-# 使用示例
-asyncio.run(execute_code("def handler(e): return {'result': 'ok'}"))
-```
-
----
-
-## 相关文档
-
-- [快速开始](quick-start.md) - 安装和基本使用
-- [Handler 规范](quick-start.md#handler-规范) - Lambda handler 编写指南
-- [配置说明](configuration.md) - 环境变量和配置选项
+后台执行失败由 control plane 中的执行状态和结果体现，不会改写已返回的提交确认。

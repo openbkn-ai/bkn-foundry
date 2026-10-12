@@ -1,0 +1,1919 @@
+openapi: 3.1.0
+info:
+  title: Execution Factory capabilities lab
+  version: 0.1.0
+  description: Implemented capabilities-lab route group. Authorization and Cookie headers are forwarded
+    to upstream public APIs; the group middleware itself does not validate Bearer tokens. user_id, then
+    X-User-ID, then the configured default determines its user context. Responses use the capabilities-lab
+    envelope, not ErrorCompact. Feature-gated operations return 404 when disabled.
+servers:
+- url: /api/capabilities-lab/v1
+paths:
+  /health:
+    get:
+      summary: Health
+      operationId: capabilitiesLabHealth
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - status
+                - service
+                - upstream
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - ok
+                    - degraded
+                  service:
+                    type: string
+                    const: capabilities-lab
+                  upstream:
+                    type: string
+                    enum:
+                    - ok
+                    - down
+  /meta:
+    get:
+      summary: Meta
+      operationId: capabilitiesLabMeta
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetaResponse'
+  /metrics:
+    get:
+      summary: Metrics
+      operationId: capabilitiesLabMetrics
+      responses:
+        '200':
+          description: Successful response
+          content:
+            text/plain:
+              schema:
+                type: string
+      description: Route is registered only when metrics are enabled.
+  /capabilities:
+    get:
+      summary: List Capabilities
+      operationId: capabilitiesLabListCapabilities
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityListResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: kind
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: group_id
+        in: query
+        schema:
+          type: string
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        description: Missing or noninteger values use the default.
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+        description: Missing or noninteger values use the default.
+  /capabilities/http:
+    post:
+      summary: Create Http Capability
+      operationId: capabilitiesLabCreateHttpCapability
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateHttpCapabilityResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHttpCapabilityRequest'
+  /capabilities/http/import:
+    post:
+      summary: Import Open Api Capabilities
+      operationId: capabilitiesLabImportOpenApiCapabilities
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportOpenApiCapabilityResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportOpenApiCapabilityRequest'
+  /capabilities/mcp:
+    post:
+      summary: Register Mcp Capability
+      operationId: capabilitiesLabRegisterMcpCapability
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - capability
+                properties:
+                  capability:
+                    $ref: '#/components/schemas/Capability'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterMcpCapabilityRequest'
+  /capabilities/skill:
+    post:
+      summary: Register Skill Capability
+      operationId: capabilitiesLabRegisterSkillCapability
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - capability
+                properties:
+                  capability:
+                    $ref: '#/components/schemas/Capability'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                file_type:
+                  type: string
+                category:
+                  type: string
+                source:
+                  type: string
+  /groups:
+    get:
+      summary: List Groups
+      operationId: capabilitiesLabListGroups
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        description: Missing or noninteger values use the default.
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 50
+        description: Missing or noninteger values use the default.
+  /categories:
+    get:
+      summary: List Categories
+      operationId: capabilitiesLabListCategories
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryListResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+  /groups/{group_id}/publish:
+    post:
+      summary: Publish Group
+      operationId: capabilitiesLabPublishGroup
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - ok
+                - status
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  status:
+                    type: string
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishCapabilityRequest'
+      description: An omitted status defaults to published.
+  /capabilities/import:
+    post:
+      summary: Import Capability Package
+      operationId: capabilitiesLabImportCapabilityPackage
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema: {}
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                type:
+                  type: string
+                mode:
+                  type: string
+  /catalog:
+    get:
+      summary: List Catalog
+      operationId: capabilitiesLabListCatalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogListResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: kind
+        in: query
+        schema:
+          type: string
+      - name: keyword
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        description: Missing or noninteger values use the default.
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          default: 20
+        description: Missing or noninteger values use the default.
+  /catalog/install:
+    post:
+      summary: Install From Catalog
+      operationId: capabilitiesLabInstallFromCatalog
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallCatalogResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallCatalogRequest'
+  /capabilities/function:
+    post:
+      summary: Create Function Capability
+      operationId: capabilitiesLabCreateFunctionCapability
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateFunctionCapabilityResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFunctionCapabilityRequest'
+  /function/execute:
+    post:
+      summary: Execute Python
+      operationId: capabilitiesLabExecutePython
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutePythonResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutePythonRequest'
+  /template/python:
+    get:
+      summary: Get Python Template
+      operationId: capabilitiesLabGetPythonTemplate
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PythonTemplateResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+  /capabilities/mcp/parse-sse:
+    post:
+      summary: Parse Mcp Sse
+      operationId: capabilitiesLabParseMcpSse
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParseMcpSseResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseMcpSseRequest'
+  /capabilities/{id}/versions:
+    get:
+      summary: List Versions
+      operationId: capabilitiesLabListVersions
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionListResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /capabilities/{id}/orchestration:
+    get:
+      summary: Get Orchestration
+      operationId: capabilitiesLabGetOrchestration
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationDetailResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /capabilities/{id}/debug:
+    post:
+      summary: Debug Capability
+      operationId: capabilitiesLabDebugCapability
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugCapabilityResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DebugCapabilityRequest'
+  /capabilities/{id}/versions/republish:
+    post:
+      summary: Republish Version
+      operationId: capabilitiesLabRepublishVersion
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - ok
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepublishVersionRequest'
+  /capabilities/{id}/publish:
+    post:
+      summary: Publish Capability
+      operationId: capabilitiesLabPublishCapability
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - ok
+                - status
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  status:
+                    type: string
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishCapabilityRequest'
+      description: An omitted status defaults to published.
+  /capabilities/{id}/orchestration/enable:
+    post:
+      summary: Enable Orchestration
+      operationId: capabilitiesLabEnableOrchestration
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnableOrchestrationResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableOrchestrationRequest'
+  /capabilities/{id}/orchestration/config:
+    post:
+      summary: Update Orchestration Config
+      operationId: capabilitiesLabUpdateOrchestrationConfig
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationDetailResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrchestrationConfigRequest'
+  /capabilities/{id}/orchestration/disable:
+    post:
+      summary: Disable Orchestration
+      operationId: capabilitiesLabDisableOrchestration
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisableOrchestrationResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /capabilities/{id}/export:
+    get:
+      summary: Export Capability
+      operationId: capabilitiesLabExportCapability
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema: {}
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /capabilities/{id}/skill/content:
+    get:
+      summary: Get Skill Content
+      operationId: capabilitiesLabGetSkillContent
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillContentResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /capabilities/{id}/skill/files/read:
+    post:
+      summary: Read Skill File
+      operationId: capabilitiesLabReadSkillFile
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadSkillFileResponse'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '404':
+          description: Feature disabled or resource absent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadSkillFileRequest'
+  /capabilities/{id}/skill/download:
+    get:
+      summary: Download Skill Package
+      operationId: capabilitiesLabDownloadSkillPackage
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /capabilities/{id}/skill/package:
+    put:
+      summary: Update Skill Package
+      operationId: capabilitiesLabUpdateSkillPackage
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - capability
+                properties:
+                  capability:
+                    $ref: '#/components/schemas/Capability'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                file_type:
+                  type: string
+  /capabilities/{id}/mcp/tools:
+    get:
+      summary: List Mcp Tools
+      operationId: capabilitiesLabListMcpTools
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - tools
+                properties:
+                  tools:
+                    type: array
+                    items: {}
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /capabilities/{id}:
+    patch:
+      summary: Update Capability
+      operationId: capabilitiesLabUpdateCapability
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capability'
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '400':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCapabilityRequest'
+    delete:
+      summary: Delete Capability
+      operationId: capabilitiesLabDeleteCapability
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - ok
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+        '502':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get Capability
+      operationId: capabilitiesLabGetCapability
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capability'
+        '404':
+          description: Request or upstream operation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+components:
+  schemas:
+    CatalogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+        installed:
+          type: boolean
+        version:
+          type: string
+      required:
+      - id
+      - kind
+      - name
+      - description
+      - status
+      - update_time
+      - installed
+    CatalogListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogEntry'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+      required:
+      - data
+      - total
+      - page
+      - page_size
+    InstallCatalogRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+        source_id:
+          type: string
+        mode:
+          type: string
+        name:
+          type: string
+      required:
+      - kind
+      - source_id
+    InstallCatalogResponse:
+      type: object
+      properties:
+        component_type:
+          type: string
+        mode:
+          type: string
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Capability'
+      required:
+      - component_type
+      - mode
+      - capabilities
+    Group:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        service_url:
+          type: string
+        status:
+          type: string
+        category:
+          type: string
+        tool_count:
+          type: integer
+        update_time:
+          type: integer
+          format: int64
+        metadata_type:
+          type: string
+      required:
+      - id
+      - name
+    Endpoint:
+      type: object
+      properties:
+        method:
+          type: string
+        path:
+          type: string
+    Orchestration:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        operator_id:
+          type: string
+        operator_name:
+          type: string
+        audit:
+          anyOf:
+          - $ref: '#/components/schemas/Audit'
+          - type: 'null'
+      required:
+      - enabled
+    Audit:
+      type: object
+      properties:
+        create_user:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        update_user:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+        release_user:
+          type: string
+        release_time:
+          type: integer
+          format: int64
+    Capability:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        group:
+          anyOf:
+          - $ref: '#/components/schemas/Group'
+          - type: 'null'
+        endpoint:
+          anyOf:
+          - $ref: '#/components/schemas/Endpoint'
+          - type: 'null'
+        orchestration:
+          anyOf:
+          - $ref: '#/components/schemas/Orchestration'
+          - type: 'null'
+        audit:
+          anyOf:
+          - $ref: '#/components/schemas/Audit'
+          - type: 'null'
+        update_time:
+          type: integer
+          format: int64
+        tool_id:
+          type: string
+        box_id:
+          type: string
+        mcp_id:
+          type: string
+        skill_id:
+          type: string
+        version:
+          type: string
+        openapi_spec:
+          type: string
+        url:
+          type: string
+        code:
+          type: string
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionParameterDef'
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionParameterDef'
+      required:
+      - id
+      - kind
+      - name
+      - status
+    CapabilityListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Capability'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+      required:
+      - data
+      - total
+      - page
+      - page_size
+    GroupListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Group'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+      required:
+      - data
+      - total
+      - page
+      - page_size
+    GroupInput:
+      type: object
+      properties:
+        mode:
+          type: string
+        box_id:
+          type: string
+        name:
+          type: string
+    CreateHttpCapabilityRequest:
+      type: object
+      properties:
+        openapi_spec:
+          type: string
+        service_url:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        group:
+          $ref: '#/components/schemas/GroupInput'
+        orchestration_enabled:
+          type: boolean
+      required:
+      - openapi_spec
+      - service_url
+    ImportOpenApiCapabilityRequest:
+      type: object
+      properties:
+        openapi_spec:
+          type: string
+        service_url:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        group:
+          $ref: '#/components/schemas/GroupInput'
+        orchestration_enabled:
+          type: boolean
+      required:
+      - openapi_spec
+      - service_url
+    CreateHttpCapabilityResponse:
+      type: object
+      properties:
+        capability:
+          $ref: '#/components/schemas/Capability'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+      required:
+      - capability
+    ImportOpenApiCapabilityResponse:
+      type: object
+      properties:
+        box_id:
+          type: string
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Capability'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+        failure_count:
+          type: integer
+          format: int64
+        failures:
+          type: array
+          items:
+            type: string
+      required:
+      - box_id
+      - capabilities
+    Link:
+      type: object
+      properties:
+        operator_id:
+          type: string
+        tool_id:
+          type: string
+      required:
+      - operator_id
+      - tool_id
+    VersionEntry:
+      type: object
+      properties:
+        version:
+          type: string
+        status:
+          type: string
+        release_user:
+          type: string
+        release_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+      required:
+      - version
+    VersionListResponse:
+      type: object
+      properties:
+        kind:
+          type: string
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/VersionEntry'
+      required:
+      - kind
+      - versions
+    RepublishVersionRequest:
+      type: object
+      properties:
+        version:
+          type: string
+        mode:
+          type: string
+      required:
+      - version
+    DebugCapabilityRequest:
+      type: object
+      properties:
+        body:
+          type: object
+          additionalProperties: {}
+        query:
+          type: object
+          additionalProperties: {}
+        path:
+          type: object
+          additionalProperties: {}
+        header:
+          type: object
+          additionalProperties: {}
+        tool_name:
+          type: string
+        timeout:
+          type: integer
+    DebugCapabilityResponse:
+      type: object
+      properties:
+        status_code:
+          type: integer
+        body: {}
+        duration_ms:
+          type: integer
+          format: int64
+        error:
+          type: string
+        content:
+          type: string
+        is_error:
+          type: boolean
+        headers:
+          type: object
+          additionalProperties: {}
+    PublishCapabilityRequest:
+      type: object
+      properties:
+        status:
+          type: string
+    EnableOrchestrationResponse:
+      type: object
+      properties:
+        operator_id:
+          type: string
+        audit:
+          anyOf:
+          - $ref: '#/components/schemas/Audit'
+          - type: 'null'
+      required:
+      - operator_id
+    OperatorRetryConditions:
+      type: object
+      properties:
+        status_code:
+          type: array
+          items:
+            type: integer
+        error_codes:
+          type: array
+          items:
+            type: string
+    OperatorRetryPolicy:
+      type: object
+      properties:
+        max_attempts:
+          type: integer
+          format: int64
+        initial_delay:
+          type: integer
+          format: int64
+        max_delay:
+          type: integer
+          format: int64
+        backoff_factor:
+          type: integer
+          format: int64
+        retry_conditions:
+          $ref: '#/components/schemas/OperatorRetryConditions'
+    OperatorExecuteControl:
+      type: object
+      properties:
+        timeout:
+          type: integer
+          format: int64
+        retry_policy:
+          $ref: '#/components/schemas/OperatorRetryPolicy'
+    EnableOrchestrationRequest:
+      type: object
+      properties:
+        operator_execute_control:
+          $ref: '#/components/schemas/OperatorExecuteControl'
+    DisableOrchestrationResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        operator_id:
+          type: string
+      required:
+      - enabled
+    OrchestrationDetailResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        operator_id:
+          type: string
+        tool_id:
+          type: string
+        box_id:
+          type: string
+        audit:
+          anyOf:
+          - $ref: '#/components/schemas/Audit'
+          - type: 'null'
+      required:
+      - enabled
+    UpdateCapabilityRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        openapi_spec:
+          type: string
+        url:
+          type: string
+        mode:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        category:
+          type: string
+        creation_type:
+          type: string
+        source:
+          type: string
+        code:
+          type: string
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionParameterDef'
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionParameterDef'
+    CategoryListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryEntry'
+      required:
+      - data
+    CategoryEntry:
+      type: object
+      properties:
+        category_type:
+          type: string
+        name:
+          type: string
+      required:
+      - category_type
+      - name
+    RegisterMcpCapabilityRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        mode:
+          type: string
+        url:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        category:
+          type: string
+        creation_type:
+          type: string
+      required:
+      - name
+      - url
+    FunctionParameterDef:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+      required:
+      - name
+    CreateFunctionCapabilityRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        code:
+          type: string
+        category:
+          type: string
+        service_url:
+          type: string
+        group:
+          $ref: '#/components/schemas/GroupInput'
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionParameterDef'
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionParameterDef'
+      required:
+      - code
+    CreateFunctionCapabilityResponse:
+      type: object
+      properties:
+        capability:
+          $ref: '#/components/schemas/Capability'
+      required:
+      - capability
+    ExecutePythonRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        event:
+          type: object
+          additionalProperties: {}
+        timeout:
+          type: integer
+        source:
+          type: string
+        task_id:
+          type: string
+        capability_id:
+          type: string
+        capability_name:
+          type: string
+        user_id:
+          type: string
+        user_name:
+          type: string
+      required:
+      - code
+    ExecutePythonResponse:
+      type: object
+      properties:
+        output: {}
+        stdout:
+          type: string
+        stderr:
+          type: string
+        error:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+    PythonTemplateResponse:
+      type: object
+      properties:
+        template:
+          type: string
+      required:
+      - template
+    ParseMcpSseRequest:
+      type: object
+      properties:
+        url:
+          type: string
+        mode:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - url
+    McpParsedTool:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+      required:
+      - name
+    ParseMcpSseResponse:
+      type: object
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpParsedTool'
+      required:
+      - tools
+    SkillFileSummary:
+      type: object
+      properties:
+        rel_path:
+          type: string
+        file_type:
+          type: string
+        mime_type:
+          type: string
+        size:
+          type: integer
+          format: int64
+      required:
+      - rel_path
+    SkillContentResponse:
+      type: object
+      properties:
+        content:
+          type: string
+        file_type:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillFileSummary'
+        download_url:
+          type: string
+    ReadSkillFileRequest:
+      type: object
+      properties:
+        rel_path:
+          type: string
+        response_mode:
+          type: string
+      required:
+      - rel_path
+    ReadSkillFileResponse:
+      type: object
+      properties:
+        rel_path:
+          type: string
+        url:
+          type: string
+        content:
+          type: string
+        mime_type:
+          type: string
+        file_type:
+          type: string
+        size:
+          type: integer
+          format: int64
+      required:
+      - rel_path
+    MetaResponse:
+      type: object
+      properties:
+        service:
+          type: string
+        version:
+          type: string
+        features:
+          $ref: '#/components/schemas/FeatureFlags'
+      required:
+      - service
+      - version
+      - features
+    APIErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+      required:
+      - code
+      - message
+    FeatureFlags:
+      type: object
+      properties:
+        catalog:
+          type: boolean
+        function:
+          type: boolean
+        impex:
+          type: boolean
+        mcp_sse_wizard:
+          type: boolean
+        skill_files:
+          type: boolean
+        hide_legacy_execution_factory_menu:
+          type: boolean
+      required:
+      - catalog
+      - function
+      - impex
+      - mcp_sse_wizard
+      - skill_files
+      - hide_legacy_execution_factory_menu
+    UpdateOrchestrationConfigRequest:
+      $ref: '#/components/schemas/EnableOrchestrationRequest'
