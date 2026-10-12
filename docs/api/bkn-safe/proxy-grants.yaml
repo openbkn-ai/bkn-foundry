@@ -4,7 +4,7 @@
 
 openapi: 3.0.3
 info:
-  title: BKN Safe Proxy Grant Source API
+  title: 身份与授权 · 代理授权 API
   version: 0.1.5
   description: |
     Allows trusted BKN workloads to maintain least-privilege grant sources for managed proxy

@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: Skill 读取与执行
+  title: 上下文加载 · Skill 读取与执行 API
   description: |
     读取并执行知识网络已挂载的 Skill。**召回不在这里**：找 Skill 用
     [tool.yaml](tool.yaml) 的 `search_capabilities`（`types: [skill]`），它把 Skill 与

@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.2
 info:
-  title: ActionType
+  title: BKN 知识网络 · 行动类 API
   version: 0.1.0
   description: |
     Action types use `action_type:{kn_id}/{action_type_id}`. Reads and lists

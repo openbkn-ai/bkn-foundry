@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: Resource
+  title: VEGA 引擎 · 资源 API
   description: |
     Vega Backend Resource（数据资源）相关 API。
 

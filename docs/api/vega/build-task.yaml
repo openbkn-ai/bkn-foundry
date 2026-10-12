@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: BuildTask
+  title: VEGA 引擎 · 构建任务 API
   description: |
     Vega Backend 构建任务（BuildTask）相关 API。
 

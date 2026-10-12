@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.2
 info:
-  title: ConceptGroup
+  title: BKN 知识网络 · 概念组 API
   version: 0.1.0
   description: |
     Concept groups use `concept_group:{kn_id}/{group_id}`. Reads and lists

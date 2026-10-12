@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 导入导出
+  title: 执行工厂 · 导入导出 API
   description: |
     把算子、工具箱、MCP 打成 `.adp` 包导出，或从包导入回来。用于环境间搬运与备份。
 

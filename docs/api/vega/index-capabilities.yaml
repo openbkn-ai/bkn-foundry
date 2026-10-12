@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: VEGA index capabilities
+  title: VEGA 引擎 · 索引能力 API
   version: 0.1.0
 servers:
 - url: /api/vega-backend/v1

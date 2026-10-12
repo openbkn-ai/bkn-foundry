@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 对象实例查询
+  title: 上下文加载 · 对象实例查询 API
   description: |
     按对象类查询实例数据。Context Loader（服务名 `agent-retrieval`）在这里做的是
     **面向 Agent 的收口**：接受结构化条件，转发给 ontology-query，再把结果按 Agent
