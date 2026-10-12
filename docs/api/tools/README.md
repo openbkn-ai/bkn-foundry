@@ -146,3 +146,16 @@ The tool must reach a real environment, while public runners cannot access the
 private network. A scheduled workflow requires a self-hosted runner or bastion
 plus repository secrets for the environment and credentials. Those prerequisites
 do not exist yet, so inspection remains manual.
+
+## Offline documentation regressions
+
+```bash
+python3 -m unittest discover -s docs/api/tools -p 'test_*.py' -v
+```
+
+`test_documented_contracts.py` checks Model Factory and capabilities-lab route
+coverage, retired producer-outbox and service-local audit routes, omitted object properties, sandbox request
+constraints and synchronized documentation copies, asynchronous executor
+acknowledgements. It needs PyYAML
+and does not contact services. These focused checks complement OpenAPI lint
+and live inspection; they do not prove every controller response field.

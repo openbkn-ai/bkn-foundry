@@ -1,0 +1,1026 @@
+openapi: 3.1.0
+info:
+  title: mf-model-manager prompt
+  version: 0.1.0
+  description: Public HTTP contract derived from the current route signatures and Pydantic request models.
+    Internal /api/private routes are excluded. Dynamic controller results remain an open JSON schema.
+paths:
+  /prompt-item-source:
+    get:
+      summary: Prompt Item Source
+      operationId: source_prompt_item_9_api_mf_model_manager_v1_prompt_item_source_get
+      parameters:
+      - required: false
+        schema:
+          title: Prompt Item Name
+          default: ''
+        name: prompt_item_name
+        in: query
+      - required: false
+        schema:
+          title: Prompt Name
+          default: ''
+        name: prompt_name
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-source:
+    get:
+      summary: Prompt Source
+      operationId: source_prompt_14_api_mf_model_manager_v1_prompt_source_get
+      parameters:
+      - required: true
+        schema:
+          title: Page
+        name: page
+        in: query
+      - required: true
+        schema:
+          title: Size
+        name: size
+        in: query
+      - required: false
+        schema:
+          title: Prompt Item Id
+          default: ''
+        name: prompt_item_id
+        in: query
+      - required: false
+        schema:
+          title: Prompt Item Type Id
+          default: ''
+        name: prompt_item_type_id
+        in: query
+      - required: false
+        schema:
+          title: Prompt Name
+          default: ''
+        name: prompt_name
+        in: query
+      - required: false
+        schema:
+          title: Order
+          default: desc
+        name: order
+        in: query
+      - required: false
+        schema:
+          title: Rule
+          default: update_time
+        name: rule
+        in: query
+      - required: false
+        schema:
+          title: Deploy
+          default: all
+        name: deploy
+        in: query
+      - required: false
+        schema:
+          title: Prompt Type
+          default: all
+        name: prompt_type
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-list:
+    get:
+      summary: Prompt List
+      operationId: prompt_list_27_api_mf_model_manager_v1_prompt_list_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-template-source:
+    get:
+      summary: Prompt Template Source
+      operationId: template_source_prompt_32_api_mf_model_manager_v1_prompt_template_source_get
+      parameters:
+      - required: false
+        schema:
+          title: Prompt Type
+          default: ''
+        name: prompt_type
+        in: query
+      - required: false
+        schema:
+          title: Prompt Name
+          default: ''
+        name: prompt_name
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt/{prompt_id}:
+    get:
+      summary: Prompt {Prompt_Id}
+      operationId: check_prompt_37_api_mf_model_manager_v1_prompt__prompt_id__get
+      parameters:
+      - required: true
+        schema:
+          title: Prompt Id
+        name: prompt_id
+        in: path
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-item-add:
+    post:
+      summary: Prompt Item Add
+      operationId: add_prompt_item_42_api_mf_model_manager_v1_prompt_item_add_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Params
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-item-edit:
+    post:
+      summary: Prompt Item Edit
+      operationId: edit_prompt_item_48_api_mf_model_manager_v1_prompt_item_edit_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-type-add:
+    post:
+      summary: Prompt Type Add
+      operationId: add_prompt_type_54_api_mf_model_manager_v1_prompt_type_add_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-type-edit:
+    post:
+      summary: Prompt Type Edit
+      operationId: edit_prompt_type_60_api_mf_model_manager_v1_prompt_type_edit_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-add:
+    post:
+      summary: Prompt Add
+      operationId: add_prompt_66_api_mf_model_manager_v1_prompt_add_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-name-edit:
+    post:
+      summary: Prompt Name Edit
+      operationId: name_edit_prompt_72_api_mf_model_manager_v1_prompt_name_edit_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-edit:
+    post:
+      summary: Prompt Edit
+      operationId: edit_prompt_78_api_mf_model_manager_v1_prompt_edit_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-template-edit:
+    post:
+      summary: Prompt Template Edit
+      operationId: edit_prompt_84_api_mf_model_manager_v1_prompt_template_edit_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Params
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt-api-doc:
+    get:
+      summary: Prompt Api Doc
+      operationId: api_doc_prompt_114_api_mf_model_manager_v1_prompt_api_doc_get
+      parameters:
+      - required: true
+        schema:
+          title: Service Id
+        name: service_id
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /delete-prompt:
+    post:
+      summary: Delete Prompt
+      operationId: delete_prompt_119_api_mf_model_manager_v1_delete_prompt_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Delete Id
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /get-id:
+    get:
+      summary: Get Id
+      operationId: get_id_125_api_mf_model_manager_v1_get_id_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt/move:
+    post:
+      summary: Prompt Move
+      operationId: move_prompt_131_api_mf_model_manager_v1_prompt_move_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Move Param
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+  /prompt/batch_add:
+    post:
+      summary: Prompt Batch_Add
+      operationId: batch_add_prompt_137_api_mf_model_manager_v1_prompt_batch_add_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              items: {}
+              type: array
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/prompt_router.py
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    FastApiError:
+      type: object
+      additionalProperties: true
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        detail:
+          type: string
+        solution:
+          type: string
+        link:
+          type: string
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+servers:
+- url: /api/mf-model-manager/v1
+security:
+- BearerAuth: []
