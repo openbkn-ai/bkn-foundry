@@ -1,16 +1,16 @@
 openapi: 3.1.0
 info:
   title: Sandbox Control Plane
-  description: 代码沙箱管理平台 API
   version: 2.1.0
-servers:
-  - url: http://sandbox-control-plane:8000/
+  description: Current control plane REST contract. Authentication is delegated to the deployment network
+    boundary; the REST application does not validate a Bearer token. Internal callback routes are service-to-service
+    only.
 paths:
   /api/v1/executions/sessions/{session_id}/execute-sync:
     post:
       tags:
       - executions
-      summary: Execute Code Sync
+      summary: Execute Code Sync 80
       description: 'Synchronous code execution endpoint
 
 
@@ -31,8 +31,10 @@ paths:
 
         - **timeout**: Execution timeout in seconds
 
-        - **event**: Event data'
-      operationId: execute_code_sync_api_v1_executions_sessions__session_id__execute_sync_post
+        - **event**: Event data
+
+        - **working_directory**: Optional execution directory relative to workspace root'
+      operationId: execute_code_sync_80_api_v1_executions_sessions__session_id__execute_sync_post
       parameters:
       - name: session_id
         in: path
@@ -81,6 +83,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+        '408':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
 components:
   schemas:
     ArtifactResponse:
@@ -114,7 +129,7 @@ components:
       - type
       - created_at
       title: ArtifactResponse
-      description: 文件制品响应
+      description: File artifact response
     ExecuteCodeRequest:
       properties:
         code:
@@ -122,7 +137,8 @@ components:
           maxLength: 102400
           minLength: 1
           title: Code
-          description: 要执行的代码（必须符合 AWS Lambda handler 格式）
+          description: The code to run. With language=python it has to match the AWS Lambda handler shape;
+            with language=shell it is the shell script body.
         language:
           type: string
           enum:
@@ -130,13 +146,13 @@ components:
           - javascript
           - shell
           title: Language
-          description: 编程语言
+          description: Programming language
         timeout:
           type: integer
           maximum: 3600.0
           minimum: 1.0
           title: Timeout
-          description: 执行超时（秒）
+          description: Execution timeout in seconds
           default: 30
         event:
           anyOf:
@@ -144,27 +160,49 @@ components:
             type: object
           - type: 'null'
           title: Event
-          description: 事件数据
+          description: Event payload
+        env_vars:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env Vars
+          description: Environment variables for this execution, overriding the values set when the session
+            was created. Sessions are pooled and reused, so anything that varies per execution, such as
+            the caller identity, has to be sent every time.
+        working_directory:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Working Directory
+          description: Optional working directory, relative to the workspace root. Without it the workspace
+            root is used.
       type: object
       required:
       - code
       - language
       title: ExecuteCodeRequest
-      description: 执行代码请求
+      description: Execute-code request
       examples:
-      - code: "def handler(event):\n    name = event.get(\"name\", \"World\")\n    return {\"message\": f\"Hello, {name}!\"\
-          }"
+      - code: "def handler(event):\n    name = event.get(\"name\", \"World\")\n    return {\"message\"\
+          : f\"Hello, {name}!\"}"
         event:
           name: World
         language: python
         timeout: 10
-      - code: "def handler(event):\n    name = event.get(\"name\", \"World\")\n    age = event.get(\"age\", 0)\n    return\
-          \ {\"message\": f\"Hello, {name}!\", \"age_doubled\": age * 2}"
+      - code: "def handler(event):\n    name = event.get(\"name\", \"World\")\n    age = event.get(\"\
+          age\", 0)\n    return {\"message\": f\"Hello, {name}!\", \"age_doubled\": age * 2}"
         event:
           age: 25
           name: Alice
         language: python
         timeout: 30
+      - code: pwd && ls -la
+        language: shell
+        timeout: 30
+      - code: bash run.sh && python tools/build.py
+        language: shell
+        timeout: 30
+        working_directory: skill/mini-wiki
     ExecutionResponse:
       properties:
         id:
@@ -261,7 +299,7 @@ components:
       - session_id
       - status
       title: ExecutionResponse
-      description: 执行响应
+      description: Execution response
     HTTPValidationError:
       properties:
         detail:
@@ -286,9 +324,16 @@ components:
         type:
           type: string
           title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
       type: object
       required:
       - loc
       - msg
       - type
       title: ValidationError
+servers:
+- url: http://sandbox-control-plane:8000
