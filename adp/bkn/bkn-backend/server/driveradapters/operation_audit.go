@@ -305,6 +305,11 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 	} else if len(requestNames) > 0 {
 		targetName = strings.Join(requestNames, "、")
 	}
+	if snapshot, ok := c.Get("operation_audit_target_ids"); ok {
+		if ids, ok := snapshot.([]string); ok && len(ids) > 0 {
+			targetID = strings.Join(ids, ",")
+		}
+	}
 	observedTargetID := targetID
 
 	if len(targetID) > 256 {
