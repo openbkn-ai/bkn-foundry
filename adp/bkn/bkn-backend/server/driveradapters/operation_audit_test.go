@@ -8,7 +8,9 @@ package driveradapters
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,6 +23,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
 	"bkn-backend/common/operationaudit"
+	"bkn-backend/interfaces"
+	bmock "bkn-backend/interfaces/mock"
+	"go.uber.org/mock/gomock"
 )
 
 func TestRegisteredOperationAuditRoutes(t *testing.T) {
@@ -525,6 +530,145 @@ func TestOperationAuditRejectsPureIDActorAndMissingTargetName(t *testing.T) {
 		engine.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("PUT", "/api/bkn-backend/v1/knowledge-networks/kn-a", nil))
 		if len(store.entries) != 0 {
 			t.Fatalf("invalid snapshots published: %#v", store.entries)
+		}
+	}
+}
+
+func TestOperationAuditMetricDeletionRealHandler(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enabled=%v", enabled), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			kns := bmock.NewMockKNService(ctrl)
+			metrics := bmock.NewMockMetricService(ctrl)
+			store := &recordingOperationAuditStore{}
+			handler := &restHandler{kns: kns, ms: metrics, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
+				return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
+			}}
+			if enabled {
+				handler.auditRecorder = store
+				metrics.EXPECT().CheckMetricExistByID(gomock.Any(), "kn-1", "main", "metric-1").Return("Revenue", true, nil)
+			}
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
+			metrics.EXPECT().DeleteMetricsByIDs(gomock.Any(), gomock.Any(), "kn-1", "main", []string{"metric-1"}).Return(nil)
+			engine := gin.New()
+			engine.Use(handler.OperationAudit())
+			engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id/metrics/:metric_ids", func(c *gin.Context) {
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				c.Set(operationAuditVisitorKey, v)
+				handler.DeleteMetricsByIDs(c, v)
+			})
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/metrics/metric-1", nil))
+			if response.Code != 204 {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if enabled {
+				if len(store.entries) != 1 || store.entries[0].TargetName != "Revenue" {
+					t.Fatalf("entries=%+v", store.entries)
+				}
+			} else if len(store.entries) != 0 {
+				t.Fatal("disabled audit recorded")
+			}
+		})
+	}
+}
+
+func TestOperationAuditCapabilityDetachRealHandler(t *testing.T) {
+	for _, scenario := range []string{"disabled", "success", "lookup_failure", "no_change"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			kns := bmock.NewMockKNService(ctrl)
+			bindings := bmock.NewMockCapabilityBindingService(ctrl)
+			store := &recordingOperationAuditStore{}
+			handler := &restHandler{kns: kns, cbs: bindings, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
+				return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
+			}}
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
+			if scenario != "disabled" {
+				handler.auditRecorder = store
+				lookup := bindings.EXPECT().ListCapabilities(gomock.Any(), interfaces.CapabilityBindingsQueryParams{
+					KNID: "kn-1", Branch: "main", WithDetail: true,
+					PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+				})
+				if scenario == "lookup_failure" {
+					lookup.Return(nil, fmt.Errorf("metadata unavailable"))
+				} else {
+					lookup.Return(&interfaces.CapabilityBindingsList{Entries: []*interfaces.CapabilityBinding{{ID: "binding-1", CapabilityID: "tool-1", Name: "Invoice lookup"}}}, nil)
+				}
+			}
+			rows := int64(1)
+			if scenario == "no_change" {
+				rows = 0
+			}
+			bindings.EXPECT().DetachCapabilities(gomock.Any(), gomock.Any(), "kn-1", "main", []string{"binding-1"}).DoAndReturn(func(_ context.Context, _ *sql.Tx, _, _ string, _ []string) (int64, error) { return rows, nil })
+			engine := gin.New()
+			engine.Use(handler.OperationAudit())
+			engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id/capabilities/:binding_ids", func(c *gin.Context) {
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				c.Set(operationAuditVisitorKey, v)
+				handler.DetachCapabilities(c, v)
+			})
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/capabilities/binding-1", nil))
+			if response.Code != 204 {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if scenario == "success" {
+				if len(store.entries) != 1 || store.entries[0].TargetName != "Sales / Invoice lookup" {
+					t.Fatalf("entries=%+v", store.entries)
+				}
+			} else if len(store.entries) != 0 {
+				t.Fatalf("entries=%+v", store.entries)
+			}
+		})
+	}
+}
+
+func TestOperationAuditGroupMembershipRealHandler(t *testing.T) {
+	for _, action := range []string{"add", "remove"} {
+		for _, enabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/enabled=%v", action, enabled), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				kns := bmock.NewMockKNService(ctrl)
+				groups := bmock.NewMockConceptGroupService(ctrl)
+				objects := bmock.NewMockObjectTypeService(ctrl)
+				store := &recordingOperationAuditStore{}
+				handler := &restHandler{kns: kns, cgs: groups, ots: objects, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
+					return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
+				}}
+				kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
+				groups.EXPECT().CheckConceptGroupExistByID(gomock.Any(), "kn-1", "main", "group-1").Return("Transactions", true, nil)
+				if enabled {
+					handler.auditRecorder = store
+					objects.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn-1", "main", "object-1").Return("Orders", true, nil)
+				}
+				engine := gin.New()
+				engine.Use(handler.OperationAudit())
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				var request *http.Request
+				if action == "remove" {
+					groups.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any()).Return([]interfaces.ConceptGroupRelation{{ConceptID: "object-1"}}, nil)
+					groups.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), "kn-1", "main", "group-1", []string{"object-1"}).Return(nil)
+					engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id/concept-groups/:cg_id/object-types/:ot_ids", func(c *gin.Context) { c.Set(operationAuditVisitorKey, v); handler.DeleteObjectTypesFromGroup(c, v) })
+					request = httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/concept-groups/group-1/object-types/object-1", nil)
+				} else {
+					groups.EXPECT().AddObjectTypesToConceptGroup(gomock.Any(), gomock.Any(), "kn-1", "main", "group-1", []interfaces.ID{{ID: "object-1"}}, interfaces.ImportMode_Normal, true).Return([]string{"membership-1"}, nil)
+					engine.POST("/api/bkn-backend/v1/knowledge-networks/:kn_id/concept-groups/:cg_id/object-types", func(c *gin.Context) { c.Set(operationAuditVisitorKey, v); handler.AddObjectTypesToConceptGroup(c, v) })
+					request = httptest.NewRequest("POST", "/api/bkn-backend/v1/knowledge-networks/kn-1/concept-groups/group-1/object-types", strings.NewReader(`{"entries":[{"id":"object-1"}]}`))
+				}
+				response := httptest.NewRecorder()
+				engine.ServeHTTP(response, request)
+				if response.Code != 204 && response.Code != 201 {
+					t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+				}
+				if enabled {
+					if len(store.entries) != 1 || store.entries[0].TargetName != "Transactions / Orders" {
+						t.Fatalf("entries=%+v", store.entries)
+					}
+				} else if len(store.entries) != 0 {
+					t.Fatal("disabled audit recorded")
+				}
+			})
 		}
 	}
 }

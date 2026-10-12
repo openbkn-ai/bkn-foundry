@@ -7,6 +7,7 @@ package driveradapters
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -386,5 +387,73 @@ func TestOperationAuditCatalogDeletionUsesRealHandlerSnapshot(t *testing.T) {
 			require.Equal(t, "catalog-a", recorder.entries[0].TargetID)
 		}
 		controller.Finish()
+	}
+}
+
+func TestOperationAuditBuildDeletionRealHandler(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	tasks := vmock.NewMockBuildTaskService(ctrl)
+	store := &capturedOperationAuditRecorder{}
+	handler := newOperationAuditTestHandler(store)
+	handler.bts = tasks
+	gomock.InOrder(
+		tasks.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{ID: "task-1", CatalogName: "Sales", ResourceName: "Orders"}, nil),
+		tasks.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1"}, false).Return(nil),
+	)
+	v := hydra.Visitor{ID: "user-1", Type: "user"}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.DELETE("/api/vega-backend/v1/build-tasks/:ids", func(c *gin.Context) { c.Set(operationAuditVisitorKey, v); handler.deleteBuildTasks(c, v) })
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/vega-backend/v1/build-tasks/task-1", nil))
+	require.Equal(t, 204, response.Code)
+	require.Len(t, store.entries, 1)
+	require.Equal(t, "Sales / Orders", store.entries[0].TargetName)
+}
+
+func TestOperationAuditHealthScheduleRealHandler(t *testing.T) {
+	for _, lookupFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("lookupFails=%v", lookupFails), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			schedules := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+			catalogs := vmock.NewMockCatalogService(ctrl)
+			store := &capturedOperationAuditRecorder{}
+			handler := newOperationAuditTestHandler(store)
+			handler.hcss = schedules
+			handler.cs = catalogs
+			schedules.EXPECT().Update(gomock.Any(), "catalog-1", gomock.Any()).Return(&interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1"}, nil)
+			if lookupFails {
+				catalogs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(nil, fmt.Errorf("unavailable"))
+			} else {
+				catalogs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{Name: "Sales"}, nil)
+			}
+			v := hydra.Visitor{ID: "user-1", Type: "user"}
+			engine := gin.New()
+			engine.Use(handler.OperationAudit())
+			engine.PUT("/api/vega-backend/v1/catalogs/:id/health-check-schedule", func(c *gin.Context) {
+				c.Set(operationAuditVisitorKey, v)
+				handler.updateCatalogHealthCheckSchedule(c, v)
+			})
+			response := httptest.NewRecorder()
+			req := httptest.NewRequest("PUT", "/api/vega-backend/v1/catalogs/catalog-1/health-check-schedule", strings.NewReader(`{"mode":"enabled","expected_update_time":1}`))
+			req.Header.Set("Content-Type", "application/json")
+			engine.ServeHTTP(response, req)
+			require.Equal(t, 200, response.Code)
+			if lookupFails {
+				require.Empty(t, store.entries)
+			} else {
+				require.Len(t, store.entries, 1)
+				require.Equal(t, "Sales", store.entries[0].TargetName)
+			}
+		})
+	}
+}
+
+func TestOperationAuditTaskScopeIsOneItem(t *testing.T) {
+	if name := operationAuditNames([]string{operationAuditTaskName("Sales", "Orders")}); name != "Sales / Orders" {
+		t.Fatal(name)
+	}
+	if name := operationAuditNames([]string{operationAuditTaskName("Sales", "Orders"), operationAuditTaskName("Sales", "Invoices")}); !strings.Contains(name, "Sales / Orders") || !strings.Contains(name, "Sales / Invoices") || !strings.Contains(name, "共2个") {
+		t.Fatal(name)
 	}
 }

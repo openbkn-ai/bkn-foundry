@@ -900,7 +900,7 @@ func (r *restHandler) AddObjectTypesToConceptGroup(c *gin.Context, visitor hydra
 	span.SetAttributes(attr.Key("cg_id").String(cgID))
 
 	// Load the existing resource by ID..
-	_, exist, err = r.cgs.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
+	cgName, exist, err := r.cgs.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -959,6 +959,13 @@ func (r *restHandler) AddObjectTypesToConceptGroup(c *gin.Context, visitor hydra
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+
+	if r.auditRecorder != nil && len(otCGIDs) > 0 {
+		ids := interfaces.GetUniqueIDs(requestData.Entries)
+		if names := r.operationAuditGroupMembers(ctx, knID, branch, cgName, ids); len(names) > 0 {
+			c.Set("operation_audit_target_names", names)
+		}
 	}
 
 	// Return the created resources.
@@ -1094,6 +1101,11 @@ func (r *restHandler) DeleteObjectTypesFromGroup(c *gin.Context, visitor hydra.V
 		return
 	}
 
+	var auditNames []string
+	if r.auditRecorder != nil {
+		auditNames = r.operationAuditGroupMembers(ctx, knID, branch, cgName, otIDArr)
+	}
+
 	// Delete object types in batch.
 	err = r.cgs.DeleteObjectTypesFromGroup(ctx, nil, knID, branch, cgID, otIDArr)
 	if err != nil {
@@ -1104,9 +1116,27 @@ func (r *restHandler) DeleteObjectTypesFromGroup(c *gin.Context, visitor hydra.V
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	c.Set("operation_audit_target_names", []string{cgName})
+	if len(auditNames) > 0 {
+		c.Set("operation_audit_target_names", auditNames)
+	}
 
 	logger.Debug("Handler DeleteObjectTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// Relationship snapshots retain both endpoints without substituting technical IDs.
+func (r *restHandler) operationAuditGroupMembers(ctx context.Context, knID, branch, group string, ids []string) []string {
+	if group == "" {
+		return nil
+	}
+	names := make([]string, 0, len(ids))
+	for _, id := range ids {
+		name, exists, err := r.ots.CheckObjectTypeExistByID(ctx, knID, branch, id)
+		if err != nil || !exists || name == "" || name == id {
+			return nil
+		}
+		names = append(names, group+" / "+name)
+	}
+	return names
 }

@@ -25,6 +25,7 @@ import (
 
 	"bkn-backend/common/operationaudit"
 	"bkn-backend/interfaces"
+	"bkn-backend/locale"
 )
 
 const (
@@ -525,22 +526,4 @@ func firstNonEmpty(values ...string) string {
 }
 
 // operationAuditNames keeps a readable bounded batch snapshot, never an ID.
-func operationAuditNames(names []string) string {
-	if len(names) == 1 {
-		return names[0]
-	}
-	shown := make([]string, 0, 5)
-	for _, name := range names {
-		if len(shown) == 5 || len(strings.Join(shown, "、"))+len(name) > 400 {
-			break
-		}
-		shown = append(shown, name)
-	}
-	if len(shown) == 0 {
-		return ""
-	}
-	if len(shown) < len(names) {
-		return fmt.Sprintf("%s等，共%d个（名称摘要已截断）", strings.Join(shown, "、"), len(names))
-	}
-	return fmt.Sprintf("%s，共%d个", strings.Join(shown, "、"), len(names))
-}
+func operationAuditNames(names []string) string { return locale.AuditNames(names) }

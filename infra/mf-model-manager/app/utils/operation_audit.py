@@ -1,4 +1,5 @@
 """Bounded model-management audit facts; inference and model tests stay Trace-only."""
+from app.commons.i18n.audit import _ACTION_NAMES, _TARGET_NAMES, SEPARATOR, BATCH, TRUNCATED
 import json
 import hashlib
 import logging
@@ -122,8 +123,6 @@ def operation_audit_request_id(headers):
         return request_id, False
     return "req_" + secrets.token_hex(16), True
 
-_ACTION_NAMES = {"create": "新建", "update": "修改", "delete": "删除", "set_default": "设置默认"}
-_TARGET_NAMES = {"llm_model": "大模型", "small_model": "小模型", "model_quota": "模型配额", "user_model_quota": "用户模型配额"}
 
 
 def operation_audit_request(request):
@@ -146,14 +145,14 @@ def set_operation_audit_target(request, ids, names):
         else:
             shown = []
             for name in names:
-                if len(shown) == 5 or len("、".join(shown)) + len(name) > 400:
+                if len(shown) == 5 or len(SEPARATOR.join(shown)) + len(name) > 400:
                     break
                 shown.append(name)
             if not shown:
                 return
-            target_name = "、".join(shown) + f"，共{len(ids)}项"
+            target_name = SEPARATOR.join(shown) + BATCH.format(count=len(ids))
             if len(shown) < len(names):
-                target_name += "（名称摘要已截断）"
+                target_name += TRUNCATED
         request.state.operation_audit_target = (target_id, target_name)
     except Exception:
         logger.error("operation_audit_snapshot_failed")

@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/operationaudit"
@@ -283,22 +284,15 @@ func firstNonEmpty(values ...string) string {
 }
 
 // operationAuditNames keeps a readable bounded batch snapshot, never an ID.
-func operationAuditNames(names []string) string {
-	if len(names) == 1 {
-		return names[0]
+func operationAuditNames(names []string) string { return locale.AuditNames(names) }
+
+// A catalog and resource identify one task scope, not two batch items.
+func operationAuditTaskName(catalog, resource string) string {
+	if catalog == "" {
+		return resource
 	}
-	shown := make([]string, 0, 5)
-	for _, name := range names {
-		if len(shown) == 5 || len(strings.Join(shown, "、"))+len(name) > 400 {
-			break
-		}
-		shown = append(shown, name)
+	if resource == "" {
+		return catalog
 	}
-	if len(shown) == 0 {
-		return ""
-	}
-	if len(shown) < len(names) {
-		return fmt.Sprintf("%s等，共%d个（名称摘要已截断）", strings.Join(shown, "、"), len(names))
-	}
-	return fmt.Sprintf("%s，共%d个", strings.Join(shown, "、"), len(names))
+	return catalog + " / " + resource
 }

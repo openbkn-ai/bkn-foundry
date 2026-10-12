@@ -77,15 +77,8 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	// The task id is only an audit join key; keep the business snapshot readable.
 	if r.auditRecorder != nil {
 		if task, err := r.bts.GetByID(ctx, taskID); err == nil && task != nil {
-			names := make([]string, 0, 2)
-			if task.CatalogName != "" {
-				names = append(names, task.CatalogName)
-			}
-			if task.ResourceName != "" {
-				names = append(names, task.ResourceName)
-			}
-			if len(names) > 0 {
-				c.Set("operation_audit_target_names", names)
+			if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+				c.Set("operation_audit_target_names", []string{name})
 			}
 		}
 	}
@@ -273,10 +266,8 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 		auditNames = make([]string, 0, len(ids))
 		for _, id := range ids {
 			if task, getErr := r.bts.GetByID(ctx, id); getErr == nil && task != nil {
-				if task.CatalogName != "" {
-					auditNames = append(auditNames, task.CatalogName)
-				} else if task.ResourceName != "" {
-					auditNames = append(auditNames, task.ResourceName)
+				if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+					auditNames = append(auditNames, name)
 				}
 			}
 		}

@@ -197,6 +197,8 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
         source=(Path(__file__).parents[1]/"controller"/filename).read_text()
         module=ast.parse("from __future__ import annotations\n")
         module.body += [node for node in ast.parse(source).body if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef))]
+        from app.commons.i18n.audit import MODEL_QUOTA, USER_QUOTA
+        namespace.update(MODEL_QUOTA=MODEL_QUOTA, USER_QUOTA=USER_QUOTA)
         exec(compile(module,filename,"exec"),namespace)
         return namespace
 

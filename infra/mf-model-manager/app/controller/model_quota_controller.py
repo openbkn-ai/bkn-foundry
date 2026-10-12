@@ -1,3 +1,4 @@
+from app.commons.i18n.audit import MODEL_QUOTA, USER_QUOTA
 from app.utils.operation_audit import set_operation_audit_target
 import datetime
 import time
@@ -403,7 +404,7 @@ async def add_user_model_quota_config(para: logics.AddUserModelQuotaList, user_i
                     rows = model_quota_dao.get_list_from_user_quota_config_by_conf_id(para.list[0].model_quota_id)
                     users = await get_username_by_ids(user_ids)
                     targets = [row for row in rows if row["f_user_id"] in user_ids]
-                    names = [f"用户“{users.get(row['f_user_id'], '')}”在模型“{conf[0]['f_model_name']}”的配额" for row in targets]
+                    names = [USER_QUOTA.format(user=users.get(row['f_user_id'], ''), model=conf[0]['f_model_name']) for row in targets]
                     if len(targets) == len(user_ids) and all(users.get(row["f_user_id"]) not in (None, "", "-", row["f_user_id"]) for row in targets):
                         set_operation_audit_target(audit_request, [row["f_id"] for row in targets], names)
                 except Exception:
@@ -583,7 +584,7 @@ async def delete_user_model_quota_config(conf_id_list, user_id: str, audit_reque
             model_quota_dao.delete_user_model_quota_config_by_id_list(conf_id_list)
             if len(audit_rows) == len(conf_id_list) and all(audit_users.get(row["f_user_id"]) not in (None, "", "-", row["f_user_id"]) for row in audit_rows):
                 set_operation_audit_target(audit_request, conf_id_list,
-                    [f"用户“{audit_users[row['f_user_id']]}”在模型“{row['f_model_name']}”的配额" for row in audit_rows])
+                    [USER_QUOTA.format(user=audit_users[row['f_user_id']], model=row['f_model_name']) for row in audit_rows])
             global redis_util
             if redis_util is None:
                 redis_util = await get_redis_util()
@@ -784,6 +785,6 @@ def _audit_model_quota(request, conf_id, model_id):
         try:
             name = llm_model_dao.get_model_name_by_id(model_id)
             if name and name not in ("-", str(model_id)):
-                set_operation_audit_target(request, [conf_id], [f"模型“{name}”的配额"])
+                set_operation_audit_target(request, [conf_id], [MODEL_QUOTA.format(name=name)])
         except Exception:
             StandLogger.error("operation_audit_snapshot_failed target_type=model_quota")

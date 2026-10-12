@@ -94,20 +94,14 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 		return
 	}
 	c.Set(operationAuditTargetIDKey, task.ID)
-	names := make([]string, 0, 2)
-	if task.CatalogName != "" {
-		names = append(names, task.CatalogName)
-	}
-	if task.ResourceName != "" {
-		names = append(names, task.ResourceName)
-	}
-	if len(names) == 0 && r.auditRecorder != nil && task.ResourceID != "" {
-		if resource, getErr := r.rs.GetByID(ctx, task.ResourceID); getErr == nil && resource != nil && resource.Name != "" {
-			names = append(names, resource.Name)
+	name := operationAuditTaskName(task.CatalogName, task.ResourceName)
+	if name == "" && r.auditRecorder != nil && task.ResourceID != "" {
+		if resource, getErr := r.rs.GetByID(ctx, task.ResourceID); getErr == nil && resource != nil {
+			name = resource.Name
 		}
 	}
-	if len(names) > 0 {
-		c.Set("operation_audit_target_names", names)
+	if name != "" {
+		c.Set("operation_audit_target_names", []string{name})
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
@@ -250,10 +244,8 @@ func (r *restHandler) deleteSemanticUnderstandingTasks(c *gin.Context, visitor h
 		auditNames = make([]string, 0, len(ids))
 		for _, id := range ids {
 			if task, getErr := r.suts.GetByID(ctx, id); getErr == nil && task != nil {
-				if task.CatalogName != "" {
-					auditNames = append(auditNames, task.CatalogName)
-				} else if task.ResourceName != "" {
-					auditNames = append(auditNames, task.ResourceName)
+				if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+					auditNames = append(auditNames, name)
 				}
 			}
 		}

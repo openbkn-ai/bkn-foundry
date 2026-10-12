@@ -207,10 +207,8 @@ func (r *restHandler) deleteDiscoverTasks(c *gin.Context, visitor hydra.Visitor)
 		auditNames = make([]string, 0, len(ids))
 		for _, id := range ids {
 			if task, getErr := r.dts.GetByID(ctx, id); getErr == nil && task != nil {
-				if task.CatalogName != "" {
-					auditNames = append(auditNames, task.CatalogName)
-				} else if task.ResourceName != "" {
-					auditNames = append(auditNames, task.ResourceName)
+				if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+					auditNames = append(auditNames, name)
 				}
 			}
 		}
