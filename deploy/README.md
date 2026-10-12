@@ -6,6 +6,8 @@ One-click deployment of **BKN Foundry** onto a single-node Kubernetes cluster.
 
 This `deploy` directory provides scripts to install BKN Foundry along with its dependencies including Kubernetes, infrastructure services, and data services.
 
+The complete installer also enables Safe Audit/access publishing with the configured MQ broker and existing Kafka credential Secret. `auditPublisher.environment` uses current config/CLI, then the saved Safe environment, then the saved AO environment (default for a new deployment: `development`); Safe uses the flat `credentialsSecretName`, `usernameSecretKey` and `passwordSecretKey` fields. Missing/disabled publisher configuration is repaired even when the Safe Chart version is unchanged; a matching configuration skips the rollout. Verify new user-management and login/logout events through Kafka, Ledger and the log API/Studio; Pod Ready or historical records alone do not establish coverage.
+
 **Platforms:** **Linux** is the recommended and fully documented install target (`preflight.sh`, k3s or kubeadm, data services). **macOS** is **optional** for **local development only** (Docker + kind + `dev/mac.sh`); see **[Mac install (dev)](dev/README.md)** ([中文](dev/README.zh.md)) — not a substitute for Linux production installs.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE.txt)

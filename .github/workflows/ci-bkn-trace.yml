@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'bkn-trace/**'
+      - 'bkn-safe/charts/bkn-safe/**'
+      - 'deploy/scripts/lib/common.sh'
       - 'comm-go/**'
       - 'deploy/scripts/services/config.sh'
       - 'deploy/scripts/services/config_observability_test.sh'
@@ -11,6 +13,7 @@ on:
       - 'deploy/scripts/lib/audit_consumer.py'
       - 'deploy/scripts/lib/test_audit_consumer.py'
       - 'deploy/scripts/services/openbkn_audit_consumer_test.sh'
+      - 'deploy/scripts/services/openbkn_safe_audit_test.sh'
       - 'deploy/scripts/services/openbkn.sh'
       - 'deploy/scripts/services/openbkn_agent_evidence_test.sh'
       - 'infra/bkn-agent/charts/**'
@@ -111,6 +114,7 @@ jobs:
       - name: System Audit deployment and acceptance contract
         working-directory: .
         run: |
+          bash deploy/scripts/services/openbkn_safe_audit_test.sh
           bash deploy/scripts/services/system_audit_profile_test.sh
           bash deploy/scripts/services/openbkn_audit_consumer_test.sh
           python3 -m unittest discover -s deploy/scripts/lib -p 'test_audit_consumer.py'
