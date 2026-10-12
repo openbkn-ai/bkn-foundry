@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,8 +20,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"bkn-backend/common/operationaudit"
+	"bkn-backend/interfaces"
+	bmock "bkn-backend/interfaces/mock"
+	"go.uber.org/mock/gomock"
 )
 
 func TestRegisteredOperationAuditRoutes(t *testing.T) {
@@ -80,11 +85,18 @@ func TestOperationAuditIdentityUsesVerifiedVisitor(t *testing.T) {
 func TestOperationAuditRepeatedRequestIDProducesDistinctAttempts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-a", Type: hydra.VisitorType("user")})
+		c.Set("operation_audit_target_names", []string{"供应链"})
 		c.Status(http.StatusNoContent)
 	})
 	for range 2 {
@@ -124,7 +136,7 @@ func TestOperationAuditOversizedNetworkPathStillProducesFailureFact(t *testing.T
 		t.Fatalf("oversized network scope must be omitted while retaining the bounded target: %#v", facts)
 	}
 	entry := operationaudit.Entry{EventID: "evt-long-kn", EventTime: time.Now().UTC(),
-		ActorID: "user-a", RequestID: "req-long-kn", Method: http.MethodDelete,
+		ActorID: "user-a", ActorName: "Alice", TargetName: "供应链", RequestID: "req-long-kn", Method: http.MethodDelete,
 		HTTPStatus: http.StatusNotFound, Action: "delete", TargetType: "knowledge_network",
 		TargetID: facts.targetID, KnowledgeNetworkID: facts.knowledgeNetworkID,
 		Outcome: facts.outcome, ChangeSummary: facts.changeSummary,
@@ -149,7 +161,13 @@ func TestOperationAuditRequestIDFailureDoesNotChangeBusinessResponse(t *testing.
 	defer uuid.SetRand(nil)
 
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/bkn-backend/v1/knowledge-networks", func(c *gin.Context) {
@@ -220,10 +238,16 @@ func TestOperationAuditFactsUseImportedKnowledgeNetworkID(t *testing.T) {
 	}
 }
 
-func TestOperationAuditMiddlewareRecordsBoundedFailureAndReplacesInvalidRequestID(t *testing.T) {
+func TestOperationAuditMiddlewareSkipsUncommittedConflict(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
@@ -236,26 +260,21 @@ func TestOperationAuditMiddlewareRecordsBoundedFailureAndReplacesInvalidRequestI
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, req)
 
-	if len(store.entries) != 1 {
-		t.Fatalf("audit entries = %d", len(store.entries))
-	}
-	entry := store.entries[0]
-	if entry.Outcome != "failure" || entry.HTTPStatus != http.StatusConflict || entry.FailureCode != "name_conflict" || entry.FailureMessage != "名称已存在" || len(entry.RequestID) > 128 || entry.RequestID == string(make([]byte, 129)) {
-		t.Fatalf("failure entry = %#v", entry)
-	}
-	encoded, _ := json.Marshal(entry.ChangeSummary)
-	if bytes.Contains(encoded, []byte("secret")) || bytes.Contains(encoded, []byte("password")) {
-		t.Fatalf("sensitive field leaked: %s", encoded)
-	}
-	if _, err := time.Parse(time.RFC3339Nano, entry.EventTime.Format(time.RFC3339Nano)); err != nil {
-		t.Fatalf("event time invalid: %v", err)
+	if len(store.entries) != 0 {
+		t.Fatalf("uncommitted request produced audit: %#v", store.entries)
 	}
 }
 
 func TestOperationAuditFailedCreateDoesNotInventKnowledgeNetworkScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/bkn-backend/v1/knowledge-networks", func(c *gin.Context) {
@@ -265,19 +284,21 @@ func TestOperationAuditFailedCreateDoesNotInventKnowledgeNetworkScope(t *testing
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 
-	if len(store.entries) != 1 {
-		t.Fatalf("audit entries = %d, want 1", len(store.entries))
-	}
-	entry := store.entries[0]
-	if entry.TargetID == "" || entry.KnowledgeNetworkID != "" {
-		t.Fatalf("failed create invented network scope: target=%q network=%q", entry.TargetID, entry.KnowledgeNetworkID)
+	if len(store.entries) != 0 {
+		t.Fatalf("uncommitted request produced audit: %#v", store.entries)
 	}
 }
 
-func TestOperationAuditMiddlewareRecordsDeniedAttempt(t *testing.T) {
+func TestOperationAuditMiddlewareSkipsDeniedAttempt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
@@ -288,15 +309,21 @@ func TestOperationAuditMiddlewareRecordsDeniedAttempt(t *testing.T) {
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 
-	if len(store.entries) != 1 || store.entries[0].Outcome != "denied" || store.entries[0].HTTPStatus != http.StatusForbidden || store.entries[0].FailureCode != "permission_denied" {
-		t.Fatalf("denied entry = %#v", store.entries)
+	if len(store.entries) != 0 {
+		t.Fatalf("uncommitted request produced audit: %#v", store.entries)
 	}
 }
 
 func TestOperationAuditMiddlewareDoesNotTrustUnverifiedIdentityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
@@ -307,22 +334,25 @@ func TestOperationAuditMiddlewareDoesNotTrustUnverifiedIdentityHeaders(t *testin
 	request.Header.Set("x-account-type", "admin")
 	engine.ServeHTTP(httptest.NewRecorder(), request)
 
-	if len(store.entries) != 1 {
-		t.Fatalf("audit entries = %d", len(store.entries))
-	}
-	entry := store.entries[0]
-	if entry.ActorID != "unauthenticated" || entry.ActorName != "未认证调用者" || entry.ActorType != "unknown" {
-		t.Fatalf("unverified identity was trusted: %#v", entry)
+	if len(store.entries) != 0 {
+		t.Fatalf("uncommitted request produced audit: %#v", store.entries)
 	}
 }
 
 func TestOperationAuditMiddlewareUsesInternalCallerIdentityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/bkn-backend/in/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
+		c.Set("operation_audit_target_names", []string{"供应链"})
 		c.Status(http.StatusNoContent)
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/kn-a", nil)
@@ -334,7 +364,7 @@ func TestOperationAuditMiddlewareUsesInternalCallerIdentityHeaders(t *testing.T)
 		t.Fatalf("audit entries = %d", len(store.entries))
 	}
 	entry := store.entries[0]
-	if entry.ActorID != "internal-user" || entry.ActorName != "internal-user" || entry.ActorType != "user" {
+	if entry.ActorID != "internal-user" || entry.ActorName != "Alice" || entry.ActorType != "user" {
 		t.Fatalf("internal caller identity was lost: %#v", entry)
 	}
 }
@@ -352,6 +382,7 @@ func TestOperationAuditMiddlewarePersistsFactWithoutLegacyScopeHeader(t *testing
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-a", Type: hydra.VisitorType("user")})
+		c.Set("operation_audit_target_names", []string{"供应链"})
 		c.Status(http.StatusNoContent)
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
@@ -365,7 +396,13 @@ func TestOperationAuditMiddlewarePersistsFactWithoutLegacyScopeHeader(t *testing
 func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
@@ -398,7 +435,13 @@ func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
 func TestOperationAuditDoesNotRewriteNonJSONBusinessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
@@ -438,7 +481,13 @@ func TestBoundTextPreservesUTF8AtByteLimit(t *testing.T) {
 func TestOperationAuditMiddlewareSkipsReadsAndMethodOverrideSearch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+		name := ""
+		if visitor.ID != "" {
+			name = "Alice"
+		}
+		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+	}}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.GET("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) { c.Status(http.StatusOK) })
@@ -450,5 +499,231 @@ func TestOperationAuditMiddlewareSkipsReadsAndMethodOverrideSearch(t *testing.T)
 	engine.ServeHTTP(httptest.NewRecorder(), search)
 	if len(store.entries) != 0 {
 		t.Fatalf("read operations produced audit entries: %#v", store.entries)
+	}
+}
+
+func TestOperationAuditCreatedArrayUsesActualIDsAndReadableBatch(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/", nil)
+	facts := operationAuditFacts(c, operationAuditRule{Action: "create", TargetType: "object_type"}, []byte(`{"entries":[{"name":"客户"},{"name":"订单"}]}`), []byte(`[{"id":"actual-a"},{"id":"actual-b"}]`), "req-a")
+	if facts.targetID != "actual-a,actual-b" || facts.targetName != "客户、订单，共2个" {
+		t.Fatalf("facts=%#v", facts)
+	}
+}
+
+func TestOperationAuditNamesKeepsBoundedReadableSummary(t *testing.T) {
+	name := operationAuditNames([]string{"采购", "库存", "销售", "财务", "生产", "运输"})
+	if !strings.Contains(name, "采购") || !strings.Contains(name, "共6个") || !strings.Contains(name, "已截断") {
+		t.Fatal(name)
+	}
+}
+
+func TestOperationAuditRejectsPureIDActorAndMissingTargetName(t *testing.T) {
+	for _, actorName := range []string{"", "user-a", "Alice"} {
+		store := &recordingOperationAuditStore{}
+		handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(context.Context, string, hydra.Visitor) operationAuditActor {
+			return operationAuditActor{ActorID: "user-a", ActorName: actorName}
+		}}
+		engine := gin.New()
+		engine.Use(handler.OperationAudit())
+		engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) { c.Status(204) })
+		engine.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("PUT", "/api/bkn-backend/v1/knowledge-networks/kn-a", nil))
+		if len(store.entries) != 0 {
+			t.Fatalf("invalid snapshots published: %#v", store.entries)
+		}
+	}
+}
+
+func TestOperationAuditMetricDeletionRealHandler(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enabled=%v", enabled), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			kns := bmock.NewMockKNService(ctrl)
+			metrics := bmock.NewMockMetricService(ctrl)
+			store := &recordingOperationAuditStore{}
+			handler := &restHandler{kns: kns, ms: metrics, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
+				return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
+			}}
+			if enabled {
+				handler.auditRecorder = store
+				metrics.EXPECT().CheckMetricExistByID(gomock.Any(), "kn-1", "main", "metric-1").Return("Revenue", true, nil)
+			}
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
+			metrics.EXPECT().DeleteMetricsByIDs(gomock.Any(), gomock.Any(), "kn-1", "main", []string{"metric-1"}).Return(nil)
+			engine := gin.New()
+			engine.Use(handler.OperationAudit())
+			engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id/metrics/:metric_ids", func(c *gin.Context) {
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				c.Set(operationAuditVisitorKey, v)
+				handler.DeleteMetricsByIDs(c, v)
+			})
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/metrics/metric-1", nil))
+			if response.Code != 204 {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if enabled {
+				if len(store.entries) != 1 || store.entries[0].TargetName != "Revenue" {
+					t.Fatalf("entries=%+v", store.entries)
+				}
+			} else if len(store.entries) != 0 {
+				t.Fatal("disabled audit recorded")
+			}
+		})
+	}
+}
+
+func TestOperationAuditCapabilityDetachRealHandler(t *testing.T) {
+	function := &interfaces.CapabilityBinding{ID: "binding-function", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, CapabilityID: "tool-1", Name: "Invoice lookup"}
+	skill := &interfaces.CapabilityBinding{ID: "binding-skill", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-1", Name: "Invoice review"}
+	mcp := &interfaces.CapabilityBinding{ID: "binding-mcp", CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, OwnerID: "mcp-1", CapabilityID: "search", Name: "search"}
+	tests := []struct {
+		name                                     string
+		entries                                  []*interfaces.CapabilityBinding
+		disabled, lookupFailure, mutationFailure bool
+		rows                                     int64
+		wantName                                 string
+	}{
+		{name: "disabled", entries: []*interfaces.CapabilityBinding{function}, disabled: true, rows: 1},
+		{name: "function", entries: []*interfaces.CapabilityBinding{function}, rows: 1, wantName: "Sales / Invoice lookup"},
+		{name: "skill", entries: []*interfaces.CapabilityBinding{skill}, rows: 1, wantName: "Sales / Invoice review"},
+		{name: "mcp_tool", entries: []*interfaces.CapabilityBinding{mcp}, rows: 1, wantName: "Sales / search"},
+		{name: "mixed_batch", entries: []*interfaces.CapabilityBinding{function, skill, mcp}, rows: 3, wantName: "Sales / Invoice lookup、Sales / Invoice review、Sales / search，共3个"},
+		{name: "missing_mcp_metadata", entries: []*interfaces.CapabilityBinding{{ID: "binding-mcp", CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL, CapabilityID: "search", Status: interfaces.CAPABILITY_STATUS_MISSING}}, rows: 1, wantName: "Sales / search"},
+		{name: "missing_function_name", entries: []*interfaces.CapabilityBinding{{ID: "binding-function", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, CapabilityID: "tool-1", Status: interfaces.CAPABILITY_STATUS_MISSING}}, rows: 1},
+		{name: "technical_id_is_not_function_name", entries: []*interfaces.CapabilityBinding{{ID: "binding-function", CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, CapabilityID: "tool-1", Name: "tool-1"}}, rows: 1},
+		{name: "lookup_failure", entries: []*interfaces.CapabilityBinding{function}, lookupFailure: true, rows: 1},
+		{name: "mutation_denied", entries: []*interfaces.CapabilityBinding{mcp}, mutationFailure: true},
+		{name: "missing_mcp_tool_name", entries: []*interfaces.CapabilityBinding{{ID: "binding-mcp", CapabilityType: interfaces.CAPABILITY_TYPE_MCP_TOOL}}, rows: 1},
+		{name: "no_change", entries: []*interfaces.CapabilityBinding{function}, rows: 0},
+		{name: "partial_change", entries: []*interfaces.CapabilityBinding{function, skill, mcp}, rows: 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			kns := bmock.NewMockKNService(ctrl)
+			bindings := bmock.NewMockCapabilityBindingService(ctrl)
+			store := &recordingOperationAuditStore{}
+			handler := &restHandler{kns: kns, cbs: bindings, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
+				return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
+			}}
+			previous := kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
+			if !test.disabled {
+				handler.auditRecorder = store
+				previous = bindings.EXPECT().ListCapabilities(gomock.Any(), interfaces.CapabilityBindingsQueryParams{
+					KNID: "kn-1", Branch: "main", WithDetail: true,
+					PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+				}).After(previous)
+				if test.lookupFailure {
+					previous.Return(nil, fmt.Errorf("metadata unavailable"))
+				} else {
+					previous.Return(&interfaces.CapabilityBindingsList{Entries: test.entries}, nil)
+				}
+			}
+			ids := make([]string, 0, len(test.entries))
+			for _, binding := range test.entries {
+				ids = append(ids, binding.ID)
+			}
+			var mutationErr error
+			if test.mutationFailure {
+				mutationErr = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+			}
+			bindings.EXPECT().DetachCapabilities(gomock.Any(), gomock.Any(), "kn-1", "main", ids).After(previous).Return(test.rows, mutationErr)
+			engine := gin.New()
+			engine.Use(handler.OperationAudit())
+			engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id/capabilities/:binding_ids", func(c *gin.Context) {
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				c.Set(operationAuditVisitorKey, v)
+				handler.DetachCapabilities(c, v)
+			})
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/capabilities/"+strings.Join(ids, ","), nil))
+			wantStatus := http.StatusNoContent
+			if test.mutationFailure {
+				wantStatus = http.StatusForbidden
+			}
+			if response.Code != wantStatus {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if test.wantName == "" {
+				if len(store.entries) != 0 {
+					t.Fatalf("entries=%+v", store.entries)
+				}
+				return
+			}
+			if len(store.entries) != 1 {
+				t.Fatalf("entries=%+v", store.entries)
+			}
+			entry := store.entries[0]
+			if entry.TargetName != test.wantName || entry.Action != "detach" || entry.ActorName != "Alice" {
+				t.Fatalf("entry=%+v", entry)
+			}
+			// Exercise the production event builder, including the Audit SDK's schema validation.
+			payload, err := operationaudit.BuildKafkaAuditRecord(entry, "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var event struct {
+				Summary string `json:"summary"`
+				Target  struct {
+					Name string `json:"name"`
+				} `json:"target"`
+			}
+			if err := json.Unmarshal(payload, &event); err != nil {
+				t.Fatal(err)
+			}
+			if event.Target.Name != test.wantName || !strings.Contains(event.Summary, test.wantName) || strings.Contains(event.Summary, "binding-") {
+				t.Fatalf("event=%s", payload)
+			}
+		})
+	}
+}
+
+func TestOperationAuditGroupMembershipRealHandler(t *testing.T) {
+	for _, action := range []string{"add", "remove"} {
+		for _, enabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/enabled=%v", action, enabled), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				kns := bmock.NewMockKNService(ctrl)
+				groups := bmock.NewMockConceptGroupService(ctrl)
+				objects := bmock.NewMockObjectTypeService(ctrl)
+				store := &recordingOperationAuditStore{}
+				handler := &restHandler{kns: kns, cgs: groups, ots: objects, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
+					return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
+				}}
+				kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
+				groups.EXPECT().CheckConceptGroupExistByID(gomock.Any(), "kn-1", "main", "group-1").Return("Transactions", true, nil)
+				if enabled {
+					handler.auditRecorder = store
+					objects.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn-1", "main", "object-1").Return("Orders", true, nil)
+				}
+				engine := gin.New()
+				engine.Use(handler.OperationAudit())
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				var request *http.Request
+				if action == "remove" {
+					groups.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any()).Return([]interfaces.ConceptGroupRelation{{ConceptID: "object-1"}}, nil)
+					groups.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), "kn-1", "main", "group-1", []string{"object-1"}).Return(nil)
+					engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id/concept-groups/:cg_id/object-types/:ot_ids", func(c *gin.Context) { c.Set(operationAuditVisitorKey, v); handler.DeleteObjectTypesFromGroup(c, v) })
+					request = httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/concept-groups/group-1/object-types/object-1", nil)
+				} else {
+					groups.EXPECT().AddObjectTypesToConceptGroup(gomock.Any(), gomock.Any(), "kn-1", "main", "group-1", []interfaces.ID{{ID: "object-1"}}, interfaces.ImportMode_Normal, true).Return([]string{"membership-1"}, nil)
+					engine.POST("/api/bkn-backend/v1/knowledge-networks/:kn_id/concept-groups/:cg_id/object-types", func(c *gin.Context) { c.Set(operationAuditVisitorKey, v); handler.AddObjectTypesToConceptGroup(c, v) })
+					request = httptest.NewRequest("POST", "/api/bkn-backend/v1/knowledge-networks/kn-1/concept-groups/group-1/object-types", strings.NewReader(`{"entries":[{"id":"object-1"}]}`))
+				}
+				response := httptest.NewRecorder()
+				engine.ServeHTTP(response, request)
+				if response.Code != 204 && response.Code != 201 {
+					t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+				}
+				if enabled {
+					if len(store.entries) != 1 || store.entries[0].TargetName != "Transactions / Orders" {
+						t.Fatalf("entries=%+v", store.entries)
+					}
+				} else if len(store.entries) != 0 {
+					t.Fatal("disabled audit recorded")
+				}
+			})
+		}
 	}
 }

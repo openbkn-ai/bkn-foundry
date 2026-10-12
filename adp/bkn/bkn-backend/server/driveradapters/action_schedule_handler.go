@@ -205,6 +205,7 @@ func (r *restHandler) UpdateActionSchedule(c *gin.Context, visitor hydra.Visitor
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	c.Set("operation_audit_target_names", []string{schedule.Name})
 
 	logger.Debug("Handler UpdateActionSchedule Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
@@ -281,6 +282,7 @@ func (r *restHandler) UpdateActionScheduleStatus(c *gin.Context, visitor hydra.V
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	c.Set("operation_audit_target_names", []string{schedule.Name})
 
 	logger.Debug("Handler UpdateActionScheduleStatus Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
@@ -329,7 +331,7 @@ func (r *restHandler) DeleteActionSchedules(c *gin.Context, visitor hydra.Visito
 	scheduleIDs := common.StringToStringSlice(scheduleIDsStr)
 
 	// Preserve the existing not-found validation before deletion.
-	_, err := r.ass.GetSchedules(ctx, scheduleIDs)
+	schedules, err := r.ass.GetSchedules(ctx, scheduleIDs)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -342,6 +344,15 @@ func (r *restHandler) DeleteActionSchedules(c *gin.Context, visitor hydra.Visito
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+	names := make([]string, 0, len(scheduleIDs))
+	for _, id := range scheduleIDs {
+		if schedule := schedules[id]; schedule != nil {
+			names = append(names, schedule.Name)
+		}
+	}
+	if len(names) > 0 {
+		c.Set("operation_audit_target_names", names)
 	}
 
 	logger.Debug("Handler DeleteActionSchedules Success")

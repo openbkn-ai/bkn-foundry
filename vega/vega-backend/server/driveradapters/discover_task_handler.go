@@ -202,12 +202,26 @@ func (r *restHandler) deleteDiscoverTasks(c *gin.Context, visitor hydra.Visitor)
 	}
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
+	var auditNames []string
+	if r.auditRecorder != nil {
+		auditNames = make([]string, 0, len(ids))
+		for _, id := range ids {
+			if task, getErr := r.dts.GetByID(ctx, id); getErr == nil && task != nil {
+				if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+					auditNames = append(auditNames, name)
+				}
+			}
+		}
+	}
 
 	if err := r.dts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+	if len(auditNames) > 0 {
+		c.Set("operation_audit_target_names", auditNames)
 	}
 
 	logger.Debug("Handler DeleteDiscoverTasksByEx Success")

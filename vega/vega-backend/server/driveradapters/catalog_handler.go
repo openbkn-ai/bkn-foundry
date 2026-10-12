@@ -410,6 +410,11 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	if r.auditRecorder != nil {
+		if object, err := r.cs.GetByID(ctx, id, false); err == nil && object != nil {
+			c.Set("operation_audit_target_names", []string{object.Name})
+		}
+	}
 	if err := r.cs.Update(ctx, &req, allowUnhealthy); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -466,12 +471,16 @@ func (r *restHandler) setCatalogEnabled(c *gin.Context, visitor hydra.Visitor, e
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	id := c.Param("id")
-	_, err := r.cs.SetEnabled(ctx, id, enabled)
+	object, err := r.cs.SetEnabled(ctx, id, enabled)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+
+	if object != nil {
+		c.Set("operation_audit_target_names", []string{object.Name})
 	}
 
 	logger.Debug("Handler SetCatalogEnabled Success")
@@ -529,6 +538,7 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if dryRun {
+		c.Set("operation_audit_preview", true)
 		result, err := r.cs.GetDeletionImpact(ctx, id)
 		if err != nil {
 			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
@@ -542,6 +552,11 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	if r.auditRecorder != nil {
+		if catalog, err := r.cs.GetByID(ctx, id, false); err == nil && catalog != nil {
+			c.Set("operation_audit_target_names", []string{catalog.Name})
+		}
+	}
 	if err := r.cs.DeleteByID(ctx, id); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

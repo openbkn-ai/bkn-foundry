@@ -25,6 +25,7 @@ import (
 
 	"bkn-backend/common/operationaudit"
 	"bkn-backend/interfaces"
+	"bkn-backend/locale"
 )
 
 const (
@@ -125,7 +126,7 @@ func basicOperationAuditActor(authorization string, visitor hydra.Visitor) opera
 		actorType = "user"
 	}
 	return operationAuditActor{
-		ActorID: strings.TrimSpace(visitor.ID), ActorName: strings.TrimSpace(visitor.ID),
+		ActorID:   strings.TrimSpace(visitor.ID),
 		ActorType: actorType, AuthMethod: authMethod, CredentialID: strings.TrimSpace(visitor.TokenID),
 	}
 }
@@ -145,7 +146,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		c.Writer = responseBody
 		c.Next()
 
-		if r == nil || r.auditRecorder == nil {
+		if r == nil || r.auditRecorder == nil || c.Writer.Status() < 200 || c.Writer.Status() >= 300 || c.Writer.Status() == http.StatusAccepted {
 			return
 		}
 		requestID, err := operationAuditRequestID(c)
@@ -160,10 +161,15 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		}
 		visitor, _ := operationAuditVisitor(c)
 		actor := r.operationAuditIdentity(c.Request.Context(), c.GetHeader("Authorization"), visitor)
-		if actor.ActorID == "" {
-			actor.ActorID, actor.ActorName, actor.ActorType = "unauthenticated", "未认证调用者", "unknown"
+		if actor.ActorID == "" || actor.ActorName == "" || actor.ActorName == actor.ActorID {
+			logger.Errorf("operation audit fact rejected: missing readable authenticated actor")
+			return
 		}
 		facts := operationAuditFacts(c, rule, requestBody, responseBody.body.Bytes(), requestID)
+		if facts.targetID == "" || facts.targetName == "" || facts.targetName == facts.targetID {
+			logger.Errorf("operation audit fact rejected: missing business target snapshot")
+			return
+		}
 		now := time.Now().UTC()
 		entry := operationaudit.Entry{
 			EventID:            attemptID.String(),
@@ -300,15 +306,18 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 		targetName = strings.Join(requestNames, "、")
 	}
 	observedTargetID := targetID
-	if targetID == "" {
-		targetID = rule.TargetType + ":" + requestID
-	}
+
 	if len(targetID) > 256 {
 		digest := sha256.Sum256([]byte(targetID))
 		targetID = fmt.Sprintf("%s:sha256:%x", rule.TargetType, digest)
 	}
-	if targetName == "" {
-		targetName = targetID
+	if snapshot, ok := c.Get("operation_audit_target_names"); ok {
+		if names, ok := snapshot.([]string); ok && len(names) > 0 {
+			targetName = operationAuditNames(names)
+		}
+	}
+	if len(requestNames) > 1 {
+		targetName = operationAuditNames(requestNames)
 	}
 	if knID == "" && rule.TargetType == "knowledge_network" && c.Writer.Status() < http.StatusBadRequest {
 		knID = observedTargetID
@@ -329,7 +338,7 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 	}
 	return extractedOperationAuditFacts{
 		knowledgeNetworkID: knID,
-		targetID:           boundText(targetID, 1024), targetName: boundText(targetName, 1024),
+		targetID:           boundText(targetID, 1024), targetName: targetName,
 		outcome: outcome, failureCode: failureCode, failureMessage: failureMessage,
 		changeSummary: changedFields(requestJSON),
 	}
@@ -355,11 +364,17 @@ func decodeBoundedObject(body []byte) map[string]any {
 	if len(body) == 0 {
 		return map[string]any{}
 	}
-	var value map[string]any
+	var value any
 	if json.Unmarshal(body, &value) != nil {
 		return map[string]any{}
 	}
-	return value
+	switch value := value.(type) {
+	case map[string]any:
+		return value
+	case []any:
+		return map[string]any{"entries": value}
+	}
+	return map[string]any{}
 }
 
 func targetValues(value map[string]any) ([]string, []string) {
@@ -509,3 +524,6 @@ func firstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+// operationAuditNames keeps a readable bounded batch snapshot, never an ID.
+func operationAuditNames(names []string) string { return locale.AuditNames(names) }
