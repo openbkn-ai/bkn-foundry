@@ -72,10 +72,6 @@ PY
 # __VERSION__ sentinel in a packaged chart.
 rendered="$(helm template ocb-contract "${ROOT}/charts/otelcol-contrib" \
   --set 'image.tag=0.2.0-local' \
-  --set traceAdmission.clientID=trace-gateway \
-  --set traceAdmission.clientSecretSecret=trace-gateway-oauth \
-  --set traceAdmission.currentKeyID=trace-policy-2026q3 \
-  --set traceAdmission.currentPublicKeySecret=trace-policy-public \
   --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol)"
 grep -Fq 'image: "ghcr.io/openbkn-ai/otelcol-openbkn:0.2.0-local"' <<<"${rendered}"
 

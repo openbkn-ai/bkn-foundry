@@ -109,9 +109,9 @@ class TestReshapeUtils:
         assert result["model_series"] == "openai"
         assert result["model_name"] == "test_model"
         assert "model_config" in result
-        # Verify api_key is MD5-hashed.
+        # Verify api_key is replaced with a strong digest.
         assert result["model_config"]["api_key"] != "secret_key"
-        assert len(result["model_config"]["api_key"]) == 32  # MD5 hash length.
+        assert len(result["model_config"]["api_key"]) == 64  # SHA-256 digest length.
 
     def test_reshape_check_with_secret_key(self):
         """Test test reshape check with secret key."""
@@ -127,11 +127,11 @@ class TestReshapeUtils:
         
         result = reshape_check(mock_data)
         
-        # Verify api_key and secret_key are MD5-hashed.
+        # Verify api_key and secret_key use strong digests.
         assert result["model_config"]["api_key"] != "key123"
         assert result["model_config"]["secret_key"] != "secret123"
-        assert len(result["model_config"]["api_key"]) == 32
-        assert len(result["model_config"]["secret_key"]) == 32
+        assert len(result["model_config"]["api_key"]) == 64
+        assert len(result["model_config"]["secret_key"]) == 64
 
     def test_reshape_check_without_model_parameters(self):
         """Test test reshape check without model parameters."""

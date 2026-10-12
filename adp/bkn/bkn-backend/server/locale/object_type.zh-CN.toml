@@ -197,5 +197,4 @@ PropertyNameInvalid = "属性名称只能包含字母、数字、下划线和连
 PropertyNamesLengthMismatch = "property_names 和 data_properties 的长度必须一致。"
 DataPropertyMissingFromURL = "URL 中未包含数据属性 {{.property}}。"
 KeywordIgnoreAboveLenInvalid = "keyword_config.ignore_above_len 必须大于 0。"
-FulltextAnalyzerInvalid = "fulltext_config.analyzer 必须为 standard、english、ik_max_word、hanlp_standard 或 hanlp_index。"
 VectorModelIDRequired = "必须提供 vector_config.model_id。"

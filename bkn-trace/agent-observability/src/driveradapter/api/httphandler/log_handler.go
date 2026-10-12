@@ -7,6 +7,7 @@ package httphandler
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -74,10 +75,14 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 			writeObservabilityError(w, r, http.StatusBadRequest, "cursor_invalid", "the pagination cursor is invalid")
 		case errors.Is(err, logsvc.ErrCursorStale):
 			writeObservabilityError(w, r, http.StatusConflict, "cursor_stale", "the authorization scope, sources, or query changed; restart from the first page")
+		case errors.Is(err, logsvc.ErrNumberedPaginationUnsupported):
+			writeObservabilityError(w, r, http.StatusBadRequest, "pagination_not_supported", "this log source does not support direct page jumps; use cursor pagination")
 		case errors.Is(err, logsvc.ErrInvalidQuery):
 			writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", "the log time window exceeds the supported range")
 		case errors.Is(err, logsvc.ErrAccessDenied):
 			writeObservabilityError(w, r, http.StatusForbidden, "observability_access_denied", "the current access profile cannot search the requested logs")
+		case errors.Is(err, logsvc.ErrAuditNotConfigured):
+			writeAuditNotConfigured(w, r)
 		case errors.Is(err, logsvc.ErrSourcesUnavailable):
 			writeObservabilityError(w, r, http.StatusServiceUnavailable, "sources_unavailable", "all authorized log sources are unavailable")
 		default:
@@ -262,6 +267,8 @@ func writeLogServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", "the log time window exceeds the supported range")
 	case errors.Is(err, logsvc.ErrAccessDenied):
 		writeObservabilityError(w, r, http.StatusForbidden, "observability_access_denied", "the current access profile cannot access the requested logs")
+	case errors.Is(err, logsvc.ErrAuditNotConfigured):
+		writeAuditNotConfigured(w, r)
 	case errors.Is(err, logsvc.ErrSourcesUnavailable):
 		writeObservabilityError(w, r, http.StatusServiceUnavailable, "sources_unavailable", "all authorized log sources are unavailable")
 	default:
@@ -273,6 +280,13 @@ func writeObservabilityError(w http.ResponseWriter, r *http.Request, status int,
 	retryable := status == http.StatusServiceUnavailable || status == http.StatusInternalServerError
 	writeJSON(w, r, status, observabilityErrorEnvelope{Error: observabilityError{
 		Code: code, Message: message, Retryable: retryable, RequestID: requestIDFromRequest(r),
+	}})
+}
+
+func writeAuditNotConfigured(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, r, http.StatusServiceUnavailable, observabilityErrorEnvelope{Error: observabilityError{
+		Code: "audit_consumer_not_configured", Message: "audit Kafka consumer is not configured",
+		Retryable: false, RequiredAction: logsvc.AuditConfigurationAction, RequestID: requestIDFromRequest(r),
 	}})
 }
 
@@ -301,16 +315,16 @@ func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 	if timeFrom != nil && timeTo != nil && timeTo.Before(*timeFrom) {
 		return observabilityvo.LogQuery{}, errors.New("time_to must not be before time_from")
 	}
-	limit, err := parseBoundedInteger(values.Get("limit"), 50, 1, 200, "limit")
+	limit, err := parseBoundedInteger(values.Get("limit"), 50, logsvc.MinLogPageSize, 200, "limit")
 	if err != nil {
 		return observabilityvo.LogQuery{}, err
 	}
-	page, err := parseBoundedInteger(values.Get("page"), 1, 1, 100, "page")
+	page, err := parseBoundedInteger(values.Get("page"), 1, 1, math.MaxInt, "page")
 	if err != nil {
 		return observabilityvo.LogQuery{}, err
 	}
 	if rawPageSize := strings.TrimSpace(values.Get("page_size")); rawPageSize != "" {
-		limit, err = parseBoundedInteger(rawPageSize, 50, 1, 200, "page_size")
+		limit, err = parseBoundedInteger(rawPageSize, 50, logsvc.MinLogPageSize, 200, "page_size")
 		if err != nil {
 			return observabilityvo.LogQuery{}, err
 		}

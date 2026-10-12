@@ -62,6 +62,12 @@ func TestBothFacesRegisterEveryKnRoute(t *testing.T) {
 	if _, ok := privateRoutes["POST /kn/run_cypher"]; !ok {
 		t.Fatal("private face does not register /kn/run_cypher")
 	}
+	if _, ok := publicRoutes["POST /kn/get_action_execution"]; !ok {
+		t.Fatal("public face does not register /kn/get_action_execution")
+	}
+	if _, ok := privateRoutes["POST /kn/get_action_execution"]; !ok {
+		t.Fatal("private face does not register /kn/get_action_execution")
+	}
 	// The private face carries a few endpoints that are deliberately internal
 	// only, so the invariant runs one way: everything public must also exist
 	// internally.

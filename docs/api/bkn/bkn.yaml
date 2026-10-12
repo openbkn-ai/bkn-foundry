@@ -88,25 +88,35 @@ paths:
             default: preserve
         - name: import_mode
           description: |
-            Import mode. normal reports an error for duplicate concept names; overwrite replaces them;
-            ignore skips them. Defaults to normal.
+            Import mode. normal reports an error for duplicate concept IDs or names; overwrite updates
+            an existing concept with the same ID; ignore skips existing concepts. A name collision with a
+            different ID remains an error in overwrite and ignore modes. This mode controls the knowledge-network model;
+            capability declarations in an uploaded archive are resolved and mounted independently after model
+            processing, including when ignore leaves an existing model unchanged. Defaults to overwrite for
+            compatibility with archive uploads that predate this parameter.
           schema:
             type: string
             enum: [normal, overwrite, ignore]
-            default: normal
+            default: overwrite
           in: query
         - name: strict_mode
-          description: Whether to validate that dependent objects exist. Defaults to true. When empty, the deprecated validate_dependency parameter is used.
+          description: |
+            Whether to require complete model definitions and validate that dependent objects exist.
+            false permits draft definitions with optional strict-only fields omitted and skips dependency
+            existence checks. With binding_policy=detach, true validates the archive structure before bindings
+            are removed, but persistence dependency checks are skipped for the detached model. Defaults to false
+            for compatibility with archive uploads that predate this parameter. When empty, the deprecated
+            validate_dependency parameter is used.
           schema:
             type: boolean
-            default: true
+            default: false
           in: query
         - name: validate_dependency
           deprecated: true
           description: "Deprecated. Use strict_mode instead. This parameter is retained for compatibility and is read when strict_mode is empty."
           schema:
             type: boolean
-            default: true
+            default: false
           in: query
       responses:
         '200':

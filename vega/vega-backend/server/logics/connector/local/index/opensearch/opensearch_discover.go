@@ -227,8 +227,32 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 		}
 		parseProperties("", idxData.Mappings.Properties, fieldMap)
 	}
+	resolveIndexAliasTypes(fieldMap)
 	index.Mapping = fieldMap
 	return nil
+}
+
+// resolveIndexAliasTypes 解析别名的有效类型，保留原生 alias 类型和 path 元数据。
+// 无效目标和别名链不作猜测，由 MapType 将未解析的 alias 归为 other。
+func resolveIndexAliasTypes(fields map[string]interfaces.IndexFieldMeta) {
+	targetTypes := make(map[string]string, len(fields))
+	for name, field := range fields {
+		if field.Type == "alias" || field.Type == "object" || field.Type == "nested" {
+			continue
+		}
+		targetTypes[name] = field.Type
+		for _, sub := range field.SubFields {
+			targetTypes[name+"."+sub.Name] = sub.Type
+		}
+	}
+	for name, field := range fields {
+		if field.Type != "alias" {
+			continue
+		}
+		path, _ := field.Attributes["path"].(string)
+		field.ResolvedType = targetTypes[path]
+		fields[name] = field
+	}
 }
 
 // Property defines the complete set of field properties.
@@ -398,4 +422,45 @@ func (c *OpenSearchConnector) fetchSettings(ctx context.Context, index *interfac
 		}
 	}
 	return nil
+}
+
+// CountRows 获取索引当前可检索文档的精确数量。
+func (c *OpenSearchConnector) CountRows(ctx context.Context, index *interfaces.IndexMeta) (int64, error) {
+	if index == nil || index.Name == "" {
+		return 0, fmt.Errorf("invalid index metadata")
+	}
+	if c.Config != nil {
+		if err := c.validateIndexScope(index.Name); err != nil {
+			return 0, err
+		}
+	}
+	if err := c.Connect(ctx); err != nil {
+		return 0, err
+	}
+	request := opensearchapi.CountRequest{Index: []string{index.Name}}
+	response, err := request.Do(ctx, c.client)
+	if err != nil {
+		return 0, fmt.Errorf("count index: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	if response.IsError() {
+		return 0, fmt.Errorf("count index failed: status %d", response.StatusCode)
+	}
+	var result struct {
+		Count  *int64 `json:"count"`
+		Shards struct {
+			Failed *int64 `json:"failed"`
+		} `json:"_shards"`
+	}
+	if err := sonic.ConfigDefault.NewDecoder(response.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("decode index count: %w", err)
+	}
+	if result.Count == nil || *result.Count < 0 {
+		return 0, fmt.Errorf("invalid index count")
+	}
+	if result.Shards.Failed == nil || *result.Shards.Failed != 0 {
+		return 0, fmt.Errorf("index count incomplete: shard statistics missing or failed")
+	}
+	return *result.Count, nil
 }

@@ -8,6 +8,7 @@ package knactionrecall
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -44,19 +45,41 @@ func (s *knActionRecallServiceImpl) ExecuteAction(ctx context.Context, req *inte
 // Paired with execute_action: Agent gets execution_id after submitting with execute_action.
 // Then use this interface to query the status and object-by-object results of this execution.
 //
-// The returned results will eliminate heavy items that are not used for Agent decision-making (action_type_snapshot, duplicate.
-// executor/action_source, paging metadata, etc.), only the status, count and per-object results are retained.
+// The returned results omit heavy fields but retain result pagination metadata.
 // To reduce token usage.
 func (s *knActionRecallServiceImpl) GetActionExecution(ctx context.Context, req *interfaces.KnGetActionExecutionRequest) (map[string]any, error) {
 	resp, err := s.ontologyQuery.GetActionExecution(ctx, &interfaces.GetActionExecutionRequest{
-		KnID:        req.KnID,
-		ExecutionID: req.ExecutionID,
+		KnID:          req.KnID,
+		ExecutionID:   req.ExecutionID,
+		ResultsLimit:  req.ResultsLimit,
+		ResultsOffset: req.ResultsOffset,
 	})
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionExecution] GetActionExecution failed, err: %v", err)
 		return nil, err
 	}
-	return slimActionExecution(resp), nil
+	slim := slimActionExecution(resp)
+	if slim == nil {
+		return nil, fmt.Errorf("action execution response is empty")
+	}
+	// ontology-query omits results_total and results_offset when they are zero.
+	// A missing total with nonempty results is not safe to interpret as a full page.
+	total, hasTotal := resp["results_total"]
+	if !hasTotal {
+		if results, ok := resp["results"].([]any); ok && len(results) > 0 {
+			return nil, fmt.Errorf("action execution response has results but no results_total")
+		}
+		total = 0
+	}
+	slim["results_total"] = total
+	slim["results_offset"] = 0
+	if offset, ok := resp["results_offset"]; ok {
+		slim["results_offset"] = offset
+	}
+	if limit, ok := resp["results_limit"]; ok {
+		slim["results_limit"] = limit
+	}
+	return slim, nil
 }
 
 // actionExecutionKeepKeys is a top-level field in the single execution details that is useful to the Agent and needs to be retained.

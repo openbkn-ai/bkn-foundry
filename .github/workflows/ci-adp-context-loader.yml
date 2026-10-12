@@ -14,6 +14,7 @@ name: ci-adp-context-loader
 on:
   pull_request:
     paths:
+      - 'comm-go/**'
       - 'adp/context-loader/**'
       - '.github/workflows/ci-adp-context-loader.yml'
       # lifecycle_schema_test.go 逐项比对本模块内嵌 schema 与 bkn-trace 的 swagger，
@@ -42,6 +43,7 @@ jobs:
           go-version-file: adp/context-loader/agent-retrieval/go.mod
       - run: go build ./...
       - run: go build -tags ee_dev ./...
-      - run: go vet ./server/extension/... ./server/driveradapters/mcp/
-      - run: go test ./server/extension/... ./server/driveradapters/mcp/
-      - run: go test -tags ee_dev ./server/extension/... ./server/driveradapters/mcp/
+      - run: go vet ./server/extension/... ./server/driveradapters/mcp/ ./server/infra/bkntrace/
+      - run: go test ./server/extension/... ./server/driveradapters/mcp/ ./server/infra/bkntrace/
+      - run: go test -tags ee_dev ./server/extension/... ./server/driveradapters/mcp/ ./server/infra/bkntrace/
+      - run: go test -race ./server/infra/bkntrace/

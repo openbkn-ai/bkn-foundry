@@ -6,6 +6,8 @@
 package opensearch
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -81,5 +83,32 @@ func TestReadAdmissionMetricsFailsWhenTotalsAreMissing(t *testing.T) {
 	})})
 	if _, err := client.ReadAdmissionMetrics(t.Context()); err == nil {
 		t.Fatal("missing node totals must fail closed")
+	}
+}
+
+func TestGetMappingsReadsConcreteTargetsWithConfiguredAuthentication(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, password, ok := r.BasicAuth()
+		if r.Method != http.MethodGet || r.URL.Path != "/projection-alias/_mapping" || !ok || user != "test-user" || password != "test-password" {
+			t.Error("mapping inspection must use the configured read request and authentication")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"concrete-v1":{"mappings":{"properties":{"envelope":{"type":"keyword"}}}},"concrete-v2":{"mappings":{"properties":{}}}}`))
+	}))
+	t.Cleanup(server.Close)
+	client := New(server.URL, AuthConfig{Enabled: true, Username: "test-user", Password: "test-password"}, time.Second)
+	mappings, err := client.GetMappings(context.Background(), "projection-alias")
+	if err != nil || len(mappings) != 2 {
+		t.Fatalf("expected each concrete mapping: mappings=%v err=%v", mappings, err)
+	}
+	var legacy struct {
+		Properties map[string]struct {
+			Type string `json:"type"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(mappings["concrete-v1"], &legacy); err != nil || legacy.Properties["envelope"].Type != "keyword" {
+		t.Fatal("read must retain legacy type for caller compatibility decisions")
 	}
 }

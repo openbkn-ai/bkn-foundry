@@ -188,6 +188,7 @@ async def stream_chat(
             "bkn.agent.chat",
             conversation_id=cl_session.conversation_id if cl_session else thread_id,
             interaction_id=cl_session.interaction_id if cl_session else None,
+            owner=cl_session.owner if cl_session else None,
         )
         try:
             await evidence.submit_interaction_started(account_id, account_type)

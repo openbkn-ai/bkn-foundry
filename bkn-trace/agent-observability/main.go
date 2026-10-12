@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -32,6 +33,9 @@ import (
 // @name Authorization
 // @description Active OAuth bearer token. Lifecycle owner identity is derived by the server.
 func main() {
+	if err := configureLogLevel(os.Getenv("BKN_TRACE_LOG_LEVEL")); err != nil {
+		log.Fatal(err)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "migrate-audit-monthly" {
 		if len(os.Args) != 2 {
 			log.Fatal("usage: agent-observability migrate-audit-monthly")
@@ -53,6 +57,21 @@ func main() {
 	if err := run(ctx, app); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// configureLogLevel keeps the standard logger and output format, while allowing
+// operators to enable dependency diagnostics before application initialization.
+func configureLogLevel(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = "info"
+	}
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(value)); err != nil {
+		return fmt.Errorf("invalid BKN_TRACE_LOG_LEVEL: %w", err)
+	}
+	slog.SetLogLoggerLevel(level)
+	return nil
 }
 
 // runAuditMonthlyMigration is an explicit operator action. It never runs as

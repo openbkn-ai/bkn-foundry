@@ -31,8 +31,14 @@ func TestAssembleLogSourcesNeverFallsBackToLegacyAuditSources(t *testing.T) {
 		t.Fatalf("Kafka Audit sources=%v", got)
 	}
 	disabled := assembleLogSources(runtimeSources, nil)
-	if got := logSourceIDs(disabled); !reflect.DeepEqual(got, []string{"runtime", "access-user"}) {
+	if got := logSourceIDs(disabled); !reflect.DeepEqual(got, []string{"audit-ledger", "runtime", "access-user"}) {
 		t.Fatalf("sources without Audit ledger=%v", got)
+	}
+	status := disabled[0].(interface {
+		Metadata() observabilityvo.SourceStatus
+	}).Metadata()
+	if status.Status != "not_integrated" || status.Reason != "audit_consumer_not_configured" || status.RequiredAction == "" {
+		t.Fatalf("disabled audit ledger must explain how to configure it: %+v", status)
 	}
 }
 

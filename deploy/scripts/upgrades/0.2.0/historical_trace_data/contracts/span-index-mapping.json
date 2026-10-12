@@ -1,0 +1,38 @@
+{
+  "date_detection": false,
+  "numeric_detection": false,
+  "dynamic": true,
+  "dynamic_templates": [
+    {"resource_strings": {"path_match": "resource.*", "match_mapping_type": "string", "mapping": {"type": "keyword"}}},
+    {"native_strings": {"match_mapping_type": "string", "mapping": {"type": "keyword"}}}
+  ],
+  "properties": {
+    "traceId": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    "spanId": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    "parentSpanId": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    "startTime": {"type": "date_nanos"},
+    "endTime": {"type": "date_nanos"},
+    "@timestamp": {"type": "date"},
+    "name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    "kind": {"type": "keyword"},
+    "traceState": {"type": "keyword"},
+    "droppedAttributesCount": {"type": "long", "coerce": false},
+    "droppedEventsCount": {"type": "long", "coerce": false},
+    "droppedLinksCount": {"type": "long", "coerce": false},
+    "attributes": {"type": "object", "dynamic": true},
+    "resource": {"type": "object", "dynamic": true},
+    "status": {"type": "object", "properties": {"code": {"type": "keyword"}, "message": {"type": "text"}}},
+    "instrumentationScope": {"type": "object", "properties": {
+      "name": {"type": "keyword"}, "version": {"type": "keyword"}, "schemaUrl": {"type": "keyword"},
+      "droppedAttributesCount": {"type": "long", "coerce": false}, "attributes": {"type": "object", "dynamic": true}
+    }},
+    "events": {"type": "object", "properties": {
+      "name": {"type": "keyword"}, "@timestamp": {"type": "date_nanos"}, "observedTimestamp": {"type": "date_nanos"},
+      "droppedAttributesCount": {"type": "long", "coerce": false}, "attributes": {"type": "object", "dynamic": true}
+    }},
+    "links": {"type": "object", "properties": {
+      "traceId": {"type": "keyword"}, "spanId": {"type": "keyword"}, "traceState": {"type": "keyword"},
+      "droppedAttributesCount": {"type": "long", "coerce": false}, "attributes": {"type": "object", "dynamic": true}
+    }}
+  }
+}

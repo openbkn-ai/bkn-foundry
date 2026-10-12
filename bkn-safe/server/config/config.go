@@ -21,15 +21,16 @@ type Config struct {
 	License  LicenseConfig `yaml:"license"`
 	// SeedOnStart controls whether roles/resource-types/operations/grants are
 	// seeded into the DB at startup (idempotent). Default true.
-	SeedOnStart bool `yaml:"seed_on_start"`
-	Authz     AuthzConfig     `yaml:"authz"`
-	Upstreams UpstreamsConfig `yaml:"upstreams"`
+	SeedOnStart bool            `yaml:"seed_on_start"`
+	Authz       AuthzConfig     `yaml:"authz"`
+	Upstreams   UpstreamsConfig `yaml:"upstreams"`
 }
 
 // UpstreamsConfig contains environment-specific base URLs. Provider paths and
 // response mappings remain compiled into bkn-safe.
 type UpstreamsConfig struct {
 	BKNBackend       UpstreamConfig `yaml:"bkn_backend"`
+	BKNAgent         UpstreamConfig `yaml:"bkn_agent"`
 	ExecutionFactory UpstreamConfig `yaml:"execution_factory"`
 	VegaBackend      UpstreamConfig `yaml:"vega_backend"`
 	OntologyQuery    UpstreamConfig `yaml:"ontology_query"`

@@ -8,6 +8,7 @@ package mcp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -215,5 +217,50 @@ func TestCallerCancellationAfterSuccessfulEnsureDoesNotStartBusiness(t *testing.
 	_, err := handler(ctx, businessToolRequest("s", "conv-1", "int-1", "call"))
 	if calls != 0 || finishes != 0 || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled caller executed after actual registration: business=%d finish=%d err=%v", calls, finishes, err)
+	}
+}
+
+func TestFencedLeaseRefreshFailureNeverStartsUnmanagedMCPBusiness(t *testing.T) {
+	for _, failure := range []string{"network", "http_503", "retry_network", "retry_503"} {
+		t.Run(failure, func(t *testing.T) {
+			gets, posts, calls := 0, 0, 0
+			client := bkntrace.NewLifecycleClient("http://trace.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.Method == http.MethodGet {
+					gets++
+					if gets > 1 && failure == "network" {
+						return nil, syscall.ECONNREFUSED
+					}
+					if gets > 1 && failure == "http_503" {
+						return lifecycleAdapterJSONResponse(503, map[string]any{"error": bkntrace.APIError{Code: "trace_core_unavailable"}}), nil
+					}
+					return lifecycleAdapterJSONResponse(200, bkntrace.Interaction{ConversationID: "conv-1", InteractionID: "int-1", ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1, LeaseExpiresAt: time.Now().Add(time.Minute)}), nil
+				}
+				posts++
+				if posts > 1 && failure == "retry_network" {
+					return nil, syscall.ECONNREFUSED
+				}
+				if posts > 1 && failure == "retry_503" {
+					return lifecycleAdapterJSONResponse(503, map[string]any{"error": bkntrace.APIError{Code: "trace_core_unavailable"}}), nil
+				}
+				return lifecycleAdapterJSONResponse(409, map[string]any{"error": bkntrace.APIError{Code: "terminal_conflict", Message: "stale interaction lease was fenced"}}), nil
+			})})
+			ctx := startArtifactTestContext()
+			var interaction bkntrace.Interaction
+			apiErr, err := client.Call(ctx, http.MethodGet, "/interactions/int-1", nil, &interaction)
+			if apiErr != nil || err != nil {
+				t.Fatalf("seed lease: %v %v", apiErr, err)
+			}
+			handler := guardBusinessToolCall(ensureOperationAdapter(client), func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+				calls++
+				return mcpsdk.NewToolResultText("must not run"), nil
+			})
+			result, err := handler(ctx, businessToolRequest("session-1", "conv-1", "int-1", "invocation-1"))
+			if err != nil || calls != 0 || result == nil || !result.IsError {
+				t.Fatalf("fencing bypassed: calls=%d result=%#v err=%v", calls, result, err)
+			}
+			if !strings.Contains(fmt.Sprint(result.StructuredContent)+fmt.Sprint(result.Content), "terminal_conflict") {
+				t.Fatalf("lost rejection: %#v", result)
+			}
+		})
 	}
 }

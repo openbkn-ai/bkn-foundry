@@ -7,7 +7,7 @@ from urllib3.exceptions import MaxRetryError
 from app.commons.errors import ModelFactory_ModelController_TestModel_Error_Error, LLMTestError
 from app.logs.stand_log import StandLogger
 from app.core.config import base_config
-from app.utils.http_client import proxy_aware_aiohttp
+from app.utils.http_client import proxy_aware_aiohttp, validate_provider_url
 
 
 # Use the workload's HTTP(S)_PROXY / NO_PROXY settings for every model test.
@@ -57,6 +57,8 @@ def _semantic_model_test_error(detail, fallback, http_status=None):
 @func_set_timeout(30)
 async def llm_test(series, config, llm_id, user_id, model_type):
     content = "Connection test failed; check the model configuration."
+    if series.lower() != "baidu":
+        validate_provider_url(config.get("api_url", ""))
     # Handle OpenAI and other providers separately.
     if series == 'openai':
         try:
@@ -108,7 +110,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             if e.args and isinstance(e.args[0], MaxRetryError):
                 content = "The model service URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-            error_dict["detail"] = detail
+            error_dict["detail"] = content
             description = _semantic_model_test_error(detail, content)
             error_dict["description"] = error_dict["solution"] = description
             # if error_dict["detail"].strip(" ") != "":
@@ -150,7 +152,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             if isinstance(e.args[0], MaxRetryError):
                 content = "The model service URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-            error_dict["detail"] = str(e.args[0])
+            error_dict["detail"] = content
             error_dict["description"] = error_dict["solution"] = content
             if not isinstance(e.args[0], MaxRetryError):
                 error_dict["description"] = "Model configuration is invalid; check the model information."
@@ -268,7 +270,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             if e.args and isinstance(e.args[0], MaxRetryError):
                 content = "The model service URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-            error_dict["detail"] = detail
+            error_dict["detail"] = content
             description = _semantic_model_test_error(detail, content)
             error_dict["description"] = error_dict["solution"] = description
             return JSONResponse(status_code=400, content=error_dict)

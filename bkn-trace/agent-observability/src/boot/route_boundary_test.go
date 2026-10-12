@@ -14,8 +14,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysnapshot"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
@@ -452,4 +454,47 @@ func TestCommunityDoesNotMountLegacyBusinessProvenanceDataRoutes(t *testing.T) {
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("legacy business provenance data route = %d, want 404", response.Code)
 	}
+}
+
+func TestInternalTraceControlRoutesDoNotRequireAuthAndStayPrivate(t *testing.T) {
+	evidence := httphandler.NewEvidenceHandlerWithSecurityConfig(nil, httphandler.EvidenceHandlerSecurityConfig{})
+	policy := httphandler.NewCapturePolicyHandlerWithInternal(capturepolicysvc.ReaderFunc(func(context.Context) (capturepolicysvc.Snapshot, error) {
+		return capturepolicysvc.Snapshot{Revision: 1, DesiredState: capturepolicysvc.StateEnabled, EffectiveState: capturepolicysvc.StateEnabled, LastStableRevision: 1, Operation: capturepolicysvc.Operation{ID: "bootstrap", Phase: capturepolicysvc.PhaseSucceeded, RequestedState: capturepolicysvc.StateEnabled}}, nil
+	}), nil, nil, capturepolicysnapshot.Builder{TTL: time.Minute}, nil)
+	policy.SetAdmissionBudgetReader(routeBoundaryBudget{})
+	app := newAppWithCapturePolicy(conf.HTTPServerConfig{}, nil, evidence, nil, nil, httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{})), httphandler.NewLedgerHandler(ledgersvc.New(ledgerstore.New()), httphandler.LedgerSecurityConfig{}), nil, policy)
+	for _, tc := range []struct {
+		method, path string
+		status       int
+	}{
+		{http.MethodGet, "/policy", http.StatusOK},
+		{http.MethodGet, "/configuration", http.StatusOK},
+		{http.MethodPost, "/endpoints:heartbeat", http.StatusServiceUnavailable},
+		{http.MethodPost, "/operations/op:ack", http.StatusServiceUnavailable},
+		{http.MethodPost, "/operations/op:publisher-ack", http.StatusServiceUnavailable},
+	} {
+		path := APIBasePath + "/internal/trace-evidence" + tc.path
+		private := httptest.NewRecorder()
+		app.internalServer.ServeHTTP(private, httptest.NewRequest(tc.method, path, strings.NewReader(`{}`)))
+		if private.Code != tc.status {
+			t.Fatalf("internal %s = %d: %s", path, private.Code, private.Body.String())
+		}
+		public := httptest.NewRecorder()
+		app.server.ServeHTTP(public, httptest.NewRequest(tc.method, path, strings.NewReader(`{}`)))
+		if public.Code != http.StatusNotFound {
+			t.Fatalf("public %s = %d: %s", path, public.Code, public.Body.String())
+		}
+	}
+}
+
+type routeBoundaryBudget struct{}
+
+func (routeBoundaryBudget) ReadAdmissionBudget(context.Context) (capturepolicysvc.AdmissionBudget, error) {
+	now := time.Now().UTC()
+	return capturepolicysvc.AdmissionBudget{ContractVersion: "AdmissionBudgetV1", Profile: "default", SampledAt: now, FreshUntil: now.Add(time.Minute), Measurements: []capturepolicysvc.AdmissionMeasurement{
+		{Metric: "trace_opensearch_capacity", Source: "opensearch", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
+		{Metric: "trace_opensearch_heap", Source: "opensearch", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
+		{Metric: "trace_collector_queue", Source: "collector", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
+		{Metric: "trace_storage_connection_pool", Source: "mariadb", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
+	}}, nil
 }

@@ -177,13 +177,13 @@ func newMCPServerForProfile(
 	localeBundle := loadMCPLocaleBundle(locale)
 	b := newToolBuilder(localeBundle)
 
-	knSearchService := knsearch.NewKnSearchService()
-	b.add(toolKeySearchSchema, handleSearchSchema(knSearchService))
-	b.add(toolKeySearchInstance, handleSearchInstance(knSearchService))
-
 	bknBackend := drivenadapters.NewBknBackendAccess()
 	schemaAccess := drivenadapters.NewObjectSchemaAccess()
 	guide := permissionguide.New(config.NewConfigLoader().PermissionRequest, schemaAccess, bknBackend)
+
+	knSearchService := knsearch.NewKnSearchService()
+	b.add(toolKeySearchSchema, handleSearchSchema(knSearchService))
+	b.add(toolKeySearchInstance, handleSearchInstance(knSearchService, guide))
 
 	ontologyQuery := drivenadapters.NewOntologyQueryAccess()
 	b.add(toolKeyQueryObjectInstance, handleQueryObjectInstance(ontologyQuery, guide))
@@ -214,7 +214,7 @@ func newMCPServerForProfile(
 	b.add(toolKeyRunSQL, handleRunSQL(runSQLService))
 
 	cypherService := kncypher.NewKnCypherService()
-	b.add(toolKeyRunCypher, handleRunCypher(cypherService))
+	b.add(toolKeyRunCypher, handleRunCypher(cypherService, guide))
 
 	resourcesService := knresources.NewKnResourcesService()
 	b.add(toolKeyListResources, handleListResources(resourcesService))

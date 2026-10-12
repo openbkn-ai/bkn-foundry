@@ -6,7 +6,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"log"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -60,4 +64,36 @@ func (a *testApplication) Shutdown(context.Context) error {
 	<-a.shutdownDone
 	close(a.stopServer)
 	return nil
+}
+
+func TestConfigureLogLevel(t *testing.T) {
+	originalLevel := slog.SetLogLoggerLevel(slog.LevelInfo)
+	defer slog.SetLogLoggerLevel(originalLevel)
+	originalOutput := log.Writer()
+	defer log.SetOutput(originalOutput)
+	for _, tc := range []struct {
+		value string
+		debug bool
+	}{
+		{"", false},
+		{"info", false},
+		{" DEBUG ", true},
+		{"warn", false},
+		{"error", false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			var output bytes.Buffer
+			log.SetOutput(&output)
+			if err := configureLogLevel(tc.value); err != nil {
+				t.Fatal(err)
+			}
+			slog.Debug("dependency diagnostic", "trace_id", "budget-request")
+			if got := strings.Contains(output.String(), "trace_id=budget-request"); got != tc.debug {
+				t.Fatalf("debug output=%q, want emitted=%v", output.String(), tc.debug)
+			}
+		})
+	}
+	if err := configureLogLevel("invalid"); err == nil || !strings.Contains(err.Error(), "BKN_TRACE_LOG_LEVEL") {
+		t.Fatalf("expected actionable configuration error, got %v", err)
+	}
 }

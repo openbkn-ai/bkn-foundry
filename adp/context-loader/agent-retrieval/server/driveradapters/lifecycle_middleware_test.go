@@ -25,35 +25,36 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
 
-// TestRESTCapabilityRoutesDoNotRequireManagedContext pins the split between the
-// two surfaces this middleware covers.
-//
-// A managed Interaction records one agent turn. The /kn/ routes are the capability
-// layer - Studio answering a click, a CLI operator, one service asking another -
-// and minting a conversation and an interaction for each of those produced
-// single-operation records that documented nothing. They pass through now.
-//
-// A tool call proxied over HTTP is an agent calling a tool by another name, so it
-// keeps the requirement even though it arrives on the same transport.
-func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
+// TestRESTExecutionRequiresManagedContext verifies that side-effecting REST calls
+// cannot reach their handlers without an Operation, while reads still run ad hoc.
+func TestRESTExecutionRequiresManagedContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cases := []struct {
 		path      string
+		body      string
 		wantCalls int
+		wantCode  string
 	}{
-		{"/api/agent-retrieval/v1/kn/execute_action", 1},
-		{"/api/agent-retrieval/v1/kn/run_sql", 1},
-		{"/api/agent-retrieval/internal-v1/kn/search_schema", 1},
-		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", 1},
+		{"/api/agent-retrieval/v1/kn/execute_action", `{"query":"q"}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/v1/kn/execute_action", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q"}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q"}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/v1/kn/run_sql", `{"query":"q"}`, 1, ""},
+		{"/api/agent-retrieval/v1/kn/run_cypher", `{"query":"q"}`, 1, ""},
+		{"/api/agent-retrieval/internal-v1/kn/search_schema", `{"query":"q"}`, 1, ""},
+		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", `{"query":"q"}`, 1, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
 			downstreamCalls := 0
 			var seenBody map[string]any
 			router := gin.New()
-			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
+			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("http://core.test", nil)))
 			// The handler binds its body the way the real ones do. A stub that
 			// ignores the body cannot tell a request that was let through from one
 			// that arrived drained, which is exactly the gap that let a middleware
@@ -66,7 +67,7 @@ func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
 				c.Status(http.StatusNoContent)
 			})
 
-			request := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewBufferString(`{"query":"q"}`))
+			request := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewBufferString(tc.body))
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
@@ -78,7 +79,107 @@ func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
 			if tc.wantCalls > 0 && seenBody["query"] != "q" {
 				t.Fatalf("%s: handler saw %#v, want the original body", tc.path, seenBody)
 			}
+			if tc.wantCode != "" {
+				var envelope struct {
+					Error bkntrace.APIError `json:"error"`
+				}
+				if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+					t.Fatalf("invalid error envelope: %v body=%s", err, response.Body.String())
+				}
+				if response.Code != http.StatusBadRequest || envelope.Error.Code != tc.wantCode ||
+					envelope.Error.RequiredAction != "create_conversation" {
+					t.Fatalf("status=%d error=%#v, want 400 conversation_required/create_conversation", response.Code, envelope.Error)
+				}
+			}
 		})
+	}
+}
+
+type disabledRESTCapturePublisher struct{}
+
+func (disabledRESTCapturePublisher) CaptureDisabled() bool { return true }
+func (disabledRESTCapturePublisher) TryPublish(evidencepublisher.Event) evidencepublisher.PublishResult {
+	panic("disabled capture must not publish")
+}
+
+func TestRESTExecutionRemainsAvailableWhenCaptureDisabled(t *testing.T) {
+	bkntrace.SetEvidencePublisher(disabledRESTCapturePublisher{})
+	t.Cleanup(func() { bkntrace.SetEvidencePublisher(nil) })
+	gin.SetMode(gin.TestMode)
+	for _, path := range []string{
+		"/api/agent-retrieval/v1/kn/execute_action",
+		"/api/agent-retrieval/in/v1/kn/execute_tool",
+		"/api/agent-retrieval/v1/kn/execute_skill",
+	} {
+		for _, body := range []string{`{"query":"q"}`, `{"query":"q","bkn_context":{}}`} {
+			t.Run(path+"/"+body, func(t *testing.T) {
+				calls := 0
+				router := gin.New()
+				router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
+				router.POST("/*path", func(c *gin.Context) {
+					calls++
+					var input map[string]any
+					if err := c.ShouldBindJSON(&input); err != nil || input["query"] != "q" {
+						t.Errorf("handler body = %#v, bind error = %v", input, err)
+					}
+					c.Status(http.StatusNoContent)
+				})
+				request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+				request.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				if response.Code != http.StatusNoContent || calls != 1 {
+					t.Fatalf("status=%d calls=%d body=%s", response.Code, calls, response.Body.String())
+				}
+			})
+		}
+	}
+}
+
+func TestRESTExecutionFallsBackWhenTraceCoreUnavailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, status := range []int{http.StatusNotFound, http.StatusServiceUnavailable} {
+		core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet || r.URL.Path != "/api/agent-observability/v1/operations/__rest_context_probe__" {
+				t.Errorf("unexpected probe: %s %s", r.Method, r.URL.Path)
+			}
+			code := "operation_not_found"
+			if status == http.StatusServiceUnavailable {
+				code = "trace_core_unavailable"
+			}
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":{"code":"` + code + `"}}`))
+		}))
+		for _, path := range []string{
+			"/api/agent-retrieval/v1/kn/execute_action",
+			"/api/agent-retrieval/in/v1/kn/execute_tool",
+			"/api/agent-retrieval/v1/kn/execute_skill",
+		} {
+			for _, body := range []string{`{"query":"q"}`, `{"query":"q","bkn_context":{}}`} {
+				calls := 0
+				router := gin.New()
+				router.Use(trustedLifecycleHTTPContext(), middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
+				router.POST("/*path", func(c *gin.Context) {
+					calls++
+					var input map[string]any
+					if err := c.ShouldBindJSON(&input); err != nil || input["query"] != "q" {
+						t.Errorf("handler body = %#v, bind error = %v", input, err)
+					}
+					c.Status(http.StatusNoContent)
+				})
+				request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+				request.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				if status == http.StatusServiceUnavailable && (response.Code != http.StatusNoContent || calls != 1 || response.Header().Get("X-BKN-Trace-Available") == "true") {
+					t.Errorf("outage status=%d calls=%d headers=%v", response.Code, calls, response.Header())
+				}
+				if status == http.StatusNotFound && (response.Code != http.StatusBadRequest || calls != 0) {
+					t.Errorf("healthy Core status=%d calls=%d body=%s", response.Code, calls, response.Body.String())
+				}
+			}
+		}
+		core.Close()
 	}
 }
 
@@ -251,6 +352,7 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 	var finishActions []string
 	var operationKeys []string
 	var finishedBusinessRefs [][]bkntrace.BusinessRef
+	var finishedErrors []bkntrace.PayloadEnvelope
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/agent-observability/v1/interactions/int-1":
@@ -306,6 +408,7 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			mu.Lock()
 			finishActions = append(finishActions, action)
 			finishedBusinessRefs = append(finishedBusinessRefs, body.BusinessRefs)
+			finishedErrors = append(finishedErrors, body.Error)
 			mu.Unlock()
 			status := "completed"
 			if action == "fail" {
@@ -325,9 +428,12 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 		name       string
 		status     int
 		wantAction string
+		stage      string
 	}{
-		{"success", http.StatusOK, "complete"},
-		{"handler error", http.StatusBadRequest, "fail"},
+		{"success", http.StatusOK, "complete", ""},
+		{"unclassified handler error", http.StatusBadRequest, "fail", ""},
+		{"validation failure", http.StatusBadRequest, "fail", "input_validation"},
+		{"backend failure", http.StatusBadGateway, "fail", "vega_query"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			router := gin.New()
@@ -346,7 +452,8 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 				if bytes.Contains(raw, []byte("bkn_context")) {
 					t.Fatalf("caller lifecycle context leaked into downstream body: %s", raw)
 				}
-				c.JSON(test.status, gin.H{"answer": "ok"})
+				bkntrace.RecordToolFailure(c.Request.Context(), "trusted_code", test.stage)
+				c.JSON(test.status, gin.H{"answer": "ok", "stage": "untrusted_body_stage"})
 			})
 			request := httptest.NewRequest(http.MethodPost, "/kn/execute_action", bytes.NewBufferString(`{
 				"query":"value",
@@ -367,7 +474,23 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			gotAction := finishActions[len(finishActions)-1]
 			gotOperationKey := operationKeys[len(operationKeys)-1]
 			gotBusinessRefs := finishedBusinessRefs[len(finishedBusinessRefs)-1]
+			gotError := finishedErrors[len(finishedErrors)-1]
 			mu.Unlock()
+			if test.stage != "" {
+				var recorded map[string]any
+				if err := json.Unmarshal(gotError.Inline, &recorded); err != nil || recorded["stage"] != test.stage || recorded["code"] != "trusted_code" {
+					t.Fatalf("trusted REST classification lost: error=%s decode=%v", gotError.Inline, err)
+				}
+			}
+			if test.status >= http.StatusBadRequest && test.stage == "" {
+				var recorded map[string]any
+				if err := json.Unmarshal(gotError.Inline, &recorded); err != nil || recorded["stage"] != "untrusted_body_stage" || recorded["code"] != nil {
+					t.Fatalf("unclassified REST error was inferred: error=%s decode=%v", gotError.Inline, err)
+				}
+			}
+			if response.Code != test.status || body["stage"] != "untrusted_body_stage" {
+				t.Fatalf("business response changed: status=%d body=%s", response.Code, response.Body)
+			}
 			if gotAction != test.wantAction {
 				t.Fatalf("finish action = %q, want %q", gotAction, test.wantAction)
 			}

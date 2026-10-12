@@ -25,11 +25,11 @@ import (
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
-func registerMockLogicViewService(t *testing.T, service interfaces.LogicViewService) {
+func registerMockLogicalViewService(t *testing.T, service interfaces.LogicalViewService) {
 	t.Helper()
-	previous := resourcelogic.GetLogicViewService()
-	resourcelogic.SetLogicViewService(service)
-	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
+	previous := resourcelogic.GetLogicalViewService()
+	resourcelogic.SetLogicalViewService(service)
+	t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
 }
 
 func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
@@ -245,13 +245,13 @@ func TestResourceDataServiceQueryWithPagingRequiresQueryDataPermission(t *testin
 	require.ErrorIs(t, err, denied)
 }
 
-func TestResourceDataServiceQueryWithPagingPreservesLogicViewQuerySource(t *testing.T) {
+func TestResourceDataServiceQueryWithPagingPreservesLogicalViewQuerySource(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	rs := mock_interfaces.NewMockResourceService(ctrl)
-	lvs := mock_interfaces.NewMockLogicViewService(ctrl)
-	registerMockLogicViewService(t, lvs)
+	lvs := mock_interfaces.NewMockLogicalViewService(ctrl)
+	registerMockLogicalViewService(t, lvs)
 	rds := &resourceDataService{rs: rs}
-	view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView,
+	view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicalView,
 		Enabled: true, SchemaDefinition: []*interfaces.Property{{Name: "name"}}}
 	params := &interfaces.ResourceDataQueryParams{}
 	rs.EXPECT().CheckResourcePermission(gomock.Any(), view.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
@@ -265,6 +265,36 @@ func TestResourceDataServiceQueryWithPagingPreservesLogicViewQuerySource(t *test
 }
 
 func TestResourceDataServiceQuery(t *testing.T) {
+	t.Run("public table query preserves local index score and cursor position", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		resources := mock_interfaces.NewMockResourceService(ctrl)
+		index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable,
+			Enabled: true, Status: interfaces.ResourceStatusActive,
+			LocalIndexName: "table-index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+		params := &interfaces.ResourceDataQueryParams{NeedTotal: true,
+			Paging:       interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Limit: 2},
+			Sort:         []*interfaces.SortField{{Field: "_score", Direction: "desc"}, {Field: "id", Direction: "asc"}},
+			OutputFields: []string{"id", "_score"}, SearchAfter: []any{0.875, 1}}
+		resources.EXPECT().CheckResourcePermission(gomock.Any(), "table-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+		index.EXPECT().ListDocuments(gomock.Any(), "table-index", resource, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, _ *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				assert.Equal(t, []*interfaces.SortField{{Field: "_score", Direction: "desc"}, {Field: "id", Direction: "asc"}}, actual.Sort)
+				assert.Equal(t, []string{"id", "_score"}, actual.OutputFields)
+				assert.Equal(t, []any{0.875, 1}, actual.SearchAfter)
+				actual.SearchAfter = []any{0.875, 2}
+				return []map[string]any{{"id": 2, "_score": 0.875}}, 3, nil
+			})
+		result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: index}).QueryWithPaging(context.Background(), resource, params)
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.ResourceQuerySourceLocalIndex, result.QuerySource)
+		assert.Equal(t, []map[string]any{{"id": 2, "_score": 0.875}}, result.Entries)
+		assert.Equal(t, int64(3), result.TotalCount)
+		assert.Equal(t, []any{0.875, 2}, params.SearchAfter)
+	})
 	t.Run("query rejects disabled catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -502,17 +532,17 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 	})
 
-	t.Run("query logic view filters sort and output fields before delegating", func(t *testing.T) {
+	t.Run("query logical view filters sort and output fields before delegating", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
-		registerMockLogicViewService(t, mockLVS)
+		mockLVS := mock_interfaces.NewMockLogicalViewService(ctrl)
+		registerMockLogicalViewService(t, mockLVS)
 		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID:        "logic-view-1",
 			Enabled:   true,
 			CatalogID: "catalog-1",
-			Category:  interfaces.ResourceCategoryLogicView,
+			Category:  interfaces.ResourceCategoryLogicalView,
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "name"},
 			},
@@ -543,15 +573,15 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 	})
 
-	t.Run("query logic view passes the logic view service HTTP error through", func(t *testing.T) {
+	t.Run("query logical view passes the logical view service HTTP error through", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockLVS := mock_interfaces.NewMockLogicViewService(ctrl)
-		registerMockLogicViewService(t, mockLVS)
+		mockLVS := mock_interfaces.NewMockLogicalViewService(ctrl)
+		registerMockLogicalViewService(t, mockLVS)
 		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID: "logic-view-1", Enabled: true, CatalogID: "catalog-1",
-			Category:         interfaces.ResourceCategoryLogicView,
+			Category:         interfaces.ResourceCategoryLogicalView,
 			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
 		}
 		params := &interfaces.ResourceDataQueryParams{}
@@ -1033,4 +1063,37 @@ func assertUnsupportedOperationHTTPError(t *testing.T, err error) {
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode,
 		"算子不支持是请求侧问题：包成 500 会让 ontology-query 判成依赖故障")
 	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+}
+
+func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
+	for _, fieldType := range []string{interfaces.DataType_Json, interfaces.DataType_Binary, interfaces.DataType_Other} {
+		for _, stored := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stored=%v", fieldType, stored), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				cs := mock_interfaces.NewMockCatalogService(ctrl)
+				lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+				service := &resourceDataService{cs: cs, lim: lim}
+				resource := tableResource("index")
+				resource.CatalogID = "catalog-1"
+				resource.SchemaDefinition = []*interfaces.Property{{Name: "payload", Type: fieldType}}
+				cfg := &interfaces.FilterCondCfg{Name: "payload", Operation: "exist"}
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+				expected := http.StatusBadRequest
+				if stored {
+					params.FixedFilterCondCfg = cfg
+					expected = http.StatusInternalServerError
+				}
+				rows, total, err := service.QuerySourcePage(context.Background(), resource, params)
+				require.Nil(t, rows)
+				assert.Zero(t, total)
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, expected, httpErr.HTTPCode)
+				if !stored {
+					assert.Contains(t, httpErr.BaseError.ErrorDetails, "not found")
+				}
+			})
+		}
+	}
 }

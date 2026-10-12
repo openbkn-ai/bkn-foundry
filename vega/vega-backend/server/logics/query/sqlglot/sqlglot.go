@@ -120,7 +120,8 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 	}
 }
 
-// TranspileSQL converts SQL from one dialect to another
+// TranspileSQL 转换 SQL 方言；SQL Server 目标（含同方言编译）的非 ASCII
+// 字符串字面量按 Unicode 保留，ASCII 字面量保留 varchar 类型。
 func TranspileSQL(ctx context.Context, sql string, fromDialect string, dataSourceType string) (*SQLParseResult, error) {
 
 	// Map the data source type to the sqlglot dialect
@@ -135,12 +136,24 @@ func TranspileSQL(ctx context.Context, sql string, fromDialect string, dataSourc
 import sys
 import json
 import sqlglot
+from sqlglot import exp
 
 try:
     sql = sys.argv[1]
     from_dialect = sys.argv[2]
     to_dialect = sys.argv[3]
-    transpiled = sqlglot.transpile(sql, read=from_dialect, write=to_dialect)[0]
+    if to_dialect == "tsql":
+        def preserve_unicode(node):
+            if isinstance(node, exp.Literal) and node.is_string and not node.this.isascii():
+                national = exp.National(this=node.this)
+                national.add_comments(node.comments)
+                return national
+            return node
+
+        statement = sqlglot.parse_one(sql, read=from_dialect)
+        transpiled = statement.transform(preserve_unicode).sql(dialect=to_dialect)
+    else:
+        transpiled = sqlglot.transpile(sql, read=from_dialect, write=to_dialect)[0]
     print(json.dumps({
         "ast": None,
         "sql": transpiled,

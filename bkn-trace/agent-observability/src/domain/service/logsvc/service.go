@@ -20,13 +20,19 @@ import (
 )
 
 var (
-	ErrAccessDenied       = errors.New("observability access denied")
-	ErrSourcesUnavailable = errors.New("observability sources unavailable")
-	ErrNotDisclosed       = errors.New("observability log not disclosed")
-	ErrCursorInvalid      = errors.New("observability cursor invalid")
-	ErrCursorStale        = errors.New("observability cursor stale")
-	ErrInvalidQuery       = errors.New("observability query invalid")
+	ErrAccessDenied                  = errors.New("observability access denied")
+	ErrSourcesUnavailable            = errors.New("observability sources unavailable")
+	ErrNotDisclosed                  = errors.New("observability log not disclosed")
+	ErrCursorInvalid                 = errors.New("observability cursor invalid")
+	ErrCursorStale                   = errors.New("observability cursor stale")
+	ErrInvalidQuery                  = errors.New("observability query invalid")
+	ErrNumberedPaginationUnsupported = errors.New("observability source does not support direct numbered pagination")
 )
+
+const MinLogPageSize = 20
+
+// Retain the pre-existing numbered window for cursor-only or mixed sources.
+const maxLegacyLogPage = 100
 
 type Source interface {
 	ID() string
@@ -141,25 +147,41 @@ func (service *Service) List(
 	profile evidencevo.AccessProfile,
 	query observabilityvo.LogQuery,
 ) (observabilityvo.ListResult, error) {
-	targetPage := normalizeLogPage(query.Page)
-	if query.Cursor != "" || targetPage == 1 {
-		return service.listPage(ctx, profile, query)
+	result, err := service.listPage(ctx, profile, query)
+	if !errors.Is(err, ErrNumberedPaginationUnsupported) || query.Page > maxLegacyLogPage {
+		return result, err
 	}
-
+	// Compatibility replay shares one deadline, rather than renewing the budget
+	// for each page. The SQL-only path above never enters this loop.
+	replayContext, cancel := context.WithTimeout(ctx, service.sourceTimeout)
+	defer cancel()
+	targetPage := query.Page
 	query.Page = 1
-	var result observabilityvo.ListResult
+	partial := false
 	for currentPage := 1; currentPage <= targetPage; currentPage++ {
-		pageResult, err := service.listPage(ctx, profile, query)
+		if err := replayContext.Err(); err != nil {
+			return observabilityvo.ListResult{}, errors.Join(ErrSourcesUnavailable, err)
+		}
+		result, err = service.listPage(replayContext, profile, query)
 		if err != nil {
 			return observabilityvo.ListResult{}, err
 		}
-		result = pageResult
-		if currentPage == targetPage || pageResult.NextCursor == "" {
+		if err := replayContext.Err(); err != nil {
+			return observabilityvo.ListResult{}, errors.Join(ErrSourcesUnavailable, err)
+		}
+		partial = partial || result.Partial
+		if currentPage == targetPage {
 			break
 		}
-		query.Cursor = pageResult.NextCursor
+		if result.NextCursor == "" {
+			result.Records = []observabilityvo.LogRecord{}
+			break
+		}
+		query.Cursor = result.NextCursor
 	}
 	result.Page = targetPage
+	result.Partial = result.Partial || partial
+	result.CountExact = result.CountExact && !result.Partial
 	return result, nil
 }
 
@@ -192,7 +214,18 @@ func (service *Service) listPage(
 	if len(visibleSources) == 0 {
 		return observabilityvo.ListResult{}, ErrSourcesUnavailable
 	}
-	visibleSourceIDs := sourceIDs(visibleSources)
+	// The disabled Audit inventory entry must not disable direct pagination of
+	// an otherwise single queryable source or enter its cursor source set.
+	paginationSources := make([]Source, 0, len(visibleSources))
+	var auditConfiguration observabilityvo.SourceStatus
+	for _, source := range visibleSources {
+		if metadata, ok := source.(metadataSource); ok && metadata.Metadata().Reason == "audit_consumer_not_configured" {
+			auditConfiguration = metadata.Metadata()
+			continue
+		}
+		paginationSources = append(paginationSources, source)
+	}
+	visibleSourceIDs := sourceIDs(paginationSources)
 	positions := make(map[string]observabilityvo.SourcePosition)
 	queryWatermark := time.Now().UTC()
 	if query.Cursor != "" {
@@ -227,6 +260,9 @@ func (service *Service) listPage(
 	if err := applyLogTimeWindow(&sourceQuery, queryWatermark); err != nil {
 		return observabilityvo.ListResult{}, ErrInvalidQuery
 	}
+	if len(paginationSources) == 0 && auditConfiguration.SourceID != "" {
+		return observabilityvo.ListResult{}, ErrAuditNotConfigured
+	}
 	sourceQuery.AuthorizedSubjectID = profile.EffectiveSubjectID
 	sourceQuery.AuthorizedApplicationID = profile.ApplicationPrincipalID
 	sourceQuery.AuthorizedCategories = append([]string(nil), effectiveCategories...)
@@ -238,6 +274,26 @@ func (service *Service) listPage(
 	sourceQuery.ObservedBefore = &queryWatermark
 	filterQuery := sourceQuery
 	filterQuery.ActorQuery = query.ActorQuery
+	if len(paginationSources) == 1 {
+		if source, ok := paginationSources[0].(numberedSource); ok {
+			sourceQuery.ActorQuery = query.ActorQuery
+			sourceQuery.Limit = limit
+			sourceQuery.Page = normalizeLogPage(query.Page)
+			if position, ok := positions[paginationSources[0].ID()]; ok {
+				sourceQuery.PageBefore = &position
+				sourceQuery.Page = 1
+			}
+			result, err := service.listNumbered(ctx, profile, capabilities, query, sourceQuery, source, paginationSources[0], queryWatermark, result)
+			if err == nil && auditConfiguration.SourceID != "" {
+				result.SourceStatus = append(result.SourceStatus, auditConfiguration)
+				result.Partial, result.CountExact = true, false
+			}
+			return result, err
+		}
+	}
+	if query.Cursor == "" && normalizeLogPage(query.Page) > 1 {
+		return observabilityvo.ListResult{}, ErrNumberedPaginationUnsupported
+	}
 	succeeded := 0
 	failed := 0
 	coveragePartial := false
@@ -251,8 +307,9 @@ func (service *Service) listPage(
 	for _, sourceResult := range service.searchSources(ctx, visibleSources, sourceQuery, positions) {
 		source := sourceResult.source
 		if sourceResult.status.Status == "not_integrated" {
-			// Coverage is shown in source status, but a source that was never
-			// queried cannot make results from reachable sources incomplete.
+			// A disabled audit ledger leaves a real gap in mixed audit/runtime queries.
+			coveragePartial = coveragePartial || sourceResult.status.Reason == "audit_consumer_not_configured"
+			// Other declared, future sources only contribute inventory status.
 			result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 			continue
 		}
@@ -743,7 +800,7 @@ func (service *Service) sourceStatus(ctx context.Context, source Source) observa
 			SourceID: source.ID(), Reliability: "best_effort", CountAccuracy: "exact",
 		}
 	}
-	if service.coverageStore == nil || service.coverageDeploymentID == "" {
+	if status.Reason == "audit_consumer_not_configured" || service.coverageStore == nil || service.coverageDeploymentID == "" {
 		return status
 	}
 	coverage, found, err := service.coverageStore.Get(ctx, source.ID(), service.coverageDeploymentID)

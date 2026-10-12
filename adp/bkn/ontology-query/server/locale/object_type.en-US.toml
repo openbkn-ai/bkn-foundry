@@ -9,8 +9,8 @@ Description = "Invalid DynamicParams"
 Solution = "Please check whether the parameter is correct."
 ErrorLink = ""
 
-[OntologyQuery.ObjectType.InvalidParameter.IgnoringStoreCache]
-Description = "Invalid Ignoring Store Cache"
+[OntologyQuery.ObjectType.InvalidParameter.IgnoreLocalIndex]
+Description = "Invalid ignore_local_index"
 Solution = "Please check whether the parameter is correct."
 ErrorLink = ""
 

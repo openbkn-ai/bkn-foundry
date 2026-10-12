@@ -257,6 +257,32 @@ func (r *restHandler) CreateKNByEx(c *gin.Context) {
 	r.CreateKN(c, visitor)
 }
 
+// parseKnowledgeNetworkImportOptions parses the import behavior shared by JSON and archive imports.
+// strict_mode takes precedence over the deprecated validate_dependency parameter.
+func parseKnowledgeNetworkImportOptions(ctx context.Context, c *gin.Context,
+	defaultMode string, defaultStrictMode bool) (string, bool, *rest.HTTPError) {
+	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, defaultMode)
+	if httpErr := validateImportMode(ctx, mode); httpErr != nil {
+		return "", false, httpErr
+	}
+
+	strictModeStr := c.Query(interfaces.QueryParam_StrictMode)
+	if strictModeStr == "" {
+		strictModeStr = c.Query("validate_dependency")
+	}
+	if strictModeStr == "" {
+		strictModeStr = strconv.FormatBool(defaultStrictMode)
+	}
+	strictMode, err := strconv.ParseBool(strictModeStr)
+	if err != nil {
+		return "", false, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
+	}
+
+	return mode, strictMode, nil
+}
+
 // Create a knowledge network.
 func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler CreateKN Start")
@@ -273,9 +299,8 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// Import mode.
-	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, interfaces.ImportMode_Normal)
-	httpErr := validateImportMode(ctx, mode)
+	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c,
+		interfaces.ImportMode_Normal, true)
 	if httpErr != nil {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -290,28 +315,11 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Whether to validate dependencies, default true. Parse priority: strict_mode > validate_dependency (legacy) > true
-	strictModeStr := c.Query(interfaces.QueryParam_StrictMode)
-	if strictModeStr == "" {
-		strictModeStr = c.Query("validate_dependency")
-	}
-	if strictModeStr == "" {
-		strictModeStr = "true"
-	}
-	strictMode, err := strconv.ParseBool(strictModeStr)
-	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
 	// Bind one knowledge network request object.
 	kn := interfaces.KN{}
 	_, parseSpan := oteltrace.StartNamedInternalSpan(ctx, "Parse knowledge network request")
 	parseStartedAt := time.Now()
-	err = c.ShouldBindJSON(&kn)
+	err := c.ShouldBindJSON(&kn)
 	parseSpan.SetAttributes(attr.Int64("json_parse_duration_ms", time.Since(parseStartedAt).Milliseconds()))
 	parseSpan.End()
 	if err != nil {

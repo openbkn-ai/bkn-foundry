@@ -508,7 +508,13 @@ func (r *restHandler) discoverResource(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	strategy, err := readResourceDiscoverStrategy(c)
+	if err != nil {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error()))
+		return
+	}
 	taskID, err := r.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{
+		Strategy:    strategy,
 		CatalogID:   resource.CatalogID,
 		ResourceID:  resource.ID,
 		TriggerType: interfaces.DiscoverTaskTriggerManual,
@@ -521,4 +527,22 @@ func (r *restHandler) discoverResource(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"id": taskID})
+}
+
+func readResourceDiscoverStrategy(c *gin.Context) (string, error) {
+	request := struct {
+		Strategy string `json:"strategy"`
+	}{Strategy: interfaces.DiscoverStrategyFullSync}
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&request); err != nil {
+			return "", err
+		}
+	}
+	if request.Strategy == "" {
+		request.Strategy = interfaces.DiscoverStrategyFullSync
+	}
+	if request.Strategy != interfaces.DiscoverStrategyFullSync && request.Strategy != interfaces.DiscoverStrategyCountOnly {
+		return "", fmt.Errorf("unsupported single-resource discover strategy %q", request.Strategy)
+	}
+	return request.Strategy, nil
 }

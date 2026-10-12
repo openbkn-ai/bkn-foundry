@@ -33,7 +33,8 @@ func TestRunCypherQueryPassesForbiddenThrough(t *testing.T) {
 			mockHTTPClient.EXPECT().
 				PostNoUnmarshal(gomock.Any(), "http://bkn/in/v1/knowledge-networks/kn-1/cypher-queries", gomock.Any(), gomock.Any()).
 				Return(http.StatusForbidden, []byte(`{"error_code":"`+code+`","description":"refused",`+
-					`"solution":"ask","error_details":"ot_user.phone"}`), nil)
+					`"solution":"ask","error_details":"ot_user.phone","metadata":{"permission_impacts":`+
+					`[{"object_type_id":"ot_user","properties":["phone"]}]}}`), nil)
 
 			client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
 			_, err := client.RunCypherQuery(context.Background(), &interfaces.CypherQueryReq{
@@ -50,7 +51,33 @@ func TestRunCypherQueryPassesForbiddenThrough(t *testing.T) {
 			if httpErr.ErrorDetails != "ot_user.phone" {
 				t.Fatalf("details = %v, want the property the refusal names", httpErr.ErrorDetails)
 			}
+			if httpErr.Metadata == nil {
+				t.Fatal("machine-readable permission metadata was lost")
+			}
 		})
+	}
+}
+
+func TestRunCypherQueryCarriesPermissionImpactsOnSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+	mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+	mockHTTPClient.EXPECT().
+		PostNoUnmarshal(gomock.Any(), "http://bkn/in/v1/knowledge-networks/kn-1/cypher-queries", gomock.Any(), gomock.Any()).
+		Return(http.StatusOK, []byte(`{"columns":[],"entries":[],"permission_impacts":`+
+			`[{"object_type_id":"ot_order","row_filter_applied":true}]}`), nil)
+
+	client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
+	resp, err := client.RunCypherQuery(context.Background(), &interfaces.CypherQueryReq{
+		KnID: "kn-1", Query: "MATCH (o:Order) RETURN count(*)",
+	})
+	if err != nil {
+		t.Fatalf("RunCypherQuery() error = %v", err)
+	}
+	if len(resp.PermissionImpacts) != 1 || resp.PermissionImpacts[0].ObjectTypeID != "ot_order" ||
+		!resp.PermissionImpacts[0].RowFilterApplied {
+		t.Fatalf("permission impacts = %+v", resp.PermissionImpacts)
 	}
 }
 

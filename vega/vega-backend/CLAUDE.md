@@ -52,7 +52,7 @@ server/
 
 **Resource (数据资源)**: 数据资源实体，支持9种类型:
 - 物理: table, file, fileset, api, metric, topic, index
-- 逻辑: logicview, dataset
+- 逻辑: logical_view, dataset
 
 **Connectors**: 可插拔的数据源连接器，按类型组织在 `logics/connectors/`:
 - table/ (MySQL, PostgreSQL, 达梦, Oracle, ClickHouse)

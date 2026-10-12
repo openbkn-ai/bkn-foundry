@@ -24,6 +24,20 @@ const permissionGuidanceKey = "permission_guidance"
 // in the error text rather than structuredContent: MCP tool errors have no
 // structured contract here, and run_code's stub only reads the text.
 func toolErrorWithPermissionGuidance(err error, guidance *interfaces.PermissionGuidance) *mcp.CallToolResult {
+	if guidance == nil {
+		return mcp.NewToolResultError(err.Error())
+	}
+	return toolErrorWithPermissionGuidanceValue(err, guidance)
+}
+
+func toolErrorWithPermissionGuidances(err error, guidance []*interfaces.PermissionGuidance) *mcp.CallToolResult {
+	if len(guidance) == 0 {
+		return mcp.NewToolResultError(err.Error())
+	}
+	return toolErrorWithPermissionGuidanceValue(err, guidance)
+}
+
+func toolErrorWithPermissionGuidanceValue(err error, guidance any) *mcp.CallToolResult {
 	var httpErr *infraErr.HTTPError
 	if guidance == nil || !errors.As(err, &httpErr) {
 		return mcp.NewToolResultError(err.Error())
@@ -38,4 +52,24 @@ func toolErrorWithPermissionGuidance(err error, guidance *interfaces.PermissionG
 		return mcp.NewToolResultError(err.Error())
 	}
 	return mcp.NewToolResultError(text)
+}
+
+func cypherPermissionImpactsFromError(err error) []interfaces.ObjectPermissionImpact {
+	var httpErr *infraErr.HTTPError
+	if !errors.As(err, &httpErr) || len(httpErr.Metadata) == 0 {
+		return nil
+	}
+	raw, ok := httpErr.Metadata["permission_impacts"]
+	if !ok {
+		return nil
+	}
+	encoded, marshalErr := sonic.ConfigStd.Marshal(raw)
+	if marshalErr != nil {
+		return nil
+	}
+	var impacts []interfaces.ObjectPermissionImpact
+	if sonic.Unmarshal(encoded, &impacts) != nil {
+		return nil
+	}
+	return impacts
 }

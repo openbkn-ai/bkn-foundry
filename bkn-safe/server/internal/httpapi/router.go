@@ -192,7 +192,7 @@ func New(deps Deps) *gin.Engine {
 		registerDeptAdmin(admin, deps.Directory, deps.Enforcer)
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
-		registerObjectGrants(admin, deps.Enforcer, deps.DB, permissionRequests)
+		registerObjectGrants(admin, deps.Enforcer, deps.DB, deps.Directory, deps.AuthorizationResources, permissionRequests)
 		if permissionRequests != nil {
 			registerAdminPermissionRequests(admin, permissionRequests, deps.Enforcer)
 		}
@@ -205,7 +205,7 @@ func New(deps Deps) *gin.Engine {
 			if recorder != nil {
 				enterpriseObjectGrants.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 			}
-			registerEnterpriseObjectGrants(enterpriseObjectGrants, deps.Enforcer, deps.DB, deps.Directory)
+			registerEnterpriseObjectGrants(enterpriseObjectGrants, deps.Enforcer, deps.DB, deps.Directory, deps.AuthorizationResources)
 		}
 		// rbac_basic write routes (custom role create/update/delete + role
 		// permission grant/revoke) are mounted by the enterprise build through
@@ -239,6 +239,9 @@ func New(deps Deps) *gin.Engine {
 		if permdata.MountManagement(propertyGrantAdmin, newPropertyGrantManagementServices(deps.Enforcer, deps.DB), func(c *gin.Context) (string, bool) {
 			operatorID := c.GetString(ctxAccessorID)
 			return operatorID, operatorID != ""
+		}, func(c *gin.Context, result permdata.ManagementAuditResult) {
+			setScopedManagementAuditOperation(c, deps.AuthorizationResources, deps.DB, deps.Directory,
+				result.Action, "property-grant", "property grants", result.SubjectType, result.SubjectID, result.ObjectTypeRef)
 		}) {
 			slog.Info("property-grant management routes mounted (enterprise build)")
 		}
@@ -253,6 +256,9 @@ func New(deps Deps) *gin.Engine {
 			), func(c *gin.Context) (string, bool) {
 				operatorID := c.GetString(ctxAccessorID)
 				return operatorID, operatorID != ""
+			}, func(c *gin.Context, result rowfiltersocket.ManagementAuditResult) {
+				setScopedManagementAuditOperation(c, deps.AuthorizationResources, deps.DB, deps.Directory,
+					result.Action, "row-filter-policy", "row filter policy", result.SubjectType, result.SubjectID, result.ObjectTypeRef)
 			}) {
 				slog.Info("row-filter management routes mounted (enterprise build)")
 			}
@@ -342,7 +348,7 @@ func New(deps Deps) *gin.Engine {
 		// Object-grant delegation: sharing an object you own is a write, so it
 		// belongs on the raw-verifier group with the rest of the mutating /me
 		// surface — and it must be audited like any other authorization change.
-		registerMeObjectGrants(meWrites, deps.Enforcer, deps.DB, deps.Directory, permissionRequests)
+		registerMeObjectGrants(meWrites, deps.Enforcer, deps.DB, deps.Directory, deps.AuthorizationResources, permissionRequests)
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
 			registerMeAPIKeys(meWrites, apiKeys)

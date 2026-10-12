@@ -2,8 +2,11 @@ package opensearch
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -12,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 func TestPropertyUnmarshalJSON(t *testing.T) {
@@ -216,4 +220,134 @@ func TestCollectSubFields(t *testing.T) {
 		assert.Equal(t, "a", got[0].Name)
 		assert.Equal(t, "z", got[1].Name)
 	})
+}
+
+type countRowsTransport func(*http.Request) (*http.Response, error)
+
+func (transport countRowsTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+func TestOpenSearchConnectorCountRows(t *testing.T) {
+	for _, tt := range []struct {
+		name, body   string
+		status       int
+		count        int64
+		index        *interfaces.IndexMeta
+		transportErr error
+		wantError    bool
+		noRequest    bool
+	}{
+		{name: "count", body: `{"count":42,"_shards":{"failed":0}}`, count: 42},
+		{name: "empty", body: `{"count":0,"_shards":{"failed":0}}`},
+		{name: "large count", body: `{"count":9007199254740993,"_shards":{"failed":0}}`, count: 9007199254740993},
+		{name: "http error", status: 403, body: `{"error":"private source details"}`, wantError: true},
+		{name: "transport error", transportErr: context.DeadlineExceeded, wantError: true},
+		{name: "failed shard", body: `{"count":4,"_shards":{"failed":1}}`, wantError: true},
+		{name: "missing count", body: `{"_shards":{"failed":0}}`, wantError: true},
+		{name: "negative count", body: `{"count":-1,"_shards":{"failed":0}}`, wantError: true},
+		{name: "missing shards", body: `{"count":42}`, wantError: true},
+		{name: "invalid json", body: `{`, wantError: true},
+		{name: "nil index", noRequest: true, wantError: true},
+		{name: "empty name", index: &interfaces.IndexMeta{}, noRequest: true, wantError: true},
+		{name: "outside scope", index: &interfaces.IndexMeta{Name: "other"}, noRequest: true, wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			client, err := opensearch.NewClient(opensearch.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					calls++
+					assert.Equal(t, "/products/_count", request.URL.Path)
+					if tt.transportErr != nil {
+						return nil, tt.transportErr
+					}
+					status := tt.status
+					if status == 0 {
+						status = http.StatusOK
+					}
+					return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(tt.body))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			var connector interfaces.IndexConnector = &OpenSearchConnector{client: client, Config: &opensearchConfig{IndexPatterns: []string{"products"}}}
+			index := tt.index
+			if index == nil && tt.name != "nil index" {
+				index = &interfaces.IndexMeta{Name: "products"}
+			}
+			count, err := connector.CountRows(context.Background(), index)
+			if tt.wantError {
+				require.Error(t, err)
+				assert.Zero(t, count)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.count, count)
+			}
+			if tt.transportErr != nil {
+				assert.True(t, errors.Is(err, tt.transportErr))
+			}
+			if tt.status == 403 {
+				assert.NotContains(t, err.Error(), "private source details")
+			}
+			if tt.noRequest {
+				assert.Zero(t, calls)
+			} else {
+				assert.Equal(t, 1, calls)
+			}
+		})
+	}
+}
+
+func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"products":{"mappings":{"properties":{
+			"age":{"type":"long"},
+			"created":{"type":"date"},
+			"profile":{"properties":{"name":{"type":"text","fields":{"raw":{"type":"keyword"}}}}},
+			"age_alias":{"type":"alias","path":"age"},
+			"date_alias":{"type":"alias","path":"created"},
+			"name_alias":{"type":"alias","path":"profile.name.raw"},
+			"missing_alias":{"type":"alias","path":"missing"},
+			"cycle_alias":{"type":"alias","path":"cycle_alias"},
+			"chain_alias":{"type":"alias","path":"age_alias"},
+			"object_alias":{"type":"alias","path":"profile"},
+			"invalid_alias":{"type":"alias","path":42}
+		}}}}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+	index := &interfaces.IndexMeta{Name: "products"}
+
+	require.NoError(t, connector.fetchMappings(t.Context(), index))
+	queryTypes := map[string]string{}
+	require.NoError(t, connector.fetchMappingsForQuery(t.Context(), "products", queryTypes))
+	for name, want := range map[string]string{
+		"age_alias": "long", "date_alias": "date", "name_alias": "keyword",
+		"missing_alias": "", "cycle_alias": "", "chain_alias": "", "object_alias": "", "invalid_alias": "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			field := index.Mapping[name]
+			assert.Equal(t, "alias", field.Type)
+			assert.Equal(t, want, field.ResolvedType)
+			assert.Contains(t, field.Attributes, "path")
+			assert.Equal(t, connector.MapType(want), queryTypes[name])
+			encoded, err := sonic.Marshal(field)
+			require.NoError(t, err)
+			assert.NotContains(t, string(encoded), "ResolvedType")
+		})
+	}
+	for _, name := range []string{"age_alias", "date_alias"} {
+		property := &interfaces.Property{Name: name, Type: queryTypes[name]}
+		cfg := &interfaces.FilterCondCfg{Name: name, ValueOptCfg: interfaces.ValueOptCfg{
+			ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10},
+		}}
+		condition, err := (&filter_condition.RangeCond{}).New(t.Context(), cfg,
+			map[string]*interfaces.Property{name: property})
+		require.NoError(t, err, name)
+		assert.NotNil(t, condition, name)
+	}
 }

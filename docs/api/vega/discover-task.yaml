@@ -12,6 +12,11 @@ info:
       [discover-schedule.yaml](discover-schedule.yaml).
     - Resource refresh: `POST /resources/{id}/discover`; see [resource.yaml](resource.yaml).
 
+    Single-resource `count_only` supports table, index, and logical_view categories.
+    Dataset counts are computed during reads; unsupported single-resource categories
+    return 400 before task creation. Catalog-level count tasks skip Dataset resources
+    and include them in `skipped_count`.
+
     `queue_priority` is a read-only integer computed by the server; larger values have
     higher priority. The default priorities are 10 for scheduled catalog discovery,
     20 for manual catalog discovery, and 30 for resource refresh. Workers dequeue tasks
@@ -74,6 +79,7 @@ paths:
               - full_sync
               - create_only
               - cleanup_only
+              - count_only
         - name: trigger_type
           description: Filters by trigger type.
           in: query
@@ -203,11 +209,12 @@ paths:
         task ID, and lets a worker perform discovery asynchronously. Poll
         `GET /discover-tasks/{id}` with the returned ID to observe progress.
 
-        The optional body is `{"strategy":"full_sync|create_only|cleanup_only"}` and
+        The optional body is `{"strategy":"full_sync|create_only|cleanup_only|count_only"}` and
         defaults to `full_sync`. This RPC-style nested endpoint represents an action on a
         catalog rather than creation of a top-level task.
 
-        Only catalogs with `type=physical` are supported. A logical catalog returns 400.
+        Metadata discovery requires `type=physical`. Logical catalogs accept only `count_only`,
+        which counts their logic views with the registered view service and skips unsupported categories.
       requestBody:
         required: false
         content:
@@ -320,6 +327,9 @@ components:
         restored_count:
           description: Number of invalid resources restored to available
           type: integer
+        skipped_count:
+          type: integer
+          description: count_only 中不支持计数而跳过的资源数；旧结果可省略
         failed_count:
           description: Number of resources that failed during discovery
           type: integer
@@ -368,6 +378,7 @@ components:
             - full_sync
             - create_only
             - cleanup_only
+            - count_only
         trigger_type:
           description: Trigger type
           type: string
@@ -429,6 +440,7 @@ components:
         updated_count: { type: integer }
         restored_count: { type: integer }
         failed_count: { type: integer }
+        skipped_count: { type: integer, description: count_only 中不支持计数而跳过的资源数 }
     DiscoverTaskSummary:
       description: Discovery-task list summary. Use the single-task detail endpoint for the complete result and its message.
       type: object
@@ -446,7 +458,7 @@ components:
         schedule_id: { type: string }
         strategy:
           type: string
-          enum: [full_sync, create_only, cleanup_only]
+          enum: [full_sync, create_only, cleanup_only, count_only]
         trigger_type:
           type: string
           enum: [manual, scheduled]
@@ -483,6 +495,7 @@ components:
             - full_sync
             - create_only
             - cleanup_only
+            - count_only
     ListDiscoverTasks:
       description: List of discovery-task summaries. Use the single-task detail endpoint for complete results.
       type: object

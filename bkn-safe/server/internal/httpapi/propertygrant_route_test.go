@@ -52,6 +52,7 @@ func propertyGrantRouter(t *testing.T, register bool) *gin.Engine {
 		permdata.RegisterManagementHandler(licverify.EditionEnterprise, func(
 			_ permdata.ManagementServices,
 			operatorID permdata.OperatorIDResolver,
+			_ permdata.ManagementAuditReporter,
 		) http.Handler {
 			return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 				operator, ok := operatorID(request)

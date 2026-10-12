@@ -50,7 +50,32 @@ def load_checkpoint(path, manifest_id, source_snapshot_at):
 
 
 def _source_cursor(entry):
+    primary_key = entry["source_primary_key"]
+    if not isinstance(primary_key, str) or not primary_key.isascii() or not primary_key.isdecimal() or int(primary_key) <= 0:
+        raise ManifestError("bridge source primary key must be a positive integer")
+    return entry["source_table"], int(primary_key)
+
+
+def _source_identity(entry):
     return entry["source_table"], entry["source_primary_key"]
+
+
+def _ordered_entries(entries):
+    ordered = sorted(entries, key=_source_cursor)
+    cursors, streams = set(), {}
+    for entry in ordered:
+        cursor = _source_cursor(entry)
+        if cursor in cursors:
+            raise ManifestError("bridge source cursor is duplicated")
+        cursors.add(cursor)
+        if entry["classification"] not in {"publish", "verify_delivered"}:
+            continue
+        stream = entry["producer_id"], entry["producer_stream_id"]
+        coordinate = int(entry["producer_epoch"]), int(entry["producer_sequence"])
+        if stream in streams and coordinate <= streams[stream]:
+            raise ManifestError("bridge source stream coordinates are not monotonic")
+        streams[stream] = coordinate
+    return ordered
 
 
 def _checkpoint(manifest, entry, ack, counts, completed=False):
@@ -89,13 +114,14 @@ def load_active_artifact(artifact_path, receipt_path):
 def publish_entries(manifest, entries, checkpoint_path, publish, fault=None):
     """Publish only `publish` entries; source table/PK is the recovery cursor."""
     verify_active_runtime(manifest, entries)
+    ordered = _ordered_entries(entries)
     checkpoint = load_checkpoint(checkpoint_path, manifest["manifest_id"], manifest["source_snapshot_at"])
-    start_after = None if checkpoint is None else (checkpoint["source_table"], checkpoint["source_primary_key"])
+    start_after = None if checkpoint is None else _source_cursor(checkpoint)
     counts = {} if checkpoint is None else dict(checkpoint["classification_counts"])
     last_ack = None if checkpoint is None else checkpoint["last_kafka_ack"]
     last_entry = None
     emitted = []
-    for entry in sorted(entries, key=_source_cursor):
+    for entry in ordered:
         if start_after is not None and _source_cursor(entry) <= start_after:
             continue
         counts[entry["classification"]] = counts.get(entry["classification"], 0) + 1
@@ -110,7 +136,7 @@ def publish_entries(manifest, entries, checkpoint_path, publish, fault=None):
         # The source-only frozen artifact deliberately has no central DB
         # entry_id.  Its durable identity is the C1 source cursor; an admin
         # may add entry_id for its own store without granting it to bridge.
-        emitted.append(entry.get("entry_id", _source_cursor(entry)))
+        emitted.append(entry.get("entry_id", _source_identity(entry)))
     # A trailing verify/coverage classification has no ACK of its own. Persist
     # a completed source cursor with the last ACK so classification accounting
     # is durable even when no later publish record exists.
@@ -134,7 +160,7 @@ def publish_encoded_entries(manifest, entries, events_by_source_cursor, checkpoi
     from source import encode_migration_record
 
     def publish(entry):
-        cursor = _source_cursor(entry)
+        cursor = _source_identity(entry)
         event = events_by_source_cursor.get(cursor)
         if not isinstance(event, dict):
             raise ManifestError("frozen publish entry has no source Event")

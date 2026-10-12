@@ -9,10 +9,10 @@ package errors
 // Metric model.
 const (
 	// 400
-	OntologyQuery_ActionType_InvalidParameter                    = "OntologyQuery.ActionType.InvalidParameter"
-	OntologyQuery_ActionType_InvalidParameter_DynamicParams      = "OntologyQuery.ActionType.InvalidParameter.DynamicParams"
-	OntologyQuery_ActionType_InvalidParameter_IgnoringStoreCache = "OntologyQuery.ActionType.InvalidParameter.IgnoringStoreCache"
-	OntologyQuery_ActionType_InvalidParameter_IncludeTypeInfo    = "OntologyQuery.ActionType.InvalidParameter.IncludeTypeInfo"
+	OntologyQuery_ActionType_InvalidParameter                  = "OntologyQuery.ActionType.InvalidParameter"
+	OntologyQuery_ActionType_InvalidParameter_DynamicParams    = "OntologyQuery.ActionType.InvalidParameter.DynamicParams"
+	OntologyQuery_ActionType_InvalidParameter_IgnoreLocalIndex = "OntologyQuery.ActionType.InvalidParameter.IgnoreLocalIndex"
+	OntologyQuery_ActionType_InvalidParameter_IncludeTypeInfo  = "OntologyQuery.ActionType.InvalidParameter.IncludeTypeInfo"
 
 	//404
 	OntologyQuery_ActionType_ActionTypeNotFound = "OntologyQuery.ActionType.ActionTypeNotFound"
@@ -27,7 +27,7 @@ var (
 		// 400
 		OntologyQuery_ActionType_InvalidParameter,
 		OntologyQuery_ActionType_InvalidParameter_DynamicParams,
-		OntologyQuery_ActionType_InvalidParameter_IgnoringStoreCache,
+		OntologyQuery_ActionType_InvalidParameter_IgnoreLocalIndex,
 		OntologyQuery_ActionType_InvalidParameter_IncludeTypeInfo,
 
 		// 404

@@ -1263,7 +1263,7 @@ class OtherClient:
                         _platform_stream_error(
                             "ModelFactory.Stream.InvalidMessageRole", "invalid_request_error"),
                         400)
-                start_time = time.time()
+                start_time = time.perf_counter()
                 params = {
                     "messages": messages,
                     "model": self.api_model,
@@ -1297,7 +1297,8 @@ class OtherClient:
                         if resp.status == 200:
                             log_info = logics.AddModelUsedAudit(
                                 model_id=self.model_id, user_id=user_id, input_tokens=result["usage"]["prompt_tokens"],
-                                output_tokens=result["usage"]["completion_tokens"])
+                                output_tokens=result["usage"]["completion_tokens"],
+                                total_time=time.perf_counter() - start_time, status="success")
                             await add_llm_model_call_log(log_info)
                             if self.model_type == "rlm" and not result["choices"][0]["message"].get("reasoning_content",
                                                                                                     None):

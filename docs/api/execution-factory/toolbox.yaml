@@ -636,6 +636,8 @@ paths:
         `tool_box:{box_id}` 持有 `execute`。拒绝或 bkn-safe 判定失败时不会调用工具。
 
         参数按 HTTP 的四个位置分开传：`header` / `query` / `path` / `body`。
+        函数工具的顶层 `timeout` 以秒为单位控制沙箱执行；超时时响应体的
+        `status_code` 为 504，接口本身仍返回 200。
       parameters:
         - $ref: '#/components/parameters/BoxID'
         - $ref: '#/components/parameters/ToolID'
@@ -684,6 +686,8 @@ paths:
 
         **返回的是被调服务的原始响应**（`status_code` / `headers` / `body`），
         不是平台自己的信封——上游返 500 时本接口仍是 200，`status_code` 里才是 500。
+        函数工具的顶层 `timeout` 以秒为单位控制沙箱执行，受代理最大超时配置约束；
+        沙箱执行超时时，信封的 `status_code` 为 504。
 
         **只有已发布工具箱里已启用的工具能被调用**：工具箱 `unpublish` / `offline`，
         或工具 `disabled`，都返回 400 `ToolNotAvailable`（`details` 说明是箱还是工具）。
@@ -1565,7 +1569,7 @@ components:
       properties:
         timeout:
           type: integer
-          description: 超时（秒）。
+          description: 超时（秒）。函数工具会将其用于沙箱执行；超出代理上限时按上限执行。
         header:
           type: object
           additionalProperties: true

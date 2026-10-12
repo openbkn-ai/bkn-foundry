@@ -46,7 +46,16 @@ type ManagementServices interface {
 }
 
 type OperatorIDResolver func(*http.Request) (string, bool)
-type ManagementHandlerFactory func(ManagementServices, OperatorIDResolver) http.Handler
+
+type ManagementAuditResult struct {
+	Action        string
+	SubjectType   string
+	SubjectID     string
+	ObjectTypeRef string
+}
+
+type ManagementAuditReporter func(*http.Request, ManagementAuditResult)
+type ManagementHandlerFactory func(ManagementServices, OperatorIDResolver, ManagementAuditReporter) http.Handler
 type PermissionProposalHandlerFactory func(ManagementServices) permissionproposal.Handler
 
 var (
@@ -100,6 +109,11 @@ func ManagementGate() gin.HandlerFunc {
 }
 
 type managementOperatorContextKey struct{}
+type managementAuditContextKey struct{}
+
+type managementAuditHolder struct {
+	result *ManagementAuditResult
+}
 
 func operatorIDFromRequest(request *http.Request) (string, bool) {
 	operatorID, ok := request.Context().Value(managementOperatorContextKey{}).(string)
@@ -114,18 +128,28 @@ func ManagementOperatorID(ctx context.Context) (string, bool) {
 	return operatorID, ok && operatorID != ""
 }
 
+func reportManagementAudit(request *http.Request, result ManagementAuditResult) {
+	if request == nil {
+		return
+	}
+	if holder, ok := request.Context().Value(managementAuditContextKey{}).(*managementAuditHolder); ok && holder != nil {
+		copy := result
+		holder.result = &copy
+	}
+}
+
 // MountManagement returns false until the Enterprise implementation and the
 // published-model resolver are both assembled. This is a fail-closed release
 // gate: a management write surface without field validation is unsafe.
-func MountManagement(group *gin.RouterGroup, services ManagementServices, resolveOperator func(*gin.Context) (string, bool)) bool {
+func MountManagement(group *gin.RouterGroup, services ManagementServices, resolveOperator func(*gin.Context) (string, bool), consumeAudit func(*gin.Context, ManagementAuditResult)) bool {
 	managementFrozen = true
 	if managementFactory == nil {
 		return false
 	}
-	if group == nil || services == nil || resolveOperator == nil {
+	if group == nil || services == nil || resolveOperator == nil || consumeAudit == nil {
 		panic("rowfilter: incomplete management route dependencies")
 	}
-	handler := managementFactory(services, operatorIDFromRequest)
+	handler := managementFactory(services, operatorIDFromRequest, reportManagementAudit)
 	if handler == nil {
 		panic("rowfilter: management handler factory returned nil")
 	}
@@ -134,10 +158,15 @@ func MountManagement(group *gin.RouterGroup, services ManagementServices, resolv
 	}
 	serve := func(c *gin.Context) {
 		request := c.Request
+		holder := &managementAuditHolder{}
+		request = request.WithContext(context.WithValue(request.Context(), managementAuditContextKey{}, holder))
 		if operatorID, ok := resolveOperator(c); ok {
 			request = request.WithContext(context.WithValue(request.Context(), managementOperatorContextKey{}, operatorID))
 		}
 		handler.ServeHTTP(c.Writer, request)
+		if holder.result != nil {
+			consumeAudit(c, *holder.result)
+		}
 	}
 	group.GET("/row-filter-policies", serve)
 	group.PATCH("/row-filter-policies", serve)

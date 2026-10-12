@@ -75,18 +75,15 @@ ghcr.io/openbkn-ai/otelcol-openbkn:<release-version>
 ```
 
 该镜像由 `builder-config.yaml` 生成，额外包含 traces-only 的
-`traceadmission` processor。Processor 使用现有 BKN Safe OAuth2
-`client_credentials` 获取 Bearer token，拉取签名的
-`TraceEvidencePolicySnapshotV1`，并在 policy revision 与现有 configuration GET
-的 active operation/revision 一致时发送 heartbeat/ACK。client secret 与签名公钥
-只通过 Pod Secret 注入，不写入 ConfigMap。
+`traceadmission` processor。Processor 通过集群内部接口直接拉取不签名的
+`TraceEvidencePolicySnapshotV1`，校验 revision、模式与有效期，并在 policy revision
+与 configuration GET 的 active operation/revision 一致时发送 heartbeat/ACK。
+内部控制面不使用 OAuth、BKN Safe 服务身份或策略签名密钥。
 
-Trace Admission 的内部路由使用 agent-observability chart 单独创建的
-`agent-observability-internal:8081` Service（private listener）；
-configuration GET 使用 `:8080` public listener。部署平台必须确保 Collector Pod 能访问
-这两个现有 listener，且 BKN Safe client principal 已授予精确的
-`trace_evidence_configuration/global/read` 与 `trace_evidence_endpoint/{trace_gateway}/heartbeat`
-能力。Processor 不读取或改变 logs pipeline。
+policy、configuration GET、heartbeat 和 ACK 均使用
+`agent-observability-internal:8081` Service（private listener）。部署平台应保证
+Collector Pod 可以访问该内部 Service；workload identity 从部署配置读取并作为状态
+上报字段。Processor 不读取或改变 logs pipeline。
 
 默认会渲染以下 exporter 结构：
 

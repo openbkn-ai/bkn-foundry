@@ -284,7 +284,7 @@ func (suta *semanticUnderstandingTaskAccess) FindActiveByInputHash(ctx context.C
 		Where(sq.Eq{"f_scope": scope}).
 		Where(sq.Eq{"f_input_hash": inputHash}).
 		Where(sq.Eq{"f_status": interfaces.SemanticUnderstandingTaskActiveStatuses}).
-		OrderBy("f_create_time DESC").
+		OrderBy("f_create_time DESC, f_id DESC").
 		Limit(1).
 		ToSql()
 	if err != nil {
@@ -572,8 +572,13 @@ func (suta *semanticUnderstandingTaskAccess) update(ctx context.Context, tx *sql
 	return affected > 0, nil
 }
 
+// The unique ID makes pagination deterministic when primary sort values tie.
 func buildOrderByClause(sort, direction string) string {
-	column := "f_create_time"
+	dir := "DESC"
+	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
+		dir = "ASC"
+	}
+	var column string
 	switch sort {
 	case interfaces.SemanticUnderstandingTaskSortStartTime:
 		column = "f_start_time"
@@ -581,11 +586,8 @@ func buildOrderByClause(sort, direction string) string {
 		column = "f_finish_time"
 	case interfaces.SemanticUnderstandingTaskSortCreateTime:
 		column = "f_create_time"
+	default:
+		column = "f_create_time"
 	}
-
-	dir := "DESC"
-	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
-		dir = "ASC"
-	}
-	return fmt.Sprintf("%s %s", column, dir)
+	return fmt.Sprintf("%s %s, f_id %s", column, dir, dir)
 }

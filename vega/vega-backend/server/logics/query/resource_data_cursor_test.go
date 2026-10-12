@@ -202,7 +202,7 @@ func TestExecuteInitialResourceDataCursorWithCategory(t *testing.T) {
 		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
-		resource := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView, CatalogID: "catalog-1"}
+		resource := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicalView, CatalogID: "catalog-1"}
 		result, err := ExecuteInitialResourceDataCursorWithCategory(context.Background(), "account-1", resource,
 			interfaces.ResourceCategoryIndex,
 			&interfaces.ResourceDataQueryParams{NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}},
@@ -232,7 +232,7 @@ func TestExecuteResourceDataCursorContinuationWithRunnerRejectsChangedSource(t *
 			rawQueryCursorSessions = newCursorSessionManager(10, 9)
 			t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
-			view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView, UpdateTime: 10}
+			view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicalView, UpdateTime: 10}
 			source := &interfaces.Resource{ID: "source-1", Category: interfaces.ResourceCategoryTable,
 				UpdateTime: 20, LocalIndexName: "source-index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable}
 			calls := 0

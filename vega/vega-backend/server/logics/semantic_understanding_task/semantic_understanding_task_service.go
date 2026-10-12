@@ -247,6 +247,21 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
+	if task.Input != "" {
+		if task.ResourceID == "" {
+			task.Input = ""
+		} else {
+			err := suts.rs.CheckResourcePermission(ctx, task.ResourceID, interfaces.OPERATION_TYPE_QUERY_DATA)
+			if err != nil {
+				if !interfaces.IsPermissionRefusal(err) {
+					span.SetStatus(codes.Error, "Check resource permission failed")
+					return nil, err
+				}
+				task.Input = ""
+			}
+		}
+	}
+
 	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, []*interfaces.SemanticUnderstandingTask{task}); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
@@ -302,7 +317,7 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 	tasks, total, err := suts.suta.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List semantic understanding tasks failed")
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -696,7 +711,9 @@ func isSemanticUnderstandingExcludedSampleProperty(property *interfaces.Property
 	if property == nil {
 		return false
 	}
-	return property.Type == interfaces.DataType_Binary || property.Type == interfaces.DataType_Other
+	return property.Type == interfaces.DataType_Binary ||
+		property.Type == interfaces.DataType_Other ||
+		property.Type == interfaces.DataType_Vector
 }
 
 func limitSemanticUnderstandingSampleValue(value any) any {
@@ -859,7 +876,7 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 			Description: catalog.Description,
 		},
 		Resources:          []interfaces.SemanticUnderstandingCatalogAgentInputResource{},
-		ExistingLogicViews: []interfaces.SemanticUnderstandingCatalogAgentInputExistingView{},
+		ExistingLogicalViews: []interfaces.SemanticUnderstandingCatalogAgentInputExistingView{},
 		Options: interfaces.SemanticUnderstandingCatalogAgentInputOptions{
 			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 			ApplyMode:           req.ApplyMode,
@@ -870,8 +887,8 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 		if resource == nil {
 			continue
 		}
-		if resource.Category == interfaces.ResourceCategoryLogicView {
-			input.ExistingLogicViews = append(input.ExistingLogicViews, buildCatalogAgentInputExistingView(resource))
+		if resource.Category == interfaces.ResourceCategoryLogicalView {
+			input.ExistingLogicalViews = append(input.ExistingLogicalViews, buildCatalogAgentInputExistingView(resource))
 			continue
 		}
 		input.Resources = append(input.Resources, buildCatalogAgentInputResource(resource))

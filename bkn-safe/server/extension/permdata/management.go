@@ -39,10 +39,22 @@ type ManagementServices interface {
 // The identity is never accepted from query or request-body data.
 type OperatorIDResolver func(*http.Request) (string, bool)
 
+// ManagementAuditResult is the committed business identity reported by the EE
+// handler. Core resolves display snapshots from its authoritative directories;
+// EE never supplies caller-controlled names.
+type ManagementAuditResult struct {
+	Action        string
+	SubjectType   string
+	SubjectID     string
+	ObjectTypeRef string
+}
+
+type ManagementAuditReporter func(*http.Request, ManagementAuditResult)
+
 // ManagementHandlerFactory builds the private Enterprise business handler.
 // Core owns the public path, methods, entitlement gate, authentication and
 // account-state middleware; the factory owns only management behavior.
-type ManagementHandlerFactory func(services ManagementServices, operatorID OperatorIDResolver) http.Handler
+type ManagementHandlerFactory func(services ManagementServices, operatorID OperatorIDResolver, audit ManagementAuditReporter) http.Handler
 type PermissionProposalHandlerFactory func(services ManagementServices) permissionproposal.Handler
 
 var (
@@ -109,10 +121,25 @@ func ManagementGate() gin.HandlerFunc {
 }
 
 type operatorContextKey struct{}
+type managementAuditContextKey struct{}
+
+type managementAuditHolder struct {
+	result *ManagementAuditResult
+}
 
 func operatorIDFromRequest(request *http.Request) (string, bool) {
 	operatorID, ok := request.Context().Value(operatorContextKey{}).(string)
 	return operatorID, ok && operatorID != ""
+}
+
+func reportManagementAudit(request *http.Request, result ManagementAuditResult) {
+	if request == nil {
+		return
+	}
+	if holder, ok := request.Context().Value(managementAuditContextKey{}).(*managementAuditHolder); ok && holder != nil {
+		copy := result
+		holder.result = &copy
+	}
 }
 
 // MountManagement mounts the core-owned management path when an Enterprise
@@ -122,15 +149,16 @@ func MountManagement(
 	group *gin.RouterGroup,
 	services ManagementServices,
 	resolveOperator func(*gin.Context) (string, bool),
+	consumeAudit func(*gin.Context, ManagementAuditResult),
 ) bool {
 	managementFrozen = true
 	if managementFactory == nil {
 		return false
 	}
-	if group == nil || services == nil || resolveOperator == nil {
+	if group == nil || services == nil || resolveOperator == nil || consumeAudit == nil {
 		panic("permdata: incomplete management route dependencies")
 	}
-	handler := managementFactory(services, operatorIDFromRequest)
+	handler := managementFactory(services, operatorIDFromRequest, reportManagementAudit)
 	if handler == nil {
 		panic("permdata: management handler factory returned nil")
 	}
@@ -139,10 +167,15 @@ func MountManagement(
 	}
 	serve := func(c *gin.Context) {
 		request := c.Request
+		holder := &managementAuditHolder{}
+		request = request.WithContext(context.WithValue(request.Context(), managementAuditContextKey{}, holder))
 		if operatorID, ok := resolveOperator(c); ok {
 			request = request.WithContext(context.WithValue(request.Context(), operatorContextKey{}, operatorID))
 		}
 		handler.ServeHTTP(c.Writer, request)
+		if holder.result != nil {
+			consumeAudit(c, *holder.result)
+		}
 	}
 	group.GET("/property-grants", serve)
 	group.PATCH("/property-grants", serve)

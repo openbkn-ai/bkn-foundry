@@ -82,4 +82,19 @@ if helm template agent-observability "${chart}" \
   exit 1
 fi
 
+# Isolate each invalid setting so an unrelated render error cannot pass the test.
+valid_audit=(--set core.store=mariadb --set core.autoMigrate=true
+  --set kafkaConsumers.audit.enabled=true --set 'kafkaConsumers.audit.brokers[0]=kafka:9092'
+  --set kafkaConsumers.audit.consumerGroup=audit-ledger-v1
+  --set kafkaConsumers.audit.saslMechanism=PLAIN
+  --set kafkaConsumers.audit.existingSecret.name=audit-kafka)
+for invalid in 'kafkaConsumers.audit.brokers={}' 'kafkaConsumers.audit.consumerGroup=' \
+  'kafkaConsumers.audit.saslMechanism=GSSAPI' 'kafkaConsumers.audit.existingSecret.name=' \
+  'kafkaConsumers.audit.topic=wrong-topic' 'core.store=memory' 'core.autoMigrate=false'; do
+  if helm template agent-observability "${chart}" "${valid_audit[@]}" --set "${invalid}" >/dev/null 2>&1; then
+    echo "Audit consumer render must reject ${invalid}" >&2
+    exit 1
+  fi
+done
+
 echo "Agent Observability Kafka consumer chart checks passed"

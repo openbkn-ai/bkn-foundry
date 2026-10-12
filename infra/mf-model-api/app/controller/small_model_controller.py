@@ -114,7 +114,6 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
     except Exception as e:
         StandLogger.error(e.args)
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
-        error_dict["detail"] = str(e)
         return JSONResponse(status_code=400, content=error_dict)
 
 
@@ -161,7 +160,6 @@ async def test_model(request, userId, language, role):
         except Exception as e:
             StandLogger.error(str(e))
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-            error_dict["detail"] = f"{e}"
             return JSONResponse(status_code=400, content=error_dict)
         content = {"status": "ok", "id": model_id}
         return JSONResponse(status_code=200, content=content)
@@ -488,7 +486,6 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
         StandLogger.error(
             f"call embeddingError,model_name={model_name},model_id={model_id},error_detail={e}")
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
-        error_dict["detail"] = str(e)
         if get_logger():
             get_logger().info(
                 f'{{"model_name":{model_name},"resourece_type":"embeddings","user_id":{userId},'
@@ -568,7 +565,6 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
     except Exception as e:
         StandLogger.error(e.args)
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
-        error_dict["detail"] = str(e)
         if get_logger():
             get_logger().info(
                 f'{{"model_name":{model_name},"resourece_type":"embeddings","user_id":{userId},'

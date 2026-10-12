@@ -8,6 +8,9 @@ fullnameOverride: ""
 
 replicaCount: 1
 
+# Runtime diagnostic logging: debug, info, warn, or error.
+logLevel: info
+
 image:
   registry: ghcr.io/openbkn-ai
   repository: agent-observability
@@ -45,6 +48,15 @@ networkPolicy:
     - namespace: ""
       podLabels:
         app: bkn-agent
+    - namespace: openbkn
+      podLabels:
+        module: bkn-backend
+    - namespace: openbkn
+      podLabels:
+        module: ontology-query
+    - namespace: ""
+      podLabels:
+        app.kubernetes.io/name: otelcol-contrib
 
 ingress:
   enabled: true
@@ -180,14 +192,16 @@ observability:
     deploymentID: observability/otelcol-contrib
     interval: 30s
   admissionBudget:
-    # Thresholds are deployment/SLO inputs. Empty values intentionally keep
-    # enable fail-closed until the deployment supplies all four values.
+    # Defaults protect a new installation without manual configuration.
+    # Deployments may override them for their capacity and SLO requirements.
+    # Persist overrides in the values file used for every Helm upgrade; a
+    # runtime env patch is not durable.
     profile: default
     collectorMetricsEndpoint: ""
-    opensearchCapacityThreshold: ""
-    opensearchHeapThreshold: ""
-    collectorQueueThreshold: ""
-    storagePoolThreshold: ""
+    opensearchCapacityThreshold: "0.90"
+    opensearchHeapThreshold: "0.90"
+    collectorQueueThreshold: "0.90"
+    storagePoolThreshold: "0.90"
 
 core:
   # Keep existing trace/evidence reads available after an upgrade. Enable
@@ -211,15 +225,8 @@ core:
   # the safe default disabled and emits a bootstrap warning annotation; an
   # existing singleton always remains authoritative.
   capturePolicyInitialState: ""
-  capturePolicySigning:
-    keyID: trace-capture-policy-2026
-    # Must equal traceAdmission.audienceClusterID in the Collector release.
-    audience: cluster-a
-    snapshotTTL: 15m
-    # Required external Secret. The referenced key must contain a base64
-    # encoded raw 64-byte Ed25519 private key; Helm never generates or rotates it.
-    existingSecret: ""
-    privateKeyKey: private-key
+  # Internal unsigned snapshots retain a freshness deadline.
+  capturePolicySnapshotTTL: 15m
   projection:
     enabled: false
     # Single runtime authority for signed historical-provenance projection.

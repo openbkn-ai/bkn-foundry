@@ -24,10 +24,11 @@ import (
 type SubjectType = string
 
 const (
-	SubjectTypeUnknown    = "unknown"
-	SubjectTypeUser       = "user"
-	SubjectTypeRole       = "role"
-	SubjectTypeDepartment = "department"
+	SubjectTypeUnknown     = "unknown"
+	SubjectTypeUser        = "user"
+	SubjectTypeRole        = "role"
+	SubjectTypeDepartment  = "department"
+	ActivationStateRevoked = "revoked"
 )
 
 // InventoryEntry is the non-sensitive management projection of one historical

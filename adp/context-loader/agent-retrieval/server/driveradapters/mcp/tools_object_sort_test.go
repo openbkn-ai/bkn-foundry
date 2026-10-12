@@ -45,7 +45,7 @@ func TestHandleQueryObjectInstance_ForwardsSort(t *testing.T) {
 	})
 }
 
-// The tool surface only opens sort. exclude_system_properties and ignoring_store_cache are internal parameters:
+// The tool surface only opens sort. exclude_system_properties and ignore_local_index are internal parameters:
 // Which system fields are lost in the former depends on whether the caller wants to drill down later, while the latter is an escape channel when the index is abnormal (a bit slower)
 // order of magnitude), it will be misused if left to model judgment.
 func TestQueryObjectInstanceSchema_ExposesSortButNotInternalParams(t *testing.T) {
@@ -62,7 +62,7 @@ func TestQueryObjectInstanceSchema_ExposesSortButNotInternalParams(t *testing.T)
 
 		_, hasExclude := schema.Properties["exclude_system_properties"]
 		convey.So(hasExclude, convey.ShouldBeFalse)
-		_, hasIgnoring := schema.Properties["ignoring_store_cache"]
+		_, hasIgnoring := schema.Properties["ignore_local_index"]
 		convey.So(hasIgnoring, convey.ShouldBeFalse)
 		// need_total is unconditionally set to true by the driven adapter and is not an option on the caller's part.
 		_, hasNeedTotal := schema.Properties["need_total"]
@@ -87,4 +87,31 @@ func TestQueryObjectInstanceSchema_SortDescriptionsAreLocalized(t *testing.T) {
 			convey.So(replacements[path], convey.ShouldNotBeBlank)
 		}
 	})
+}
+
+func TestQueryObjectInstanceSchema_DescribesQuerySource(t *testing.T) {
+	_, output := loadToolSchemas("query_object_instance")
+	var schema struct {
+		Properties map[string]struct {
+			Type string   `json:"type"`
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(output, &schema); err != nil {
+		t.Fatal(err)
+	}
+	field, ok := schema.Properties["query_source"]
+	if !ok || field.Type != "string" || len(field.Enum) != 2 || field.Enum[0] != "local_index" || field.Enum[1] != "source" {
+		t.Fatalf("query_source schema = %#v", field)
+	}
+	for _, required := range schema.Required {
+		if required == "query_source" {
+			t.Fatal("query_source must remain optional")
+		}
+	}
+	bundle := loadMCPLocaleBundle("en-US")
+	if bundle.schemaDescriptions["query_object_instance"]["output_schema.properties.query_source.description"] == "" {
+		t.Fatal("query_source must have an English description")
+	}
 }

@@ -70,7 +70,7 @@ func ValidateHeaderMethodOverride(ctx context.Context, headerMethod string) erro
 }
 
 // validateObjectsQueryParameters validates object query parameters.
-func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string, ignoringStoreCache string,
+func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string, ignoreLocalIndex string,
 	includeLogicParams string, excludeSystemProperties []string) (interfaces.CommonQueryParameters, error) {
 
 	includeType, err := strconv.ParseBool(includeTypeInfo)
@@ -85,10 +85,10 @@ func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string,
 			WithErrorDetails(locale.ValidationDetail(ctx, "IncludeLogicParamsInvalid", map[string]any{"value": includeLogicParams}))
 	}
 
-	ignoringStore, err := strconv.ParseBool(ignoringStoreCache)
+	ignoreIndex, err := strconv.ParseBool(ignoreLocalIndex)
 	if err != nil {
-		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoringStoreCache).
-			WithErrorDetails(locale.ValidationDetail(ctx, "IgnoringStoreCacheInvalid", map[string]any{"value": ignoringStoreCache}))
+		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex).
+			WithErrorDetails(locale.ValidationDetail(ctx, "IgnoreLocalIndexInvalid", map[string]any{"value": ignoreLocalIndex}))
 	}
 
 	// Validate excluded system properties.
@@ -107,14 +107,14 @@ func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string,
 	return interfaces.CommonQueryParameters{
 		IncludeTypeInfo:         includeType,
 		IncludeLogicParams:      includeLogicP,
-		IgnoringStore:           ignoringStore,
+		IgnoreLocalIndex:        ignoreIndex,
 		ExcludeSystemProperties: excludeSystemProperties,
 	}, nil
 }
 
 // validateSugraphQueryParameters validates subgraph query parameters.
 func validateSugraphQueryParameters(ctx context.Context,
-	includeLogicParams string, ignoringStoreCache string, excludeSystemProperties []string) (interfaces.CommonQueryParameters, error) {
+	includeLogicParams string, ignoreLocalIndex string, excludeSystemProperties []string) (interfaces.CommonQueryParameters, error) {
 
 	includeLogicP, err := strconv.ParseBool(includeLogicParams)
 	if err != nil {
@@ -122,10 +122,10 @@ func validateSugraphQueryParameters(ctx context.Context,
 			WithErrorDetails(locale.ValidationDetail(ctx, "IncludeLogicParamsInvalid", map[string]any{"value": includeLogicParams}))
 	}
 
-	ignoringStore, err := strconv.ParseBool(ignoringStoreCache)
+	ignoreIndex, err := strconv.ParseBool(ignoreLocalIndex)
 	if err != nil {
-		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoringStoreCache).
-			WithErrorDetails(locale.ValidationDetail(ctx, "IgnoringStoreCacheInvalid", map[string]any{"value": ignoringStoreCache}))
+		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex).
+			WithErrorDetails(locale.ValidationDetail(ctx, "IgnoreLocalIndexInvalid", map[string]any{"value": ignoreLocalIndex}))
 	}
 
 	// Validate excluded system properties.
@@ -143,7 +143,7 @@ func validateSugraphQueryParameters(ctx context.Context,
 
 	return interfaces.CommonQueryParameters{
 		IncludeLogicParams:      includeLogicP,
-		IgnoringStore:           ignoringStore,
+		IgnoreLocalIndex:        ignoreIndex,
 		ExcludeSystemProperties: excludeSystemProperties,
 	}, nil
 }

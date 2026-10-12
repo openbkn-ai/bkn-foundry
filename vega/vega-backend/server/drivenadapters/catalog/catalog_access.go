@@ -447,7 +447,7 @@ func (ca *catalogAccess) ListPermissionRefs(ctx context.Context, params interfac
 	builder := sq.Select("f_id").From(CATALOG_TABLE_NAME)
 	builder = applyCatalogFilters(builder, params)
 
-	builder = builder.OrderBy(catalogListOrderByClause(params.Sort, params.Direction))
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -539,7 +539,7 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	}
 
 	// Pagination is applied in service after permission filtering.
-	builder = builder.OrderBy(catalogListOrderByClause(params.Sort, params.Direction))
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -739,24 +739,26 @@ func (ca *catalogAccess) DeleteByID(ctx context.Context, tx *sql.Tx, id string) 
 	return nil
 }
 
-// catalogListOrderByClause translates API sort fields into a safe ORDER BY clause.
-// Empty or unknown sort values fall back to update time descending.
-func catalogListOrderByClause(sort, direction string) string {
+// buildOrderByClause translates API sort fields into a safe ORDER BY clause.
+// Empty or unknown sort values fall back to update time, preserving direction.
+// The unique ID makes pagination deterministic when primary sort values tie.
+func buildOrderByClause(sort, direction string) string {
 	dir := "DESC"
 	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
 		dir = "ASC"
 	}
-
+	var column string
 	switch sort {
 	case interfaces.CatalogSortName:
-		return "f_name " + dir
+		column = "f_name"
 	case interfaces.CatalogSortCreateTime:
-		return "f_create_time " + dir
+		column = "f_create_time"
 	case interfaces.CatalogSortUpdateTime:
-		return "f_update_time " + dir
+		column = "f_update_time"
 	default:
-		return "f_update_time DESC"
+		column = "f_update_time"
 	}
+	return fmt.Sprintf("%s %s, f_id %s", column, dir, dir)
 }
 
 // UpdateStatus updates Catalog status.

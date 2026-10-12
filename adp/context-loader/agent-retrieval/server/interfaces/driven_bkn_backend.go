@@ -48,13 +48,14 @@ const (
 )
 
 type KnBaseError struct {
-	ErrorCode               string         `json:"error_code"`    // Error code
-	Description             string         `json:"description"`   // Error description
-	Solution                string         `json:"solution"`      // Solution
-	ErrorLink               string         `json:"error_link"`    // Error link
-	ErrorDetails            interface{}    `json:"error_details"` // Detail content
-	DescriptionTemplateData map[string]any `json:"-"`             // Description parameters
-	SolutionTemplateData    map[string]any `json:"-"`             // Solution parameters
+	ErrorCode               string         `json:"error_code"`         // Error code
+	Description             string         `json:"description"`        // Error description
+	Solution                string         `json:"solution"`           // Solution
+	ErrorLink               string         `json:"error_link"`         // Error link
+	ErrorDetails            interface{}    `json:"error_details"`      // Detail content
+	Metadata                map[string]any `json:"metadata,omitempty"` // Machine-readable error metadata
+	DescriptionTemplateData map[string]any `json:"-"`                  // Description parameters
+	SolutionTemplateData    map[string]any `json:"-"`                  // Solution parameters
 }
 
 type ResourceInfo struct {
@@ -767,9 +768,19 @@ type CypherQueryColumn struct {
 // is deliberately absent: it names physical tables and columns, which a caller
 // is not entitled to just because they may read the data.
 type CypherQueryResp struct {
-	Columns         []CypherQueryColumn `json:"columns"`
-	Entries         []map[string]any    `json:"entries"`
-	TraceDescriptor json.RawMessage     `json:"-"`
+	Columns            []CypherQueryColumn      `json:"columns"`
+	Entries            []map[string]any         `json:"entries"`
+	TraceDescriptor    json.RawMessage          `json:"-"`
+	PermissionImpacts  []ObjectPermissionImpact `json:"-"`
+	PermissionGuidance []*PermissionGuidance    `json:"permission_guidance,omitempty"`
+}
+
+// ObjectPermissionImpact is a structured signal that an object type's
+// property or row policy affected a tool result.
+type ObjectPermissionImpact struct {
+	ObjectTypeID     string   `json:"object_type_id"`
+	Properties       []string `json:"properties,omitempty"`
+	RowFilterApplied bool     `json:"row_filter_applied,omitempty"`
 }
 
 type BknBackendAccess interface {

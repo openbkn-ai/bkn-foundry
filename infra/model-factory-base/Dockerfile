@@ -1,5 +1,5 @@
 # model-factory-base — shared base image for mf-model-api and mf-model-manager.
-# Rebuilds the legacy acr.aishu.cn/ad/model-factory-base:v2 from public sources; AR exporter/tlogging has been removed from service code.
+# Rebuilds the legacy acr.aishu.cn/ad/model-factory-base:v3 from public sources; AR exporter/tlogging has been removed from service code.
 # Pin Python to 3.11 because pydantic v1 (~=1.10.9) and llmadapter 1.0.3 do not support 3.12.
 FROM python:3.11-bookworm
 

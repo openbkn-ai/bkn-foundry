@@ -21,7 +21,16 @@ not_contains() {
 }
 
 contains 'name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED'
-contains 'value: "false"'
+if ! grep -A1 'name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED' <<<"${rendered}" | grep -Fq 'value: "true"'; then
+  echo 'new installs must enable the Evidence publisher by default' >&2
+  exit 1
+fi
+contains 'name: BKN_TRACE_KAFKA_BROKERS'
+rendered="$(helm template bkn-agent "${chart_dir}" --set observability.evidencePublisher.enabled=false)"
+if ! grep -A1 'name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED' <<<"${rendered}" | grep -Fq 'value: "false"'; then
+  echo 'explicit disablement must be preserved' >&2
+  exit 1
+fi
 not_contains 'name: BKN_TRACE_KAFKA_BROKERS'
 not_contains 'name: TRACE_ADMISSION_POLICY_URL'
 contains 'name: BKN_TRACE_ARTIFACT_INGEST_URL'
@@ -34,11 +43,7 @@ if ! grep -A1 'name: OTEL_LOGS_ENABLED' <<<"${independent_logs}" | grep -Fq 'val
 fi
 
 rendered="$(helm template bkn-agent "${chart_dir}" \
-  --set observability.evidencePublisher.enabled=true \
-  --set observability.evidencePublisher.traceAdmission.clientID=bkn-agent \
-  --set observability.evidencePublisher.traceAdmission.clientSecretSecretName=bkn-agent-trace-admission-oauth \
-  --set observability.evidencePublisher.traceAdmission.currentKeyID=test-key \
-  --set observability.evidencePublisher.traceAdmission.currentPublicKeySecretName=trace-admission-verifier)"
+  --set observability.evidencePublisher.enabled=true)"
 
 contains 'name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED'
 contains 'value: "true"'
@@ -49,9 +54,9 @@ contains 'name: TRACE_ADMISSION_POLICY_URL'
 contains 'name: TRACE_ADMISSION_CONFIGURATION_URL'
 contains 'name: TRACE_ADMISSION_HEARTBEAT_URL'
 contains 'name: TRACE_ADMISSION_ACK_URL_BASE'
-contains 'name: TRACE_ADMISSION_CLIENT_ID'
-contains 'name: TRACE_ADMISSION_CLIENT_SECRET'
-contains 'name: TRACE_ADMISSION_CURRENT_PUBLIC_KEY'
+not_contains 'name: TRACE_ADMISSION_CLIENT_ID'
+not_contains 'name: TRACE_ADMISSION_CLIENT_SECRET'
+not_contains 'name: TRACE_ADMISSION_CURRENT_PUBLIC_KEY'
 contains 'name: BKN_TRACE_EVIDENCE_QUEUE_MAX_RECORDS'
 contains 'name: BKN_TRACE_EVIDENCE_QUEUE_MAX_BYTES'
 contains 'name: BKN_TRACE_EVIDENCE_MAX_ATTEMPTS'

@@ -611,10 +611,9 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 	}
 	traceContext, hasTraceContext := common.GetTraceContextFromCtx(ctx)
 	if !hasTraceContext || traceContext.OperationID == "" {
-		// The REST execute_tool contract also serves ad-hoc calls outside a managed
-		// Interaction. Keep those calls executable without inventing a provenance
-		// parent. An outer lifecycle guard marks managed execution by installing
-		// its Operation ID; conversation headers alone do not create that boundary.
+		// HTTP execution must pass the outer lifecycle guard before reaching this
+		// service. Direct service calls without an Operation still run without
+		// inventing a provenance parent.
 		return run(ctx)
 	}
 	descriptor := state.EnabledToolDescriptors[toolID]

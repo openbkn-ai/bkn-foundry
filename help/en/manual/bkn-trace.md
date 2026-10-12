@@ -105,6 +105,17 @@ A trace returned by `openbkn agent trace` contains the following top-level struc
 
 ### Evidence Chain Analysis
 
+For result evidence gaps, `current_record_integrity.missing[]` includes an optional
+`drop_reason` copied from the recorded publish outcome. `publisher_unavailable`
+means the publisher could not accept the result event; `queue_full` means its queue
+was full. The call can still be `completed` while its result evidence is missing.
+An omitted `drop_reason` means no applicable publish failure was recorded.
+
+When the ontology-query evidence publisher is explicitly enabled, invalid startup
+configuration stops the service and identifies the failing setting. Temporary
+policy, heartbeat or ACK failures use the existing background retries; logs identify
+the producer and failed step, suppress repeated identical errors, and report recovery.
+
 Traces enable **evidence chain analysis** — tracing every claim in an agent's response back to its data source:
 
 ```bash

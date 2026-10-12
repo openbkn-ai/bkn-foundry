@@ -446,23 +446,9 @@ OPENBKN_TRACE_OPENSEARCH_SECRET="${OPENBKN_TRACE_OPENSEARCH_SECRET:-bkn-trace-op
 OPENBKN_TRACE_KAFKA_SECRET="${OPENBKN_TRACE_KAFKA_SECRET:-bkn-trace-evidence-kafka}"
 OPENBKN_TRACE_KAFKA_SOURCE_SECRET="${OPENBKN_TRACE_KAFKA_SOURCE_SECRET:-${KAFKA_SASL_SECRET_NAME:-kafka-sasl}}"
 OPENBKN_TRACE_ADMISSION_POLICY_URL="${OPENBKN_TRACE_ADMISSION_POLICY_URL:-http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/policy}"
-OPENBKN_TRACE_ADMISSION_CONFIGURATION_URL="${OPENBKN_TRACE_ADMISSION_CONFIGURATION_URL:-http://agent-observability:8080/api/agent-observability/v1/trace-evidence-configuration}"
+OPENBKN_TRACE_ADMISSION_CONFIGURATION_URL="${OPENBKN_TRACE_ADMISSION_CONFIGURATION_URL:-http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/configuration}"
 OPENBKN_TRACE_ADMISSION_HEARTBEAT_URL="${OPENBKN_TRACE_ADMISSION_HEARTBEAT_URL:-http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat}"
 OPENBKN_TRACE_ADMISSION_ACK_URL_BASE="${OPENBKN_TRACE_ADMISSION_ACK_URL_BASE:-http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/operations}"
-OPENBKN_TRACE_ADMISSION_TOKEN_URL="${OPENBKN_TRACE_ADMISSION_TOKEN_URL:-http://bkn-safe:4444/oauth2/token}"
-OPENBKN_TRACE_ADMISSION_CLIENT_ID="${OPENBKN_TRACE_ADMISSION_CLIENT_ID:-}"
-OPENBKN_TRACE_ADMISSION_CLIENT_SECRET_SECRET_NAME="${OPENBKN_TRACE_ADMISSION_CLIENT_SECRET_SECRET_NAME:-}"
-# These three workloads require their own *_CLIENT_ID and
-# *_CLIENT_SECRET_SECRET_NAME values; the global client is not reused for them.
-# Prefixes: OPENBKN_TRACE_ADMISSION_AGENT_RETRIEVAL,
-# OPENBKN_TRACE_ADMISSION_AGENT_OPERATOR_INTEGRATION, OPENBKN_TRACE_ADMISSION_BKN_AGENT.
-OPENBKN_TRACE_ADMISSION_SCOPE="${OPENBKN_TRACE_ADMISSION_SCOPE:-}"
-OPENBKN_TRACE_ADMISSION_AUDIENCE="${OPENBKN_TRACE_ADMISSION_AUDIENCE:-cluster-a}"
-OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID="${OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID:-}"
-OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME="${OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME:-}"
-OPENBKN_TRACE_ADMISSION_PREVIOUS_KEY_ID="${OPENBKN_TRACE_ADMISSION_PREVIOUS_KEY_ID:-}"
-OPENBKN_TRACE_ADMISSION_PREVIOUS_PUBLIC_KEY_SECRET_NAME="${OPENBKN_TRACE_ADMISSION_PREVIOUS_PUBLIC_KEY_SECRET_NAME:-}"
-
 _openbkn_trace_kafka_brokers() {
     local host port
     host="$(config_yaml_dep_field mq mqHost)"
@@ -487,99 +473,25 @@ _openbkn_trace_opensearch_endpoint() {
     printf '%s://%s:%s' "${protocol}" "${host}" "${port}"
 }
 
-_openbkn_trace_admission_identity() {
-    OPENBKN_TRACE_SELECTED_CLIENT_ID="${OPENBKN_TRACE_ADMISSION_CLIENT_ID}"
-    OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME="${OPENBKN_TRACE_ADMISSION_CLIENT_SECRET_SECRET_NAME}"
-    case "${1:-}" in
-        agent-retrieval)
-            OPENBKN_TRACE_SELECTED_CLIENT_ID="${OPENBKN_TRACE_ADMISSION_AGENT_RETRIEVAL_CLIENT_ID:-}"
-            OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME="${OPENBKN_TRACE_ADMISSION_AGENT_RETRIEVAL_CLIENT_SECRET_SECRET_NAME:-}"
-            ;;
-        agent-operator-integration)
-            OPENBKN_TRACE_SELECTED_CLIENT_ID="${OPENBKN_TRACE_ADMISSION_AGENT_OPERATOR_INTEGRATION_CLIENT_ID:-}"
-            OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME="${OPENBKN_TRACE_ADMISSION_AGENT_OPERATOR_INTEGRATION_CLIENT_SECRET_SECRET_NAME:-}"
-            ;;
-        bkn-agent)
-            OPENBKN_TRACE_SELECTED_CLIENT_ID="${OPENBKN_TRACE_ADMISSION_BKN_AGENT_CLIENT_ID:-}"
-            OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME="${OPENBKN_TRACE_ADMISSION_BKN_AGENT_CLIENT_SECRET_SECRET_NAME:-}"
-            ;;
-    esac
-}
-
+# Fixed internal control endpoints need no OAuth or signing material.
 _openbkn_trace_admission_values() {
     local prefix="$1"
-    _openbkn_trace_admission_identity "${2:-}"
-    if [[ -z "${OPENBKN_TRACE_SELECTED_CLIENT_ID}" ||
-          -z "${OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME}" ||
-          -z "${OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID}" ||
-          -z "${OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME}" ]]; then
-        log_warn "${prefix} remains disabled: set the Trace Admission client ID, client-credentials Secret, current key ID, and public-key Secret before enabling Evidence publication."
-        return 1
-    fi
     CORE_RELEASE_EXTRA_SET_STRINGS+=(
         "${prefix}.traceAdmission.policyURL=${OPENBKN_TRACE_ADMISSION_POLICY_URL}"
         "${prefix}.traceAdmission.configurationURL=${OPENBKN_TRACE_ADMISSION_CONFIGURATION_URL}"
         "${prefix}.traceAdmission.heartbeatURL=${OPENBKN_TRACE_ADMISSION_HEARTBEAT_URL}"
         "${prefix}.traceAdmission.ackURLBase=${OPENBKN_TRACE_ADMISSION_ACK_URL_BASE}"
-        "${prefix}.traceAdmission.tokenURL=${OPENBKN_TRACE_ADMISSION_TOKEN_URL}"
-        "${prefix}.traceAdmission.clientID=${OPENBKN_TRACE_SELECTED_CLIENT_ID}"
-        "${prefix}.traceAdmission.clientSecretSecretName=${OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME}"
-        "${prefix}.traceAdmission.scope=${OPENBKN_TRACE_ADMISSION_SCOPE}"
-        "${prefix}.traceAdmission.audienceClusterID=${OPENBKN_TRACE_ADMISSION_AUDIENCE}"
-        "${prefix}.traceAdmission.currentKeyID=${OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID}"
-        "${prefix}.traceAdmission.currentPublicKeySecretName=${OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME}"
-        "${prefix}.traceAdmission.previousKeyID=${OPENBKN_TRACE_ADMISSION_PREVIOUS_KEY_ID}"
-        "${prefix}.traceAdmission.previousPublicKeySecretName=${OPENBKN_TRACE_ADMISSION_PREVIOUS_PUBLIC_KEY_SECRET_NAME}"
     )
 }
 
 _openbkn_trace_admission_values_operator() {
     local prefix="$1"
-    _openbkn_trace_admission_identity agent-operator-integration
-    if [[ -z "${OPENBKN_TRACE_SELECTED_CLIENT_ID}" ||
-          -z "${OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME}" ||
-          -z "${OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID}" ||
-          -z "${OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME}" ]]; then
-        log_warn "${prefix} remains disabled: set the Operator Trace Admission client ID, Secret, key ID and public-key Secret."
-        return 1
-    fi
     CORE_RELEASE_EXTRA_SET_STRINGS+=(
         "${prefix}.trace_admission.policy_url=${OPENBKN_TRACE_ADMISSION_POLICY_URL}"
         "${prefix}.trace_admission.configuration_url=${OPENBKN_TRACE_ADMISSION_CONFIGURATION_URL}"
         "${prefix}.trace_admission.heartbeat_url=${OPENBKN_TRACE_ADMISSION_HEARTBEAT_URL}"
         "${prefix}.trace_admission.ack_url_base=${OPENBKN_TRACE_ADMISSION_ACK_URL_BASE}"
-        "${prefix}.trace_admission.token_url=${OPENBKN_TRACE_ADMISSION_TOKEN_URL}"
-        "${prefix}.trace_admission.client_id=${OPENBKN_TRACE_SELECTED_CLIENT_ID}"
-        "${prefix}.trace_admission.client_secret_name=${OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME}"
-        "${prefix}.trace_admission.scope=${OPENBKN_TRACE_ADMISSION_SCOPE}"
-        "${prefix}.trace_admission.audience_cluster_id=${OPENBKN_TRACE_ADMISSION_AUDIENCE}"
-        "${prefix}.trace_admission.current_key_id=${OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID}"
-        "${prefix}.trace_admission.current_public_key_secret_name=${OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME}"
-        "${prefix}.trace_admission.previous_key_id=${OPENBKN_TRACE_ADMISSION_PREVIOUS_KEY_ID}"
-        "${prefix}.trace_admission.previous_public_key_secret_name=${OPENBKN_TRACE_ADMISSION_PREVIOUS_PUBLIC_KEY_SECRET_NAME}"
     )
-}
-
-# A complete installation must not replace an existing publisher with an
-# explicitly disabled one merely because its deployment-time admission material
-# was omitted. Secret contents remain operator-managed, but these references
-# are mandatory before the two service-owned Kafka publishers can be enabled.
-_openbkn_require_trace_admission_profile() {
-    local release_name
-    for release_name in "$@"; do
-        case "${release_name}" in
-            bkn-backend|ontology-query) _openbkn_trace_admission_identity ;;
-            agent-retrieval|agent-operator-integration|bkn-agent) _openbkn_trace_admission_identity "${release_name}" ;;
-            *) continue ;;
-        esac
-        if [[ -z "${OPENBKN_TRACE_SELECTED_CLIENT_ID}" ||
-              -z "${OPENBKN_TRACE_SELECTED_CLIENT_SECRET_NAME}" ||
-              -z "${OPENBKN_TRACE_ADMISSION_CURRENT_KEY_ID}" ||
-              -z "${OPENBKN_TRACE_ADMISSION_CURRENT_PUBLIC_KEY_SECRET_NAME}" ]]; then
-            log_error "BKN Trace Evidence Kafka requires Trace Admission client ID, client-credentials Secret, current key ID, and public-key Secret before installing ${release_name}"
-            return 1
-        fi
-    done
 }
 
 # The chart defaults keep standalone development lightweight. A complete
@@ -629,19 +541,16 @@ _openbkn_trace_profile_sets() {
                 "observability.evidence.artifact_secret_name=${OPENBKN_TRACE_INGEST_SECRET}"
                 "observability.evidence.artifact_secret_key=token"
             )
-            if _openbkn_trace_admission_values "observability.evidencePublisher" agent-retrieval; then
+            _openbkn_trace_admission_values "observability.evidencePublisher" agent-retrieval
             CORE_RELEASE_EXTRA_SETS+=(
                 "observability.evidencePublisher.enabled=true"
                 "observability.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
                 "observability.evidencePublisher.usernameSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
                 "observability.evidencePublisher.passwordSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
             )
-            else
-                CORE_RELEASE_EXTRA_SETS+=("observability.evidencePublisher.enabled=false")
-            fi
             ;;
         bkn-backend)
-            if _openbkn_trace_admission_values "bknTrace.evidencePublisher"; then
+            _openbkn_trace_admission_values "bknTrace.evidencePublisher"
             CORE_RELEASE_EXTRA_SETS+=(
                 "bknTrace.evidencePublisher.enabled=true"
                 "bknTrace.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
@@ -658,12 +567,9 @@ _openbkn_trace_profile_sets() {
                 "bknTrace.evidencePublisher.maxAttempts=3"
                 "bknTrace.evidencePublisher.retryBackoffMs=100"
             )
-            else
-                CORE_RELEASE_EXTRA_SETS+=("bknTrace.evidencePublisher.enabled=false")
-            fi
             ;;
         ontology-query)
-            if _openbkn_trace_admission_values "bknTrace.evidencePublisher"; then
+            _openbkn_trace_admission_values "bknTrace.evidencePublisher"
             CORE_RELEASE_EXTRA_SETS+=(
                 "bknTrace.evidencePublisher.enabled=true"
                 "bknTrace.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
@@ -680,12 +586,9 @@ _openbkn_trace_profile_sets() {
                 "bknTrace.evidencePublisher.maxAttempts=3"
                 "bknTrace.evidencePublisher.retryBackoffMs=100"
             )
-            else
-                CORE_RELEASE_EXTRA_SETS+=("bknTrace.evidencePublisher.enabled=false")
-            fi
             ;;
         agent-operator-integration)
-            if _openbkn_trace_admission_values_operator "observability.evidence.publisher"; then
+            _openbkn_trace_admission_values_operator "observability.evidence.publisher"
             CORE_RELEASE_EXTRA_SETS+=(
                 "observability.evidence.publisher.brokers=$(_openbkn_trace_kafka_brokers)"
                 "observability.evidence.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
@@ -700,9 +603,6 @@ _openbkn_trace_profile_sets() {
                 "observability.evidence.publisher.max_attempts=3"
                 "observability.evidence.publisher.retry_backoff_ms=100"
             )
-            else
-                CORE_RELEASE_EXTRA_SETS+=("observability.evidence.publisher.brokers=")
-            fi
             CORE_RELEASE_EXTRA_SETS+=(
                 "observability.audit.publisher.brokers=$(_openbkn_trace_kafka_brokers)"
                 "observability.audit.publisher.credentials_secret_name=${OPENBKN_TRACE_KAFKA_SECRET}"
@@ -716,9 +616,14 @@ _openbkn_trace_profile_sets() {
                 "observability.bknTraceArtifactIngestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
                 "observability.bknTraceArtifactIngestTokenSecretKey=token"
             )
-            if _openbkn_trace_admission_values "observability.evidencePublisher" bkn-agent; then
-            CORE_RELEASE_EXTRA_SETS+=(
+            # Publisher settings are defaults, not forced overrides of a user's
+            # explicit values or preserved capture choices of an existing release.
+            CORE_RELEASE_EXTRA_DEFAULT_SETS+=(
                 "observability.evidencePublisher.enabled=true"
+                "observability.evidencePublisher.traceAdmission.policyURL=${OPENBKN_TRACE_ADMISSION_POLICY_URL}"
+                "observability.evidencePublisher.traceAdmission.configurationURL=${OPENBKN_TRACE_ADMISSION_CONFIGURATION_URL}"
+                "observability.evidencePublisher.traceAdmission.heartbeatURL=${OPENBKN_TRACE_ADMISSION_HEARTBEAT_URL}"
+                "observability.evidencePublisher.traceAdmission.ackURLBase=${OPENBKN_TRACE_ADMISSION_ACK_URL_BASE}"
                 "observability.evidencePublisher.brokers=$(_openbkn_trace_kafka_brokers)"
                 "observability.evidencePublisher.credentialsSecretName=${OPENBKN_TRACE_KAFKA_SECRET}"
                 "observability.evidencePublisher.usernameSecretKey=username"
@@ -730,9 +635,6 @@ _openbkn_trace_profile_sets() {
                 "observability.evidencePublisher.maxAttempts=3"
                 "observability.evidencePublisher.retryBackoffMs=100"
             )
-            else
-                CORE_RELEASE_EXTRA_SETS+=("observability.evidencePublisher.enabled=false")
-            fi
             ;;
     esac
 }
@@ -834,6 +736,92 @@ _openbkn_helm_upgrade_release() {
     shift 2
     local -a helm_args=("$@")
 
+    local agent_defaults="" agent_values="" agent_render="" installed
+    if [[ "${release_name}" == "bkn-agent" ]]; then
+        agent_defaults="$(mktemp)"
+        agent_values="$(mktemp)"
+        agent_render="$(mktemp)"
+        if ! python3 "${SCRIPT_DIR}/scripts/lib/agent_evidence.py" defaults "${CORE_RELEASE_EXTRA_DEFAULT_SETS[@]:-}" >"${agent_defaults}" ||
+           ! installed="$(helm list --all -q -n "${namespace}" --filter '^bkn-agent$')"; then
+            rm -f "${agent_defaults}" "${agent_values}" "${agent_render}"
+            log_error "Cannot inspect Agent Evidence installation defaults or release"
+            return 1
+        fi
+        if [[ -n "${installed}" ]]; then
+            if ! (set -o pipefail; helm get values "${release_name}" -n "${namespace}" --all -o json |
+                python3 "${SCRIPT_DIR}/scripts/lib/agent_evidence.py" preserve >"${agent_values}"); then
+                rm -f "${agent_defaults}" "${agent_values}" "${agent_render}"
+                log_error "Cannot preserve installed Agent Evidence configuration"
+                return 1
+            fi
+        else
+            printf '{}\n' >"${agent_values}"
+        fi
+        helm_args=("${helm_args[@]:0:4}" -f "${agent_defaults}" -f "${agent_values}" "${helm_args[@]:4}")
+        if ! helm install "${helm_args[@]:2}" --dry-run=client --hide-secret -o json >"${agent_render}" ||
+            ! python3 "${SCRIPT_DIR}/scripts/lib/agent_evidence.py" validate "${namespace}" <"${agent_render}"; then
+            rm -f "${agent_defaults}" "${agent_values}" "${agent_render}"
+            log_error "Agent Evidence preflight failed; correct publisher values and existing Kafka Secret references before installation"
+            return 1
+        fi
+        rm -f "${agent_render}"
+    fi
+
+    local audit_values="" audit_defaults="" audit_render="" audit_current="" installed
+    if [[ "${release_name}" == "agent-observability" ]]; then
+        # System Audit is required by the complete installer. Standalone Chart
+        # defaults remain disabled. Current connection settings still win.
+        audit_values="$(mktemp)"
+        audit_defaults="$(mktemp)"
+        audit_current="$(mktemp)"
+        if ! python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" defaults \
+            "$(_openbkn_trace_kafka_brokers)" "$(config_yaml_dep_field mq mechanism)" \
+            "${OPENBKN_TRACE_KAFKA_SECRET}" >"${audit_defaults}"; then
+            rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
+            return 1
+        fi
+        if ! installed="$(helm list --all -q -n "${namespace}" --filter '^agent-observability$')"; then
+            rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
+            log_error "Cannot inspect the installed Audit consumer configuration"
+            return 1
+        fi
+        if [[ -n "${installed}" ]]; then
+            if ! (set -o pipefail; helm get values "${release_name}" -n "${namespace}" -o json |
+                python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" preserve-system >"${audit_values}") ||
+                ! helm get values "${release_name}" -n "${namespace}" --all -o json >"${audit_current}"; then
+                rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
+                log_error "Cannot preserve the installed Audit consumer configuration"
+                return 1
+            fi
+        else
+            printf '{}\n' >"${audit_values}"
+        fi
+        helm_args=("${helm_args[@]:0:4}" -f "${audit_defaults}" -f "${audit_values}" "${helm_args[@]:4}")
+        audit_render="$(mktemp)"
+        # Client-side install rendering avoids release adoption checks and does
+        # not run hooks. The Audit values are the same for installs and upgrades.
+        if ! helm install "${helm_args[@]:2}" --dry-run=client --hide-secret -o json >"${audit_render}" ||
+            ! python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" validate-system "${namespace}" <"${audit_render}" ||
+            ! _openbkn_prepare_audit_topic "${namespace}" "${audit_render}"; then
+            rm -f "${audit_values}" "${audit_defaults}" "${audit_current}" "${audit_render}"
+            log_error "System Audit preflight failed; correct environment, Kafka/Secret and MariaDB prerequisites before installation"
+            return 1
+        fi
+        # Decide version skipping only after resolving the same values which
+        # the real upgrade will receive. A changed environment/Secret/group must
+        # reconcile even if the Chart version is unchanged.
+        local audit_chart_name audit_chart_version
+        audit_chart_name="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["chart"]["metadata"]["name"])' <"${audit_render}")"
+        audit_chart_version="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["chart"]["metadata"]["version"])' <"${audit_render}")"
+        if [[ -n "${installed}" ]] &&
+            python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" same-system "${audit_current}" <"${audit_render}" &&
+            _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${audit_chart_name}" "${audit_chart_version}"; then
+            rm -f "${audit_values}" "${audit_defaults}" "${audit_current}" "${audit_render}"
+            return 0
+        fi
+        rm -f "${audit_render}"
+    fi
+
     # Here rather than at either call site: both the repository and the local
     # --charts-dir paths reach helm through this function, and a cleanup wired
     # to only one of them leaves the other stuck on exactly the error it exists
@@ -851,6 +839,8 @@ _openbkn_helm_upgrade_release() {
         helm_status=${PIPESTATUS[0]}
     fi
     rm -f "${helm_log}"
+    [[ -z "${audit_values}" ]] || rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
+    [[ -z "${agent_defaults}" ]] || rm -f "${agent_defaults}" "${agent_values}"
 
     if [[ ${helm_status} -eq 0 ]]; then
         log_info "✓ ${release_name} installed successfully"
@@ -937,7 +927,7 @@ _openbkn_warn_unwired_evidence_producers() {
         has_artifact_secret=false
         has_audit_kafka_publisher=false
         has_audit_kafka_secret=false
-        for set_value in "${CORE_RELEASE_EXTRA_SETS[@]:-}"; do
+        for set_value in "${CORE_RELEASE_EXTRA_SETS[@]:-}" "${CORE_RELEASE_EXTRA_DEFAULT_SETS[@]:-}"; do
             [[ "${set_value}" == *"=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}" ]] && has_ingest_url=true
             case "${set_value}" in
                 *"ingestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"|\
@@ -1067,6 +1057,11 @@ _openbkn_prepare_trace_kafka_secret() {
     fi
 }
 
+_openbkn_prepare_audit_topic() {
+    python3 "${SCRIPT_DIR}/scripts/lib/audit_consumer.py" prepare-topic "$1" \
+        "${KAFKA_NAMESPACE:-resource}" "${KAFKA_RELEASE_NAME:-kafka}" <"$2"
+}
+
 _openbkn_prepare_trace_opensearch_secret() {
     local namespace="$1"
     local protocol host user password username_data password_data
@@ -1193,6 +1188,7 @@ _openbkn_release_extra_sets() {
     local namespace="${2:-${CORE_NAMESPACE}}"
     CORE_RELEASE_EXTRA_SETS=()
     CORE_RELEASE_EXTRA_SET_STRINGS=()
+    CORE_RELEASE_EXTRA_DEFAULT_SETS=()
     if [[ "${release_name}" == "agent-observability" ]]; then
         _openbkn_trace_profile_sets "${release_name}"
         if ! kubectl get secret "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" >/dev/null 2>&1; then
@@ -1404,7 +1400,7 @@ _install_openbkn_release_local() {
     if [[ -z "${target_version}" ]]; then
         target_version="$(get_local_chart_version "${chart_tgz}")"
     fi
-    if _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+    if [[ "${release_name}" != "agent-observability" ]] && _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 0
     fi
 
@@ -1450,7 +1446,7 @@ _install_openbkn_release_repo() {
         target_version=$(get_repo_chart_latest_version "${helm_repo_name}" "${chart_name}")
     fi
 
-    if _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+    if [[ "${release_name}" != "agent-observability" ]] && _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 0
     fi
 
@@ -1785,10 +1781,6 @@ install_openbkn() {
             log_error "BKN Trace installation profile is not ready"
             return 1
         fi
-        if ! _openbkn_require_trace_admission_profile "${release_names[@]}"; then
-            log_error "BKN Trace Evidence Kafka admission profile is not ready"
-            return 1
-        fi
         _openbkn_warn_unwired_evidence_producers "${release_names[@]}"
     fi
 
@@ -1796,9 +1788,9 @@ install_openbkn() {
     for release_name in "${release_names[@]}"; do
         release_version="$(_openbkn_resolve_release_version "${release_name}")"
         if [[ "${use_local}" == "true" ]]; then
-            _install_openbkn_release_local "${release_name}" "${charts_dir}" "${namespace}"
+            _install_openbkn_release_local "${release_name}" "${charts_dir}" "${namespace}" || return 1
         else
-            _install_openbkn_release_repo "${release_name}" "${namespace}" "${HELM_CHART_REPO_NAME}" "${release_version}"
+            _install_openbkn_release_repo "${release_name}" "${namespace}" "${HELM_CHART_REPO_NAME}" "${release_version}" || return 1
         fi
     done
 

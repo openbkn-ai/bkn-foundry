@@ -32,6 +32,11 @@ func convertValue(v any, preserveBinary bool) any {
 	return v
 }
 
+// mariadbQuoteIdent 引用单个标识符，将内部反引号转义为两个反引号。
+func mariadbQuoteIdent(name string) string {
+	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
 // qualTable converts a resource source identifier into a backtick-qualified table name;
 // it supports "db.table" -> "`db`.`table`".
 func qualTable(sourceIdentifier string) string {
@@ -44,22 +49,22 @@ func quotedColumn(property *interfaces.Property) string {
 	if idx := strings.Index(name, "."); idx >= 0 {
 		alias := strings.TrimSpace(name[:idx])
 		col := strings.TrimSpace(name[idx+1:])
-		return "`" + strings.ReplaceAll(alias, "`", "``") + "`." + "`" + strings.ReplaceAll(col, "`", "``") + "`"
+		return mariadbQuoteIdent(alias) + "." + mariadbQuoteIdent(col)
 	}
-	return "`" + strings.ReplaceAll(strings.TrimSpace(name), "`", "``") + "`"
+	return mariadbQuoteIdent(strings.TrimSpace(name))
 }
 
 // quoteColumnName converts column names to SQL identifiers; Support "alias.col" -> "alias.col"
 func quoteColumnName(name string) string {
 	if name == "" {
-		return "``"
+		return mariadbQuoteIdent(name)
 	}
 	if idx := strings.Index(name, "."); idx >= 0 {
 		alias := strings.TrimSpace(name[:idx])
 		col := strings.TrimSpace(name[idx+1:])
-		return "`" + strings.ReplaceAll(alias, "`", "``") + "`." + "`" + strings.ReplaceAll(col, "`", "``") + "`"
+		return mariadbQuoteIdent(alias) + "." + mariadbQuoteIdent(col)
 	}
-	return "`" + strings.ReplaceAll(strings.TrimSpace(name), "`", "``") + "`"
+	return mariadbQuoteIdent(strings.TrimSpace(name))
 }
 
 // originalName selects the source column name when one is available.

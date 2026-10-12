@@ -598,24 +598,27 @@ func applyBuildTaskFilters(builder sq.SelectBuilder,
 }
 
 // buildOrderByClause translates sort/direction into an ORDER BY clause.
-// Empty or unknown sort values fall back to creation time descending.
+// Empty or unknown sort values fall back to creation time, preserving direction.
+// The unique ID makes pagination deterministic when primary sort values tie.
 func buildOrderByClause(sort, direction string) string {
 	dir := "DESC"
 	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
 		dir = "ASC"
 	}
+	var column string
 	switch sort {
 	case interfaces.BuildTaskSortCreateTime:
-		return "f_create_time " + dir
+		column = "f_create_time"
 	case interfaces.BuildTaskSortStartTime:
-		return "f_start_time " + dir
+		column = "f_start_time"
 	case interfaces.BuildTaskSortFinishTime:
-		return "f_finish_time " + dir
+		column = "f_finish_time"
 	case interfaces.BuildTaskSortLastProgressTime:
-		return "f_last_progress_time " + dir
+		column = "f_last_progress_time"
 	default:
-		return "f_create_time DESC"
+		column = "f_create_time"
 	}
+	return fmt.Sprintf("%s %s, f_id %s", column, dir, dir)
 }
 
 // DeleteByIDs deletes build tasks by IDs.

@@ -291,7 +291,7 @@ components:
           type: string
           description: |
             资源类别，映射 vega 的 category：`table` / `file` / `fileset` / `api` /
-            `metric` / `topic` / `index` / `logicview` / `dataset`。
+            `metric` / `topic` / `index` / `logical_view` / `dataset`。
         offset:
           type: integer
           description: 分页偏移；不传由 vega 取默认值 0。

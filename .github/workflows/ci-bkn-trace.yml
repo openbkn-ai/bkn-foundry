@@ -4,7 +4,23 @@ on:
   pull_request:
     paths:
       - 'bkn-trace/**'
+      - 'comm-go/**'
+      - 'deploy/scripts/services/config.sh'
+      - 'deploy/scripts/services/config_observability_test.sh'
+      - 'deploy/scripts/lib/agent_evidence.py'
+      - 'deploy/scripts/lib/audit_consumer.py'
+      - 'deploy/scripts/lib/test_audit_consumer.py'
+      - 'deploy/scripts/services/openbkn_audit_consumer_test.sh'
+      - 'deploy/scripts/services/openbkn.sh'
+      - 'deploy/scripts/services/openbkn_agent_evidence_test.sh'
+      - 'infra/bkn-agent/charts/**'
+      - 'infra/bkn-agent/scripts/test_evidence_kafka_chart.sh'
       - 'docs/api/agent-observability/**'
+      - 'deploy/scripts/upgrades/0.2.0/historical_trace_data/**'
+      - 'deploy/scripts/upgrades/0.2.0/evidence_outbox_to_kafka/**'
+      - 'deploy/conf/profiles/**'
+      - 'deploy/scripts/services/system_audit_profile_test.sh'
+      - 'deploy/scripts/audit/*verify_system_audit.py'
       - '.github/workflows/ci-bkn-trace.yml'
 
 permissions:
@@ -57,8 +73,21 @@ jobs:
           working-directory: bkn-trace/agent-observability
       - name: Verify OpenBKN license headers
         run: make license-check
+      - name: Failed-call deployment polling regression
+        run: python3 -m unittest discover -s scripts -p 'test_failed_call_deployment_poll.py' -v
       - name: Unit tests
         run: make test
+      - name: Historical upgrade tool tests
+        working-directory: deploy/scripts/upgrades/0.2.0
+        run: |
+          python3 -m pip install -r historical_trace_data/requirements.txt
+          python3 -m unittest discover -s historical_trace_data -p 'test_*.py'
+      - name: Offline historical Span codec
+        working-directory: deploy/scripts/upgrades/0.2.0/historical_trace_data/span-codec
+        run: |
+          go vet ./...
+          go test ./... -count=1
+          go build ./...
       - name: Swagger contract drift
         run: make check-swag
       - name: Race tests
@@ -79,5 +108,27 @@ jobs:
       - name: Build
         run: make build
       - uses: azure/setup-helm@v4
+      - name: System Audit deployment and acceptance contract
+        working-directory: .
+        run: |
+          bash deploy/scripts/services/system_audit_profile_test.sh
+          bash deploy/scripts/services/openbkn_audit_consumer_test.sh
+          python3 -m unittest discover -s deploy/scripts/lib -p 'test_audit_consumer.py'
+          python3 -m unittest discover -s deploy/scripts/audit -p 'test_verify_system_audit.py'
+      - name: Preserve admission budget values during configuration regeneration
+        working-directory: .
+        run: bash deploy/scripts/services/config_observability_test.sh
       - name: Helm lint
         run: make helm-lint
+      - name: Internal Trace control client/server contract
+        working-directory: bkn-trace/tests/internal-control
+        run: make ci
+      - name: Internal Trace installer and publisher chart contract
+        working-directory: .
+        run: |
+          bash deploy/scripts/services/test_internal_trace_admission.sh
+          bash deploy/scripts/services/test_internal_trace_admission_charts.sh
+          bash deploy/scripts/services/openbkn_trace_profile_test.sh
+          bash infra/bkn-agent/scripts/test_evidence_kafka_chart.sh infra/bkn-agent/charts
+          bash deploy/scripts/services/openbkn_agent_evidence_test.sh
+          bash deploy/scripts/services/openbkn_audit_consumer_test.sh

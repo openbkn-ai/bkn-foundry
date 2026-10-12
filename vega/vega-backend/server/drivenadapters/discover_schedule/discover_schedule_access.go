@@ -302,7 +302,7 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 	}
 
 	// Apply ordering and pagination
-	builder = builder.OrderBy(discoverScheduleOrderByClause(params.Sort, params.Direction))
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	if params.Limit > 0 {
 		// #nosec G115 -- handler validates non-negative offset and positive limit.
@@ -473,7 +473,7 @@ func (dsa *discoverScheduleAccess) ListDue(ctx context.Context, now int64) ([]*i
 		From(DISCOVER_SCHEDULE_TABLE_NAME).
 		Where(sq.Eq{"f_enabled": true}).
 		Where(sq.LtOrEq{"f_next_run": now}).
-		OrderBy("f_next_run ASC").
+		OrderBy("f_next_run ASC, f_id ASC").
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -549,20 +549,24 @@ func (dsa *discoverScheduleAccess) UpdateRunMetadata(ctx context.Context, id str
 	return rowsAffected, nil
 }
 
-func discoverScheduleOrderByClause(sort, direction string) string {
-	column := "f_update_time"
+// The unique ID makes pagination deterministic when primary sort values tie.
+func buildOrderByClause(sort, direction string) string {
+	dir := "DESC"
+	if direction == interfaces.ASC_DIRECTION {
+		dir = "ASC"
+	}
+	var column string
 	switch sort {
 	case interfaces.DiscoverScheduleSortName:
 		column = "f_name"
 	case interfaces.DiscoverScheduleSortCreateTime:
 		column = "f_create_time"
-	case interfaces.DiscoverScheduleSortUpdateTime, "":
+	case interfaces.DiscoverScheduleSortUpdateTime:
 		column = "f_update_time"
 	case interfaces.DiscoverScheduleSortNextRun:
 		column = "f_next_run"
+	default:
+		column = "f_update_time"
 	}
-	if direction == interfaces.ASC_DIRECTION {
-		return fmt.Sprintf("%s ASC", column)
-	}
-	return fmt.Sprintf("%s DESC", column)
+	return fmt.Sprintf("%s %s, f_id %s", column, dir, dir)
 }

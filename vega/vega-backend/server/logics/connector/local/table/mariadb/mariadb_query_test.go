@@ -13,6 +13,20 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
+func TestMariaDBQuoteIdent(t *testing.T) {
+	for _, tt := range []struct{ name, want string }{
+		{"", "``"},
+		{"orders", "`orders`"},
+		{"ord`ers", "`ord``ers`"},
+		{"orders.part", "`orders.part`"},
+		{" orders ", "` orders `"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, mariadbQuoteIdent(tt.name))
+		})
+	}
+}
+
 func TestMariaDBConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)

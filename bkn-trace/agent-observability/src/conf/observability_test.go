@@ -79,7 +79,7 @@ func TestObservabilityConfigReadsAdmissionBudgetProfileAndThresholds(t *testing.
 	}
 }
 
-func TestObservabilityConfigLeavesMissingAdmissionThresholdUnavailable(t *testing.T) {
+func TestObservabilityConfigDefaultsMissingAdmissionThresholds(t *testing.T) {
 	for _, name := range []string{
 		"BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD",
 		"BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD",
@@ -89,7 +89,44 @@ func TestObservabilityConfigLeavesMissingAdmissionThresholdUnavailable(t *testin
 		t.Setenv(name, "")
 	}
 	config := NewObservabilityConfig()
-	if config.AdmissionBudgetThresholds.OpenSearchCapacity != 0 || config.AdmissionBudgetThresholds.OpenSearchHeap != 0 || config.AdmissionBudgetThresholds.CollectorQueue != 0 || config.AdmissionBudgetThresholds.StoragePool != 0 {
-		t.Fatalf("missing thresholds must remain unavailable: %+v", config.AdmissionBudgetThresholds)
+	if config.AdmissionBudgetThresholds.OpenSearchCapacity != defaultAdmissionBudgetThreshold || config.AdmissionBudgetThresholds.OpenSearchHeap != defaultAdmissionBudgetThreshold || config.AdmissionBudgetThresholds.CollectorQueue != defaultAdmissionBudgetThreshold || config.AdmissionBudgetThresholds.StoragePool != defaultAdmissionBudgetThreshold {
+		t.Fatalf("missing thresholds must use the default: %+v", config.AdmissionBudgetThresholds)
+	}
+}
+
+func TestAdmissionCollectorEndpointSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name, dedicated, fallback, want string
+		invalid                         bool
+	}{
+		{name: "dedicated", dedicated: " https://collector.example/custom-metrics ", fallback: "http://legacy/metrics", want: "https://collector.example/custom-metrics"},
+		{name: "fallback", fallback: "http://legacy/metrics", want: "http://legacy/metrics"},
+		{name: "missing", invalid: true},
+		{name: "missing host", dedicated: "http:///metrics", invalid: true},
+		{name: "metrics at root", dedicated: "https://collector.example/", want: "https://collector.example/"},
+		{name: "unsupported scheme", dedicated: "file:///metrics", invalid: true},
+		{name: "invalid dedicated does not fall back", dedicated: ":bad", fallback: "http://legacy/metrics", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := ObservabilityConfig{AdmissionBudgetMetricsEndpoint: tc.dedicated, SourceCoverageMetricsEndpoint: tc.fallback}
+			got, err := config.AdmissionCollectorMetricsEndpoint()
+			if (err != nil) != tc.invalid {
+				t.Fatalf("endpoint=%q error=%v", got, err)
+			}
+			if !tc.invalid && got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAdmissionThresholdRejectsNonFiniteValues(t *testing.T) {
+	for _, value := range []string{"NaN", "+Inf", "-Inf", "0", "1.01", "invalid"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD", value)
+			if got := NewObservabilityConfig().AdmissionBudgetThresholds.CollectorQueue; got != 0 {
+				t.Fatalf("invalid threshold retained: %v", got)
+			}
+		})
 	}
 }

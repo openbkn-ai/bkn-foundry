@@ -7,7 +7,9 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -131,17 +133,36 @@ func TestNormalizeJSONDocumentFields(t *testing.T) {
 		require.NoError(t, normalizeJSONDocumentFields(document, schemaWithValues))
 		assert.Equal(t, map[string]any{"region": "cn"}, document["object"])
 		assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
-		assert.Equal(t, map[string]any{"tier": float64(2)}, document["bytes"])
+		assert.Equal(t, map[string]any{"tier": json.Number("2")}, document["bytes"])
 		assert.Nil(t, document["null_value"])
 		assert.Nil(t, document["empty_value"])
 		assert.Equal(t, "unchanged", document["name"])
 	})
 
+	t.Run("preserves heterogeneous nested values and all JSON roots", func(t *testing.T) {
+		for _, text := range []string{`{"items":[{"sku":"BOX-01","count":2}]}`, `{"items":["SENSOR-A","SENSOR-B"]}`, `{"items":[]}`, `{"items":null}`, `[{"id":9007199254740993}]`, `"value"`, `true`, `42`, `null`} {
+			t.Run(text, func(t *testing.T) {
+				doc := map[string]any{"payload": text}
+				require.NoError(t, normalizeJSONDocumentFields(doc, schema))
+				encoded, err := json.Marshal(doc["payload"])
+				require.NoError(t, err)
+				assert.JSONEq(t, text, string(encoded))
+				if text == `[{"id":9007199254740993}]` {
+					assert.Contains(t, string(encoded), "9007199254740993")
+				}
+			})
+		}
+		values := []any{map[string]any{"items": []any{"a", map[string]any{"sku": "b"}}}, []any{1, true}, true, int64(9007199254740993)}
+		for _, value := range values {
+			doc := map[string]any{"payload": value}
+			require.NoError(t, normalizeJSONDocumentFields(doc, schema))
+			assert.Equal(t, value, doc["payload"])
+		}
+	})
+
 	for name, value := range map[string]any{
-		"invalid JSON":        `{`,
-		"JSON scalar":         `"value"`,
-		"JSON array":          `[]`,
-		"unexpected Go value": 42,
+		"invalid JSON":         `{`,
+		"unsupported Go value": make(chan int),
 	} {
 		t.Run(name, func(t *testing.T) {
 			document := map[string]any{"payload": value}
@@ -273,6 +294,24 @@ func TestBuildLocalIndexSchemaExcludesBinaryAndOtherFields(t *testing.T) {
 	require.Len(t, schema, 1)
 	assert.Equal(t, "id", schema[0].Name)
 	assert.Equal(t, []string{"id"}, buildIndexableFieldNames(resource.SchemaDefinition))
+}
+
+func TestBuildLocalIndexSchemaDisablesJSONOnCopy(t *testing.T) {
+	for _, attributes := range []map[string]any{nil, {"enabled": true, "source": "jsonb"}} {
+		t.Run(fmt.Sprintf("source attributes %v", attributes), func(t *testing.T) {
+			resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{
+				{Name: "payload", Type: interfaces.DataType_Json, Attributes: attributes},
+			}}
+			schema, err := buildLocalIndexSchema(&interfaces.BuildTask{}, resource)
+			require.NoError(t, err)
+			require.Len(t, schema, 1)
+			assert.Equal(t, false, schema[0].Attributes["enabled"])
+			assert.Equal(t, attributes, resource.SchemaDefinition[0].Attributes)
+			if attributes != nil {
+				assert.Equal(t, "jsonb", schema[0].Attributes["source"])
+			}
+		})
+	}
 }
 
 func TestBuildLocalIndexSchemaRetainsFeatureTypeValidationForExcludedFields(t *testing.T) {

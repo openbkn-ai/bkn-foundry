@@ -11,19 +11,18 @@ rendered="$(mktemp)"
 trap 'rm -f "$rendered"' EXIT
 
 helm template trace-admission "$chart_dir" \
-  --set traceAdmission.clientID=trace-gateway \
-  --set traceAdmission.clientSecretSecret=trace-gateway-oauth \
-  --set traceAdmission.currentKeyID=trace-policy-2026q3 \
-  --set traceAdmission.currentPublicKeySecret=trace-policy-public \
   --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol \
   >"$rendered"
 
 grep -q 'traceadmission' "$rendered"
-grep -q 'TRACE_ADMISSION_CLIENT_SECRET' "$rendered"
+if grep -Eq 'TRACE_ADMISSION_(CLIENT_SECRET|CLIENT_ID|TOKEN_URL|CURRENT_KEY|PREVIOUS_KEY|POLICY_AUDIENCE)' "$rendered"; then
+  echo "collector must not render OAuth or policy signing configuration" >&2
+  exit 1
+fi
 grep -q 'agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/policy' "$rendered"
 grep -q 'agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat' "$rendered"
 grep -q 'agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/operations' "$rendered"
-grep -q 'agent-observability:8080/api/agent-observability/v1/trace-evidence-configuration' "$rendered"
+grep -q 'agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/configuration' "$rendered"
 
 python3 - "$rendered" <<'PY'
 import sys
@@ -43,10 +42,6 @@ disabled_error="$(mktemp)"
 trap 'rm -f "$rendered" "$disabled_error"' EXIT
 if helm template trace-admission "$chart_dir" \
   --set traceAdmission.enabled=false \
-  --set traceAdmission.clientID=trace-gateway \
-  --set traceAdmission.clientSecretSecret=trace-gateway-oauth \
-  --set traceAdmission.currentKeyID=trace-policy-2026q3 \
-  --set traceAdmission.currentPublicKeySecret=trace-policy-public \
   --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol \
   > /dev/null 2>"$disabled_error"; then
   echo "traceAdmission.enabled=false must be rejected" >&2

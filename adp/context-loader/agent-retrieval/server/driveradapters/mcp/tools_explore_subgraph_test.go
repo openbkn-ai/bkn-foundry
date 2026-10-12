@@ -139,7 +139,7 @@ func TestExploreSubgraphSchema_ShapeAndRequiredFields(t *testing.T) {
 			_, ok := in.Properties[key]
 			convey.So(ok, convey.ShouldBeTrue)
 		}
-		for _, key := range []string{"exclude_system_properties", "ignoring_store_cache", "need_total",
+		for _, key := range []string{"exclude_system_properties", "ignore_local_index", "need_total",
 			"relation_type_paths"} {
 			_, ok := in.Properties[key]
 			convey.So(ok, convey.ShouldBeFalse)

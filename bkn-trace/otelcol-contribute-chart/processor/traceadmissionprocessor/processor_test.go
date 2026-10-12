@@ -9,9 +9,6 @@ package traceadmissionprocessor
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -31,18 +28,12 @@ import (
 )
 
 func TestRefreshLogsPolicyFailureWithoutSensitiveDetails(t *testing.T) {
-	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy": {status: http.StatusBadGateway, body: []byte(`{"token":"must-not-log"}`)},
-		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 	}}
 	p, _ := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
+		WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 	}, transport)
 	core, logs := observer.New(zap.InfoLevel)
 	setTestLogger(p, zap.New(core))
@@ -66,41 +57,10 @@ func TestRefreshLogsPolicyFailureWithoutSensitiveDetails(t *testing.T) {
 	}
 }
 
-func TestRefreshLogsTokenFailure(t *testing.T) {
-	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	transport := &scriptedTransport{responses: map[string]scriptedResponse{
-		"https://safe.internal/token": {status: http.StatusBadGateway, body: []byte(`{"access_token":"must-not-log"}`)},
-	}}
-	p, _ := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
-	}, transport)
-	core, logs := observer.New(zap.InfoLevel)
-	setTestLogger(p, zap.New(core))
-	if err := p.refresh(context.Background()); err == nil {
-		t.Fatal("refresh unexpectedly succeeded")
-	}
-	entries := logs.All()
-	if len(entries) == 0 || entries[0].ContextMap()["stage"] != "token" || entries[0].Context[1].Integer != http.StatusBadGateway {
-		t.Fatalf("unexpected token failure log: %+v", entries)
-	}
-}
-
 func TestRefreshLogsHeartbeatAndAckFailures(t *testing.T) {
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+	snapshot := traceadmissionsvc.Snapshot{ContractVersion: "TraceEvidencePolicySnapshotV1",
 		Revision: 42, TraceAdmission: traceadmissionsvc.ModeDisabled, EvidenceAdmission: traceadmissionsvc.ModeDisabled,
-		IssuedAt: time.Date(2026, 9, 25, 7, 59, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC), KeyID: "k1", Audience: "cluster-a",
-	}, privateKey)
-	if err != nil {
-		t.Fatal(err)
+		IssuedAt: time.Date(2026, 9, 25, 7, 59, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC),
 	}
 	for _, test := range []struct {
 		name, heartbeatURL, ackURL string
@@ -111,17 +71,15 @@ func TestRefreshLogsHeartbeatAndAckFailures(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			transport := &scriptedTransport{responses: map[string]scriptedResponse{
-				"https://safe.internal/token":                {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 				"https://safe.internal/policy":               {status: http.StatusOK, body: mustJSON(snapshot)},
 				"https://safe.internal/config":               {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
 				"https://safe.internal/heartbeat":            {status: http.StatusServiceUnavailable},
 				"https://safe.internal/operations/op-42:ack": {status: http.StatusServiceUnavailable},
 			}}
 			config := Config{
-				PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
+				PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
 				HeartbeatURL: test.heartbeatURL, AckURLBase: test.ackURL,
-				ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-				CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+				WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 			}
 			p, _ := newTestProcessor(t, config, transport)
 			core, logs := observer.New(zap.InfoLevel)
@@ -142,27 +100,18 @@ func TestRefreshLogsHeartbeatAndAckFailures(t *testing.T) {
 	}
 }
 
-func TestProcessorAutoAuthFallbackDoesNotWarnOnBasicProbe(t *testing.T) {
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+func TestProcessorCallsInternalEndpointsWithoutToken(t *testing.T) {
+	snapshot := traceadmissionsvc.Snapshot{ContractVersion: "TraceEvidencePolicySnapshotV1",
 		Revision: 42, TraceAdmission: traceadmissionsvc.ModeDisabled, EvidenceAdmission: traceadmissionsvc.ModeDisabled,
-		IssuedAt: time.Date(2026, 9, 25, 7, 59, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC), KeyID: "k1", Audience: "cluster-a",
-	}, privateKey)
-	if err != nil {
-		t.Fatal(err)
+		IssuedAt: time.Date(2026, 9, 25, 7, 59, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC),
 	}
-	transport := &scriptedTransport{rejectBasicToken: true, responses: map[string]scriptedResponse{
+	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy": {status: http.StatusOK, body: mustJSON(snapshot)},
 		"https://safe.internal/config": {status: http.StatusOK, body: frozenConfigurationBody(42, "")},
-		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 	}}
 	p, _ := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
+		WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 	}, transport)
 	core, logs := observer.New(zap.InfoLevel)
 	setTestLogger(p, zap.New(core))
@@ -172,33 +121,24 @@ func TestProcessorAutoAuthFallbackDoesNotWarnOnBasicProbe(t *testing.T) {
 	if len(logs.All()) != 0 {
 		t.Fatalf("normal auth-style fallback emitted failure logs: %+v", logs.All())
 	}
-	if len(transport.requests) != 4 {
-		t.Fatalf("request count = %d, want Basic token probe + POST token + policy + config", len(transport.requests))
+	if len(transport.requests) != 2 {
+		t.Fatalf("request count = %d, want policy + config", len(transport.requests))
 	}
 }
 
 func TestProcessorUsesFrozenPolicySnapshotAndFailsClosedForLegacyField(t *testing.T) {
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
-	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+	snapshot := traceadmissionsvc.Snapshot{ContractVersion: "TraceEvidencePolicySnapshotV1",
 		Revision: 42, TraceAdmission: traceadmissionsvc.ModeEnabled, EvidenceAdmission: traceadmissionsvc.ModeEnabled,
-		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a",
-	}, privateKey)
-	if err != nil {
-		t.Fatal(err)
+		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute),
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy": {status: http.StatusOK, body: mustJSON(snapshot)},
 		"https://safe.internal/config": {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
-		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 	}}
 	p, calls := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
+		WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 	}, transport)
 	if err := p.refresh(context.Background()); err != nil {
 		t.Fatal(err)
@@ -216,56 +156,40 @@ func TestProcessorUsesFrozenPolicySnapshotAndFailsClosedForLegacyField(t *testin
 	}
 }
 
-func TestProcessorUsesClientCredentialsAndSendsBearerOnHeartbeatAndAck(t *testing.T) {
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestProcessorUsesUnauthenticatedHeartbeatAndAck(t *testing.T) {
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
-	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+	snapshot := traceadmissionsvc.Snapshot{ContractVersion: "TraceEvidencePolicySnapshotV1",
 		Revision: 42, TraceAdmission: traceadmissionsvc.ModeDisabled, EvidenceAdmission: traceadmissionsvc.ModeDisabled,
-		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a",
-	}, privateKey)
-	if err != nil {
-		t.Fatal(err)
+		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute),
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy":               {status: http.StatusOK, body: mustJSON(snapshot)},
 		"https://safe.internal/config":               {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
-		"https://safe.internal/token":                {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 		"https://safe.internal/heartbeat":            {status: http.StatusNoContent},
 		"https://safe.internal/operations/op-42:ack": {status: http.StatusNoContent},
 	}}
 	p, _ := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
 		HeartbeatURL: "https://safe.internal/heartbeat", AckURLBase: "https://safe.internal/operations/",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+		WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 	}, transport)
 	if err := p.refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(transport.requests) != 5 {
-		t.Fatalf("request count = %d, want token + policy + config + heartbeat + ack", len(transport.requests))
+	if len(transport.requests) != 4 {
+		t.Fatalf("request count = %d, want policy + config + heartbeat + ack", len(transport.requests))
 	}
 	for _, request := range transport.requests {
-		if request.URL.Path != "/token" && request.Header.Get("Authorization") != "Bearer token-1" {
-			t.Fatalf("request %s missing bearer authorization", request.URL.Path)
+		if request.Header.Get("Authorization") != "" {
+			t.Fatalf("request %s unexpected authorization", request.URL.Path)
 		}
 	}
-	var tokenRequest *http.Request
-	for _, request := range transport.requests {
-		if request.URL.Path == "/token" {
-			tokenRequest = request
-			break
-		}
+	var heartbeat heartbeatRequest
+	if err := json.Unmarshal(transport.requestBody("/heartbeat"), &heartbeat); err != nil {
+		t.Fatal(err)
 	}
-	if tokenRequest == nil || tokenRequest.Method != http.MethodPost {
-		t.Fatal("client_credentials token request was not issued")
-	}
-	clientID, clientSecret, basicOK := tokenRequest.BasicAuth()
-	if !basicOK || clientID != "trace-gateway" || clientSecret != "secret" || string(transport.requestBody("/token")) != "grant_type=client_credentials" {
-		t.Fatalf("unexpected client_credentials request: auth=%q/%q basic=%v body=%q", clientID, clientSecret, basicOK, transport.requestBody("/token"))
+	if heartbeat.EndpointKind != "trace_gateway" || heartbeat.WorkloadIdentity != "trace-gateway" || heartbeat.InstanceID != "trace-gateway#boot-42" {
+		t.Fatalf("unexpected internal heartbeat identity: %+v", heartbeat)
 	}
 	var ack TraceGatewayAcknowledgementV1
 	if err := json.Unmarshal(transport.requestBody("/operations/op-42:ack"), &ack); err != nil {
@@ -314,28 +238,20 @@ func assertFrozenGatewayAckJSON(t *testing.T, body []byte) {
 }
 
 func TestProcessorUsesFrozenConfigurationActiveOperationCandidate(t *testing.T) {
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
-	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+	snapshot := traceadmissionsvc.Snapshot{ContractVersion: "TraceEvidencePolicySnapshotV1",
 		Revision: 42, TraceAdmission: traceadmissionsvc.ModeDisabled, EvidenceAdmission: traceadmissionsvc.ModeDisabled,
-		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a",
-	}, privateKey)
-	if err != nil {
-		t.Fatal(err)
+		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute),
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy":               {status: http.StatusOK, body: mustJSON(snapshot)},
 		"https://safe.internal/config":               {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
-		"https://safe.internal/token":                {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 		"https://safe.internal/operations/op-42:ack": {status: http.StatusNoContent},
 	}}
 	p, _ := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		AckURLBase: "https://safe.internal/operations/", ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
+		AckURLBase:       "https://safe.internal/operations/",
+		WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 	}, transport)
 	if err := p.refresh(context.Background()); err != nil {
 		t.Fatal(err)
@@ -343,8 +259,8 @@ func TestProcessorUsesFrozenConfigurationActiveOperationCandidate(t *testing.T) 
 	if p.operationID() != "op-42" {
 		t.Fatalf("operation candidate = %q, want op-42", p.operationID())
 	}
-	if len(transport.requests) != 4 {
-		t.Fatalf("request count = %d, want token + policy + config + ack", len(transport.requests))
+	if len(transport.requests) != 3 {
+		t.Fatalf("request count = %d, want policy + config + ack", len(transport.requests))
 	}
 }
 
@@ -353,9 +269,8 @@ func TestProcessorRejectsLegacyConfigurationReadModel(t *testing.T) {
 		"https://safe.internal/config": {status: http.StatusOK, body: []byte(`{"revision":42,"operation":{"id":"op-42","phase":"enabling"}}`)},
 	}}
 	p, _ := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(make([]byte, ed25519.PublicKeySize)), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
+		WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 	}, transport)
 	if _, err := p.pullActiveOperation(context.Background(), 42); err == nil {
 		t.Fatal("legacy configuration read model was accepted")
@@ -372,31 +287,22 @@ func TestFactorySupportsTracesOnly(t *testing.T) {
 	}
 }
 
-func TestProcessorDropsWhenSignedSnapshotExpires(t *testing.T) {
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestProcessorDropsWhenSnapshotExpires(t *testing.T) {
 	clock := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
-	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+	snapshot := traceadmissionsvc.Snapshot{ContractVersion: "TraceEvidencePolicySnapshotV1",
 		Revision: 42, TraceAdmission: traceadmissionsvc.ModeEnabled, EvidenceAdmission: traceadmissionsvc.ModeEnabled,
-		IssuedAt: clock.Add(-time.Second), ExpiresAt: clock.Add(time.Second), KeyID: "k1", Audience: "cluster-a",
-	}, privateKey)
-	if err != nil {
-		t.Fatal(err)
+		IssuedAt: clock.Add(-time.Second), ExpiresAt: clock.Add(time.Second),
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy": {status: http.StatusOK, body: mustJSON(snapshot)},
 		"https://safe.internal/config": {status: http.StatusOK, body: frozenConfigurationBody(42, "op-42")},
-		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 	}}
 	p, calls := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
+		WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 	}, transport)
 	p.now = func() time.Time { return clock }
-	p.gateway = traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{Audience: "cluster-a", CurrentKeyID: "k1", CurrentKey: publicKey, Now: func() time.Time { return clock }})
+	p.gateway = traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{Now: func() time.Time { return clock }})
 	if err := p.refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -410,30 +316,21 @@ func TestProcessorDropsWhenSignedSnapshotExpires(t *testing.T) {
 }
 
 func TestProcessorDoesNotAckWhenConfigurationRevisionDoesNotMatchSnapshot(t *testing.T) {
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC)
-	snapshot, err := traceadmissionsvc.SignSnapshot(traceadmissionsvc.SignedSnapshot{
+	snapshot := traceadmissionsvc.Snapshot{ContractVersion: "TraceEvidencePolicySnapshotV1",
 		Revision: 42, TraceAdmission: traceadmissionsvc.ModeEnabled, EvidenceAdmission: traceadmissionsvc.ModeEnabled,
-		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute), KeyID: "k1", Audience: "cluster-a",
-	}, privateKey)
-	if err != nil {
-		t.Fatal(err)
+		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute),
 	}
 	transport := &scriptedTransport{responses: map[string]scriptedResponse{
 		"https://safe.internal/policy": {status: http.StatusOK, body: mustJSON(snapshot)},
 		"https://safe.internal/config": {status: http.StatusOK, body: frozenConfigurationBody(41, "op-41")},
-		"https://safe.internal/token":  {status: http.StatusOK, body: []byte(`{"access_token":"token-1","token_type":"Bearer","expires_in":300}`)},
 	}}
 	p, _ := newTestProcessor(t, Config{
-		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config", TokenURL: "https://safe.internal/token",
-		ClientID: "trace-gateway", ClientSecret: "secret", Audience: "cluster-a", CurrentKeyID: "k1",
-		CurrentPublicKey: base64.RawStdEncoding.EncodeToString(publicKey), WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
+		PolicyURL: "https://safe.internal/policy", ConfigurationURL: "https://safe.internal/config",
+		WorkloadIdentity: "trace-gateway", ProcessBootID: "boot-42",
 	}, transport)
 	p.now = func() time.Time { return now }
-	p.gateway = traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{Audience: "cluster-a", CurrentKeyID: "k1", CurrentKey: publicKey, Now: p.now})
+	p.gateway = traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{Now: p.now})
 	if err := p.refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -477,14 +374,7 @@ func newTestProcessor(t *testing.T, config Config, transport *scriptedTransport)
 		t.Fatal(err)
 	}
 	p.now = func() time.Time { return time.Date(2026, 9, 25, 8, 0, 0, 0, time.UTC) }
-	publicKey, err := decodePublicKey(config.CurrentPublicKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.gateway = traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{
-		Audience: config.Audience, CurrentKeyID: config.CurrentKeyID, CurrentKey: ed25519.PublicKey(publicKey),
-		Now: p.now,
-	})
+	p.gateway = traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{Now: p.now})
 	return p, &forwarded
 }
 
@@ -507,10 +397,9 @@ type scriptedResponse struct {
 }
 
 type scriptedTransport struct {
-	responses        map[string]scriptedResponse
-	rejectBasicToken bool
-	requests         []*http.Request
-	bodies           map[string][]byte
+	responses map[string]scriptedResponse
+	requests  []*http.Request
+	bodies    map[string][]byte
 }
 
 func (s *scriptedTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -523,9 +412,6 @@ func (s *scriptedTransport) RoundTrip(request *http.Request) (*http.Response, er
 		body, _ = io.ReadAll(request.Body)
 	}
 	s.bodies[request.URL.Path] = body
-	if s.rejectBasicToken && request.URL.Path == "/token" && request.Header.Get("Authorization") != "" {
-		return &http.Response{StatusCode: http.StatusUnauthorized, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader([]byte(`{"error":"invalid_client"}`))), Request: request}, nil
-	}
 	response, ok := s.responses[request.URL.String()]
 	if !ok {
 		response = s.responses[request.URL.Scheme+"://"+request.URL.Host+request.URL.Path]

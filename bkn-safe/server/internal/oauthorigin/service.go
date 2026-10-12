@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -144,6 +145,13 @@ func NormalizeOrigin(raw string) (string, error) {
 	}
 	hostname := strings.ToLower(u.Hostname())
 	port := u.Port()
+	if port != "" {
+		n, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || n == 0 {
+			return "", ErrInvalidOrigin
+		}
+		port = strconv.FormatUint(n, 10)
+	}
 	if port == "80" && scheme == "http" || port == "443" && scheme == "https" {
 		port = ""
 	}
@@ -351,22 +359,34 @@ func (s *Service) AddCallback(ctx context.Context, uri, actorID string) ([]strin
 // RemoveCallback removes a runtime callback through the durable origin API.
 // Missing callbacks remain a no-op for compatibility with the old endpoint.
 func (s *Service) RemoveCallback(ctx context.Context, uri string) ([]string, error) {
-	origin, err := OriginFromCallback(uri)
-	if err != nil {
-		return nil, err
-	}
-	if _, ok := s.baselineByOrigin(origin); ok {
+	origin, originErr := OriginFromCallback(uri)
+	if _, ok := s.baselineByOrigin(origin); originErr == nil && ok {
 		return nil, ErrReadOnly
 	}
-	var row model.OAuthAccessOrigin
-	if err := s.db.WithContext(ctx).Where("origin = ?", origin).First(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return s.Callbacks(ctx)
-		}
-		return nil, err
+	// Prefer the exact stored URI from the legacy listing. Older records may
+	// fail current validation or use a port spelling now normalized differently.
+	candidates := []string{}
+	if strings.HasSuffix(uri, callbackPath) {
+		candidates = append(candidates, strings.TrimSuffix(uri, callbackPath))
 	}
-	if _, err := s.Delete(ctx, row.ID); err != nil {
-		return nil, err
+	if originErr == nil {
+		candidates = appendUnique(candidates, origin)
+	}
+	for _, candidate := range candidates {
+		var row model.OAuthAccessOrigin
+		if err := s.db.WithContext(ctx).Where("origin = ?", candidate).First(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		if _, err := s.Delete(ctx, row.ID); err != nil {
+			return nil, err
+		}
+		return s.Callbacks(ctx)
+	}
+	if originErr != nil {
+		return nil, originErr
 	}
 	return s.Callbacks(ctx)
 }
@@ -417,15 +437,30 @@ func (s *Service) reconcile(ctx context.Context) error {
 		s.markFailure(ctx, err)
 		return err
 	}
+	// Older versions could persist origins with out-of-range ports. They no
+	// longer pass OriginFromCallback, but remain managed until deleted. Keep
+	// their URI shapes out of the unmanaged-preservation path so deletion also
+	// removes their callback and logout URI from Hydra.
+	var stored []model.OAuthAccessOrigin
+	if err := s.db.WithContext(ctx).Find(&stored).Error; err != nil {
+		s.markFailure(ctx, err)
+		return err
+	}
+	storedCallbacks := make(map[string]bool, len(stored))
+	storedLogouts := make(map[string]bool, len(stored))
+	for _, row := range stored {
+		storedCallbacks[callbackURI(row.Origin)] = true
+		storedLogouts[logoutURI(row.Origin)] = true
+	}
 
 	next := auth.OAuthClientURIs{}
 	for _, uri := range current.RedirectURIs {
-		if _, err := OriginFromCallback(uri); err != nil {
+		if _, err := OriginFromCallback(uri); err != nil && !storedCallbacks[uri] {
 			next.RedirectURIs = appendUnique(next.RedirectURIs, uri)
 		}
 	}
 	for _, uri := range current.PostLogoutRedirectURIs {
-		if _, err := originFromLogout(uri); err != nil {
+		if _, err := originFromLogout(uri); err != nil && !storedLogouts[uri] {
 			next.PostLogoutRedirectURIs = appendUnique(next.PostLogoutRedirectURIs, uri)
 		}
 	}

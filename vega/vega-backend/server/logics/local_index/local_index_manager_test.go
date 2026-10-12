@@ -22,6 +22,43 @@ import (
 )
 
 func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		standard, index bool
+	}{
+		{name: "both HanLP analyzers installed", standard: true, index: true},
+		{name: "only hanlp_standard installed", standard: true},
+		{name: "only hanlp_index installed", index: true},
+		{name: "neither HanLP analyzer installed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+			manager := &localIndexManager{lic: connector}
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(false, nil)
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(tc.standard, nil)
+			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(tc.index, nil)
+			want := []interfaces.AnalyzerCapability{{ID: "standard"}, {ID: "english"}}
+			if tc.standard {
+				want = append(want, interfaces.AnalyzerCapability{ID: "hanlp_standard"})
+			}
+			if tc.index {
+				want = append(want, interfaces.AnalyzerCapability{ID: "hanlp_index"})
+			}
+			capabilities, err := manager.GetIndexCapabilities(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, want, capabilities.FulltextAnalyzers)
+			for analyzer, expected := range map[string]bool{"hanlp_standard": tc.standard, "hanlp_index": tc.index} {
+				available, err := manager.ValidateAnalyzer(context.Background(), analyzer)
+				require.NoError(t, err)
+				assert.Equal(t, expected, available)
+			}
+			cached, err := manager.GetIndexCapabilities(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, capabilities, cached)
+		})
+	}
 	t.Run("refreshes an expired error after OpenSearch recovers", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -47,6 +84,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(false, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
 
 		capabilities, err = manager.GetIndexCapabilities(ctx)
@@ -69,6 +107,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(false, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
 
 		capabilities, err := manager.GetIndexCapabilities(ctx)
@@ -96,6 +135,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		})
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(false, nil)
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
 
 		const callers = 8
@@ -132,11 +172,37 @@ func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "ik_max_word").Return(true, nil)
+	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_standard").Return(false, nil)
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "hanlp_index").Return(false, nil)
 
 	available, err := manager.ValidateAnalyzer(ctx, "ik_max_word")
 	require.NoError(t, err)
 	assert.True(t, available)
+}
+
+func TestLocalIndexManagerListDocuments(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	connector := vmock.NewMockIndexConnector(ctrl)
+	resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable,
+		SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "SOURCE_ID", Type: interfaces.DataType_Integer}}}
+	params := &interfaces.ResourceDataQueryParams{
+		Sort:         []*interfaces.SortField{{Field: "_score", Direction: "desc"}, {Field: "id", Direction: "asc"}},
+		OutputFields: []string{"id", "_score"}, SearchAfter: []any{0.875, 1}}
+	rows := []map[string]any{{"id": 2, "_score": 0.875}}
+	connector.EXPECT().ExecuteQuery(gomock.Any(), "table-index", gomock.Any(), params).DoAndReturn(
+		func(_ context.Context, _ string, physical *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+			assert.Equal(t, "id", physical.SchemaDefinition[0].OriginalName)
+			assert.Equal(t, "_score", actual.Sort[0].Field)
+			assert.Equal(t, []string{"id", "_score"}, actual.OutputFields)
+			assert.Equal(t, []any{0.875, 1}, actual.SearchAfter)
+			return &interfaces.QueryResult{Entries: rows, Total: 3, SearchAfter: []any{0.875, 2}}, nil
+		})
+	entries, total, err := (&localIndexManager{lic: connector}).ListDocuments(context.Background(), "table-index", resource, params)
+	require.NoError(t, err)
+	assert.Equal(t, rows, entries)
+	assert.Equal(t, int64(3), total)
+	assert.Equal(t, []any{0.875, 2}, params.SearchAfter)
+	assert.Equal(t, "SOURCE_ID", resource.SchemaDefinition[0].OriginalName)
 }
 
 func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
@@ -250,11 +316,48 @@ func TestSchemaForQueryUsesManagedFieldNames(t *testing.T) {
 		Name:         "body",
 		OriginalName: "source_body",
 		Type:         interfaces.DataType_Text,
-	}}
+	}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "blob", Type: interfaces.DataType_Binary}, {Name: "unknown", Type: interfaces.DataType_Other}, nil}
 
 	got := SchemaForQuery(schema)
 
 	require.Len(t, got, 1)
 	assert.Equal(t, "body", got[0].OriginalName)
 	assert.Equal(t, "source_body", schema[0].OriginalName)
+}
+
+func TestLocalIndexManagerRejectsUnavailableQueryFields(t *testing.T) {
+	for _, fieldType := range []string{interfaces.DataType_Json, interfaces.DataType_Binary, interfaces.DataType_Other} {
+		t.Run(fieldType, func(t *testing.T) {
+			for _, params := range []*interfaces.ResourceDataQueryParams{
+				{Sort: []*interfaces.SortField{{Field: "payload"}}},
+				{Aggregation: &interfaces.Aggregation{Property: "payload", Aggr: "count"}},
+				{GroupBy: []*interfaces.GroupByItem{{Property: "payload"}}},
+			} {
+				connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+				manager := &localIndexManager{lic: connector}
+				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: fieldType}}}
+				rows, total, err := manager.ListDocuments(context.Background(), "idx", resource, params)
+				assert.Nil(t, rows)
+				assert.Zero(t, total)
+				var conditionError *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &conditionError)
+				assert.ErrorContains(t, err, `field "payload" not found in schema`)
+			}
+		})
+	}
+}
+
+func TestValidateQueryFieldsAggregationAliases(t *testing.T) {
+	for _, alias := range []string{"payload", "__value"} {
+		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: alias, Type: interfaces.DataType_Json}, {Name: "amount", Type: interfaces.DataType_Integer}}}
+		for _, declared := range []string{alias, ""} {
+			if declared == "" && alias != "__value" {
+				continue
+			}
+			params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: declared}, Sort: []*interfaces.SortField{{Field: alias}}}
+			require.NoError(t, validateQueryFields(resource, params))
+			params.Aggregation.Property = alias
+			require.ErrorContains(t, validateQueryFields(resource, params), "not found")
+		}
+	}
 }

@@ -25,7 +25,7 @@ import (
 // join collapses into an inner one, so a row whose only neighbours are hidden
 // would disappear along with them instead of coming back with nothing attached.
 func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
-	plan *Plan, schema *Schema) error {
+	plan *Plan, schema *Schema) ([]string, error) {
 	refs := make([]string, 0, len(plan.Tables))
 	seen := make(map[string]struct{}, len(plan.Tables))
 	for _, table := range plan.Tables {
@@ -38,17 +38,17 @@ func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 	}
 	entries, err := s.ps.ResolveRowFilters(ctx, refs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	byRef := make(map[string]interfaces.RowFilterPredicate, len(entries))
 	for _, entry := range entries {
 		if _, duplicate := byRef[entry.ObjectTypeRef]; duplicate {
-			return fmt.Errorf("duplicate row-filter decision for %q", entry.ObjectTypeRef)
+			return nil, fmt.Errorf("duplicate row-filter decision for %q", entry.ObjectTypeRef)
 		}
 		byRef[entry.ObjectTypeRef] = entry.Predicate
 	}
 	if len(byRef) != len(refs) {
-		return fmt.Errorf("incomplete row-filter decision")
+		return nil, fmt.Errorf("incomplete row-filter decision")
 	}
 
 	optionalJoin := make(map[int]int, len(plan.Joins))
@@ -59,24 +59,30 @@ func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 	}
 
 	filters := make([]PlanPredicate, 0, len(plan.Tables)+1)
+	filteredObjectTypes := make([]string, 0, len(plan.Tables))
+	filteredSeen := make(map[string]struct{}, len(plan.Tables))
 	if plan.Where != nil {
 		filters = append(filters, plan.Where)
 	}
 	for tableIndex, table := range plan.Tables {
 		objectType := schema.objectTypesByID[table.ObjectTypeID]
 		if objectType == nil {
-			return fmt.Errorf("compiled row-filter table has unknown object type %q", table.ObjectTypeID)
+			return nil, fmt.Errorf("compiled row-filter table has unknown object type %q", table.ObjectTypeID)
 		}
 		predicate, exists := byRef[interfaces.KNChildResourceID(knID, table.ObjectTypeID)]
 		if !exists {
-			return fmt.Errorf("missing row-filter decision for %q", table.ObjectTypeID)
+			return nil, fmt.Errorf("missing row-filter decision for %q", table.ObjectTypeID)
 		}
 		compiled, err := compileRowFilterPredicate(predicate, tableIndex, objectType, schema)
 		if err != nil {
-			return fmt.Errorf("compile row filter for object type %q: %w", table.ObjectTypeID, err)
+			return nil, fmt.Errorf("compile row filter for object type %q: %w", table.ObjectTypeID, err)
 		}
 		if compiled == nil {
 			continue
+		}
+		if _, exists := filteredSeen[table.ObjectTypeID]; !exists {
+			filteredSeen[table.ObjectTypeID] = struct{}{}
+			filteredObjectTypes = append(filteredObjectTypes, table.ObjectTypeID)
 		}
 		if joinIndex, optional := optionalJoin[tableIndex]; optional {
 			plan.Joins[joinIndex].Conditions = append(plan.Joins[joinIndex].Conditions, compiled)
@@ -85,7 +91,7 @@ func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 		filters = append(filters, compiled)
 	}
 	plan.Where = combineRowFilterAnd(filters)
-	return nil
+	return filteredObjectTypes, nil
 }
 
 func compileRowFilterPredicate(predicate interfaces.RowFilterPredicate, table int,

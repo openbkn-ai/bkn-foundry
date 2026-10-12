@@ -241,6 +241,11 @@
   "output_schema": {
     "type": "object",
     "properties": {
+      "query_source": {
+        "type": "string",
+        "enum": ["local_index", "source"],
+        "description": "Vega 实际查询来源：local_index 表示资源本地索引，source 表示数据源；未执行资源查询时省略。该字段不用于决定分页，续页应使用 cursor。"
+      },
       "datas": {
         "type": "array",
         "description": "实例列表",

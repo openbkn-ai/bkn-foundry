@@ -35,6 +35,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sourcecoveragesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/archivestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
@@ -203,49 +204,50 @@ func NewApp() (*App, error) {
 	}
 	capturePolicyHandler = httphandler.NewCapturePolicyHandlerWithInternal(
 		capturePolicyReader, capturePolicyCommander, captureController,
-		capturepolicysnapshot.Signer{
-			PrivateKey: coreConfig.CapturePolicySigningKey,
-			KeyID:      coreConfig.CapturePolicySigningKeyID,
-			Audience:   coreConfig.CapturePolicyAudience,
-			TTL:        coreConfig.CapturePolicySnapshotTTL,
+		capturepolicysnapshot.Builder{
+			TTL: coreConfig.CapturePolicySnapshotTTL,
 		}, capturePolicyWriter,
 	)
-	capturePolicyHandler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType string, before, after capturepolicysvc.Snapshot) {
-		captureAudit.requested(actorID, actorType, before, after)
+	capturePolicyHandler.SetAuditRequestedObserver(func(_ context.Context, actorID, actorType, actorName, effectiveSubjectID string, before, after capturepolicysvc.Snapshot) {
+		captureAudit.requested(actorID, actorType, actorName, effectiveSubjectID, before, after)
 	})
 	var admissionBudgetSources []capturepolicysvc.AdmissionMeasurementSource
 	admissionBudgetSources = append(admissionBudgetSources,
 		capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			metrics, err := openSearchClient.ReadAdmissionMetrics(ctx)
 			if err != nil {
-				return capturepolicysvc.AdmissionMeasurement{}, err
+				return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_opensearch_capacity", err)
 			}
 			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_opensearch_capacity", Source: "opensearch-cluster-stats", SampleTime: metrics.SampledAt, Value: metrics.Capacity, Fresh: true}, nil
 		}),
 		capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			metrics, err := openSearchClient.ReadAdmissionMetrics(ctx)
 			if err != nil {
-				return capturepolicysvc.AdmissionMeasurement{}, err
+				return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_opensearch_heap", err)
 			}
 			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_opensearch_heap", Source: "opensearch-cluster-stats", SampleTime: metrics.SampledAt, Value: metrics.Heap, Fresh: true}, nil
 		}),
 	)
-	collectorMetricsEndpoint := strings.TrimSpace(observabilityConfig.AdmissionBudgetMetricsEndpoint)
-	if collectorMetricsEndpoint == "" {
-		collectorMetricsEndpoint = strings.TrimSpace(observabilityConfig.SourceCoverageMetricsEndpoint)
+	collectorMetricsEndpoint, collectorEndpointErr := observabilityConfig.AdmissionCollectorMetricsEndpoint()
+	collectorMetricsField := "BKN_TRACE_ADMISSION_COLLECTOR_METRICS_ENDPOINT"
+	if strings.TrimSpace(observabilityConfig.AdmissionBudgetMetricsEndpoint) == "" && strings.TrimSpace(observabilityConfig.SourceCoverageMetricsEndpoint) != "" {
+		collectorMetricsField = "BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT"
 	}
-	if endpoint := collectorMetricsEndpoint; endpoint != "" {
+	if endpoint := collectorMetricsEndpoint; collectorEndpointErr == nil {
 		collectorMetrics := otelcolmetrics.New(endpoint, &http.Client{Timeout: 3 * time.Second})
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(ctx context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			sample, err := collectorMetrics.ReadQueueSample(ctx)
 			if err != nil {
-				return capturepolicysvc.AdmissionMeasurement{}, err
+				return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_collector_queue", err)
 			}
 			return capturepolicysvc.AdmissionMeasurement{Metric: "trace_collector_queue", Source: endpoint, SampleTime: sample.SampledAt, Value: sample.Utilization, Fresh: true}, nil
 		}))
 	} else {
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
-			return capturepolicysvc.AdmissionMeasurement{}, errors.New("collector metrics endpoint is not configured")
+			return capturepolicysvc.AdmissionMeasurement{}, &capturepolicysvc.AdmissionBudgetError{
+				Reason: "invalid_configuration", Metric: "trace_collector_queue",
+				Fields: []string{collectorMetricsField}, Cause: collectorEndpointErr,
+			}
 		}))
 	}
 	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok && databaseStore.Database() != nil {
@@ -253,7 +255,7 @@ func NewApp() (*App, error) {
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
 			stats := database.Stats()
 			if stats.MaxOpenConnections <= 0 {
-				return capturepolicysvc.AdmissionMeasurement{}, errors.New("trace storage pool max open connections is not configured")
+				return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_storage_connection_pool", errors.New("trace storage pool max open connections is not configured"))
 			}
 			value := float64(stats.InUse) / float64(stats.MaxOpenConnections)
 			if value > 1 {
@@ -263,8 +265,11 @@ func NewApp() (*App, error) {
 		}))
 	} else {
 		admissionBudgetSources = append(admissionBudgetSources, capturepolicysvc.AdmissionMeasurementSourceFunc(func(context.Context) (capturepolicysvc.AdmissionMeasurement, error) {
-			return capturepolicysvc.AdmissionMeasurement{}, errors.New("trace storage pool is not configured")
+			return capturepolicysvc.AdmissionMeasurement{}, capturepolicysvc.AdmissionSourceError("trace_storage_connection_pool", errors.New("trace storage pool is not configured"))
 		}))
+	}
+	if collectorEndpointErr != nil {
+		log.Printf("Trace admission Collector configuration unavailable (%s): %v", collectorMetricsField, collectorEndpointErr)
 	}
 	budgetConfig := observabilityConfig.AdmissionBudgetThresholds
 	budgetProvider, budgetErr := capturepolicysvc.NewAdmissionBudgetProvider(
@@ -278,6 +283,9 @@ func NewApp() (*App, error) {
 	)
 	if budgetErr != nil {
 		log.Printf("Trace admission budget provider unavailable: %v", budgetErr)
+		capturePolicyHandler.SetAdmissionBudgetReader(httphandler.AdmissionBudgetReaderFunc(func(context.Context) (capturepolicysvc.AdmissionBudget, error) {
+			return capturepolicysvc.AdmissionBudget{}, budgetErr
+		}))
 	} else {
 		capturePolicyHandler.SetAdmissionBudgetReader(budgetProvider)
 	}
@@ -501,7 +509,13 @@ func NewApp() (*App, error) {
 		}
 	}
 	sessionService := sessionsvc.New(sessionStore, sessionOptions)
-	ledgerService.SetDurableObserver(sessionService.ReconcileEvidence)
+	// The SQL session/ledger store marks record integrity dirty in the same
+	// transaction as the ledger write. The development memory stores are
+	// deliberately separate, so install the equivalent post-commit hook only
+	// for that backend. Commit has returned (and released the ledger mutex) by
+	// the time this observer runs; invalidation itself only takes the session
+	// map lock and never calls back while holding it.
+	ledgerService.SetDurableObserver(memoryRecordIntegrityObserver(sessionStore, sessionService.ReconcileEvidence))
 	archiveStore := archivesvc.NewMemoryStore()
 	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok {
 		archiveStore = archivestore.New(databaseStore.Database())
@@ -560,6 +574,13 @@ func NewApp() (*App, error) {
 	}
 	workerContext, stopWorkers := context.WithCancel(context.Background())
 	app.stopWorkers = stopWorkers
+	// Materialized integrity serves lists without fetching stored business bodies.
+	// It also backfills existing terminal interactions, regardless of projection.
+	app.workers.Add(1)
+	go func() {
+		defer app.workers.Done()
+		runRecordIntegritySupervisor(workerContext, evidenceService, 5*time.Second)
+	}()
 	if captureController != nil {
 		app.workers.Add(1)
 		go func() {
@@ -652,6 +673,25 @@ func NewApp() (*App, error) {
 	return app, nil
 }
 
+func memoryRecordIntegrityObserver(
+	sessionStore isessionstore.Store,
+	reconcile func(context.Context, ledgervo.Event) error,
+) func(context.Context, ledgervo.Event) error {
+	memorySessions, ok := sessionStore.(*memorysessionstore.Store)
+	if !ok {
+		return reconcile
+	}
+	return func(ctx context.Context, event ledgervo.Event) error {
+		if err := memorySessions.InvalidateRecordIntegrity(ctx, event.InteractionID, event.Owner); err != nil {
+			return err
+		}
+		// This fallback also runs for replayed durable events. It is safe for
+		// the in-memory store and compensates for the absence of SQL's
+		// transaction-level dirty marker.
+		return reconcile(ctx, event)
+	}
+}
+
 type memoryCapturePolicyCommander struct {
 	store     *capturepolicystore.Store
 	admission *captureadmission.View
@@ -667,9 +707,10 @@ func (c memoryCapturePolicyCommander) Request(ctx context.Context, request captu
 
 func assembleLogSources(runtimeSources []logsvc.Source, centerAuditSource logsvc.Source) []logsvc.Source {
 	sources := make([]logsvc.Source, 0, len(runtimeSources)+1)
-	if centerAuditSource != nil {
-		sources = append(sources, centerAuditSource)
+	if centerAuditSource == nil {
+		centerAuditSource = logsvc.NewUnconfiguredAuditSource()
 	}
+	sources = append(sources, centerAuditSource)
 	sources = append(sources, runtimeSources...)
 	return sources
 }
@@ -958,12 +999,10 @@ func newAppWithArchiveAndCapture(
 	}
 	httphandler.RegisterSessionRoutes(internalMux, APIBasePath, sessionHandler, lifecycle)
 	if capturePolicyHandler != nil {
-		workload := func(next http.HandlerFunc) http.HandlerFunc {
-			return internal(evidenceHandler.RequireTrustedServicePrincipal(next))
-		}
-		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/policy", workload(capturePolicyHandler.GetInternalTraceEvidencePolicy))
-		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/endpoints:heartbeat", workload(capturePolicyHandler.HeartbeatInternalTraceEvidenceEndpoint))
-		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/operations/", workload(capturePolicyHandler.AcknowledgeInternalTraceEvidenceOperation))
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/policy", capturePolicyHandler.GetInternalTraceEvidencePolicy)
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/configuration", capturePolicyHandler.GetTraceEvidenceConfiguration)
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/endpoints:heartbeat", capturePolicyHandler.HeartbeatInternalTraceEvidenceEndpoint)
+		internalMux.HandleFunc(APIBasePath+"/internal/trace-evidence/operations/", capturePolicyHandler.AcknowledgeInternalTraceEvidenceOperation)
 	}
 
 	publicHandler := observabilitylocale.PrivateNoCacheForPrefixes(

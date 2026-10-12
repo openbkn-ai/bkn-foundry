@@ -87,7 +87,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	// List of system fields to exclude.
 	excludeSystemProperties := c.QueryArray("exclude_system_properties")
 	// Validate query parameters.
-	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo, interfaces.DEFAULT_IGNORING_STORE_CACHE,
+	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo, interfaces.DEFAULT_IGNORE_LOCAL_INDEX,
 		interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS, excludeSystemProperties)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)

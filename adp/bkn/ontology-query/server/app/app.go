@@ -11,6 +11,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -239,8 +240,11 @@ func Boot(_ Options) *Application {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
 		publisherRuntime, err = bkntrace.NewEvidencePublisherRuntime()
 		if err != nil {
-			logger.Warnf("Evidence Kafka publisher unavailable; evidence will be dropped: %v", err)
-			publisherRuntime = nil
+			if errors.Is(err, bkntrace.ErrInvalidEvidencePublisherConfiguration) {
+				logger.Fatalf("Failed to initialize enabled Evidence Kafka publisher: %v", err)
+				return nil
+			}
+			logger.Warnf("Evidence Kafka publisher unavailable; evidence will be dropped until Kafka recovers: %v", err)
 		} else {
 			bkntrace.SetEvidencePublisher(publisherRuntime.Runtime)
 		}

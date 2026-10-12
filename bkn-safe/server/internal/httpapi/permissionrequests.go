@@ -58,13 +58,11 @@ func registerPermissionRequests(g *gin.RouterGroup, service *permissionrequest.S
 		preview := gin.H{}
 		for _, kind := range []string{"row_filter", "property_grants"} {
 			handler, err := permissionproposal.HandlerFor(kind)
-			if err != nil {
-				replyPublicError(c, http.StatusNotFound)
+			if writePermissionRequestError(c, err) {
 				return
 			}
 			value, err := handler.Preview(c.Request.Context(), c.GetString(ctxAccessorID), resourceType, resourceID)
-			if err != nil {
-				serverError(c, err)
+			if writePermissionRequestError(c, err) {
 				return
 			}
 			preview[kind] = value
@@ -247,8 +245,8 @@ func writePermissionRequestError(c *gin.Context, err error) bool {
 		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "permission_already_granted"})
 	case errors.Is(err, permissionrequest.ErrPrerequisiteMissing):
 		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "missing_prerequisite"})
-	case errors.Is(err, permissionrequest.ErrProposalUnavailable):
-		replyPublicError(c, http.StatusNotFound)
+	case errors.Is(err, permissionrequest.ErrProposalUnavailable), errors.Is(err, permissionproposal.ErrUnavailable):
+		replyPublicErrorDetails(c, http.StatusNotFound, gin.H{"reason": "permission_proposal_unavailable"})
 	case errors.Is(err, permissionrequest.ErrResourceDeleted):
 		replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "resource_deleted"})
 	case errors.Is(err, permissionrequest.ErrResourceUnavailable):

@@ -10,10 +10,6 @@ runtime_image="${OTELCOL_RUNTIME_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-
 
 chart_dir="${1:-charts/otelcol-contrib}"
 admission_args=(
-  --set traceAdmission.clientID=trace-gateway
-  --set traceAdmission.clientSecretSecret=trace-gateway-oauth
-  --set traceAdmission.currentKeyID=trace-policy-2026q3
-  --set traceAdmission.currentPublicKeySecret=trace-policy-public
   --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol
 )
 

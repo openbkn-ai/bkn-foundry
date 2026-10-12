@@ -6,12 +6,14 @@
 package opensearch
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 func TestOpenSearchConnectorMetadataAndNew(t *testing.T) {
@@ -69,11 +71,95 @@ func TestOpenSearchConnectorMapType(t *testing.T) {
 		{nativeType: "unsigned_long", want: interfaces.DataType_UnsignedInteger},
 		{nativeType: "scaled_float", want: interfaces.DataType_Float},
 		{nativeType: "nested", want: interfaces.DataType_Json},
-		{nativeType: "wildcard", want: interfaces.DataType_Other},
+		{nativeType: "knn_vector", want: interfaces.DataType_Vector},
+		{nativeType: "wildcard", want: interfaces.DataType_String},
+		{nativeType: "constant_keyword", want: interfaces.DataType_String},
+		{nativeType: "icu_collation_keyword", want: interfaces.DataType_String},
+		{nativeType: "match_only_text", want: interfaces.DataType_Text},
+		{nativeType: "flat_object", want: interfaces.DataType_Json},
+		{nativeType: "integer_range", want: interfaces.DataType_Json},
+		{nativeType: "float_range", want: interfaces.DataType_Json},
+		{nativeType: "long_range", want: interfaces.DataType_Json},
+		{nativeType: "double_range", want: interfaces.DataType_Json},
+		{nativeType: "date_range", want: interfaces.DataType_Json},
+		{nativeType: "ip_range", want: interfaces.DataType_Json},
+		{nativeType: "rank_feature", want: interfaces.DataType_Float},
+		{nativeType: "rank_features", want: interfaces.DataType_Json},
+		{nativeType: "percolator", want: interfaces.DataType_Json},
+		{nativeType: "join", want: interfaces.DataType_Json},
+		{nativeType: "ip", want: interfaces.DataType_Other},
+		{nativeType: "geo_point", want: interfaces.DataType_Other},
+		{nativeType: "geo_shape", want: interfaces.DataType_Other},
+		{nativeType: "dense_vector", want: interfaces.DataType_Other},
+		{nativeType: "sparse_vector", want: interfaces.DataType_Json},
+		{nativeType: "aggregate_metric_double", want: interfaces.DataType_Json},
+		{nativeType: "shape", want: interfaces.DataType_Other},
+		{nativeType: "double_precision", want: interfaces.DataType_Other},
+		{nativeType: "alias", want: interfaces.DataType_Other},
+		{nativeType: "unknown", want: interfaces.DataType_Other},
 	}
 	for _, test := range tests {
 		t.Run(test.nativeType, func(t *testing.T) {
 			assert.Equal(t, test.want, connector.MapType(test.nativeType))
 		})
 	}
+
+	t.Run("wildcard accepts regex conditions", func(t *testing.T) {
+		property := &interfaces.Property{Name: "name", Type: connector.MapType("wildcard")}
+		cfg := &interfaces.FilterCondCfg{Name: property.Name, ValueOptCfg: interfaces.ValueOptCfg{
+			ValueFrom: interfaces.ValueFrom_Const, Value: "prefix.*",
+		}}
+		condition, err := (&filter_condition.RegexCond{}).New(t.Context(), cfg,
+			map[string]*interfaces.Property{property.Name: property})
+		require.NoError(t, err)
+		require.IsType(t, &filter_condition.RegexCond{}, condition)
+	})
+
+	t.Run("structured features reject scalar ranges", func(t *testing.T) {
+		property := &interfaces.Property{Name: "features", Type: connector.MapType("rank_features")}
+		cfg := &interfaces.FilterCondCfg{Name: property.Name, ValueOptCfg: interfaces.ValueOptCfg{
+			ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10},
+		}}
+		condition, err := (&filter_condition.RangeCond{}).New(t.Context(), cfg,
+			map[string]*interfaces.Property{property.Name: property})
+		require.ErrorContains(t, err, "not a date/number field")
+		assert.Nil(t, condition)
+	})
+
+	t.Run("unsupported vectors reject OpenSearch knn conditions", func(t *testing.T) {
+		for _, nativeType := range []string{"dense_vector", "sparse_vector"} {
+			property := &interfaces.Property{Name: "embedding", Type: connector.MapType(nativeType)}
+			cfg := &interfaces.FilterCondCfg{Name: property.Name, ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const, Value: []float32{0.1, 0.2, 0.3},
+			}}
+			condition, err := (&filter_condition.KnnVectorCond{}).New(t.Context(), cfg,
+				map[string]*interfaces.Property{property.Name: property})
+			require.ErrorContains(t, err, "type must be vector", nativeType)
+			assert.Nil(t, condition, nativeType)
+		}
+	})
+
+	t.Run("discovered knn vector supports vector conditions", func(t *testing.T) {
+		property := &interfaces.Property{
+			Name:         "embedding",
+			Type:         connector.MapType("knn_vector"),
+			OriginalType: "knn_vector",
+		}
+		cfg := &interfaces.FilterCondCfg{
+			Name:      property.Name,
+			Operation: filter_condition.OperationKnnVector,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     []float32{0.1, 0.2, 0.3},
+			},
+		}
+
+		condition, err := (&filter_condition.KnnVectorCond{}).New(context.Background(), cfg,
+			map[string]*interfaces.Property{property.Name: property})
+
+		require.NoError(t, err)
+		require.IsType(t, &filter_condition.KnnVectorCond{}, condition)
+		assert.Equal(t, property.Name, condition.(*filter_condition.KnnVectorCond).FilterFieldName)
+		assert.Equal(t, cfg, condition.(*filter_condition.KnnVectorCond).Cfg)
+	})
 }

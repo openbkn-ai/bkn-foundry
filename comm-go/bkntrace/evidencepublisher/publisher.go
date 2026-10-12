@@ -57,7 +57,7 @@ func (p *Publisher) TryPublish(event Event) PublishResult {
 }
 
 // TryPublishForPolicyRevision enqueues one live Record using the already
-// verified policy revision supplied by the runtime. It remains a local,
+// validated policy revision supplied by the runtime. It remains a local,
 // non-blocking operation and preserves the revision on each queued Record.
 func (p *Publisher) TryPublishForPolicyRevision(event Event, capturePolicyRevision string) PublishResult {
 	p.mu.Lock()
@@ -187,7 +187,7 @@ func (p *Publisher) Flush(ctx context.Context) DrainResult {
 	return p.FlushForPolicyRevision(ctx, p.config.CapturePolicyRevision)
 }
 
-// FlushForPolicyRevision accounts the queue against the verified policy
+// FlushForPolicyRevision accounts the queue against the validated policy
 // revision that closed its admission boundary. Queued records keep their own
 // immutable Header revisions.
 func (p *Publisher) FlushForPolicyRevision(ctx context.Context, capturePolicyRevision string) DrainResult {

@@ -80,15 +80,18 @@ const (
 type evidenceOutcomeContextKey struct{}
 
 type evidenceOutcome struct {
-	mu        sync.Mutex
-	attempted bool
-	accepted  bool
-	closed    bool
-	overflow  bool
-	conflict  bool
-	events    []ExpectedEvidenceEvent
-	frozen    *EvidenceExpectation
-	indices   map[string]int
+	mu           sync.Mutex
+	attempted    bool
+	accepted     bool
+	closed       bool
+	overflow     bool
+	conflict     bool
+	events       []ExpectedEvidenceEvent
+	frozen       *EvidenceExpectation
+	indices      map[string]int
+	failureCode  string
+	failureStage string
+	businessRefs []BusinessRef
 }
 
 var artifactHTTPClient = &http.Client{}
@@ -282,6 +285,9 @@ func postArtifactWithRetry(
 		resp, requestErr := artifactHTTPClient.Do(req)
 		if requestErr == nil {
 			if resp.StatusCode < http.StatusBadRequest {
+				// Consume the small acknowledgement so the transport can reuse
+				// the connection. Bound reads and keep HTTP success authoritative.
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxCoreErrorBodyBytes))
 				_ = resp.Body.Close()
 				cancel()
 				return nil
@@ -350,6 +356,7 @@ func EmitExploreSubgraphEvents(ctx context.Context, logger interfaces.Logger, re
 }
 
 func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string, resourceIDs []string, resp *interfaces.VegaRawQueryResp) string {
+	retainRunSQLTargets(ctx, resourceIDs)
 	if !EvidenceEnabled() {
 		return ""
 	}
@@ -378,6 +385,7 @@ type RunCypherFailure struct {
 // EmitRunCypherFailure records a refused or failed Cypher query. A refusal is
 // evidence too: it says the answer was not supported by data.
 func EmitRunCypherFailure(ctx context.Context, logger interfaces.Logger, knID, query string, failure RunCypherFailure) string {
+	RecordToolFailure(ctx, failure.Code, failure.Stage)
 	if !EvidenceEnabled() {
 		return ""
 	}
@@ -391,6 +399,8 @@ type RunSQLFailure struct {
 }
 
 func EmitRunSQLFailure(ctx context.Context, logger interfaces.Logger, sql string, resourceIDs []string, failure RunSQLFailure) string {
+	RecordToolFailure(ctx, failure.Code, failure.Stage)
+	retainRunSQLTargets(ctx, resourceIDs)
 	if !EvidenceEnabled() {
 		return ""
 	}
@@ -987,9 +997,6 @@ func withEvidenceOutcome(ctx context.Context) context.Context {
 type requestDerivedBusinessRefsContextKey struct{}
 
 func withRequestDerivedBusinessRefs(ctx context.Context, refs []BusinessRef) context.Context {
-	if len(refs) == 0 {
-		return ctx
-	}
 	return context.WithValue(ctx, requestDerivedBusinessRefsContextKey{}, append([]BusinessRef(nil), refs...))
 }
 

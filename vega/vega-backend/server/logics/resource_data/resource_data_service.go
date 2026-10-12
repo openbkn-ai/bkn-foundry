@@ -129,7 +129,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	}
 
 	maxConcurrentQueries := int64(0)
-	if resource.Category != interfaces.ResourceCategoryLogicView {
+	if resource.Category != interfaces.ResourceCategoryLogicalView {
 		if concurrent, existsInCatalog := catalog.ConnectorCfg["concurrent"]; existsInCatalog {
 			if value, ok := common.NumberAsInt64(concurrent); ok {
 				maxConcurrentQueries = value
@@ -311,16 +311,16 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		span.SetStatus(codes.Ok, "")
 		return data, total, nil
 
-	case interfaces.ResourceCategoryLogicView:
+	case interfaces.ResourceCategoryLogicalView:
 		// Prepare the sort parameter
 		params = rds.prepareSortParams(resource, params)
 		// Prepare output
 		params = rds.prepareOutputFieldsParams(resource, params)
 
 		// Query data in a logical view
-		result, err := resourcelogic.QueryLogicViewWithPaging(ctx, resource, params)
+		result, err := resourcelogic.QueryLogicalViewWithPaging(ctx, resource, params)
 		if err != nil {
-			otellog.LogError(ctx, "Query logic view data failed", err)
+			otellog.LogError(ctx, "Query logical view data failed", err)
 			var httpErr *rest.HTTPError
 			if errors.As(err, &httpErr) {
 				return nil, 0, httpErr
@@ -452,8 +452,8 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
 		return nil, err
 	}
-	if resource.Category == interfaces.ResourceCategoryLogicView {
-		result, err := resourcelogic.QueryLogicViewWithPaging(ctx, resource, params)
+	if resource.Category == interfaces.ResourceCategoryLogicalView {
+		result, err := resourcelogic.QueryLogicalViewWithPaging(ctx, resource, params)
 		if err != nil {
 			return nil, err
 		}

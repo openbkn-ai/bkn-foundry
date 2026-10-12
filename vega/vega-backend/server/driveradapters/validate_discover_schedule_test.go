@@ -10,6 +10,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -34,6 +35,12 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 	}{
 		{
 			name: "valid request",
+		},
+		{
+			name: "count only strategy",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.Strategy = interfaces.DiscoverStrategyCountOnly
+			},
 		},
 		{
 			name: "ignores expected update time for shared create validation",
@@ -125,6 +132,11 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				if tt.name == "invalid strategy" {
+					var httpErr *rest.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					require.Contains(t, httpErr.BaseError.ErrorDetails, interfaces.DiscoverStrategyCountOnly)
+				}
 				return
 			}
 			require.NoError(t, err)

@@ -9,6 +9,7 @@ package postgresql
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -410,4 +411,75 @@ func TestPostgresqlConnectorMetadataQueryCompatibility(t *testing.T) {
 		connector.compatibility.withOrdinality = true
 		assert.Contains(t, connector.foreignKeyMetadataQuery(), "WITH ORDINALITY")
 	})
+}
+
+func TestPostgresqlConnectorCountRows(t *testing.T) {
+	for _, scenario := range []string{"quoted name", "empty", "count", "view", "empty view", "view error", "materialized view", "foreign table", "source error", "negative count", "nil metadata", "missing name", "missing schema", "outside scope"} {
+		t.Run(scenario, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &PostgresqlConnector{db: db, connected: true, config: &postgresqlConfig{Database: "appdb", Schemas: []string{"app"}}}
+			table := &interfaces.TableMeta{Schema: "app", Name: "orders"}
+			switch scenario {
+			case "quoted name":
+				table.Name = `ord"ers`
+			case "nil metadata":
+				table = nil
+			case "missing name":
+				table.Name = ""
+			case "missing schema":
+				table.Schema = ""
+			case "outside scope":
+				table.Schema = "other"
+			case "view", "empty view", "view error":
+				table.TableType = interfaces.TableTypeView
+			case "materialized view":
+				table.TableType = interfaces.TableTypeMaterializedView
+			case "foreign table":
+				table.TableType = "foreign_table"
+			}
+			invalid := scenario == "nil metadata" || scenario == "missing name" || scenario == "missing schema"
+			if !invalid && scenario != "outside scope" {
+				query := `SELECT COUNT(*) FROM "app"."orders"`
+				if scenario == "quoted name" {
+					query = `SELECT COUNT(*) FROM "app"."ord""ers"`
+				}
+				expect := mock.ExpectQuery(regexp.QuoteMeta(query))
+				if scenario == "source error" || scenario == "view error" {
+					expect.WillReturnError(errors.New("source failed"))
+				} else {
+					count := int64(42)
+					if scenario == "empty" || scenario == "empty view" {
+						count = 0
+					}
+					if scenario == "negative count" {
+						count = -1
+					}
+					expect.WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(count))
+				}
+			}
+			count, err := connector.CountRows(context.Background(), table)
+			switch scenario {
+			case "nil metadata", "missing name", "missing schema":
+				require.ErrorContains(t, err, "invalid table metadata")
+			case "outside scope":
+				require.ErrorContains(t, err, "outside the connector scope")
+			case "negative count":
+				require.ErrorContains(t, err, "invalid negative row count")
+			case "source error", "view error":
+				require.ErrorContains(t, err, "source failed")
+			case "empty", "empty view":
+				require.NoError(t, err)
+				assert.Zero(t, count)
+			default:
+				require.NoError(t, err)
+				assert.Equal(t, int64(42), count)
+			}
+			if err != nil {
+				assert.Zero(t, count)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

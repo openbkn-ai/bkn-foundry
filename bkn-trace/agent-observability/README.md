@@ -20,6 +20,54 @@
 
 ## Development
 
+### 系统审计配置
+
+`kafkaConsumers.audit.enabled` 默认关闭。此时 `/api/observability/v1/log-sources`
+仍返回 `audit-ledger`，状态为 `not_integrated`，原因为
+`audit_consumer_not_configured`，并提供 `required_action`。
+单独查询 `audit.admin` / `audit.security` 返回 HTTP 503，错误码相同，
+`retryable=false`；完成配置前反复刷新不会恢复。混合查询保留可用记录，
+同时返回审计配置状态并将结果标记为 partial。
+
+正式 opt-in profile 与部署后只读事件验收见 [System Audit deployment profile](../../deploy/conf/profiles/README.md)。需要系统审计的部署，在安装器使用的配置文件中显式加入：
+
+```yaml
+core:
+  store: mariadb
+  autoMigrate: true
+  mariadb:
+    existingSecret: bkn-trace-core-mariadb
+    dsnKey: dsn
+kafkaConsumers:
+  audit:
+    enabled: true
+    brokers: ["<kafka-host>:<port>"]
+    topic: openbkn.audit.v1
+    consumerGroup: bkn-trace-audit-ledger-v1
+    saslMechanism: PLAIN
+    existingSecret:
+      name: <audit-kafka-credentials-secret>
+      usernameKey: username
+      passwordKey: password
+```
+
+先准备配置引用的 Secret、MariaDB 数据库与 `openbkn.audit.v1` topic，
+再执行正常安装/升级。相同 Chart 版本的配置更新需要传 `--force-upgrade`。
+安装器通过 Helm dry-run 校验 consumer 配置，再检查凭据与 MariaDB DSN
+Secret 的 key 是否存在且非空；关闭 consumer 时不会读取它的凭据。
+Kafka 认证、topic 可访问性和网络故障仍由现有 consumer 运行时处理；
+此 preflight 不表示 Kafka 已连通。
+
+升级时仅保留已记录的 Audit consumer 配置，当前配置文件和显式 `--set`
+优先；配置文件中写 `enabled: false` 可关闭它。使用独立 Chart 升级时，
+仍需在 values 文件中保存并传入上述配置。通过临时修改 Deployment 环境变量
+开启 consumer 不会保存配置。
+
+部署后先检查源状态，再发送一条真实审计事件，确认其入账且可由
+`GET /api/observability/v1/logs?categories=audit.admin` 查询。
+HTTP 200 空列表只能证明查询源可用，不能证明 Kafka 采集已经完成。
+
+
 本地测试：
 
 ```bash
@@ -70,6 +118,38 @@ Interaction 业务语义图遵循以下口径：
 - 相同支持合同命中多个版本、时间点或证据类型时，不任意选择，返回 `support_target_ambiguous` 并标记客观证据不完整。
 - `completeness` / `partial_reasons` 描述客观证据组装；`disclosure_partial` / `disclosure_reasons` 描述当前用户授权投影。resolver 不可用、未配置或无法确认权限时，业务节点及其操作边默认不披露。
 - resolver 按 `ref_type + ref_id + source_system` 判定，不使用不匹配的 RefID 前缀推断权限。暂时没有安全实例级授权接口的类型保持 `unresolved`，不能由父类型权限推断实例权限。
+
+失败回执保留生产端明确给出的失败分类：本轮修改的 MCP 查询/模式 handler（`search_instance`、`query_object_instance`、`query_instance_subgraph`、`explore_subgraph`、`query_metric`、`get_kn_detail`、`get_object_types`、`get_relation_types`、`run_sql`、`run_cypher`）中的显式参数绑定、必填值或格式校验拒绝，以及本地搜索、指标、SQL / Cypher 校验，写入顶层 `error.stage=input_validation`。REST 受管调用同样保存执行服务记录的分类，本轮实际覆盖 SQL 校验和后端失败；未将全部 REST handler 的绑定错误纳入此覆盖范围。未修改的 schema search、logic properties、action、network/resource discovery 等 MCP 工具采用 `execution_only` 合同，其 RequiredTraceFields 不要求 `business_refs`；不将本轮结果声明为所有 MCP 校验路径均已适配。MCP 的 `IsError`、REST 的 HTTP 状态和原始错误内容保持不变；不会从 HTTP 状态、错误文本或调用者提供的 `structuredContent` 推断阶段。
+
+`run_sql` 将执行层已有解析器识别的资源 ID 同时保留到受管调用的 `business_refs`，供失败回执归因。这个事实独立于 Kafka 入队或 Ledger 持久化：事件被丢弃仍保留原来的失败持久性状态。目标随既有 evidence expectation 在第一次 Finish 前冻结，迟到回调不能改写重放的目标。`sql_guard` 没有资源目标时仍是策略拒绝；非输入拒绝且缺少回执引用和匹配事件，Core 继续返回 `failed-call target context unavailable; no explicit input rejection`，历史回执不补造事实。
+
+可用下列命令验证真实 MCP handler → Finish / publisher 原始消息 → Kafka consumer → Ledger 服务 → 完整性判定。默认使用合成输入和 memory Ledger store，验证原始消息头、准入、所有者解析与重复消费。设置 `BKN_TRACE_TEST_MARIADB_DSN` 后，每个案例创建并清理独立数据库，通过真实生命周期服务保存和重放失败请求，核对事件到达前后的数据库快照及 Ledger / projection outbox 单行幂等性；该测试 DSN 必须允许创建和删除临时数据库。
+
+```bash
+bash bkn-trace/agent-observability/scripts/test_failed_call_contract.sh
+```
+
+同时设置 `BKN_TRACE_TEST_KAFKA_BROKERS`（单个 broker 地址）后，原始消息经真实 Kafka 两次投递，再由生产 `KafkaProcessor` 写入 MariaDB。broker 必须是隔离测试实例，预先创建单分区 `openbkn.evidence.v1` topic 并配置 `message.timestamp.type=LogAppendTime`。此契约测试不验证 consumer group offset 提交。
+
+设置 `BKN_TRACE_TEST_OPENSEARCH_ENDPOINT` 后，同一测试通过真实 projection outbox worker 消费 MariaDB 记录，对比事件到达前后 receipt / evidence_event 文档与数据库快照，并确认已交付记录不再被租赁。每个案例使用独立索引并清理；若需要认证，设置 `BKN_TRACE_TEST_OPENSEARCH_USERNAME` 和 `BKN_TRACE_TEST_OPENSEARCH_PASSWORD`。
+
+部署验收使用实际 MCP 生命周期入口和 REST SQL 入口。主线已通过 #1841 将 `run_sql` 从所有 MCP profiles 退役，直接 handler 契约测试不代表该工具仍对外发布。REST 当前不附加 MCP capability profile，因此其 registered call records 完整性不能替代 MCP 合同中的严格目标判定；无目标 `sql_guard` 的严格 Core 负例由前述契约测试验证，实际 REST 业务溯源保留 `unresolved/resource_id`。
+
+在独立测试部署上运行（脚本会创建五组测试会话，不应指向生产环境）：
+
+```bash
+# Token 从测试环境提供，勿写入仓库或报告。
+python3 bkn-trace/agent-observability/scripts/test_failed_call_deployment.py \
+  --mcp-url http://127.0.0.1:23376/api/agent-retrieval/v1/mcp/ \
+  --retrieval-url http://127.0.0.1:23376 \
+  --core-url http://127.0.0.1:23375 \
+  --opensearch-url http://127.0.0.1:23374 \
+  --projection-index issue2072-core --report /tmp/2072-deployment-report.json
+```
+
+环境需提供 `BKN_TRACE_TEST_DEPLOYMENT_TOKEN`、业务溯源路由装配、artifact writer、真实 Kafka consumer 和 projection worker；Vega 测试依赖应对 inventory 查询返回失败。脚本核对输入、终态错误阶段、资源引用、持久回执与实际消费事件的 OpenSearch 投影，并验证业务溯源查询。仅 receipt 投影成功不会被视为 Kafka 事件消费成功。
+
+本地验收使用 Core/检索实际二进制、真实 Kafka/MariaDB/OpenSearch，认证、Vega 故障和 Collector 队列指标由固定测试依赖提供；业务溯源使用本地 EE `ee_dev` 装配。这是开发部署验收，不包括 Helm 升级、生产许可证或真实上游系统验收。结果与边界见 [#2072 本地验证记录](../../docs/validation/2026-10-09-2072-failed-call-deployment.json)。
 
 `ref_type` 与 `ref_id` 的规范结构是一一对应的写入合同。事件与 operation receipt 两条写入路径都必须使用完整限定格式；前缀、段数或版本不合法时会拒绝写入，避免业务节点在查询时静默消失。
 
@@ -167,34 +247,37 @@ GET /api/agent-observability/v1/traces/{trace_id}
 
 Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会使用 `limit+1` 查询探测截断，响应返回 `partial=true`、`partial_reason=["trace_query_truncated"]`，并设置 `page.truncated=true`。当 span 指向缺失父节点时，Trace Graph 不生成悬空边，并返回 `partial_reason=["orphan_span"]`。当 span 时间戳缺失、非法或结束时间早于开始时间时，节点耗时会归零，整体耗时不会返回负数，并返回 `partial_reason=["invalid_span_timestamp"]`。
 
+### Trace/Evidence admission budget configuration
+
+Configure `observability.admissionBudget` in the persistent values file used for every Helm install and upgrade. The four thresholds are deployment/SLO inputs, must be finite numbers in `(0, 1]`, and have no implicit defaults. The required keys are `opensearchCapacityThreshold`, `opensearchHeapThreshold`, `collectorQueueThreshold`, and `storagePoolThreshold`.
+
+The Foundry `deploy.sh config generate` path preserves the existing top-level `observability` section, including thresholds, dedicated/fallback Collector endpoints and explicit disablement. Regenerating middleware configuration does not select thresholds or replace these reviewed deployment choices. Keep this file as the input to subsequent upgrades; an environment-only Pod patch remains temporary. When starting with a new file, supply the reviewed values explicitly: missing budget inputs remain unavailable with structured diagnostics rather than receiving inferred defaults.
+
+Set `collectorMetricsEndpoint` to the Collector's complete Prometheus URL, including the metrics path (the bundled Collector exposes `/metrics` on port 8888). This dedicated endpoint takes precedence. If it is empty, the service retains the `BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT` fallback; the Chart injects that fallback only when `observability.sourceCoverage.enabled` is true. An invalid dedicated endpoint is reported rather than silently replaced by the fallback.
+
+The endpoint must return both `otelcol_exporter_queue_size` and `otelcol_exporter_queue_capacity`, with a nonnegative size and positive capacity. A zero size is valid; a missing size is unavailable. The remaining measurements come from OpenSearch filesystem/JVM statistics and the configured MariaDB connection pool.
+
+Configuration errors are reported at startup. Configuration GET and enable requests retain `503 POLICY_RECONCILER_UNAVAILABLE` when the budget is unavailable, with optional `details.reason`, `details.metric`, and `details.fields` identifying the failure. Reasons are `invalid_configuration`, `source_unavailable`, `metric_missing`, or `metric_invalid`. Full dependency errors are available at Debug level and associated with the response `trace_id`. Set `BKN_TRACE_LOG_LEVEL=debug` (Helm value `logLevel: debug`) and restart the service to enable them; the default is `info`, and `warn`/`error` are also supported. Invalid levels fail startup with the configuration field name; repeated polling failures do not emit WARN logs. Strict queue validation applies only to admission reads, so invalid queue samples do not prevent source-coverage monitoring from reading refused/failed counters. A valid budget over a threshold remains readable through GET, while an enable request returns `422 ADMISSION_BUDGET_EXCEEDED`. Disabling does not require a budget. Budget availability does not change the service's liveness or readiness probes.
+
 ### Evidence 写入安全边界
 
-受管 Conversation、Interaction、Operation 生命周期继续监听于集群内部的 `agent-observability-internal:8081`，同时在公开 8080 接口为 OAuth SDK 客户端开放。公开写入由服务端根据 OAuth 与 BKN Safe 身份派生 owner，不接受客户端伪造 owner。Evidence Event 经 Kafka 进入 Ledger；Artifact 继续使用独立的 8080 HTTP 接口和凭据。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认允许带 `app.kubernetes.io/name=agent-retrieval` 或现有 `app=agent-retrieval`、`app=agent-operator-integration`、`app=bkn-agent` 标签的 Pod 访问 8081；Gateway、Backend 等其他客户端可通过 `networkPolicy.allowedClients` 显式扩展。
+受管 Conversation、Interaction、Operation 生命周期继续监听于集群内部的 `agent-observability-internal:8081`，同时在公开 8080 接口为 OAuth SDK 客户端开放。公开写入由服务端根据 OAuth 与 BKN Safe 身份派生 owner，不接受客户端伪造 owner。Evidence Event 经 Kafka 进入 Ledger；Artifact 继续使用独立的 8080 HTTP 接口和凭据。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认允许带 `app.kubernetes.io/name=agent-retrieval` 或现有 `app=agent-retrieval`、`app=agent-operator-integration`、`app=bkn-agent` 标签的 Pod 访问 8081；默认还允许 `openbkn` namespace 的 `module=bkn-backend`、`module=ontology-query` 及本 namespace 的 `app.kubernetes.io/name=otelcol-contrib`；其他布局通过 `networkPolicy.allowedClients` 显式配置。
+
+When upgrading to this internal control protocol, do not use `helm upgrade --reuse-values` with the previous Chart's default `networkPolicy.allowedClients`: it retains the old list and omits Backend, ontology-query, and Collector. Use `helm upgrade --install ... --reset-values -f <reviewed-custom-values.yaml>` so the new Chart defaults apply, and reapply the deployment's explicit custom settings. If the values file defines `networkPolicy.allowedClients`, update that list to include every actual internal caller; the list replaces the defaults and no implicit workload rules are added. The repository installer passes an explicit configuration file and does not use `--reuse-values`. Verify access to port 8081 from each workload after upgrading.
 
 该 NetworkPolicy 依赖 Kubernetes 1.23 或更高版本。离线执行 `helm template` 时应显式传入 `--kube-version 1.23.0` 或实际目标集群版本；连接集群的 `helm install/upgrade` 会按目标集群能力校验。
 
 Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器在 release 循环前创建或验证该 Secret，并将同一 token 注入 Agent Observability、Context Loader、Vega、BKN Backend、Ontology Query、BKN Agent 与行动执行服务；BKN Backend 和 Ontology Query 同时启用其持久 Evidence outbox worker 与既有清理任务（已投递记录保留 30 天，放弃记录保留 180 天）。单独安装任一 Chart 时，应预先创建并显式引用该 Secret。对无 outbox 的生产者，禁用 Evidence 写入须同时清空 ingest URL 与 token Secret；对启用了 producer outbox 的 BKN Backend 和 Ontology Query，须同时关闭 outbox 与 worker，不能只清空 URL。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
 
-Trace Admission Gateway 的签名策略也要求安装前准备外部 Secret；Chart 不会自动生成或轮换签名密钥。`core.capturePolicySigning.existingSecret` 必须存在，且 `privateKeyKey`（默认 `private-key`）的值必须是 base64 编码的 Ed25519 原始 64 字节私钥。`keyID` 与 `audience` 必须和 Gateway 的验证配置一致。缺少该 Secret 时 Helm render/install 会直接失败，避免默认 enabled 部署成无法取得有效快照的 fail-closed 状态：
+Trace/Evidence 控制面通过 `agent-observability-internal:8081` 提供无鉴权、无签名的内部接口，不通过公开 Service 或 Ingress 暴露：
 
-```bash
-capture_policy_key="$(python3 - <<'PY'
-import base64
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-key = Ed25519PrivateKey.generate()
-seed = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
-public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-print(base64.b64encode(seed + public).decode())
-PY
-)"
-kubectl create secret generic bkn-trace-capture-policy-signing \
-  --from-literal=private-key="${capture_policy_key}" -n observability
+- `GET /api/agent-observability/v1/internal/trace-evidence/policy`：返回 `TraceEvidencePolicySnapshotV1`，仅包含版本、revision、Trace/Evidence 开关和签发/过期时间。
+- `GET /api/agent-observability/v1/internal/trace-evidence/configuration`：读取当前配置和操作，用于确认状态切换。
+- `POST /api/agent-observability/v1/internal/trace-evidence/endpoints:heartbeat`：请求包含 `endpoint_kind`（`trace_gateway` 或 `evidence_publisher`）、`workload_identity`、`instance_id`、`process_boot_id`、`observed_revision`、`ready`；`instance_id` 必须等于 `workload_identity#process_boot_id`。
+- `POST /api/agent-observability/v1/internal/trace-evidence/operations/{id}:ack`：Gateway 使用请求体中的 workload/process 标识确认操作。
+- `POST /api/agent-observability/v1/internal/trace-evidence/operations/{id}:publisher-ack`：Publisher 使用 `producer_instance_id` 的 `workload_identity#process_boot_id` 标识确认操作。
 
-helm upgrade --install agent-observability charts/agent-observability \
-  --set core.capturePolicySigning.existingSecret=bkn-trace-capture-policy-signing \
-  -n observability
-```
+身份字段只用于内部进程状态关联，不进行服务身份认证。保留 revision、快照有效期、操作阶段和队列闭合校验。Chart 不再要求策略签名 Secret，快照有效期由 `core.capturePolicySnapshotTTL`（默认 `15m`）配置。公开用户接口仍保留 OAuth / Access Profile 鉴权。
 
 ```bash
 printf '%s' '<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' | \
@@ -503,3 +586,24 @@ Chart 会推送到：
 ghcr.io/<github-owner>/charts
 ```
 # test trigger
+
+### Core Evidence 投影的 envelope 边界
+
+Kafka Ledger 事件的 `envelope` 是生产者原始内容，Core 在 OpenSearch 投影中
+使用 `object`、`dynamic: false` 保留完整 `_source`，不为任意嵌套内容自动
+新增字段映射。查询使用顶层 ID、owner、状态和时间；020 完整性检查读取
+权威 Ledger，而不是通过 envelope 子字段搜索推断记录完整。
+
+新建版本索引应用该边界；已有投影 alias 的 bootstrap 在 envelope 类型兼容时
+应用该边界。已有 alias 仅
+合并兼容 mapping，不替换索引、不修改历史字段类型、不提高字段上限。
+已有 envelope 字段仍按原映射索引；新字段只保存在 `_source`。既有字段的
+类型冲突仍可能拒绝文档，本修复不自动重试已经标记 dead 的 outbox，也不
+改写历史证据。未来需要检索的 envelope 字段必须按明确的产品需求显式定义。
+
+已有 alias 升级前先只读每个具体索引的 mapping，并按索引分别应用兼容补丁。
+未映射或 object envelope 接受上述 dynamic 边界；已映射 scalar/nested 类型或 `enabled:false` object
+保持原状，仅更新会话审计字段并记录诊断，不会因强制改成 object 阻止 Core
+启动。该历史索引仍不能存储与既有 envelope 类型不兼容的新文档。新索引的
+object 边界也不承诺支持任意 scalar envelope。已有子对象显式 `dynamic:true`
+覆盖父级的情况不会被递归重写；这些历史映射仍需单独评估。

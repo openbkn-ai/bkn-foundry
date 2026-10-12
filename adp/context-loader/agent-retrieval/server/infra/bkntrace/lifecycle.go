@@ -18,6 +18,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -225,6 +226,8 @@ type LifecycleClient struct {
 	baseURL          string
 	client           *http.Client
 	payloadArtifacts PayloadArtifactWriter
+	leaseMu          sync.Mutex
+	leases           map[interactionLeaseKey]cachedInteractionLease
 }
 
 type PayloadArtifactWriter interface {
@@ -289,22 +292,17 @@ func (c *LifecycleClient) EnsureOperation(
 	ctx context.Context,
 	input EnsureOperationInput,
 ) (OperationResult, *APIError, error) {
-	var interaction Interaction
-	apiErr, err := c.do(ctx, http.MethodGet, "/interactions/"+url.PathEscape(input.InteractionID), nil, &interaction)
-	if err != nil || apiErr != nil {
-		return OperationResult{}, apiErr, err
+	if !c.Enabled() {
+		return OperationResult{}, nil, ErrFeatureNotInstalled
 	}
-	if interaction.ConversationID != input.ConversationID {
-		return OperationResult{}, &APIError{
-			Code: "interaction_required", Message: "interaction does not belong to conversation",
-			RequiredAction: "start_interaction",
-		}, nil
-	}
-	if interaction.ExecutionStatus != "active" {
-		return OperationResult{}, &APIError{
-			Code: "interaction_terminal", Message: "interaction is not active",
-			CurrentStatus: interaction.ExecutionStatus, RequiredAction: "start_interaction",
-		}, nil
+	interaction, cached := c.cachedLease(ctx, input.ConversationID, input.InteractionID)
+	var apiErr *APIError
+	var err error
+	if !cached {
+		interaction, apiErr, err = c.readOperationInteraction(ctx, input)
+		if err != nil || apiErr != nil {
+			return OperationResult{}, apiErr, err
+		}
 	}
 	payloadContext := withPayloadArtifactScope(ctx, payloadArtifactScope{InteractionID: input.InteractionID, Direction: "input"})
 	payload, artifactRef, _ := boundedJSONPayloadWithWriter(payloadContext, c.payloadArtifacts, input.Input)
@@ -327,10 +325,54 @@ func (c *LifecycleClient) EnsureOperation(
 	path := "/conversations/" + url.PathEscape(input.ConversationID) +
 		"/interactions/" + url.PathEscape(input.InteractionID) + "/operations:ensure"
 	apiErr, err = c.do(ctx, http.MethodPost, path, body, &result)
+	if apiErr != nil {
+		c.forgetLease(ctx, input.ConversationID, input.InteractionID)
+		if cached && apiErr.Code == "terminal_conflict" {
+			rejection := apiErr
+			// A rejected ensure has not authorized execution. Refresh once, preserving
+			// the operation key and input so response loss/idempotency remain unchanged.
+			interaction, apiErr, err = c.readOperationInteraction(ctx, input)
+			if err == nil && apiErr == nil {
+				body["lease_token"], body["lease_epoch"] = interaction.LeaseToken, interaction.LeaseEpoch
+				apiErr, err = c.do(ctx, http.MethodPost, path, body, &result)
+			}
+			// Core already refused admission. A failed refresh or retry cannot
+			// turn that refusal into an observation outage: outer adapters may
+			// execute untraced business on infrastructure errors.
+			if err != nil || IsTraceInfrastructureFailure(apiErr, err) {
+				c.forgetLease(ctx, input.ConversationID, input.InteractionID)
+				return OperationResult{}, rejection, nil
+			}
+			if apiErr != nil {
+				c.forgetLease(ctx, input.ConversationID, input.InteractionID)
+			}
+		}
+	}
 	if artifactRef != "" {
 		result.PayloadArtifactRefs = append(result.PayloadArtifactRefs, artifactRef)
 	}
 	return result, apiErr, err
+}
+
+func (c *LifecycleClient) readOperationInteraction(ctx context.Context, input EnsureOperationInput) (Interaction, *APIError, error) {
+	var interaction Interaction
+	apiErr, err := c.do(ctx, http.MethodGet, "/interactions/"+url.PathEscape(input.InteractionID), nil, &interaction)
+	if err != nil || apiErr != nil {
+		return Interaction{}, apiErr, err
+	}
+	if interaction.ConversationID != input.ConversationID {
+		return Interaction{}, &APIError{
+			Code: "interaction_required", Message: "interaction does not belong to conversation",
+			RequiredAction: "start_interaction",
+		}, nil
+	}
+	if interaction.ExecutionStatus != "active" {
+		return Interaction{}, &APIError{
+			Code: "interaction_terminal", Message: "interaction is not active",
+			CurrentStatus: interaction.ExecutionStatus, RequiredAction: "start_interaction",
+		}, nil
+	}
+	return interaction, nil, nil
 }
 
 // StartInteraction opens an interaction, or returns the existing one when the
@@ -571,13 +613,18 @@ func (c *LifecycleClient) do(
 	if err := common.DecodePreciseJSON(io.LimitReader(resp.Body, 1<<20), target); err != nil {
 		return nil, fmt.Errorf("decode lifecycle response: %w", err)
 	}
+	if interaction, ok := target.(*Interaction); ok {
+		c.rememberLease(ctx, *interaction)
+	}
 	return nil, nil
 }
 
-func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error {
+// TrustedLifecycleOwner derives the owner accepted by Core from authenticated
+// service context, never from caller-supplied lifecycle arguments.
+func TrustedLifecycleOwner(ctx context.Context) (Owner, error) {
 	auth, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || auth.AccountID == "" || auth.AccountType == interfaces.AccessorTypeAnonymous {
-		return fmt.Errorf("trusted account context is required")
+		return Owner{}, fmt.Errorf("trusted account context is required")
 	}
 	applicationID := auth.AccountID
 	if auth.TokenInfo != nil && strings.TrimSpace(auth.TokenInfo.ClientID) != "" {
@@ -587,14 +634,23 @@ func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error 
 	if auth.AccountType == interfaces.AccessorTypeApp {
 		subjectType = "service"
 	}
+	return Owner{ApplicationPrincipalID: applicationID, EffectiveSubjectType: subjectType, EffectiveSubjectID: auth.AccountID}, nil
+}
+
+func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error {
+	owner, err := TrustedLifecycleOwner(ctx)
+	if err != nil {
+		return err
+	}
+	auth, _ := common.GetAccountAuthContextFromCtx(ctx)
 	// Core first authorizes the trusted query scope, then validates the richer
 	// lifecycle owner tuple. Both header sets come from this authenticated
 	// service boundary, never from the lifecycle request body.
 	headers.Set("x-account-id", auth.AccountID)
 	headers.Set("x-account-type", string(auth.AccountType))
-	headers.Set("X-BKN-Application-Principal-ID", applicationID)
-	headers.Set("X-BKN-Effective-Subject-Type", subjectType)
-	headers.Set("X-BKN-Effective-Subject-ID", auth.AccountID)
+	headers.Set("X-BKN-Application-Principal-ID", owner.ApplicationPrincipalID)
+	headers.Set("X-BKN-Effective-Subject-Type", owner.EffectiveSubjectType)
+	headers.Set("X-BKN-Effective-Subject-ID", owner.EffectiveSubjectID)
 	if auth.TokenInfo != nil {
 		headers.Set("X-BKN-Effective-Subject-Name", strings.TrimSpace(auth.TokenInfo.VisitorName))
 	}

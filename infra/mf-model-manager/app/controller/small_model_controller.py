@@ -165,7 +165,7 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
     except Exception as e:
         StandLogger.error(e.args)
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
-        error_dict["detail"] = str(e)
+        error_dict["detail"] = "Small model operation failed; check the model configuration."
         return JSONResponse(status_code=400, content=error_dict)
 
 
@@ -285,6 +285,9 @@ async def edit_model(request: logics.EditExternalSmallModel, userId, language, r
             return JSONResponse(status_code=403, content=NotPermissionError)
         model_config_new = request.model_config
         model_config_old = json.loads(model_info[0]["f_model_config"])
+        if model_config_new.get("api_key") and is_credential_digest(
+                model_config_new["api_key"], model_config_old.get("api_key", "")):
+            change = False
         if not change:
             if 'api_key' in model_config_new:
                 model_config_new["api_key"] = model_config_old.get("api_key", "")
@@ -483,7 +486,7 @@ async def get_default_model(model_type):
     except Exception as e:
         StandLogger.error(e.args)
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
-        error_dict["detail"] = str(e)
+        error_dict["detail"] = "Small model test failed; check the model configuration."
         return JSONResponse(status_code=400, content=error_dict)
 
 
@@ -517,7 +520,7 @@ async def set_default_model(model_para, userId, language, role):
     except Exception as e:
         StandLogger.error(e.args)
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
-        error_dict["detail"] = str(e)
+        error_dict["detail"] = "Small model operation failed; check the model configuration."
         return JSONResponse(status_code=400, content=error_dict)
 
 
@@ -694,7 +697,7 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
         StandLogger.error(
             f"call embeddingError,model_name={model_name},error_detail={e}")
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
-        error_dict["detail"] = str(e)
+        error_dict["detail"] = "Small model operation failed; check the model configuration."
         if get_logger():
             get_logger().info(
                 f'{{"model_name":{model_name},"resourece_type":"embeddings","user_id":{userId},'
@@ -755,7 +758,7 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
     except Exception as e:
         StandLogger.error(e.args)
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
-        error_dict["detail"] = str(e)
+        error_dict["detail"] = "Reranker request failed; check the model configuration."
         if get_logger():
             get_logger().info(
                 f'{{"model_name":{model_name},"resourece_type":"embeddings","user_id":{userId},'

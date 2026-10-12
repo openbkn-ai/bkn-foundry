@@ -41,7 +41,7 @@ const (
 	//
 	// Query parameters are assembled with url.Values at call time rather than baked
 	// into this format string: the set is no longer fixed (exclude_system_properties
-	// repeats, ignoring_store_cache is conditional), and ot_id reaches us straight
+	// repeats, ignore_local_index is conditional), and ot_id reaches us straight
 	// from an agent, so an unescaped "?" or "&" in it would smuggle parameters into
 	// the downstream request — the same hazard queryMetricDataURI documents below.
 	queryObjectInstancesURI  = "/in/v1/knowledge-networks/%s/object-types/%s"
@@ -54,6 +54,7 @@ const (
 	executeActionsURI = "/in/v1/knowledge-networks/%s/action-types/%s/execute"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/action-executions/:execution_id
 	getActionExecutionURI = "/in/v1/knowledge-networks/%s/action-executions/%s"
+	getActionLogURI       = "/in/v1/knowledge-networks/%s/action-logs/%s"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/action-logs
 	listActionExecutionsURI = "/in/v1/knowledge-networks/%s/action-logs"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/subgraph
@@ -190,8 +191,8 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	query := url.Values{}
 	query.Set("include_type_info", strconv.FormatBool(req.IncludeTypeInfo))
 	query.Set("include_logic_params", strconv.FormatBool(req.IncludeLogicParams))
-	if req.IgnoringStoreCache {
-		query.Set("ignoring_store_cache", "true")
+	if req.IgnoreLocalIndex {
+		query.Set("ignore_local_index", "true")
 	}
 	for _, prop := range req.ExcludeSystemProperties {
 		query.Add("exclude_system_properties", prop)
@@ -484,6 +485,17 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 // GetActionExecution queries the status and result of a single action execution.
 func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
 	uri := fmt.Sprintf(getActionExecutionURI, req.KnID, req.ExecutionID)
+	if req.ResultsLimit != nil || req.ResultsOffset != nil {
+		uri = fmt.Sprintf(getActionLogURI, url.PathEscape(req.KnID), url.PathEscape(req.ExecutionID))
+		query := url.Values{}
+		if req.ResultsLimit != nil {
+			query.Set("results_limit", strconv.Itoa(*req.ResultsLimit))
+		}
+		if req.ResultsOffset != nil {
+			query.Set("results_offset", strconv.Itoa(*req.ResultsOffset))
+		}
+		uri += "?" + query.Encode()
+	}
 	reqURL := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#GetActionExecution] URL: %s", reqURL)
@@ -587,8 +599,8 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	// Query_type is explicitly left blank: the downstream selects the exploration branch according to the empty string, and it becomes another mode when written as relation_path.
 	query.Set("query_type", "")
 	query.Set("include_logic_params", strconv.FormatBool(req.IncludeLogicParams))
-	if req.IgnoringStoreCache {
-		query.Set("ignoring_store_cache", "true")
+	if req.IgnoreLocalIndex {
+		query.Set("ignore_local_index", "true")
 	}
 	for _, prop := range req.ExcludeSystemProperties {
 		query.Add("exclude_system_properties", prop)

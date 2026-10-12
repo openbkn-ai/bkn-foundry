@@ -128,6 +128,7 @@ func TestGetActionExecution_Success(t *testing.T) {
 				return map[string]any{
 					"id": "exec-001", "status": "completed",
 					"execution_mode": "once", "target_count": 30, "total_count": 1,
+					"results_total": 1, "results_limit": 1000,
 					"results": []any{map[string]any{
 						"status":   "success",
 						"_display": "30 个目标实例合并为 1 次调用",
@@ -145,6 +146,9 @@ func TestGetActionExecution_Success(t *testing.T) {
 		// Misread as "Only 1 object was processed".
 		convey.So(resp["execution_mode"], convey.ShouldEqual, "once")
 		convey.So(resp["target_count"], convey.ShouldEqual, 30)
+		convey.So(resp["results_total"], convey.ShouldEqual, 1)
+		convey.So(resp["results_offset"], convey.ShouldEqual, 0)
+		convey.So(resp["results_limit"], convey.ShouldEqual, 1000)
 		r0 := resp["results"].([]any)[0].(map[string]any)
 		convey.So(len(r0["targets"].([]any)), convey.ShouldEqual, 2)
 	})
@@ -176,6 +180,7 @@ func TestGetActionExecution_TargetsCapped(t *testing.T) {
 			Return(map[string]any{
 				"id": "exec-agg", "status": "completed",
 				"execution_mode": "once", "target_count": 5000, "total_count": 1,
+				"results_total": 1, "results_limit": 1000,
 				"results": []any{map[string]any{"status": "success", "targets": targets}},
 			}, nil)
 

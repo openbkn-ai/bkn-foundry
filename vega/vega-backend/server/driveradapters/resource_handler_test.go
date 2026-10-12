@@ -630,3 +630,68 @@ func Test_ResourceRestHandler_DeleteResources(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 	})
 }
+
+func TestReadResourceDiscoverStrategy(t *testing.T) {
+	for _, tt := range []struct {
+		body, want string
+		fail       bool
+	}{
+		{"", "full_sync", false}, {`{}`, "full_sync", false}, {`{"strategy":"count_only"}`, "count_only", false},
+		{`{"strategy":"create_only"}`, "", true}, {`{"strategy":"invalid"}`, "", true}, {`{`, "", true},
+	} {
+		t.Run(tt.body, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/resources/id/discover", strings.NewReader(tt.body))
+			got, err := readResourceDiscoverStrategy(c)
+			if tt.fail {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestRestHandlerDiscoverResource(t *testing.T) {
+	for _, tt := range []struct {
+		category string
+		status   int
+	}{
+		{interfaces.ResourceCategoryDataset, http.StatusBadRequest},
+		{interfaces.ResourceCategoryTable, http.StatusOK},
+	} {
+		t.Run(tt.category, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			dts := vmock.NewMockDiscoverTaskService(ctrl)
+			handler := &restHandler{rs: rs, dts: dts}
+			engine := gin.New()
+			engine.POST("/resources/:id/discover", handler.DiscoverResourceByIn)
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, "res").Return(&interfaces.Resource{
+				ID: "res", CatalogID: "cat", Category: tt.category,
+			}, nil)
+			dts.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.CreateDiscoverTaskRequest) (string, error) {
+				assert.Equal(t, "res", req.ResourceID)
+				assert.Equal(t, "cat", req.CatalogID)
+				assert.Equal(t, interfaces.DiscoverStrategyCountOnly, req.Strategy)
+				if tt.status == http.StatusBadRequest {
+					return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+						WithErrorDetails("resource category dataset does not support count_only")
+				}
+				return "task", nil
+			})
+			req := httptest.NewRequest(http.MethodPost, "/resources/res/discover", strings.NewReader(`{"strategy":"count_only"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			assert.Equal(t, tt.status, w.Code)
+			if tt.status == http.StatusBadRequest {
+				assert.Contains(t, w.Body.String(), "does not support count_only")
+				assert.NotContains(t, w.Body.String(), `"id"`)
+			} else {
+				assert.JSONEq(t, `{"id":"task"}`, w.Body.String())
+			}
+		})
+	}
+}

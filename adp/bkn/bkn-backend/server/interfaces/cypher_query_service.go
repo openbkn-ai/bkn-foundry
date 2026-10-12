@@ -50,9 +50,20 @@ type CypherQuery struct {
 type CypherQueryResult struct {
 	Columns []RawQueryColumn `json:"columns"`
 	Entries []map[string]any `json:"entries"`
+	// PermissionImpacts is returned only on the internal HTTP face. It lets an
+	// agent explain which object-type access rules narrowed or refused a query.
+	PermissionImpacts []CypherPermissionImpact `json:"-"`
 	// TraceDescriptor is returned only on the internal HTTP face. The public
 	// REST response keeps its existing shape.
 	TraceDescriptor json.RawMessage `json:"-"`
+}
+
+// CypherPermissionImpact identifies one object type whose row or property
+// policy affected a Cypher query. Properties contains logical property names.
+type CypherPermissionImpact struct {
+	ObjectTypeID     string   `json:"object_type_id"`
+	Properties       []string `json:"properties,omitempty"`
+	RowFilterApplied bool     `json:"row_filter_applied,omitempty"`
 }
 
 //go:generate mockgen -source ../interfaces/cypher_query_service.go -destination ../interfaces/mock/mock_cypher_query_service.go

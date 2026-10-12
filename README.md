@@ -432,3 +432,11 @@ per-component and per-file breakdown:
   repositories.
 
 The license applicable to each file is stated in that file's header.
+
+## Historical data upgrade
+
+The one-time [015-to-020 upgrade tool](deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md)
+converts retained logs into native Audit data, converts representable Evidence
+into native aggregates, and verifies or rebuilds Core projections from existing
+facts. Conversion losses are reported. No historical query or UI compatibility
+branch is added. Run it after the 020 deployment and schema upgrade are healthy.

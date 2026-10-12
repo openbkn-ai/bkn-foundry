@@ -96,12 +96,14 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	if includeTraceDescriptor && len(result.TraceDescriptor) > 0 {
+	if includeTraceDescriptor {
 		rest.ReplyOK(c, http.StatusOK, struct {
-			Columns []interfaces.RawQueryColumn `json:"columns"`
-			Entries []map[string]any            `json:"entries"`
-			Trace   json.RawMessage             `json:"_trace"`
-		}{Columns: result.Columns, Entries: result.Entries, Trace: result.TraceDescriptor})
+			Columns           []interfaces.RawQueryColumn         `json:"columns"`
+			Entries           []map[string]any                    `json:"entries"`
+			Trace             json.RawMessage                     `json:"_trace,omitempty"`
+			PermissionImpacts []interfaces.CypherPermissionImpact `json:"permission_impacts,omitempty"`
+		}{Columns: result.Columns, Entries: result.Entries, Trace: result.TraceDescriptor,
+			PermissionImpacts: result.PermissionImpacts})
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, result)

@@ -142,6 +142,8 @@ type IndexFieldMeta struct {
 	Attributes  map[string]any `json:"attributes"`
 	// SubFields (multi-fields) are arranged in alphabetical order by Name to ensure stable serialization
 	SubFields []IndexSubFieldMeta `json:"sub_fields,omitempty"`
+	// ResolvedType 保存别名目标的原生类型，仅用于当前探查，不写入源元数据。
+	ResolvedType string `json:"-"`
 }
 
 // IndexSubFieldMeta represents an OpenSearch multi-field sub-field.

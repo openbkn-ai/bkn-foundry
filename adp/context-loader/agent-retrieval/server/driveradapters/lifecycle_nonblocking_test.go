@@ -13,7 +13,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -120,5 +122,59 @@ func TestHTTPCancellationAfterSuccessfulEnsureDoesNotStartBusiness(t *testing.T)
 	router.ServeHTTP(httptest.NewRecorder(), req)
 	if ensures != 1 || calls != 0 || finishes != 0 {
 		t.Fatalf("cancelled HTTP caller executed after registration: ensure=%d business=%d finish=%d", ensures, calls, finishes)
+	}
+}
+
+func TestFencedLeaseRefreshFailureNeverStartsUnmanagedHTTPBusiness(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, failure := range []string{"network", "http_503", "retry_network", "retry_503"} {
+		t.Run(failure, func(t *testing.T) {
+			gets, posts, calls := 0, 0, 0
+			client := bkntrace.NewLifecycleClient("http://trace.test", &http.Client{Transport: cancellationRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				status := 200
+				var value any
+				if r.Method == http.MethodGet {
+					gets++
+					if gets > 1 && failure == "network" {
+						return nil, syscall.ECONNREFUSED
+					}
+					value = bkntrace.Interaction{ConversationID: "conv-1", InteractionID: "int-1", ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1, LeaseExpiresAt: time.Now().Add(time.Minute)}
+					if gets > 1 && failure == "http_503" {
+						status = 503
+						value = map[string]any{"error": bkntrace.APIError{Code: "trace_core_unavailable"}}
+					}
+				} else {
+					posts++
+					if posts > 1 && failure == "retry_network" {
+						return nil, syscall.ECONNREFUSED
+					}
+					status = 409
+					value = map[string]any{"error": bkntrace.APIError{Code: "terminal_conflict", Message: "stale interaction lease was fenced"}}
+					if posts > 1 && failure == "retry_503" {
+						status = 503
+						value = map[string]any{"error": bkntrace.APIError{Code: "trace_core_unavailable"}}
+					}
+				}
+				raw, _ := json.Marshal(value)
+				return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(raw))}, nil
+			})})
+			router := gin.New()
+			router.Use(trustedLifecycleHTTPContext())
+			router.Use(func(c *gin.Context) {
+				var interaction bkntrace.Interaction
+				apiErr, err := client.Call(c.Request.Context(), http.MethodGet, "/interactions/int-1", nil, &interaction)
+				if apiErr != nil || err != nil {
+					t.Fatalf("seed lease: %v %v", apiErr, err)
+				}
+				c.Next()
+			}, middlewareLifecycle(client))
+			router.POST("/kn/query_object_instance", func(c *gin.Context) { calls++; c.Status(200) })
+			request := httptest.NewRequest(http.MethodPost, "/kn/query_object_instance", bytes.NewBufferString(`{"kn_id":"kn-1","ot_id":"ot-1","bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1"}}`))
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if calls != 0 || response.Code != 409 || !strings.Contains(response.Body.String(), "terminal_conflict") {
+				t.Fatalf("fencing bypassed: calls=%d status=%d body=%s", calls, response.Code, response.Body.String())
+			}
+		})
 	}
 }

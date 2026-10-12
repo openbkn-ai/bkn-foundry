@@ -54,10 +54,11 @@ type schema struct {
 }
 
 type parameter struct {
-	Name     string `yaml:"name"`
-	In       string `yaml:"in"`
-	Required bool   `yaml:"required"`
-	Schema   schema `yaml:"schema"`
+	Name        string `yaml:"name"`
+	In          string `yaml:"in"`
+	Description string `yaml:"description"`
+	Required    bool   `yaml:"required"`
+	Schema      schema `yaml:"schema"`
 }
 
 type response struct {
@@ -281,6 +282,22 @@ func TestGeneratedSwaggerDoesNotPublishRemovedBusinessProvenanceRoutes(t *testin
 	for path := range document.Paths {
 		if strings.HasPrefix(path, "/api/agent-observability/v1/") {
 			t.Errorf("generated Swagger route repeats base path: %s", path)
+		}
+	}
+}
+
+func TestTraceListPublishesSupportedFilterParameters(t *testing.T) {
+	t.Parallel()
+	document := parseSwagger(t, []byte(generated.SwaggerInfo.ReadDoc()))
+	traceList := document.Paths["/traces"].Get
+	for name, expectedDescription := range map[string]string{
+		"service":       "Root service name",
+		"tool":          "Root operation name",
+		"error_keyword": "Substring matched against the recorded error summary",
+	} {
+		parameter := findParameter(t, traceList.Parameters, name, "query")
+		if !strings.Contains(parameter.Description, expectedDescription) {
+			t.Errorf("/traces %s description = %q, want it to contain %q", name, parameter.Description, expectedDescription)
 		}
 	}
 }

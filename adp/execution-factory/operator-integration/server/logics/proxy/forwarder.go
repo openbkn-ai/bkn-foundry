@@ -151,7 +151,7 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 	startTime := time.Now()
 
 	// Get HTTP client.
-	client := f.pool.GetClient(req.Timeout)
+	client := f.pool.GetClientWithGrace(req.Timeout, req.ClientTimeoutGrace)
 
 	// Build an HTTP request.
 	httpReq, err := f.buildRequest(ctx, req)

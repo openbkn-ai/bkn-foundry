@@ -7,7 +7,9 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -20,6 +22,7 @@ type tableDiscoverItem struct {
 	resource        *interfaces.Resource
 	tableMeta       *interfaces.TableMeta
 	markAfterEnrich bool
+	countOnly       bool
 }
 
 // discoverTableResources discovers table resources from a table connector.
@@ -120,9 +123,9 @@ func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
 
 		if resource, ok := existingMap[sourceIdentifier]; ok {
 			// Existing. Check the status
-			if actions != nil && actions.Refresh {
-				markAfterEnrich := true
-				if resource.Status == interfaces.ResourceStatusStale {
+			if actions != nil && (actions.Refresh || actions.Count) {
+				markAfterEnrich := actions.Refresh
+				if actions.Refresh && resource.Status == interfaces.ResourceStatusStale {
 					// Previously marked as stale, now reactivated
 					if err := dtw.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
 						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
@@ -138,6 +141,7 @@ func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
 					resource:        resource,
 					tableMeta:       table,
 					markAfterEnrich: markAfterEnrich,
+					countOnly:       !actions.Refresh,
 				})
 			}
 		} else {
@@ -224,12 +228,22 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 	progress.SetMetadataTotal(len(items))
 
 	// Traverse all tables to discover items
-	for _, item := range items {
+	for itemIndex, item := range items {
 		if dtw.stopped.Load() {
 			return ErrWorkerManagerStopping
 		}
 		table := item.tableMeta   // Obtain the table metadata
 		resource := item.resource // Obtain resource information
+
+		if item.countOnly {
+			if err := dtw.enrichResourceTableRowCount(ctx, task, resource, tableConnector, table, result); err != nil {
+				return err
+			}
+			if err := dtw.updateProgress(ctx, task.ID, 5+90*(itemIndex+1)/len(items), fmt.Sprintf("Exact count processed: %d/%d", itemIndex+1, len(items))); err != nil {
+				return err
+			}
+			continue
+		}
 		beforeHash := sourceSnapshotHash(resource)
 
 		// Obtain detailed metadata
@@ -252,6 +266,31 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 				}
 			}
 			continue
+		}
+
+		var exactCount *int64
+		if task.DiscoverActions != nil && task.DiscoverActions.Count {
+			queryCtx, cancel := context.WithTimeout(ctx, resourceCountTimeout)
+			count, err := tableConnector.CountRows(queryCtx, table)
+			cancel()
+
+			if parentErr := ctx.Err(); parentErr != nil {
+				return parentErr
+			}
+			if err == nil && count < 0 {
+				err = fmt.Errorf("invalid negative row count")
+			}
+			if err != nil {
+				result.FailedCount++
+				logger.Warnf("Failed to count table %s during discovery: %v", table.Name, err)
+				if current, changed := progress.AdvanceMetadata(); changed {
+					if err := dtw.updateProgress(ctx, task.ID, current, fmt.Sprintf("resource metadata enriched: %d/%d", progress.metadataProcessed, progress.metadataTotal)); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			exactCount = &count
 		}
 
 		// Fill in the Resource metadata: schema_definition field
@@ -297,9 +336,16 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 		if table.TableType != "" {
 			sourceMetadata["table_type"] = table.TableType
 		}
-		if len(table.Properties) > 0 {
-			sourceMetadata["properties"] = table.Properties
+		observedAt := time.Now().UnixMilli()
+		properties := table.Properties
+		if properties == nil {
+			properties = map[string]any{}
 		}
+		if exactCount != nil {
+			resource.RowCount = exactCount
+			resource.RowCountTime = &observedAt
+		}
+		sourceMetadata["properties"] = properties
 		if len(table.PKs) > 0 {
 			sourceMetadata["primary_keys"] = table.PKs
 		}
@@ -317,13 +363,14 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 			updateDiscoverResultForEnrichStatus(result, discoverStatus)
 		}
 
+		expectedUpdateTime := resource.UpdateTime
 		// Update Resource
 		resource.LastDiscoverStatus = discoverStatus
+		resource.LastDiscoverTime = observedAt
 		resource.StatusMessage = ""
-		expectedUpdateTime := resource.UpdateTime
 		resource.Updater = task.Creator
-		resource.UpdateTime = time.Now().UnixMilli()
-		if err := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime); err != nil {
+		resource.UpdateTime = observedAt
+		if err := dtw.saveDiscoveredResource(ctx, resource, expectedUpdateTime, exactCount, observedAt); err != nil {
 			logger.Errorf("Failed to update metadata for table %s: %v", table.Name, err)
 			return err
 		}
@@ -357,4 +404,45 @@ func resolveSourceDescription(description, originalDescription, discoveredDescri
 		return discoveredDescription
 	}
 	return description
+}
+
+func tableMetadataForCount(resource *interfaces.Resource) *interfaces.TableMeta {
+	table := &interfaces.TableMeta{Name: resource.SourceIdentifier, Schema: resource.Schema}
+	if table.Schema != "" {
+		table.Name = strings.TrimPrefix(table.Name, table.Schema+".")
+	} else if separator := strings.LastIndexByte(table.Name, '.'); separator > 0 {
+		table.Schema, table.Name = table.Name[:separator], table.Name[separator+1:]
+	}
+	table.Database = table.Schema
+	table.TableType, _ = resource.SourceMetadata["table_type"].(string)
+	return table
+}
+
+// enrichResourceTableRowCount 采集并保存单个表的数量。
+func (dtw *DiscoverTaskWorker) enrichResourceTableRowCount(ctx context.Context, task *interfaces.DiscoverTask, resource *interfaces.Resource, connector interfaces.TableConnector, meta *interfaces.TableMeta, result *interfaces.DiscoverResult) error {
+
+	queryCtx, cancel := context.WithTimeout(ctx, resourceCountTimeout)
+	count, err := connector.CountRows(queryCtx, meta)
+	cancel()
+
+	if parentErr := ctx.Err(); parentErr != nil {
+		return parentErr
+	}
+	if err == nil && count < 0 {
+		err = fmt.Errorf("invalid negative row count")
+	}
+	if err == nil {
+		err = dtw.rs.InternalUpdateRowCount(ctx, nil, resource, count, time.Now().UnixMilli())
+	}
+	if err != nil {
+		if errors.Is(err, interfaces.ErrRowCountUnavailable) && task.ResourceID == "" {
+			result.SkippedCount++
+		} else {
+			result.FailedCount++
+		}
+		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", resource.ID, err)
+	} else {
+		result.UpdatedCount++
+	}
+	return nil
 }

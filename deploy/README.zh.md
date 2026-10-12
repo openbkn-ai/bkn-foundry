@@ -520,3 +520,11 @@ bash deploy/scripts/bkn-redirect.sh del  http://localhost:5173/studio/callback
 ## 📄 License
 
 [Apache License 2.0](../LICENSE)
+
+### Studio 一键体验
+
+标准产品清单包含 `bkn-sample-studio`。安装脚本通过现有 Chart 的 `baseURL` 配置传递网关地址，继续支持显式 `--set` 覆盖。发布的样例 Chart 固定服务及执行器镜像摘要。安装脚本不根据 Chart 版本或组件名称推断 API 兼容性。
+
+在线和离线包目前仍需要显式配置与目标平台一致的 `platform.version` 和 `platform.capabilities`。SDK 通过 `GET /api/bkn-backend/v1/health` 获取后端版本；`GET /api/safe/v1/capabilities` 描述授权能力，不提供样例安装所需 API 清单。自动兼容性配置尚未完成。当前配置见 [样例服务部署指南](https://github.com/openbkn-ai/bkn-samples/blob/main/docs/sample-service-deployment.md)，不能把安装入口已有接线当作全新产品无需配置即可安装远程包的验收结果。
+
+登录后进入 Studio 首页 → 一键体验，点击“刷新样例”扫描官方版本，查看说明并安装。没有在线目录时，管理员可以“导入离线包”，其固定数据镜像仍须在集群可用。内部 `openbkn-samples` Kubernetes 命名空间由 Chart 管理。当前按一个环境一个 OpenBKN 实例交付；不支持已安装样例的原地升级和卸载。样例开发及版本变更见 [开发指南](https://github.com/openbkn-ai/bkn-samples/blob/main/docs/SAMPLE_DEVELOPMENT_GUIDE.md)。

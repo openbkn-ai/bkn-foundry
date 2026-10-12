@@ -217,7 +217,7 @@ func TestQueryObjectInstances_ForwardsSort(t *testing.T) {
 	})
 }
 
-// exclude_system_properties / ignoring_store_cache are downstream query parameters, not request body fields.
+// exclude_system_properties / ignore_local_index are downstream query parameters, not request body fields.
 // The entire req will be directly serialized into the body, so both must be marked with json: "-" so that they will not be mixed into the body.
 func TestQueryObjectInstances_InternalParamsGoToQueryStringNotBody(t *testing.T) {
 	convey.Convey("内部参数进查询串且不落 body", t, func() {
@@ -232,32 +232,33 @@ func TestQueryObjectInstances_InternalParamsGoToQueryStringNotBody(t *testing.T)
 			DoAndReturn(func(_ context.Context, target string, _ map[string]string, payload any) (int, []byte, error) {
 				got = target
 				bodyJSON, _ = json.Marshal(payload)
-				return 200, jsonBytes(map[string]any{"datas": []any{}}), nil
+				return 200, jsonBytes(map[string]any{"datas": []any{}, "query_source": "source"}), nil
 			})
 
 		req := &interfaces.QueryObjectInstancesReq{
 			KnID: "kn1", OtID: "ot1", Limit: 10,
 			ExcludeSystemProperties: []string{"_instance_id", "_display"},
-			IgnoringStoreCache:      true,
+			IgnoreLocalIndex:        true,
 		}
-		_, err := client.QueryObjectInstances(context.Background(), req)
+		resp, err := client.QueryObjectInstances(context.Background(), req)
 		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.QuerySource, convey.ShouldEqual, "source")
 
 		parsed, perr := url.Parse(got)
 		convey.So(perr, convey.ShouldBeNil)
 		q := parsed.Query()
 		convey.So(q["exclude_system_properties"], convey.ShouldResemble, []string{"_instance_id", "_display"})
-		convey.So(q.Get("ignoring_store_cache"), convey.ShouldEqual, "true")
+		convey.So(q.Get("ignore_local_index"), convey.ShouldEqual, "true")
 		// Existing parameters have not been changed by this reconstruction.
 		convey.So(q.Get("include_type_info"), convey.ShouldEqual, "false")
 		convey.So(q.Get("include_logic_params"), convey.ShouldEqual, "false")
 
 		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "exclude_system_properties")
-		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "ignoring_store_cache")
+		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "ignore_local_index")
 	})
 }
 
-// Two parameters that are turned off by default should not appear in the query string out of thin air: ignoring_store_cache will push the query away from the index.
+// Two parameters that are turned off by default should not appear in the query string out of thin air: ignore_local_index explicitly bypasses a table resource local index.
 // Data source, one order of magnitude slower, sending it accidentally is more dangerous than not sending it.
 func TestQueryObjectInstances_OmitsInternalParamsWhenUnset(t *testing.T) {
 	convey.Convey("未设置时不发内部参数", t, func() {
@@ -283,13 +284,13 @@ func TestQueryObjectInstances_OmitsInternalParamsWhenUnset(t *testing.T) {
 			"/api/ontology-query/in/v1/knowledge-networks/kn1/object-types/ot1")
 		_, hasExclude := parsed.Query()["exclude_system_properties"]
 		convey.So(hasExclude, convey.ShouldBeFalse)
-		_, hasIgnoring := parsed.Query()["ignoring_store_cache"]
+		_, hasIgnoring := parsed.Query()["ignore_local_index"]
 		convey.So(hasIgnoring, convey.ShouldBeFalse)
 	})
 }
 
 // ot_id is freely filled in by the agent. If path is entered without escaping, a value with "?" can be inserted downstream.
-// Query parameters such as ignoring_store_cache - are the same type of injection surface as metric_id.
+// Query parameters such as ignore_local_index - are the same type of injection surface as metric_id.
 func TestQueryObjectInstances_EscapesIDsIntoPath(t *testing.T) {
 	convey.Convey("kn_id / ot_id 转义后才进 URL", t, func() {
 		ctrl := gomock.NewController(t)
@@ -305,7 +306,7 @@ func TestQueryObjectInstances_EscapesIDsIntoPath(t *testing.T) {
 			})
 
 		req := &interfaces.QueryObjectInstancesReq{
-			KnID: "kn1", OtID: "ot1?ignoring_store_cache=true&x=", Limit: 10,
+			KnID: "kn1", OtID: "ot1?ignore_local_index=true&x=", Limit: 10,
 		}
 		_, err := client.QueryObjectInstances(context.Background(), req)
 		convey.So(err, convey.ShouldBeNil)
@@ -314,9 +315,9 @@ func TestQueryObjectInstances_EscapesIDsIntoPath(t *testing.T) {
 		convey.So(perr, convey.ShouldBeNil)
 		// The entire injected string remains in the path segment, and the downstream will only treat it as a non-existent ot_id.
 		convey.So(parsed.Path, convey.ShouldEqual,
-			"/api/ontology-query/in/v1/knowledge-networks/kn1/object-types/ot1?ignoring_store_cache=true&x=")
+			"/api/ontology-query/in/v1/knowledge-networks/kn1/object-types/ot1?ignore_local_index=true&x=")
 		// The value set by this layer was not overridden.
-		convey.So(parsed.Query().Get("ignoring_store_cache"), convey.ShouldBeEmpty)
+		convey.So(parsed.Query().Get("ignore_local_index"), convey.ShouldBeEmpty)
 		convey.So(parsed.Query().Get("include_type_info"), convey.ShouldEqual, "false")
 	})
 }

@@ -39,10 +39,6 @@ trap 'rm -f "${manifest}" "${config}"' EXIT
 # are non-secret validation fixtures; the chart still references Secret-backed
 # env fields and no credential is written to the rendered ConfigMap.
 helm template ocb-image "${chart_dir}" \
-  --set traceAdmission.clientID=trace-gateway \
-  --set traceAdmission.clientSecretSecret=trace-gateway-oauth \
-  --set traceAdmission.currentKeyID=trace-policy-2026q3 \
-  --set traceAdmission.currentPublicKeySecret=trace-policy-public \
   --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol \
   >"${manifest}"
 awk '
@@ -54,15 +50,9 @@ chmod a+r "${config}"
 
 docker run --rm \
   -e TRACE_ADMISSION_POLICY_URL=http://agent-observability-internal:8081/policy \
-  -e TRACE_ADMISSION_CONFIGURATION_URL=http://agent-observability:8080/configuration \
+  -e TRACE_ADMISSION_CONFIGURATION_URL=http://agent-observability-internal:8081/api/agent-observability/v1/internal/trace-evidence/configuration \
   -e TRACE_ADMISSION_HEARTBEAT_URL=http://agent-observability-internal:8081/heartbeat \
   -e TRACE_ADMISSION_ACK_URL_BASE=http://agent-observability-internal:8081/operations \
-  -e TRACE_ADMISSION_TOKEN_URL=http://bkn-safe:4444/oauth2/token \
-  -e TRACE_ADMISSION_CLIENT_ID=trace-gateway \
-  -e TRACE_ADMISSION_CLIENT_SECRET=local-test-secret \
-  -e TRACE_ADMISSION_AUDIENCE=cluster-a \
-  -e TRACE_ADMISSION_CURRENT_KEY_ID=trace-policy-2026q3 \
-  -e TRACE_ADMISSION_CURRENT_PUBLIC_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
   -e TRACE_ADMISSION_WORKLOAD_IDENTITY=spiffe://cluster-a/ns/openbkn/sa/otelcol \
   -e TRACE_ADMISSION_POLL_INTERVAL=10s \
   -e TRACE_ADMISSION_HTTP_TIMEOUT=3s \

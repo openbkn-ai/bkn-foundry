@@ -151,7 +151,7 @@ func safeObjectQueryShape(query *interfaces.ObjectQueryBaseOnObjectType) map[str
 		"limit":                   query.Limit,
 		"include_type_info":       query.IncludeTypeInfo,
 		"include_logic_params":    query.IncludeLogicParams,
-		"ignoring_store":          query.IgnoringStore,
+		"ignore_local_index":      query.IgnoreLocalIndex,
 		"exclude_props_hash":      bkntrace.HashValue(query.ExcludeSystemProperties),
 		"has_actual_condition":    query.ActualCondition != nil,
 		"has_object_query_info":   query.ObjectQueryInfo != nil,

@@ -117,6 +117,30 @@ func TestQueryObjectInstanceMaskedResultCarriesPermissionGuidance(t *testing.T) 
 	}
 }
 
+func TestQueryObjectInstanceMaskedTOONLeadsWithActionableGuidance(t *testing.T) {
+	stub := &stubOntologyQuery{resp: &interfaces.QueryObjectInstancesResp{
+		Data: []any{map[string]any{"customer_name": "郑********司"}},
+		EffectivePermissions: map[string]interfaces.PropertyAccessLevel{
+			"customer_name": interfaces.PropertyAccessMasked,
+		},
+	}}
+	result, err := handleQueryObjectInstance(stub, guidanceTestGuide())(guidanceTestCtx(), mcpReq(map[string]any{
+		"kn_id": "kn-1", "ot_id": "ot-1", "properties": []any{"customer_name"}, "response_format": "toon",
+	}))
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+	text := resultText(result)
+	guidanceAt, rowsAt := strings.Index(text, "permission_guidance"), strings.Index(text, "datas")
+	if guidanceAt < 0 || rowsAt < 0 || guidanceAt >= rowsAt {
+		t.Fatalf("permission guidance must precede business rows in TOON output:\n%s", text)
+	}
+	if !strings.Contains(text, "申请字段原值权限") ||
+		!strings.Contains(text, "request_permission_url") {
+		t.Fatalf("TOON guidance is not directly actionable:\n%s", text)
+	}
+}
+
 func TestGetLogicPropertiesRefusalCarriesPermissionGuidance(t *testing.T) {
 	args := map[string]any{
 		"kn_id": "kn-1", "ot_id": "ot-1", "properties": []any{"score"},
@@ -138,6 +162,62 @@ func TestGetLogicPropertiesRefusalCarriesPermissionGuidance(t *testing.T) {
 		guidanceTestGuide())(guidanceTestCtx(), mcpReq(args))
 	if strings.Contains(resultText(result), `"permission_guidance"`) {
 		t.Fatalf("result = %s, want no guidance for a metric refusal", resultText(result))
+	}
+}
+
+func TestGetLogicPropertiesMaskedResultCarriesPermissionGuidance(t *testing.T) {
+	args := map[string]any{
+		"kn_id": "kn-1", "ot_id": "ot-1", "properties": []any{"score"},
+		"_instance_identities": []any{map[string]any{"id": "1"}}, "response_format": "json",
+	}
+	result, err := handleGetLogicPropertiesValues(&stubLogicPropertyResolverService{
+		resp: &interfaces.ResolveLogicPropertiesResponse{
+			Datas: []map[string]any{{"score": "***"}},
+			EffectivePermissions: map[string]interfaces.PropertyAccessLevel{
+				"score": interfaces.PropertyAccessMasked,
+			},
+		},
+	}, guidanceTestGuide())(guidanceTestCtx(), mcpReq(args))
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+	var body struct {
+		Guidance interfaces.PermissionGuidance `json:"permission_guidance"`
+	}
+	if err := json.Unmarshal([]byte(resultText(result)), &body); err != nil {
+		t.Fatalf("result text is not JSON: %v", err)
+	}
+	if len(body.Guidance.Shortfalls) != 1 ||
+		body.Guidance.Shortfalls[0].Scope != interfaces.PermissionScopePropertyGrants ||
+		body.Guidance.Shortfalls[0].Properties[0] != "score" ||
+		body.Guidance.Shortfalls[0].RequestPermissionURL == "" {
+		t.Fatalf("guidance = %+v", body.Guidance)
+	}
+}
+
+func TestSearchInstanceMaskedResultsCarryGuidancePerObjectType(t *testing.T) {
+	stub := &stubMCPKnSearchService{searchInstanceResp: &interfaces.SearchInstanceResp{
+		Nodes: []any{map[string]any{"object_type_id": "ot-1"}},
+		PermissionImpacts: []interfaces.ObjectPermissionImpact{
+			{ObjectTypeID: "ot-1", Properties: []string{"customer_name"}},
+			{ObjectTypeID: "ot-2", Properties: []string{"warehouse"}},
+		},
+	}}
+	result, err := handleSearchInstance(stub, guidanceTestGuide())(guidanceTestCtx(), mcpReq(map[string]any{
+		"kn_id": "kn-1", "query": "find orders", "response_format": "json",
+	}))
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+	var body struct {
+		Guidance []interfaces.PermissionGuidance `json:"permission_guidance"`
+	}
+	if err := json.Unmarshal([]byte(resultText(result)), &body); err != nil {
+		t.Fatalf("result text is not JSON: %v", err)
+	}
+	if len(body.Guidance) != 2 || body.Guidance[0].Resource.OtID != "ot-1" ||
+		body.Guidance[1].Resource.OtID != "ot-2" {
+		t.Fatalf("guidance = %+v", body.Guidance)
 	}
 }
 

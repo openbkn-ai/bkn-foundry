@@ -137,10 +137,10 @@ func Test_validateObjectsQueryParameters(t *testing.T) {
 		ctx := context.Background()
 
 		Convey("成功 - 所有参数有效", func() {
-			result, err := validateObjectsQueryParameters(ctx, "true", "false", "true", []string{})
+			result, err := validateObjectsQueryParameters(ctx, "true", "true", "true", []string{})
 			So(err, ShouldBeNil)
 			So(result.IncludeTypeInfo, ShouldBeTrue)
-			So(result.IgnoringStore, ShouldBeFalse)
+			So(result.IgnoreLocalIndex, ShouldBeTrue)
 			So(result.IncludeLogicParams, ShouldBeTrue)
 		})
 
@@ -148,7 +148,7 @@ func Test_validateObjectsQueryParameters(t *testing.T) {
 			result, err := validateObjectsQueryParameters(ctx, "false", "false", "false", []string{})
 			So(err, ShouldBeNil)
 			So(result.IncludeTypeInfo, ShouldBeFalse)
-			So(result.IgnoringStore, ShouldBeFalse)
+			So(result.IgnoreLocalIndex, ShouldBeFalse)
 			So(result.IncludeLogicParams, ShouldBeFalse)
 		})
 
@@ -166,11 +166,11 @@ func Test_validateObjectsQueryParameters(t *testing.T) {
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
-		Convey("失败 - ignoringStoreCache无效", func() {
+		Convey("失败 - ignoreLocalIndex无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "true", "invalid", "true", []string{})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoringStoreCache)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
 		})
 	})
 }
@@ -183,14 +183,14 @@ func Test_validateSugraphQueryParameters(t *testing.T) {
 			result, err := validateSugraphQueryParameters(ctx, "true", "false", []string{})
 			So(err, ShouldBeNil)
 			So(result.IncludeLogicParams, ShouldBeTrue)
-			So(result.IgnoringStore, ShouldBeFalse)
+			So(result.IgnoreLocalIndex, ShouldBeFalse)
 		})
 
 		Convey("成功 - 所有参数为false", func() {
 			result, err := validateSugraphQueryParameters(ctx, "false", "false", []string{})
 			So(err, ShouldBeNil)
 			So(result.IncludeLogicParams, ShouldBeFalse)
-			So(result.IgnoringStore, ShouldBeFalse)
+			So(result.IgnoreLocalIndex, ShouldBeFalse)
 		})
 
 		Convey("失败 - includeLogicParams无效", func() {
@@ -200,11 +200,11 @@ func Test_validateSugraphQueryParameters(t *testing.T) {
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
-		Convey("失败 - ignoringStoreCache无效", func() {
+		Convey("失败 - ignoreLocalIndex无效", func() {
 			_, err := validateSugraphQueryParameters(ctx, "true", "invalid", []string{})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoringStoreCache)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
 		})
 	})
 }

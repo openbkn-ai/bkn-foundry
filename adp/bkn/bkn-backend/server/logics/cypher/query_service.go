@@ -75,11 +75,12 @@ func NewCypherQueryService(appSetting *common.AppSetting) interfaces.CypherQuery
 // was bound against, which holds the caller's property levels, and the
 // semantic descriptor the internal face returns for tracing.
 type compiledQuery struct {
-	statement       string
-	rowLimit        int
-	plan            *Plan
-	schema          *Schema
-	traceDescriptor json.RawMessage
+	statement         string
+	rowLimit          int
+	plan              *Plan
+	schema            *Schema
+	traceDescriptor   json.RawMessage
+	permissionImpacts []interfaces.CypherPermissionImpact
 }
 
 // Query compiles a Cypher query against one knowledge network and runs the
@@ -151,9 +152,10 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	}
 
 	return &interfaces.CypherQueryResult{
-		Columns:         response.Columns,
-		Entries:         response.Entries,
-		TraceDescriptor: compiled.traceDescriptor,
+		Columns:           response.Columns,
+		Entries:           response.Entries,
+		TraceDescriptor:   compiled.traceDescriptor,
+		PermissionImpacts: compiled.permissionImpacts,
 	}, nil
 }
 
@@ -224,7 +226,8 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
-	if err := s.applyRowFilters(ctx, query.KNID, plan, schema); err != nil {
+	rowFilteredObjectTypes, err := s.applyRowFilters(ctx, query.KNID, plan, schema)
+	if err != nil {
 		var httpErr *rest.HTTPError
 		if errors.As(err, &httpErr) {
 			return nil, err
@@ -244,7 +247,8 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 
 	return &compiledQuery{
 		statement: sql, rowLimit: pageSize(plan.Limit), plan: plan, schema: schema,
-		traceDescriptor: descriptorJSON,
+		traceDescriptor:   descriptorJSON,
+		permissionImpacts: rowFilterPermissionImpacts(rowFilteredObjectTypes),
 	}, nil
 }
 
@@ -315,6 +319,10 @@ func (s *cypherQueryService) authorizeProperties(ctx context.Context, knID strin
 	sort.Strings(objectTypeIDs)
 
 	var denied []string
+	impactByObjectType := make(map[string]interfaces.CypherPermissionImpact, len(compiled.permissionImpacts))
+	for _, impact := range compiled.permissionImpacts {
+		impactByObjectType[impact.ObjectTypeID] = impact
+	}
 	for _, objectTypeID := range objectTypeIDs {
 		objectType := compiled.schema.objectTypesByID[objectTypeID]
 		if objectType == nil {
@@ -327,6 +335,7 @@ func (s *cypherQueryService) authorizeProperties(ctx context.Context, knID strin
 		}
 		properties := byObjectType[objectTypeID]
 		sort.Strings(properties)
+		var deniedProperties []string
 		for _, property := range properties {
 			switch levels[property] {
 			case interfaces.PROPERTY_ACCESS_FULL:
@@ -338,15 +347,42 @@ func (s *cypherQueryService) authorizeProperties(ctx context.Context, knID strin
 			default:
 				// Masked, schema, or a property bkn-safe gave no level for.
 				denied = append(denied, objectTypeID+"."+property)
+				deniedProperties = append(deniedProperties, property)
 			}
+		}
+		if len(deniedProperties) > 0 {
+			impact := impactByObjectType[objectTypeID]
+			impact.ObjectTypeID = objectTypeID
+			impact.Properties = deniedProperties
+			impactByObjectType[objectTypeID] = impact
 		}
 	}
 	if len(denied) == 0 {
 		return nil
 	}
+	impactObjectTypeIDs := make([]string, 0, len(impactByObjectType))
+	for objectTypeID := range impactByObjectType {
+		impactObjectTypeIDs = append(impactObjectTypeIDs, objectTypeID)
+	}
+	sort.Strings(impactObjectTypeIDs)
+	impacts := make([]interfaces.CypherPermissionImpact, 0, len(impactObjectTypeIDs))
+	for _, objectTypeID := range impactObjectTypeIDs {
+		impacts = append(impacts, impactByObjectType[objectTypeID])
+	}
 	return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_Cypher_PropertyForbidden).
 		WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Cypher.PropertyForbidden.Detail.NotFull",
-			map[string]any{"properties": strings.Join(denied, ", ")}))
+			map[string]any{"properties": strings.Join(denied, ", ")})).
+		WithMetadata(map[string]any{"permission_impacts": impacts})
+}
+
+func rowFilterPermissionImpacts(objectTypeIDs []string) []interfaces.CypherPermissionImpact {
+	impacts := make([]interfaces.CypherPermissionImpact, 0, len(objectTypeIDs))
+	for _, objectTypeID := range objectTypeIDs {
+		impacts = append(impacts, interfaces.CypherPermissionImpact{
+			ObjectTypeID: objectTypeID, RowFilterApplied: true,
+		})
+	}
+	return impacts
 }
 
 // Span attributes saying which identity answered a statement and, when the

@@ -2,7 +2,7 @@ import time
 import uuid
 from typing import Optional
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commons.i18n import localized_message
@@ -76,10 +76,33 @@ async def list_agents(session: AsyncSession, page: int, size: int) -> tuple[list
             select(AgentRow).order_by(AgentRow.f_update_time.desc()).offset((page - 1) * size).limit(size)
         )
     ).scalars().all()
-    from sqlalchemy import func
-
     total = (await session.execute(select(func.count()).select_from(AgentRow))).scalar_one()
     return [_to_out(r) for r in rows], total
+
+
+async def list_authorization_resources(
+    session: AsyncSession,
+    name: str,
+    direction: str,
+    offset: int,
+    limit: int,
+) -> tuple[list[tuple[str, str]], int]:
+    """List authoritative agent display names for bkn-safe.
+
+    agent_tpl uses the same rows: publishing turns an agent into a reusable
+    template, so both authorization resource types share the stable agent ID.
+    """
+    condition = AgentRow.f_name.contains(name) if name else None
+    query = select(AgentRow.f_agent_id, AgentRow.f_name)
+    count_query = select(func.count()).select_from(AgentRow)
+    if condition is not None:
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+    order = AgentRow.f_name.asc if direction == "asc" else AgentRow.f_name.desc
+    id_order = AgentRow.f_agent_id.asc if direction == "asc" else AgentRow.f_agent_id.desc
+    rows = (await session.execute(query.order_by(order(), id_order()).offset(offset).limit(limit))).all()
+    total = (await session.execute(count_query)).scalar_one()
+    return [(row.f_agent_id, row.f_name) for row in rows], total
 
 
 async def update_agent(session: AsyncSession, agent_id: str, spec: AgentSpec, account_id: str) -> Optional[AgentOut]:

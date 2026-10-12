@@ -51,6 +51,7 @@ class InteractionEvidence:
     observed_at: str
     question: Any
     agent_id: str
+    owner: dict[str, str] | None = None
     operation_sequence: int = 0
     fact_candidates: dict[str, dict[str, Any]] = field(default_factory=dict)
     model_candidate_sets: dict[str, set[str]] = field(default_factory=dict)
@@ -261,6 +262,7 @@ def begin_interaction(
     *,
     conversation_id: str | None = None,
     interaction_id: str | None = None,
+    owner: dict[str, str] | None = None,
 ):
     """Open one interaction.
 
@@ -297,6 +299,7 @@ def begin_interaction(
             observed_at=ctx.observed_at,
             question=intent,
             agent_id=agent_id,
+            owner=dict(owner) if owner else None,
         )
     )
 
@@ -366,6 +369,14 @@ def _artifact(
         "content": content,
         "bkn.account.id": account_id,
         "bkn.account.type": account_type,
+        "application_principal_id": (
+            current.owner["application_principal_id"]
+            if current.owner else ctx.application_principal_id or account_id
+        ),
+        "effective_subject_id": (
+            current.owner["effective_subject_id"]
+            if current.owner else ctx.effective_subject_id or account_id
+        ),
         "agent_or_app": current.agent_id,
     }
 
@@ -722,6 +733,13 @@ def build_batch(
         "bkn.effective.subject.id": ctx.effective_subject_id or account_id,
         "bkn.delegation.id": ctx.delegation_id,
     }
+    if current and current.owner:
+        trace.update({
+            "bkn.application.principal.id": current.owner["application_principal_id"],
+            "bkn.effective.subject.type": current.owner["effective_subject_type"],
+            "bkn.effective.subject.id": current.owner["effective_subject_id"],
+            "bkn.delegation.id": current.owner.get("delegation_id", ""),
+        })
     if conversation_id:
         trace["bkn.conversation.id"] = conversation_id
     return {
@@ -983,6 +1001,14 @@ def _artifact_headers(identity: Any = None) -> dict[str, str]:
         }
     else:
         return headers
+    current = _interaction.get()
+    if isinstance(identity, observability.TraceContext) and current and current.owner:
+        values = {
+            "application": current.owner["application_principal_id"],
+            "subject_type": current.owner["effective_subject_type"],
+            "subject": current.owner["effective_subject_id"],
+            "delegation": current.owner.get("delegation_id", ""),
+        }
     mapping = {
         "X-BKN-Application-Principal-ID": values["application"],
         "X-BKN-Effective-Subject-Type": values["subject_type"],
@@ -1037,10 +1063,17 @@ async def start_publisher() -> None:
     if os.getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED", "true").lower() == "false":
         _publisher = None
         return
-    publisher_config = EvidenceKafkaConfig.from_env()
-    control = TraceAdmissionClient.from_env()
-    publisher = EvidenceKafkaPublisher(publisher_config, policy_controlled=True)
-    runtime = EvidencePolicyRuntime(publisher, control)
+    _publisher = None
+    try:
+        publisher_config = EvidenceKafkaConfig.from_env()
+        control = TraceAdmissionClient.from_env()
+        publisher = EvidenceKafkaPublisher(publisher_config, policy_controlled=True)
+        runtime = EvidencePolicyRuntime(publisher, control)
+    except Exception as exc:
+        # Configuration failure is a coverage gap, not an Agent startup failure.
+        # Exception messages can contain connection strings or credentials.
+        logger.error("Evidence publisher initialization failed (%s); check Kafka and internal control configuration", type(exc).__name__)
+        return
     runtime.start()
     _publisher = runtime
 

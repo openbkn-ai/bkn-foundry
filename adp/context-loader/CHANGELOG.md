@@ -4,6 +4,12 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ## Unreleased
 
+### Features & Improvements
+
+- Surface actionable permission-request guidance from `run_cypher`, `search_instance`, and `get_logic_properties_values`
+  - Preserve explicit row-filter and property-masking impacts across BKN Backend and Context Loader boundaries
+  - Put localized Studio request links in both structured tool output and the user-facing message so MCP hosts can present them reliably
+
 ### Removed
 
 - Remove `POST /kn/semantic-search` (both the public path and the `in/v1` internal path). Use `POST /kn/search_schema`

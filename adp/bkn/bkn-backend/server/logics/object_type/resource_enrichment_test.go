@@ -206,6 +206,78 @@ func TestFetchObjectTypeResourcesSkipsUnboundObjectTypes(t *testing.T) {
 	}
 }
 
+func TestEnrichObjectTypeIndexStatusesKeepsSummaryEnrichmentLightweight(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	service := &objectTypeService{vbs: vbs}
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot1",
+		DataSource: &interfaces.ResourceInfo{
+			ID: "r1", Name: "Stored resource name", Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+		},
+	}}
+	vbs.EXPECT().GetResourcesByIDs(gomock.Any(), []string{"r1"}).Return(nil, errors.New("batch failed"))
+	vbs.EXPECT().GetResourceByID(gomock.Any(), "r1").Return(nil, errors.New("resource read failed"))
+
+	service.enrichObjectTypeIndexStatuses(context.Background(), []*interfaces.ObjectType{objectType})
+
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateUnknown {
+		t.Fatalf("index status = %#v, want unknown", objectType.IndexStatus)
+	}
+	if objectType.DataSourceMetadataUnavailable {
+		t.Fatal("summary status enrichment must not set the detail metadata marker")
+	}
+	if objectType.DataSource.Name != "Stored resource name" {
+		t.Fatalf("resource name = %q, want the stored summary value", objectType.DataSource.Name)
+	}
+}
+
+func TestEnrichObjectTypeIndexStatusesSkipsDetailEnrichmentAfterSuccessfulRead(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	service := &objectTypeService{vbs: vbs}
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "ot1",
+		DataSource: &interfaces.ResourceInfo{
+			ID: "r1", Name: "Stored resource name", Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+		},
+		DataProperties: []*interfaces.DataProperty{{
+			Name: "summary", MappedField: &interfaces.Field{Name: "summary"},
+		}},
+	}}
+	resource := &interfaces.VegaResource{
+		ID:               "r1",
+		Name:             "Live resource name",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		SchemaDefinition: []*interfaces.Property{{
+			Name: "summary", DisplayName: "Live summary", Type: "text",
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Keyword}},
+		}},
+	}
+	vbs.EXPECT().GetResourcesByIDs(gomock.Any(), []string{"r1"}).
+		Return([]*interfaces.VegaResource{resource}, nil)
+
+	service.enrichObjectTypeIndexStatuses(context.Background(), []*interfaces.ObjectType{objectType})
+
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateAvailable {
+		t.Fatalf("index status = %#v, want available", objectType.IndexStatus)
+	}
+	if objectType.DataSource.Name != "Stored resource name" {
+		t.Fatalf("resource name = %q, want the stored summary value", objectType.DataSource.Name)
+	}
+	if objectType.DataSourceMetadataUnavailable {
+		t.Fatal("summary status enrichment must not set the detail metadata marker")
+	}
+	if objectType.DataProperties[0].ConditionOperations != nil {
+		t.Fatalf("condition operations = %v, want no summary detail enrichment",
+			objectType.DataProperties[0].ConditionOperations)
+	}
+	if objectType.DataProperties[0].IndexFeatures != nil {
+		t.Fatalf("index features = %#v, want no summary detail enrichment",
+			objectType.DataProperties[0].IndexFeatures)
+	}
+}
+
 func TestProcessObjectTypeDetailsProjectsVegaIndexStatusAndConfiguredFeatures(t *testing.T) {
 	service := &objectTypeService{appSetting: &common.AppSetting{}}
 	objectType := &interfaces.ObjectType{

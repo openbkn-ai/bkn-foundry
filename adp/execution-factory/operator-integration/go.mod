@@ -2,6 +2,8 @@ module github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integrat
 
 go 1.25.5
 
+replace github.com/openbkn-ai/bkn-foundry/comm-go => ../../../comm-go
+
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/Masterminds/semver/v3 v3.5.0

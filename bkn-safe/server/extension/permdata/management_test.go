@@ -40,7 +40,7 @@ func (managementServicesStub) EffectivePropertyLevels(context.Context, string, s
 func registerManagementTestHandler(t *testing.T) {
 	t.Helper()
 	Register(licverify.EditionEnterprise, &fakeResolver{})
-	RegisterManagementHandler(licverify.EditionEnterprise, func(_ ManagementServices, operatorID OperatorIDResolver) http.Handler {
+	RegisterManagementHandler(licverify.EditionEnterprise, func(_ ManagementServices, operatorID OperatorIDResolver, audit ManagementAuditReporter) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			operator, ok := operatorID(request)
 			if !ok {
@@ -48,6 +48,7 @@ func registerManagementTestHandler(t *testing.T) {
 				return
 			}
 			response.Header().Set("X-Operator-ID", operator)
+			audit(request, ManagementAuditResult{Action: "update", SubjectType: "user", SubjectID: "user-1", ObjectTypeRef: "kn-1/order"})
 			response.WriteHeader(http.StatusNoContent)
 		})
 	})
@@ -64,6 +65,7 @@ func managementRouter(t *testing.T, withEnterpriseHandler bool) *gin.Engine {
 	group := router.Group("/api/safe/v1/admin", ManagementGate())
 	MountManagement(group, managementServicesStub{}, func(*gin.Context) (string, bool) {
 		return "operator-1", true
+	}, func(*gin.Context, ManagementAuditResult) {
 	})
 	return router
 }
@@ -142,6 +144,32 @@ func TestLicensedManagementRouteReceivesAuthenticatedOperator(t *testing.T) {
 	}
 }
 
+func TestManagementAuditResultCrossesCoreEESocketOnce(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionEnterprise))
+	ResetForTest()
+	t.Cleanup(func() { ResetForTest(); entitlement.ResetForTest() })
+	Register(licverify.EditionEnterprise, &fakeResolver{})
+	RegisterManagementHandler(licverify.EditionEnterprise, func(_ ManagementServices, _ OperatorIDResolver, audit ManagementAuditReporter) http.Handler {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			audit(request, ManagementAuditResult{Action: "grant_property_grants", SubjectType: "user", SubjectID: "user-1", ObjectTypeRef: "kn-1/order"})
+			response.WriteHeader(http.StatusNoContent)
+		})
+	})
+	var consumed []ManagementAuditResult
+	router := gin.New()
+	group := router.Group("/api/safe/v1/admin", ManagementGate())
+	MountManagement(group, managementServicesStub{}, func(*gin.Context) (string, bool) {
+		return "operator-1", true
+	}, func(_ *gin.Context, result ManagementAuditResult) {
+		consumed = append(consumed, result)
+	})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPatch, "/api/safe/v1/admin/property-grants", nil))
+	if response.Code != http.StatusNoContent || len(consumed) != 1 || consumed[0].SubjectID != "user-1" {
+		t.Fatalf("status=%d consumed=%+v", response.Code, consumed)
+	}
+}
+
 func TestManagementRegistrationRequiresMatchingResolver(t *testing.T) {
 	setEdition(t, licverify.EditionEnterprise)
 	assertPanics := func(name string, call func()) {
@@ -156,13 +184,13 @@ func TestManagementRegistrationRequiresMatchingResolver(t *testing.T) {
 		})
 	}
 	assertPanics("resolver missing", func() {
-		RegisterManagementHandler(licverify.EditionEnterprise, func(ManagementServices, OperatorIDResolver) http.Handler {
+		RegisterManagementHandler(licverify.EditionEnterprise, func(ManagementServices, OperatorIDResolver, ManagementAuditReporter) http.Handler {
 			return http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
 		})
 	})
 	Register(licverify.EditionEnterprise, &fakeResolver{})
 	assertPanics("edition mismatch", func() {
-		RegisterManagementHandler(licverify.EditionProfessional, func(ManagementServices, OperatorIDResolver) http.Handler {
+		RegisterManagementHandler(licverify.EditionProfessional, func(ManagementServices, OperatorIDResolver, ManagementAuditReporter) http.Handler {
 			return http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
 		})
 	})

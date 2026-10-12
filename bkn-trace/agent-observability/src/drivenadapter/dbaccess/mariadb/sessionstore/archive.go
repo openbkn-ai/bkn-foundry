@@ -106,7 +106,14 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	value := map[string]any{"conversation": conversation, "interaction": interaction, "operations": operations, "receipts": receipts, "call_facts": facts}
+	// Lifecycle JSON omits these internal CAS fields. Archive them explicitly
+	// with the interaction so the package does not lose derived source metadata.
+	archivedInteraction := struct {
+		sessionvo.Interaction
+		IntegritySourceVersion uint64                           `json:"record_integrity_version"`
+		StoredRecordIntegrity  *sessionvo.StoredRecordIntegrity `json:"stored_record_integrity,omitempty"`
+	}{Interaction: interaction, IntegritySourceVersion: interaction.IntegritySourceVersion, StoredRecordIntegrity: interaction.StoredRecordIntegrity}
+	value := map[string]any{"conversation": conversation, "interaction": archivedInteraction, "operations": operations, "receipts": receipts, "call_facts": facts}
 	if source.revisionInputs {
 		value["revision_evidence"] = sealed
 	}

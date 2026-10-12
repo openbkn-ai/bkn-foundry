@@ -70,7 +70,7 @@ type Objects struct {
 	Paging               *ObjectPagingResponse          `json:"paging"`
 	Cursor               string                         `json:"cursor,omitempty"`
 	OverallMs            int64                          `json:"overall_ms"`
-	SearchFromIndex      bool                           `json:"search_from_index"` // Whether to query the index.
+	QuerySource          string                         `json:"query_source,omitempty"` // Actual Vega query channel: source or local_index.
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 	// RowFilterApplied reports that the caller's effective row filter narrowed
 	// this query. It never exposes the predicate itself, so callers can explain
@@ -132,7 +132,7 @@ type Filter struct {
 type CommonQueryParameters struct {
 	IncludeTypeInfo         bool
 	IncludeLogicParams      bool
-	IgnoringStore           bool
+	IgnoreLocalIndex        bool
 	ExcludeSystemProperties []string
 	// RequiredFullProperties are request-local dependency fields. They may be
 	// fetched for an internal calculation but are never made returnable solely

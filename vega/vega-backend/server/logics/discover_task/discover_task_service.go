@@ -92,6 +92,12 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.Create")
 	defer span.End() // End the span when the function returns.
 
+	if req.Strategy == "" {
+		req.Strategy = interfaces.DiscoverStrategyFullSync
+	}
+	if !interfaces.IsValidDiscoverStrategy(req.Strategy) {
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("invalid discover strategy")
+	}
 	// Get account info from context
 	accountInfo := interfaces.AccountInfo{}
 	if ai, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo); ok {
@@ -108,6 +114,21 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	if !allowed {
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	}
+
+	// 在持久化和通知调度前校验单资源纯计数能力，所有创建入口共用此检查。
+	if req.ResourceID != "" && req.Strategy == interfaces.DiscoverStrategyCountOnly {
+		res, err := dts.rs.InternalGetByID(ctx, nil, req.ResourceID)
+		if err != nil {
+			return "", err
+		}
+		if res == nil || res.CatalogID != req.CatalogID {
+			return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		}
+		if !interfaces.SupportsResourceCount(res.Category) {
+			return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(fmt.Sprintf("resource category %q does not support count_only", res.Category))
+		}
 	}
 
 	if req.ResourceID != "" {

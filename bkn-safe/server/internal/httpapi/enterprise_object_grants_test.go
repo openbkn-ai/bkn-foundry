@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+
 	"github.com/openbkn-ai/licverify"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
@@ -36,6 +38,13 @@ func (m *inventoryManager) Inventory(context.Context, time.Time) ([]permobject.I
 
 func (m *inventoryManager) Revoke(_ context.Context, grantID, operatorID, reason string, _ time.Time) error {
 	m.revoked, m.operator, m.reason = grantID, operatorID, reason
+	for index := range m.entries {
+		if m.entries[index].GrantID == grantID {
+			m.entries[index].ActivationState = permobject.ActivationStateRevoked
+			m.entries[index].RuntimeEligible = false
+			m.entries[index].InactiveReason = "revoked"
+		}
+	}
 	return nil
 }
 
@@ -58,7 +67,10 @@ func TestEnterpriseObjectGrantInventoryAndExactRevoke(t *testing.T) {
 	}}
 	permobject.Register(licverify.EditionEnterprise, inventoryAuthorizer{})
 	permobject.RegisterManager(licverify.EditionEnterprise, manager)
-	r, _, _, _ := newAdminServer(t)
+	r, _, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{ID: "user-1", Account: "alice", Name: "Alice", Enabled: true}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
 
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
 	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/enterprise-object-grants", nil); w.Code != http.StatusNotFound ||
@@ -79,5 +91,24 @@ func TestEnterpriseObjectGrantInventoryAndExactRevoke(t *testing.T) {
 	}
 	if manager.revoked != "ee-grant-1" || manager.operator != adminSub || manager.reason != "access review" {
 		t.Fatalf("exact revoke call = (%q, %q, %q)", manager.revoked, manager.operator, manager.reason)
+	}
+	var auditEntry model.AuditLog
+	if err := db.Where("resource = ? AND action = ?", "enterprise-object-grants", "revoke").First(&auditEntry).Error; err != nil {
+		t.Fatal(err)
+	}
+	if auditEntry.TargetID != "ee-grant-1" || auditEntry.TargetName != "Alice · authorization for Test catalog c-1" {
+		t.Fatalf("enterprise revoke audit target = id=%q name=%q", auditEntry.TargetID, auditEntry.TargetName)
+	}
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/enterprise-object-grants", map[string]any{
+		"grant_id": "ee-grant-1", "reason": "retry access review",
+	}); w.Code != http.StatusNoContent {
+		t.Fatalf("repeated Enterprise revoke = %d %s", w.Code, w.Body.String())
+	}
+	var auditCount int64
+	if err := db.Model(&model.AuditLog{}).Where("resource = ? AND action = ?", "enterprise-object-grants", "revoke").Count(&auditCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 {
+		t.Fatalf("repeated Enterprise revoke audit count = %d, want 1", auditCount)
 	}
 }

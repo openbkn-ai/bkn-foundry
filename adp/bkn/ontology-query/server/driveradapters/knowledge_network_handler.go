@@ -96,12 +96,12 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 
 	// Whether to include logical-property calculation parameters.
 	includeLogicParams := c.DefaultQuery("include_logic_params", interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS)
-	// Whether to ignore persisted data and use virtual queries; default is false.
-	ignoringStoreCache := c.DefaultQuery("ignoring_store_cache", interfaces.DEFAULT_IGNORING_STORE_CACHE)
+	// Whether to bypass the table resource local index; default is false.
+	ignoreLocalIndex := c.DefaultQuery("ignore_local_index", interfaces.DEFAULT_IGNORE_LOCAL_INDEX)
 	// List of system fields to exclude.
 	excludeSystemProperties := c.QueryArray("exclude_system_properties")
 	// Validate query parameters.
-	queryParams, err := validateSugraphQueryParameters(ctx, includeLogicParams, ignoringStoreCache, excludeSystemProperties)
+	queryParams, err := validateSugraphQueryParameters(ctx, includeLogicParams, ignoreLocalIndex, excludeSystemProperties)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
@@ -229,12 +229,12 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 
 	// Whether to include logical-property calculation parameters.
 	includeLogicParams := c.DefaultQuery("include_logic_params", interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS)
-	// Whether to ignore persisted data and use virtual queries; default is false.
-	ignoringStoreCache := c.DefaultQuery("ignoring_store_cache", interfaces.DEFAULT_IGNORING_STORE_CACHE)
+	// Whether to bypass the table resource local index; default is false.
+	ignoreLocalIndex := c.DefaultQuery("ignore_local_index", interfaces.DEFAULT_IGNORE_LOCAL_INDEX)
 	// List of system fields to exclude.
 	excludeSystemProperties := c.QueryArray("exclude_system_properties")
 	// Validate query parameters.
-	queryParams, err := validateSugraphQueryParameters(ctx, includeLogicParams, ignoringStoreCache, excludeSystemProperties)
+	queryParams, err := validateSugraphQueryParameters(ctx, includeLogicParams, ignoreLocalIndex, excludeSystemProperties)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
@@ -390,12 +390,12 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	includeTypeInfo := c.DefaultQuery("include_type_info", interfaces.DEFAULT_INCLUDE_TYPE_INFO)
 	// Whether to include logical-property calculation parameters.
 	includeLogicParams := c.DefaultQuery("include_logic_params", interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS)
-	// Whether to ignore persisted data and use virtual queries; default is false.
-	ignoringStoreCache := c.DefaultQuery("ignoring_store_cache", interfaces.DEFAULT_IGNORING_STORE_CACHE)
+	// Whether to bypass the table resource local index; default is false.
+	ignoreLocalIndex := c.DefaultQuery("ignore_local_index", interfaces.DEFAULT_IGNORE_LOCAL_INDEX)
 	// List of system fields to exclude.
 	excludeSystemProperties := c.QueryArray("exclude_system_properties")
 	// Validate query parameters.
-	queryParams, err := validateObjectsQueryParameters(ctx, includeTypeInfo, ignoringStoreCache, includeLogicParams, excludeSystemProperties)
+	queryParams, err := validateObjectsQueryParameters(ctx, includeTypeInfo, ignoreLocalIndex, includeLogicParams, excludeSystemProperties)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.

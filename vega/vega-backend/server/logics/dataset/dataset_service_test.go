@@ -45,6 +45,20 @@ func TestDatasetServiceIndexLifecycle(t *testing.T) {
 		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, resource.LocalIndexStatus)
 	})
 
+	t.Run("create persists disabled JSON indexing", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{ID: "dataset-json", SchemaDefinition: []*interfaces.Property{
+			{Name: "payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true, "source": "jsonb"}},
+		}}
+		lim.EXPECT().CreateIndex(gomock.Any(), gomock.Any(), gomock.Any(), map[string]string{"resource_id": "dataset-json"}).
+			DoAndReturn(func(_ context.Context, _ string, schema []*interfaces.Property, _ map[string]string) error {
+				assert.Equal(t, map[string]any{"enabled": false, "source": "jsonb"}, schema[0].Attributes)
+				return nil
+			})
+		require.NoError(t, ds.Create(ctx, resource))
+		assert.Equal(t, false, resource.SchemaDefinition[0].Attributes["enabled"])
+	})
+
 	t.Run("create wraps index error", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		lim.EXPECT().CreateIndex(gomock.Any(), gomock.Any(), resource.SchemaDefinition, map[string]string{"resource_id": "dataset-1"}).Return(errors.New("create failed"))
@@ -239,6 +253,18 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		err := ds.DeleteDocuments(ctx, resource, []string{"doc-1"}, false)
 
 		require.ErrorIs(t, err, denied)
+	})
+
+	t.Run("delete by query rejects stored JSON as missing field", func(t *testing.T) {
+		ds, _ := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
+		for _, operation := range []string{filter_condition.OperationNotExist, filter_condition.OperationNull} {
+			err := ds.DeleteDocumentsByQuery(ctx, resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "payload", Operation: operation}})
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Contains(t, httpErr.BaseError.ErrorDetails, "not found")
+		}
 	})
 
 	t.Run("delete by query wraps error", func(t *testing.T) {

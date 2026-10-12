@@ -8,10 +8,12 @@ package cypher
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -357,6 +359,12 @@ func TestQueryAppliesRowFiltersToEveryMatchedNode(t *testing.T) {
 	if strings.Contains(string(result.TraceDescriptor), "region") {
 		t.Fatalf("trace descriptor leaked row-filter-only property: %s", result.TraceDescriptor)
 	}
+	if got, want := result.PermissionImpacts, []interfaces.CypherPermissionImpact{
+		{ObjectTypeID: "ot_order", RowFilterApplied: true},
+		{ObjectTypeID: "ot_customer", RowFilterApplied: true},
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("permission impacts = %+v, want %+v", got, want)
+	}
 	want := "SELECT COUNT(*) AS `total` FROM {{.res_order}} t0 JOIN {{.res_customer}} t1 ON t0.`f_id` = t1.`f_id` " +
 		"WHERE t0.`f_amount` > 10 AND t0.`f_region` IN ('east') AND t1.`f_region` IN ('cn') LIMIT 1000"
 	if got := vega.request.Query; got != want {
@@ -648,11 +656,56 @@ func TestQueryRefusesPropertyWithoutFullAccess(t *testing.T) {
 				if strings.Contains(err.Error(), "f_total") || strings.Contains(err.Error(), "orders") {
 					t.Fatalf("error leaked a physical name: %v", err)
 				}
+				var httpErr *rest.HTTPError
+				if !errors.As(err, &httpErr) {
+					t.Fatalf("error = %T, want *rest.HTTPError", err)
+				}
+				encoded, marshalErr := json.Marshal(httpErr.BaseError.Metadata["permission_impacts"])
+				if marshalErr != nil {
+					t.Fatalf("marshal permission impacts: %v", marshalErr)
+				}
+				var impacts []interfaces.CypherPermissionImpact
+				if unmarshalErr := json.Unmarshal(encoded, &impacts); unmarshalErr != nil {
+					t.Fatalf("unmarshal permission impacts: %v", unmarshalErr)
+				}
+				if want := []interfaces.CypherPermissionImpact{{ObjectTypeID: "ot_order", Properties: []string{"amount"}}}; !reflect.DeepEqual(impacts, want) {
+					t.Fatalf("permission impacts = %+v, want %+v", impacts, want)
+				}
 				if vega.request != nil || vega.proxyRequest != nil {
 					t.Fatal("a query naming a property the caller may not read still reached vega-backend")
 				}
 			})
 		}
+	}
+}
+
+func TestPropertyRefusalIncludesTheRowFilterThatWouldAlsoShapeTheQuery(t *testing.T) {
+	withLocale(t)
+	permission := amountAt(interfaces.PROPERTY_ACCESS_MASKED)
+	permission.rowFilters = map[string]interfaces.RowFilterPredicate{
+		"kn_1/ot_order": {Kind: "false"},
+	}
+	service := relationService(&recordingVega{}, permission, nil)
+	_, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.amount",
+	})
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("error = %T, want *rest.HTTPError", err)
+	}
+	encoded, marshalErr := json.Marshal(httpErr.BaseError.Metadata["permission_impacts"])
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	var impacts []interfaces.CypherPermissionImpact
+	if unmarshalErr := json.Unmarshal(encoded, &impacts); unmarshalErr != nil {
+		t.Fatal(unmarshalErr)
+	}
+	want := []interfaces.CypherPermissionImpact{{
+		ObjectTypeID: "ot_order", Properties: []string{"amount"}, RowFilterApplied: true,
+	}}
+	if !reflect.DeepEqual(impacts, want) {
+		t.Fatalf("permission impacts = %+v, want %+v", impacts, want)
 	}
 }
 

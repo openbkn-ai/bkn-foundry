@@ -53,6 +53,57 @@ func TestMapDataSourceTypeToDialect(t *testing.T) {
 }
 
 func TestTranspileSQL(t *testing.T) {
+	for _, inputDialect := range []string{"mysql", "postgres", "tsql"} {
+		for _, tc := range []struct {
+			name string
+			sql  string
+			want string
+		}{
+			{name: "Chinese", sql: "SELECT '中文测试'", want: "SELECT N'中文测试'"},
+			{name: "emoji", sql: "SELECT '刘🙂备'", want: "SELECT N'刘🙂备'"},
+			{name: "escaped quote", sql: "SELECT 'O''Brien中文'", want: "SELECT N'O''Brien中文'"},
+			{name: "existing national literal", sql: "SELECT N'中文', N'ascii'", want: "SELECT N'中文', N'ascii'"},
+			{name: "ASCII and empty literals", sql: "SELECT 'ascii', '', 42", want: "SELECT 'ascii', '', 42"},
+			{name: "literal comment", sql: "SELECT '中文' /* preserve */", want: "SELECT N'中文' /* preserve */"},
+			{
+				name: "nested expressions and predicates",
+				sql:  "SELECT CASE WHEN name IN ('中文', 'ascii') THEN '刘🙂备' ELSE '' END AS label FROM orders WHERE name LIKE '%中文%'",
+				want: "SELECT CASE WHEN name IN (N'中文', 'ascii') THEN N'刘🙂备' ELSE '' END AS label FROM orders WHERE name LIKE N'%中文%'",
+			},
+		} {
+			t.Run(inputDialect+" to tsql preserves Unicode: "+tc.name, func(t *testing.T) {
+				requireSQLGlotRuntime(t)
+				got, err := TranspileSQL(context.Background(), tc.sql, inputDialect, interfaces.ConnectorTypeSQLServer)
+
+				require.NoError(t, err)
+				assert.Equal(t, "tsql", got.Dialect)
+				assert.Equal(t, tc.want, got.SQL)
+			})
+		}
+	}
+	for _, target := range []string{"mysql", "postgres", "oracle", GenericDialect} {
+		t.Run("preserves ordinary literals for target "+target, func(t *testing.T) {
+			requireSQLGlotRuntime(t)
+			got, err := TranspileSQL(context.Background(), "SELECT '中文', '刘🙂备', 'ascii', ''", "postgres", target)
+
+			require.NoError(t, err)
+			assert.Equal(t, "SELECT '中文', '刘🙂备', 'ascii', ''", got.SQL)
+		})
+	}
+	t.Run("preserves quoted identifiers", func(t *testing.T) {
+		requireSQLGlotRuntime(t)
+		got, err := TranspileSQL(context.Background(), "SELECT `中文`, '中文' AS `别名` FROM `表`", "mysql", "tsql")
+
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT [中文], N'中文' AS [别名] FROM [表]", got.SQL)
+	})
+	t.Run("rejects invalid tsql compilation input", func(t *testing.T) {
+		requireSQLGlotRuntime(t)
+		got, err := TranspileSQL(context.Background(), "SELECT 'unterminated", "mysql", "tsql")
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+	})
 	t.Run("transpiles postgres input to tsql target dialect", func(t *testing.T) {
 		requireSQLGlotRuntime(t)
 		got, err := TranspileSQL(context.Background(), "SELECT id FROM orders WHERE active = TRUE", "postgres", "tsql")

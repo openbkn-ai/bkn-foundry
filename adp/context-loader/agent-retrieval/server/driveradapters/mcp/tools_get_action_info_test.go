@@ -13,7 +13,8 @@ import (
 )
 
 type stubActionRecallService struct {
-	called bool
+	called     bool
+	lastGetReq *interfaces.KnGetActionExecutionRequest
 }
 
 func (s *stubActionRecallService) ExecuteAction(_ context.Context, _ *interfaces.KnActionExecuteRequest) (*interfaces.KnActionExecuteResponse, error) {
@@ -26,8 +27,9 @@ func (s *stubActionRecallService) ExecuteAction(_ context.Context, _ *interfaces
 	}, nil
 }
 
-func (s *stubActionRecallService) GetActionExecution(_ context.Context, _ *interfaces.KnGetActionExecutionRequest) (map[string]any, error) {
+func (s *stubActionRecallService) GetActionExecution(_ context.Context, req *interfaces.KnGetActionExecutionRequest) (map[string]any, error) {
 	s.called = true
+	s.lastGetReq = req
 	return map[string]any{"id": "exec-001", "status": "completed"}, nil
 }
 
@@ -77,3 +79,21 @@ func TestHandleGetActionInfo_IgnoresResponseFormatParam(t *testing.T) {
 }
 
 var _ interfaces.IKnActionRecallService = (*stubActionRecallService)(nil)
+
+func TestHandleGetActionExecutionForwardsPaginationArguments(t *testing.T) {
+	svc := &stubActionRecallService{}
+	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
+		AccountID: "acc-001", AccountType: interfaces.AccessorTypeUser,
+	})
+	result, err := handleGetActionExecution(svc)(ctx, newCallToolRequest(map[string]any{
+		"kn_id": "kn-001", "execution_id": "exec-001",
+		"results_limit": 100, "results_offset": 0, "response_format": "json",
+	}))
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("MCP pagination call failed: result=%v err=%v", result, err)
+	}
+	if svc.lastGetReq == nil || svc.lastGetReq.ResultsLimit == nil || *svc.lastGetReq.ResultsLimit != 100 ||
+		svc.lastGetReq.ResultsOffset == nil || *svc.lastGetReq.ResultsOffset != 0 {
+		t.Fatalf("pagination arguments lost: %#v", svc.lastGetReq)
+	}
+}

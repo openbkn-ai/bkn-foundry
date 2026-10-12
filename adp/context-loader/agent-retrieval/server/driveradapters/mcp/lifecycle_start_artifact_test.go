@@ -44,6 +44,9 @@ func TestStartInteractionPreservesCommittedResultAcrossQuestionArtifactFailures(
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/agent-observability/v1/conversations/conv-committed/interactions":
+					if r.Header.Get("X-BKN-Application-Principal-ID") != "cursor-app" || r.Header.Get("X-BKN-Effective-Subject-ID") != "user-1" {
+						t.Errorf("Core must receive the same authenticated owner as the response")
+					}
 					startCalls++
 					_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
 						InteractionID: "int-committed", ConversationID: "conv-committed",
@@ -88,13 +91,14 @@ func TestStartInteractionPreservesCommittedResultAcrossQuestionArtifactFailures(
 			}
 			want := map[string]any{
 				"conversation_id": "conv-committed", "interaction_id": "int-committed", "execution_status": "active",
+				"owner": bkntrace.Owner{ApplicationPrincipalID: "cursor-app", EffectiveSubjectType: "user", EffectiveSubjectID: "user-1"},
 			}
 			if !reflect.DeepEqual(result.StructuredContent, want) {
-				t.Fatalf("Start must return only authoritative IDs/status: got=%#v want=%#v", result.StructuredContent, want)
+				t.Fatalf("Start must return authoritative IDs/status/owner: got=%#v want=%#v", result.StructuredContent, want)
 			}
 			text, ok := mcpsdk.AsTextContent(result.Content[0])
 			var fallback map[string]any
-			if !ok || json.Unmarshal([]byte(text.Text), &fallback) != nil || !reflect.DeepEqual(fallback, want) {
+			if !ok || json.Unmarshal([]byte(text.Text), &fallback) != nil || !reflect.DeepEqual(fallback, normalizeLifecycleOwnerTestJSON(t, want)) {
 				t.Fatalf("text fallback must preserve authoritative IDs/status: %#v", result.Content)
 			}
 			if len(result.Content) != 2 {
@@ -187,4 +191,17 @@ func startArtifactTestRequest() mcpsdk.CallToolRequest {
 		"conversation_id": "conv-committed", "conversation_mode": "continue",
 		"question": "查询 BOM", "agent_name": "供应链分析助手",
 	}}}
+}
+
+func normalizeLifecycleOwnerTestJSON(t *testing.T, value any) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	return result
 }

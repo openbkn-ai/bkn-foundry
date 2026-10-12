@@ -108,8 +108,8 @@ func TestCaptureRequestedAuditMapsOAuthAppToServiceAccount(t *testing.T) {
 	value, err := buildCaptureControlAudit(captureAuditInput{
 		EventName: "trace_evidence.configuration_change_requested", Phase: "disabling",
 		Action: "update", Outcome: "success", OperationID: "trace-op-app", PolicyRevision: 24,
-		DesiredState: "disabled", EffectiveState: "enabled", ActorID: "client-app",
-		ActorType: "app", Environment: "test", OccurredAt: time.Now().UTC(),
+		DesiredState: "disabled", EffectiveState: "enabled", ActorID: "client-app", EffectiveSubjectID: "client-app",
+		ActorType: "app", ActorNameSnapshot: "Test application", Environment: "test", OccurredAt: time.Now().UTC(),
 		BeforeHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		AfterHash:  "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 	})
@@ -147,7 +147,7 @@ func TestCaptureControlAuditRecordsAdmitAllFrozenEvents(t *testing.T) {
 			value, err := buildCaptureControlAudit(captureAuditInput{
 				EventName: test.name, Phase: test.phase, Action: test.action, Outcome: test.outcome,
 				OperationID: "trace-op-123", PolicyRevision: 20, DesiredState: "disabled", EffectiveState: "enabled",
-				ActorID: "user-1", ActorType: "user", Environment: "test", OccurredAt: now,
+				ActorID: "user-1", EffectiveSubjectID: "delegated-user", ActorType: "user", ActorNameSnapshot: "Test operator", Environment: "test", OccurredAt: now,
 				BeforeHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				AfterHash:  "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			})
@@ -167,5 +167,37 @@ func TestCaptureControlAuditRecordsAdmitAllFrozenEvents(t *testing.T) {
 				t.Fatalf("%s rejected by Audit Consumer: %v", test.name, err)
 			}
 		})
+	}
+}
+
+// The schema alone permits omitted display snapshots, but the public operation
+// audit projection correctly requires them. A producer must satisfy both.
+func TestCaptureRequestedAuditContainsProductionNameSnapshots(t *testing.T) {
+	value, err := buildCaptureControlAudit(captureAuditInput{
+		EventName: "trace_evidence.configuration_change_requested", Phase: "disabling",
+		Action: "update", Outcome: "success", OperationID: "trace-op-snapshots", PolicyRevision: 25,
+		DesiredState: "disabled", EffectiveState: "enabled", ActorID: "user-1", EffectiveSubjectID: "delegated-user", ActorType: "user", ActorNameSnapshot: "Test operator",
+		Environment: "test", OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event map[string]any
+	if err := json.Unmarshal(value, &event); err != nil {
+		t.Fatal(err)
+	}
+	actor := event["actor"].(map[string]any)
+	if actor["id"] != "user-1" || actor["display_name_snapshot"] != "Test operator" || actor["effective_subject"] != "delegated-user" || event["target"].(map[string]any)["name"] == nil {
+		t.Fatal("producer omitted snapshots required by the public Audit projection")
+	}
+}
+
+func TestCaptureRequestedAuditDoesNotInventAnActorName(t *testing.T) {
+	_, err := buildCaptureControlAudit(captureAuditInput{
+		EventName: "trace_evidence.configuration_change_requested", OperationID: "trace-op-no-name",
+		PolicyRevision: 26, ActorID: "user-1", ActorType: "user", EffectiveSubjectID: "delegated-user", Environment: "test", OccurredAt: time.Now().UTC(),
+	})
+	if err == nil {
+		t.Fatal("missing trusted actor name must remain an Audit coverage gap")
 	}
 }

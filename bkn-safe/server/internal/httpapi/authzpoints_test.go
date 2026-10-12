@@ -7,7 +7,6 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -277,13 +276,15 @@ func TestObjectGrantRevokeSemantics(t *testing.T) {
 		t.Fatal("revoking one grant removed its sibling operation")
 	}
 
-	// Same request again: still 204, but the audit trail shows it matched nothing.
+	// Same request again: still 204, but no business state changed and therefore
+	// no second business audit fact is emitted.
 	clearAuditLog(t, db)
 	if w := adminReq(t, r, http.MethodDelete, objectGrantsPath, gin.H{"grant_id": grantID}); w.Code != http.StatusNoContent {
 		t.Fatalf("repeat revoke: want 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if detail := onlyAuditDetail(t, db); !strings.Contains(detail, `"removed":false`) {
-		t.Fatalf("repeat revoke: want _outcome.removed=false in audit detail, got %s", detail)
+	var repeated []model.AuditLog
+	if err := db.Find(&repeated).Error; err != nil || len(repeated) != 0 {
+		t.Fatalf("repeat revoke audit rows = %d, err=%v, want 0", len(repeated), err)
 	}
 }
 

@@ -36,15 +36,15 @@ func (*validatingViewService) QueryWithPaging(context.Context, *interfaces.Resou
 	return nil, errors.New("query is not expected")
 }
 
-func TestValidateResourceRequestLogicViewService(t *testing.T) {
-	previous := resourcelogic.GetLogicViewService()
-	t.Cleanup(func() { resourcelogic.SetLogicViewService(previous) })
-	req := &interfaces.ResourceRequest{Name: "view", Category: interfaces.ResourceCategoryLogicView}
+func TestValidateResourceRequestLogicalViewService(t *testing.T) {
+	previous := resourcelogic.GetLogicalViewService()
+	t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
+	req := &interfaces.ResourceRequest{Name: "view", Category: interfaces.ResourceCategoryLogicalView}
 	want := errors.New("invalid view")
-	resourcelogic.SetLogicViewService(&validatingViewService{err: want})
+	resourcelogic.SetLogicalViewService(&validatingViewService{err: want})
 	require.ErrorIs(t, ValidateResourceRequest(context.Background(), req), want)
 
-	resourcelogic.SetLogicViewService(nil)
+	resourcelogic.SetLogicalViewService(nil)
 	var httpErr *rest.HTTPError
 	require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
 	require.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)

@@ -314,7 +314,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				// Determine operation type
 				switch op {
 				case "r", "c":
-					if err := sbw.handleCreateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields); err != nil {
+					if err := sbw.handleCreateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields, resource.SchemaDefinition); err != nil {
 						if !errors.Is(err, errStreamingDocumentWrite) {
 							return err
 						}
@@ -324,7 +324,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 					}
 				case "u":
 					// Update operation
-					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields); err != nil {
+					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields, resource.SchemaDefinition); err != nil {
 						logger.Errorf("Failed to handle update operation: %v", err)
 						time.Sleep(retryInterval)
 						continue
@@ -534,8 +534,11 @@ func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 	}
 }
 
-func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string) error {
+func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string, schema []*interfaces.Property) error {
 	document := filterBuildDocumentFields(after, outputFields)
+	if err := normalizeJSONDocumentFields(document, schema); err != nil {
+		return fmt.Errorf("normalize streaming document: %w", err)
+	}
 	kafkaKeyValues, err := getKafkaKeyValues(buildTaskInfo.IndexConfig.PrimaryKeyFields, keyMap)
 	if err != nil {
 		return fmt.Errorf("extract Kafka key values: %w", err)
@@ -556,7 +559,7 @@ func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyM
 }
 
 // handleUpdateOperation handles update operations.
-func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string) error {
+func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string, schema []*interfaces.Property) error {
 	documentIDFields := buildTaskInfo.IndexConfig.PrimaryKeyFields
 	kafkaKeyValues, err := getKafkaKeyValues(documentIDFields, keyMap)
 	if err != nil {
@@ -569,6 +572,9 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 
 	// Create updated document from the after data
 	document := filterBuildDocumentFields(after, outputFields)
+	if err := normalizeJSONDocumentFields(document, schema); err != nil {
+		return fmt.Errorf("normalize streaming document: %w", err)
+	}
 
 	newKeyValues, err := extractKeyValues(documentIDFields, document)
 	if err != nil {

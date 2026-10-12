@@ -2173,7 +2173,8 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			proxy := &knowledgeNetworkProxyResolverStub{}
 			service.proxy = proxy
 			query := &interfaces.SubGraphQueryBaseOnSource{
-				KNID: knID,
+				KNID:                  knID,
+				CommonQueryParameters: interfaces.CommonQueryParameters{IgnoreLocalIndex: true},
 			}
 
 			currentLevelObjects := []interfaces.LevelObject{
@@ -2223,6 +2224,8 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
+			So(service.vba.(*vegaStubForKNQuery).lastParams.IgnoreLocalIndex, ShouldNotBeNil)
+			So(*service.vba.(*vegaStubForKNQuery).lastParams.IgnoreLocalIndex, ShouldBeTrue)
 			So(len(result), ShouldBeGreaterThan, 0)
 			So(proxy.bindings, ShouldHaveLength, 1)
 			So(proxy.bindings[0], ShouldResemble, interfaces.TrustedProxyBinding{
@@ -2512,11 +2515,13 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 }
 
 type vegaStubForKNQuery struct {
-	resp *interfaces.DatasetQueryResponse
-	err  error
+	lastParams *interfaces.ResourceDataQueryParams
+	resp       *interfaces.DatasetQueryResponse
+	err        error
 }
 
 func (v *vegaStubForKNQuery) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	v.lastParams = params
 	if v.err != nil {
 		return nil, v.err
 	}

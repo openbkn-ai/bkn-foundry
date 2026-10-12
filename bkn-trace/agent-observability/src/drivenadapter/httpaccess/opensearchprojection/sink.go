@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
@@ -21,6 +22,7 @@ const receiptProjectionIndexMapping = `{
   "mappings": {
     "dynamic": true,
     "properties": {
+      "envelope": {"type": "object", "dynamic": false},
       "receipt_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "conversation_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "interaction_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
@@ -45,12 +47,13 @@ const receiptProjectionIndexMapping = `{
 }`
 
 // conversationAuditProjectionMapping is deliberately limited to fields used by
-// conversation audit queries. Existing projection aliases can have receipt
-// fields with different historical mappings, so upgrading them with the full
-// receipt mapping is unsafe.
+// conversation audit queries and bounds opaque producer envelope mapping.
+// Existing aliases can have receipt fields with different historical mappings,
+// so upgrading them with the full receipt mapping is unsafe.
 const conversationAuditProjectionMapping = `{
   "mappings": {
     "properties": {
+      "envelope": {"type": "object", "dynamic": false},
       "external_conversation_key": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "generation": {"type": "long"},
       "created_at": {"type": "date"}
@@ -97,10 +100,7 @@ func (s *Sink) EnsureBootstrap(ctx context.Context, indexVersion string) error {
 		return fmt.Errorf("check projection alias: %w", err)
 	}
 	if aliasExists {
-		if err := s.client.EnsureMapping(ctx, s.index, []byte(conversationAuditProjectionMapping)); err != nil {
-			return fmt.Errorf("update conversation audit mapping for existing alias: %w", err)
-		}
-		return nil
+		return s.ensureExistingAliasMappings(ctx)
 	}
 	indexExists, err := s.client.IndexExists(ctx, s.index)
 	if err != nil {
@@ -114,6 +114,65 @@ func (s *Sink) EnsureBootstrap(ctx context.Context, indexVersion string) error {
 	}
 	if err := s.SwitchAlias(ctx, s.index, indexVersion); err != nil {
 		return fmt.Errorf("switch initial projection alias: %w", err)
+	}
+	return nil
+}
+
+// Inspect all alias targets before selecting additive, type-compatible patches.
+func (s *Sink) ensureExistingAliasMappings(ctx context.Context) error {
+	mappings, err := s.client.GetMappings(ctx, s.index)
+	if err != nil {
+		return fmt.Errorf("read existing projection mappings: %w", err)
+	}
+	var definition struct {
+		Mappings struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"mappings"`
+	}
+	if err := json.Unmarshal([]byte(conversationAuditProjectionMapping), &definition); err != nil {
+		return err
+	}
+	delete(definition.Mappings.Properties, "envelope")
+	legacyPatch, err := json.Marshal(definition)
+	if err != nil {
+		return err
+	}
+	type patch struct {
+		index      string
+		definition []byte
+		legacyType string
+	}
+	patches := make([]patch, 0, len(mappings))
+	for index, mapping := range mappings {
+		var existing struct {
+			Properties map[string]struct {
+				Type    string `json:"type"`
+				Enabled *bool  `json:"enabled"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(mapping, &existing); err != nil {
+			return fmt.Errorf("decode existing projection mapping: %w", err)
+		}
+		envelope := existing.Properties["envelope"]
+		envelopeType := envelope.Type
+		item := patch{index: index, definition: []byte(conversationAuditProjectionMapping)}
+		if (envelopeType != "" && envelopeType != "object") || (envelope.Enabled != nil && !*envelope.Enabled) {
+			item.definition = legacyPatch
+			item.legacyType = envelopeType
+			if envelope.Enabled != nil && !*envelope.Enabled {
+				item.legacyType = "disabled_object"
+			}
+		}
+		patches = append(patches, item)
+	}
+	sort.Slice(patches, func(i, j int) bool { return patches[i].index < patches[j].index })
+	for _, item := range patches {
+		if err := s.client.EnsureMapping(ctx, item.index, item.definition); err != nil {
+			return fmt.Errorf("update compatible projection mapping for index %q: %w", item.index, err)
+		}
+		if item.legacyType != "" {
+			slog.WarnContext(ctx, "projection index retains legacy envelope mapping; opaque object mapping was not applied", "index", item.index, "envelope_type", item.legacyType)
+		}
 	}
 	return nil
 }

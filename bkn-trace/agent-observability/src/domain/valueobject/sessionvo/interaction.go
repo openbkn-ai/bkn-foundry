@@ -50,23 +50,25 @@ type ExpectedReceipt struct {
 }
 
 type Interaction struct {
-	ID                     string            `json:"interaction_id" binding:"required"`
-	ConversationID         string            `json:"conversation_id" binding:"required"`
-	Ordinal                uint64            `json:"ordinal" binding:"required"`
-	ExecutionStatus        InteractionStatus `json:"execution_status" binding:"required"`
-	EvidenceStatus         EvidenceStatus    `json:"evidence_status" binding:"required"`
-	StartIdempotencyKey    string            `json:"-"`
-	TerminalIdempotencyKey string            `json:"-"`
-	TerminalPayloadHash    string            `json:"-"`
-	ClosureManifest        *ClosureManifest  `json:"closure_manifest,omitempty"`
-	LeaseToken             string            `json:"lease_token" binding:"required"`
-	LeaseEpoch             uint64            `json:"lease_epoch" binding:"required"`
-	LeaseVersion           uint64            `json:"lease_version" binding:"required"`
-	LeaseExpiresAt         time.Time         `json:"lease_expires_at" binding:"required"`
-	RowVersion             uint64            `json:"row_version" binding:"required"`
-	CreatedAt              time.Time         `json:"created_at" binding:"required"`
-	UpdatedAt              time.Time         `json:"updated_at" binding:"required"`
-	TerminalAt             *time.Time        `json:"terminal_at,omitempty"`
+	IntegritySourceVersion uint64                 `json:"-"`
+	StoredRecordIntegrity  *StoredRecordIntegrity `json:"-"`
+	ID                     string                 `json:"interaction_id" binding:"required"`
+	ConversationID         string                 `json:"conversation_id" binding:"required"`
+	Ordinal                uint64                 `json:"ordinal" binding:"required"`
+	ExecutionStatus        InteractionStatus      `json:"execution_status" binding:"required"`
+	EvidenceStatus         EvidenceStatus         `json:"evidence_status" binding:"required"`
+	StartIdempotencyKey    string                 `json:"-"`
+	TerminalIdempotencyKey string                 `json:"-"`
+	TerminalPayloadHash    string                 `json:"-"`
+	ClosureManifest        *ClosureManifest       `json:"closure_manifest,omitempty"`
+	LeaseToken             string                 `json:"lease_token" binding:"required"`
+	LeaseEpoch             uint64                 `json:"lease_epoch" binding:"required"`
+	LeaseVersion           uint64                 `json:"lease_version" binding:"required"`
+	LeaseExpiresAt         time.Time              `json:"lease_expires_at" binding:"required"`
+	RowVersion             uint64                 `json:"row_version" binding:"required"`
+	CreatedAt              time.Time              `json:"created_at" binding:"required"`
+	UpdatedAt              time.Time              `json:"updated_at" binding:"required"`
+	TerminalAt             *time.Time             `json:"terminal_at,omitempty"`
 }
 
 func (i Interaction) IsTerminal() bool {

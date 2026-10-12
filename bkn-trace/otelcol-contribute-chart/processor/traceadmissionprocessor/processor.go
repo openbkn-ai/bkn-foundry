@@ -10,7 +10,6 @@ package traceadmissionprocessor
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -30,8 +29,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor"
 	"go.uber.org/zap"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
 )
 
 var typeTraceAdmission = component.MustNewType("traceadmission")
@@ -67,7 +64,7 @@ type traceAdmissionProcessor struct {
 	etag            string
 	currentRevision uint64
 	activeOpID      string
-	cached          *traceadmissionsvc.SignedSnapshot
+	cached          *traceadmissionsvc.Snapshot
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
 	dropped         atomic.Uint64
@@ -93,14 +90,7 @@ func newProcessorWithClientAndLogger(config Config, next consumer.Traces, baseCl
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
-	current, err := decodePublicKey(config.CurrentPublicKey)
-	if err != nil {
-		return nil, err
-	}
-	previous, err := decodeOptionalPublicKey(config.PreviousPublicKey)
-	if err != nil {
-		return nil, err
-	}
+	var err error
 	if config.ProcessBootID == "" {
 		config.ProcessBootID, err = newBootID()
 		if err != nil {
@@ -115,17 +105,10 @@ func newProcessorWithClientAndLogger(config Config, next consumer.Traces, baseCl
 	if clientCopy.Timeout <= 0 {
 		clientCopy.Timeout = config.HTTPTimeout
 	}
-	oauthConfig := clientcredentials.Config{
-		ClientID: config.ClientID, ClientSecret: config.ClientSecret, TokenURL: config.TokenURL,
-		Scopes: strings.Fields(config.Scope),
-	}
-	oauthContext := context.WithValue(context.Background(), oauth2.HTTPClient, &clientCopy)
-	client := oauthConfig.Client(oauthContext)
 	return &traceAdmissionProcessor{
-		next: next, client: client, config: config, logger: logger, now: now,
+		next: next, client: &clientCopy, config: config, logger: logger, now: now,
 		gateway: traceadmissionsvc.NewGateway(traceadmissionsvc.GatewayConfig{
-			Audience: config.Audience, CurrentKeyID: config.CurrentKeyID, CurrentKey: ed25519.PublicKey(current),
-			PreviousKeyID: config.PreviousKeyID, PreviousKey: ed25519.PublicKey(previous), Now: now,
+			Now: now,
 		}),
 	}, nil
 }
@@ -222,10 +205,10 @@ func (p *traceAdmissionProcessor) refresh(ctx context.Context) error {
 	return nil
 }
 
-func (p *traceAdmissionProcessor) pullPolicy(ctx context.Context) (traceadmissionsvc.SignedSnapshot, error) {
+func (p *traceAdmissionProcessor) pullPolicy(ctx context.Context) (traceadmissionsvc.Snapshot, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.PolicyURL, nil)
 	if err != nil {
-		return traceadmissionsvc.SignedSnapshot{}, err
+		return traceadmissionsvc.Snapshot{}, err
 	}
 	p.mu.Lock()
 	if p.etag != "" {
@@ -234,25 +217,25 @@ func (p *traceAdmissionProcessor) pullPolicy(ctx context.Context) (traceadmissio
 	p.mu.Unlock()
 	response, err := p.client.Do(request)
 	if err != nil {
-		return traceadmissionsvc.SignedSnapshot{}, err
+		return traceadmissionsvc.Snapshot{}, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusNotModified {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if p.cached == nil {
-			return traceadmissionsvc.SignedSnapshot{}, errors.New("policy returned 304 without a cached snapshot")
+			return traceadmissionsvc.Snapshot{}, errors.New("policy returned 304 without a cached snapshot")
 		}
 		return *p.cached, nil
 	}
 	if response.StatusCode != http.StatusOK {
-		return traceadmissionsvc.SignedSnapshot{}, &controlError{status: response.StatusCode, err: fmt.Errorf("policy endpoint returned %s", response.Status)}
+		return traceadmissionsvc.Snapshot{}, &controlError{status: response.StatusCode, err: fmt.Errorf("policy endpoint returned %s", response.Status)}
 	}
-	var snapshot traceadmissionsvc.SignedSnapshot
+	var snapshot traceadmissionsvc.Snapshot
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&snapshot); err != nil {
-		return traceadmissionsvc.SignedSnapshot{}, err
+		return traceadmissionsvc.Snapshot{}, err
 	}
 	p.mu.Lock()
 	p.etag = response.Header.Get("ETag")
@@ -344,6 +327,8 @@ func validConfigurationBudget(budget configurationBudget) bool {
 }
 
 type heartbeatRequest struct {
+	EndpointKind     string `json:"endpoint_kind"`
+	WorkloadIdentity string `json:"workload_identity"`
 	InstanceID       string `json:"instance_id"`
 	ProcessBootID    string `json:"process_boot_id"`
 	ObservedRevision uint64 `json:"observed_revision"`
@@ -352,6 +337,7 @@ type heartbeatRequest struct {
 
 func (p *traceAdmissionProcessor) sendHeartbeat(ctx context.Context, revision uint64) error {
 	return p.postJSON(ctx, p.config.HeartbeatURL, "heartbeat", heartbeatRequest{
+		EndpointKind: "trace_gateway", WorkloadIdentity: p.config.WorkloadIdentity,
 		InstanceID: p.config.WorkloadIdentity + "#" + p.config.ProcessBootID, ProcessBootID: p.config.ProcessBootID,
 		ObservedRevision: revision, Ready: p.gateway.ReadyFor(revision),
 	})
@@ -377,7 +363,7 @@ type TraceGatewayQueueDispositionV1 struct {
 	GapReason   string  `json:"gap_reason,omitempty"`
 }
 
-func (p *traceAdmissionProcessor) sendAcknowledgement(ctx context.Context, operationID string, snapshot traceadmissionsvc.SignedSnapshot) error {
+func (p *traceAdmissionProcessor) sendAcknowledgement(ctx context.Context, operationID string, snapshot traceadmissionsvc.Snapshot) error {
 	state := string(snapshot.TraceAdmission)
 	disposition := TraceGatewayQueueDispositionV1{State: "not_applicable", Exported: 0, Dropped: 0, Unaccounted: uint64Ptr(0)}
 	if snapshot.TraceAdmission == traceadmissionsvc.ModeDisabled {
@@ -431,17 +417,6 @@ func (p *traceAdmissionProcessor) controlFailure(stage string, err error) error 
 		if errors.As(err, &endpointErr) {
 			status = endpointErr.status
 		}
-		var tokenErr *oauth2.RetrieveError
-		if errors.As(err, &tokenErr) {
-			logStage = "token"
-			if tokenErr.Response != nil {
-				status = tokenErr.Response.StatusCode
-			}
-		}
-		var requestErr *url.Error
-		if errors.As(err, &requestErr) && requestErr.URL == p.config.TokenURL {
-			logStage = "token"
-		}
 		p.logger.Warn("trace admission control refresh failed", zap.String("stage", logStage), zap.Int("status", status), zap.String("error_code", controlErrorCode(err)))
 	}
 	return err
@@ -463,13 +438,6 @@ func controlErrorCode(err error) string {
 	}
 	var endpointErr *controlError
 	if errors.As(err, &endpointErr) {
-		return "http_status"
-	}
-	var tokenErr *oauth2.RetrieveError
-	if errors.As(err, &tokenErr) {
-		if tokenErr.ErrorCode != "" {
-			return tokenErr.ErrorCode
-		}
 		return "http_status"
 	}
 	return "request_failed"
@@ -496,12 +464,5 @@ func newBootID() (string, error) {
 }
 
 func uint64Ptr(value uint64) *uint64 { return &value }
-
-func decodeOptionalPublicKey(value string) ([]byte, error) {
-	if value == "" {
-		return nil, nil
-	}
-	return decodePublicKey(value)
-}
 
 var _ processor.Traces = (*traceAdmissionProcessor)(nil)

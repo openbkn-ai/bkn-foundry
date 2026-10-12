@@ -25,6 +25,46 @@ import (
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
 
+func TestSemanticUnderstandingTaskServiceList(t *testing.T) {
+	t.Run("reports task query failure instead of permission filter failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService}
+		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(),
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, interfaces.VISIBILITY_MATCH_ALL,
+			interfaces.CatalogsQueryParams{}).Return([]string{"catalog-1"}, nil)
+		taskAccess.EXPECT().List(gomock.Any(), gomock.Any()).
+			Return(nil, int64(0), errors.New("task query failed"))
+
+		tasks, total, err := service.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, "VegaBackend.SemanticUnderstandingTask.InternalError.GetFailed", httpErr.BaseError.ErrorCode)
+		assert.Nil(t, tasks)
+		assert.Zero(t, total)
+	})
+
+	t.Run("preserves permission filter failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService}
+		permissionErr := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_FilterResourcesFailed)
+		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, permissionErr)
+
+		tasks, total, err := service.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+
+		assert.Same(t, permissionErr, err)
+		assert.Nil(t, tasks)
+		assert.Zero(t, total)
+	})
+}
+
 /* Catalog 输入组装暂停；保留原测试。
 func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	threshold := 0.75
@@ -37,7 +77,7 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 				SourceIdentifier: "order_summary",
 				Description:      "订单统计逻辑视图",
 				Status:           interfaces.ResourceStatusActive,
-				Category:         interfaces.ResourceCategoryLogicView,
+				Category:         interfaces.ResourceCategoryLogicalView,
 				LogicDefinition:  []*interfaces.LogicDefinitionNode{{ID: "hidden"}},
 			},
 			{
@@ -94,11 +134,11 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	assert.Equal(t, []any{"order_id"}, keys["primary"])
 	assert.Equal(t, []any{[]any{"order_no"}}, keys["unique"])
 
-	logicViews := got["existing_logic_views"].([]any)
-	require.Len(t, logicViews, 1)
-	logicView := logicViews[0].(map[string]any)
-	assert.Equal(t, "order_summary", logicView["source_identifier"])
-	assert.NotContains(t, logicView, "logic_definition")
+	logicalViews := got["existing_logical_views"].([]any)
+	require.Len(t, logicalViews, 1)
+	logicalView := logicalViews[0].(map[string]any)
+	assert.Equal(t, "order_summary", logicalView["source_identifier"])
+	assert.NotContains(t, logicalView, "logic_definition")
 }
 */
 
@@ -243,7 +283,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		assert.Equal(t, inputHash, task.InputHash)
 	})
 
-	t.Run("omits binary columns from the task input after connector conversion", func(t *testing.T) {
+	t.Run("omits binary other and vector columns from the task input", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
@@ -258,6 +298,11 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			OriginalName: "shape",
 			OriginalType: "geometry",
 			Type:         interfaces.DataType_Other,
+		}, &interfaces.Property{
+			Name:         "embedding",
+			OriginalName: "embedding_vector",
+			OriginalType: "knn_vector",
+			Type:         interfaces.DataType_Vector,
 		})
 		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
@@ -269,9 +314,10 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.Equal(t, []string{"order_id"}, params.OutputFields)
 				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{
-					"order_id":        "o-1",
-					"attachment_blob": string([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
-					"shape":           string([]byte{0x07, 0x08, 0x09}),
+					"order_id":         "o-1",
+					"embedding_vector": []float32{0.1, 0.2},
+					"attachment_blob":  string([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+					"shape":            string([]byte{0x07, 0x08, 0x09}),
 				}}}, nil
 			})
 
@@ -283,6 +329,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		assert.Equal(t, "o-1", input.SampleRows[0]["order_id"])
 		assert.NotContains(t, input.SampleRows[0], "attachment_blob")
 		assert.NotContains(t, input.SampleRows[0], "shape")
+		assert.NotContains(t, input.SampleRows[0], "embedding_vector")
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusAvailable, input.SampleContext.Status)
 		assert.Equal(t, []interfaces.SemanticUnderstandingSampleOmission{
 			{
@@ -295,6 +342,12 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 				Name:         "shape",
 				OriginalName: "shape",
 				Type:         interfaces.DataType_Other,
+				Reason:       interfaces.SemanticUnderstandingSampleOmissionReasonPolicy,
+			},
+			{
+				Name:         "embedding",
+				OriginalName: "embedding_vector",
+				Type:         interfaces.DataType_Vector,
 				Reason:       interfaces.SemanticUnderstandingSampleOmissionReasonPolicy,
 			},
 		}, input.SampleContext.OmittedFields)
@@ -338,6 +391,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resource.SchemaDefinition = []*interfaces.Property{
 			{Name: "attachmentBlob", OriginalName: "attachment_blob", Type: interfaces.DataType_Binary},
 			{Name: "shape", OriginalName: "shape", Type: interfaces.DataType_Other},
+			{Name: "embedding", OriginalName: "embedding", Type: interfaces.DataType_Vector},
 		}
 		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
@@ -351,7 +405,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
 		assert.Empty(t, input.SampleRows)
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy, input.SampleContext.Status)
-		require.Len(t, input.SampleContext.OmittedFields, 2)
+		require.Len(t, input.SampleContext.OmittedFields, 3)
 	})
 
 	t.Run("writes an empty sample_rows array when the query has no rows", func(t *testing.T) {
@@ -662,6 +716,22 @@ func TestLimitSemanticUnderstandingSampleRows(t *testing.T) {
 		assert.Equal(t, "kept", rows[0]["note"])
 	})
 
+	t.Run("excludes vectors before enforcing the payload budget without mutating source rows", func(t *testing.T) {
+		schema := []*interfaces.Property{
+			{Name: "embedding", OriginalName: "embedding_vector", Type: interfaces.DataType_Vector},
+		}
+		source := []map[string]any{{
+			"embedding_vector": make([]float32, interfaces.MaxSemanticUnderstandingSamplePayloadBytes),
+			"note":             "kept",
+		}}
+		rows, truncated, err := limitSemanticUnderstandingSampleRows(source, schema)
+		require.NoError(t, err)
+		assert.False(t, truncated)
+		require.Len(t, rows, 1)
+		assert.Equal(t, map[string]any{"note": "kept"}, rows[0])
+		assert.Contains(t, source[0], "embedding_vector")
+	})
+
 	t.Run("drops trailing rows when the payload exceeds the limit", func(t *testing.T) {
 		rows := make([]map[string]any, interfaces.MaxSemanticUnderstandingSampleRows)
 		for rowIndex := range rows {
@@ -727,6 +797,90 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 }
 
 func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
+	t.Run("rejects detail without task_manage before checking query_data", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService, rs: resourceService}
+		task := &interfaces.SemanticUnderstandingTask{ID: "task-1", CatalogID: "c-1", ResourceID: "r-1", Input: "stored input"}
+		taskAccess.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID,
+			[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
+
+		got, err := service.GetByID(context.Background(), task.ID)
+
+		require.Error(t, err)
+		assert.True(t, interfaces.IsPermissionRefusal(err))
+		assert.Nil(t, got)
+		assert.Equal(t, "stored input", task.Input)
+	})
+
+	for _, tc := range []struct {
+		name          string
+		resourceID    string
+		emptyInput    bool
+		permissionErr error
+		wantInput     bool
+	}{
+		{name: "retains input with query_data", resourceID: "r-1", wantInput: true},
+		{name: "clears input without query_data", resourceID: "r-1", permissionErr: rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)},
+		{name: "propagates authorization failure", resourceID: "r-1", permissionErr: errors.New("authorization unavailable")},
+		{name: "clears input without a resource"},
+		{name: "skips query_data check for empty input", resourceID: "r-1", emptyInput: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+			resourceService := mock_interfaces.NewMockResourceService(ctrl)
+			catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+			userService := mock_interfaces.NewMockUserMgmtService(ctrl)
+			service := &semanticUnderstandingTaskService{suta: taskAccess, rs: resourceService, cs: catalogService, ums: userService}
+			task := &interfaces.SemanticUnderstandingTask{
+				ID: "task-1", CatalogID: "c-1", ResourceID: tc.resourceID,
+				Input:  `{"sample_rows":[{"order_id":"sample-order"}]}`,
+				Status: interfaces.SemanticUnderstandingTaskStatusPending,
+			}
+			if tc.emptyInput {
+				task.Input = ""
+			}
+			originalInput := task.Input
+			taskAccess.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
+			catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID,
+				[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
+			if tc.resourceID != "" && !tc.emptyInput {
+				resourceService.EXPECT().CheckResourcePermission(gomock.Any(), tc.resourceID,
+					interfaces.OPERATION_TYPE_QUERY_DATA).Return(tc.permissionErr)
+			}
+			failed := tc.permissionErr != nil && !interfaces.IsPermissionRefusal(tc.permissionErr)
+			if !failed {
+				catalogService.EXPECT().InternalGetByIDs(gomock.Any(), []string{task.CatalogID}).Return(nil, nil)
+				if tc.resourceID != "" {
+					resourceService.EXPECT().InternalGetByIDs(gomock.Any(), []string{tc.resourceID}).Return(nil, nil)
+				}
+				userService.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+			}
+
+			got, err := service.GetByID(context.Background(), task.ID)
+
+			if failed {
+				assert.Equal(t, originalInput, task.Input)
+				require.ErrorIs(t, err, tc.permissionErr)
+				assert.Nil(t, got)
+				return
+			}
+			require.NoError(t, err)
+			require.Same(t, task, got)
+			assert.Equal(t, "task-1", got.ID)
+			assert.Equal(t, task.Status, got.Status)
+			if tc.wantInput {
+				assert.Equal(t, originalInput, got.Input)
+			} else {
+				assert.Empty(t, got.Input)
+			}
+		})
+	}
+
 	t.Run("enriches creator name", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)

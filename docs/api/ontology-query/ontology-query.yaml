@@ -17,6 +17,15 @@ info:
     endpoint. Proxy identity and target bindings are always server-derived from
     the current published `main` model. See `../knowledge-network-authorization.md`
     and `trusted-proxy-context.md`.
+    Instance and subgraph reads use `ignore_local_index` (default false) to bypass
+    a resource's local index where supported. Applicability and operator support
+    depend on the resource's query capabilities in Vega. This replaces the ineffective
+    `ignoring_store_cache` parameter; no compatibility alias is provided. Object
+    responses expose Vega's actual `query_source` (`local_index` or `source`)
+    instead of `search_from_index`. Clients must migrate these names together
+    with the server. The internal cursor digest encoding remains unchanged.
+    Changing `ignore_local_index` requires a new query rather than continuing
+    an existing cursor.
 security:
   - OAuth2: []
 paths:
@@ -223,18 +232,18 @@ paths:
           type: boolean
         in: query
       - name: exclude_system_properties
-        description: 需要排除的系统字段列表。可选值：_instance_id（实例ID）、_instance_identity（实例唯一标识）、_display（显示值）。如果指定了某个字段，则在返回的对象数据中不包含该字段。可以传递多个值，例如：?exclude_system_properties=_instance_id&exclude_system_properties=_display
+        description: 需要排除的系统字段列表。可选值：_instance_id（实例ID）、_instance_identity（实例唯一标识）、_display（显示值）、_score（相关性分数）。如果指定了某个字段，则在返回的对象数据中不包含该字段。可以传递多个值，例如：?exclude_system_properties=_instance_id&exclude_system_properties=_display
         schema:
           type: array
           items:
             type: string
-            enum: ["_instance_id", "_instance_identity", "_display"]
+            enum: ["_instance_id", "_instance_identity", "_display", "_score"]
         style: form
         explode: true
         in: query
         required: false
-      - name: ignoring_store_cache
-        description: 是否忽略索引查询，默认false，不忽略，即走索引查询
+      - name: ignore_local_index
+        description: 是否跳过资源的本地索引并查询数据源，默认 false；参数是否适用及 match/knn 等算子是否受支持，由 Vega 根据资源的查询能力决定。
         schema:
           type: boolean
         in: query
@@ -1177,8 +1186,8 @@ paths:
           type: string
         in: query
         required: false
-      - name: ignoring_store_cache
-        description: 是否忽略索引查询，默认false，不忽略，即走索引查询
+      - name: ignore_local_index
+        description: 是否跳过资源的本地索引并查询数据源，默认 false；参数是否适用及 match/knn 等算子是否受支持，由 Vega 根据资源的查询能力决定。
         schema:
           type: boolean
         in: query
@@ -2275,8 +2284,8 @@ paths:
           type: boolean
         in: query
         required: false
-      - name: ignoring_store_cache
-        description: 是否忽略索引查询，默认是false，不忽略，即走索引查询
+      - name: ignore_local_index
+        description: 是否跳过资源的本地索引并查询数据源，默认 false；参数是否适用及 match/knn 等算子是否受支持，由 Vega 根据资源的查询能力决定。
         schema:
           type: boolean
         in: query
@@ -3354,10 +3363,7 @@ components:
       type: object
       properties:
         analyzer:
-          description: 分词器
-          enum:
-          - standard
-          - ik_max_word
+          description: 分词器 ID。可用值由 GET /api/vega-backend/v1/index-capabilities 的 fulltext_analyzers 返回，取决于集群实际支持的分词器。
           type: string
         field_keyword:
           description: 是否保留原始字符串，保留原始字符串可用于精确匹配。默认是false
@@ -4282,6 +4288,10 @@ components:
       - datas
       type: object
       properties:
+        query_source:
+          description: Vega 实际查询来源，local_index 表示资源本地索引，source 表示原始数据源。未执行资源查询时省略。替代旧 search_from_index 字段。
+          type: string
+          enum: [local_index, source]
         object_type:
           $ref: '#/components/schemas/ObjectTypeDetail'
           description: 对象类信息
@@ -4369,6 +4379,11 @@ components:
       description: 对象信息
       type: object
       properties:
+        _score:
+          description: |
+            match、knn 等打分查询由索引返回的真实相关性分数，不受视图字段别名映射影响。
+            普通读取、底层未返回分数，或 exclude_system_properties 排除 _score 时不返回。
+          type: number
         _instance_id:
           description: 实例id。默认返回，当 exclude_system_properties 排除时，不返回。
           type: string

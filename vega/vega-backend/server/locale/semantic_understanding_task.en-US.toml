@@ -8,6 +8,11 @@ Description = "Semantic understanding task is pending or running and cannot be d
 Solution = "Wait for the task to complete or fail before deleting"
 ErrorLink = ""
 
+[VegaBackend.SemanticUnderstandingTask.InternalError.GetFailed]
+Description = "Failed to get semantic understanding tasks"
+Solution = "Please contact the administrator"
+ErrorLink = ""
+
 [VegaBackend.SemanticUnderstandingTask.InternalError.DeleteFailed]
 Description = "Failed to delete semantic understanding task"
 Solution = "Please contact the administrator"

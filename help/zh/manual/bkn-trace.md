@@ -48,6 +48,15 @@ conversation (根 Span)
 
 ### 证据链分析
 
+对于结果证据缺失，`current_record_integrity.missing[]` 可包含从已记录发布结果提取的
+`drop_reason`。`publisher_unavailable` 表示发布器无法接收结果事件，`queue_full` 表示
+发布队列已满。业务调用可以是 `completed`，同时结果证据仍然缺失。没有 `drop_reason`
+表示未记录适用于该结果事件的发布失败原因。
+
+ontology-query 明确启用证据发布器时，无效的启动配置会阻止服务启动，并指出具体配置项。
+临时的策略读取、心跳或 ACK 失败沿用现有后台重试；运行日志指出 producer 和失败环节，
+相同错误连续发生时只记录一次，恢复后记录恢复信息。
+
 Trace 数据支持以下分析场景：
 
 - **性能瓶颈定位**：通过 `duration_ms` 找到耗时最长的 Span

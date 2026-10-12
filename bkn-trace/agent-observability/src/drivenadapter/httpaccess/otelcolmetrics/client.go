@@ -9,11 +9,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sourcecoveragesvc"
 )
 
@@ -41,20 +43,28 @@ func New(endpoint string, httpClient *http.Client) *Client {
 	return &Client{endpoint: strings.TrimRight(endpoint, "/"), httpClient: httpClient}
 }
 
-func (client *Client) Read(ctx context.Context) (sourcecoveragesvc.Snapshot, error) {
+func (client *Client) readValues(ctx context.Context, validateQueue bool) (map[string]int64, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.endpoint, nil)
 	if err != nil {
-		return sourcecoveragesvc.Snapshot{}, fmt.Errorf("build collector metrics request: %w", err)
+		return nil, fmt.Errorf("build collector metrics request: %w", err)
 	}
 	response, err := client.httpClient.Do(request)
 	if err != nil {
-		return sourcecoveragesvc.Snapshot{}, fmt.Errorf("request collector metrics: %w", err)
+		return nil, fmt.Errorf("request collector metrics: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return sourcecoveragesvc.Snapshot{}, fmt.Errorf("collector metrics returned status %d", response.StatusCode)
+		return nil, fmt.Errorf("collector metrics returned status %d", response.StatusCode)
 	}
-	values, err := readMetrics(response.Body)
+	values, err := readMetrics(response.Body, validateQueue)
+	if err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+func (client *Client) Read(ctx context.Context) (sourcecoveragesvc.Snapshot, error) {
+	values, err := client.readValues(ctx, false)
 	if err != nil {
 		return sourcecoveragesvc.Snapshot{}, err
 	}
@@ -68,14 +78,22 @@ func (client *Client) Read(ctx context.Context) (sourcecoveragesvc.Snapshot, err
 // source-coverage monitor. A missing/zero queue capacity is not a healthy
 // zero; it is an unavailable admission source and must fail closed.
 func (client *Client) ReadQueueSample(ctx context.Context) (QueueSample, error) {
-	snapshot, err := client.Read(ctx)
+	values, err := client.readValues(ctx, true)
 	if err != nil {
 		return QueueSample{}, err
 	}
-	if snapshot.QueueCapacity <= 0 || snapshot.QueueSize < 0 {
-		return QueueSample{}, fmt.Errorf("collector queue metrics omitted positive queue capacity")
+	size, hasSize := values[queueSizeMetric]
+	capacity, hasCapacity := values[queueCapacityMetric]
+	if !hasSize {
+		return QueueSample{}, queueMetricError("metric_missing", queueSizeMetric)
 	}
-	utilization := float64(snapshot.QueueSize) / float64(snapshot.QueueCapacity)
+	if !hasCapacity {
+		return QueueSample{}, queueMetricError("metric_missing", queueCapacityMetric)
+	}
+	if capacity <= 0 {
+		return QueueSample{}, queueMetricError("metric_invalid", queueCapacityMetric)
+	}
+	utilization := float64(size) / float64(capacity)
 	if utilization < 0 {
 		utilization = 0
 	}
@@ -85,7 +103,11 @@ func (client *Client) ReadQueueSample(ctx context.Context) (QueueSample, error) 
 	return QueueSample{Utilization: utilization, SampledAt: time.Now().UTC()}, nil
 }
 
-func readMetrics(body interface{ Read([]byte) (int, error) }) (map[string]int64, error) {
+func queueMetricError(reason, field string) error {
+	return &capturepolicysvc.AdmissionBudgetError{Reason: reason, Metric: "trace_collector_queue", Fields: []string{field}, Cause: fmt.Errorf("collector queue metric %s is missing or invalid", field)}
+}
+
+func readMetrics(body interface{ Read([]byte) (int, error) }, validateQueue bool) (map[string]int64, error) {
 	values := map[string]int64{}
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -106,7 +128,12 @@ func readMetrics(body interface{ Read([]byte) (int, error) }) (map[string]int64,
 			continue
 		}
 		value, err := strconv.ParseFloat(fields[1], 64)
-		if err != nil || value < 0 {
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value >= float64(math.MaxInt64) {
+			// Source coverage can still use refused/failed counters when queue
+			// samples are invalid. Only admission-budget reads require them.
+			if validateQueue && (name == queueSizeMetric || name == queueCapacityMetric) {
+				return nil, queueMetricError("metric_invalid", name)
+			}
 			continue
 		}
 		values[name] += int64(value)

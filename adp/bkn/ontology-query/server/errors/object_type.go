@@ -11,7 +11,7 @@ const (
 	// 400
 	OntologyQuery_ObjectType_InvalidParameter                      = "OntologyQuery.ObjectType.InvalidParameter"
 	OntologyQuery_ObjectType_InvalidParameter_DynamicParams        = "OntologyQuery.ObjectType.InvalidParameter.DynamicParams"
-	OntologyQuery_ObjectType_InvalidParameter_IgnoringStoreCache   = "OntologyQuery.ObjectType.InvalidParameter.IgnoringStoreCache"
+	OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex     = "OntologyQuery.ObjectType.InvalidParameter.IgnoreLocalIndex"
 	OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo      = "OntologyQuery.ObjectType.InvalidParameter.IncludeTypeInfo"
 	OntologyQuery_ObjectType_InvalidParameter_SmallModel           = "OntologyQuery.ObjectType.InvalidParameter.SmallModel"
 	OntologyQuery_ObjectType_UnsupportLogicPropertyParameterSource = "OntologyQuery.ObjectType.UnsupportLogicPropertyParameterSource"
@@ -37,7 +37,7 @@ var (
 		// 400
 		OntologyQuery_ObjectType_InvalidParameter,
 		OntologyQuery_ObjectType_InvalidParameter_DynamicParams,
-		OntologyQuery_ObjectType_InvalidParameter_IgnoringStoreCache,
+		OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex,
 		OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo,
 		OntologyQuery_ObjectType_InvalidParameter_SmallModel,
 		OntologyQuery_ObjectType_UnsupportLogicPropertyParameterSource,

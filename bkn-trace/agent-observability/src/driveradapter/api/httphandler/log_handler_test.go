@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,12 @@ import (
 
 type handlerLogSource struct {
 	records []observabilityvo.LogRecord
+}
+
+type emptyAuditLogSource struct{ handlerLogSource }
+
+func (emptyAuditLogSource) Metadata() observabilityvo.SourceStatus {
+	return observabilityvo.SourceStatus{SourceID: "audit-ledger", Status: "healthy", Categories: []string{"audit.admin"}}
 }
 
 type authCapturingLogSource struct {
@@ -339,12 +346,12 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 		Roles:              []string{"admin"}, AccountActive: true, Fingerprint: "sha256:scope-a",
 	}
 	base := time.Now().UTC().Truncate(time.Second)
-	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{
-		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base},
-		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base.Add(-time.Second)},
-		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base.Add(-2 * time.Second)},
-	})
-	firstRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2", nil)
+	records := make([]observabilityvo.LogRecord, 21)
+	for index := range records {
+		records[index] = observabilityvo.LogRecord{LogID: "log-" + strconv.Itoa(index), Category: observabilityvo.CategoryRuntimeBusiness, EventTimestamp: base.Add(-time.Duration(index) * time.Second)}
+	}
+	handler := newTestLogHandler(profile, records)
+	firstRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=20", nil)
 	setLogTestIdentity(firstRequest, "admin-a")
 	firstResponse := httptest.NewRecorder()
 	handler.ListLogs(firstResponse, firstRequest)
@@ -355,7 +362,7 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 		t.Fatalf("first page did not return a cursor: %d %s", firstResponse.Code, firstResponse.Body.String())
 	}
 
-	invalidRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2&cursor=invalid", nil)
+	invalidRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=20&cursor=invalid", nil)
 	setLogTestIdentity(invalidRequest, "admin-a")
 	invalidResponse := httptest.NewRecorder()
 	handler.ListLogs(invalidResponse, invalidRequest)
@@ -363,7 +370,7 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 		t.Fatalf("invalid cursor contract mismatch: %d %s", invalidResponse.Code, invalidResponse.Body.String())
 	}
 
-	changedFilterRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2&business_module=system_management&cursor="+firstBody.NextCursor, nil)
+	changedFilterRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=20&business_module=system_management&cursor="+firstBody.NextCursor, nil)
 	setLogTestIdentity(changedFilterRequest, "admin-a")
 	changedFilterResponse := httptest.NewRecorder()
 	handler.ListLogs(changedFilterResponse, changedFilterRequest)
@@ -481,6 +488,35 @@ func containsJSONCode(payload []byte, expected string) bool {
 	}
 	errorBody, _ := body["error"].(map[string]any)
 	return errorBody["code"] == expected
+}
+
+func TestLogHandlerReportsAuditConsumerNotConfigured(t *testing.T) {
+	profile := evidencevo.AccessProfile{ActorID: "audit-a", EffectiveSubjectID: "audit-a", Roles: []string{"audit"}, AccountActive: true}
+	handler := newTestLogHandler(profile, nil)
+	handler.service = logsvc.NewWithOptions([]logsvc.Source{logsvc.NewUnconfiguredAuditSource()}, logsvc.Options{OperationAuditOnly: true})
+	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?categories=audit.admin", nil)
+	setLogTestIdentity(request, "audit-a")
+	response := httptest.NewRecorder()
+	handler.ListLogs(response, request)
+	var body observabilityErrorEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusServiceUnavailable || body.Error.Code != "audit_consumer_not_configured" || body.Error.Retryable || body.Error.RequiredAction == "" {
+		t.Fatalf("unexpected audit configuration response: %d %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	writeLogServiceError(response, request, logsvc.ErrSourcesUnavailable)
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || !body.Error.Retryable || body.Error.Code != "sources_unavailable" {
+		t.Fatalf("temporary source failure must remain retryable: %s", response.Body.String())
+	}
+	// An empty but configured source is a successful query, not a configuration error.
+	handler.service = logsvc.NewWithOptions([]logsvc.Source{emptyAuditLogSource{}}, logsvc.Options{OperationAuditOnly: true})
+	response = httptest.NewRecorder()
+	handler.ListLogs(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"data":[]`) {
+		t.Fatalf("configured empty Audit must return 200 with an empty list: %d %s", response.Code, response.Body.String())
+	}
 }
 
 func setLogTestIdentity(request *http.Request, subject string) {

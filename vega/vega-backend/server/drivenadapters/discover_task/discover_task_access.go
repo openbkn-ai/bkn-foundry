@@ -163,6 +163,7 @@ func scanDiscoverTaskSummary(scanner discoverTaskScanner) (*interfaces.DiscoverT
 				UpdatedCount:   result.UpdatedCount,
 				RestoredCount:  result.RestoredCount,
 				FailedCount:    result.FailedCount,
+				SkippedCount:   result.SkippedCount,
 			}
 		}
 	}
@@ -399,11 +400,16 @@ func applyDiscoverTaskFilters(builder sq.SelectBuilder,
 	return builder
 }
 
+// The unique ID makes pagination deterministic when primary sort values tie.
 func buildOrderByClause(sort, direction string) string {
-	column := "f_create_time"
+	dir := "DESC"
+	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
+		dir = "ASC"
+	}
+	var column string
 	switch sort {
 	case interfaces.DiscoverTaskSortQueuePriority:
-		return "f_queue_priority DESC, f_create_time ASC"
+		return "f_queue_priority DESC, f_create_time ASC, f_id ASC"
 	case interfaces.DiscoverTaskSortStartTime:
 		column = "f_start_time"
 	case interfaces.DiscoverTaskSortFinishTime:
@@ -412,13 +418,10 @@ func buildOrderByClause(sort, direction string) string {
 		column = "f_last_progress_time"
 	case interfaces.DiscoverTaskSortCreateTime, "":
 		column = "f_create_time"
+	default:
+		column = "f_create_time"
 	}
-
-	dir := "DESC"
-	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
-		dir = "ASC"
-	}
-	return fmt.Sprintf("%s %s", column, dir)
+	return fmt.Sprintf("%s %s, f_id %s", column, dir, dir)
 }
 
 func (dta *discoverTaskAccess) MarkRunning(ctx context.Context, id string, startTime int64) (bool, error) {
@@ -453,12 +456,20 @@ func (dta *discoverTaskAccess) MarkCompleted(
 		return false, err
 	}
 
-	return dta.update(ctx, nil, map[string]any{
-		"f_status":      interfaces.DiscoverTaskStatusCompleted,
+	status := interfaces.DiscoverTaskStatusCompleted
+	if result != nil && result.Failed {
+		status = interfaces.DiscoverTaskStatusFailed
+	}
+	fields := map[string]any{
+		"f_status":      status,
 		"f_result":      resultJSON,
 		"f_progress":    100,
 		"f_finish_time": finishTime,
-	}, map[string]any{
+	}
+	if result != nil && (result.Failed || result.FailedCount > 0 || result.SkippedCount > 0) {
+		fields["f_message"] = result.Message
+	}
+	return dta.update(ctx, nil, fields, map[string]any{
 		"f_id":     id,
 		"f_status": interfaces.DiscoverTaskStatusRunning,
 	})

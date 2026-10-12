@@ -12,28 +12,19 @@ import (
 	"time"
 )
 
-const traceEvidenceConfigurationPath = "/api/agent-observability/v1/trace-evidence-configuration"
+const traceEvidenceConfigurationPath = "/api/agent-observability/v1/internal/trace-evidence/configuration"
 
 var errInvalidConfigurationClient = errors.New("invalid evidence publisher configuration client")
 
-// AccessTokenSource is satisfied by OAuthTokenSource and permits the runtime
-// client to add a short-lived BKN Safe Bearer token to control-plane reads.
-type AccessTokenSource interface {
-	Token(context.Context) (string, error)
-}
-
 type ConfigurationClientConfig struct {
-	BaseURL     string
-	HTTPClient  *http.Client
-	TokenSource AccessTokenSource
+	BaseURL    string
+	HTTPClient *http.Client
 }
 
-// ConfigurationClient reads the existing, capability-protected configuration
-// endpoint. It does not model or validate the signed policy snapshot.
+// ConfigurationClient reads the internal configuration endpoint.
 type ConfigurationClient struct {
-	url         string
-	client      *http.Client
-	tokenSource AccessTokenSource
+	url    string
+	client *http.Client
 }
 
 type ConfigurationOperation struct {
@@ -44,7 +35,7 @@ type ConfigurationOperation struct {
 func NewConfigurationClient(config ConfigurationClientConfig) (*ConfigurationClient, error) {
 	baseURL := strings.TrimSpace(config.BaseURL)
 	parsed, err := url.ParseRequestURI(baseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || config.TokenSource == nil {
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, errInvalidConfigurationClient
 	}
 	client := config.HTTPClient
@@ -52,31 +43,22 @@ func NewConfigurationClient(config ConfigurationClientConfig) (*ConfigurationCli
 		client = &http.Client{Timeout: 5 * time.Second}
 	}
 	return &ConfigurationClient{
-		url:         strings.TrimRight(baseURL, "/") + traceEvidenceConfigurationPath,
-		client:      client,
-		tokenSource: config.TokenSource,
+		url:    strings.TrimRight(baseURL, "/") + traceEvidenceConfigurationPath,
+		client: client,
 	}, nil
 }
 
 // OperationForRevision returns an ACK candidate only when the existing
 // configuration read model names an active operation at the same revision as
-// the already-verified signed policy snapshot. Callers must not ACK otherwise.
+// the validated policy snapshot. Callers must not ACK otherwise.
 func (c *ConfigurationClient) OperationForRevision(ctx context.Context, revision uint64) (ConfigurationOperation, bool, error) {
-	if c == nil || c.client == nil || c.tokenSource == nil || revision == 0 {
+	if c == nil || c.client == nil || revision == 0 {
 		return ConfigurationOperation{}, false, errInvalidConfigurationClient
-	}
-	token, err := c.tokenSource.Token(ctx)
-	if err != nil {
-		return ConfigurationOperation{}, false, fmt.Errorf("get BKN Safe access token: %w", err)
-	}
-	if strings.TrimSpace(token) == "" {
-		return ConfigurationOperation{}, false, errors.New("BKN Safe access token is empty")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
 		return ConfigurationOperation{}, false, fmt.Errorf("create trace evidence configuration request: %w", err)
 	}
-	request.Header.Set("Authorization", "Bearer "+token)
 	response, err := c.client.Do(request)
 	if err != nil {
 		return ConfigurationOperation{}, false, fmt.Errorf("read trace evidence configuration: %w", err)

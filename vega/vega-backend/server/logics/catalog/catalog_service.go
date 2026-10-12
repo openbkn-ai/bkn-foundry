@@ -1061,7 +1061,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, catalog *interf
 	resourceIDs := make([]string, 0, len(resources))
 	for _, resource := range resources {
 		resourceIDs = append(resourceIDs, resource.ID)
-		if resource.Category == interfaces.ResourceCategoryDataset || resource.Category == interfaces.ResourceCategoryLogicView {
+		if resource.Category == interfaces.ResourceCategoryDataset || resource.Category == interfaces.ResourceCategoryLogicalView {
 			protectedResources++
 		}
 	}

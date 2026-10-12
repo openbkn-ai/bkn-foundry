@@ -1,83 +1,33 @@
-import base64
-import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from aiohttp import web
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.evidence_policy import AckNotExpected, EvidencePolicyRuntime, TraceAdmissionClient, VerifiedPolicy, verify_policy_snapshot
 from app.evidence_kafka import DrainSummary, EvidenceKafkaConfig, EvidenceKafkaPublisher
 
 
-def signed_policy(private_key, *, revision=11, mode="enabled", audience="cluster-a"):
+def policy_snapshot(*, revision=11, mode="enabled"):
     now = datetime.now(timezone.utc)
-    fields = {
-        "contract_version": "TraceEvidencePolicySnapshotV1",
-        "revision": revision,
-        "trace_admission": mode,
-        "evidence_admission": mode,
-        "issued_at": (now - timedelta(seconds=2)).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-        "expires_at": (now + timedelta(minutes=5)).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-        "key_id": "test-key",
-        "audience_cluster_id": audience,
-    }
-    canonical = json.dumps(fields, separators=(",", ":"), ensure_ascii=False)
-    for char, escaped in (("&", "\\u0026"), ("<", "\\u003c"), (">", "\\u003e"), ("\u2028", "\\u2028"), ("\u2029", "\\u2029")):
-        canonical = canonical.replace(char, escaped)
-    canonical = canonical.encode()
-    fields["signature"] = "ed25519:" + base64.urlsafe_b64encode(private_key.sign(canonical)).decode().rstrip("=")
-    return fields
+    return {"contract_version": "TraceEvidencePolicySnapshotV1", "revision": revision,
+            "trace_admission": mode, "evidence_admission": mode,
+            "issued_at": (now - timedelta(seconds=2)).isoformat(),
+            "expires_at": (now + timedelta(minutes=5)).isoformat()}
 
 
-def test_verified_policy_uses_signed_revision_and_mode():
-    private_key = Ed25519PrivateKey.generate()
-    public_key = private_key.public_key().public_bytes_raw()
-    snapshot = verify_policy_snapshot(signed_policy(private_key), "cluster-a", "test-key", public_key)
-    assert snapshot.revision == 11
-    assert snapshot.enabled is True
+def test_unsigned_policy_preserves_revision_and_mode():
+    snapshot = verify_policy_snapshot(policy_snapshot())
+    assert snapshot.revision == 11 and snapshot.enabled
 
 
-def test_verified_policy_accepts_go_json_escaped_signed_fields():
-    private_key = Ed25519PrivateKey.generate()
-    audience = "cluster<&>\u2028"
-    snapshot = verify_policy_snapshot(
-        signed_policy(private_key, audience=audience), audience,
-        "test-key", private_key.public_key().public_bytes_raw(),
-    )
-    assert snapshot.revision == 11
-
-
-@pytest.mark.parametrize("change", [
-    {"revision": 12},
-    {"evidence_admission": "disabled"},
-    {"audience_cluster_id": "other-cluster"},
-    {"key_id": "unknown"},
-])
-def test_policy_rejects_tampering_and_identity_mismatch(change):
-    private_key = Ed25519PrivateKey.generate()
-    public_key = private_key.public_key().public_bytes_raw()
-    wire = signed_policy(private_key)
+@pytest.mark.parametrize("change", [{"revision": 0}, {"revision": True},
+    {"evidence_admission": "disabled"}, {"contract_version": "old"},
+    {"expires_at": "2020-01-01T00:00:00Z"}, {"issued_at": "invalid"}])
+def test_policy_rejects_invalid_state(change):
+    wire = policy_snapshot()
     wire.update(change)
     with pytest.raises(ValueError):
-        verify_policy_snapshot(wire, "cluster-a", "test-key", public_key)
-
-
-def test_verified_policy_accepts_configured_previous_key_only():
-    current = Ed25519PrivateKey.generate()
-    previous = Ed25519PrivateKey.generate()
-    wire = signed_policy(previous)
-    wire["key_id"] = "previous-key"
-    fields = {key: wire[key] for key in (
-        "contract_version", "revision", "trace_admission", "evidence_admission",
-        "issued_at", "expires_at", "key_id", "audience_cluster_id",
-    )}
-    canonical = json.dumps(fields, separators=(",", ":"), ensure_ascii=False).encode()
-    wire["signature"] = "ed25519:" + base64.urlsafe_b64encode(previous.sign(canonical)).decode().rstrip("=")
-    assert verify_policy_snapshot(
-        wire, "cluster-a", "test-key", current.public_key().public_bytes_raw(),
-        previous_key_id="previous-key", previous_public_key=previous.public_key().public_bytes_raw(),
-    ).revision == 11
+        verify_policy_snapshot(wire)
 
 
 class FakeControl:
@@ -269,27 +219,21 @@ async def test_close_acknowledges_final_disposition_at_verified_revision():
 
 
 @pytest.mark.anyio
-async def test_control_client_uses_oauth_and_frozen_heartbeat_ack_wires():
-    private_key = Ed25519PrivateKey.generate()
+async def test_control_client_uses_internal_unsigned_requests_and_frozen_wires():
     requests = []
     async def request(method, url, headers, body):
         requests.append((method, url, headers, body))
-        if url.endswith("/oauth2/token"):
-            assert body == {"grant_type": "client_credentials", "client_id": "bkn-agent", "client_secret": "client-secret"}
-            return 200, {"access_token": "test-token", "expires_in": 300}
-        assert headers["Authorization"] == "Bearer test-token"
+        assert "Authorization" not in headers
         if url.endswith("/internal/trace-evidence/policy"):
-            return 200, signed_policy(private_key)
-        if url.endswith("/trace-evidence-configuration"):
+            return 200, policy_snapshot()
+        if url.endswith("/internal/trace-evidence/configuration"):
             return 200, {"kind": "configuration_get", "policy_revision": 11, "active_operation_id": "op-11"}
         return 204, {}
     client = TraceAdmissionClient(
         "http://ao/internal/trace-evidence/policy",
-        "http://ao/trace-evidence-configuration",
+        "http://ao/internal/trace-evidence/configuration",
         "http://ao/internal/trace-evidence/endpoints:heartbeat",
         "http://ao/internal/trace-evidence/operations",
-        "http://safe/oauth2/token", "bkn-agent", "client-secret",
-        "cluster-a", "test-key", private_key.public_key().public_bytes_raw(),
         request=request,
     )
     assert (await client.read_policy()).revision == 11
@@ -298,7 +242,7 @@ async def test_control_client_uses_oauth_and_frozen_heartbeat_ack_wires():
     summary = DrainSummary("bkn-agent#boot-1", 11, 2, 2, 0, True, "2026-09-27T00:00:00.000Z")
     await client.acknowledge("op-11", summary)
     heartbeat = next(body for method, url, _, body in requests if url.endswith("endpoints:heartbeat"))
-    assert heartbeat == {"instance_id": "bkn-agent#boot-1", "process_boot_id": "boot-1", "observed_revision": 11, "ready": True}
+    assert heartbeat == {"endpoint_kind": "evidence_publisher", "workload_identity": "bkn-agent", "instance_id": "bkn-agent#boot-1", "process_boot_id": "boot-1", "observed_revision": 11, "ready": True}
     ack = next(body for method, url, _, body in requests if url.endswith("op-11:publisher-ack"))
     assert ack["capture_policy_revision"] == 11
     assert ack["last_accepted_sequence"] == ack["published"] + ack["dropped"]
@@ -306,42 +250,36 @@ async def test_control_client_uses_oauth_and_frozen_heartbeat_ack_wires():
 
 @pytest.mark.anyio
 async def test_configuration_revision_lag_has_no_ack_candidate():
-    private_key = Ed25519PrivateKey.generate()
     async def request(method, url, headers, body):
-        if url.endswith("/oauth2/token"):
-            return 200, {"access_token": "test-token", "expires_in": 300}
-        if url.endswith("/trace-evidence-configuration"):
+        if url.endswith("/internal/trace-evidence/configuration"):
             return 200, {"kind": "configuration_get", "policy_revision": 10, "active_operation_id": "old-op"}
-        return 200, signed_policy(private_key)
+        return 200, policy_snapshot()
     client = TraceAdmissionClient(
-        "http://ao/internal/trace-evidence/policy", "http://ao/trace-evidence-configuration",
+        "http://ao/internal/trace-evidence/policy", "http://ao/internal/trace-evidence/configuration",
         "http://ao/internal/trace-evidence/endpoints:heartbeat", "http://ao/internal/trace-evidence/operations",
-        "http://safe/oauth2/token", "bkn-agent", "client-secret",
-        "cluster-a", "test-key", private_key.public_key().public_bytes_raw(), request=request,
+        request=request,
     )
     assert await client.operation_for_revision(11) is None
 
 
 @pytest.mark.anyio
-async def test_oauth_transport_sends_form_encoded_client_credentials():
+async def test_internal_transport_sends_json_without_credentials():
     observed = []
-    async def token(request):
-        observed.append(dict(await request.post()))
-        return web.json_response({"access_token": "test-token", "expires_in": 300})
+    async def heartbeat(request):
+        observed.append((request.headers.get("Authorization"), await request.json()))
+        return web.json_response({})
     app = web.Application()
-    app.router.add_post("/oauth2/token", token)
+    app.router.add_post("/heartbeat", heartbeat)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)
     await site.start()
     port = site._server.sockets[0].getsockname()[1]
     try:
-        status, body = await TraceAdmissionClient._http_request(
-            "POST", f"http://127.0.0.1:{port}/oauth2/token",
-            {"Content-Type": "application/x-www-form-urlencoded"},
-            {"grant_type": "client_credentials", "client_id": "bkn-agent", "client_secret": "client-secret"},
-        )
-        assert status == 200 and body["access_token"] == "test-token"
-        assert observed == [{"grant_type": "client_credentials", "client_id": "bkn-agent", "client_secret": "client-secret"}]
+        status, _ = await TraceAdmissionClient._http_request(
+            "POST", f"http://127.0.0.1:{port}/heartbeat",
+            {"Content-Type": "application/json"}, {"ready": True})
+        assert status == 200
+        assert observed == [(None, {"ready": True})]
     finally:
         await runner.cleanup()

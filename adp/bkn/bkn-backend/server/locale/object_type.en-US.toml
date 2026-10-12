@@ -197,5 +197,4 @@ PropertyNameInvalid = "Property names may contain letters, digits, underscores, 
 PropertyNamesLengthMismatch = "property_names and data_properties must have the same length."
 DataPropertyMissingFromURL = "Data property {{.property}} is not present in the URL."
 KeywordIgnoreAboveLenInvalid = "keyword_config.ignore_above_len must be greater than 0."
-FulltextAnalyzerInvalid = "fulltext_config.analyzer must be standard, english, ik_max_word, hanlp_standard, or hanlp_index."
 VectorModelIDRequired = "vector_config.model_id is required."

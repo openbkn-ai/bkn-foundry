@@ -549,8 +549,8 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 	for _, key := range []string{
 		"resource",
 		"fields",
-		"logic_views",
-		"obsolete_logic_views",
+		"logical_views",
+		"obsolete_logical_views",
 		"warnings",
 		"confidence_detail",
 		"confidence_details",
@@ -1310,7 +1310,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		return nil, err
 	}
 	resourceByID := make(map[string]*interfaces.Resource, len(resources))
-	logicViewByID := make(map[string]*interfaces.Resource)
+	logicalViewByID := make(map[string]*interfaces.Resource)
 	sourceIdentifiers := make(map[string]struct{}, len(resources))
 	for _, res := range resources {
 		if res == nil {
@@ -1320,17 +1320,17 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		if res.SourceIdentifier != "" {
 			sourceIdentifiers[res.SourceIdentifier] = struct{}{}
 		}
-		if res.Category == interfaces.ResourceCategoryLogicView {
-			logicViewByID[res.ID] = res
+		if res.Category == interfaces.ResourceCategoryLogicalView {
+			logicalViewByID[res.ID] = res
 		}
 	}
 
 	detail := interfaces.SemanticUnderstandingCatalogApplyDetail{}
-	for i, view := range result.LogicViews {
-		if err := validateConfidence(view.Confidence, fmt.Sprintf("logic_views[%d].confidence", i)); err != nil {
+	for i, view := range result.LogicalViews {
+		if err := validateConfidence(view.Confidence, fmt.Sprintf("logical_views[%d].confidence", i)); err != nil {
 			return nil, err
 		}
-		if err := validateCatalogLogicViewOutput(view, resourceByID, logicViewByID, sourceIdentifiers); err != nil {
+		if err := validateCatalogLogicalViewOutput(view, resourceByID, logicalViewByID, sourceIdentifiers); err != nil {
 			return nil, err
 		}
 
@@ -1343,7 +1343,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				Name:             view.Name,
 				SourceIdentifier: view.SourceIdentifier,
 				Description:      view.Description,
-				Category:         interfaces.ResourceCategoryLogicView,
+				Category:         interfaces.ResourceCategoryLogicalView,
 				Enabled:          true,
 				Status:           interfaces.ResourceStatusActive,
 				LogicDefinition:  view.LogicDefinition,
@@ -1356,7 +1356,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				detail.CreatedResourceIDs = append(detail.CreatedResourceIDs, created.ID)
 			}
 		case "update":
-			current := logicViewByID[view.TargetResourceID]
+			current := logicalViewByID[view.TargetResourceID]
 			expectedUpdateTime := current.UpdateTime
 			nextDescription := current.Description
 			applyStringByMode(task.ApplyMode, &nextDescription, view.Description, false)
@@ -1376,15 +1376,15 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		}
 	}
 
-	for i, obsolete := range result.ObsoleteLogicViews {
-		if err := validateConfidence(obsolete.Confidence, fmt.Sprintf("obsolete_logic_views[%d].confidence", i)); err != nil {
+	for i, obsolete := range result.ObsoleteLogicalViews {
+		if err := validateConfidence(obsolete.Confidence, fmt.Sprintf("obsolete_logical_views[%d].confidence", i)); err != nil {
 			return nil, err
 		}
 		if obsolete.TargetResourceID == "" {
-			return nil, fmt.Errorf("obsolete_logic_views[%d].target_resource_id is required", i)
+			return nil, fmt.Errorf("obsolete_logical_views[%d].target_resource_id is required", i)
 		}
-		if _, ok := logicViewByID[obsolete.TargetResourceID]; !ok {
-			return nil, fmt.Errorf("obsolete logic view %s does not exist in catalog input", obsolete.TargetResourceID)
+		if _, ok := logicalViewByID[obsolete.TargetResourceID]; !ok {
+			return nil, fmt.Errorf("obsolete logical view %s does not exist in catalog input", obsolete.TargetResourceID)
 		}
 		err = sutw.rs.InternalUpdateStatus(ctx, tx, obsolete.TargetResourceID, interfaces.ResourceStatusStale, obsolete.Reason)
 		if err != nil {
@@ -1411,33 +1411,33 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 	}, nil
 }
 
-func validateCatalogLogicViewOutput(view interfaces.SemanticUnderstandingCatalogLogicView, resourceByID map[string]*interfaces.Resource, logicViewByID map[string]*interfaces.Resource, sourceIdentifiers map[string]struct{}) error {
+func validateCatalogLogicalViewOutput(view interfaces.SemanticUnderstandingCatalogLogicalView, resourceByID map[string]*interfaces.Resource, logicalViewByID map[string]*interfaces.Resource, sourceIdentifiers map[string]struct{}) error {
 	switch view.Action {
 	case "create":
 		if view.TargetResourceID != "" {
-			return fmt.Errorf("target_resource_id must be empty when creating logic view")
+			return fmt.Errorf("target_resource_id must be empty when creating logical view")
 		}
 		if view.Name == "" {
-			return fmt.Errorf("logic view name is required when creating logic view")
+			return fmt.Errorf("logical view name is required when creating logical view")
 		}
 		if !semanticUnderstandingSourceIdentifierPattern.MatchString(view.SourceIdentifier) {
-			return fmt.Errorf("source_identifier must be lower snake_case when creating logic view")
+			return fmt.Errorf("source_identifier must be lower snake_case when creating logical view")
 		}
 		if _, exists := sourceIdentifiers[view.SourceIdentifier]; exists {
 			return fmt.Errorf("source_identifier %s already exists in catalog input", view.SourceIdentifier)
 		}
 	case "update":
 		if view.TargetResourceID == "" {
-			return fmt.Errorf("target_resource_id is required when updating logic view")
+			return fmt.Errorf("target_resource_id is required when updating logical view")
 		}
-		if _, ok := logicViewByID[view.TargetResourceID]; !ok {
-			return fmt.Errorf("logic view %s does not exist in catalog input", view.TargetResourceID)
+		if _, ok := logicalViewByID[view.TargetResourceID]; !ok {
+			return fmt.Errorf("logical view %s does not exist in catalog input", view.TargetResourceID)
 		}
 	default:
-		return fmt.Errorf("unsupported logic view action: %s", view.Action)
+		return fmt.Errorf("unsupported logical view action: %s", view.Action)
 	}
 	if len(interfaces.LegacyLogicDefinitionNodes(view.LogicDefinition)) == 0 {
-		return fmt.Errorf("logic_definition is required for logic view action %s", view.Action)
+		return fmt.Errorf("logic_definition is required for logical view action %s", view.Action)
 	}
 	for _, sourceResourceID := range view.SourceResources {
 		if _, ok := resourceByID[sourceResourceID]; !ok {

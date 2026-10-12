@@ -68,7 +68,7 @@ func TestDiscoverScheduleAccessList(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_schedule WHERE f_name LIKE ? AND f_catalog_id = ? AND f_enabled = ?").
 			WithArgs("%Night%", "catalog-1", true).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_name LIKE ? AND f_catalog_id = ? AND f_enabled = ? ORDER BY f_update_time DESC LIMIT 10 OFFSET 0").
+		mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_name LIKE ? AND f_catalog_id = ? AND f_enabled = ? ORDER BY f_update_time DESC, f_id DESC LIMIT 10 OFFSET 0").
 			WithArgs("%Night%", "catalog-1", true).
 			WillReturnRows(discoverScheduleRows().AddRow("schedule-1", "Nightly", "catalog-1", "0 0 * * *", int64(0), int64(0), true, "full_sync", int64(10), int64(20), "u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2)))
 
@@ -104,7 +104,7 @@ func TestDiscoverScheduleAccessList(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_schedule WHERE f_catalog_id IN (?,?)").
 			WithArgs("catalog-1", "catalog-2").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_catalog_id IN (?,?) ORDER BY f_update_time DESC").
+		mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_catalog_id IN (?,?) ORDER BY f_update_time DESC, f_id DESC").
 			WithArgs("catalog-1", "catalog-2").
 			WillReturnRows(discoverScheduleRows())
 
@@ -248,7 +248,7 @@ func TestDiscoverScheduleAccessListDue(t *testing.T) {
 	access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 	defer cleanup()
 
-	mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_enabled = ? AND f_next_run <= ? ORDER BY f_next_run ASC").
+	mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_enabled = ? AND f_next_run <= ? ORDER BY f_next_run ASC, f_id ASC").
 		WithArgs(true, int64(100)).
 		WillReturnRows(discoverScheduleRows().
 			AddRow("schedule-1", "Nightly", "catalog-1", "0 * * * *", int64(0), int64(0), true, "full_sync", int64(10), int64(20), "u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2)))
@@ -323,4 +323,24 @@ func newDiscoverScheduleAccessMock(t *testing.T) (*discoverScheduleAccess, sqlmo
 
 func discoverScheduleRows() *sqlmock.Rows {
 	return sqlmock.NewRows(discoverScheduleColumns())
+}
+
+func TestBuildOrderByClause(t *testing.T) {
+	t.Run("uses a unique ID to break ties for every supported sort", func(t *testing.T) {
+		for _, field := range []string{"name", "create_time", "update_time", "next_run"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				t.Run(field+"/"+direction, func(t *testing.T) {
+					assert.Equal(t, "f_"+field+" "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+				})
+			}
+		}
+	})
+	t.Run("default sort preserves the requested direction", func(t *testing.T) {
+		for _, field := range []string{"", "unknown"} {
+			for _, direction := range []string{"ASC", "DESC"} {
+				assert.Equal(t, "f_update_time "+direction+", f_id "+direction, buildOrderByClause(field, direction))
+			}
+		}
+	})
+
 }

@@ -23,11 +23,11 @@ const (
 // Name is set only when the caller may view the object type's definition, so
 // the guidance never reveals more than the caller could already read.
 type PermissionGuidanceResource struct {
-	Type string `json:"type"`
-	ID   string `json:"id"`
-	KnID string `json:"kn_id"`
-	OtID string `json:"ot_id"`
-	Name string `json:"name,omitempty"`
+	Type string `json:"type" toon:"type"`
+	ID   string `json:"id" toon:"id"`
+	KnID string `json:"kn_id" toon:"kn_id"`
+	OtID string `json:"ot_id" toon:"ot_id"`
+	Name string `json:"name,omitempty" toon:"name,omitempty"`
 }
 
 // PermissionShortfall is one access limit that affected a tool call.
@@ -37,10 +37,10 @@ type PermissionGuidanceResource struct {
 // caller knows the public address, this service does not). It is empty when
 // the caller cannot act on it in Studio and has to ask an administrator.
 type PermissionShortfall struct {
-	Scope                PermissionRequestScope `json:"scope"`
-	Operations           []string               `json:"operations,omitempty"`
-	Properties           []string               `json:"properties,omitempty"`
-	RequestPermissionURL string                 `json:"request_permission_url,omitempty"`
+	Scope                PermissionRequestScope `json:"scope" toon:"scope"`
+	Operations           []string               `json:"operations,omitempty" toon:"operations,omitempty"`
+	Properties           []string               `json:"properties,omitempty" toon:"properties,omitempty"`
+	RequestPermissionURL string                 `json:"request_permission_url,omitempty" toon:"request_permission_url,omitempty"`
 }
 
 // PermissionGuidance tells an agent which access limits shaped a tool result
@@ -49,7 +49,7 @@ type PermissionShortfall struct {
 type PermissionGuidance struct {
 	// Message is a localized sentence for the user: what was withheld and the
 	// next step (request and wait for approval, or ask an administrator).
-	Message    string                     `json:"message"`
-	Resource   PermissionGuidanceResource `json:"resource"`
-	Shortfalls []PermissionShortfall      `json:"shortfalls"`
+	Message    string                     `json:"message" toon:"message"`
+	Resource   PermissionGuidanceResource `json:"resource" toon:"resource"`
+	Shortfalls []PermissionShortfall      `json:"shortfalls" toon:"shortfalls"`
 }

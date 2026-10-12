@@ -124,24 +124,11 @@ func TestCoreConfigParsesOneShotIdleTTL(t *testing.T) {
 	}
 }
 
-func TestCoreConfigParsesIndependentCapturePolicySigner(t *testing.T) {
-	t.Setenv("BKN_TRACE_CAPTURE_POLICY_SIGNING_KEY", validProjectionGrantPrivateKey())
-	t.Setenv("BKN_TRACE_CAPTURE_POLICY_SIGNING_KEY_ID", "capture-key-2026")
-	t.Setenv("BKN_TRACE_CAPTURE_POLICY_AUDIENCE", "trace-gateway")
-	t.Setenv("BKN_TRACE_CAPTURE_POLICY_SNAPSHOT_TTL", "15m")
+func TestCoreConfigParsesCapturePolicySnapshotTTL(t *testing.T) {
+	t.Setenv("BKN_TRACE_CAPTURE_POLICY_SNAPSHOT_TTL", "10m")
 	config, err := NewCoreConfig()
-	if err != nil {
-		t.Fatalf("new core config: %v", err)
-	}
-	if len(config.CapturePolicySigningKey) != ed25519.PrivateKeySize || config.CapturePolicySigningKeyID != "capture-key-2026" || config.CapturePolicyAudience != "trace-gateway" || config.CapturePolicySnapshotTTL != 15*time.Minute {
-		t.Fatalf("unexpected capture policy signer config: %#v", config)
-	}
-}
-
-func TestCoreConfigRejectsCapturePolicyKeyWithoutIdentity(t *testing.T) {
-	t.Setenv("BKN_TRACE_CAPTURE_POLICY_SIGNING_KEY", validProjectionGrantPrivateKey())
-	if _, err := NewCoreConfig(); err == nil {
-		t.Fatal("capture policy signing key without key ID/audience must be rejected")
+	if err != nil || config.CapturePolicySnapshotTTL != 10*time.Minute {
+		t.Fatalf("config = %+v, err = %v", config, err)
 	}
 }
 

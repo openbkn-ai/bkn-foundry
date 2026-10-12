@@ -6,6 +6,7 @@ package toolbox
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
@@ -40,6 +41,7 @@ type ToolServiceImpl struct {
 	ToolBoxDB        model.IToolboxDB
 	ToolDB           model.IToolDB
 	Proxy            interfaces.ProxyHandler
+	ProxyMaxTimeout  time.Duration
 	CategoryManager  interfaces.CategoryManager
 	Logger           interfaces.Logger
 	UserMgnt         interfaces.UserManagement
@@ -71,6 +73,7 @@ func NewToolServiceImpl() interfaces.IToolService {
 			ToolBoxDB:        dbaccess.NewToolboxDB(),
 			ToolDB:           dbaccess.NewToolDB(),
 			Proxy:            proxy.NewProxyServer(),
+			ProxyMaxTimeout:  time.Duration(conf.ProxyModuleConfig.MaxTimeout) * time.Second,
 			Logger:           conf.GetLogger(),
 			UserMgnt:         drivenadapters.NewUserManagementClient(),
 			Validator:        validator.NewValidator(),

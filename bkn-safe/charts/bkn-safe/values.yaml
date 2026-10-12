@@ -150,6 +150,9 @@ config:
     bknBackend:
       baseURL: "http://bkn-backend-svc:13014"
       timeout: "3s"
+    bknAgent:
+      baseURL: "http://bkn-agent:30800"
+      timeout: "3s"
     executionFactory:
       baseURL: "http://agent-operator-integration:9000"
       timeout: "3s"

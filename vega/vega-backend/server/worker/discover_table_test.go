@@ -217,6 +217,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 		SourceIdentifier: "public.departments",
 		SourceMetadata: map[string]any{
 			"original_description": "旧源端表注释",
+			"properties":           map[string]any{"row_count": int64(42), "row_count_time": int64(100)},
 		},
 		SchemaDefinition: []*interfaces.Property{
 			{
@@ -238,6 +239,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}).
 		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
 			table.Description = "最新源端表注释"
+			table.Properties = map[string]any{"estimated_row_count": int64(99)}
 			table.Columns = []interfaces.TableColumnMeta{
 				{Name: "department_id", Type: "varchar", Description: "源端最新部门编号注释"},
 				{Name: "department_name", Type: "varchar", Description: "部门名称"},
@@ -248,6 +250,8 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
 			assert.Equal(t, "人工资源说明", updated.Description)
+			assert.Positive(t, updated.LastDiscoverTime)
+			assert.Equal(t, map[string]any{"estimated_row_count": int64(99)}, updated.SourceMetadata["properties"])
 			require.Len(t, updated.SchemaDefinition, 2)
 
 			existing := updated.SchemaDefinition[0]

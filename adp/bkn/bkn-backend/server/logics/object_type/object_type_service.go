@@ -666,6 +666,7 @@ func (ots *objectTypeService) ListObjectTypeSummaries(ctx context.Context, tx *s
 			if err := ots.loadObjectTypeSummaryAccounts(ctx, page); err != nil {
 				return nil, 0, err
 			}
+			ots.enrichObjectTypeIndexStatuses(ctx, page)
 			span.SetStatus(codes.Ok, "")
 			return page, total, nil
 		}
@@ -715,6 +716,7 @@ func (ots *objectTypeService) ListObjectTypeSummaries(ctx context.Context, tx *s
 	if err := ots.loadObjectTypeSummaryAccounts(ctx, visibleItems); err != nil {
 		return nil, 0, err
 	}
+	ots.enrichObjectTypeIndexStatuses(ctx, visibleItems)
 	span.SetStatus(codes.Ok, "")
 	return visibleItems, total, nil
 }
@@ -2246,6 +2248,49 @@ func (ots *objectTypeService) enrichObjectTypes(ctx context.Context, objectTypes
 	return nil
 }
 
+// enrichObjectTypeIndexStatuses projects only the response-time index state required by summary
+// surfaces. It deliberately avoids the schema, property capability, and logical-property work done
+// by enrichObjectTypes while retaining the same batched Vega read and managed-proxy authorization.
+func (ots *objectTypeService) enrichObjectTypeIndexStatuses(ctx context.Context,
+	objectTypes []*interfaces.ObjectType) {
+	resources := ots.fetchObjectTypeResources(ctx, objectTypes)
+	for _, objectType := range objectTypes {
+		if objectType != nil {
+			ots.projectObjectTypeIndexStatus(ctx, objectType, resources)
+		}
+	}
+}
+
+// projectObjectTypeIndexStatus applies the shared index-state semantics and returns the readable
+// resource for callers which also need detail enrichment. metadataUnavailable distinguishes a
+// failed resource read from a resource which is known not to exist.
+func (ots *objectTypeService) projectObjectTypeIndexStatus(ctx context.Context,
+	objectType *interfaces.ObjectType, resources map[string]vegaResourceLookup) (
+	resource *interfaces.VegaResource, metadataUnavailable bool) {
+	objectType.IndexStatus = &interfaces.ObjectTypeIndexStatus{State: interfaces.ObjectTypeIndexStateNotApplicable}
+	if objectType.DataSource == nil || objectType.DataSource.ID == "" ||
+		objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		return nil, false
+	}
+
+	lookup, lookedUp := resources[objectType.DataSource.ID]
+	resource, err := lookup.resourceFor(objectType)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s vega Resource %s not found, error: %v",
+			objectType.OTID, objectType.DataSource.ID, err))
+		setObjectTypeIndexStatus(objectType, interfaces.ObjectTypeIndexStateUnknown, "")
+		return nil, true
+	}
+	if !lookedUp || resource == nil {
+		// A successful Vega batch response which omits the id means the resource was deleted.
+		setObjectTypeIndexStatus(objectType, interfaces.ObjectTypeIndexStateResourceMissing, "")
+		return nil, false
+	}
+
+	setObjectTypeIndexStatus(objectType, indexStateForVegaResource(resource), resource.LocalIndexStatus)
+	return resource, false
+}
+
 // Extracted helper for processing object type details. resources holds the Vega resources read by
 // fetchObjectTypeResources for this batch of object types.
 func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, objectType *interfaces.ObjectType,
@@ -2253,56 +2298,39 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 
 	// The marker describes this response only; a value decoded from a stored document means nothing.
 	objectType.DataSourceMetadataUnavailable = false
-	objectType.IndexStatus = &interfaces.ObjectTypeIndexStatus{State: interfaces.ObjectTypeIndexStateNotApplicable}
 	for _, prop := range objectType.DataProperties {
 		if prop != nil {
 			// The persisted definition has no response-time index feature projection.
 			prop.IndexFeatures = nil
 		}
 	}
+	resource, metadataUnavailable := ots.projectObjectTypeIndexStatus(ctx, objectType, resources)
+	objectType.DataSourceMetadataUnavailable = metadataUnavailable
 
 	// Retrieve views or Vega resources to assemble operations. Assembly is unnecessary because they are persisted on save.
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
-		switch objectType.DataSource.Type {
-		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-			lookup, lookedUp := resources[objectType.DataSource.ID]
-			res, err := lookup.resourceFor(objectType)
-			if err != nil {
-				otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s vega Resource %s not found, error: %v",
-					objectType.OTID, objectType.DataSource.ID, err))
-				// A read that failed leaves the capabilities unknown: say so, so that a consumer
-				// deciding what to search does not read the missing condition_operations as
-				// "nothing here can be searched". A resource that no longer exists is a known
-				// answer, not an unknown one -- there is nothing to search -- so it is not marked.
-				objectType.DataSourceMetadataUnavailable = true
-				setObjectTypeIndexStatus(objectType, interfaces.ObjectTypeIndexStateUnknown, "")
-			} else if !lookedUp || res == nil {
-				// A successful Vega batch response which omits the id means the resource was deleted.
-				setObjectTypeIndexStatus(objectType, interfaces.ObjectTypeIndexStateResourceMissing, "")
-			} else {
-				setObjectTypeIndexStatus(objectType, indexStateForVegaResource(res), res.LocalIndexStatus)
-				objectType.DataSource.Name = res.Name
-				propertiesMap := logics.VegaResourceSchemaToPropertiesMap(res)
-				indexCaps := logics.VegaResourceIndexCaps(res)
-				featuresByField := configuredIndexFeatures(res, objectType.IndexStatus.State)
-				dslView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
-				for j, prop := range objectType.DataProperties {
-					if prop == nil {
-						continue
-					}
-					if prop.MappedField != nil {
-						if property, exists := propertiesMap[prop.MappedField.Name]; exists {
-							objectType.DataProperties[j].MappedField.DisplayName = property.DisplayName
-							objectType.DataProperties[j].MappedField.Type = property.Type
-						}
-						objectType.DataProperties[j].IndexFeatures = featuresByField[prop.MappedField.Name]
-					}
-					ops := ots.processConditionOperations(objectType, prop, dslView)
-					if prop.MappedField != nil {
-						ops = applyIndexCapOps(ops, indexCaps[prop.MappedField.Name])
-					}
-					objectType.DataProperties[j].ConditionOperations = ops
+		if resource != nil {
+			objectType.DataSource.Name = resource.Name
+			propertiesMap := logics.VegaResourceSchemaToPropertiesMap(resource)
+			indexCaps := logics.VegaResourceIndexCaps(resource)
+			featuresByField := configuredIndexFeatures(resource, objectType.IndexStatus.State)
+			dslView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
+			for j, prop := range objectType.DataProperties {
+				if prop == nil {
+					continue
 				}
+				if prop.MappedField != nil {
+					if property, exists := propertiesMap[prop.MappedField.Name]; exists {
+						objectType.DataProperties[j].MappedField.DisplayName = property.DisplayName
+						objectType.DataProperties[j].MappedField.Type = property.Type
+					}
+					objectType.DataProperties[j].IndexFeatures = featuresByField[prop.MappedField.Name]
+				}
+				ops := ots.processConditionOperations(objectType, prop, dslView)
+				if prop.MappedField != nil {
+					ops = applyIndexCapOps(ops, indexCaps[prop.MappedField.Name])
+				}
+				objectType.DataProperties[j].ConditionOperations = ops
 			}
 		}
 

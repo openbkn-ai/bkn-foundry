@@ -33,6 +33,9 @@ type Query struct {
 	// It carries an Interaction-level authorization decision to its artifact reader.
 	AuthorizedInteractionIDs []string
 	Limit                    int
+	// SummaryOnly retains artifact metadata and question/result content while
+	// omitting supporting result bodies. Full evidence reads leave this false.
+	SummaryOnly bool
 }
 
 type Result struct {

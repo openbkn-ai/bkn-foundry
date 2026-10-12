@@ -17,8 +17,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
-const maxSummaryQueryPage = 100
-
 // ListTraceExecutions returns the Community technical Trace list. Business
 // provenance is resolved by the mounted EE route, never by this Core handler.
 //
@@ -35,6 +33,9 @@ const maxSummaryQueryPage = 100
 // @Param to query string false "Started at or before this RFC3339 timestamp"
 // @Param status query string false "Execution status"
 // @Param agent_or_app query string false "Agent or application"
+// @Param service query string false "Root service name"
+// @Param tool query string false "Root operation name"
+// @Param error_keyword query string false "Substring matched against the recorded error summary"
 // @Param keyword query string false "Trace, request, operation, or error keyword"
 // @Success 200 {object} evidencevo.TraceSummaryPage
 // @Failure 400 {object} rdto.ErrorResponse
@@ -84,8 +85,8 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 	}
 	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
 		page, err := strconv.Atoi(rawPage)
-		if err != nil || page <= 0 || page > maxSummaryQueryPage {
-			writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page must be an integer between 1 and 100"})
+		if err != nil || page <= 0 {
+			writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page must be a positive integer"})
 			return evidencevo.SummaryQueryOptions{}, false
 		}
 		options.Page = page

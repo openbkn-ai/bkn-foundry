@@ -51,11 +51,18 @@ def _start_tool():
 
 
 def _install(monkeypatch, tools):
+    credentials = []
+
     class _Client:
         async def get_tools(self):
             return tools
 
-    monkeypatch.setattr(context_loader, "_client", lambda *_a, **_k: _Client())
+    def client(authorization, *_a, **_k):
+        credentials.append(authorization)
+        return _Client()
+
+    monkeypatch.setattr(context_loader, "_client", client)
+    return credentials
 
 
 def test_no_credential_skips_and_warns(monkeypatch, caplog):
@@ -588,3 +595,103 @@ def test_sub_agent_does_not_close_inherited_session(monkeypatch):
 
     assert opened == [], "继承得到会话还去重复握手"
     assert all(s is not parent for s in closed), "把继承来的会话关掉了"
+
+
+def test_session_owner_comes_from_same_structured_lifecycle_result(monkeypatch):
+    owner = {"application_principal_id": "openbkn-sdk", "effective_subject_type": "user", "effective_subject_id": "user-1", "delegation_id": ""}
+    start = _start_tool()
+    start._result[1]["structured_content"]["owner"] = owner
+    _install(monkeypatch, [start])
+    token = auth.set_caller_token("Bearer t")
+    try:
+        session = asyncio.run(context_loader.open_session("acceptance"))
+    finally:
+        auth._caller_token.reset(token)
+    assert session.owner == owner
+    assert session.bkn_context == {"conversation_id": "conv_real", "interaction_id": "int_real"}
+    owner["application_principal_id"] = "mutated"
+    assert session.owner["application_principal_id"] == "openbkn-sdk"
+
+
+@pytest.mark.parametrize("owner", [None, {}, {"application_principal_id": "sdk"}, {"application_principal_id": "sdk", "effective_subject_type": "admin", "effective_subject_id": "u"}])
+def test_legacy_or_invalid_lifecycle_owner_does_not_change_tool_auth(monkeypatch, caplog, owner):
+    start = _start_tool()
+    start._result[1]["structured_content"]["owner"] = owner
+    credentials = _install(monkeypatch, [start, _FakeTool("search_schema")])
+    token = auth.set_caller_token("Bearer t")
+    try:
+        session = asyncio.run(context_loader.open_session("acceptance"))
+    finally:
+        auth._caller_token.reset(token)
+    assert credentials == ["Bearer t"]
+    assert session.owner is None
+    assert session.interaction_id == "int_real"
+    assert len(session.tools()) == 1
+    assert "lifecycle owner unavailable" in caplog.text
+
+
+def test_structured_lifecycle_ids_and_owner_win_over_conflicting_text(monkeypatch):
+    start = _start_tool()
+    start._result[0][0]["text"] = '{"conversation_id":"wrong","interaction_id":"wrong","owner":{"application_principal_id":"wrong","effective_subject_type":"user","effective_subject_id":"wrong"}}'
+    start._result[1]["structured_content"]["owner"] = {"application_principal_id": "sdk", "effective_subject_type": "user", "effective_subject_id": "u"}
+    _install(monkeypatch, [start])
+    token = auth.set_caller_token("Bearer t")
+    try:
+        session = asyncio.run(context_loader.open_session("acceptance"))
+    finally:
+        auth._caller_token.reset(token)
+    assert (session.conversation_id, session.interaction_id) == ("conv_real", "int_real")
+    assert session.owner["application_principal_id"] == "sdk"
+
+
+@pytest.mark.parametrize("mode", ["task", "chat"])
+def test_task_and_chat_propagate_session_owner_to_real_evidence(monkeypatch, mode):
+    from types import SimpleNamespace
+    from app import evidence, observability
+    from app.core import graph, runner
+
+    owner = {"application_principal_id": "sdk", "effective_subject_type": "user", "effective_subject_id": "acct"}
+    lifecycle = context_loader.ContextLoaderSession("conv_owned", "int_owned", owner)
+    seen = []
+    async def fake_open(*_a, **_k): return lifecycle
+    async def fake_close(*_a, **_k): pass
+    async def capture_started(*_a, **_k):
+        batch = evidence.build_batch([evidence.interaction_started_event()], "acct", "user")
+        seen.append(evidence.build_ledger_events(batch)[0])
+        return True
+    async def fake_core(*_a, **_k): return "ok"
+    async def no_tools(*_a, **_k): return []
+    async def no_row(*_a, **_k): return None
+    monkeypatch.setattr(context_loader, "open_session", fake_open)
+    monkeypatch.setattr(context_loader, "close_session", fake_close)
+    monkeypatch.setattr(evidence, "submit_interaction_started", capture_started)
+    monkeypatch.setattr(runner, "_run_agent_once_core", fake_core)
+    agent = SimpleNamespace(agent_id="a", name="a", tools=[{"type":"context_loader"}], skills=[], limits=None, model="")
+    async def run():
+        ctx_token = observability.set_context(observability.build_context({"x-account-id":"acct", "x-account-type":"user"}))
+        cl_token = context_loader.set_current(None)
+        try:
+            if mode == "task":
+                assert await runner.run_agent_once(agent, "input", {}, [], None, "acct", "user", 0) == "ok"
+                assert context_loader.current_session() is None
+            else:
+                monkeypatch.setattr(graph.dao, "get_thread_row", no_row)
+                monkeypatch.setattr(graph.dao, "touch_thread", no_row)
+                monkeypatch.setattr(graph, "resolve_prompt", lambda *_a, **_k: _async_prompt())
+                monkeypatch.setattr(graph, "load_skills", lambda *_a, **_k: _async_str())
+                monkeypatch.setattr(graph, "load_tools", no_tools)
+                monkeypatch.setattr(graph, "build_chat_model", lambda *_a, **_k: object())
+                req = SimpleNamespace(thread_id="thread_owner",message="input",skills=[],prompt_override=None,prompt_vars={},response_format=None)
+                stream = await graph.stream_chat(None, agent, req, "acct", "user")
+                assert "event: meta" in await anext(stream)
+                await stream.aclose()
+                assert "thread_owner" not in graph._busy_threads
+            assert not evidence.has_interaction()
+        finally:
+            context_loader.reset_current(cl_token)
+            observability.reset_context(ctx_token)
+    asyncio.run(run())
+    assert len(seen) == 1
+    assert seen[0]["conversation_id"] == "conv_owned"
+    assert seen[0]["interaction_id"] == "int_owned"
+    assert seen[0]["envelope"]["owner"] == owner

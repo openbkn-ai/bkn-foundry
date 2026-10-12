@@ -117,9 +117,10 @@ class ContextLoaderSession:
     counts as one interaction is a runtime concern, not the model's decision.
     """
 
-    def __init__(self, conversation_id: str, interaction_id: str):
+    def __init__(self, conversation_id: str, interaction_id: str, owner: dict[str, str] | None = None):
         self.conversation_id = conversation_id
         self.interaction_id = interaction_id
+        self.owner = dict(owner) if owner else None
         # Cleanup runs once early on the normal path and again in the finally,
         # so it has to be idempotent.
         self.closed = False
@@ -266,7 +267,14 @@ async def open_session(
         )
         return None
 
-    session = ContextLoaderSession(ids[0], ids[1])
+    # Keep owner with the exact result that supplied IDs; never combine a
+    # structured result's IDs with another text block's attribution.
+    result = next(candidate for candidate in _id_candidates(raw)
+                  if (candidate.get("conversation_id"), candidate.get("interaction_id")) == ids)
+    owner = _parse_owner(result.get("owner"))
+    if owner is None:
+        logger.warning("[ContextLoader] lifecycle owner unavailable; Agent evidence attribution may be incomplete")
+    session = ContextLoaderSession(ids[0], ids[1], owner)
     session._finish = by_name.get("bkn_finish_interaction")
     session._tools = [
         _bind_context(t, session)
@@ -279,6 +287,20 @@ async def open_session(
         session.interaction_id,
     )
     return session
+
+
+def _parse_owner(raw: Any) -> dict[str, str] | None:
+    if not isinstance(raw, dict):
+        return None
+    fields = ("application_principal_id", "effective_subject_type", "effective_subject_id")
+    if any(not isinstance(raw.get(key), str) or not raw[key].strip() for key in fields):
+        return None
+    if raw["effective_subject_type"] not in {"user", "service"}:
+        return None
+    delegation = raw.get("delegation_id", "")
+    if not isinstance(delegation, str):
+        return None
+    return {**{key: raw[key] for key in fields}, "delegation_id": delegation}
 
 
 def _parse_ids(raw: Any) -> Optional[tuple[str, str]]:
@@ -311,6 +333,7 @@ def _id_candidates(raw: Any):
     first."""
     import json
 
+    structured: list[Any] = []
     seen: list[Any] = []
 
     def walk(node: Any, depth: int = 0) -> None:
@@ -327,7 +350,7 @@ def _id_candidates(raw: Any):
             # output, so it wins.
             for key in ("structured_content", "structuredContent"):
                 if isinstance(node.get(key), dict):
-                    seen.append(node[key])
+                    structured.append(node[key])
             seen.append(node)
             if isinstance(node.get("text"), str):
                 walk(node["text"], depth + 1)
@@ -337,7 +360,7 @@ def _id_candidates(raw: Any):
                 walk(item, depth + 1)
 
     walk(raw)
-    return [c for c in seen if isinstance(c, dict)]
+    return [c for c in structured + seen if isinstance(c, dict)]
 
 
 # The outcome enum of bkn_finish_interaction, taken from the MCP input_schema.

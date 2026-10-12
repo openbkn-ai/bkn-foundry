@@ -8,7 +8,9 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -154,5 +156,24 @@ func TestResourceOffsetCursorIsBoundToRequestAndExpires(t *testing.T) {
 	codec.now = func() time.Time { return now.Add(queryCursorTTL) }
 	if _, _, err := codec.decodeResource(ctx, query, "model-v1", token); err == nil {
 		t.Fatal("offset cursor must expire after the query cursor TTL")
+	}
+}
+
+// Pin the pre-844 digest encoding across the public parameter rename.
+func TestObjectQueryDigestLegacyCompatibility(t *testing.T) {
+	legacyJSON := `{"branch":"main","need_total":true,"limit":10,"offset":0,"include_type_info":false,"include_logic_params":false,"ignoring_store":false}`
+	legacyDefault := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(legacyJSON)))
+	legacyBypass := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(strings.Replace(legacyJSON, `"ignoring_store":false`, `"ignoring_store":true`, 1))))
+	query := &interfaces.ObjectQueryBaseOnObjectType{
+		Branch: "main", PageQuery: interfaces.PageQuery{NeedTotal: true, Limit: 10},
+	}
+	defaultDigest, err := objectQueryDigest(query)
+	if err != nil || defaultDigest != legacyDefault {
+		t.Fatalf("default digest = %q, %v; legacy = %q", defaultDigest, err, legacyDefault)
+	}
+	query.IgnoreLocalIndex = true
+	bypassDigest, err := objectQueryDigest(query)
+	if err != nil || bypassDigest == defaultDigest || bypassDigest != legacyBypass {
+		t.Fatalf("bypass digest = %q, %v; legacy = %q", bypassDigest, err, legacyBypass)
 	}
 }

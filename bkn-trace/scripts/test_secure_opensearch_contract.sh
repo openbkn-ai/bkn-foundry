@@ -12,10 +12,6 @@ collector_chart="${root_dir}/otelcol-contribute-chart/charts/otelcol-contrib"
 secret_name="bkn-trace-opensearch"
 sentinel_password="must-not-appear-in-rendered-manifests"
 collector_admission_args=(
-  --set traceAdmission.clientID=trace-gateway
-  --set traceAdmission.clientSecretSecret=trace-gateway-oauth
-  --set traceAdmission.currentKeyID=trace-policy-2026q3
-  --set traceAdmission.currentPublicKeySecret=trace-policy-public
   --set traceAdmission.workloadIdentity=spiffe://cluster-a/ns/openbkn/sa/otelcol
 )
 
@@ -43,15 +39,9 @@ assert_requires_secret() {
   local auth_path="$3"
   local required_message="$4"
   local stderr_file
-  local -a extra_args=()
-  if [[ "${chart_path}" == "${agent_chart}" ]]; then
-    extra_args+=(--set core.capturePolicySigning.existingSecret=trace-capture-policy-test)
-  else
-    extra_args+=("${collector_admission_args[@]}")
-  fi
   stderr_file="$(mktemp)"
 
-  if helm template "${chart_name}" "${chart_path}" "${extra_args[@]}" --set "${auth_path}.enabled=true" >/dev/null 2>"${stderr_file}"; then
+  if helm template "${chart_name}" "${chart_path}" --set "${auth_path}.enabled=true" >/dev/null 2>"${stderr_file}"; then
     rm -f "${stderr_file}"
     echo "${chart_name} must fail closed when OpenSearch auth has no existingSecret" >&2
     exit 1
@@ -64,7 +54,7 @@ assert_requires_secret() {
   rm -f "${stderr_file}"
 }
 
-agent_default="$(helm template agent-observability "${agent_chart}" --set core.capturePolicySigning.existingSecret=trace-capture-policy-test)"
+agent_default="$(helm template agent-observability "${agent_chart}")"
 collector_default="$(helm template otelcol-contrib "${collector_chart}" "${collector_admission_args[@]}")"
 assert_not_contains "${agent_default}" "OPENSEARCH_AUTH_USERNAME"
 assert_not_contains "${agent_default}" "OPENSEARCH_AUTH_PASSWORD"
@@ -75,7 +65,7 @@ assert_requires_secret agent-observability "${agent_chart}" opensearch.auth "ope
 assert_requires_secret otelcol-contrib "${collector_chart}" opensearchExporter.auth "opensearchExporter.auth.existingSecret is required"
 
 agent_secure="$(helm template agent-observability "${agent_chart}" \
-  --set core.capturePolicySigning.existingSecret=trace-capture-policy-test \
+  \
   --set evidence.store=opensearch \
   --set opensearch.auth.enabled=true \
   --set opensearch.auth.existingSecret="${secret_name}" \

@@ -29,7 +29,7 @@ Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 helm.sh/chart: {{ include "agent-observability.chart" . }}
 app.kubernetes.io/name: {{ include "agent-observability.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | trunc 63 | trimSuffix "-" | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 

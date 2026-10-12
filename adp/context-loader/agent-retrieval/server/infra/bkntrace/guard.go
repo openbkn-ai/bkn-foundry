@@ -189,11 +189,12 @@ func (g *Guard) Finish(
 	} else {
 		input.Output = rawPayload
 	}
-	// The refs derived from the request are part of the governed operation
-	// context, not a by-product of evidence delivery. Keep them in the receipt
-	// even while observed evidence is still awaiting a durable acknowledgement.
+	// Request refs and targets identified during execution belong to the
+	// governed attempt, independently of event delivery. Freeze before reading
+	// them so retries cannot acquire targets from late callbacks.
 	// What the caller declared is not here: see BusinessContext.
-	input.BusinessRefs = requestDerivedBusinessRefsFromContext(ctx)
+	input.EvidenceExpectation = freezeEvidenceExpectation(ctx)
+	input.BusinessRefs = mergeBusinessRefs(retainedBusinessRefs(ctx), requestDerivedBusinessRefsFromContext(ctx))
 	attempted, accepted := snapshotEvidenceOutcome(ctx)
 	switch {
 	case attempted:
@@ -211,7 +212,6 @@ func (g *Guard) Finish(
 			input.EvidenceDurability = "pending"
 		}
 	}
-	input.EvidenceExpectation = freezeEvidenceExpectation(ctx)
 	if input.EvidenceExpectation != nil {
 		// A planned set determines enqueue durability. An empty set keeps the
 		// conservative receipt-only policy above; Core validates its profile.
@@ -334,6 +334,9 @@ func recordIgnoredDeclaredRefs(ctx context.Context, intent GuardIntent) {
 // outranks what the request implied, so an observed version is never replaced
 // by a version the request only assumed.
 func mergeBusinessRefs(observed, derived []BusinessRef) []BusinessRef {
+	if len(observed) == 0 && len(derived) == 0 {
+		return nil
+	}
 	merged := make([]BusinessRef, 0, len(observed)+len(derived))
 	seen := make(map[string]struct{}, len(observed)+len(derived))
 	for _, refs := range [][]BusinessRef{observed, derived} {

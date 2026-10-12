@@ -1,0 +1,87 @@
+{
+  "issue": 2056,
+  "main_commit": "155accd4448a6b4fb16ea9b4c58de81df979cf78",
+  "scope": "Foundry configuration regeneration preserves observability values and types; no threshold, authentication or permission changes",
+  "configuration_regeneration": [
+    "repeated actual generator",
+    "numeric and string thresholds",
+    "dedicated and fallback URLs",
+    "explicit false",
+    "multiline flow YAML and quoted keys",
+    "invalid YAML retains original",
+    "file mode 0600",
+    "real Helm runtime env render"
+  ],
+  "live_cases": [
+    {
+      "case": "healthy",
+      "status": 200,
+      "details": {},
+      "kind": "configuration_get"
+    },
+    {
+      "case": "missing_thresholds",
+      "status": 503,
+      "details": {
+        "reason": "invalid_configuration",
+        "fields": [
+          "BKN_TRACE_ADMISSION_OPENSEARCH_CAPACITY_THRESHOLD",
+          "BKN_TRACE_ADMISSION_OPENSEARCH_HEAP_THRESHOLD",
+          "BKN_TRACE_ADMISSION_COLLECTOR_QUEUE_THRESHOLD",
+          "BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD"
+        ]
+      },
+      "kind": null
+    },
+    {
+      "case": "missing_queue_size",
+      "status": 503,
+      "details": {
+        "reason": "metric_missing",
+        "metric": "trace_collector_queue",
+        "fields": [
+          "otelcol_exporter_queue_size"
+        ]
+      },
+      "kind": null
+    },
+    {
+      "case": "missing_queue_capacity",
+      "status": 503,
+      "details": {
+        "reason": "metric_missing",
+        "metric": "trace_collector_queue",
+        "fields": [
+          "otelcol_exporter_queue_capacity"
+        ]
+      },
+      "kind": null
+    },
+    {
+      "case": "unavailable_metrics",
+      "status": 503,
+      "details": {
+        "reason": "source_unavailable",
+        "metric": "trace_collector_queue"
+      },
+      "kind": null
+    },
+    {
+      "case": "legacy_endpoint_fallback",
+      "status": 200,
+      "details": {},
+      "kind": "configuration_get"
+    },
+    {
+      "case": "restore_healthy",
+      "status": 200,
+      "details": {},
+      "kind": "configuration_get"
+    }
+  ],
+  "limitations": [
+    "Isolated source-built Core, MariaDB, OpenSearch and Kafka with synthetic Collector metrics",
+    "No production cluster rollout or public administrator authentication replacement",
+    "No queue pressure/load test"
+  ]
+}

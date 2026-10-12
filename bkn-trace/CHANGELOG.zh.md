@@ -6,6 +6,7 @@
 
 ### 变更
 
+- 关闭的 Audit Kafka consumer 以未配置的 `audit-ledger` 状态保留：审计查询返回带修复动作的不可重试配置错误，混合查询明确提示审计数据缺口。安装器升级时保留 consumer 的 Helm values，并在更新 release 前检查凭据与 MariaDB Secret 引用。
 - Trace Core 现在通过带版本的 MariaDB Migration 统一创建 `bkn_trace_ee_provenance_analyses`，使社区版与企业版镜像都会先完成相同 Schema 初始化，再由可选企业路由使用该表。
 - 模块目录由 `trace-ai/` 改名为 `bkn-trace/`，与平台 `bkn-*` 命名统一（展示名：BKN Trace）。Go module path 变更为 `github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability`；CI/发布流程、CODEOWNERS、Issue 路由同步更新。镜像与 Chart 名（`agent-observability`、`otelcol-contrib`）不变。
 - 完整 OpenBKN 安装将 Trace Core 持久化到固定的 `bkn_trace` MariaDB 数据库，并将 Evidence 持久化到 OpenSearch；离线安装会把 Evidence 索引 Hook 镜像同步到离线仓库，在线安装保持 Chart 默认仓库，除非显式覆盖。

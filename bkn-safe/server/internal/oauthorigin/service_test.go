@@ -68,7 +68,15 @@ func TestNormalizeOrigin(t *testing.T) {
 	}{
 		{name: "https default port", raw: " HTTPS://Example.COM:443/ ", want: "https://example.com", ok: true},
 		{name: "http custom port", raw: "http://Example.COM:8080", want: "http://example.com:8080", ok: true},
+		{name: "leading zeros on default port", raw: "http://example.com:0080", want: "http://example.com", ok: true},
+		{name: "leading zeros on custom port", raw: "http://example.com:00081", want: "http://example.com:81", ok: true},
+		{name: "highest valid port", raw: "http://example.com:65535", want: "http://example.com:65535", ok: true},
 		{name: "ipv6", raw: "http://[2001:db8::1]:80/", want: "http://[2001:db8::1]", ok: true},
+		{name: "ipv6 highest valid port", raw: "http://[2001:db8::1]:65535", want: "http://[2001:db8::1]:65535", ok: true},
+		{name: "port above range", raw: "http://example.com:65536", ok: false},
+		{name: "zero port", raw: "http://example.com:0", ok: false},
+		{name: "larger port above range", raw: "http://example.com:99999", ok: false},
+		{name: "ipv6 port above range", raw: "http://[2001:db8::1]:65536", ok: false},
 		{name: "path", raw: "https://example.com/studio", ok: false},
 		{name: "query", raw: "https://example.com/?x=1", ok: false},
 		{name: "fragment", raw: "https://example.com/#x", ok: false},
@@ -130,6 +138,56 @@ func TestReconcileImportsLegacyAndPreservesUnknownURIs(t *testing.T) {
 	}
 	if imported.CreatedBy != "legacy-import" || imported.SyncState != syncStateSynced {
 		t.Fatalf("imported row = %+v", imported)
+	}
+}
+
+func TestDeleteStoredOutOfRangeOriginRemovesHydraURIs(t *testing.T) {
+	testDeleteStoredOrigin(t, "http://port-repro.example.test:65536", false)
+}
+
+func TestRemoveStoredOutOfRangeCallbackRemovesHydraURIs(t *testing.T) {
+	testDeleteStoredOrigin(t, "http://port-repro.example.test:65536", true)
+}
+
+func TestRemoveStoredUnnormalizedCallbackRemovesHydraURIs(t *testing.T) {
+	testDeleteStoredOrigin(t, "http://port-repro.example.test:0080", true)
+}
+
+func testDeleteStoredOrigin(t *testing.T, invalidOrigin string, viaCallback bool) {
+	t.Helper()
+	const unknownCallback = "https://plugin.example/opaque-callback"
+	client := &fakeClient{uris: auth.OAuthClientURIs{
+		RedirectURIs:           []string{callbackURI(invalidOrigin), unknownCallback},
+		PostLogoutRedirectURIs: []string{logoutURI(invalidOrigin)},
+	}}
+	service, db := testService(t, client)
+	row := model.OAuthAccessOrigin{
+		ID: "old-invalid-origin", Origin: invalidOrigin,
+		DesiredState: desiredStateActive, SyncState: syncStateSynced,
+	}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatalf("insert old origin: %v", err)
+	}
+	if err := db.Create(&model.OAuthClientSyncState{ClientID: StudioClientID, LegacyImported: true}).Error; err != nil {
+		t.Fatalf("insert old sync state: %v", err)
+	}
+
+	if viaCallback {
+		if _, err := service.RemoveCallback(context.Background(), callbackURI(invalidOrigin)); err != nil {
+			t.Fatalf("remove old callback: %v", err)
+		}
+	} else {
+		synced, err := service.Delete(context.Background(), row.ID)
+		if err != nil || !synced {
+			t.Fatalf("delete old origin: synced=%v err=%v", synced, err)
+		}
+	}
+	if !slices.Equal(client.uris.RedirectURIs, []string{unknownCallback}) || len(client.uris.PostLogoutRedirectURIs) != 0 {
+		t.Fatalf("Hydra URIs after delete = %+v", client.uris)
+	}
+	var count int64
+	if err := db.Model(&model.OAuthAccessOrigin{}).Where("id = ?", row.ID).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("stored old origin after delete: count=%d err=%v", count, err)
 	}
 }
 

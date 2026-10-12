@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,8 +12,72 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/sandbox"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
+	"go.uber.org/mock/gomock"
 )
+
+type functionTimeoutSessionPool struct {
+	sandbox.SessionPool
+	execute func(*interfaces.ExecuteCodeReq) *interfaces.ExecuteCodeResp
+}
+
+func (p functionTimeoutSessionPool) ExecuteCode(_ context.Context, req *interfaces.ExecuteCodeReq) (*interfaces.ExecuteCodeResp, error) {
+	return p.execute(req), nil
+}
+
+func TestFunctionExecuteProxyTimeout(t *testing.T) {
+	const version = "11111111-1111-4111-8111-111111111111"
+	for _, tc := range []struct {
+		name       string
+		query      string
+		status     string
+		exitCode   int
+		wantCode   int
+		wantTime   int
+		wantResult string
+	}{
+		{name: "timeout passed to sandbox", query: "?timeout=60000", status: "completed", wantCode: http.StatusOK, wantTime: 60, wantResult: `"ok":true`},
+		{name: "query Version cannot override path", query: "?Version=22222222-2222-4222-8222-222222222222&timeout=60000", status: "completed", wantCode: http.StatusOK, wantTime: 60, wantResult: `"ok":true`},
+		{name: "sandbox timeout is an error", query: "?timeout=10000", status: "timeout", wantCode: http.StatusGatewayTimeout, wantTime: 10, wantResult: "timed out"},
+		{name: "no timeout keeps sandbox default", status: "completed", wantCode: http.StatusOK, wantTime: 0, wantResult: `"ok":true`},
+		{name: "default timeout reports sandbox duration", status: "timeout", wantCode: http.StatusGatewayTimeout, wantTime: 0, wantResult: "after 30 seconds"},
+		{name: "code failure keeps existing response", status: "failed", exitCode: 1, wantCode: http.StatusOK, wantTime: 0, wantResult: `"exit_code":1`},
+		{name: "invalid timeout is rejected", query: "?timeout=bad", wantCode: http.StatusBadRequest},
+		{name: "negative timeout is rejected", query: "?timeout=-1000", wantCode: http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			metadataService := mocks.NewMockIMetadataService(ctrl)
+			metadata := mocks.NewMockIMetadataDB(ctrl)
+			if tc.wantCode == http.StatusOK || tc.wantCode == http.StatusGatewayTimeout {
+				metadataService.EXPECT().CheckMetadataExists(gomock.Any(), interfaces.MetadataTypeFunc, version).Return(true, metadata, nil)
+				metadata.EXPECT().GetScriptType().Return(string(interfaces.ScriptTypePython))
+				metadata.EXPECT().GetCode().Return("def handler(event): return {'ok': True}")
+				metadata.EXPECT().GetDependencies().Return("")
+				metadata.EXPECT().GetDependenciesURL().Return("")
+			}
+			pool := functionTimeoutSessionPool{execute: func(req *interfaces.ExecuteCodeReq) *interfaces.ExecuteCodeResp {
+				if req.Timeout != tc.wantTime {
+					t.Errorf("sandbox timeout = %d, want %d", req.Timeout, tc.wantTime)
+				}
+				return &interfaces.ExecuteCodeResp{Status: tc.status, Timeout: 30, ExitCode: tc.exitCode, ReturnValue: map[string]any{"ok": true}}
+			}}
+			handler := &unifiedProxyHandler{Logger: logger.DefaultLogger(), MetadataService: metadataService, SessionPool: pool}
+			engine := gin.New()
+			engine.POST("/function/exec/:version", handler.FunctionExecuteProxy)
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "/function/exec/"+version+tc.query, strings.NewReader(`{}`))
+			request.Header.Set("Content-Type", "application/json")
+			engine.ServeHTTP(recorder, request)
+			if recorder.Code != tc.wantCode || !strings.Contains(recorder.Body.String(), tc.wantResult) {
+				t.Fatalf("response = %d %s, want status %d containing %q", recorder.Code, recorder.Body.String(), tc.wantCode, tc.wantResult)
+			}
+		})
+	}
+}
 
 func TestBuildFunctionProxyExecutionEnv(t *testing.T) {
 	Convey("Function proxy execution context should separate task and capability identifiers", t, func() {

@@ -49,17 +49,17 @@ type KnActionRecallResponse struct {
 
 // KnDynamicTool Dynamic Tool Definition
 type KnDynamicTool struct {
-	Name            string         `json:"name"`                      // Tool Name
-	Description     string         `json:"description"`               // Tool Description
-	Parameters      map[string]any `json:"parameters"`                // OpenAI Function Call Schema
-	APIURL          string         `json:"api_url"`                   // Tool Execution Proxy URL
-	OriginalSchema  map[string]any `json:"original_schema,omitempty"` // Original OpenAPI Definition
+	Name           string         `json:"name"`                      // Tool Name
+	Description    string         `json:"description"`               // Tool Description
+	Parameters     map[string]any `json:"parameters"`                // OpenAI Function Call Schema
+	APIURL         string         `json:"api_url"`                   // Tool Execution Proxy URL
+	OriginalSchema map[string]any `json:"original_schema,omitempty"` // Original OpenAPI Definition
 	// OutputSchema describes the shape of the action result payload, as JSON Schema.
 	// Omitted entirely when the upstream tool declares no output: an empty object would
 	// read as "this action returns nothing" instead of "the output shape is unknown".
-	OutputSchema map[string]any `json:"output_schema,omitempty"`
-	FixedParams     any            `json:"fixed_params"`              // Fixed Parameters (KnFixedParams or map[string]any)
-	APICallStrategy string         `json:"api_call_strategy"`         // Result Processing Strategy, fixed value: kn_action_recall
+	OutputSchema    map[string]any `json:"output_schema,omitempty"`
+	FixedParams     any            `json:"fixed_params"`      // Fixed Parameters (KnFixedParams or map[string]any)
+	APICallStrategy string         `json:"api_call_strategy"` // Result Processing Strategy, fixed value: kn_action_recall
 }
 
 // KnFixedParams Fixed Parameters Structure (legacy, kept for compatibility)
@@ -175,8 +175,10 @@ type ExecuteActionsResponse struct {
 
 // KnGetActionExecutionRequest queries the status and results of a single action execution.
 type KnGetActionExecutionRequest struct {
-	KnID        string `json:"kn_id" validate:"required"`        // Knowledge Network ID
-	ExecutionID string `json:"execution_id" validate:"required"` // Execution ID returned by execute_action.
+	KnID          string `json:"kn_id" validate:"required"`        // Knowledge Network ID
+	ExecutionID   string `json:"execution_id" validate:"required"` // Execution ID returned by execute_action.
+	ResultsLimit  *int   `json:"results_limit,omitempty"`          // Optional page size; presence selects paged lookup.
+	ResultsOffset *int   `json:"results_offset,omitempty"`         // Optional result offset; presence selects paged lookup.
 
 	AccountID   string `json:"-" header:"x-account-id"`
 	AccountType string `json:"-" header:"x-account-type"`
@@ -200,8 +202,10 @@ type KnListActionExecutionsRequest struct {
 
 // GetActionExecutionRequest forwards a single execution query request to ontology-query.
 type GetActionExecutionRequest struct {
-	KnID        string `json:"-"`
-	ExecutionID string `json:"-"`
+	KnID          string `json:"-"`
+	ExecutionID   string `json:"-"`
+	ResultsLimit  *int   `json:"-"`
+	ResultsOffset *int   `json:"-"`
 }
 
 // ListActionExecutionsRequest forwards the execution history query request to ontology-query.

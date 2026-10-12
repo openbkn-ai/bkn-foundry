@@ -183,7 +183,7 @@ func (chcsa *catalogHealthCheckScheduleAccess) ListDue(ctx context.Context, now 
 		}}).
 		Where(sq.LtOrEq{"s.f_next_run": now}).
 		Where(sq.Eq{"c.f_type": interfaces.CatalogTypePhysical, "c.f_enabled": true}).
-		OrderBy("s.f_next_run ASC").
+		OrderBy("s.f_next_run ASC, s.f_catalog_id ASC").
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build due schedule select SQL failed")
