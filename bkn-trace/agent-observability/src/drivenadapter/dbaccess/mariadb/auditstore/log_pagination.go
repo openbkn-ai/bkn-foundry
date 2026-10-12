@@ -188,8 +188,37 @@ func logPageWhere(q observabilityvo.LogQuery, profile evidencevo.AccessProfile) 
 		}
 		return false
 	}
-	if q.IsAssociatedDrilldown() && !observabilityvo.CapabilitiesFor(profile).GlobalLogSearch {
-		where += " AND " + jsonValue("$.actor.id") + " = ?"
+	if !profile.AccountActive {
+		return where + " AND 1=0", args
+	}
+	// Audit categories use role duties; business records retain their trusted
+	// ownership scope. Both COUNT and SELECT share this predicate.
+	auditCategories := []string{"access.user", "audit.admin", "audit.security"}
+	allowedAudit := []string{}
+	for _, category := range observabilityvo.CapabilitiesFor(profile).AllowedLogCategories {
+		for _, auditCategory := range auditCategories {
+			if category == auditCategory {
+				allowedAudit = append(allowedAudit, "'"+category+"'")
+			}
+		}
+	}
+	auditScope := "1=0"
+	if len(allowedAudit) > 0 && (!q.IsAssociatedDrilldown() || observabilityvo.CapabilitiesFor(profile).GlobalLogSearch) {
+		auditScope = jsonValue("$.category") + " IN (" + strings.Join(allowedAudit, ",") + ")"
+	}
+	// The ledger normally contains audit categories only. Avoid adding business
+	// ownership parameters unless a business category is actually requested.
+	businessRequested := false
+	for _, category := range q.AuthorizedCategories {
+		if category == observabilityvo.CategoryRuntimeBusiness || category == observabilityvo.CategoryRuntimeModel {
+			businessRequested = true
+		}
+	}
+	scope := "1=1"
+	if !businessRequested {
+		scope = "1=0"
+	} else if q.IsAssociatedDrilldown() && !observabilityvo.CapabilitiesFor(profile).GlobalLogSearch {
+		scope = jsonValue("$.actor.id") + " = ?"
 		args = append(args, profile.EffectiveSubjectID)
 	} else if !hasRole("admin") && !hasRole("super_admin") {
 		clauses := []string{jsonValue("$.actor.id") + " = ?"}
@@ -212,7 +241,8 @@ func logPageWhere(q observabilityvo.LogQuery, profile evidencevo.AccessProfile) 
 				}
 			}
 		}
-		where += " AND (" + strings.Join(clauses, " OR ") + ")"
+		scope = "(" + strings.Join(clauses, " OR ") + ")"
 	}
+	where += " AND (" + auditScope + " OR (" + jsonValue("$.category") + " NOT IN ('access.user','audit.admin','audit.security') AND " + scope + "))"
 	return where, args
 }

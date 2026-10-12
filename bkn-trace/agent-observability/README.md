@@ -63,7 +63,7 @@ Kafka 认证、topic 可访问性和网络故障仍由现有 consumer 运行时�
 仍需在 values 文件中保存并传入上述配置。通过临时修改 Deployment 环境变量
 开启 consumer 不会保存配置。
 
-部署后先检查源状态，再发送一条真实审计事件，确认其入账且可由
+部署后使用具有 `audit` 或 `super_admin` 角色的账号检查源状态，再发送一条真实审计事件，确认其入账且可由
 `GET /api/observability/v1/logs?categories=audit.admin` 查询。
 HTTP 200 空列表只能证明查询源可用，不能证明 Kafka 采集已经完成。
 

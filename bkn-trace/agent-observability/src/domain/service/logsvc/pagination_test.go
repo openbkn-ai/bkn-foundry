@@ -293,7 +293,7 @@ func TestLedgerFirstPageAndCursorKeepNativeOrderForTimestampTies(t *testing.T) {
 		source.records = append(source.records, validTestRecord(observabilityvo.LogRecord{EventID: id, LogID: id, SourceLogID: id, SourceID: businessSource, EventTimestamp: timestamp, Category: observabilityvo.CategoryAuditAdmin}))
 	}
 	service := NewWithOptions([]Source{source}, Options{OperationAuditOnly: true})
-	profile := activeProfile("admin-a", "admin")
+	profile := activeProfile("audit-a", "audit")
 	first, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Page: 1, Limit: 20})
 	if err != nil || len(first.Records) != 20 || first.Records[0].EventID != "evt-21" || first.Records[19].EventID != "evt-02" {
 		t.Fatalf("first=%+v err=%v", first, err)
