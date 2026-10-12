@@ -814,9 +814,9 @@ func TestOperationAuditCapabilityAttachRealHandler(t *testing.T) {
 
 func TestOperationAuditBKNImportRealHandler(t *testing.T) {
 	for _, tc := range []struct {
-		name                                         string
-		disabled, denied, capabilityFailure, invalid bool
-	}{{name: "success"}, {name: "disabled", disabled: true}, {name: "denied", denied: true}, {name: "capability_failure", capabilityFailure: true}, {name: "invalid_archive", invalid: true}} {
+		name                                                                                     string
+		disabled, denied, capabilityFailure, invalid, ignore, skipped, newBinding, lookupFailure bool
+	}{{name: "success"}, {name: "disabled", disabled: true}, {name: "denied", denied: true}, {name: "capability_failure", capabilityFailure: true}, {name: "invalid_archive", invalid: true}, {name: "ignore_new_network", ignore: true}, {name: "ignore_existing_no_change", ignore: true, skipped: true}, {name: "ignore_existing_new_binding", ignore: true, skipped: true, newBinding: true}, {name: "ignore_existing_lookup_failure", ignore: true, skipped: true, newBinding: true, lookupFailure: true}, {name: "ignore_existing_capability_failure", ignore: true, skipped: true, capabilityFailure: true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			auth := bmock.NewMockAuthService(ctrl)
@@ -835,10 +835,15 @@ func TestOperationAuditBKNImportRealHandler(t *testing.T) {
 				if tc.denied {
 					err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
 				}
-				kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, false).DoAndReturn(func(_ context.Context, kn *interfaces.KN, _ string, _ bool) (string, error) {
+				mode := interfaces.ImportMode_Overwrite
+				if tc.ignore {
+					mode = interfaces.ImportMode_Ignore
+				}
+				kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), mode, false).DoAndReturn(func(_ context.Context, kn *interfaces.KN, _ string, _ bool) (string, error) {
 					if kn.KNName != "Test Network" {
 						t.Fatalf("name=%s", kn.KNName)
 					}
+					kn.ImportSkipped = tc.skipped
 					return "kn-1", err
 				})
 				if !tc.denied {
@@ -846,7 +851,18 @@ func TestOperationAuditBKNImportRealHandler(t *testing.T) {
 					if tc.capabilityFailure {
 						capErr = fmt.Errorf("capability unavailable")
 					}
-					cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn-1", "main", gomock.Any()).Return(&interfaces.CapabilityImportReport{}, nil, capErr)
+					var bindings []*interfaces.CapabilityBinding
+					if tc.newBinding {
+						bindings = []*interfaces.CapabilityBinding{{ID: "binding-1", CreatedByAttach: true}}
+					}
+					cbs.EXPECT().ImportCapabilitiesTx(gomock.Any(), nil, "kn-1", "main", gomock.Any()).Return(&interfaces.CapabilityImportReport{}, bindings, capErr)
+					if tc.skipped && tc.newBinding && !tc.disabled {
+						var lookupErr error
+						if tc.lookupFailure {
+							lookupErr = fmt.Errorf("network name unavailable")
+						}
+						kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Persisted Network", true, lookupErr)
+					}
 				}
 			}
 			engine := gin.New()
@@ -857,7 +873,11 @@ func TestOperationAuditBKNImportRealHandler(t *testing.T) {
 				archive = []byte("invalid archive")
 			}
 			response := httptest.NewRecorder()
-			engine.ServeHTTP(response, newMultipartRequest(t, "/api/bkn-backend/v1/bkns", "network.tar", archive))
+			url := "/api/bkn-backend/v1/bkns"
+			if tc.ignore {
+				url += "?import_mode=ignore"
+			}
+			engine.ServeHTTP(response, newMultipartRequest(t, url, "network.tar", archive))
 			status := http.StatusOK
 			if tc.denied {
 				status = http.StatusForbidden
@@ -868,13 +888,17 @@ func TestOperationAuditBKNImportRealHandler(t *testing.T) {
 			if response.Code != status {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 			}
-			if tc.disabled || tc.denied || tc.invalid {
+			if tc.disabled || tc.denied || tc.invalid || (tc.skipped && (!tc.newBinding || tc.capabilityFailure || tc.lookupFailure)) {
 				if len(store.entries) != 0 {
 					t.Fatalf("entries=%+v", store.entries)
 				}
 				return
 			}
-			assertReadableAuditEvent(t, store, "import", "Test Network")
+			name := "Test Network"
+			if tc.skipped {
+				name = "Persisted Network"
+			}
+			assertReadableAuditEvent(t, store, "import", name)
 			if store.entries[0].KnowledgeNetworkID != "kn-1" {
 				t.Fatalf("entry=%+v", store.entries[0])
 			}
@@ -906,5 +930,30 @@ func assertReadableAuditEvent(t *testing.T, store *recordingOperationAuditStore,
 	}
 	if event.Target.Name != name || !strings.Contains(event.Summary, name) || strings.Contains(event.Summary, "binding-") {
 		t.Fatalf("event=%s", payload)
+	}
+}
+
+func TestOperationAuditJSONImportIgnoreRealHandler(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kns := bmock.NewMockKNService(ctrl)
+	store := &recordingOperationAuditStore{}
+	h := &restHandler{kns: kns, auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
+		return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user"}
+	}}
+	kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Ignore, true).DoAndReturn(func(_ context.Context, kn *interfaces.KN, _ string, _ bool) (string, error) {
+		kn.ImportSkipped = true
+		return "kn-1", nil
+	})
+	engine := gin.New()
+	engine.Use(h.OperationAudit())
+	engine.POST("/api/bkn-backend/v1/knowledge-networks", func(c *gin.Context) {
+		v := hydra.Visitor{ID: "user-1", Type: "user"}
+		c.Set(operationAuditVisitorKey, v)
+		h.CreateKN(c, v)
+	})
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest("POST", "/api/bkn-backend/v1/knowledge-networks?import_mode=ignore", strings.NewReader(`{"id":"kn-1","name":"Unpersisted Name","branch":"main"}`)))
+	if response.Code != http.StatusCreated || len(store.entries) != 0 {
+		t.Fatalf("status=%d entries=%+v body=%s", response.Code, store.entries, response.Body.String())
 	}
 }

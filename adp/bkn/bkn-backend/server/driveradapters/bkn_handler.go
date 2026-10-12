@@ -257,7 +257,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		declaredCapabilities = nil
 	}
 	var capabilityReport *interfaces.CapabilityImportReport
-	_, capErr := r.publishKNCapabilityMutation(ctx, knID, branch, nil,
+	capResult, capErr := r.publishKNCapabilityMutation(ctx, knID, branch, nil,
 		func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
 			var bindings []*interfaces.CapabilityBinding
 			var importErr error
@@ -276,7 +276,29 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	}
 
 	if r.auditRecorder != nil {
-		c.Set("operation_audit_target_names", []string{kn.KNName})
+		name := kn.KNName
+		if kn.ImportSkipped {
+			// Ignore may still add capability bindings, but the archive's network name was not persisted.
+			name = ""
+			changed := false
+			if capErr == nil && capResult != nil {
+				for _, binding := range capResult.Bindings {
+					if binding != nil && binding.CreatedByAttach {
+						changed = true
+						break
+					}
+				}
+			}
+			if changed {
+				if storedName, exists, lookupErr := r.kns.CheckKNExistByID(ctx, knID, branch); lookupErr == nil && exists {
+					name = storedName
+				}
+			}
+		}
+		c.Set("operation_audit_skip", name == "")
+		if name != "" {
+			c.Set("operation_audit_target_names", []string{name})
+		}
 	}
 
 	logger.Debugf("Upload BKN completed: kn_id=%s", knID)

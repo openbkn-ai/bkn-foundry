@@ -118,6 +118,9 @@ type KN struct {
 	KNName     string `json:"name" mapstructure:"name"`
 	CommonInfo `mapstructure:",squash"`
 
+	// ImportSkipped is a transient service result, never accepted from or sent to clients.
+	ImportSkipped bool `json:"-" mapstructure:"-"`
+
 	SkillContent string `json:"skill_content,omitempty" mapstructure:"skill_content"`
 
 	Branch string `json:"branch,omitempty" mapstructure:"branch"`

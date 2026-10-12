@@ -2572,6 +2572,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			knID, err := service.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldBeNil)
 			So(knID, ShouldEqual, "kn1")
+			So(kn.ImportSkipped, ShouldBeTrue)
 			So(kn.ObjectTypes[0].OTName, ShouldEqual, "top-level")
 		})
 
