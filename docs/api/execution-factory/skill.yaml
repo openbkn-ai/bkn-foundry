@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: Skill
+  title: 执行工厂 · Skill API
   description: |
     Skill 是一个**文件包**——一份 `SKILL.md` 加上配套脚本与资源，描述「怎么做一件
     事」。Agent 按需装载它，而不是把全部说明塞进上下文。

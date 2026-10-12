@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: DiscoverSchedule
+  title: VEGA 引擎 · 发现调度 API
   description: |
     Vega Backend 资源发现调度（DiscoverSchedule）相关 API。
 

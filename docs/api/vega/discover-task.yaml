@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: DiscoverTask
+  title: VEGA 引擎 · 发现任务 API
   description: |
     APIs for Vega Backend resource-discovery tasks.
 

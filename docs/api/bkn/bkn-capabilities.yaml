@@ -2,7 +2,7 @@
 # Knowledge-network capability binding: which Skills and ToolBox tools belong to a knowledge network.
 openapi: 3.0.2
 info:
-  title: BKN Capabilities
+  title: BKN 知识网络 · 能力绑定 API
   version: 0.1.0
   description: |
     A capability binding records that a Skill or a ToolBox tool belongs to a knowledge network.

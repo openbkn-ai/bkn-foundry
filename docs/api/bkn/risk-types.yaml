@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.2
 info:
-  title: RiskType
+  title: BKN 知识网络 · 风险类 API
   version: 0.1.0
   description: |-
     Risk Type management. A risk type is a lightweight concept with only a name, tags, comment, and display metadata

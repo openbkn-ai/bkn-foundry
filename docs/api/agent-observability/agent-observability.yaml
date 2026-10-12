@@ -2077,7 +2077,7 @@ definitions:
 info:
   contact: {}
   description: APIs for querying agent traces from OpenSearch.
-  title: Agent Observability API
+  title: BKN Trace · BKN Trace API
   version: "1.0"
 paths:
   /access-profile:

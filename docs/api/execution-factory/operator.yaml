@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 算子
+  title: 执行工厂 · 算子 API
   description: |
     算子（operator）是把一段能力**注册成可复用、可版本化、可发布**的产物。
     [function.yaml](function.yaml) 里的 `/function/execute` 是「跑一段临时代码」；

@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Sandbox Control Plane",
+    "title": "沙箱管理 · 会话与执行管理 API",
     "version": "2.1.0",
     "description": "Current control plane REST contract. Authentication is delegated to the deployment network boundary; the REST application does not validate a Bearer token. Internal callback routes are service-to-service only."
   },

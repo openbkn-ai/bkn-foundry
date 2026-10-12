@@ -4,7 +4,7 @@
 
 openapi: 3.0.3
 info:
-  title: BKN Safe Enterprise Row-filter Policy Management API
+  title: BKN Safe 管理 · 行过滤策略 API
   version: 1.0.0
   description: |
     Manages one fixed-condition object-instance row-filter policy for a user or

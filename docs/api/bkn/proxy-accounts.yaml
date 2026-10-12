@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: BKN Knowledge Network Managed Proxy API
+  title: BKN 知识网络 · 代理账户 API
   version: 0.2.0
   description: |
     OAuth-protected governance APIs and cluster-internal runtime APIs for environment-local knowledge-network proxy mappings.

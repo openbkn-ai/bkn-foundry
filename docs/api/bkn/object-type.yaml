@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.2
 info:
-  title: ObjectType
+  title: BKN 知识网络 · 对象类 API
   version: 0.1.0
   description: |
     Object types use `object_type:{kn_id}/{object_type_id}`. Reads and lists
