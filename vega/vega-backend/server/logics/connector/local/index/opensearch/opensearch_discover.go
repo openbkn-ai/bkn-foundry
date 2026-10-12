@@ -128,24 +128,11 @@ func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interface
 	if index == nil || index.Name == "" {
 		return fmt.Errorf("invalid index metadata")
 	}
-	if err := c.validateIndexScope(index.Name); err != nil {
+	if err := c.Connect(ctx); err != nil {
 		return err
 	}
-	indices, err := c.listIndexes(ctx, []string{index.Name})
-	if err != nil {
-		return fmt.Errorf("list indexes: %w", err)
-	}
-	var found bool
-	for _, candidate := range indices {
-		if candidate.Name == index.Name {
-			index.CreationTime = candidate.CreationTime
-			index.Properties = candidate.Properties
-			found = true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("index %q not found", index.Name)
+	if index.Properties == nil {
+		index.Properties = make(map[string]any)
 	}
 
 	index.Description = ""

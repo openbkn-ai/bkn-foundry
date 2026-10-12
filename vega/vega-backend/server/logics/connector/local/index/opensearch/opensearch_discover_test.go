@@ -150,19 +150,12 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 }
 
 func TestOpenSearchConnectorGetIndexMeta(t *testing.T) {
-	t.Run("rejects index outside configured patterns before requests", func(t *testing.T) {
-		connector := &OpenSearchConnector{Config: &opensearchConfig{IndexPatterns: []string{"catalog-*", "metric-*"}}}
-		err := connector.GetIndexMeta(context.Background(), &interfaces.IndexMeta{Name: "system-audit"})
-		require.ErrorContains(t, err, "outside the connector scope")
-	})
-	for _, tc := range []struct {
-		name    string
-		missing bool
-	}{
-		{"refreshes complete metadata once", false},
-		{"rejects missing index", true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, index := range []*interfaces.IndexMeta{nil, {}} {
+		err := (&OpenSearchConnector{}).GetIndexMeta(context.Background(), index)
+		require.ErrorContains(t, err, "invalid index metadata")
+	}
+	for _, pattern := range []string{"products-alias", "products-a,products-b"} {
+		t.Run("uses resolved index for pattern "+pattern, func(t *testing.T) {
 			calls := map[string]int{}
 			client, err := opensearch.NewClient(opensearch.Config{
 				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
@@ -170,11 +163,6 @@ func TestOpenSearchConnectorGetIndexMeta(t *testing.T) {
 					calls[request.URL.Path]++
 					var body string
 					switch request.URL.Path {
-					case "/_cat/indices/products":
-						body = `[{"index":"products","docs.count":"3","store.size":"1kb","creation.date":"123"}]`
-						if tc.missing {
-							body = `[]`
-						}
 					case "/products/_mapping":
 						body = `{"products":{"mappings":{"properties":{"title":{"type":"keyword"}}}}}`
 					case "/products/_settings":
@@ -186,21 +174,14 @@ func TestOpenSearchConnectorGetIndexMeta(t *testing.T) {
 				}),
 			})
 			require.NoError(t, err)
-			connector := &OpenSearchConnector{client: client, Config: &opensearchConfig{IndexPatterns: []string{"prod*"}}}
-			index := &interfaces.IndexMeta{Name: "products", Properties: map[string]any{"obsolete": true}, CreationTime: 1}
-			err = connector.GetIndexMeta(context.Background(), index)
-			if tc.missing {
-				require.ErrorContains(t, err, "not found")
-				assert.Equal(t, map[string]int{"/_cat/indices/products": 1}, calls)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, map[string]int{"/_cat/indices/products": 1, "/products/_mapping": 1, "/products/_settings": 1}, calls)
-				assert.Equal(t, int64(123), index.CreationTime)
-				assert.Equal(t, "3", index.Properties["docs.count"])
-				assert.Equal(t, "1", index.Properties["index.number_of_shards"])
-				assert.NotContains(t, index.Properties, "obsolete")
-				assert.Contains(t, index.Mapping, "title")
-			}
+			connector := &OpenSearchConnector{client: client, Config: &opensearchConfig{IndexPatterns: []string{pattern}}}
+			index := &interfaces.IndexMeta{Name: "products", Properties: map[string]any{"docs.count": "3"}, CreationTime: 123}
+			require.NoError(t, connector.GetIndexMeta(context.Background(), index))
+			assert.Equal(t, map[string]int{"/products/_mapping": 1, "/products/_settings": 1}, calls)
+			assert.Equal(t, int64(123), index.CreationTime)
+			assert.Equal(t, "3", index.Properties["docs.count"])
+			assert.Equal(t, "1", index.Properties["index.number_of_shards"])
+			assert.Contains(t, index.Mapping, "title")
 		})
 	}
 }

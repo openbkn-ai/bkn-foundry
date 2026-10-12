@@ -415,6 +415,23 @@ func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *in
 		if meta.Name == "" {
 			meta.Name = resource.SourceIdentifier
 		}
+		// 用连接器已解析的发现范围确认存在性，兼容源端别名和多目标模式。
+		indices, err := indexConnector.ListIndexes(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list indexes for resource refresh: %w", err)
+		}
+		found := false
+		for _, index := range indices {
+			if index != nil && index.Name == meta.Name {
+				meta.CreationTime = index.CreationTime
+				meta.Properties = index.Properties
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("index %q not found within the connector discovery scope", meta.Name)
+		}
 		meta.Description = sourceOriginalDescription(resource.SourceMetadata)
 		if err := dtw.enrichIndexMetadata(ctx, task, indexConnector, []indexDiscoverItem{{
 			resource: resource, indexMeta: meta, markAfterEnrich: true,

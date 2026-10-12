@@ -754,6 +754,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 							require.NoError(t, err)
 							index = &interfaces.IndexMeta{}
 							require.NoError(t, common.UnmarshalPreciseJSON(data, index))
+							c.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{index}, nil)
 						} else {
 							c.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryIndex)
 							c.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{index}, nil)
@@ -1042,14 +1043,15 @@ func TestDiscoverTaskWorkerDiscoverResource(t *testing.T) {
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "opensearch", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().GetIndexMeta(gomock.Any(), &interfaces.IndexMeta{Name: "orders", CreationTime: 123, Description: "old comment", MappingMeta: map[string]any{"owner": "search"}}).DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
+		connector.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{{Name: "orders", CreationTime: 456, Properties: map[string]any{"docs.count": "3"}}}, nil)
+		connector.EXPECT().GetIndexMeta(gomock.Any(), &interfaces.IndexMeta{Name: "orders", CreationTime: 456, Description: "old comment", Properties: map[string]any{"docs.count": "3"}, MappingMeta: map[string]any{"owner": "search"}}).DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
 			index.Description = "new comment"
 			index.Properties = map[string]any{"size": int64(9007199254740993)}
 			return nil
 		}).Times(1)
 		rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
 			assert.Equal(t, "orders", saved.SourceMetadata["name"])
-			assert.Equal(t, json.Number("123"), saved.SourceMetadata["creation_time"])
+			assert.Equal(t, json.Number("456"), saved.SourceMetadata["creation_time"])
 			assert.Equal(t, "new comment", saved.SourceMetadata["description"])
 			assert.Equal(t, json.Number("9007199254740993"), saved.SourceMetadata["properties"].(map[string]any)["size"])
 			assert.NotContains(t, saved.SourceMetadata, "original_name")
@@ -1059,6 +1061,29 @@ func TestDiscoverTaskWorkerDiscoverResource(t *testing.T) {
 		require.NoError(t, err)
 		assert.Zero(t, result.FailedCount)
 	})
+
+	for _, scenario := range []string{"index outside current discovery scope", "index list failure"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockIndexConnector(ctrl)
+			resource := &interfaces.Resource{ID: "r1", CatalogID: "c1", Category: interfaces.ResourceCategoryIndex, SourceIdentifier: "orders", SourceMetadata: map[string]any{"name": "orders"}}
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "opensearch", gomock.Any()).Return(connector, nil)
+			connector.EXPECT().Connect(gomock.Any()).Return(nil)
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			if scenario == "index list failure" {
+				connector.EXPECT().ListIndexes(gomock.Any()).Return(nil, errors.New("list failed"))
+			} else {
+				connector.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{{Name: "other"}}, nil)
+			}
+			result, err := (&DiscoverTaskWorker{rs: rs, cf: cf}).discoverResource(context.Background(), &interfaces.Catalog{ID: "c1", ConnectorType: "opensearch"}, &interfaces.DiscoverTask{ResourceID: "r1"}, &discoverTaskReconcileProgress{lastProgress: 95})
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.Equal(t, map[string]any{"name": "orders"}, resource.SourceMetadata)
+		})
+	}
 
 	for _, tc := range []struct {
 		name     string

@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     -- 主键与基础信息
     f_id                      VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'resource唯一标识',
     f_catalog_id              VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属catalog ID',
-    f_name                    VARCHAR(255) NOT NULL DEFAULT '' COMMENT '数据资源名称，catalog下唯一',
+    f_name                    VARCHAR(255) NOT NULL DEFAULT '' COMMENT '数据资源显示名称',
     f_tags                    VARCHAR(255) NOT NULL DEFAULT '[]' COMMENT '标签，JSON数组格式',
     f_description             VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '数据资源描述',
 

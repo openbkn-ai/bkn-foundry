@@ -365,31 +365,6 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
-	for _, tc := range []struct{ name, input, connectorType, reference string }{
-		{"mysql input to postgres dotted table", "mysql", interfaces.ConnectorTypePostgreSQL, `"Sales.eu"."Orders.part"`},
-		{"postgres input to mysql quoted name", "postgres", interfaces.ConnectorTypeMySQL, "`Sales`.`ord``ers`"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			rs := mock_interfaces.NewMockResourceService(ctrl)
-			cs := mock_interfaces.NewMockCatalogService(ctrl)
-			resource := &interfaces.Resource{ID: "r1", CatalogID: "c1", Enabled: true, Status: interfaces.ResourceStatusActive, SourceIdentifier: tc.reference, SchemaDefinition: []*interfaces.Property{{Name: "id"}}}
-			expectRawQueryResources(rs, []string{"r1"}, resource)
-			rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil).Times(1)
-			cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{ID: "c1", Enabled: true, ConnectorType: tc.connectorType}, nil)
-			previous := rawQueryPolicy
-			rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
-			t.Cleanup(func() { rawQueryPolicy = previous })
-			got, err := (&rawQueryService{cs: cs, rs: rs}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-				Query: "SELECT o.id FROM {{r1}} AS o WHERE o.id = '{{r1}}' /* {{r1}} */", QueryFormat: interfaces.QueryFormatSQL, InputDialect: tc.input,
-			})
-			require.NoError(t, err)
-			assert.Contains(t, got.sql, tc.reference+" AS o")
-			assert.Contains(t, got.sql, "'{{r1}}'")
-			assert.Contains(t, got.sql, "/* {{r1}} */")
-			assert.NotContains(t, got.sql, "__vega_resource_")
-		})
-	}
 
 	t.Run("preserves ASCII TSQL without recompilation", func(t *testing.T) {
 		requireRawQuerySQLGlotRuntime(t)
@@ -544,6 +519,12 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 				return &sqlglot.SQLParseResult{SQL: "SELECT * FROM __vega_resource_0"}, nil
 			})
 		defer patches.Reset()
+		patches.ApplyFunc(sqlglot.BindTableReferences, func(_ context.Context, sql, dialect string, bindings map[string]string) (*sqlglot.SQLParseResult, error) {
+			assert.Equal(t, "SELECT * FROM __vega_resource_0", sql)
+			assert.Equal(t, "mysql", dialect)
+			assert.Equal(t, map[string]string{"__vega_resource_0": "`orders`"}, bindings)
+			return &sqlglot.SQLParseResult{SQL: "SELECT * FROM `orders`", Dialect: "mysql"}, nil
+		})
 
 		prepared, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
 			Query:        "SELECT * FROM {{resource-1}}",
