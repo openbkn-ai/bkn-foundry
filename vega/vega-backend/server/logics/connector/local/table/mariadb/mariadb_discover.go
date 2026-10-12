@@ -102,6 +102,13 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 			return nil, fmt.Errorf("required table metadata contains NULL")
 		}
 
+		// SQL 条件用于缩小范围；配置范围统一按源端原始名称精确匹配。
+		// 此处过滤可避免数据库比较规则与配置语义不一致，
+		// 并保留普通 SQL 条件，避免 BINARY/COLLATE 影响索引使用或条件下推。
+		if !c.databaseAllowed(schemaName.String) {
+			continue
+		}
+
 		meta := &interfaces.TableMeta{
 			Name:        tableName.String,
 			TableType:   c.mapTableType(tableType.String),
@@ -170,6 +177,9 @@ func (c *MariaDBConnector) databaseAllowed(database string) bool {
 func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
+	}
+	if !c.databaseAllowed(table.Database) {
+		return fmt.Errorf("database %q is outside the connector scope", table.Database)
 	}
 
 	// Obtain the basic information of the table (engine, character set, number of rows, comments)
@@ -611,6 +621,14 @@ func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
 		if !schema.Valid {
 			return nil, fmt.Errorf("required schema metadata contains NULL")
 		}
+
+		// SQL 条件用于缩小范围；配置范围统一按源端原始名称精确匹配。
+		// 此处过滤可避免数据库比较规则与配置语义不一致，
+		// 并保留普通 SQL 条件，避免 BINARY/COLLATE 影响索引使用或条件下推。
+		if !c.databaseAllowed(schema.String) {
+			continue
+		}
+
 		schemas = append(schemas, schema.String)
 	}
 	if err := rows.Err(); err != nil {

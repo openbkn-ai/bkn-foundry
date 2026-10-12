@@ -613,3 +613,14 @@ func TestPostgresqlConnectorFetchTableStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestPostgresqlConnectorGetTableMetaRejectsOutsideScope(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	connector := &PostgresqlConnector{config: &postgresqlConfig{Schemas: []string{"app"}}, connected: true, db: db}
+	table := &interfaces.TableMeta{Database: "other", Schema: "other", Name: "orders"}
+	err = connector.GetTableMeta(context.Background(), table)
+	require.ErrorContains(t, err, "outside")
+	require.NoError(t, mock.ExpectationsWereMet())
+}

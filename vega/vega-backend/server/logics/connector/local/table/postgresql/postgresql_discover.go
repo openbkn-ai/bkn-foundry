@@ -178,6 +178,10 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 		return nil, err
 	}
 
+	if schema != "" && !c.schemaAllowed(schema) {
+		return nil, fmt.Errorf("schema %q is outside the connector scope", schema)
+	}
+
 	builder := discoverableRelationsBuilder().Columns(
 		"n.nspname AS table_schema",
 		"c.relname AS table_name",
@@ -186,9 +190,6 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 	)
 
 	if schema != "" {
-		if len(c.config.Schemas) > 0 && !containsSchema(c.config.Schemas, schema) {
-			return nil, fmt.Errorf("schema %q is outside the connector scope", schema)
-		}
 		builder = builder.Where(sq.Eq{"n.nspname": schema})
 	} else if len(c.config.Schemas) > 0 {
 		builder = builder.Where(sq.Eq{"n.nspname": c.config.Schemas})
@@ -225,6 +226,13 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 			return nil, fmt.Errorf("required table metadata contains NULL")
 		}
 
+		// SQL 条件用于缩小范围；配置范围统一按源端原始名称精确匹配。
+		// 此处过滤可避免数据库比较规则与配置语义不一致，
+		// 并保留普通 SQL 条件，避免 BINARY/COLLATE 影响索引使用或条件下推。
+		if !c.schemaAllowed(schema.String) {
+			continue
+		}
+
 		meta := &interfaces.TableMeta{
 			Name:        name.String,
 			TableType:   c.mapTableType(relKind.String),
@@ -242,9 +250,12 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 	return tables, nil
 }
 
-// containsSchema reports whether a schema is included in the connector configuration.
-func containsSchema(schemas []string, schema string) bool {
-	for _, configuredSchema := range schemas {
+// schemaAllowed 判断 schema 是否在配置的发现范围内。
+func (c *PostgresqlConnector) schemaAllowed(schema string) bool {
+	if len(c.config.Schemas) == 0 {
+		return true
+	}
+	for _, configuredSchema := range c.config.Schemas {
 		if configuredSchema == schema {
 			return true
 		}
@@ -268,6 +279,9 @@ func (c *PostgresqlConnector) mapTableType(relKind string) string {
 func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
+	}
+	if !c.schemaAllowed(table.Schema) {
+		return fmt.Errorf("schema %q is outside the connector scope", table.Schema)
 	}
 
 	if err := c.fetchTableStatus(ctx, table); err != nil {
@@ -864,6 +878,14 @@ func (c *PostgresqlConnector) listSchemas(ctx context.Context) ([]string, error)
 		if !schema.Valid {
 			return nil, fmt.Errorf("required schema metadata contains NULL")
 		}
+
+		// SQL 条件用于缩小范围；配置范围统一按源端原始名称精确匹配。
+		// 此处过滤可避免数据库比较规则与配置语义不一致，
+		// 并保留普通 SQL 条件，避免 BINARY/COLLATE 影响索引使用或条件下推。
+		if !c.schemaAllowed(schema.String) {
+			continue
+		}
+
 		schemas = append(schemas, schema.String)
 	}
 	if err := rows.Err(); err != nil {
