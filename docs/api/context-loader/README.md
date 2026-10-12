@@ -78,7 +78,7 @@ names a managed interaction in `bkn_context`.
 | | Managed | Ad hoc |
 |---|---|---|
 | How it is chosen | `bkn_context` carries a `conversation_id` and an `interaction_id` | `bkn_context` is absent or empty |
-| What is recorded | an Operation under that interaction, a receipt on the response, and evidence for what was read | nothing |
+| What is recorded | a Conversation and Interaction; Operation, receipt and evidence only when capture is enabled | nothing |
 | What it depends on | Trace Core, in addition to the downstream the operation queries | only that downstream |
 | Where it is available | every surface | the REST routes under `/kn/` |
 
@@ -87,6 +87,13 @@ managed interaction, so an agent starts with `bkn_start_interaction`, passes the
 two ids on every later call, and closes with `bkn_finish_interaction`. That is
 the right default there: MCP is where agents call, and an agent turn is exactly
 what an Interaction records.
+
+Disabling Trace capture does not disable the managed session. The start tool
+still returns real conversation and interaction IDs, business tools still
+require them, and the finish tool still closes the interaction. While capture
+is disabled, business tools execute without recording Operations, receipts or
+evidence. If Trace Core is unavailable, start cannot create the session and
+returns no IDs; the agent must retry start before making an MCP business call.
 
 **The REST surface admits both.** A `/kn/` request with no `bkn_context` runs ad
 hoc and never touches Trace Core. A request that names one is managed and is
@@ -128,7 +135,7 @@ Two things follow that are worth stating, because both have been got wrong:
 - **OpenAPI version:** 3.0.3.
 - **Authentication:** `Authorization: Bearer <token>` with either an OAuth access token or a self-issued AppKey with the `bak_` prefix. The service derives the account from the credential; callers do not send `x-account-id` or `x-account-type`.
 - **All operations use POST:** This includes query-like operations and operations without a request body, such as `list_knowledge_networks`.
-- **Managed execution:** While evidence capture is enabled and Trace Core is available, `execute_action`, `execute_tool`, and `execute_skill` require a nonempty `bkn_context` with `conversation_id` and `interaction_id`. A missing or empty context returns HTTP 400 `conversation_required` with `required_action: create_conversation` before execution. Under a verified disabled capture policy, `bkn_start_interaction` issues no IDs and business calls continue without managed context or Trace capture. When Trace Core is unavailable, REST execution uses a bounded, read-only probe and continues without context or Trace only after an infrastructure failure is confirmed. Read operations, including `run_sql` and `run_cypher`, may run ad hoc without a context; providing one enables Trace capture when available. MCP business tools follow the same disabled-capture and outage exceptions.
+- **Managed execution:** While capture is enabled, `execute_action`, `execute_tool`, and `execute_skill` require a nonempty `bkn_context` with `conversation_id` and `interaction_id`. A missing or empty context returns HTTP 400 `conversation_required` with `required_action: create_conversation` before execution. When capture is disabled, the MCP start tool still creates a Conversation and Interaction and returns their IDs with `capture_enabled=false`, `trace_recorded=false` and `code=capture_disabled`. MCP business tools require those IDs but execute without recording Operations, receipts or evidence. REST calls without a context may still run ad hoc. When Trace Core is unavailable, REST execution uses a bounded, read-only probe and continues without context or Trace only after an infrastructure failure is confirmed. Read operations, including `run_sql` and `run_cypher`, may run ad hoc without a context; providing one enables managed execution when available.
 - **Response format:** Every operation accepts `?response_format=toon` and returns `application/toon`, which represents homogeneous arrays as tables to reduce token usage. The default is `json`.
 - **Error envelope:** This service does not use `comm-go/rest.BaseError`. It uses `code`, `description`, `solution`, `link`, and `details`, as defined by [`ErrorAgentRetrieval`](../_shared/errors.yaml). Downstream error bodies are passed through unchanged and commonly use `error_code` and `error_details`. Locally generated codes start with `Public.*` or `agentRetrieval.*`.
 - **Internal APIs:** Most operations have a corresponding `/api/agent-retrieval/in/v1/...` route with the same request and response structure. External routes forward the original bearer token to Execution Factory. Internal routes derive the visitor from trusted `X-Account-ID` and `X-Account-Type` headers and use Execution Factory's `/internal-v1/caller/...` face, which performs the same caller-level permission checks without substituting a service identity. A request with neither a bearer token nor a trusted caller identity returns 401. Arbitrary function-code execution is the exception: it has no caller-scoped internal equivalent and returns 403 internally. This documentation covers only external APIs; `driveradapters/rest_private_handler.go` is authoritative for internal routing.
