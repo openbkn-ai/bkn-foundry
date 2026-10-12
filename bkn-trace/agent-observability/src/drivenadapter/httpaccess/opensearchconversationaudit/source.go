@@ -62,7 +62,9 @@ func (source *Source) Search(ctx context.Context, query observabilityvo.LogQuery
 	if !matchesFixedFilters(query) || query.TraceID != "" || query.SpanID != "" || query.RequestID != "" || query.InteractionID != "" || query.OperationID != "" {
 		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
 	}
-	body, err := json.Marshal(buildQuery(query))
+	request := buildQuery(query)
+	limit := request["size"].(int) - 1
+	body, err := json.Marshal(request)
 	if err != nil {
 		return observabilityvo.SourcePage{}, fmt.Errorf("encode conversation audit query: %w", err)
 	}
@@ -73,6 +75,11 @@ func (source *Source) Search(ctx context.Context, query observabilityvo.LogQuery
 	var response searchResponse
 	if err := json.Unmarshal(payload, &response); err != nil {
 		return observabilityvo.SourcePage{}, fmt.Errorf("decode conversation audit response: %w", err)
+	}
+	nextCursor := ""
+	if len(response.Hits.Hits) > limit {
+		nextCursor = "more"
+		response.Hits.Hits = response.Hits.Hits[:limit]
 	}
 	records := make([]observabilityvo.LogRecord, 0, len(response.Hits.Hits))
 	for _, hit := range response.Hits.Hits {
@@ -89,7 +96,7 @@ func (source *Source) Search(ctx context.Context, query observabilityvo.LogQuery
 	if response.Hits.Total.Relation != "" && response.Hits.Total.Relation != "eq" {
 		accuracy = "partial"
 	}
-	return observabilityvo.SourcePage{Records: records, Count: response.Hits.Total.Value, CountAccuracy: accuracy}, nil
+	return observabilityvo.SourcePage{Records: records, NextCursor: nextCursor, Count: response.Hits.Total.Value, CountAccuracy: accuracy}, nil
 }
 
 func (source *Source) Get(ctx context.Context, eventID string) (observabilityvo.LogRecord, bool, error) {
@@ -133,7 +140,7 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		filters = append(filters, map[string]any{"range": map[string]any{"created_at": bounds}})
 	}
 	result := map[string]any{
-		"size": limit, "track_total_hits": true,
+		"size": limit + 1, "track_total_hits": true,
 		"sort":  []any{map[string]any{"created_at": map[string]any{"order": "desc"}}, map[string]any{"conversation_id.keyword": map[string]any{"order": "asc"}}},
 		"query": map[string]any{"bool": map[string]any{"filter": filters}},
 	}

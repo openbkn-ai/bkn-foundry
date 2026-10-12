@@ -117,7 +117,9 @@ type SourcePage struct {
 	Records []LogRecord
 	// LastPosition advances the source cursor even when the adapter filters all
 	// raw records on this page. It is cursor metadata, never a public log record.
-	LastPosition  *SourcePosition
+	LastPosition *SourcePosition
+	// NextCursor indicates more raw records after this batch. Count is a total,
+	// not a continuation signal. The service constructs its own signed cursor.
 	NextCursor    string
 	Count         int64
 	CountAccuracy string
