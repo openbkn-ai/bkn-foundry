@@ -679,9 +679,10 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 	span.SetAttributes(attr.Key("force_delete").Bool(forceDelete))
 
 	// Check that all object type IDs exist.
+	auditNames := []string{}
 	for _, otID := range otIDs {
 		// Validate the object type ID in the specified knowledge network.
-		_, exist, err := r.ots.CheckObjectTypeExistByID(ctx, knID, branch, otID)
+		name, exist, err := r.ots.CheckObjectTypeExistByID(ctx, knID, branch, otID)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 
@@ -700,6 +701,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			return
 		}
 
+		auditNames = append(auditNames, name)
 	}
 
 	// When force_delete is false, verify that no relation type references the object type.
@@ -786,6 +788,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 		return
 	}
 
+	c.Set("operation_audit_target_names", auditNames)
 	logger.Debug("Handler DeleteObjectTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)

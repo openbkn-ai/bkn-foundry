@@ -73,7 +73,7 @@ func (r *restHandler) resolveCapabilityKN(c *gin.Context, ctx context.Context, s
 	branch = c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("branch").String(branch))
 
-	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
+	knName, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		rest.ReplyError(c, httpErr)
@@ -82,6 +82,9 @@ func (r *restHandler) resolveCapabilityKN(c *gin.Context, ctx context.Context, s
 	if !exist {
 		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound))
 		return "", "", false
+	}
+	if r.auditRecorder != nil {
+		c.Set("operation_audit_kn_name", knName)
 	}
 	return knID, branch, true
 }
@@ -151,7 +154,40 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 
-	_, err := r.publishKNCapabilityMutation(ctx, knID, branch, bindingIDs,
+	// Capture binding metadata before deletion; a failed audit lookup must not block the mutation.
+	var auditNames []string
+	if r.auditRecorder != nil {
+		if list, lookupErr := r.cbs.ListCapabilities(ctx, interfaces.CapabilityBindingsQueryParams{
+			KNID: knID, Branch: branch, WithDetail: true,
+			PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+		}); lookupErr == nil && list != nil {
+			selected := make(map[string]bool, len(bindingIDs))
+			for _, id := range bindingIDs {
+				selected[id] = true
+			}
+			knName := c.GetString("operation_audit_kn_name")
+			for _, binding := range list.Entries {
+				if binding == nil || !selected[binding.ID] || knName == "" {
+					continue
+				}
+				name := binding.Name
+				if binding.CapabilityType == interfaces.CAPABILITY_TYPE_MCP_TOOL {
+					// MCP references persist tool_name in CapabilityID, not an opaque ID.
+					// It remains the binding's business name when metadata is unavailable.
+					if name == "" {
+						name = binding.CapabilityID
+					}
+				} else if name == binding.CapabilityID {
+					continue
+				}
+				if name != "" {
+					auditNames = append(auditNames, knName+" / "+name)
+				}
+			}
+		}
+	}
+
+	result, err := r.publishKNCapabilityMutation(ctx, knID, branch, bindingIDs,
 		func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
 			rows, mutationErr := r.cbs.DetachCapabilities(mutationCtx, tx, knID, branch, bindingIDs)
 			return &interfaces.KNCapabilityMutationResult{RowsAffected: rows}, mutationErr
@@ -161,6 +197,9 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+	if result != nil && result.RowsAffected > 0 && result.RowsAffected == int64(len(auditNames)) && len(auditNames) == len(bindingIDs) {
+		c.Set("operation_audit_target_names", auditNames)
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
