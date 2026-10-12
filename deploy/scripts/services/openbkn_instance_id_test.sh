@@ -26,6 +26,7 @@ log_warn() { echo "[WARN] $*"; }
 CONFIG_YAML_PATH="${CONFIG_YAML_PATH:-/dev/null}"
 config_yaml_top_field() { printf ''; }
 config_yaml_dep_field() { printf ''; }
+helm() { printf '{}'; }
 
 # 桩 kubectl：SCENARIO 决定 configmap 现值与各 node 字段的返回。
 # 节点行故意乱序给出，用来验证排序发生在我们这边而不是靠 kubectl --sort-by。

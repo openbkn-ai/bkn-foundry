@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'bkn-trace/**'
+      - 'bkn-safe/charts/bkn-safe/**'
+      - 'deploy/scripts/lib/common.sh'
       - 'comm-go/**'
       - 'deploy/scripts/services/config.sh'
       - 'deploy/scripts/services/config_observability_test.sh'

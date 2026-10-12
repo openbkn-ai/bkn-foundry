@@ -16,6 +16,7 @@ CONFIG_YAML_PATH="${case_dir}/config.yaml"
 printf 'bknSafe:\n  initialPassword: initial-test-only\n' >"${CONFIG_YAML_PATH}"
 CORE_SET_VALUES=()
 INSTALLED='{}'
+INSTALLED_AO='{}'
 SAME_VERSION=true
 config_yaml_dep_field() { case "$2" in mqHost) printf broker ;; mqPort) printf 9092 ;; esac; }
 _bkn_safe_instance_id() { printf 001234; }
@@ -24,6 +25,7 @@ log_warn() { :; }
 should_skip_upgrade_same_chart_version() { [[ "${SAME_VERSION}" == true ]]; }
 helm() {
     if [[ "${1:-}" == status ]]; then printf '{"info":{"status":"deployed"}}'; return 0; fi
+    if [[ "$*" == 'get values agent-observability -n audit-test --all -o json' ]]; then printf '%s' "${INSTALLED_AO}"; return 0; fi
     [[ "$*" == 'get values bkn-safe -n audit-test --all -o json' ]] || { echo "Unexpected Helm call: $*" >&2; return 1; }
     printf '%s' "${INSTALLED}"
 }
@@ -37,7 +39,7 @@ _openbkn_helm_upgrade_release() {
     local release="$1" namespace="$2"
     shift 2
     local -a args=("$@")
-    [[ "${release}" == bkn-safe && "${namespace}" == audit-test ]]
+    [[ "${release}" == bkn-safe && "${namespace}" == audit-test ]] || return 1
     INSTALL_CALLS=$((INSTALL_CALLS + 1))
     command helm install "${args[@]:2}" --dry-run=client --hide-secret -o json >"${case_dir}/render.json"
 }
@@ -84,6 +86,28 @@ for mode in local repo; do
   done
 done
 [[ "${INSTALL_CALLS}" -eq 6 ]]
+# A production environment supplied once through CLI survives both kinds of upgrade.
+INSTALLED='{}'
+CORE_SET_VALUES=(auditPublisher.environment=production)
+SAME_VERSION=false
+_install_openbkn_release_local bkn-safe "${case_dir}" audit-test || exit 1
+check_render production broker:9092 bkn-trace-evidence-kafka
+INSTALLED="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["config"]))' "${case_dir}/render.json")"
+CORE_SET_VALUES=()
+SAME_VERSION=true
+before="${INSTALL_CALLS}"
+_install_openbkn_release_local bkn-safe "${case_dir}" audit-test || exit 1
+[[ "${INSTALL_CALLS}" -eq "${before}" ]] || exit 1
+SAME_VERSION=false
+_install_openbkn_release_repo bkn-safe audit-test ignored 0.1.0 || exit 1
+check_render production broker:9092 bkn-trace-evidence-kafka
+# Upgrade a legacy Safe release whose environment exists only in AO.
+INSTALLED='{"auditPublisher":{"enabled":false,"environment":""}}'
+INSTALLED_AO='{"auditPublisher":{"environment":"production"}}'
+SAME_VERSION=true
+_install_openbkn_release_local bkn-safe "${case_dir}" audit-test || exit 1
+check_render production broker:9092 bkn-trace-evidence-kafka
+INSTALLED_AO='{}'
 # Explicit config and CLI values still win, including comma-separated brokers.
 cat >"${CONFIG_YAML_PATH}" <<'YAML'
 bknSafe:
@@ -101,6 +125,7 @@ _openbkn_should_skip_upgrade bkn-safe audit-test bkn-safe 0.1.0 || exit 1
 # The shared AO broker array must not leak into Safe's string-valued env.
 printf 'bknSafe:\n  initialPassword: initial-test-only\nauditPublisher:\n  brokers: [broker-a:9092]\n' >"${CONFIG_YAML_PATH}"
 CORE_SET_VALUES=()
+INSTALLED='{}'
 _install_openbkn_release_local bkn-safe "${case_dir}" audit-test || exit 1
 check_render development broker:9092 bkn-trace-evidence-kafka
 # Version changes still upgrade; failed reads preserve the existing skip policy.
