@@ -212,6 +212,13 @@ func (service *Service) listPage(
 		visibleSources = operationAuditSources(visibleSources)
 	}
 	if len(visibleSources) == 0 {
+		// A business-only caller cannot query the audit-only deployment. This
+		// is an unsupported access scope, not a retryable source outage.
+		if service.operationAuditOnly && !intersects(effectiveCategories, []string{
+			observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity,
+		}) {
+			return observabilityvo.ListResult{}, ErrAccessDenied
+		}
 		return observabilityvo.ListResult{}, ErrSourcesUnavailable
 	}
 	// The disabled Audit inventory entry must not disable direct pagination of

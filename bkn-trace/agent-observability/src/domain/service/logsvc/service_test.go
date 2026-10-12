@@ -1441,3 +1441,27 @@ func TestOperationAuditRoleMatrixListAndDetail(t *testing.T) {
 		}
 	}
 }
+
+func TestOperationAuditMissingBusinessProjectionDoesNotReportOutage(t *testing.T) {
+	for _, role := range []string{"admin", "network_builder", "normal_user", "audit"} {
+		t.Run(role, func(t *testing.T) {
+			service := NewWithOptions([]Source{&categorizedSource{id: "otel-runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness}}}, Options{OperationAuditOnly: true})
+			query := observabilityvo.LogQuery{}
+			expected := ErrAccessDenied
+			if role == "normal_user" {
+				query.RequestID = "request"
+			}
+			// An authorized audit caller with no audit source still sees an outage.
+			if role == "audit" {
+				expected = ErrSourcesUnavailable
+			}
+			profile := activeProfile("caller", role)
+			if _, err := service.List(context.Background(), profile, query); !errors.Is(err, expected) {
+				t.Fatalf("list: got %v want %v", err, expected)
+			}
+			if _, err := service.Facets(context.Background(), profile, query, "service_name"); !errors.Is(err, expected) {
+				t.Fatalf("facets: got %v want %v", err, expected)
+			}
+		})
+	}
+}
