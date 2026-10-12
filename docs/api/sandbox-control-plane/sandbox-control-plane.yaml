@@ -1,0 +1,2216 @@
+openapi: 3.1.0
+info:
+  title: Sandbox Control Plane
+  version: 2.1.0
+  description: Current control plane REST contract. Authentication is delegated to the deployment network
+    boundary; the REST application does not validate a Bearer token. Internal callback routes are service-to-service
+    only.
+paths:
+  /api/v1/health:
+    get:
+      tags:
+      - health
+      summary: Health Check 29
+      description: 'Health check endpoint
+
+
+        Returns the system status and uptime.'
+      operationId: health_check_29_api_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/health/detailed:
+    get:
+      tags:
+      - health
+      summary: Detailed Health Check 39
+      description: 'Detailed health check
+
+
+        Returns the system status and the health of its dependencies.'
+      operationId: detailed_health_check_39_api_v1_health_detailed_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/health/sync:
+    post:
+      tags:
+      - health
+      summary: Trigger State Sync 58
+      description: 'Trigger a state sync by hand
+
+
+        Runs one state sync and health check immediately, for debugging and manual recovery.'
+      operationId: trigger_state_sync_58_api_v1_health_sync_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/sessions:
+    post:
+      tags:
+      - sessions
+      summary: Create Session 44
+      description: 'Create a session
+
+
+        - **template_id**: template id; without it DEFAULT_TEMPLATE_ID applies
+
+        - **timeout**: timeout in seconds, 300 by default, 3600 at most
+
+        - **cpu**: CPU cores, such as "1" or "2"
+
+        - **memory**: memory limit, such as "512Mi" or "1Gi"
+
+        - **disk**: disk limit, such as "1Gi" or "10Gi"
+
+        - **env_vars**: environment variables
+
+        - **dependencies**: session-level dependency packages
+
+        - **install_timeout**: dependency install timeout in seconds, 300 by default
+
+        - **fail_on_dependency_error**: whether a failed dependency install aborts session creation
+
+        - **allow_version_conflicts**: whether a version conflict is allowed'
+      operationId: create_session_44_api_v1_sessions_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+        '409':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '400':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+    get:
+      tags:
+      - sessions
+      summary: List Sessions 91
+      description: 'List sessions
+
+
+        Filters by status and template_id, and pages.
+
+
+        - **status**: filter by session status, optional, such as "running" or "terminated"
+
+        - **template_id**: filter by template id, optional
+
+        - **limit**: how many to return, 1-200, default 50
+
+        - **offset**: offset, for paging, default 0'
+      operationId: list_sessions_91_api_v1_sessions_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: template_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Template Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/sessions/{session_id}:
+    get:
+      tags:
+      - sessions
+      summary: Get Session 122
+      description: Get the session details
+      operationId: get_session_122_api_v1_sessions__session_id__get
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+    delete:
+      tags:
+      - sessions
+      summary: Delete Session 176
+      description: 'Delete a session: a hard delete that cascades to the execution records
+
+
+        What happens:
+
+        1. Clean up: destroy the container and delete the S3 files
+
+        2. Hard-delete the session row
+
+        3. Cascade-delete every execution row that belongs to it'
+      operationId: delete_session_176_api_v1_sessions__session_id__delete
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/sessions/{session_id}/dependencies/install:
+    post:
+      tags:
+      - sessions
+      summary: Install Session Dependencies 135
+      description: Install Python dependencies incrementally.
+      operationId: install_session_dependencies_135_api_v1_sessions__session_id__dependencies_install_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallSessionDependenciesRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+        '409':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '503':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '400':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+  /api/v1/sessions/{session_id}/terminate:
+    post:
+      tags:
+      - sessions
+      summary: Terminate Session 159
+      description: 'Terminate a session: a soft stop that keeps the record
+
+
+        What happens:
+
+        1. The container is destroyed
+
+        2. The S3 workspace files are deleted
+
+        3. The session moves to terminated
+
+        4. The database record is kept'
+      operationId: terminate_session_159_api_v1_sessions__session_id__terminate_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/executions/sessions/{session_id}/execute:
+    post:
+      tags:
+      - executions
+      summary: Submit Execution 45
+      description: 'Submit code for execution
+
+
+        - **code**: the code to run
+
+        - **language**: programming language (python, javascript, shell)
+
+        - **timeout**: timeout in seconds, 30 by default
+
+        - **event**: event payload
+
+        - **working_directory**: optional working directory, relative to the workspace root'
+      operationId: submit_execution_45_api_v1_executions_sessions__session_id__execute_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteCodeRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteCodeResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/executions/sessions/{session_id}/execute-sync:
+    post:
+      tags:
+      - executions
+      summary: Execute Code Sync 80
+      description: 'Synchronous code execution endpoint
+
+
+        Internally calls async execution and polls for result until:
+
+        - Execution reaches terminal state (COMPLETED, FAILED, TIMEOUT, CRASHED)
+
+        - sync_timeout is reached
+
+
+        - **poll_interval**: Polling interval in seconds (default: 0.5, range: 0.1-10.0)
+
+        - **sync_timeout**: Maximum wait time in seconds (default: 300, range: 10-3600)
+
+        - **code**: Code to execute
+
+        - **language**: Programming language (python, javascript, shell)
+
+        - **timeout**: Execution timeout in seconds
+
+        - **event**: Event data
+
+        - **working_directory**: Optional execution directory relative to workspace root'
+      operationId: execute_code_sync_80_api_v1_executions_sessions__session_id__execute_sync_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: poll_interval
+        in: query
+        required: false
+        schema:
+          type: number
+          maximum: 10.0
+          minimum: 0.1
+          description: Polling interval in seconds
+          default: 0.5
+          title: Poll Interval
+        description: Polling interval in seconds
+      - name: sync_timeout
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 3600
+          minimum: 10
+          description: Maximum wait time in seconds
+          default: 300
+          title: Sync Timeout
+        description: Maximum wait time in seconds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteCodeRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+        '408':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+  /api/v1/executions/{execution_id}/status:
+    get:
+      tags:
+      - executions
+      summary: Get Execution Status 186
+      description: Get the execution status
+      operationId: get_execution_status_186_api_v1_executions__execution_id__status_get
+      parameters:
+      - name: execution_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Execution Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/executions/{execution_id}/result:
+    get:
+      tags:
+      - executions
+      summary: Get Execution Result 196
+      description: Get the execution result
+      operationId: get_execution_result_196_api_v1_executions__execution_id__result_get
+      parameters:
+      - name: execution_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Execution Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/executions/sessions/{session_id}/executions:
+    get:
+      tags:
+      - executions
+      summary: List Executions 206
+      description: List every execution of a session
+      operationId: list_executions_206_api_v1_executions_sessions__session_id__executions_get
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/templates:
+    post:
+      tags:
+      - templates
+      summary: Create Template 23
+      description: 'Create a template
+
+
+        - **id**: template id
+
+        - **name**: template name
+
+        - **image_url**: image URL
+
+        - **runtime_type**: runtime type (python3.11, nodejs20, java17, go1.21)
+
+        - **default_cpu_cores**: default CPU cores
+
+        - **default_memory_mb**: default memory in MB
+
+        - **default_disk_mb**: default disk in MB
+
+        - **default_timeout_sec**: default timeout in seconds
+
+        - **default_env_vars**: default environment variables'
+      operationId: create_template_23_api_v1_templates_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+    get:
+      tags:
+      - templates
+      summary: List Templates 56
+      description: List every template
+      operationId: list_templates_56_api_v1_templates_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateResponse'
+                title: Response List Templates 56 Api V1 Templates Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/templates/{template_id}:
+    get:
+      tags:
+      - templates
+      summary: Get Template 65
+      description: Get the template details
+      operationId: get_template_65_api_v1_templates__template_id__get
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Template Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+    put:
+      tags:
+      - templates
+      summary: Update Template 75
+      description: Update the template
+      operationId: update_template_75_api_v1_templates__template_id__put
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Template Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTemplateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+    delete:
+      tags:
+      - templates
+      summary: Delete Template 97
+      description: Delete the template
+      operationId: delete_template_97_api_v1_templates__template_id__delete
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Template Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/sessions/{session_id}/files:
+    get:
+      tags:
+      - files
+      summary: List Files 22
+      description: 'List the files of a session
+
+
+        Returns the files in that session workspace, optionally under one directory.
+
+
+        - **path**: optional directory, such as "src/" or "src/utils"; without it every file is listed
+
+        - **limit**: how many files to return, 1-10000'
+      operationId: list_files_22_api_v1_sessions__session_id__files_get
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: path
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: A directory, relative to the workspace root. Without it every file is listed.
+          title: Path
+        description: A directory, relative to the workspace root. Without it every file is listed.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 10000
+          minimum: 1
+          description: How many files to return at most
+          default: 1000
+          title: Limit
+        description: How many files to return at most
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+        '400':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+  /api/v1/sessions/{session_id}/files/upload:
+    post:
+      tags:
+      - files
+      summary: Upload File 48
+      description: 'Upload a file into the session workspace
+
+
+        - **path**: where the file goes in the workspace
+
+        - **file**: the file to upload, 100MB at most'
+      operationId: upload_file_48_api_v1_sessions__session_id__files_upload_post
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Path
+      - name: extract
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Whether to treat the upload as a ZIP and extract it into the target directory
+          default: false
+          title: Extract
+        description: Whether to treat the upload as a ZIP and extract it into the target directory
+      - name: overwrite
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Whether extraction overwrites existing files
+          default: false
+          title: Overwrite
+        description: Whether extraction overwrites existing files
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_file_48_api_v1_sessions__session_id__files_upload_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '500':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '413':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '404':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '400':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+  /api/v1/sessions/{session_id}/files/{file_path}:
+    get:
+      tags:
+      - files
+      summary: Download File 118
+      description: 'Download a file from the session workspace
+
+
+        - **file_path**: where the file lives in the workspace'
+      operationId: download_file_118_api_v1_sessions__session_id__files__file_path__get
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: file_path
+        in: path
+        required: true
+        schema:
+          type: string
+          title: File Path
+      responses:
+        '200':
+          description: Presigned URL JSON or direct binary response (with Content-Disposition).
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - session_id
+                - file_path
+                - presigned_url
+                - size
+                properties:
+                  session_id:
+                    type: string
+                  file_path:
+                    type: string
+                  presigned_url:
+                    type: string
+                  size:
+                    type: integer
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+        '404':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+  /api/v1/internal/containers/ready:
+    post:
+      tags:
+      - internal
+      summary: Handle Container Ready 54
+      description: 'Handle the container-ready event
+
+
+        The executor calls this once it has started, telling the control plane the container is ready.
+
+        Moves the matching session to RUNNING.'
+      operationId: handle_container_ready_54_api_v1_internal_containers_ready_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContainerReadyRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalAPIResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/internal/containers/exited:
+    post:
+      tags:
+      - internal
+      summary: Handle Container Exited 83
+      description: 'Handle the container-exit event
+
+
+        The executor calls this before shutting down, telling the control plane the container is about
+        to exit.'
+      operationId: handle_container_exited_83_api_v1_internal_containers_exited_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalAPIResponse'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/internal/executions/{execution_id}/heartbeat:
+    post:
+      tags:
+      - internal
+      summary: Handle Execution Heartbeat 95
+      description: 'Handle an execution heartbeat
+
+
+        The executor calls this periodically while running, keeping the execution marked active.'
+      operationId: handle_execution_heartbeat_95_api_v1_internal_executions__execution_id__heartbeat_post
+      parameters:
+      - name: execution_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Execution Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalAPIResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: 'Unhandled service failure: {error, message, detail}.'
+  /api/v1/internal/executions/{execution_id}/result:
+    post:
+      tags:
+      - internal
+      summary: Report Execution Result 111
+      description: 'Report an execution result
+
+
+        The executor calls this once execution finishes, reporting the result to the control plane.
+
+
+        ## Status mapping
+
+        - API: `"success"` → Domain: `ExecutionStatus.COMPLETED`
+
+        - API: `"failed"` → Domain: `ExecutionStatus.FAILED`
+
+        - API: `"timeout"` → Domain: `ExecutionStatus.TIMEOUT`
+
+        - API: `"crashed"` → Domain: `ExecutionStatus.CRASHED`
+
+
+        ## Idempotency
+
+        - When the execution record is already terminal, answer 200; this is a repeat report
+
+        - On the first report, update and answer 201'
+      operationId: report_execution_result_111_api_v1_internal_executions__execution_id__result_post
+      parameters:
+      - name: execution_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Execution Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutionResultReport'
+      responses:
+        '200':
+          description: Result was already recorded (idempotent replay).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalAPIResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '201':
+          description: First result recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalAPIResponse'
+        '404':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '400':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+        '409':
+          description: FastAPI HTTPException response; detail contains the validation or service failure.
+            Request validation may use a detail array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail: {}
+  /:
+    get:
+      summary: Control plane service information
+      operationId: controlPlaneRoot
+      responses:
+        '200':
+          description: Service name, version, status, features and documentation links.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - name
+                - version
+                - status
+                - features
+                - documentation
+                properties:
+                  name:
+                    type: string
+                  version:
+                    type: string
+                  status:
+                    type: string
+                  features:
+                    type: array
+                    items:
+                      type: string
+                  documentation:
+                    type: object
+                    additionalProperties:
+                      type: string
+components:
+  schemas:
+    ArtifactResponse:
+      properties:
+        path:
+          type: string
+          title: Path
+        size:
+          type: integer
+          title: Size
+        mime_type:
+          type: string
+          title: Mime Type
+        type:
+          type: string
+          title: Type
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        checksum:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Checksum
+      type: object
+      required:
+      - path
+      - size
+      - mime_type
+      - type
+      - created_at
+      title: ArtifactResponse
+      description: File artifact response
+    Body_upload_file_48_api_v1_sessions__session_id__files_upload_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_upload_file_48_api_v1_sessions__session_id__files_upload_post
+    ContainerReadyRequest:
+      properties:
+        container_id:
+          type: string
+          title: Container Id
+          description: Container id
+        pod_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pod Name
+          description: Pod name, under Kubernetes
+        executor_port:
+          type: integer
+          title: Executor Port
+          description: Executor HTTP API port
+          default: 8080
+        ready_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ready At
+          description: Ready timestamp, ISO 8601
+      type: object
+      required:
+      - container_id
+      title: ContainerReadyRequest
+      description: Container-ready request
+    CreateSessionRequest:
+      properties:
+        id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Id
+          description: Session id. Optional; when given it has to be unique.
+        template_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Template Id
+          description: Template id. Without it the default template configuration applies.
+        timeout:
+          type: integer
+          maximum: 3600.0
+          minimum: 1.0
+          title: Timeout
+          description: Timeout in seconds
+          default: 300
+        cpu:
+          type: string
+          title: Cpu
+          description: CPU cores
+          default: '1'
+        memory:
+          type: string
+          title: Memory
+          description: Memory limit
+          default: 512Mi
+        disk:
+          type: string
+          title: Disk
+          description: Disk limit
+          default: 1Gi
+        env_vars:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env Vars
+          description: Environment variables
+        event:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Event
+          description: Event payload
+        dependencies:
+          items:
+            $ref: '#/components/schemas/DependencySpec'
+          type: array
+          maxItems: 50
+          title: Dependencies
+          description: Session-level dependency packages
+        install_timeout:
+          type: integer
+          maximum: 1800.0
+          minimum: 30.0
+          title: Install Timeout
+          description: Dependency install timeout in seconds
+          default: 300
+        fail_on_dependency_error:
+          type: boolean
+          title: Fail On Dependency Error
+          description: Whether a failed dependency install aborts session creation
+          default: true
+        allow_version_conflicts:
+          type: boolean
+          title: Allow Version Conflicts
+          description: Whether a version conflict is allowed between the template preinstall and the requested
+            package
+          default: false
+        python_package_index_url:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Python Package Index Url
+          description: Python package index URL, https://pypi.org/simple/ by default
+      type: object
+      title: CreateSessionRequest
+      description: 'Create-session request
+
+
+        Follows section 5.3.1 of sandbox-design-v2.1.md, extended for dependency installation.'
+    CreateTemplateRequest:
+      properties:
+        id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Id
+          description: Template id
+        name:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Name
+          description: Template name
+        image_url:
+          type: string
+          maxLength: 512
+          minLength: 1
+          title: Image Url
+          description: Image URL
+        runtime_type:
+          type: string
+          enum:
+          - python3.11
+          - nodejs20
+          - java17
+          - go1.21
+          title: Runtime Type
+          description: Runtime type
+        default_cpu_cores:
+          type: number
+          maximum: 4.0
+          minimum: 0.1
+          title: Default Cpu Cores
+          description: Default CPU cores
+          default: 0.5
+        default_memory_mb:
+          type: integer
+          maximum: 8192.0
+          minimum: 128.0
+          title: Default Memory Mb
+          description: Default memory in MB
+          default: 512
+        default_disk_mb:
+          type: integer
+          maximum: 51200.0
+          minimum: 256.0
+          title: Default Disk Mb
+          description: Default disk in MB
+          default: 1024
+        default_timeout:
+          type: integer
+          maximum: 3600.0
+          minimum: 60.0
+          title: Default Timeout
+          description: Default timeout in seconds
+          default: 300
+        default_env_vars:
+          anyOf:
+          - additionalProperties:
+              type: string
+            type: object
+          - type: 'null'
+          title: Default Env Vars
+          description: Default environment variables
+      type: object
+      required:
+      - id
+      - name
+      - image_url
+      - runtime_type
+      title: CreateTemplateRequest
+      description: Create-template request
+    DependencyResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Version
+      type: object
+      required:
+      - name
+      title: DependencyResponse
+      description: Dependency response.
+    DependencySpec:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+          description: Package name
+        version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Version
+          description: Version constraint, such as ==2.31.0 or >=1.0
+      type: object
+      required:
+      - name
+      title: DependencySpec
+      description: 'Dependency package specification
+
+
+        Names a Python package to install when a session is created.
+
+        Follows section 5.3.1 of sandbox-design-v2.1.md.'
+    ExecuteCodeRequest:
+      properties:
+        code:
+          type: string
+          maxLength: 102400
+          minLength: 1
+          title: Code
+          description: The code to run. With language=python it has to match the AWS Lambda handler shape;
+            with language=shell it is the shell script body.
+        language:
+          type: string
+          enum:
+          - python
+          - javascript
+          - shell
+          title: Language
+          description: Programming language
+        timeout:
+          type: integer
+          maximum: 3600.0
+          minimum: 1.0
+          title: Timeout
+          description: Execution timeout in seconds
+          default: 30
+        event:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Event
+          description: Event payload
+        env_vars:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env Vars
+          description: Environment variables for this execution, overriding the values set when the session
+            was created. Sessions are pooled and reused, so anything that varies per execution, such as
+            the caller identity, has to be sent every time.
+        working_directory:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Working Directory
+          description: Optional working directory, relative to the workspace root. Without it the workspace
+            root is used.
+      type: object
+      required:
+      - code
+      - language
+      title: ExecuteCodeRequest
+      description: Execute-code request
+      examples:
+      - code: "def handler(event):\n    name = event.get(\"name\", \"World\")\n    return {\"message\"\
+          : f\"Hello, {name}!\"}"
+        event:
+          name: World
+        language: python
+        timeout: 10
+      - code: "def handler(event):\n    name = event.get(\"name\", \"World\")\n    age = event.get(\"\
+          age\", 0)\n    return {\"message\": f\"Hello, {name}!\", \"age_doubled\": age * 2}"
+        event:
+          age: 25
+          name: Alice
+        language: python
+        timeout: 30
+      - code: pwd && ls -la
+        language: shell
+        timeout: 30
+      - code: bash run.sh && python tools/build.py
+        language: shell
+        timeout: 30
+        working_directory: skill/mini-wiki
+    ExecuteCodeResponse:
+      properties:
+        execution_id:
+          type: string
+          title: Execution Id
+        session_id:
+          type: string
+          title: Session Id
+        status:
+          type: string
+          title: Status
+        created_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Created At
+      type: object
+      required:
+      - execution_id
+      - session_id
+      - status
+      title: ExecuteCodeResponse
+      description: Execute-code response
+    ExecutionMetrics:
+      properties:
+        duration_ms:
+          type: number
+          title: Duration Ms
+          description: Wall-clock duration in milliseconds
+        cpu_time_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cpu Time Ms
+          description: CPU time in milliseconds
+        peak_memory_mb:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Peak Memory Mb
+          description: Peak memory in MB
+        io_read_bytes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Io Read Bytes
+          description: Bytes read
+        io_write_bytes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Io Write Bytes
+          description: Bytes written
+      type: object
+      required:
+      - duration_ms
+      title: ExecutionMetrics
+      description: Execution performance metrics
+    ExecutionResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        session_id:
+          type: string
+          title: Session Id
+        status:
+          type: string
+          title: Status
+        code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Code
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+        timeout:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Timeout
+        exit_code:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Exit Code
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+        execution_time:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Execution Time
+        stdout:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Stdout
+        stderr:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Stderr
+        artifacts:
+          items:
+            $ref: '#/components/schemas/ArtifactResponse'
+          type: array
+          title: Artifacts
+          default: []
+        retry_count:
+          type: integer
+          title: Retry Count
+          default: 0
+        created_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        return_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Return Value
+        metrics:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metrics
+      type: object
+      required:
+      - id
+      - session_id
+      - status
+      title: ExecutionResponse
+      description: Execution response
+    ExecutionResultReport:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: 'Execution status: success, failed, timeout, or crashed'
+        stdout:
+          type: string
+          title: Stdout
+          description: Standard output
+          default: ''
+        stderr:
+          type: string
+          title: Stderr
+          description: Standard error
+          default: ''
+        exit_code:
+          type: integer
+          title: Exit Code
+          description: Process exit code
+        execution_time:
+          type: number
+          title: Execution Time
+          description: Execution duration in seconds
+        return_value:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Return Value
+          description: Return value of the handler function
+        metrics:
+          anyOf:
+          - $ref: '#/components/schemas/ExecutionMetrics'
+          - type: 'null'
+          description: Performance metrics
+        artifacts:
+          items:
+            type: string
+          type: array
+          title: Artifacts
+          description: Paths of the files that were produced
+      type: object
+      required:
+      - status
+      - exit_code
+      - execution_time
+      title: ExecutionResultReport
+      description: 'Execution result report request
+
+
+        The executor calls this to report a result to the control plane.'
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          default: healthy
+        version:
+          type: string
+          title: Version
+          default: 2.1.0
+        uptime:
+          type: number
+          title: Uptime
+      type: object
+      required:
+      - uptime
+      title: HealthResponse
+      description: Health check response
+    InstallSessionDependenciesRequest:
+      properties:
+        python_package_index_url:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Python Package Index Url
+          description: Python package index URL. Without it the current session setting applies.
+        dependencies:
+          items:
+            $ref: '#/components/schemas/DependencySpec'
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Dependencies
+          description: Dependencies to install in this batch
+        install_timeout:
+          type: integer
+          maximum: 1800.0
+          minimum: 30.0
+          title: Install Timeout
+          description: Timeout in seconds for this dependency install
+          default: 300
+      type: object
+      required:
+      - dependencies
+      title: InstallSessionDependenciesRequest
+      description: Incremental Python dependency install request.
+    InstalledDependencyResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        version:
+          type: string
+          title: Version
+        install_location:
+          type: string
+          title: Install Location
+        install_time:
+          type: string
+          format: date-time
+          title: Install Time
+        is_from_template:
+          type: boolean
+          title: Is From Template
+          default: false
+      type: object
+      required:
+      - name
+      - version
+      - install_location
+      - install_time
+      title: InstalledDependencyResponse
+      description: Installed dependency response.
+    InternalAPIResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+          description: Response message
+      type: object
+      required:
+      - message
+      title: InternalAPIResponse
+      description: Standard internal API response
+    ResourceLimitResponse:
+      properties:
+        cpu:
+          type: string
+          title: Cpu
+        memory:
+          type: string
+          title: Memory
+        disk:
+          type: string
+          title: Disk
+        max_processes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Processes
+          default: 128
+      type: object
+      required:
+      - cpu
+      - memory
+      - disk
+      title: ResourceLimitResponse
+      description: Resource limit response
+    SessionListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/SessionResponse'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+        has_more:
+          type: boolean
+          title: Has More
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      - has_more
+      title: SessionListResponse
+      description: Session list response
+    SessionResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        template_id:
+          type: string
+          title: Template Id
+        status:
+          type: string
+          title: Status
+        resource_limit:
+          anyOf:
+          - $ref: '#/components/schemas/ResourceLimitResponse'
+          - type: 'null'
+        workspace_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Workspace Path
+        language_runtime:
+          type: string
+          title: Language Runtime
+        runtime_type:
+          type: string
+          title: Runtime Type
+        runtime_node:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Runtime Node
+        container_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Container Id
+        pod_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pod Name
+        env_vars:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env Vars
+          default: {}
+        timeout:
+          type: integer
+          title: Timeout
+        python_package_index_url:
+          type: string
+          title: Python Package Index Url
+          default: https://pypi.org/simple/
+        requested_dependencies:
+          items:
+            $ref: '#/components/schemas/DependencyResponse'
+          type: array
+          title: Requested Dependencies
+          default: []
+        installed_dependencies:
+          items:
+            $ref: '#/components/schemas/InstalledDependencyResponse'
+          type: array
+          title: Installed Dependencies
+          default: []
+        dependency_install_status:
+          type: string
+          title: Dependency Install Status
+          default: pending
+        dependency_install_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dependency Install Error
+        dependency_install_started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Dependency Install Started At
+        dependency_install_completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Dependency Install Completed At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        last_activity_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Activity At
+      type: object
+      required:
+      - id
+      - template_id
+      - status
+      - language_runtime
+      - runtime_type
+      - timeout
+      - created_at
+      - updated_at
+      title: SessionResponse
+      description: Session response
+    TemplateResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        image_url:
+          type: string
+          title: Image Url
+        runtime_type:
+          type: string
+          title: Runtime Type
+        default_cpu_cores:
+          type: number
+          title: Default Cpu Cores
+        default_memory_mb:
+          type: integer
+          title: Default Memory Mb
+        default_disk_mb:
+          type: integer
+          title: Default Disk Mb
+        default_timeout_sec:
+          type: integer
+          title: Default Timeout Sec
+        default_env_vars:
+          anyOf:
+          - additionalProperties:
+              type: string
+            type: object
+          - type: 'null'
+          title: Default Env Vars
+        is_active:
+          type: boolean
+          title: Is Active
+          default: true
+        created_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - image_url
+      - runtime_type
+      - default_cpu_cores
+      - default_memory_mb
+      - default_disk_mb
+      - default_timeout_sec
+      title: TemplateResponse
+      description: Template response
+    UpdateTemplateRequest:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 255
+            minLength: 1
+          - type: 'null'
+          title: Name
+          description: Template name
+        image_url:
+          anyOf:
+          - type: string
+            maxLength: 512
+            minLength: 1
+          - type: 'null'
+          title: Image Url
+          description: Image URL
+        default_cpu_cores:
+          anyOf:
+          - type: number
+            maximum: 4.0
+            minimum: 0.1
+          - type: 'null'
+          title: Default Cpu Cores
+          description: Default CPU cores
+        default_memory_mb:
+          anyOf:
+          - type: integer
+            maximum: 8192.0
+            minimum: 128.0
+          - type: 'null'
+          title: Default Memory Mb
+          description: Default memory in MB
+        default_disk_mb:
+          anyOf:
+          - type: integer
+            maximum: 51200.0
+            minimum: 256.0
+          - type: 'null'
+          title: Default Disk Mb
+          description: Default disk in MB
+        default_timeout:
+          anyOf:
+          - type: integer
+            maximum: 3600.0
+            minimum: 60.0
+          - type: 'null'
+          title: Default Timeout
+          description: Default timeout in seconds
+        default_env_vars:
+          anyOf:
+          - additionalProperties:
+              type: string
+            type: object
+          - type: 'null'
+          title: Default Env Vars
+          description: Default environment variables
+      type: object
+      title: UpdateTemplateRequest
+      description: Update-template request
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+servers:
+- url: http://sandbox-control-plane:8000

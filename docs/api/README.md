@@ -14,7 +14,7 @@ This directory contains the OpenAPI documentation for bkn-foundry services. YAML
 
 ## 🔑 Calling the APIs
 
-APIs require authentication through `Authorization: Bearer <token>`. Obtain a token with one of these methods: **1. CLI login** (`openbkn auth login`, which stores the token in `~/.bkn/` and sends it automatically); **2. AppKey** (`POST /api/safe/v1/me/api-keys` issues a `bak_` key for automation); **3. device authorization flow** (an integrated application directs the user to sign in through `POST /oauth2/device/auth` without registering a client). The authentication section on the generated documentation home page contains complete examples.
+Published business APIs require authentication through `Authorization: Bearer <token>`. Obtain a token with one of these methods: **1. CLI login** (`openbkn auth login`, which stores the token in `~/.bkn/` and sends it automatically); **2. AppKey** (`POST /api/safe/v1/me/api-keys` issues a `bak_` key for automation); **3. device authorization flow** (an integrated application directs the user to sign in through `POST /oauth2/device/auth` without registering a client). The authentication section on the generated documentation home page contains complete examples.
 
 ## 🗂️ Modules
 
@@ -22,13 +22,14 @@ The order below matches the card groups on the documentation home page. It is co
 
 | Module | Directory | Coverage |
 |---|---|---|
-| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, metrics, capability bindings, operation audit, and import/export. **Complete** |
+| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, metrics, capability bindings and import/export. **Complete** |
 | 🛡️ bkn-safe admin | [`bkn-safe-admin/`](bkn-safe-admin/) | Gateway-exposed, bearer-token-protected Enterprise security-policy management APIs. Internal decision endpoints remain under the unpublished `bkn-safe/` module. |
 | 🟫 context-loader | [`context-loader/`](context-loader/) | Agent context entry points: schema retrieval, instance and subgraph queries, logical properties, action execution, Skill retrieval, direct data access, and MCP. **Complete external surface**; internal `/in/v1` APIs are excluded |
 | 🟩 ontology-query | [`ontology-query/`](ontology-query/) | Ontology queries, semantic retrieval, action execution, and logs. **Complete** |
 | 🟨 vega-backend | [`vega/`](vega/) | Data observability: catalogs, resources, connectors, build tasks, discovery tasks, and raw queries. **Complete** |
-| 🟩 execution-factory | [`execution-factory/`](execution-factory/) | Execution factory: functions, sandbox observability, import/export, operators, MCP, toolboxes, and Skills. **Complete public surface** (89 endpoints). Only Ingress-exposed `/v1` APIs are included; the tokenless `internal-v1` surface is intentionally excluded, and `/api/capabilities-lab/v1` is not documented yet |
-| 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | Model factory. **Partial**: currently covers large-model connection testing, default model settings, and usage overview. Small models, quotas, prompts, and other APIs are not yet documented |
+| 🟩 execution-factory | [`execution-factory/`](execution-factory/) | Execution factory: functions, sandbox observability, import/export, operators, MCP, toolboxes, and Skills. **Complete public surface** (90 documented operations). The principal Ingress-exposed `/v1` APIs are included; the tokenless `internal-v1` surface is intentionally excluded, and the separate `/api/capabilities-lab/v1` group has 35 documented operations |
+| 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | Model factory: large/small models, quotas, prompts, defaults and monitoring. All 46 public business route operations are covered; controller responses without a fixed response model use an open JSON schema |
+| 🟧 mf-model-api | [`mf-model-api/`](mf-model-api/) | Chat completions (JSON/SSE), reranking and both embedding aliases: all four public inference operations |
 | 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace: managed session lifecycle, business evidence, technical traces, and snapshots. Generated from Go annotations; **do not edit the YAML directly**. **Complete** |
 | 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent runtime: agent CRUD, conversations, tasks, prompts, and import/export. **Complete** |
 
@@ -39,6 +40,8 @@ These directories remain in the repository but are not published on the site. Th
 | Directory | Reason |
 | --- | --- |
 | [`bkn-safe/`](bkn-safe/) | Contains the self-service read surface plus cluster-internal authorization and managed-proxy contracts. They are linted but are not published as general external integration APIs |
+| [`sandbox-control-plane/`](sandbox-control-plane/) | Private control-plane REST contract, derived from current Pydantic models; callbacks remain cluster internal |
+| [`sandbox-executor/`](sandbox-executor/) | Private executor contract, including asynchronous submission and session dependency synchronization |
 | [`observability/`](observability/) | Contains only `observability.json`; it has no publishable YAML and would render as an empty group |
 
 > Every new module directory must be registered in either `MODULES` or `MODULES_UNPUBLISHED`. The `make api-docs-*` targets fail otherwise, preventing documentation from being added silently without appearing on the site.
@@ -61,7 +64,9 @@ bkn-backend registers both `/api/bkn-backend/v1` and `/api/ontology-manager/v1` 
 | [`_shared/errors.yaml`](_shared/errors.yaml) | Common Go service error envelope (`rest.BaseError`: `error_code / description / solution / error_link / error_details`). Reference: `$ref: '../_shared/errors.yaml#/components/schemas/Error'` |
 | [`_shared/auth.yaml`](_shared/auth.yaml) | Authentication schemes (OAuth2 client credentials and `bak_` AppKey). Reference: `$ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'` |
 
-> ⚠️ mf-model uses FastAPI and has a different error envelope (`code / detail / link`). If documented, it must use a separate `errors-fastapi.yaml` rather than being forced into the common schema.
+> Model Factory uses its own FastAPI error envelope; chat-completion errors use the OpenAI-compatible envelope. Sandbox also has service-specific errors. See each operation rather than assuming the common Go error schema.
+
+The [OSS gateway API reference](../../infra/oss-gateway-backend/API_DOCUMENTATION.md) documents its 16 native routes and service-specific response envelope. Route coverage does not imply that every controller result has a closed, field-level response contract or that every operation was exercised against a live deployment.
 
 The resource IDs, operation inheritance, execution subjects, batch behavior, and failure boundaries shared by bkn-safe, BKN, ontology-query, context-loader, and execution-factory are defined in the [knowledge-network authorization contract](knowledge-network-authorization.md). Concrete methods, request fields, and response fields remain authoritative in the corresponding module YAML.
 
