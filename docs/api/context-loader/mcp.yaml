@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: MCP 服务
+  title: 上下文加载 · MCP 服务 API
   description: |
     Context Loader 把自己的检索能力同时以 **MCP Server** 形式对外：Cursor、Claude
     Desktop 等 MCP 客户端可以直接接入，不必逐个封装 REST 调用。

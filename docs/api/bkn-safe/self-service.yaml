@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: BKN Safe Self-Service Authorization Scope API
+  title: 身份与授权 · 用户自助授权 API
   version: 0.1.3
   description: |
     Allows an authenticated subject to read its own direct knowledge-network

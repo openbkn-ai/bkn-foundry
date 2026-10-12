@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 实例子图查询
+  title: 上下文加载 · 实例子图查询 API
   description: |
     跨对象类展开关联，两个入口按**是否已知拓扑**分工：
 

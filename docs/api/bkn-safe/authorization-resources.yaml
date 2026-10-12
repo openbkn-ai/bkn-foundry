@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: BKN Safe Authorization Resource Catalog API
+  title: 身份与授权 · 授权资源目录 API
   version: 0.1.0
   description: |
     Token-gated administrative resource picker. bkn-safe validates the caller

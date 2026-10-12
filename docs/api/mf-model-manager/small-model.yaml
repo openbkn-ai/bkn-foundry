@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: mf-model-manager small model
+  title: 模型管理 · 小模型管理 API
   version: 0.1.0
   description: Public HTTP contract derived from the current route signatures and Pydantic request models.
     Internal /api/private routes are excluded. Dynamic controller results remain an open JSON schema.

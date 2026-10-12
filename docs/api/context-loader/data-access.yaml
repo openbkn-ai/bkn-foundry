@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 数据层直查
+  title: 上下文加载 · 数据层直查 API
   description: |
     脱离本体、直接查底层数据资源的三个接口：列资源、看资源结构、跑只读 SQL。
 

@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.2
 info:
-  title: CypherQuery
+  title: BKN 知识网络 · Cypher 查询 API
   version: 0.1.0
   description: |-
     Read-only Cypher queries over the instance data of a knowledge network.

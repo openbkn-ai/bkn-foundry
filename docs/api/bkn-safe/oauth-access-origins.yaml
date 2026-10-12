@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: BKN Safe OAuth Access Origins API
+  title: 身份与授权 · OAuth 访问入口 API
   version: 0.1.0
   description: |
     Manages the browser origins from which BKN Studio may complete its OAuth

@@ -4,7 +4,7 @@
 
 openapi: 3.0.3
 info:
-  title: BKN Safe Enterprise Property Grant Management API
+  title: 身份与授权 · 属性授权 API
   version: 0.1.0
   description: |
     Manages sparse property-level restrictions for one user or role on one
