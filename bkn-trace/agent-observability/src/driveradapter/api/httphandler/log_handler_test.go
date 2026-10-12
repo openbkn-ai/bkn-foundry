@@ -562,3 +562,32 @@ func containsJSONPolicy(payload []byte, expected string) bool {
 	}
 	return false
 }
+
+func TestOperationAuditDefaultDeploymentReturnsAccessDeniedForBusinessOnlyRoles(t *testing.T) {
+	for _, role := range []string{"admin", "network_builder", "normal_user"} {
+		t.Run(role, func(t *testing.T) {
+			profile := evidencevo.AccessProfile{AccountActive: true, ActorID: "caller", EffectiveSubjectID: "caller", Roles: []string{role}}
+			handler := newTestLogHandler(profile, nil)
+			// Default deployment: configured audit ledger and OTLP, no Core projection.
+			handler.service = logsvc.NewWithOptions([]logsvc.Source{emptyAuditLogSource{}, handlerLogSource{}}, logsvc.Options{OperationAuditOnly: true})
+			suffix := ""
+			if role == "normal_user" {
+				suffix = "?request_id=request-a"
+			}
+			for _, endpoint := range []string{"/api/observability/v1/logs"} {
+				request := authenticatedQueryRequest(http.MethodGet, endpoint+suffix, nil)
+				request.Header.Set("x-account-id", "caller")
+				request.Header.Set("x-account-type", "user")
+				response := httptest.NewRecorder()
+				handler.ListLogs(response, request)
+				var body observabilityErrorEnvelope
+				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if response.Code != http.StatusForbidden || body.Error.Code != "observability_access_denied" || body.Error.Retryable {
+					t.Fatalf("%s: expected non-retryable access denial, got %d %s", endpoint, response.Code, response.Body.String())
+				}
+			}
+		})
+	}
+}

@@ -31,7 +31,7 @@ func TestLogPageQueriesDeepOffsetWithoutReplayingPages(t *testing.T) {
 	query := observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 181}
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202609").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5000))
 	mock.ExpectQuery("SELECT event_id.*audit_event_202609.*ORDER BY occurred_at DESC, event_id DESC LIMIT \\? OFFSET \\?").WithArgs(from, to, "audit.admin", 21, int64(3600)).WillReturnRows(sqlmock.NewRows([]string{"event_id", "source_id", "payload", "occurred_at", "broker_received_at", "recorded_at"}))
-	_, count, err := reader.QueryLogPage(context.Background(), query, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"admin"}})
+	_, count, err := reader.QueryLogPage(context.Background(), query, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"audit"}})
 	if err != nil || count != 5000 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
@@ -50,7 +50,7 @@ func TestLogPageCountsMonthsBeforeChoosingOffset(t *testing.T) {
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202610").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1000))
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202609").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(4000))
 	mock.ExpectQuery("SELECT event_id.*audit_event_202609.*LIMIT \\? OFFSET \\?").WithArgs(from, to, "audit.admin", 21, int64(2600)).WillReturnRows(sqlmock.NewRows([]string{"event_id", "source_id", "payload", "occurred_at", "broker_received_at", "recorded_at"}))
-	_, count, err := reader.QueryLogPage(context.Background(), q, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"admin"}})
+	_, count, err := reader.QueryLogPage(context.Background(), q, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"audit"}})
 	if err != nil || count != 5000 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
@@ -68,7 +68,7 @@ func TestLogPageBeyondTotalDoesNotExecuteDeepOffset(t *testing.T) {
 			from := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
 			to := from.Add(time.Hour)
 			mock.ExpectQuery("SELECT COUNT\\(\\*\\)").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5000))
-			result, count, err := reader.QueryLogPage(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: page}, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"admin"}})
+			result, count, err := reader.QueryLogPage(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: page}, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"audit"}})
 			if err != nil || len(result.Records) != 0 || count != 5000 {
 				t.Fatalf("result=%+v count=%d err=%v", result, count, err)
 			}
@@ -106,7 +106,7 @@ func TestLogPageSpansMonthsAndCursorContinuesInOlderMonth(t *testing.T) {
 	from := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
 	q := observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 2}
-	profile := evidencevo.AccessProfile{AccountActive: true, Roles: []string{"admin"}}
+	profile := evidencevo.AccessProfile{AccountActive: true, Roles: []string{"audit"}}
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202610").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(35))
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202609").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(15))
 	mock.ExpectQuery("SELECT event_id.*audit_event_202610").WithArgs(from, to, "audit.admin", 21, int64(20)).WillReturnRows(logPageRows(10, 15, 20))
@@ -134,12 +134,12 @@ func TestLogPageFiltersActorSearchAndNetworkScopeBeforeCountAndOffset(t *testing
 	reader, _ := NewReader(db)
 	from := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
 	to := from.Add(time.Hour)
-	q := observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 181, ActorQuery: "Alice", Query: "box%_"}
+	q := observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"runtime.business"}, Limit: 20, Page: 181, ActorQuery: "Alice", Query: "box%_"}
 	profile := evidencevo.AccessProfile{AccountActive: true, EffectiveSubjectID: "builder-1", Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-1"}}
 	predicate := ".*" + regexp.QuoteMeta("LOCATE(LOWER(?), LOWER(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.summary')))) > 0") + ".*" + regexp.QuoteMeta("$.actor.display_name_snapshot") + ".*" + regexp.QuoteMeta("JSON_CONTAINS(JSON_EXTRACT(payload, '$.scope.knowledge_network_ids'), JSON_QUOTE(?))")
 	// Both COUNT and SELECT must carry actor matching and trusted network scope.
-	mock.ExpectQuery("SELECT COUNT\\(\\*\\)"+predicate).WithArgs(from, to, "audit.admin", "box%_", "Alice", "Alice", "builder-1", "builder-1", "kn-1").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5000))
-	mock.ExpectQuery("SELECT event_id"+predicate+".*LIMIT \\? OFFSET \\?").WithArgs(from, to, "audit.admin", "box%_", "Alice", "Alice", "builder-1", "builder-1", "kn-1", 21, int64(3600)).WillReturnRows(logPageRows(9, 0))
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\)"+predicate).WithArgs(from, to, "runtime.business", "box%_", "Alice", "Alice", "builder-1", "builder-1", "kn-1").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5000))
+	mock.ExpectQuery("SELECT event_id"+predicate+".*LIMIT \\? OFFSET \\?").WithArgs(from, to, "runtime.business", "box%_", "Alice", "Alice", "builder-1", "builder-1", "kn-1", 21, int64(3600)).WillReturnRows(logPageRows(9, 0))
 	_, count, err := reader.QueryLogPage(context.Background(), q, profile)
 	if err != nil || count != 5000 {
 		t.Fatalf("count=%d err=%v", count, err)
@@ -157,7 +157,7 @@ func TestLogPageSkipsMissingMonthlyLedger(t *testing.T) {
 	to := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202610").WillReturnError(&mysql.MySQLError{Number: 1146})
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\).*audit_event_202609").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-	_, count, err := reader.QueryLogPage(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 1000000}, evidencevo.AccessProfile{Roles: []string{"admin"}})
+	_, count, err := reader.QueryLogPage(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 1000000}, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"audit"}})
 	if err != nil || count != 0 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
@@ -173,11 +173,54 @@ func TestLogFirstPageDoesNotCountLedger(t *testing.T) {
 	from := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
 	to := from.Add(24 * time.Hour)
 	mock.ExpectQuery("SELECT event_id.*audit_event_202609").WithArgs(from, to, "audit.admin", 21, int64(0)).WillReturnRows(logPageRows(9, 21))
-	page, count, err := reader.QueryLogPage(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 1}, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"admin"}})
+	page, count, err := reader.QueryLogPage(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 1}, evidencevo.AccessProfile{AccountActive: true, Roles: []string{"audit"}})
 	if err != nil || len(page.Records) != 20 || page.Next == nil || count != 21 {
 		t.Fatalf("page=%+v count=%d err=%v", page, count, err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAuditRoleScopeAppliesBeforeCountPageAndCursor(t *testing.T) {
+	for _, tc := range []struct {
+		role    string
+		allowed string
+	}{
+		{"normal_user", "1=0"}, {"network_builder", "1=0"}, {"admin", "1=0"},
+		{"security", "JSON_UNQUOTE(JSON_EXTRACT(payload, '$.category')) IN ('access.user','audit.security')"},
+		{"audit", "JSON_UNQUOTE(JSON_EXTRACT(payload, '$.category')) IN ('access.user','audit.admin','audit.security')"},
+		{"super_admin", "JSON_UNQUOTE(JSON_EXTRACT(payload, '$.category')) IN ('access.user','audit.admin','audit.security')"},
+	} {
+		for _, owner := range []string{"user-1", "other"} {
+			t.Run(tc.role+"/"+owner, func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = db.Close() }()
+				reader, _ := NewReader(db)
+				from := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
+				to := from.Add(time.Hour)
+				q := observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, AuthorizedCategories: []string{"audit.admin"}, Limit: 20, Page: 2}
+				profile := evidencevo.AccessProfile{AccountActive: true, EffectiveSubjectID: owner, Roles: []string{tc.role}, ApplicationPrincipalID: "app", ManagedKnowledgeNetworkIDs: []string{"kn"}}
+				predicate := regexp.QuoteMeta(" AND (" + tc.allowed + " OR (JSON_UNQUOTE(JSON_EXTRACT(payload, '$.category')) NOT IN ('access.user','audit.admin','audit.security') AND 1=0))")
+				// No actor, application or network parameter can restrict audit duties or
+				// turn business ownership into permission for an audit category.
+				mock.ExpectQuery("SELECT COUNT\\(\\*\\).*"+predicate).WithArgs(from, to, "audit.admin").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(40))
+				mock.ExpectQuery("SELECT event_id.*"+predicate+".*LIMIT \\? OFFSET \\?").WithArgs(from, to, "audit.admin", 21, int64(20)).WillReturnRows(logPageRows(9, 0))
+				if _, _, err := reader.QueryLogPage(context.Background(), q, profile); err != nil {
+					t.Fatal(err)
+				}
+				q.PageBefore = &observabilityvo.SourcePosition{EventTimestamp: from.Add(time.Minute), LogID: "event"}
+				mock.ExpectQuery("SELECT event_id.*"+predicate+".*LIMIT \\? OFFSET \\?").WithArgs(from, to, "audit.admin", q.PageBefore.EventTimestamp, q.PageBefore.EventTimestamp, "event", 21, int64(0)).WillReturnRows(logPageRows(9, 0))
+				if _, _, err := reader.QueryLogPage(context.Background(), q, profile); err != nil {
+					t.Fatal(err)
+				}
+				if err := mock.ExpectationsWereMet(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 }
