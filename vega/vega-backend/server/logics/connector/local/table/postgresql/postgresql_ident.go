@@ -8,8 +8,6 @@ package postgresql
 
 import (
 	"strings"
-
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 // pgQuoteIdent double quotes escape PostgreSQL identifiers.
@@ -20,18 +18,8 @@ func pgQuoteIdent(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
-// qualTable returns the table name in the form of schema.table with double quotes.
-func qualTable(res *interfaces.Resource) string {
-	ident := res.SourceIdentifier
-	parts := strings.SplitN(ident, ".", 2)
-	for i, p := range parts {
-		parts[i] = pgQuoteIdent(strings.TrimSpace(p))
-	}
-	return strings.Join(parts, ".")
-}
-
-// quoteColumnName column name/alias qualification; Support "alias.col" -> "alias.col".
-func quoteColumnName(name string) string {
+// pgQuoteColumnName column name/alias qualification; Support "alias.col" -> "alias.col".
+func pgQuoteColumnName(name string) string {
 	if name == "" {
 		return `""`
 	}

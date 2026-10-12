@@ -17,36 +17,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
-func TestQuoteColumnName(t *testing.T) {
-	t.Run("quote column name simple", func(t *testing.T) {
-		if got := quoteColumnName("name"); got != "`name`" {
-			t.Errorf("expected `name`, got %s", got)
-		}
-	})
-	t.Run("quote column name with alias", func(t *testing.T) {
-		got := quoteColumnName("t1.name")
-		if got != "`t1`.`name`" {
-			t.Errorf("expected `t1`.`name`, got %s", got)
-		}
-	})
-	t.Run("quote column name empty", func(t *testing.T) {
-		if got := quoteColumnName(""); got != "``" {
-			t.Errorf("expected ``, got %s", got)
-		}
-	})
-	t.Run("quote column name with backtick", func(t *testing.T) {
-		got := quoteColumnName("col`name")
-		if got != "`col``name`" {
-			t.Errorf("expected `col``name`, got %s", got)
-		}
-	})
-	t.Run("quote column name alias with spaces", func(t *testing.T) {
-		got := quoteColumnName(" t1 . name ")
-		if got != "`t1`.`name`" {
-			t.Errorf("expected `t1`.`name`, got %s", got)
-		}
-	})
-}
 func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 	t.Run("convert equal const", func(t *testing.T) {
 		c := &MariaDBConnector{}

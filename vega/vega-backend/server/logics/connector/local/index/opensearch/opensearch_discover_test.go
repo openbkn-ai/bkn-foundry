@@ -149,18 +149,63 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 	require.Contains(t, index.Mapping, "title")
 }
 
-func TestGetIndexMetaByIdentifierRejectsIndexOutsideConfiguredPattern(t *testing.T) {
-	connector := &OpenSearchConnector{
-		Config: &opensearchConfig{IndexPatterns: []string{"catalog-*", "metric-*"}},
+func TestOpenSearchConnectorGetIndexMeta(t *testing.T) {
+	t.Run("rejects index outside configured patterns before requests", func(t *testing.T) {
+		connector := &OpenSearchConnector{Config: &opensearchConfig{IndexPatterns: []string{"catalog-*", "metric-*"}}}
+		err := connector.GetIndexMeta(context.Background(), &interfaces.IndexMeta{Name: "system-audit"})
+		require.ErrorContains(t, err, "outside the connector scope")
+	})
+	for _, tc := range []struct {
+		name    string
+		missing bool
+	}{
+		{"refreshes complete metadata once", false},
+		{"rejects missing index", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := map[string]int{}
+			client, err := opensearch.NewClient(opensearch.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					calls[request.URL.Path]++
+					var body string
+					switch request.URL.Path {
+					case "/_cat/indices/products":
+						body = `[{"index":"products","docs.count":"3","store.size":"1kb","creation.date":"123"}]`
+						if tc.missing {
+							body = `[]`
+						}
+					case "/products/_mapping":
+						body = `{"products":{"mappings":{"properties":{"title":{"type":"keyword"}}}}}`
+					case "/products/_settings":
+						body = `{"products":{"settings":{"index.number_of_shards":"1"}}}`
+					default:
+						t.Fatalf("unexpected request: %s", request.URL.Path)
+					}
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			connector := &OpenSearchConnector{client: client, Config: &opensearchConfig{IndexPatterns: []string{"prod*"}}}
+			index := &interfaces.IndexMeta{Name: "products", Properties: map[string]any{"obsolete": true}, CreationTime: 1}
+			err = connector.GetIndexMeta(context.Background(), index)
+			if tc.missing {
+				require.ErrorContains(t, err, "not found")
+				assert.Equal(t, map[string]int{"/_cat/indices/products": 1}, calls)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, map[string]int{"/_cat/indices/products": 1, "/products/_mapping": 1, "/products/_settings": 1}, calls)
+				assert.Equal(t, int64(123), index.CreationTime)
+				assert.Equal(t, "3", index.Properties["docs.count"])
+				assert.Equal(t, "1", index.Properties["index.number_of_shards"])
+				assert.NotContains(t, index.Properties, "obsolete")
+				assert.Contains(t, index.Mapping, "title")
+			}
+		})
 	}
-
-	_, err := connector.GetIndexMetaByIdentifier(context.Background(), "system-audit")
-
-	require.Error(t, err)
-	assert.ErrorContains(t, err, `index "system-audit" is outside the connector scope`)
 }
 
-func TestGetIndexMetaByIdentifierAcceptsAnyConfiguredPattern(t *testing.T) {
+func TestOpenSearchConnectorValidateIndexScope(t *testing.T) {
 	connector := &OpenSearchConnector{
 		Config: &opensearchConfig{IndexPatterns: []string{"catalog-*", "metric-*"}},
 	}

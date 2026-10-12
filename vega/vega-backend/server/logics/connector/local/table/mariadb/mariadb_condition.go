@@ -153,9 +153,9 @@ func (c *MariaDBConnector) ConvertFilterConditionEqual(condition interfaces.Filt
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, "=", cond.Value)
 		}
-		return sq.Eq{quotedColumn(cond.Lfield): cond.Value}, nil
+		return sq.Eq{mariadbQuotedColumn(cond.Lfield): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quotedColumn(cond.Lfield) + " = " + quotedColumn(cond.Rfield)), nil
+		return sq.Expr(mariadbQuotedColumn(cond.Lfield) + " = " + mariadbQuotedColumn(cond.Rfield)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -173,9 +173,9 @@ func (c *MariaDBConnector) ConvertFilterConditionNotEqual(condition interfaces.F
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, "<>", cond.Value)
 		}
-		return sq.NotEq{quotedColumn(cond.Lfield): cond.Value}, nil
+		return sq.NotEq{mariadbQuotedColumn(cond.Lfield): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quotedColumn(cond.Lfield) + " <> " + quotedColumn(cond.Rfield)), nil
+		return sq.Expr(mariadbQuotedColumn(cond.Lfield) + " <> " + mariadbQuotedColumn(cond.Rfield)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -193,9 +193,9 @@ func (c *MariaDBConnector) ConvertFilterConditionGt(condition interfaces.FilterC
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, ">", cond.Value)
 		}
-		return sq.Gt{quotedColumn(cond.Lfield): cond.Value}, nil
+		return sq.Gt{mariadbQuotedColumn(cond.Lfield): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quotedColumn(cond.Lfield) + " > " + quotedColumn(cond.Rfield)), nil
+		return sq.Expr(mariadbQuotedColumn(cond.Lfield) + " > " + mariadbQuotedColumn(cond.Rfield)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -213,9 +213,9 @@ func (c *MariaDBConnector) ConvertFilterConditionGte(condition interfaces.Filter
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, ">=", cond.Value)
 		}
-		return sq.GtOrEq{quotedColumn(cond.Lfield): cond.Value}, nil
+		return sq.GtOrEq{mariadbQuotedColumn(cond.Lfield): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quotedColumn(cond.Lfield) + " >= " + quotedColumn(cond.Rfield)), nil
+		return sq.Expr(mariadbQuotedColumn(cond.Lfield) + " >= " + mariadbQuotedColumn(cond.Rfield)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -233,9 +233,9 @@ func (c *MariaDBConnector) ConvertFilterConditionLt(condition interfaces.FilterC
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, "<", cond.Value)
 		}
-		return sq.Lt{quotedColumn(cond.Lfield): cond.Value}, nil
+		return sq.Lt{mariadbQuotedColumn(cond.Lfield): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quotedColumn(cond.Lfield) + " < " + quotedColumn(cond.Rfield)), nil
+		return sq.Expr(mariadbQuotedColumn(cond.Lfield) + " < " + mariadbQuotedColumn(cond.Rfield)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -253,9 +253,9 @@ func (c *MariaDBConnector) ConvertFilterConditionLte(condition interfaces.Filter
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
 			return dateCompareExpr(cond.Lfield, "<=", cond.Value)
 		}
-		return sq.LtOrEq{quotedColumn(cond.Lfield): cond.Value}, nil
+		return sq.LtOrEq{mariadbQuotedColumn(cond.Lfield): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
-		return sq.Expr(quotedColumn(cond.Lfield) + " <= " + quotedColumn(cond.Rfield)), nil
+		return sq.Expr(mariadbQuotedColumn(cond.Lfield) + " <= " + mariadbQuotedColumn(cond.Rfield)), nil
 	default:
 		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -275,7 +275,7 @@ func (c *MariaDBConnector) ConvertFilterConditionIn(condition interfaces.FilterC
 		return dateSetExpr(cond.Lfield, "IN", cond.Value)
 	}
 
-	return sq.Eq{quotedColumn(cond.Lfield): cond.Value}, nil
+	return sq.Eq{mariadbQuotedColumn(cond.Lfield): cond.Value}, nil
 }
 
 // ConvertFilterConditionNotIn builds a predicate excluding the supplied values.
@@ -292,7 +292,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNotIn(condition interfaces.Filt
 		return dateSetExpr(cond.Lfield, "NOT IN", cond.Value)
 	}
 
-	return sq.NotEq{quotedColumn(cond.Lfield): cond.Value}, nil
+	return sq.NotEq{mariadbQuotedColumn(cond.Lfield): cond.Value}, nil
 }
 
 // ConvertFilterConditionLike builds a substring LIKE predicate with escaped input.
@@ -307,7 +307,7 @@ func (c *MariaDBConnector) ConvertFilterConditionLike(condition interfaces.Filte
 	}
 
 	vStr := "%" + Special.Replace(cond.Value) + "%"
-	return sq.Like{quotedColumn(cond.Lfield): vStr}, nil
+	return sq.Like{mariadbQuotedColumn(cond.Lfield): vStr}, nil
 }
 
 // ConvertFilterConditionNotLike builds a negated substring LIKE predicate with escaped input.
@@ -322,7 +322,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNotLike(condition interfaces.Fi
 	}
 
 	vStr := "%" + Special.Replace(cond.Value) + "%"
-	return sq.NotLike{quotedColumn(cond.Lfield): vStr}, nil
+	return sq.NotLike{mariadbQuotedColumn(cond.Lfield): vStr}, nil
 }
 
 // ConvertFilterConditionRegex builds a regular-expression predicate.
@@ -336,7 +336,7 @@ func (c *MariaDBConnector) ConvertFilterConditionRegex(condition interfaces.Filt
 		return nil, fmt.Errorf("condition [regex] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
-	return sq.Expr(quotedColumn(cond.Lfield)+" REGEXP ?", cond.Value), nil
+	return sq.Expr(mariadbQuotedColumn(cond.Lfield)+" REGEXP ?", cond.Value), nil
 }
 
 // ConvertFilterConditionContain requires every supplied item to occur in a comma-separated field.
@@ -351,7 +351,7 @@ func (c *MariaDBConnector) ConvertFilterConditionContain(condition interfaces.Fi
 	}
 
 	exprs := make(sq.And, 0, len(cond.Value))
-	column := quotedColumn(cond.Lfield)
+	column := mariadbQuotedColumn(cond.Lfield)
 	for _, value := range cond.Value {
 		exprs = append(exprs, sq.Expr("FIND_IN_SET(?, "+column+") > 0", value))
 	}
@@ -370,7 +370,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNotContain(condition interfaces
 	}
 
 	exprs := make(sq.Or, 0, len(cond.Value))
-	column := quotedColumn(cond.Lfield)
+	column := mariadbQuotedColumn(cond.Lfield)
 	for _, value := range cond.Value {
 		exprs = append(exprs, sq.Expr("FIND_IN_SET(?, "+column+") = 0", value))
 	}
@@ -405,8 +405,8 @@ func (c *MariaDBConnector) ConvertFilterConditionRange(condition interfaces.Filt
 	}
 
 	return sq.And{
-		sq.GtOrEq{quotedColumn(cond.Lfield): cond.Value[0]},
-		sq.LtOrEq{quotedColumn(cond.Lfield): cond.Value[1]},
+		sq.GtOrEq{mariadbQuotedColumn(cond.Lfield): cond.Value[0]},
+		sq.LtOrEq{mariadbQuotedColumn(cond.Lfield): cond.Value[1]},
 	}, nil
 }
 
@@ -438,8 +438,8 @@ func (c *MariaDBConnector) ConvertFilterConditionOutRange(condition interfaces.F
 	}
 
 	return sq.Or{
-		sq.Lt{quotedColumn(cond.Lfield): cond.Value[0]},
-		sq.Gt{quotedColumn(cond.Lfield): cond.Value[1]},
+		sq.Lt{mariadbQuotedColumn(cond.Lfield): cond.Value[0]},
+		sq.Gt{mariadbQuotedColumn(cond.Lfield): cond.Value[1]},
 	}, nil
 }
 
@@ -473,8 +473,8 @@ func (c *MariaDBConnector) ConvertFilterConditionBetween(condition interfaces.Fi
 
 	// For non-time type fields, parameterized queries can be directly used
 	return sq.And{
-		sq.GtOrEq{quotedColumn(cond.Lfield): cond.Value[0]},
-		sq.LtOrEq{quotedColumn(cond.Lfield): cond.Value[1]},
+		sq.GtOrEq{mariadbQuotedColumn(cond.Lfield): cond.Value[0]},
+		sq.LtOrEq{mariadbQuotedColumn(cond.Lfield): cond.Value[1]},
 	}, nil
 }
 
@@ -485,7 +485,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNull(condition interfaces.Filte
 		return nil, fmt.Errorf("condition is not *filter_condition.NullCond")
 	}
 
-	return sq.Eq{quotedColumn(cond.Lfield): nil}, nil
+	return sq.Eq{mariadbQuotedColumn(cond.Lfield): nil}, nil
 }
 
 // ConvertFilterConditionNotNull builds an IS NOT NULL predicate.
@@ -495,7 +495,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNotNull(condition interfaces.Fi
 		return nil, fmt.Errorf("condition is not *filter_condition.NotNullCond")
 	}
 
-	return sq.NotEq{quotedColumn(cond.Lfield): nil}, nil
+	return sq.NotEq{mariadbQuotedColumn(cond.Lfield): nil}, nil
 }
 
 // ConvertFilterConditionEmpty matches an empty string.
@@ -505,7 +505,7 @@ func (c *MariaDBConnector) ConvertFilterConditionEmpty(condition interfaces.Filt
 		return nil, fmt.Errorf("condition is not *filter_condition.EmptyCond")
 	}
 
-	return sq.Eq{quotedColumn(cond.Lfield): ""}, nil
+	return sq.Eq{mariadbQuotedColumn(cond.Lfield): ""}, nil
 }
 
 // ConvertFilterConditionNotEmpty excludes empty strings.
@@ -515,7 +515,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNotEmpty(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.NotEmptyCond")
 	}
 
-	return sq.NotEq{quotedColumn(cond.Lfield): ""}, nil
+	return sq.NotEq{mariadbQuotedColumn(cond.Lfield): ""}, nil
 }
 
 // ConvertFilterConditionPrefix builds a prefix LIKE predicate with escaped input.
@@ -530,7 +530,7 @@ func (c *MariaDBConnector) ConvertFilterConditionPrefix(condition interfaces.Fil
 	}
 
 	vStr := Special.Replace(cond.Value) + "%"
-	return sq.Like{quotedColumn(cond.Lfield): vStr}, nil
+	return sq.Like{mariadbQuotedColumn(cond.Lfield): vStr}, nil
 }
 
 // ConvertFilterConditionNotPrefix builds a negated prefix LIKE predicate with escaped input.
@@ -545,7 +545,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNotPrefix(condition interfaces.
 	}
 
 	vStr := Special.Replace(cond.Value) + "%"
-	return sq.NotLike{quotedColumn(cond.Lfield): vStr}, nil
+	return sq.NotLike{mariadbQuotedColumn(cond.Lfield): vStr}, nil
 }
 
 // ConvertFilterConditionExist matches non-NULL field values.
@@ -555,7 +555,7 @@ func (c *MariaDBConnector) ConvertFilterConditionExist(condition interfaces.Filt
 		return nil, fmt.Errorf("condition is not *filter_condition.ExistCond")
 	}
 
-	return sq.NotEq{quotedColumn(cond.Lfield): nil}, nil
+	return sq.NotEq{mariadbQuotedColumn(cond.Lfield): nil}, nil
 }
 
 // ConvertFilterConditionNotExist matches NULL field values.
@@ -565,7 +565,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNotExist(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.NotExistCond")
 	}
 
-	return sq.Eq{quotedColumn(cond.Lfield): nil}, nil
+	return sq.Eq{mariadbQuotedColumn(cond.Lfield): nil}, nil
 }
 
 // ConvertFilterConditionTrue matches a true Boolean or nonzero TINYINT(1) value.
@@ -576,14 +576,14 @@ func (c *MariaDBConnector) ConvertFilterConditionTrue(condition interfaces.Filte
 	}
 
 	if cond.Lfield.Type == interfaces.DataType_Boolean {
-		return sq.Eq{quotedColumn(cond.Lfield): true}, nil
+		return sq.Eq{mariadbQuotedColumn(cond.Lfield): true}, nil
 	}
 
 	if !isNumericBoolean(cond.Lfield) {
 		return nil, fmt.Errorf("mariadb true condition requires BOOLEAN or TINYINT(1): %s", cond.Lfield.Name)
 	}
 
-	return sq.NotEq{quotedColumn(cond.Lfield): 0}, nil
+	return sq.NotEq{mariadbQuotedColumn(cond.Lfield): 0}, nil
 }
 
 // ConvertFilterConditionFalse matches a false Boolean or zero TINYINT(1) value.
@@ -594,14 +594,14 @@ func (c *MariaDBConnector) ConvertFilterConditionFalse(condition interfaces.Filt
 	}
 
 	if cond.Lfield.Type == interfaces.DataType_Boolean {
-		return sq.Eq{quotedColumn(cond.Lfield): false}, nil
+		return sq.Eq{mariadbQuotedColumn(cond.Lfield): false}, nil
 	}
 
 	if !isNumericBoolean(cond.Lfield) {
 		return nil, fmt.Errorf("mariadb false condition requires BOOLEAN or TINYINT(1): %s", cond.Lfield.Name)
 	}
 
-	return sq.Eq{quotedColumn(cond.Lfield): 0}, nil
+	return sq.Eq{mariadbQuotedColumn(cond.Lfield): 0}, nil
 }
 
 // ConvertFilterConditionBefore matches values before the specified interval relative to now.
@@ -628,7 +628,7 @@ func (c *MariaDBConnector) ConvertFilterConditionBefore(condition interfaces.Fil
 		return nil, fmt.Errorf("condition [before] unit value should be a string")
 	}
 
-	return sq.Expr(quotedColumn(cond.Lfield)+" < DATE_SUB(NOW(), INTERVAL ? "+unit+")", int(interval)), nil
+	return sq.Expr(mariadbQuotedColumn(cond.Lfield)+" < DATE_SUB(NOW(), INTERVAL ? "+unit+")", int(interval)), nil
 }
 
 // ConvertFilterConditionCurrent matches values in the current calendar interval.
@@ -642,7 +642,7 @@ func (c *MariaDBConnector) ConvertFilterConditionCurrent(condition interfaces.Fi
 		return nil, fmt.Errorf("condition [current] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
-	col := quotedColumn(cond.Lfield)
+	col := mariadbQuotedColumn(cond.Lfield)
 	var dateFormat string
 	switch cond.Value {
 	case filter_condition.CurrentYear:
@@ -767,7 +767,7 @@ func dateCompareExpr(field *interfaces.Property, op string, value any) (sq.Sqliz
 		return nil, err
 	}
 	return sq.Expr(
-		quotedColumn(field)+" "+op+" "+dateValueExpr(field, value),
+		mariadbQuotedColumn(field)+" "+op+" "+dateValueExpr(field, value),
 		normalizeTimestampValue(value),
 	), nil
 }
@@ -784,7 +784,7 @@ func dateSetExpr(field *interfaces.Property, op string, values []any) (sq.Sqlize
 		args[i] = normalizeTimestampValue(value)
 	}
 	return sq.Expr(
-		quotedColumn(field)+" "+op+" ("+strings.Join(valueExprs, ", ")+")",
+		mariadbQuotedColumn(field)+" "+op+" ("+strings.Join(valueExprs, ", ")+")",
 		args...,
 	), nil
 }

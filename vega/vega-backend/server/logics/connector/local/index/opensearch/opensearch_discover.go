@@ -125,13 +125,29 @@ func (c *OpenSearchConnector) listIndexes(ctx context.Context, indexNames []stri
 
 // GetIndexMeta retrieves an index's mappings and settings.
 func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interfaces.IndexMeta) error {
-	if err := c.Connect(ctx); err != nil {
+	if index == nil || index.Name == "" {
+		return fmt.Errorf("invalid index metadata")
+	}
+	if err := c.validateIndexScope(index.Name); err != nil {
 		return err
 	}
-
-	if index.Properties == nil {
-		index.Properties = make(map[string]any)
+	indices, err := c.listIndexes(ctx, []string{index.Name})
+	if err != nil {
+		return fmt.Errorf("list indexes: %w", err)
 	}
+	var found bool
+	for _, candidate := range indices {
+		if candidate.Name == index.Name {
+			index.CreationTime = candidate.CreationTime
+			index.Properties = candidate.Properties
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("index %q not found", index.Name)
+	}
+
 	index.Description = ""
 	index.MappingMeta = make(map[string]any)
 
@@ -144,33 +160,6 @@ func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interface
 	}
 
 	return nil
-}
-
-func (c *OpenSearchConnector) GetIndexMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.IndexMeta, error) {
-	if err := c.validateIndexScope(sourceIdentifier); err != nil {
-		return nil, err
-	}
-
-	indices, err := c.listIndexes(ctx, []string{sourceIdentifier})
-	if err != nil {
-		return nil, fmt.Errorf("list indexes: %w", err)
-	}
-
-	var index *interfaces.IndexMeta
-	for _, candidate := range indices {
-		if candidate.Name == sourceIdentifier {
-			index = candidate
-			break
-		}
-	}
-	if index == nil {
-		return nil, fmt.Errorf("index %q not found", sourceIdentifier)
-	}
-
-	if err := c.GetIndexMeta(ctx, index); err != nil {
-		return nil, err
-	}
-	return index, nil
 }
 
 func (c *OpenSearchConnector) validateIndexScope(sourceIdentifier string) error {

@@ -45,7 +45,7 @@ func TestPostgresqlConnectorExecuteQueryInvalidParameter(t *testing.T) {
 			require.NoError(t, err)
 			defer func() { _ = db.Close() }()
 			connector := &PostgresqlConnector{db: db, connected: true}
-			resource := &interfaces.Resource{SourceIdentifier: "public.orders", SchemaDefinition: []*interfaces.Property{{Name: "missing"}}}
+			resource := &interfaces.Resource{SourceIdentifier: "\"public\".\"orders\"", SchemaDefinition: []*interfaces.Property{{Name: "missing"}}}
 			params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, NeedTotal: tc.needTotal}
 			driverErr := &pq.Error{Code: "42703", Message: "private source column details"}
 			if tc.needTotal {
@@ -108,7 +108,7 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 
 	connector := &PostgresqlConnector{db: db, connected: true}
 	resource := &interfaces.Resource{
-		SourceIdentifier: "public.events",
+		SourceIdentifier: "\"public\".\"events\"",
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "createdAt", OriginalName: "createdAt"},
 			{Name: "id", OriginalName: "id"},
@@ -138,7 +138,7 @@ func TestPostgresqlConnectorExecuteQueryAliasesGroupByFields(t *testing.T) {
 
 	connector := &PostgresqlConnector{db: db, connected: true}
 	resource := &interfaces.Resource{
-		SourceIdentifier: "public.events",
+		SourceIdentifier: "\"public\".\"events\"",
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "groupKey", OriginalName: "group_key"},
 			{Name: "id", OriginalName: "id"},
@@ -167,7 +167,7 @@ func TestPostgresqlConnectorExecuteQueryConvertsAliasedTimezoneField(t *testing.
 
 	connector := &PostgresqlConnector{db: db, connected: true}
 	resource := &interfaces.Resource{
-		SourceIdentifier: "public.events",
+		SourceIdentifier: "\"public\".\"events\"",
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "createdAt", OriginalName: "created_at", OriginalType: "timestamptz"},
 		},

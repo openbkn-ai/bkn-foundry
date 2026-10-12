@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 func TestPgQuoteIdent(t *testing.T) {
@@ -22,19 +20,11 @@ func TestPgQuoteIdent(t *testing.T) {
 	})
 }
 
-func TestQualTable(t *testing.T) {
-	t.Run("qual table", func(t *testing.T) {
-		assert.Equal(t, `"users"`, qualTable(&interfaces.Resource{SourceIdentifier: "users"}))
-		assert.Equal(t, `"public"."users"`, qualTable(&interfaces.Resource{SourceIdentifier: " public . users "}))
-		assert.Equal(t, `"db"."public.users"`, qualTable(&interfaces.Resource{SourceIdentifier: "db.public.users"}))
-	})
-}
-
 func TestQuoteColumnName(t *testing.T) {
 	t.Run("quote column name", func(t *testing.T) {
-		assert.Equal(t, `""`, quoteColumnName(""))
-		assert.Equal(t, `"id"`, quoteColumnName(" id "))
-		assert.Equal(t, `"u"."id"`, quoteColumnName(" u . id "))
-		assert.Equal(t, `"u"."first.name"`, quoteColumnName("u.first.name"))
+		assert.Equal(t, `""`, pgQuoteColumnName(""))
+		assert.Equal(t, `"id"`, pgQuoteColumnName(" id "))
+		assert.Equal(t, `"u"."id"`, pgQuoteColumnName(" u . id "))
+		assert.Equal(t, `"u"."first.name"`, pgQuoteColumnName("u.first.name"))
 	})
 }

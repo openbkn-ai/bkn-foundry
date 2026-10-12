@@ -65,6 +65,23 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		require.NoError(t, worker.Run(context.Background(), task))
 	})
 
+	t.Run("missing table metadata fails before index or Kafka creation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMySQL, gomock.Any()).Return(connector, nil)
+		connector.EXPECT().DecodeTableMeta(gomock.Any()).Return(nil, errors.New("incomplete table metadata"))
+		worker := &streamingBuildWorker{cf: cf, bts: bts, rs: rs, cs: cs, lim: vmock.NewMockLocalIndexManager(ctrl)}
+		task := &interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending}
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "`app`.`orders`"}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{ID: "c1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL, ConnectorCfg: interfaces.ConnectorConfig{"databases": []string{"app"}}}, nil)
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "incomplete table metadata").Return(true, nil)
+		require.NoError(t, worker.Run(context.Background(), task))
+	})
+
 	t.Run("marks task failed for invalid streaming connector configuration", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bts := vmock.NewMockBuildTaskService(ctrl)
@@ -347,4 +364,75 @@ func TestStreamingHandlersNormalizeJSON(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestStreamingBuildWorkerExecuteBuild(t *testing.T) {
+
+	t.Run("uses connector original name for Kafka topic", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ka := vmock.NewMockKafkaAccess(ctrl)
+		worker := &streamingBuildWorker{kafkaAccess: ka}
+		resource := &interfaces.Resource{ID: "r1", SourceIdentifier: "`app`.`orders`"}
+		ka.EXPECT().CreateTopic(gomock.Any(), interfaces.BuildTopicPrefix+"-c1.app.orders").Return(errors.New("topic creation failed"))
+		err := worker.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1"}, resource, &interfaces.BuildTask{ID: "t1"}, "index", "app", "app.orders")
+		require.ErrorContains(t, err, "topic creation failed")
+	})
+}
+
+func TestStreamingBuildWorkerBuildTableName(t *testing.T) {
+	t.Run("legacy metadata builds CDC name without writing back", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
+		resource := &interfaces.Resource{Name: "business name", Schema: "app", SourceIdentifier: "`app`.`orders`", SourceMetadata: map[string]any{"schema": "app", "original_name": "app.orders", "original_description": "comment"}}
+		connector.EXPECT().DecodeTableMeta(resource.SourceMetadata).Return(&interfaces.TableMeta{Name: "orders", Schema: "app", Database: "app", Description: "comment"}, nil)
+		connector.EXPECT().BuildOriginalName(&interfaces.TableMeta{Name: "orders", Schema: "app", Database: "app", Description: "comment"}).Return("app.orders")
+		got, err := (&streamingBuildWorker{cf: cf}).buildTableName(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource)
+		require.NoError(t, err)
+		assert.Equal(t, "app.orders", got)
+		assert.Equal(t, map[string]any{"schema": "app", "original_name": "app.orders", "original_description": "comment"}, resource.SourceMetadata)
+	})
+
+	for _, tc := range []struct {
+		name, connectorType, database, schema, want string
+	}{
+		{"MySQL", interfaces.ConnectorTypeMySQL, "app", "app", "app.orders"},
+		{"PostgreSQL", interfaces.ConnectorTypePostgreSQL, "app", "sales", "sales.orders"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockTableConnector(ctrl)
+			catalog := &interfaces.Catalog{ConnectorType: tc.connectorType}
+			resource := &interfaces.Resource{SourceIdentifier: "quoted SQL reference", SourceMetadata: map[string]any{"name": "orders", "database": tc.database, "schema": tc.schema}}
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), tc.connectorType, catalog.ConnectorCfg).Return(connector, nil)
+			connector.EXPECT().DecodeTableMeta(resource.SourceMetadata).Return(&interfaces.TableMeta{Name: "orders", Database: tc.database, Schema: tc.schema}, nil)
+			connector.EXPECT().BuildOriginalName(&interfaces.TableMeta{Name: "orders", Database: tc.database, Schema: tc.schema}).Return(tc.want)
+			got, err := (&streamingBuildWorker{cf: cf}).buildTableName(context.Background(), catalog, resource)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+			assert.NotContains(t, resource.SourceMetadata, "original_name")
+		})
+	}
+	t.Run("connector creation failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(nil, errors.New("connector unavailable"))
+		got, err := (&streamingBuildWorker{cf: cf}).buildTableName(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"},
+			&interfaces.Resource{SourceMetadata: map[string]any{"database": "app", "name": "orders"}})
+		require.ErrorContains(t, err, "connector unavailable")
+		assert.Empty(t, got)
+	})
+	t.Run("invalid metadata rejects SQL identifier fallback", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(connector, nil)
+		connector.EXPECT().DecodeTableMeta(map[string]any{"name": 7, "schema": "app"}).Return(nil, errors.New("decode table metadata"))
+		got, err := (&streamingBuildWorker{cf: cf}).buildTableName(context.Background(), &interfaces.Catalog{},
+			&interfaces.Resource{SourceIdentifier: "app.orders", SourceMetadata: map[string]any{"name": 7, "schema": "app"}})
+		require.ErrorContains(t, err, "decode table metadata")
+		assert.Empty(t, got)
+	})
 }

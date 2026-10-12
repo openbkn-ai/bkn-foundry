@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -366,6 +367,7 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 // discoverResource refreshes one already-discovered Resource without listing or reconciling its Catalog.
 func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *interfaces.Catalog,
 	task *interfaces.DiscoverTask, progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
+
 	resource, err := dtw.rs.InternalGetByID(ctx, nil, task.ResourceID)
 	if err != nil {
 		return nil, fmt.Errorf("get resource for discovery: %w", err)
@@ -387,12 +389,13 @@ func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *in
 		if !ok {
 			return nil, fmt.Errorf("connector does not support single-resource table metadata refresh")
 		}
-		table, err := tableConnector.GetTableMetaByIdentifier(ctx, resource.SourceIdentifier)
+		meta, err := tableConnector.DecodeTableMeta(resource.SourceMetadata)
 		if err != nil {
-			return nil, fmt.Errorf("get table metadata: %w", err)
+			return nil, err
 		}
+
 		if err := dtw.enrichTableMetadata(ctx, task, tableConnector, []tableDiscoverItem{{
-			resource: resource, tableMeta: table, markAfterEnrich: true,
+			resource: resource, tableMeta: meta, markAfterEnrich: true,
 		}}, result, progress); err != nil {
 			return nil, err
 		}
@@ -401,12 +404,20 @@ func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *in
 		if !ok {
 			return nil, fmt.Errorf("connector does not support single-resource index metadata refresh")
 		}
-		index, err := indexConnector.GetIndexMetaByIdentifier(ctx, resource.SourceIdentifier)
+		data, err := sonic.Marshal(resource.SourceMetadata)
 		if err != nil {
-			return nil, fmt.Errorf("get index metadata: %w", err)
+			return nil, fmt.Errorf("serialize index metadata: %w", err)
 		}
+		meta := &interfaces.IndexMeta{}
+		if err := common.UnmarshalPreciseJSON(data, meta); err != nil {
+			return nil, fmt.Errorf("decode index metadata: %w", err)
+		}
+		if meta.Name == "" {
+			meta.Name = resource.SourceIdentifier
+		}
+		meta.Description = sourceOriginalDescription(resource.SourceMetadata)
 		if err := dtw.enrichIndexMetadata(ctx, task, indexConnector, []indexDiscoverItem{{
-			resource: resource, indexMeta: index, markAfterEnrich: true,
+			resource: resource, indexMeta: meta, markAfterEnrich: true,
 		}}, result, progress); err != nil {
 			return nil, err
 		}
@@ -546,7 +557,7 @@ func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *inte
 			err = dtw.enrichResourceLogicalViewRowCount(ctx, resource, result)
 		case resource.Category == interfaces.ResourceCategoryTable && (singleResource || category == interfaces.ConnectorCategoryTable):
 			if tableConnector, ok := connector.(interfaces.TableConnector); ok {
-				err = dtw.enrichResourceTableRowCount(ctx, task, resource, tableConnector, tableMetadataForCount(resource), result)
+				err = dtw.enrichResourceTableRowCount(ctx, task, resource, tableConnector, result)
 			} else if singleResource {
 				result.FailedCount++
 			} else {

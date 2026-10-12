@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/build_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 	model_factory "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/model_factory"
@@ -49,6 +50,7 @@ type streamingBuildWorker struct {
 	appSetting  *common.AppSetting
 	bts         interfaces.BuildTaskService
 	cs          interfaces.CatalogService
+	cf          interfaces.ConnectorFactory
 	httpClient  rest.HTTPClient
 	kafkaAccess interfaces.KafkaAccess
 	lim         interfaces.LocalIndexManager
@@ -71,6 +73,7 @@ func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorke
 		appSetting:  appSetting,
 		bts:         build_task.NewBuildTaskService(appSetting, rs),
 		cs:          catalog.NewCatalogService(appSetting),
+		cf:          factory.NewConnectorFactory(appSetting),
 		httpClient:  common.NewHTTPClient(),
 		kafkaAccess: logics.KA,
 		lim:         lim,
@@ -136,10 +139,17 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 		return nil
 	}
 
-	sourceIdentifier := resource.SourceIdentifier
 	database, err := streamingDatabase(catalog)
 	if err != nil {
 		logger.Errorf("Invalid streaming connector configuration for task %s: %v", taskID, err)
+		if _, updateErr := sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error()); updateErr != nil {
+			return fmt.Errorf("update build task status failed: %w", updateErr)
+		}
+		return nil
+	}
+
+	tableName, err := sbw.buildTableName(ctx, catalog, resource)
+	if err != nil {
 		if _, updateErr := sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error()); updateErr != nil {
 			return fmt.Errorf("update build task status failed: %w", updateErr)
 		}
@@ -152,7 +162,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 		return fmt.Errorf("create local index failed: %w", err)
 	}
 	// Execute build
-	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceIdentifier)
+	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, tableName)
 	if err != nil {
 		_, _ = sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error())
 		return err
@@ -163,9 +173,10 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 }
 
 // executeBuild executes the build logic
-func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database string, sourceIdentifier string) error {
+func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
+	buildTaskInfo *interfaces.BuildTask, indexName string, database string, tableName string) error {
 	// Use the connector name as the Kafka topic prefix
-	topic := fmt.Sprintf("%s-%s.%s", interfaces.BuildTopicPrefix, catalog.ID, sourceIdentifier)
+	topic := fmt.Sprintf("%s-%s.%s", interfaces.BuildTopicPrefix, catalog.ID, tableName)
 	groupID := fmt.Sprintf("%s-%s", interfaces.BuildTopicPrefix, resource.ID)
 
 	// Create Kafka topic if it doesn't exist
@@ -185,7 +196,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 	pipeline := &embeddingPipeline{mfs: sbw.mfs}
 	outputFields := buildIndexableFieldNames(resource.SchemaDefinition)
 
-	err = sbw.createKafkaConnector(ctx, catalog, resource, database, sourceIdentifier)
+	err = sbw.createKafkaConnector(ctx, catalog, resource, database, tableName)
 	if err != nil {
 		return fmt.Errorf("create kafka connector failed: %w", err)
 	}
@@ -362,7 +373,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 }
 
 // createKafkaConnector creates a Kafka connector for the build task
-func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database string, sourceIdentifier string) error {
+func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database string, tableName string) error {
 	// get connector
 	kafkaConnectSetting := sbw.appSetting.KafkaConnectSetting
 	// The connector name is bound to the catalog. Under the catalog, multiple resources share one connector, each subscribing to the topic of its own table
@@ -378,7 +389,7 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 	}
 	switch respCode {
 	case http.StatusNotFound:
-		connectorBody := sbw.buildConnectorConfig(connectorName, catalog, database, sourceIdentifier)
+		connectorBody := sbw.buildConnectorConfig(connectorName, catalog, database, tableName)
 		respCode, respBody, err := sbw.httpClient.Post(ctx, connectorUrl, headers, connectorBody)
 		if err != nil {
 			return fmt.Errorf("failed to create kafka connector: %w", err)
@@ -398,7 +409,7 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 		table_lists := strings.Split(tableIncludeList, ",")
 		tableExist := false
 		for _, table := range table_lists {
-			if strings.TrimSpace(table) == sourceIdentifier {
+			if strings.TrimSpace(table) == tableName {
 				tableExist = true
 				break
 			}
@@ -409,13 +420,13 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 			if newTableList != "" {
 				newTableList += ","
 			}
-			newTableList += sourceIdentifier
+			newTableList += tableName
 			config["table.include.list"] = newTableList
 			_, _, err = sbw.httpClient.Put(ctx, fmt.Sprintf("%s/%s/config", connectorUrl, connectorName), headers, config)
 			if err != nil {
 				return fmt.Errorf("Failed to update kafka connector config: %w", err)
 			}
-			logger.Infof("Updated kafka connector config to include table: %s", sourceIdentifier)
+			logger.Infof("Updated kafka connector config to include table: %s", tableName)
 		}*/
 		// check kafka connector status
 		_, respBody, err := sbw.httpClient.Get(ctx, fmt.Sprintf("%s/%s/status", connectorUrl, connectorName), nil, headers)
@@ -456,7 +467,7 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 			"schema.history.internal.kafka.topic":             fmt.Sprintf("%s-schema-changes", interfaces.BuildTopicPrefix),
 			"include.schema.changes":                          "true",
 			"topic.prefix":                                    fmt.Sprintf("%s-%s", interfaces.BuildTopicPrefix, catalog.ID),
-			// "table.include.list": sourceIdentifier,
+			// "table.include.list": tableName,
 			// Do not set table.include.list for a catalog-level shared connector: resources added later
 			// would otherwise miss their initial full snapshot.
 			// "snapshot.mode": "when_needed",
@@ -648,4 +659,21 @@ func (sbw *streamingBuildWorker) checkConnectorNeedToStop(ctx context.Context, c
 // getKafkaKeyValues extracts the task's document-ID fields from a Kafka key.
 func getKafkaKeyValues(documentIDFields []string, keyMap map[string]any) ([]interfaces.KeyValue, error) {
 	return extractKeyValues(documentIDFields, keyMap)
+}
+
+// buildTableName 由连接器根据原始表元数据生成 CDC 名称，不连接源数据库。
+func (sbw *streamingBuildWorker) buildTableName(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource) (string, error) {
+	connector, err := sbw.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	if err != nil {
+		return "", fmt.Errorf("create streaming table connector: %w", err)
+	}
+	tableConnector, ok := connector.(interfaces.TableConnector)
+	if !ok {
+		return "", fmt.Errorf("connector does not support streaming table names")
+	}
+	meta, err := tableConnector.DecodeTableMeta(resource.SourceMetadata)
+	if err != nil {
+		return "", err
+	}
+	return tableConnector.BuildOriginalName(meta), nil
 }

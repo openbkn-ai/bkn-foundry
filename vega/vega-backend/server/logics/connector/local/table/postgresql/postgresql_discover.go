@@ -13,7 +13,9 @@ import (
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bytedance/sonic"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -283,47 +285,7 @@ func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interface
 	if err := c.fetchForeignKeys(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch foreign keys: %w", err)
 	}
-
 	return nil
-}
-
-// GetTableMetaByIdentifier loads complete metadata for a schema.table identifier.
-func (c *PostgresqlConnector) GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.TableMeta, error) {
-	schema, tableName, err := c.splitTableIdentifier(sourceIdentifier)
-	if err != nil {
-		return nil, err
-	}
-	table, err := c.findTableByIdentifier(ctx, schema, tableName)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.GetTableMeta(ctx, table); err != nil {
-		return nil, err
-	}
-	return table, nil
-}
-
-// splitTableIdentifier parses a schema.table identifier into schema and table names.
-func (c *PostgresqlConnector) splitTableIdentifier(sourceIdentifier string) (schema, tableName string, err error) {
-	separator := strings.LastIndex(sourceIdentifier, ".")
-	if separator <= 0 || separator == len(sourceIdentifier)-1 {
-		return "", "", fmt.Errorf("invalid PostgreSQL table source identifier %q", sourceIdentifier)
-	}
-	return sourceIdentifier[:separator], sourceIdentifier[separator+1:], nil
-}
-
-// findTableByIdentifier locates a table within the connector scope.
-func (c *PostgresqlConnector) findTableByIdentifier(ctx context.Context, schema, tableName string) (*interfaces.TableMeta, error) {
-	tables, err := c.listTables(ctx, schema, tableName)
-	if err != nil {
-		return nil, fmt.Errorf("list tables: %w", err)
-	}
-	for _, table := range tables {
-		if table.Name == tableName && table.Schema == schema {
-			return table, nil
-		}
-	}
-	return nil, fmt.Errorf("table %q in schema %q not found", tableName, schema)
 }
 
 // fetchTableStatus retrieves the table type, description, estimated row count, and storage sizes.
@@ -365,16 +327,13 @@ func (c *PostgresqlConnector) fetchTableStatus(ctx context.Context, table *inter
 	}
 
 	table.TableType = c.mapTableType(relKind.String)
-	if description.Valid {
-		table.Description = description.String
-	}
+	table.Description = description.String
 
-	if table.Properties == nil {
-		table.Properties = make(map[string]any)
+	table.Properties = map[string]any{
+		"estimated_row_count": estimatedRowCount.Int64,
+		"data_length":         totalBytes.Int64,
+		"index_length":        indexBytes.Int64,
 	}
-	table.Properties["estimated_row_count"] = estimatedRowCount.Int64
-	table.Properties["data_length"] = totalBytes.Int64
-	table.Properties["index_length"] = indexBytes.Int64
 	return nil
 }
 
@@ -913,21 +872,17 @@ func (c *PostgresqlConnector) listSchemas(ctx context.Context) ([]string, error)
 	return schemas, nil
 }
 
-// CountRows reads an exact count for a table or view within connector scope.
-func (c *PostgresqlConnector) CountRows(ctx context.Context, table *interfaces.TableMeta) (int64, error) {
+// CountRows 使用源 SQL 表引用获取表或视图的精确数量。
+func (c *PostgresqlConnector) CountRows(ctx context.Context, sourceIdentifier string) (int64, error) {
+	if sourceIdentifier == "" {
+		return 0, fmt.Errorf("empty source identifier")
+	}
 	if err := c.Connect(ctx); err != nil {
 		return 0, err
 	}
-	if table == nil || table.Name == "" || table.Schema == "" {
-		return 0, fmt.Errorf("invalid table metadata")
-	}
-	schema, name := table.Schema, table.Name
-	if len(c.config.Schemas) > 0 && !containsSchema(c.config.Schemas, schema) {
-		return 0, fmt.Errorf("schema is outside the connector scope")
-	}
 
 	query, args, err := sq.Select("COUNT(*)").
-		From(fmt.Sprintf("%s.%s", pgQuoteIdent(schema), pgQuoteIdent(name))).
+		From(sourceIdentifier).
 		ToSql()
 	if err != nil {
 		return 0, err
@@ -940,4 +895,54 @@ func (c *PostgresqlConnector) CountRows(ctx context.Context, table *interfaces.T
 		return 0, fmt.Errorf("invalid negative row count")
 	}
 	return count, nil
+}
+
+// BuildSourceIdentifier 生成源 SQL 表引用，不连接源数据库。
+func (c *PostgresqlConnector) BuildSourceIdentifier(meta *interfaces.TableMeta) string {
+	return pgQuoteIdent(meta.Schema) + "." + pgQuoteIdent(meta.Name)
+}
+
+// BuildOriginalName 生成不含 SQL 引用符的源端名称，不连接源数据库。
+func (c *PostgresqlConnector) BuildOriginalName(meta *interfaces.TableMeta) string {
+	return meta.Schema + "." + meta.Name
+}
+
+// DecodeTableMeta decodes source metadata and restores missing legacy name components.
+// Historical components are assumed not to contain dots or SQL quoting characters.
+func (c *PostgresqlConnector) DecodeTableMeta(metadata map[string]any) (*interfaces.TableMeta, error) {
+	data, err := sonic.Marshal(metadata)
+	if err != nil {
+		return nil, fmt.Errorf("serialize table metadata: %w", err)
+	}
+	table := &interfaces.TableMeta{}
+	if err := common.UnmarshalPreciseJSON(data, table); err != nil {
+		return nil, fmt.Errorf("decode table metadata: %w", err)
+	}
+	if _, ok := metadata["description"]; !ok {
+		table.Description, _ = metadata["original_description"].(string)
+	}
+	originalName, _ := metadata["original_name"].(string)
+	if table.Name == "" || table.Schema == "" {
+		namespace, name, qualified := strings.Cut(originalName, ".")
+		if qualified {
+			if namespace == "" || name == "" || strings.Contains(name, ".") {
+				return nil, fmt.Errorf("invalid legacy table name")
+			}
+			if table.Schema == "" {
+				table.Schema = namespace
+			}
+		} else {
+			name = originalName
+		}
+		if table.Name == "" {
+			table.Name = name
+		}
+	}
+	if table.Database == "" && c.config != nil {
+		table.Database = c.config.Database
+	}
+	if table.Name == "" || table.Schema == "" {
+		return nil, fmt.Errorf("incomplete table metadata")
+	}
+	return table, nil
 }

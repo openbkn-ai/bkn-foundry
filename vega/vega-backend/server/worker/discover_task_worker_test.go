@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
@@ -412,11 +413,11 @@ func TestSourceSnapshotHashChangesForSourceMetadata(t *testing.T) {
 
 type testTableCounter struct {
 	interfaces.TableConnector
-	count func(context.Context, *interfaces.TableMeta) (int64, error)
+	count func(context.Context, string) (int64, error)
 }
 
-func (c *testTableCounter) CountRows(ctx context.Context, table *interfaces.TableMeta) (int64, error) {
-	return c.count(ctx, table)
+func (c *testTableCounter) CountRows(ctx context.Context, sourceIdentifier string) (int64, error) {
+	return c.count(ctx, sourceIdentifier)
 }
 func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 	for _, scenario := range []string{"mixed", "failed", "empty", "single unsupported", "all skipped", "earlier deadline", "single view", "cancelled", "connector unsupported", "single connector unsupported"} {
@@ -464,22 +465,13 @@ func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 			case "single view":
 				task.ResourceID = "ok"
 				resources = resources[:1]
-				resources[0].SourceMetadata = map[string]any{"table_type": interfaces.TableTypeView}
+				resources[0].SourceMetadata = map[string]any{"table_type": interfaces.TableTypeView, "database": "app", "schema": "app", "name": "orders"}
 				rs.EXPECT().InternalGetByID(gomock.Any(), nil, "ok").Return(resources[0], nil)
 			default:
 				rs.EXPECT().InternalGetByCatalogID(gomock.Any(), "cat").Return(resources, nil)
 			}
 			if scenario != "single unsupported" && scenario != "all skipped" && scenario != "empty" {
-				counter := &testTableCounter{TableConnector: base, count: func(queryCtx context.Context, table *interfaces.TableMeta) (int64, error) {
-					id := (&DiscoverTaskWorker{}).buildSourceIdentifier(table)
-					if id == "app.orders" {
-						require.Equal(t, "app", table.Schema)
-						require.Equal(t, "app", table.Database)
-						require.Equal(t, "orders", table.Name)
-						if scenario == "single view" {
-							require.Equal(t, interfaces.TableTypeView, table.TableType)
-						}
-					}
+				counter := &testTableCounter{TableConnector: base, count: func(queryCtx context.Context, id string) (int64, error) {
 					deadline, ok := queryCtx.Deadline()
 					require.True(t, ok)
 					if scenario == "earlier deadline" {
@@ -690,7 +682,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 					task := &interfaces.DiscoverTask{ID: "task", CatalogID: "cat", DiscoverActions: &actions}
 					catalog := &interfaces.Catalog{ID: "cat", Type: interfaces.CatalogTypePhysical, ConnectorType: "test"}
 					oldProperties := map[string]any{"row_count": int64(7), "row_count_time": int64(10)}
-					resource := &interfaces.Resource{ID: "res", CatalogID: "cat", Category: category, SourceIdentifier: "orders", Status: interfaces.ResourceStatusActive, UpdateTime: 20, LastDiscoverTime: 10, SourceMetadata: map[string]any{"properties": oldProperties}}
+					resource := &interfaces.Resource{ID: "res", CatalogID: "cat", Category: category, SourceIdentifier: "orders", Status: interfaces.ResourceStatusActive, UpdateTime: 20, LastDiscoverTime: 10, SourceMetadata: map[string]any{"properties": oldProperties, "database": "", "schema": "public", "name": "orders"}}
 					ctx, cancel := context.WithCancel(context.Background())
 					defer cancel()
 					if entry == "resource" {
@@ -721,18 +713,32 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 					if category == interfaces.ResourceCategoryTable {
 						c := vmock.NewMockTableConnector(ctrl)
 						connector = c
-						table := &interfaces.TableMeta{Name: "orders", Properties: map[string]any{"estimated_row_count": int64(99)}}
+						table := &interfaces.TableMeta{Schema: "public", Name: "orders", Properties: map[string]any{"estimated_row_count": int64(99)}}
 						if entry == "resource" {
-							c.EXPECT().GetTableMetaByIdentifier(gomock.Any(), "orders").Return(table, nil)
+							data, err := json.Marshal(resource.SourceMetadata)
+							require.NoError(t, err)
+							table = &interfaces.TableMeta{}
+							require.NoError(t, common.UnmarshalPreciseJSON(data, table))
+						}
+						if entry == "resource" {
+							if !countWithoutRefresh {
+								c.EXPECT().DecodeTableMeta(resource.SourceMetadata).Return(table, nil)
+							}
 						} else {
 							c.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
 							c.EXPECT().ListTables(gomock.Any()).Return([]*interfaces.TableMeta{table}, nil)
+							c.EXPECT().BuildSourceIdentifier(table).Return("orders")
 						}
 						if !countWithoutRefresh {
-							metadataCall = c.EXPECT().GetTableMeta(gomock.Any(), table).Return(metadataErr)
+
+							metadataCall = c.EXPECT().GetTableMeta(gomock.Any(), table).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+								meta.Properties = map[string]any{"estimated_row_count": int64(99)}
+								table.Properties = meta.Properties
+								return metadataErr
+							})
 						}
 						if scenario != "metadata failure" {
-							countCall = c.EXPECT().CountRows(gomock.Any(), table).DoAndReturn(func(ctx context.Context, _ *interfaces.TableMeta) (int64, error) { return count(ctx) })
+							countCall = c.EXPECT().CountRows(gomock.Any(), resource.SourceIdentifier).DoAndReturn(func(ctx context.Context, _ string) (int64, error) { return count(ctx) })
 						}
 						c.EXPECT().Connect(ctx).Return(nil)
 						c.EXPECT().Close(gomock.Any()).Return(nil)
@@ -744,13 +750,22 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 						connector = c
 						index := &interfaces.IndexMeta{Name: "orders", Properties: map[string]any{"row_count": int64(99), "row_count_time": int64(100)}}
 						if entry == "resource" {
-							c.EXPECT().GetIndexMetaByIdentifier(gomock.Any(), "orders").Return(index, nil)
+							data, err := json.Marshal(resource.SourceMetadata)
+							require.NoError(t, err)
+							index = &interfaces.IndexMeta{}
+							require.NoError(t, common.UnmarshalPreciseJSON(data, index))
 						} else {
 							c.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryIndex)
 							c.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{index}, nil)
 						}
 						if !countWithoutRefresh {
-							metadataCall = c.EXPECT().GetIndexMeta(gomock.Any(), index).Return(metadataErr)
+							metadataCall = c.EXPECT().GetIndexMeta(gomock.Any(), index).DoAndReturn(func(_ context.Context, meta *interfaces.IndexMeta) error {
+								if metadataErr == nil {
+									meta.Properties = map[string]any{"row_count": int64(99), "row_count_time": int64(100)}
+									index.Properties = meta.Properties
+								}
+								return metadataErr
+							})
 						}
 						if scenario != "metadata failure" {
 							countCall = c.EXPECT().CountRows(gomock.Any(), index).DoAndReturn(func(ctx context.Context, _ *interfaces.IndexMeta) (int64, error) { return count(ctx) })
@@ -772,7 +787,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 							return nil
 						}).After(countCall)
 					}
-					if scenario == "success" || scenario == "metadata failure" {
+					if scenario == "success" || scenario == "metadata failure" || (scenario == "count failure" && category == interfaces.ResourceCategoryTable) {
 						saveTx := gomock.Nil()
 						if scenario == "success" {
 							expectDiscoverResourceTransaction(t, true)
@@ -781,7 +796,8 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 						save := rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), saveTx, resource, int64(20)).DoAndReturn(func(saveCtx context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
 							require.NoError(t, saveCtx.Err())
 							properties := saved.SourceMetadata["properties"].(map[string]any)
-							if scenario == "success" {
+							switch scenario {
+							case "success":
 								require.NotNil(t, saved.RowCount)
 								require.Zero(t, *saved.RowCount)
 								require.NotNil(t, saved.RowCountTime)
@@ -791,7 +807,12 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 									require.Equal(t, json.Number("100"), properties["row_count_time"])
 								}
 								require.Greater(t, saved.LastDiscoverTime, int64(10))
-							} else {
+							case "count failure":
+								require.Equal(t, json.Number("99"), properties["estimated_row_count"])
+								require.Equal(t, interfaces.DiscoverStatusError, saved.LastDiscoverStatus)
+								require.Contains(t, saved.StatusMessage, "count")
+								require.Greater(t, saved.LastDiscoverTime, int64(10))
+							default:
 								require.Equal(t, oldProperties, properties)
 								require.Equal(t, int64(10), saved.LastDiscoverTime)
 							}
@@ -825,8 +846,13 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 					} else {
 						require.Equal(t, 1, result.FailedCount)
 						require.Zero(t, result.UpdatedCount)
-						require.Equal(t, int64(10), resource.LastDiscoverTime)
-						require.Equal(t, oldProperties, resource.SourceMetadata["properties"])
+						if scenario == "count failure" && category == interfaces.ResourceCategoryTable {
+							require.Greater(t, resource.LastDiscoverTime, int64(10))
+							require.Equal(t, json.Number("99"), resource.SourceMetadata["properties"].(map[string]any)["estimated_row_count"])
+						} else {
+							require.Equal(t, int64(10), resource.LastDiscoverTime)
+							require.Equal(t, oldProperties, resource.SourceMetadata["properties"])
+						}
 					}
 				})
 			}
@@ -849,7 +875,7 @@ func TestDiscoverTaskWorkerRunCountOnly(t *testing.T) {
 			connector := vmock.NewMockTableConnector(ctrl)
 			worker := &DiscoverTaskWorker{dts: dts, cs: cs, rs: rs, cf: cf}
 			task := &interfaces.DiscoverTask{ID: "task", CatalogID: "cat", Strategy: interfaces.DiscoverStrategyCountOnly, Status: interfaces.DiscoverTaskStatusPending}
-			resource := &interfaces.Resource{ID: "res", CatalogID: "cat", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "app.orders"}
+			resource := &interfaces.Resource{ID: "res", CatalogID: "cat", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "app.orders", SourceMetadata: map[string]any{"database": "app", "schema": "app", "name": "orders"}}
 			catalog := &interfaces.Catalog{ID: "cat", Enabled: true, Type: interfaces.CatalogTypePhysical, ConnectorType: "test"}
 			if single {
 				task.ResourceID = resource.ID
@@ -969,6 +995,118 @@ func TestDiscoverTaskWorkerCountLogicalView(t *testing.T) {
 			}
 			if scenario == "catalog" {
 				require.Equal(t, 1, result.SkippedCount)
+			}
+		})
+	}
+}
+
+func TestDiscoverTaskWorkerDiscoverResource(t *testing.T) {
+	t.Run("legacy table refresh writes current metadata and keeps business fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		resource := &interfaces.Resource{ID: "r1", CatalogID: "c1", Name: "business name", Description: "business description", Schema: "public", Category: interfaces.ResourceCategoryTable, SourceIdentifier: `"public"."orders"`, SourceMetadata: map[string]any{"schema": "public", "original_name": "public.orders", "original_description": "old comment"}}
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "postgresql", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().DecodeTableMeta(resource.SourceMetadata).Return(&interfaces.TableMeta{Name: "orders", Database: "app", Schema: "public", Description: "old comment"}, nil)
+		connector.EXPECT().GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "orders", Database: "app", Schema: "public", Description: "old comment"}).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+			meta.Description = "new comment"
+			return nil
+		})
+		rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
+			assert.Equal(t, "business name", saved.Name)
+			assert.Equal(t, "business description", saved.Description)
+			assert.Equal(t, "orders", saved.SourceMetadata["name"])
+			assert.Equal(t, "app", saved.SourceMetadata["database"])
+			assert.Equal(t, "new comment", saved.SourceMetadata["description"])
+			assert.NotContains(t, saved.SourceMetadata, "original_name")
+			assert.NotContains(t, saved.SourceMetadata, "original_description")
+			return nil
+		})
+		result, err := (&DiscoverTaskWorker{rs: rs, cf: cf}).discoverResource(context.Background(), &interfaces.Catalog{ID: "c1", ConnectorType: "postgresql"}, &interfaces.DiscoverTask{ResourceID: "r1"}, &discoverTaskReconcileProgress{lastProgress: 95})
+		require.NoError(t, err)
+		assert.Zero(t, result.FailedCount)
+	})
+
+	t.Run("restores complete index metadata and refreshes once", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockIndexConnector(ctrl)
+		resource := &interfaces.Resource{ID: "r1", CatalogID: "c1", Category: interfaces.ResourceCategoryIndex,
+			SourceIdentifier: "orders", SourceMetadata: map[string]any{"original_name": "orders", "creation_time": int64(123), "original_description": "old comment", "mapping_meta": map[string]any{"owner": "search"}}}
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "opensearch", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().GetIndexMeta(gomock.Any(), &interfaces.IndexMeta{Name: "orders", CreationTime: 123, Description: "old comment", MappingMeta: map[string]any{"owner": "search"}}).DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
+			index.Description = "new comment"
+			index.Properties = map[string]any{"size": int64(9007199254740993)}
+			return nil
+		}).Times(1)
+		rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
+			assert.Equal(t, "orders", saved.SourceMetadata["name"])
+			assert.Equal(t, json.Number("123"), saved.SourceMetadata["creation_time"])
+			assert.Equal(t, "new comment", saved.SourceMetadata["description"])
+			assert.Equal(t, json.Number("9007199254740993"), saved.SourceMetadata["properties"].(map[string]any)["size"])
+			assert.NotContains(t, saved.SourceMetadata, "original_name")
+			return nil
+		})
+		result, err := (&DiscoverTaskWorker{rs: rs, cf: cf}).discoverResource(context.Background(), &interfaces.Catalog{ID: "c1", ConnectorType: "opensearch"}, &interfaces.DiscoverTask{ResourceID: "r1"}, &discoverTaskReconcileProgress{lastProgress: 95})
+		require.NoError(t, err)
+		assert.Zero(t, result.FailedCount)
+	})
+
+	for _, tc := range []struct {
+		name     string
+		metadata map[string]any
+		invalid  bool
+	}{
+		{"complete table metadata", map[string]any{"database": "app", "schema": "sales.eu", "name": "order.items", "description": "source comment", "columns": []interfaces.TableColumnMeta{{Name: "id", Type: "int"}}, "original_name": "sales.eu.order.items"}, false},
+		{"missing metadata", nil, true},
+		{"invalid name type", map[string]any{"schema": "public", "name": 7}, true},
+		{"missing namespace", map[string]any{"name": "orders"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockTableConnector(ctrl)
+			worker := &DiscoverTaskWorker{rs: rs, cf: cf}
+			catalog := &interfaces.Catalog{ID: "c1", ConnectorType: "postgresql"}
+			resource := &interfaces.Resource{ID: "r1", CatalogID: "c1", Category: interfaces.ResourceCategoryTable, SourceIdentifier: `"sales.eu"."order.items"`, SourceMetadata: tc.metadata}
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).Return(connector, nil)
+			connector.EXPECT().Connect(gomock.Any()).Return(nil)
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			if tc.invalid {
+				connector.EXPECT().DecodeTableMeta(tc.metadata).Return(nil, errors.New("invalid table metadata"))
+			}
+			if !tc.invalid {
+				meta := &interfaces.TableMeta{Database: "app", Schema: "sales.eu", Name: "order.items", Description: "source comment", Columns: []interfaces.TableColumnMeta{{Name: "id", Type: "int"}}}
+				connector.EXPECT().DecodeTableMeta(tc.metadata).Return(meta, nil)
+				connector.EXPECT().GetTableMeta(gomock.Any(), meta).DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+					table.Description = "new source comment"
+					return nil
+				})
+				connector.EXPECT().MapType("int").Return(interfaces.DataType_Integer)
+				rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
+					assert.Equal(t, "new source comment", updated.SourceMetadata["description"])
+					assert.Equal(t, "new source comment", updated.Description)
+					assert.NotContains(t, updated.SourceMetadata, "original_description")
+					return nil
+				})
+			}
+			result, err := worker.discoverResource(context.Background(), catalog, &interfaces.DiscoverTask{ResourceID: "r1"}, &discoverTaskReconcileProgress{lastProgress: 95})
+			if tc.invalid {
+				require.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				assert.Zero(t, result.FailedCount)
 			}
 		})
 	}
