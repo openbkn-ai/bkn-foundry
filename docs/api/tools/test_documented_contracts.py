@@ -49,6 +49,25 @@ def python_routes(folder):
 
 
 class DocumentationContracts(unittest.TestCase):
+    def test_trace_title_matches_swag_source(self):
+        source = (ROOT / 'bkn-trace/agent-observability/main.go').read_text()
+        title = re.search(r'^//\s*@title\s+(.+)$', source, re.MULTILINE)
+        self.assertIsNotNone(title)
+        spec = load('agent-observability/agent-observability.yaml')
+        native = json.loads((ROOT / 'bkn-trace/agent-observability/docs/swagger/swagger.json').read_text())
+        self.assertEqual(spec['info']['title'], title.group(1).strip())
+        self.assertEqual(spec['info']['title'], native['info']['title'])
+
+    def test_agent_title_matches_fastapi_source(self):
+        source = ROOT / 'infra/bkn-agent/app/main.py'
+        tree = ast.parse(source.read_text())
+        apps = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name) and node.func.id == 'FastAPI']
+        self.assertEqual(len(apps), 1)
+        title = next(keyword.value for keyword in apps[0].keywords if keyword.arg == 'title')
+        self.assertIsInstance(title, ast.Constant)
+        self.assertEqual(load('bkn-agent/bkn-agent.yaml')['info']['title'], title.value)
+
     def test_model_factory_public_routes(self):
         for module in ('mf-model-manager', 'mf-model-api'):
             with self.subTest(module=module):

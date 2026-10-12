@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: BKN 专属 Agent · Agent 运行时 API
+  title: bkn-agent
   version: 0.1.0
 paths:
   /api/bkn-agent/v1/agents:
