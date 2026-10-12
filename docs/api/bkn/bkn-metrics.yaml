@@ -2,7 +2,7 @@
 # BKN native metric CRUD using the object-type API framework: entries and total_count lists, POST override batch creation and concept retrieval, and validation.
 openapi: 3.0.2
 info:
-  title: BKN Metrics
+  title: BKN 知识网络 · 指标 API
   version: 0.1.0
   description: |
     Modeling CRUD for BKN native metrics: create, list, validate, update, and delete.

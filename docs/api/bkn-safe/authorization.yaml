@@ -4,7 +4,7 @@
 
 openapi: 3.0.3
 info:
-  title: bkn-safe internal authorization API
+  title: 身份与授权 · 授权校验 API
   version: 0.5.0
   description: |
     Internal service-to-service authorization contract used by BKN,

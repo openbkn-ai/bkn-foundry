@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: Vega Proxy Resource Read
+  title: VEGA 引擎 · 代理资源读取 API
   version: 0.1.0
   description: |
     Cluster-internal read endpoints used by ontology-query after it resolves a

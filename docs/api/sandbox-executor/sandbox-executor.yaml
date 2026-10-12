@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Sandbox Executor API
+  title: 沙箱执行器 · 执行与依赖同步 API
   version: 1.0.0
   description: Cluster-internal executor API. No INTERNAL_API_TOKEN validation is implemented by the REST
     adapter. POST /execute schedules background work and immediately returns PENDING; final results are

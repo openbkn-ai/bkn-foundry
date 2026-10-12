@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: Schema 检索
+  title: 上下文加载 · Schema 检索 API
   description: |
     Context Loader（服务名 `agent-retrieval`）的 Schema 探索入口：把一句自然语言
     映射到知识网络里的**概念**（对象类 / 关系类 / 行动类 / 指标类），供 Agent

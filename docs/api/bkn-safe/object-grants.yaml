@@ -4,7 +4,7 @@
 
 openapi: 3.0.3
 info:
-  title: BKN Safe Object Grant Management API
+  title: 身份与授权 · 对象授权 API
   version: 1.0.0
   description: |
     Manages source-scoped object grants. Community accepts only a logical

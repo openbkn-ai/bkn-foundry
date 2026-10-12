@@ -1,6 +1,6 @@
 openapi: 3.1.1
 info:
-  title: Vega Backend Health API
+  title: VEGA 引擎 · 健康检查 API
   description: Vega Backend health and platform-version APIs.
   version: 0.1.0
 servers:

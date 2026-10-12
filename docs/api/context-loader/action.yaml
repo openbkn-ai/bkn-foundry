@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 行动召回与执行
+  title: 上下文加载 · 行动召回与执行 API
   description: |
     知识网络里的「行动」（Action）是绑定在对象类上的可执行能力。本文件是 Agent 侧的
     完整闭环：

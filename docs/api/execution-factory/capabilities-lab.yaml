@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Execution Factory capabilities lab
+  title: 执行工厂 · 能力实验室 API
   version: 0.1.0
   description: Implemented capabilities-lab route group. Authorization and Cookie headers are forwarded
     to upstream public APIs; the group middleware itself does not validate Bearer tokens. user_id, then

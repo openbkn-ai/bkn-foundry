@@ -94,15 +94,21 @@ api-docs:
 	@echo "done -> $(GEN_DIR)/"
 
 ## 模块显示标题（index 分区标题用）。未列出的模块回落为目录名。
-MODTITLE_bkn               := BKN
-MODTITLE_bkn-safe-admin    := BKN Safe 管理
-MODTITLE_bkn-agent         := BKN 专属 Agent
-MODTITLE_execution-factory := 执行工厂
-MODTITLE_agent-observability := BKN Trace
-MODTITLE_context-loader    := 上下文加载
-MODTITLE_mf-model-manager  := 模型管理
-MODTITLE_ontology-query    := Ontology 查询
-MODTITLE_vega              := VEGA 引擎
+MODTITLE_bkn                    := BKN 知识网络
+MODTITLE_bkn-safe-admin         := BKN Safe 管理
+MODTITLE_bkn-agent              := BKN 专属 Agent
+MODTITLE_execution-factory      := 执行工厂
+MODTITLE_agent-observability    := BKN Trace
+MODTITLE_context-loader         := 上下文加载
+MODTITLE_mf-model-manager       := 模型管理
+MODTITLE_ontology-query         := 本体查询
+MODTITLE_vega                   := VEGA 引擎
+
+MODTITLE_sandbox-control-plane  := 沙箱管理
+
+MODTITLE_sandbox-executor       := 沙箱执行器
+
+MODTITLE_bkn-safe               := 身份与授权
 
 ## 模块中文描述（index 卡片副标题用）。未列出的模块回落为空。
 MODDESC_bkn               := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
@@ -112,10 +118,14 @@ MODDESC_execution-factory := 执行工厂：函数与沙箱执行 / 算子 / 工
 MODDESC_agent-observability := BKN Trace：受管会话生命周期 / 业务证据 / 技术链路 / 快照
 MODDESC_context-loader    := Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP
 MODDESC_mf-model-manager  := 模型工厂：大小模型 / 配额 / 提示词 / 默认模型 / 监控
-MODTITLE_mf-model-api      := 模型调用
+MODTITLE_mf-model-api           := 模型调用
 MODDESC_mf-model-api       := 模型调用：聊天补全 / embedding / rerank
 MODDESC_ontology-query    := 本体查询与语义检索
 MODDESC_vega              := 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
+
+MODDESC_sandbox-control-plane  := 沙箱会话 / 代码执行 / 模板 / 文件 / 内部回调
+MODDESC_sandbox-executor       := 代码提交 / 执行状态 / 会话依赖同步
+MODDESC_bkn-safe               := 身份信息 / 授权校验 / 资源目录 / 受管代理
 
 # 资源中文名（侧栏显示用；未列出的回落为文件名）
 RESNAME_bkn-agent                 := Agent 运行时
@@ -152,7 +162,7 @@ RESNAME_action                    := 行动召回与执行
 RESNAME_data-access               := 数据层直查
 # context-loader（模块限定，避免与 execution-factory 的同名文件互相覆盖）
 RESNAME_context-loader_mcp        := MCP 服务
-RESNAME_context-loader_skill      := Skill 召回
+RESNAME_context-loader_skill                       := Skill 读取与执行
 # execution-factory
 RESNAME_function                  := 函数
 RESNAME_sandbox                   := 沙箱观测
@@ -161,6 +171,34 @@ RESNAME_operator                  := 算子
 RESNAME_toolbox                   := 工具箱
 RESNAME_execution-factory_mcp     := MCP
 RESNAME_execution-factory_skill   := Skill
+RESNAME_bkn-capabilities                           := 能力绑定
+RESNAME_cypher-queries                             := Cypher 查询
+RESNAME_proxy-accounts                             := 代理账户
+RESNAME_context-loader_cypher                      := Cypher 查询
+RESNAME_context-loader_tool                        := 能力检索与调用
+RESNAME_catalog-health-check-schedule              := 目录健康检查调度
+RESNAME_health                                     := 健康检查
+RESNAME_index-capabilities                         := 索引能力
+RESNAME_proxy-resource-read                        := 代理资源读取
+RESNAME_authorization-resources                    := 授权资源目录
+RESNAME_execution-factory_capabilities-lab         := 能力实验室
+RESNAME_mf-model-manager_large-model               := 大模型测试与监控
+RESNAME_mf-model-manager_llm                       := 大模型管理
+RESNAME_mf-model-manager_model-quota               := 模型配额
+RESNAME_mf-model-manager_prompt                    := 提示词管理
+RESNAME_mf-model-manager_small-model               := 小模型管理
+RESNAME_mf-model-api_llm                           := 聊天补全
+RESNAME_mf-model-api_small-model                   := 向量化与重排
+RESNAME_sandbox-control-plane_sandbox-control-plane := 会话与执行管理
+RESNAME_sandbox-executor_sandbox-executor          := 执行与依赖同步
+RESNAME_bkn-safe_authorization                     := 授权校验
+RESNAME_bkn-safe_managed-proxy                     := 受管代理账户
+RESNAME_bkn-safe_oauth-access-origins              := OAuth 访问入口
+RESNAME_bkn-safe_object-grants                     := 对象授权
+RESNAME_bkn-safe_property-grants                   := 属性授权
+RESNAME_bkn-safe_proxy-execution-pep               := 代理执行校验
+RESNAME_bkn-safe_proxy-grants                      := 代理授权
+RESNAME_bkn-safe_self-service                      := 用户自助授权
 
 ## api-docs-html: 用 redocly 为每个 YAML 渲染交互式 HTML 文档（带搜索/折叠/示例），
 ## 输出到 _generated/html/<module>/<resource>.html，并生成一个卡片式 index.html 汇总入口。

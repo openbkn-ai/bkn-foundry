@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: Semantic Understanding Task
+  title: VEGA 引擎 · 语义理解任务 API
   version: 0.1.0
   description: |
     Vega Backend asynchronous semantic-understanding task API. New tasks can
