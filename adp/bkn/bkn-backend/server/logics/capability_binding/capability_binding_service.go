@@ -218,6 +218,10 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 		}
 	}
 
+	for _, binding := range toCreate {
+		binding.CreatedByAttach = true
+	}
+
 	span.SetStatus(codes.Ok, "")
 	return result, nil
 }

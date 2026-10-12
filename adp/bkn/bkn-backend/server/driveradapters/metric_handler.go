@@ -665,6 +665,20 @@ func (r *restHandler) DeleteMetricsByIDs(c *gin.Context, vis hydra.Visitor) {
 	}
 
 	ids := common.StringToStringSlice(metricIDsStr)
+	if r.auditRecorder != nil {
+		names := make([]string, 0, len(ids))
+		for _, id := range ids {
+			name, exists, lookupErr := r.ms.CheckMetricExistByID(ctx, knID, branch, id)
+			if lookupErr != nil || !exists || strings.TrimSpace(name) == "" {
+				names = nil
+				break
+			}
+			names = append(names, name)
+		}
+		if len(names) > 0 {
+			c.Set("operation_audit_target_names", names)
+		}
+	}
 	if err = r.deleteMetrics(ctx, knID, branch, ids); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

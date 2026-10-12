@@ -212,6 +212,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		return "", err
 	}
 	if !isCreate && !isUpdate {
+		kn.ImportSkipped = true
 		return kn.KNID, nil
 	}
 	importPlan, err := normalizeImportPlan(ctx, kn)

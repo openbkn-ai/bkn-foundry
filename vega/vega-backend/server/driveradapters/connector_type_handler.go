@@ -189,6 +189,9 @@ func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 
 	result := map[string]any{"type": req.Type}
 	c.Set(operationAuditTargetIDKey, req.Type)
+	if req.Name != "" {
+		c.Set("operation_audit_target_names", []string{req.Name})
+	}
 
 	logger.Debug("Handler RegisterConnectorType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
@@ -361,6 +364,9 @@ func (r *restHandler) DeleteConnectorType(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if ct.Name != "" {
+		c.Set("operation_audit_target_names", []string{ct.Name})
+	}
 
 	logger.Debug("Handler DeleteConnectorType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
@@ -415,6 +421,11 @@ func (r *restHandler) setConnectorTypeEnabled(c *gin.Context, value bool, spanNa
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, err)
 		return
+	}
+	if r.auditRecorder != nil {
+		if ct, getErr := r.cts.GetByType(ctx, tp); getErr == nil && ct != nil && ct.Name != "" {
+			c.Set("operation_audit_target_names", []string{ct.Name})
+		}
 	}
 
 	logger.Debugf("Handler %s Success", spanName)

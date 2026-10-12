@@ -35,6 +35,13 @@ class TestOperationAuditRequestID(unittest.TestCase):
         self.assertTrue(generated)
         self.assertTrue(request_id.startswith("req_"))
 
+    def test_disabled_publisher_does_not_request_extra_snapshot_lookups(self):
+        request=object()
+        with patch.object(operation_audit,"_audit_publisher",None):
+            self.assertIsNone(operation_audit.operation_audit_request(request))
+        with patch.object(operation_audit,"_audit_publisher",object()):
+            self.assertIs(operation_audit.operation_audit_request(request),request)
+
     def test_preserves_gateway_request_id(self):
         request_id, generated = operation_audit.operation_audit_request_id({"bkn-request-id": "req_gateway"})
 
@@ -99,113 +106,146 @@ class TestOperationAuditRequestID(unittest.TestCase):
 
 
 class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
-    async def test_management_route_publishes_kafka_audit_without_local_write(self):
+    def request(self, body=b"{}", path="/api/mf-model-manager/v1/llm/edit", headers=()):
         async def receive():
-            return {"type": "http.request", "body": b'{"model_id":"model-1"}', "more_body": False}
+            return {"type": "http.request", "body": body, "more_body": False}
+        return Request({"type":"http", "method":"POST", "path":path,
+            "headers": [(b"x-account-id",b"user-1"),(b"bkn-request-id",b"req-reused"), *headers],
+            "query_string":b"", "path_params":{}}, receive)
 
-        request = Request({
-            "type": "http", "method": "POST", "path": "/api/mf-model-manager/v1/llm/edit",
-            "headers": [(b"x-account-id", b"user-1"), (b"bkn-request-id", b"req-reused")],
-            "query_string": b"", "path_params": {},
-        }, receive)
-
-        async def call_next(_request):
+    async def test_publishes_only_source_committed_target(self):
+        request = self.request(b'{"model_id":"wrong-client-id"}')
+        async def call_next(request):
+            operation_audit.set_operation_audit_target(request, ["actual-id"], ["采购助手"])
             return Response(status_code=200)
+        published=[]
+        with patch.object(operation_audit,"_audit_publisher",types.SimpleNamespace(publish=published.append,environment="test")), patch.object(operation_audit,"_actor_name",return_value="张三"):
+            response=await operation_audit.operation_audit_middleware(request,call_next)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(published[0]["target"],{"type":"llm_model","id":"actual-id","name":"采购助手"})
+        self.assertEqual(published[0]["summary"],"修改大模型“采购助手”")
 
-        published = []
-        publisher = types.SimpleNamespace(publish=published.append, environment="test")
-        with patch.object(operation_audit, "_audit_publisher", publisher, create=True), \
-             patch.object(operation_audit, "_actor_name", return_value="user-1"):
-            response = await operation_audit.operation_audit_middleware(request, call_next)
+    async def test_fastapi_preserves_source_snapshot_through_middleware(self):
+        app=FastAPI()
+        @app.post("/api/mf-model-manager/v1/llm/add")
+        async def add_model(request: Request, payload: dict = Body(...)):
+            operation_audit.set_operation_audit_target(request,["actual-created-id"],[payload["model_name"]])
+            return {"id":"actual-created-id"}
+        app.add_middleware(BaseHTTPMiddleware,dispatch=operation_audit.operation_audit_middleware)
+        published=[]
+        with patch.object(operation_audit,"_actor_name",return_value="张三"),patch.object(operation_audit,"_audit_publisher",types.SimpleNamespace(publish=published.append,environment="test")):
+            response=TestClient(app).post("/api/mf-model-manager/v1/llm/add",json={"model_name":"采购助手"},headers={"x-account-id":"verified-user"})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(len(published),1)
+        self.assertEqual(published[0]["target"]["id"],response.json()["id"])
+        self.assertEqual(published[0]["target"]["name"],"采购助手")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(published), 1)
-        self.assertEqual(published[0]["event_name"], "model_manager.operation.observed")
-        self.assertEqual(published[0]["target"]["id"], "model-1")
+    async def test_uncommitted_invalid_bodies_and_denials_do_not_publish(self):
+        for body in (b"[]",b"null",b"invalid",b"{}"):
+            for status in (200,202,400,401,403,409,422,500):
+                async def call_next(request):
+                    return Response(status_code=status)
+                published=[]
+                with patch.object(operation_audit,"_audit_publisher",types.SimpleNamespace(publish=published.append,environment="test")):
+                    response=await operation_audit.operation_audit_middleware(self.request(body),call_next)
+                self.assertEqual(response.status_code,status)
+                self.assertEqual(published,[])
 
-    async def test_missing_target_uses_safe_request_alias(self):
-        async def receive():
-            return {"type": "http.request", "body": b"{}", "more_body": False}
+    async def test_directory_name_ignores_client_header_and_rejects_id_fallback(self):
+        from unittest.mock import AsyncMock
+        for name,expected in (("张三","张三"),("user-1",""),("","")):
+            with patch.object(operation_audit,"get_username_by_ids",AsyncMock(return_value={"user-1":name})):
+                self.assertEqual(await operation_audit._actor_name("user-1",{"x-account-name":"Administrator"}),expected)
 
-        request = Request({
-            "type": "http", "method": "POST", "path": "/api/mf-model-manager/v1/llm/add",
-            "headers": [(b"x-account-id", b"user-1"), (b"bkn-request-id", b"req_bkn_abcdefghijkl")],
-            "query_string": b"", "path_params": {},
-        }, receive)
-
-        async def call_next(_request):
-            return Response(status_code=400)
-
-        published = []
-        publisher = types.SimpleNamespace(publish=published.append, environment="test")
-        with patch.object(operation_audit, "_audit_publisher", publisher), \
-             patch.object(operation_audit, "_actor_name", return_value="user-1"):
-            await operation_audit.operation_audit_middleware(request, call_next)
-
-        self.assertEqual(len(published), 1)
-        self.assertNotIn("bkn_abcdefghijkl", published[0]["target"]["id"])
-        self.assertEqual(published[0]["target"]["id"], published[0]["target"]["name"])
-
-    async def test_reports_audit_publish_failure_without_overturning_management_response(self):
-        async def receive():
-            return {"type": "http.request", "body": b'{"model_id":"model-1"}', "more_body": False}
-
-        request = Request({
-            "type": "http",
-            "method": "POST",
-            "path": "/api/mf-model-manager/v1/llm/edit",
-            "headers": [
-                (b"x-account-id", b"user-1"),
-                (b"bkn-request-id", b"req-audit-write-failure"),
-            ],
-            "query_string": b"",
-            "path_params": {},
-        }, receive)
-
-        async def call_next(_request):
+    async def test_audit_failures_preserve_management_response(self):
+        async def call_next(request):
+            operation_audit.set_operation_audit_target(request,["actual-id"],["采购助手"])
             return Response(status_code=200)
+        publisher=types.SimpleNamespace(publish=lambda record: (_ for _ in ()).throw(RuntimeError("broker unavailable")),environment="test")
+        with patch.object(operation_audit,"_actor_name",return_value="张三"), patch.object(operation_audit,"_audit_publisher",publisher), self.assertLogs("app.utils.operation_audit",level="ERROR"):
+            response=await operation_audit.operation_audit_middleware(self.request(),call_next)
+        self.assertEqual(response.status_code,200)
 
-        publisher = types.SimpleNamespace(publish=lambda _record: (_ for _ in ()).throw(RuntimeError("broker unavailable")), environment="test")
-        with patch.object(operation_audit, "_actor_name", return_value="user-1"), \
-             patch.object(operation_audit, "_audit_publisher", publisher), \
-             self.assertLogs("app.utils.operation_audit", level="ERROR") as logs:
-            response = await operation_audit.operation_audit_middleware(request, call_next)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(any(
-            "operation_audit_publish_failed" in message and
-            "update" in message
-            for message in logs.output
-        ))
-
-    async def test_publishes_actor_scoped_audit_without_removed_platform_fields(self):
-        async def receive():
-            return {"type": "http.request", "body": b'{"model_id":"model-1"}', "more_body": False}
-
-        request = Request({
-            "type": "http",
-            "method": "POST",
-            "path": "/api/mf-model-manager/v1/llm/edit",
-            "headers": [
-                (b"x-account-id", b"user-1"),
-                (b"bkn-request-id", b"req-audit-actor-only"),
-            ],
-            "query_string": b"",
-            "path_params": {},
-        }, receive)
-
-        async def call_next(_request):
+    async def test_missing_actor_name_does_not_publish(self):
+        async def call_next(request):
+            operation_audit.set_operation_audit_target(request,["actual-id"],["采购助手"])
             return Response(status_code=200)
+        published=[]
+        with patch.object(operation_audit,"_actor_name",return_value=""), patch.object(operation_audit,"_audit_publisher",types.SimpleNamespace(publish=published.append,environment="test")):
+            response=await operation_audit.operation_audit_middleware(self.request(),call_next)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(published,[])
 
-        captured = []
-        publisher = types.SimpleNamespace(publish=captured.append, environment="test")
-        with patch.object(operation_audit, "_actor_name", return_value="user-1"), \
-             patch.object(operation_audit, "_audit_publisher", publisher):
-            response = await operation_audit.operation_audit_middleware(request, call_next)
+    async def test_batch_snapshot_and_schema_limits(self):
+        request=self.request()
+        operation_audit.set_operation_audit_target(request,[str(i) for i in range(6)],["采购","库存","销售","财务","生产","运输"])
+        target_id,name=request.state.operation_audit_target
+        self.assertTrue(target_id.startswith("batch:"))
+        self.assertIn("采购",name)
+        self.assertIn("共6项",name)
+        self.assertIn("已截断",name)
+        entry={"event_time":datetime.now(timezone.utc),"actor_id":"user-1","actor_name":"张三","actor_type":"user","auth_method":"oauth","request_id":"req-a","method":"POST","action":"delete","target_type":"llm_model","target_id":target_id,"target_name":name,"outcome":"success","http_status":200}
+        self.assertEqual(operation_audit.build_kafka_record(entry,"test")["target"]["name"],name)
+        for name in ("",target_id,"长"*513):
+            entry["target_name"]=name
+            with self.assertRaises(ValueError):
+                operation_audit.build_kafka_record(entry,"test")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn("tenant_id", captured[0])
-        self.assertNotIn("business_domain_id", captured[0])
+    def controller_functions(self, filename, **namespace):
+        # Execute the actual controller functions with isolated infrastructure mocks.
+        import ast
+        source=(Path(__file__).parents[1]/"controller"/filename).read_text()
+        module=ast.parse("from __future__ import annotations\n")
+        module.body += [node for node in ast.parse(source).body if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef))]
+        from app.commons.i18n.audit import MODEL_QUOTA, USER_QUOTA
+        namespace.update(MODEL_QUOTA=MODEL_QUOTA, USER_QUOTA=USER_QUOTA)
+        exec(compile(module,filename,"exec"),namespace)
+        return namespace
+
+    async def test_llm_delete_preserves_predelete_names_and_committed_failure(self):
+        from unittest.mock import AsyncMock,MagicMock
+        from starlette.responses import JSONResponse
+        for cache_fails in (False,True):
+            request=self.request(path="/api/mf-model-manager/v1/llm/delete")
+            redis=types.SimpleNamespace(delete_str=AsyncMock(side_effect=RuntimeError("cache unavailable") if cache_fails else None))
+            dao=types.SimpleNamespace(get_all_model_list=lambda:[{"f_model_id":"actual-a","f_model_name":"采购助手"},{"f_model_id":"actual-b","f_model_name":"库存助手"}],delete_model_by_id=MagicMock())
+            namespace=self.controller_functions("llm_controller.py",set_operation_audit_target=operation_audit.set_operation_audit_target,llm_model_dao=dao,model_quota_dao=types.SimpleNamespace(delete_model_quota_by_model_id=MagicMock()),permission_manager=types.SimpleNamespace(check_single_permission=AsyncMock(return_value=True),delete_permission=AsyncMock()),redis_util=redis,quota_config_cache_tree=types.SimpleNamespace(delete_batch=MagicMock()),StandLogger=MagicMock(),JSONResponse=JSONResponse,RequestValidationError=ValueError,LLMRemoveError={})
+            async def call_next(request):
+                return await namespace["remove_model"]({"model_ids":["actual-a","actual-b"]},"user-1","zh-CN",audit_request=request)
+            published=[]
+            with patch.object(operation_audit,"_actor_name",return_value="张三"),patch.object(operation_audit,"_audit_publisher",types.SimpleNamespace(publish=published.append,environment="test")):
+                response=await operation_audit.operation_audit_middleware(request,call_next)
+            dao.delete_model_by_id.assert_called_once()
+            self.assertEqual(len(published),1)
+            self.assertIn("采购助手",published[0]["target"]["name"])
+            self.assertEqual(published[0]["outcome"],"failure" if cache_fails else "success")
+            self.assertEqual(response.status_code,400 if cache_fails else 200)
+
+    async def test_user_quota_delete_preserves_user_and_model_relationship(self):
+        from unittest.mock import AsyncMock,MagicMock
+        from starlette.responses import JSONResponse
+        request=self.request(path="/api/mf-model-manager/v1/user-quota/delete")
+        dao=types.SimpleNamespace(
+            get_model_name_by_quota_config_id=lambda ids:[{"f_model_name":"采购助手"}],
+            get_user_model_config=lambda conf_id:[{"f_id":conf_id,"f_user_id":"user-a","f_model_conf":"model-conf"}],
+            get_model_config=lambda conf_id:[{"f_model_name":"采购助手"}],
+            delete_user_model_quota_config_by_id_list=MagicMock())
+        namespace=self.controller_functions("model_quota_controller.py",set_operation_audit_target=operation_audit.set_operation_audit_target,model_quota_dao=dao,get_username_by_ids=AsyncMock(return_value={"user-a":"李四"}),redis_util=types.SimpleNamespace(delete_str=AsyncMock()),StandLogger=MagicMock(),JSONResponse=JSONResponse,ModelFactory_MyPymysqlPool_Connection_ConnectError_Error={})
+        async def call_next(request):
+            return await namespace["delete_user_model_quota_config"](["user-conf-a"],"user-1",audit_request=request)
+        published=[]
+        with patch.object(operation_audit,"_actor_name",return_value="张三"),patch.object(operation_audit,"_audit_publisher",types.SimpleNamespace(publish=published.append,environment="test")):
+            response=await operation_audit.operation_audit_middleware(request,call_next)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(published[0]["target"],{"type":"user_model_quota","id":"user-conf-a","name":"用户“李四”在模型“采购助手”的配额"})
+        dao.delete_user_model_quota_config_by_id_list.assert_called_once_with(["user-conf-a"])
+
+    async def test_quota_snapshot_uses_configuration_id_and_model_name(self):
+        from unittest.mock import MagicMock
+        request=self.request(path="/api/mf-model-manager/v1/model-quota")
+        namespace=self.controller_functions("model_quota_controller.py",set_operation_audit_target=operation_audit.set_operation_audit_target,llm_model_dao=types.SimpleNamespace(get_model_name_by_id=lambda model_id:"采购助手"),StandLogger=MagicMock())
+        namespace["_audit_model_quota"](request,"actual-conf-id","model-id")
+        self.assertEqual(request.state.operation_audit_target,("actual-conf-id","模型“采购助手”的配额"))
 
 
 if __name__ == "__main__":

@@ -519,8 +519,9 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 	rtIDs := common.StringToStringSlice(otIDsStr)
 
 	// Check that all relation type IDs exist.
+	auditNames := []string{}
 	for _, rtID := range rtIDs {
-		_, exist, err := r.rts.CheckRelationTypeExistByID(ctx, knID, branch, rtID)
+		name, exist, err := r.rts.CheckRelationTypeExistByID(ctx, knID, branch, rtID)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 
@@ -539,6 +540,7 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 			return
 		}
 
+		auditNames = append(auditNames, name)
 	}
 
 	// Delete relation types in batch.
@@ -551,6 +553,7 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 		return
 	}
 
+	c.Set("operation_audit_target_names", auditNames)
 	logger.Debug("Handler DeleteRelationTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
