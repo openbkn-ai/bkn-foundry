@@ -349,6 +349,11 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	if r.auditRecorder != nil {
+		if object, err := r.rs.GetByID(ctx, id); err == nil && object != nil {
+			c.Set("operation_audit_target_names", []string{object.Name})
+		}
+	}
 	if err := r.rs.Update(ctx, &req); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -399,12 +404,16 @@ func (r *restHandler) setResourceEnabled(c *gin.Context, visitor hydra.Visitor, 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	id := c.Param("id")
-	_, err := r.rs.SetEnabled(ctx, id, enabled)
+	object, err := r.rs.SetEnabled(ctx, id, enabled)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+
+	if object != nil {
+		c.Set("operation_audit_target_names", []string{object.Name})
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
@@ -462,6 +471,17 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	if r.auditRecorder != nil {
+		if resources, err := r.rs.GetByIDs(ctx, ids, false); err == nil {
+			names := []string{}
+			for _, resource := range resources {
+				names = append(names, resource.Name)
+			}
+			if len(names) == len(ids) {
+				c.Set("operation_audit_target_names", names)
+			}
+		}
+	}
 	if err := r.rs.DeleteByIDs(ctx, ids, ignoreMissing, onlyIfStale); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

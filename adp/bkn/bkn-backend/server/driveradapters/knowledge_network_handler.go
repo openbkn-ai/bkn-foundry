@@ -783,6 +783,7 @@ func (r *restHandler) DeleteKN(c *gin.Context) {
 		return
 	}
 
+	c.Set("operation_audit_target_names", []string{kn.KNName})
 	logger.Debug("Handler DeleteKN Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)

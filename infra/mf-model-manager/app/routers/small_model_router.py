@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Header, Query, Request, Body
 from app.interfaces import logics
 from app.controller import small_model_controller
+from app.utils.operation_audit import operation_audit_request
 from app.utils.common import get_user_info
 from app.utils.permission_manager import permission_manager
 
@@ -10,13 +11,13 @@ small_model_router = APIRouter()
 @small_model_router.post("/small-model/add")
 async def add_model(request: logics.AddExternalSmallModel, head_request: Request):
     userId, language, role = await get_user_info(head_request)
-    return await small_model_controller.add_model(request, userId, language, role)
+    return await small_model_controller.add_model(request, userId, language, role, audit_request=operation_audit_request(head_request))
 
 
 @small_model_router.post("/small-model/edit")
 async def edit_model(request: logics.EditExternalSmallModel, head_request: Request):
     userId, language, role = await get_user_info(head_request)
-    return await small_model_controller.edit_model(request, userId, language, role)
+    return await small_model_controller.edit_model(request, userId, language, role, audit_request=operation_audit_request(head_request))
 
 
 @small_model_router.get("/small-model/list")
@@ -44,7 +45,7 @@ async def get_default(request: Request, model_type: str = Query(default="embeddi
 @small_model_router.post("/small-model/set-default")
 async def set_default(request: Request, model_para: dict = Body(...)):
     userId, language, role = await get_user_info(request)
-    return await small_model_controller.set_default_model(model_para, userId, language, role)
+    return await small_model_controller.set_default_model(model_para, userId, language, role, audit_request=operation_audit_request(request))
 
 
 @small_model_router.post("/small-model/names")
@@ -56,7 +57,7 @@ async def get_names(request: Request, model_para: dict = Body(...)):
 @small_model_router.post("/small-model/delete")
 async def delete_model(request: Request, model_para: dict = Body(...)):
     userId, language, role = await get_user_info(request)
-    return await small_model_controller.delete_model(model_para, userId, language, role)
+    return await small_model_controller.delete_model(model_para, userId, language, role, audit_request=operation_audit_request(request))
 
 
 # @small_model_router.post("/small-model/reranker")

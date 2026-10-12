@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
@@ -101,6 +102,12 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 		}
 		seen[field] = struct{}{}
 	}
+	actorName := safeAuditDisplayName(entry.ActorName, 256)
+	targetName := safeAuditDisplayName(entry.TargetName, 512)
+	if actorName == "" || actorName == entry.ActorID || entry.ActorID == "unauthenticated" || targetName == "" || targetName == entry.TargetID {
+		return nil, &InvalidAuditFieldError{Field: "display_snapshot", Reason: "missing readable business snapshot"}
+	}
+
 	actorType := "service_account"
 	if entry.ActorType == "user" {
 		actorType = "user"
@@ -141,7 +148,7 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 			"source_channel": sourceChannel, "transport": "http", "method": method,
 		},
 		"correlation": map[string]any{"request_id": requestID},
-		"summary":     entry.Action + " " + targetType,
+		"summary":     auditSummary(entry.Action, targetType, targetName),
 		"facts": map[string]any{
 			"action": entry.Action, "decision": decision, "changed_fields": changedFields,
 		},
@@ -175,7 +182,7 @@ func boundedAuditReference(value string, limit int) string {
 
 func safeAuditDisplayName(value string, limit int) string {
 	name := strings.TrimSpace(value)
-	if len(name) > limit {
+	if utf8.RuneCountInString(name) > limit {
 		return ""
 	}
 	return name
@@ -188,4 +195,10 @@ func validAuditEnvironment(value string) bool {
 	default:
 		return false
 	}
+}
+
+func auditSummary(action, target, name string) string {
+	actions := map[string]string{"create": "新建", "update": "修改", "delete": "删除", "import": "导入", "add_members": "添加成员", "remove_members": "移除成员", "enable": "启用", "disable": "停用", "start": "启动", "stop": "停止", "attach": "绑定", "detach": "解绑"}
+	targets := map[string]string{"knowledge_network": "领域知识网络", "object_type": "对象类", "relation_type": "关系类", "action_type": "行动类", "risk_type": "风险类", "metric": "指标", "concept_group": "概念分组", "action_schedule": "行动计划", "kn_capability_binding": "知识网络能力绑定", "catalog": "数据目录", "resource": "数据资源", "discovery_schedule": "发现计划", "build_task": "构建任务", "connector_type": "连接器", "discovery_task": "发现任务", "semantic_understanding_task": "语义理解任务"}
+	return actions[action] + targets[target] + "“" + name + "”"
 }

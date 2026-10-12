@@ -189,6 +189,9 @@ func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 
 	result := map[string]any{"type": req.Type}
 	c.Set(operationAuditTargetIDKey, req.Type)
+	if req.Name != "" {
+		c.Set("operation_audit_target_names", []string{req.Name})
+	}
 
 	logger.Debug("Handler RegisterConnectorType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)

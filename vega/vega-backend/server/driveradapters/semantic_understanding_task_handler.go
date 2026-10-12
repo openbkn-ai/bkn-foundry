@@ -94,6 +94,16 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 		return
 	}
 	c.Set(operationAuditTargetIDKey, task.ID)
+	names := make([]string, 0, 2)
+	if task.CatalogName != "" {
+		names = append(names, task.CatalogName)
+	}
+	if task.ResourceName != "" {
+		names = append(names, task.ResourceName)
+	}
+	if len(names) > 0 {
+		c.Set("operation_audit_target_names", names)
+	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, task)

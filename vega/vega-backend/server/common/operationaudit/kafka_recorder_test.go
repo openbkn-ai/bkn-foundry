@@ -30,7 +30,7 @@ func validVegaAuditEntry() Entry {
 	return Entry{EventID: "0194f4b8-9a79-7c7f-881e-0f0a97107d22", EventTime: time.Now().UTC(),
 		ActorID: "user-1", ActorName: "Vega Manager", ActorType: "user", AuthMethod: "oauth",
 		RequestID: "req-vega-1", SourceChannel: "api", Method: "PUT", HTTPStatus: 204,
-		Action: "update", TargetType: "catalog", TargetID: "catalog-1", Outcome: "success",
+		Action: "update", TargetType: "catalog", TargetID: "catalog-1", TargetName: "采购目录", Outcome: "success",
 		ChangedFields: []string{"name"},
 	}
 }

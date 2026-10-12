@@ -63,7 +63,7 @@ func TestBuildKafkaAuditRecordRejectsUnknownEnvironmentAndBindingTarget(t *testi
 	entry := Entry{EventID: "evt-1", EventTime: time.Now().UTC(), KnowledgeNetworkID: "kn-1",
 		ActorID: "user-a", ActorName: "User A", ActorType: "user", AuthMethod: "oauth",
 		RequestID: "req-1", SourceChannel: "api", Method: "POST", Action: "attach",
-		TargetType: "kn_capability_binding", TargetID: "binding-1", Outcome: "success",
+		TargetType: "kn_capability_binding", TargetID: "binding-1", TargetName: "订单查询能力", Outcome: "success",
 		ChangeSummary: map[string]any{"changed_fields": []string{"entries"}},
 	}
 	entry.HTTPStatus = 201
@@ -81,7 +81,7 @@ func TestBuildKafkaAuditRecordRejectsUnknownEnvironmentAndBindingTarget(t *testi
 }
 
 func TestBuildKafkaAuditRecordIncludesControlledFailureCode(t *testing.T) {
-	entry := Entry{EventID: "evt-failure", EventTime: time.Now().UTC(),
+	entry := Entry{ActorName: "Alice", TargetName: "供应链", EventID: "evt-failure", EventTime: time.Now().UTC(),
 		ActorID: "user-a", RequestID: "req-failure", Method: "DELETE", HTTPStatus: 503,
 		Action: "delete", TargetType: "knowledge_network", TargetID: "kn-1", Outcome: "failure",
 		FailureCode: "Bad Gateway", ChangeSummary: map[string]any{"changed_fields": []string{}},
@@ -133,9 +133,9 @@ func TestBuildKafkaAuditRecordNamesInvalidIdentityFieldWithoutValue(t *testing.T
 
 func TestBuildKafkaAuditRecordAliasesOversizedUntrustedReferences(t *testing.T) {
 	longID := strings.Repeat("x", 300)
-	entry := Entry{EventID: "evt-long-ref", EventTime: time.Now().UTC(), ActorID: longID,
+	entry := Entry{EventID: "evt-long-ref", EventTime: time.Now().UTC(), ActorID: longID, ActorName: "Alice",
 		RequestID: longID, Method: "POST", HTTPStatus: 201, Action: "create",
-		TargetType: "knowledge_network", TargetID: longID, Outcome: "success",
+		TargetType: "knowledge_network", TargetID: longID, TargetName: "供应链", Outcome: "success",
 		ChangeSummary: map[string]any{"changed_fields": []string{}},
 	}
 	value, err := BuildKafkaAuditRecord(entry, "test")

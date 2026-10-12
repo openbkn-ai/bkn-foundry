@@ -74,6 +74,19 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler Create Success")
 	c.Set(operationAuditTargetIDKey, taskID)
+	// The task id is only an audit join key; keep the business snapshot readable.
+	if task, err := r.bts.GetByID(ctx, taskID); err == nil && task != nil {
+		names := make([]string, 0, 2)
+		if task.CatalogName != "" {
+			names = append(names, task.CatalogName)
+		}
+		if task.ResourceName != "" {
+			names = append(names, task.ResourceName)
+		}
+		if len(names) > 0 {
+			c.Set("operation_audit_target_names", names)
+		}
+	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, map[string]any{"id": taskID})
 }

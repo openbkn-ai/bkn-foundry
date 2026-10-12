@@ -1,3 +1,4 @@
+from app.utils.operation_audit import set_operation_audit_target
 import asyncio
 
 from fastapi.responses import JSONResponse
@@ -70,7 +71,7 @@ async def can_manage_default_small_model(user_id, role):
     )
 
 
-async def add_model(request: logics.AddExternalSmallModel, userId, language, role, private=False):
+async def add_model(request: logics.AddExternalSmallModel, userId, language, role, private=False, audit_request=None):
     try:
         model_id = str(worker.get_id())
         batch_size = request.batch_size
@@ -160,6 +161,7 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
         except Exception:
             await permission_manager.delete_permission("small_model", [model_id])
             raise
+        set_operation_audit_target(audit_request, [model_id], [request.model_name])
         content = {"status": "ok", "id": model_id, "default": is_default}
         return JSONResponse(status_code=200, content=content)
     except Exception as e:
@@ -265,7 +267,7 @@ async def test_model(request, userId, language, role):
         return JSONResponse(status_code=400, content=error_dict)
 
 
-async def edit_model(request: logics.EditExternalSmallModel, userId, language, role):
+async def edit_model(request: logics.EditExternalSmallModel, userId, language, role, audit_request=None):
     try:
         change = request.change
         model_info = small_model_dao.get_model_info_by_id(request.model_id)
@@ -303,6 +305,7 @@ async def edit_model(request: logics.EditExternalSmallModel, userId, language, r
             embedding_dim=request.embedding_dim
         )
         small_model_dao.edit_model_info(config_info, userId)
+        set_operation_audit_target(audit_request, [request.model_id], [request.model_name])
         cache_key = f"dip:model-api:small-model:{request.model_name}:list"
         global redis_util
         if redis_util is None:
@@ -490,7 +493,7 @@ async def get_default_model(model_type):
         return JSONResponse(status_code=400, content=error_dict)
 
 
-async def set_default_model(model_para, userId, language, role):
+async def set_default_model(model_para, userId, language, role, audit_request=None):
     """Set or clear the system default for a small-model type.
 
     The request contains model_id and an optional boolean default value. Setting
@@ -512,9 +515,11 @@ async def set_default_model(model_para, userId, language, role):
             return JSONResponse(status_code=403, content=NotPermissionError)
         if not set_default:
             small_model_dao.update_model_default_status(model_id, False)
+            set_operation_audit_target(audit_request, [model_id], [model_info[0]["f_model_name"]])
             return JSONResponse(status_code=200, content={"status": "ok", "id": model_id, "default": False})
         model_type = model_info[0]["f_model_type"]
         small_model_dao.set_default_model(model_id, model_type)
+        set_operation_audit_target(audit_request, [model_id], [model_info[0]["f_model_name"]])
         content = {"status": "ok", "id": model_id, "default": True}
         return JSONResponse(status_code=200, content=content)
     except Exception as e:
@@ -524,7 +529,7 @@ async def set_default_model(model_para, userId, language, role):
         return JSONResponse(status_code=400, content=error_dict)
 
 
-async def delete_model(model_para, userId, language, role):
+async def delete_model(model_para, userId, language, role, audit_request=None):
     try:
         if "model_ids" not in model_para:
             code = ParamValidationErrors.ParamMissing
@@ -565,6 +570,7 @@ async def delete_model(model_para, userId, language, role):
             if not status:
                 return JSONResponse(status_code=500, content=DeletePermissionResuorceError)
             small_model_dao.delete_model_info_by_ids(model_ids)
+            set_operation_audit_target(audit_request, model_ids, [item["f_model_name"] for item in original_res])
             cache_key_list = []
             for model_info in original_res:
                 model_name = model_info["f_model_name"]
