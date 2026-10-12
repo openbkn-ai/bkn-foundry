@@ -410,16 +410,16 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	if r.auditRecorder != nil {
-		if object, err := r.cs.GetByID(ctx, id, false); err == nil && object != nil {
-			c.Set("operation_audit_target_names", []string{object.Name})
-		}
-	}
 	if err := r.cs.Update(ctx, &req, allowUnhealthy); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+
+	if r.auditRecorder != nil {
+		// The validated name is the value persisted by a successful Update.
+		c.Set("operation_audit_target_names", []string{req.Name})
 	}
 
 	logger.Debug("Handler UpdateCatalog Success")
