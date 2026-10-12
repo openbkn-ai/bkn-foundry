@@ -153,8 +153,12 @@ func TestStartInteractionStillRejectsCoreFailuresBeforeQuestionArtifact(t *testi
 				startArtifactTestContext(), startArtifactTestRequest(),
 			)
 			if test.code == "trace_core_unavailable" {
-				if err != nil || result == nil || result.IsError || result.StructuredContent.(map[string]any)["trace_recorded"] != false {
-					t.Fatalf("Core outage must be explicit unrecorded response: %#v err=%v", result, err)
+				if err != nil || result == nil || !result.IsError {
+					t.Fatalf("Core outage must be a tool error: %#v err=%v", result, err)
+				}
+				value := lifecycleErrorFromResult(t, result)
+				if value["code"] != test.code || value["required_action"] != "retry_later" || value["retryable"] != true {
+					t.Fatalf("Core outage must require retry: %#v", value)
 				}
 				if coreCalls != 1 || artifactCalls != 0 {
 					t.Fatalf("Core calls=%d artifact calls=%d", coreCalls, artifactCalls)

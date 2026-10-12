@@ -413,6 +413,9 @@ func lifecycleUnavailable(ctx context.Context, toolName, stage string, err error
 		toolName, stage, value.Code, err,
 	)
 	if bkntrace.IsTraceInfrastructureFailure(nil, err) {
+		if toolName == toolKeyStartInteraction {
+			return lifecycleToolError(value)
+		}
 		return lifecycleUnrecordedResult(ctx, toolName, stage, value.Code)
 	}
 	return lifecycleToolError(value)
@@ -422,7 +425,6 @@ func lifecycleUnrecordedResult(ctx context.Context, toolName, stage, code string
 	bkntrace.MarkTraceUnavailable(ctx, stage, "", code)
 	result, _ := lifecycleSuccessResult(map[string]any{
 		"trace_recorded": false, "trace_available": false, "stage": stage, "code": code,
-		"required_action": "continue_without_bkn_context",
 	})
 	attachTraceAvailability(result, ctx)
 	return result
@@ -433,6 +435,16 @@ func lifecycleAPIResult(ctx context.Context, toolName, stage string, value bkntr
 		return lifecycleToolError(traceCoreError(value))
 	}
 	if bkntrace.IsTraceInfrastructureFailure(&value, nil) {
+		if toolName == toolKeyStartInteraction {
+			startError := traceCoreError(value)
+			if startError.Code == "feature_not_installed" {
+				startError.RequiredAction = "contact_platform_operator"
+			} else {
+				startError.Retryable = true
+				startError.RequiredAction = "retry_later"
+			}
+			return lifecycleToolError(startError)
+		}
 		return lifecycleUnrecordedResult(ctx, toolName, stage, value.Code)
 	}
 	return lifecycleToolError(traceCoreError(value))
@@ -739,7 +751,11 @@ func executeUntracedBusiness(ctx context.Context, req mcpsdk.CallToolRequest, ne
 	}
 	ctx = bkntrace.ClearManagedTraceContext(ctx)
 	arguments := maps.Clone(req.GetArguments())
-	delete(arguments, "bkn_context")
+	// PTC uses the validated IDs for its sandbox workspace and for nested MCP
+	// calls. Those child calls still require bkn_context when capture is off.
+	if req.Params.Name != "run_code" && req.Params.Name != "run_shell" {
+		delete(arguments, "bkn_context")
+	}
 	req.Params.Arguments = arguments
 	result, err, _ := callBusinessTool(ctx, req, next)
 	if err != nil {

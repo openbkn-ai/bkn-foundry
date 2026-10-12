@@ -35,18 +35,43 @@ func TestBusinessToolRequiresManagedContext(t *testing.T) {
 	}
 }
 
-func TestStartCoreOutageLetsAgentContinueWithoutFakeIDs(t *testing.T) {
+func TestStartCoreOutageRequiresRetryWithoutFakeIDs(t *testing.T) {
 	client := bkntrace.NewLifecycleClient("http://trace.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(*http.Request) (*http.Response, error) { return nil, syscall.ECONNREFUSED })})
 	result, err := handleLifecycleTool(client, toolKeyStartInteraction)(startArtifactTestContext(), mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Name: toolKeyStartInteraction, Arguments: map[string]any{"conversation_mode": "new", "question": "business question", "agent_name": "test-agent"}}})
-	if err != nil || result == nil || result.IsError {
-		t.Fatalf("start outage prevents continuation: result=%#v err=%v", result, err)
+	if err != nil || result == nil || !result.IsError {
+		t.Fatalf("start outage must return an error: result=%#v err=%v", result, err)
 	}
-	value, ok := result.StructuredContent.(map[string]any)
-	if !ok || value["trace_recorded"] != false || value["required_action"] != "continue_without_bkn_context" {
-		t.Fatalf("start did not disclose unrecorded continuation: %#v", result)
+	value := lifecycleErrorFromResult(t, result)
+	if value["code"] != "trace_core_unavailable" || value["required_action"] != "retry_later" {
+		t.Fatalf("start did not require retry: %#v", result)
 	}
 	if _, exists := value["interaction_id"]; exists {
 		t.Fatalf("fake interaction id: %#v", value)
+	}
+}
+
+func TestUntracedPTCKeepsManagedContextForNestedCalls(t *testing.T) {
+	for _, name := range []string{"run_code", "run_shell"} {
+		t.Run(name, func(t *testing.T) {
+			executor := &fakeExecutor{}
+			handler := guardBusinessToolCall(nil, handlePTCExecute(executor, ptcTestToolkit(t), ptcToolByName(t, name)))
+			arguments := map[string]any{
+				"bkn_context": map[string]any{"conversation_id": "conv_a", "interaction_id": "int_b"},
+			}
+			if name == "run_code" {
+				arguments["code"] = "print(1)"
+			} else {
+				arguments["command"] = "pwd"
+			}
+			result, err := handler(context.Background(), ptcCallRequest(name, arguments))
+			if err != nil || result == nil || result.IsError || executor.last == nil {
+				t.Fatalf("untraced %s failed: result=%#v err=%v", name, result, err)
+			}
+			bkn, ok := executor.last.Event["bkn"].(map[string]any)
+			if !ok || bkn["conversation_id"] != "conv_a" || bkn["interaction_id"] != "int_b" {
+				t.Fatalf("sandbox lost managed IDs: %#v", executor.last.Event)
+			}
+		})
 	}
 }
 
