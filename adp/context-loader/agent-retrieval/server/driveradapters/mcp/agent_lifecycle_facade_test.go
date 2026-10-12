@@ -148,6 +148,30 @@ func TestAgentLifecycleResultReturnsAuthoritativeIDsInTextAndStructuredContent(t
 	}
 }
 
+func TestAgentLifecycleViewUsesCoreCaptureState(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		view := agentLifecycleView("bkn_start_interaction", &bkntrace.Interaction{
+			InteractionID: "int-real-1", ConversationID: "conv-real-1",
+			ExecutionStatus: "active", CaptureEnabled: &enabled,
+		}).(map[string]any)
+		if view["interaction_id"] != "int-real-1" || view["conversation_id"] != "conv-real-1" {
+			t.Fatalf("Core IDs omitted: %#v", view)
+		}
+		if enabled {
+			if _, present := view["code"]; present {
+				t.Fatalf("enabled session marked disabled: %#v", view)
+			}
+			continue
+		}
+		if view["capture_enabled"] != false || view["trace_recorded"] != false || view["code"] != "capture_disabled" {
+			t.Fatalf("disabled Core state omitted: %#v", view)
+		}
+		if _, present := view["required_action"]; present {
+			t.Fatalf("disabled session must retain managed context: %#v", view)
+		}
+	}
+}
+
 func TestManagedFinishIdempotencyIsStableAcrossTransportRetries(t *testing.T) {
 	first := map[string]any{
 		"interaction_id": "int-1", "outcome": "completed", "answer": "库存充足",

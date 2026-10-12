@@ -114,7 +114,7 @@ func publishedInputSchema(name string, input json.RawMessage, hidden []string) j
 func modelBKNContextSchema() map[string]any {
 	return map[string]any{
 		"type":        "object",
-		"description": "BKN Trace managed context. Copy both IDs from bkn_start_interaction.",
+		"description": "Managed session context. Copy both IDs from bkn_start_interaction, even when Trace capture is disabled.",
 		"properties": map[string]any{
 			"conversation_id": describedStringSchema("conversation_id returned by bkn_start_interaction."),
 			"interaction_id":  describedStringSchema("interaction_id returned by bkn_start_interaction."),

@@ -2137,7 +2137,7 @@ func TestLicenseLossStillTerminatesAndRecordsEvidenceOmission(t *testing.T) {
 	}
 }
 
-func TestCaptureDisabledRejectsNewLifecycleWritesAndClosesAcceptedInteraction(t *testing.T) {
+func TestCaptureDisabledKeepsManagedLifecycleAndClosesInteraction(t *testing.T) {
 	t.Parallel()
 	view := captureadmission.New(7, "enabled")
 	store := sessionstore.New()
@@ -2151,15 +2151,25 @@ func TestCaptureDisabledRejectsNewLifecycleWritesAndClosesAcceptedInteraction(t 
 		t.Fatalf("start interaction: %v", err)
 	}
 	view.Update(8, "disabled")
-	if _, err := service.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
+	newConversation, err := service.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: "new-after-off", IdempotencyKey: "new-conversation",
-	}); !sessionsvc.IsCode(err, sessionsvc.CodeCaptureDisabled) {
-		t.Fatalf("new conversation error = %v, want capture_disabled", err)
+	})
+	if err != nil {
+		t.Fatalf("new conversation under disabled capture: %v", err)
 	}
-	if _, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
-		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "new-interaction-after-off",
-	}); !sessionsvc.IsCode(err, sessionsvc.CodeCaptureDisabled) {
-		t.Fatalf("new interaction error = %v, want capture_disabled", err)
+	newInteraction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: newConversation.ID, IdempotencyKey: "new-interaction-after-off",
+	})
+	if err != nil || newInteraction.ID == "" {
+		t.Fatalf("new interaction under disabled capture: %#v %v", newInteraction, err)
+	}
+	_, _, err = service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: newConversation.ID, InteractionID: newInteraction.ID,
+		OperationKey: "managed-off", ToolName: "query", Input: operationInput("query"),
+		LeaseToken: newInteraction.LeaseToken, LeaseEpoch: newInteraction.LeaseEpoch,
+	})
+	if !sessionsvc.IsCode(err, sessionsvc.CodeCaptureDisabled) {
+		t.Fatalf("new operation after capture off error = %v", err)
 	}
 	completed, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
 		Owner: owner, InteractionID: interaction.ID, Status: sessionvo.InteractionCompleted,
@@ -2181,6 +2191,48 @@ func TestCaptureDisabledRejectsNewLifecycleWritesAndClosesAcceptedInteraction(t 
 	}
 	if len(revisions) != 0 {
 		t.Fatalf("policy closure created %d assembly revisions", len(revisions))
+	}
+}
+
+func TestCaptureDisabledClosesOneShotManagedConversation(t *testing.T) {
+	view := captureadmission.New(1, "disabled")
+	store := sessionstore.New()
+	service := sessionsvc.New(store, sessionsvc.Options{CaptureAdmission: view})
+	owner := testOwner()
+	conversation, err := service.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
+		Owner: owner, ExternalConversationKey: "one-shot-under-disabled-capture", OneShot: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "start",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: interaction.ID, Status: sessionvo.InteractionCompleted,
+		TerminalIdempotencyKey: "finish", DeriveManifest: true,
+		Manifest: sessionvo.ClosureManifest{Version: "3.0.0", CompletionReason: "answer_returned"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	closed, err := service.GetConversation(context.Background(), owner, conversation.ID)
+	if err != nil || closed.Status != sessionvo.ConversationClosed {
+		t.Fatalf("one-shot conversation did not close: %#v %v", closed, err)
+	}
+	items, err := store.Lease(context.Background(), 100, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var interactionClosed, conversationClosed bool
+	for _, item := range items {
+		interactionClosed = interactionClosed || item.EventType == "interaction.completed" && item.AggregateID == interaction.ID
+		conversationClosed = conversationClosed || item.EventType == "conversation.closed" && item.AggregateID == conversation.ID
+	}
+	if !interactionClosed || !conversationClosed {
+		t.Fatalf("managed terminal projections missing under disabled capture: interaction=%v conversation=%v", interactionClosed, conversationClosed)
 	}
 }
 

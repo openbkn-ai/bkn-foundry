@@ -1486,7 +1486,7 @@ type failedCallSender struct{}
 func (failedCallSender) Send(context.Context, evidencepublisher.Record) error { return nil }
 
 func TestFailedCallKeepsBusinessResultWithoutTrace(t *testing.T) {
-	for _, mode := range []string{"unmanaged", "capture_disabled", "core_unavailable"} {
+	for _, mode := range []string{"capture_disabled", "core_unavailable"} {
 		t.Run(mode, func(t *testing.T) {
 			bkntrace.SetEvidencePublisher(nil)
 			if mode == "capture_disabled" {
@@ -1508,9 +1508,7 @@ func TestFailedCallKeepsBusinessResultWithoutTrace(t *testing.T) {
 				return business(ctx, request)
 			})
 			arguments := map[string]any{}
-			if mode != "unmanaged" {
-				arguments["bkn_context"] = map[string]any{"conversation_id": "conv-1", "interaction_id": "int-1"}
-			}
+			arguments["bkn_context"] = map[string]any{"conversation_id": "conv-1", "interaction_id": "int-1"}
 			ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{AccountID: "user-1", AccountType: interfaces.AccessorTypeUser})
 			ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{RequestID: "req_failed_compatibility_2072"})
 			result, err := handler(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Name: "query_object_instance", Arguments: arguments}})

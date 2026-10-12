@@ -124,8 +124,8 @@ func TestCompactProfileKeepsTheLifecycleGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "conversation_required") || !strings.Contains(string(raw), "trace_context_absent") || !strings.Contains(string(raw), "kn_id and ot_id are required") {
-		t.Fatalf("Trace must not block a business tool; original business argument checks must remain, got %s", raw)
+	if !strings.Contains(string(raw), "conversation_required") || strings.Contains(string(raw), "kn_id and ot_id are required") {
+		t.Fatalf("missing managed context must stop the compact business tool, got %s", raw)
 	}
 }
 

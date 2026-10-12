@@ -150,9 +150,16 @@ func (s *Service) captureAdmissionError() error {
 	return domainError(CodeCaptureUnavailable, "capture policy is unavailable")
 }
 
-// CapturePolicyDisabled reports the trusted process-local policy state. It is
-// used only to permit an already accepted interaction to close without a new
-// answer artifact; callers cannot set this state through a request field.
+func (s *Service) managedSessionAdmissionError() error {
+	if s.captureAdmission != nil && !s.captureAdmission.Known() {
+		return domainError(CodeCaptureUnavailable, "capture policy is unavailable")
+	}
+	return nil
+}
+
+// CapturePolicyDisabled reports the trusted process-local policy state. It
+// allows managed interactions to close without a new answer artifact when
+// evidence capture is disabled. Callers cannot set it through a request field.
 func (s *Service) CapturePolicyDisabled() bool {
 	return s.captureAdmission != nil && s.captureAdmission.Disabled()
 }
@@ -256,7 +263,7 @@ func (s *Service) EnsureCurrentConversation(ctx context.Context, command EnsureC
 	if command.ExternalConversationKey == "" {
 		return sessionvo.Conversation{}, domainError(CodeConversationRequired, "external conversation key is required")
 	}
-	if err := s.captureAdmissionError(); err != nil {
+	if err := s.managedSessionAdmissionError(); err != nil {
 		return sessionvo.Conversation{}, err
 	}
 
@@ -304,7 +311,7 @@ func (s *Service) CreateNewGeneration(ctx context.Context, command EnsureConvers
 	if err := validateOwner(command.Owner); err != nil {
 		return sessionvo.Conversation{}, err
 	}
-	if err := s.captureAdmissionError(); err != nil {
+	if err := s.managedSessionAdmissionError(); err != nil {
 		return sessionvo.Conversation{}, err
 	}
 	if command.ExternalConversationKey == "" {
@@ -717,7 +724,7 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 	if command.IdempotencyKey == "" {
 		return sessionvo.Interaction{}, domainError(CodeInteractionRequired, "idempotency key is required")
 	}
-	if err := s.captureAdmissionError(); err != nil {
+	if err := s.managedSessionAdmissionError(); err != nil {
 		return sessionvo.Interaction{}, err
 	}
 	agentName := strings.TrimSpace(command.AgentName)
@@ -924,12 +931,10 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				return err
 			}
 		}
-		if !policyClosure {
-			if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction."+string(command.Status), interaction); err != nil {
-				return err
-			}
+		if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction."+string(command.Status), interaction); err != nil {
+			return err
 		}
-		if conversation.OneShot && !policyClosure {
+		if conversation.OneShot {
 			conversation.Status = sessionvo.ConversationClosed
 			conversation.RowVersion++
 			conversation.UpdatedAt = now

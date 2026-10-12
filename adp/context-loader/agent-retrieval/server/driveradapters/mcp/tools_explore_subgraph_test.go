@@ -144,9 +144,9 @@ func TestExploreSubgraphSchema_ShapeAndRequiredFields(t *testing.T) {
 			_, ok := in.Properties[key]
 			convey.So(ok, convey.ShouldBeFalse)
 		}
-		// bkn_context is added by offerBKNContext to the business tools during assembly and is not in the baseline file.
+		// bkn_context is required by offerBKNContext during assembly.
 		convey.So(in.Required, convey.ShouldResemble,
-			[]string{"kn_id", "source_object_type_id", "direction", "path_length"})
+			[]string{"kn_id", "source_object_type_id", "direction", "path_length", "bkn_context"})
 
 		var out struct {
 			Properties map[string]json.RawMessage `json:"properties"`

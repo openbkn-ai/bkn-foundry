@@ -85,11 +85,8 @@ func TestLicensedEnterpriseToolCallReachesTheLifecycleGuard(t *testing.T) {
 	if strings.Contains(got, "not found") {
 		t.Fatalf("a licensed tool must not be refused as unknown: %s", got)
 	}
-	// A call with no bkn_context now falls back to the MCP session, so the guard
-	// answers about the Core it needs rather than the conversation the client
-	// omitted. Either wording proves the gate handed the call on.
-	if !strings.Contains(got, "probe result") || !strings.Contains(got, "trace_context_absent") {
-		t.Fatalf("expected the licensed handler plus explicit unrecorded Trace metadata, got %s", got)
+	if !strings.Contains(got, "conversation_required") || strings.Contains(got, "probe result") {
+		t.Fatalf("expected the licensed tool's managed-context guard, got %s", got)
 	}
 }
 
