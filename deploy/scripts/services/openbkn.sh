@@ -1185,8 +1185,25 @@ _secret_is_owned_by_release() {
 
 # Safe uses the same Kafka connection/Secret as the complete Audit install,
 # but its Chart takes a broker string and flat Secret-reference keys.
+# Preserve an environment supplied once at installation, as AO already does.
+_openbkn_safe_audit_environment() {
+    local namespace="$1" value release
+    if value="$(_openbkn_last_set_value auditPublisher.environment "${CORE_SET_VALUES[@]-}")"; then
+        printf '%s' "${value}"
+        return 0
+    fi
+    value="$(config_yaml_top_field auditPublisher environment)"
+    if [[ -n "${value}" ]]; then printf '%s' "${value}"; return 0; fi
+    for release in bkn-safe agent-observability; do
+        value="$(set -o pipefail; helm get values "${release}" -n "${namespace}" --all -o json 2>/dev/null |
+            python3 -c 'import json,sys; print(json.load(sys.stdin).get("auditPublisher", {}).get("environment", "") or "")' 2>/dev/null)" || continue
+        if [[ -n "${value}" ]]; then printf '%s' "${value}"; return 0; fi
+    done
+    printf development
+}
+
 _openbkn_safe_audit_profile_sets() {
-    local key value
+    local namespace="$1" key value
     CORE_RELEASE_EXTRA_SETS+=("auditPublisher.enabled=true")
     for key in environment brokers credentialsSecretName usernameSecretKey passwordSecretKey; do
         value="$(config_yaml_top_field auditPublisher "${key}")"
@@ -1194,7 +1211,7 @@ _openbkn_safe_audit_profile_sets() {
         [[ "${key}" != brokers || "${value}" != \[* ]] || value=""
         if [[ -z "${value}" ]]; then
             case "${key}" in
-                environment) value=development ;;
+                environment) value="$(_openbkn_safe_audit_environment "${namespace}")" ;;
                 brokers) value="$(_openbkn_trace_kafka_brokers)" ;;
                 credentialsSecretName) value="${OPENBKN_TRACE_KAFKA_SECRET}" ;;
                 usernameSecretKey) value=username ;;
@@ -1212,7 +1229,7 @@ _openbkn_safe_audit_profile_matches() {
     if ! values="$(helm get values bkn-safe -n "${namespace}" --all -o json 2>/dev/null)"; then
         return 2
     fi
-    _openbkn_safe_audit_profile_sets
+    _openbkn_safe_audit_profile_sets "${namespace}"
     for item in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
         key="${item%%=*}"
         if override="$(_openbkn_last_set_value "${key}" "${CORE_SET_VALUES[@]-}")"; then
@@ -1272,7 +1289,7 @@ _openbkn_release_extra_sets() {
             log_warn "accessAddress is not recorded; bkn-sample-studio has no gateway URL, so sample install cannot call OpenBKN."
         fi
     elif [[ "${release_name}" == "bkn-safe" ]]; then
-        _openbkn_safe_audit_profile_sets
+        _openbkn_safe_audit_profile_sets "${namespace}"
         local initial_pwd
         initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
         if [[ -n "${initial_pwd}" ]]; then
