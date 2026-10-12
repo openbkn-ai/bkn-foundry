@@ -1,0 +1,209 @@
+openapi: 3.1.0
+info:
+  title: ontology-query producer trace outbox
+  version: 0.1.0
+  description: Producer outbox management. Requires an active BKN Safe admin or super_admin account. Disabled
+    outbox or unavailable access profile returns 503. These operations are available only on the public
+    v1 surface.
+servers:
+- url: /api/ontology-query/v1
+security:
+- BearerAuth: []
+paths:
+  /trace/outbox:
+    get:
+      operationId: ontologyqueryListTraceOutbox
+      summary: List producer outbox records
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      - name: producer_stream_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: event_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+      description: status accepts repeated or comma-separated values. Invalid/nonpositive page values
+        fall back to defaults. page_size above 100 also falls back to 50. Ordered by updated_at descending,
+        then outbox_id descending.
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/trace-outbox.yaml#/components/schemas/Page
+        '401': &id001
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+        '403': &id002
+          description: Active administrator role required
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+        '500': &id003
+          description: Outbox operation failed
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+        '503': &id004
+          description: Outbox disabled or access profile unavailable
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+  /trace/outbox/{outbox_id}:
+    get:
+      operationId: ontologyqueryGetTraceOutbox
+      summary: Get producer outbox record and event envelope
+      parameters:
+      - name: outbox_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/trace-outbox.yaml#/components/schemas/Detail
+        '400': &id005
+          description: Invalid request or outbox ID
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+        '401': *id001
+        '403': *id002
+        '404': &id006
+          description: Outbox record not found
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+        '500': *id003
+        '503': *id004
+  /trace/outbox/{outbox_id}/retry:
+    post:
+      operationId: ontologyqueryRetryTraceOutbox
+      summary: Retry producer outbox record
+      description: Retry is allowed only in dlq. An identical idempotency replay returns the original
+        action result.
+      parameters:
+      - name: outbox_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../_shared/trace-outbox.yaml#/components/schemas/ActionRequest
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/trace-outbox.yaml#/components/schemas/ActionResult
+        '400': *id005
+        '401': *id001
+        '403': *id002
+        '404': *id006
+        '409': &id007
+          description: State version changed or idempotency key reused
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+        '422': &id008
+          description: Invalid action or action not allowed in current state
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/Error
+        '500': *id003
+        '503': *id004
+  /trace/outbox/{outbox_id}/abandon:
+    post:
+      operationId: ontologyqueryAbandonTraceOutbox
+      summary: Abandon producer outbox record
+      description: Abandon is allowed in dlq or conflict. An identical idempotency replay returns the
+        original action result.
+      parameters:
+      - name: outbox_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../_shared/trace-outbox.yaml#/components/schemas/ActionRequest
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/trace-outbox.yaml#/components/schemas/ActionResult
+        '400': *id005
+        '401': *id001
+        '403': *id002
+        '404': *id006
+        '409': *id007
+        '422': *id008
+        '500': *id003
+        '503': *id004
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer

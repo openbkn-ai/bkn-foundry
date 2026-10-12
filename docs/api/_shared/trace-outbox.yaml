@@ -1,0 +1,114 @@
+components:
+  schemas:
+    Summary:
+      type: object
+      required:
+      - outbox_id
+      - event_id
+      - producer_stream_id
+      - producer_epoch
+      - producer_sequence
+      - status
+      - attempts
+      - created_at
+      - updated_at
+      - state_version
+      properties:
+        outbox_id: &id001
+          type: integer
+        event_id: &id002
+          type: string
+        producer_stream_id: &id003
+          type: string
+        producer_epoch: &id004
+          type: integer
+        producer_sequence: &id005
+          type: integer
+        status: &id006
+          type: string
+          description: 'Producer outbox state: pending, processing, retry, delivered, dlq, conflict or
+            abandoned.'
+        attempts: &id007
+          type: integer
+        last_error_code: &id008
+          type: string
+        last_error_fingerprint: &id009
+          type: string
+        created_at: &id010
+          type: string
+          format: date-time
+        updated_at: &id011
+          type: string
+          format: date-time
+        state_version: &id012
+          type: integer
+    Detail:
+      type: object
+      required:
+      - outbox_id
+      - event_id
+      - producer_stream_id
+      - producer_epoch
+      - producer_sequence
+      - status
+      - attempts
+      - created_at
+      - updated_at
+      - state_version
+      - envelope
+      properties:
+        outbox_id: *id001
+        event_id: *id002
+        producer_stream_id: *id003
+        producer_epoch: *id004
+        producer_sequence: *id005
+        status: *id006
+        attempts: *id007
+        last_error_code: *id008
+        last_error_fingerprint: *id009
+        created_at: *id010
+        updated_at: *id011
+        state_version: *id012
+        envelope: {}
+    ActionResult:
+      type: object
+      required:
+      - status
+      - state_version
+      - at
+      properties:
+        status:
+          type: string
+        state_version:
+          type: integer
+        at:
+          type: string
+          format: date-time
+    ActionRequest:
+      type: object
+      required:
+      - expected_state_version
+      - reason_code
+      properties:
+        expected_state_version:
+          type: integer
+          minimum: 1
+        reason_code:
+          type: string
+          minLength: 1
+          description: Nonempty after trimming whitespace.
+        reason_note:
+          type: string
+          description: At most 256 UTF-8 bytes before trimming.
+    Page:
+      type: object
+      required:
+      - entries
+      - total
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Summary'
+        total:
+          type: integer

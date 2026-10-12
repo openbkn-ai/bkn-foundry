@@ -22,6 +22,9 @@
 | [build-task.yaml](build-task.yaml) | BuildTask | `GET/POST /build-tasks`, `GET/DELETE /build-tasks/{id(s)}`, `POST .../start`, `POST .../stop` |
 | [semantic-understanding-task.yaml](semantic-understanding-task.yaml) | SemanticUnderstandingTask | `GET/POST /semantic-understanding-tasks`, `GET/DELETE /semantic-understanding-tasks/{id(s)}` |
 
+| [index-capabilities.yaml](index-capabilities.yaml) | Local index capabilities | `GET /index-capabilities` |
+| [operation-audit.yaml](operation-audit.yaml) | Management audit | `GET /operation-audits`, `GET /operation-audits/{event_id}` |
+
 ## Conventions
 
 - **OpenAPI version:** 3.1.1.

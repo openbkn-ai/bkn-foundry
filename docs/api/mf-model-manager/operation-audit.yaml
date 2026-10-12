@@ -1,0 +1,365 @@
+openapi: 3.1.0
+info:
+  title: mf-model-manager operation audit
+  version: 0.1.0
+  description: Read-only management audit. Requires an enabled admin, super_admin or audit caller. from/to
+    are required RFC3339 timestamps, from < to, range <=30 days. limit must be 1..500, default 50. Cursor
+    uses before_time and before_event_id; list returns entries and has_more without next cursor fields.
+paths:
+  /operation-audits:
+    get:
+      summary: Operation Audits
+      operationId: list_operation_audits_65_api_mf_model_manager_v1_operation_audits_get
+      parameters:
+      - required: true
+        schema:
+          type: string
+          title: From
+        name: from
+        in: query
+      - required: true
+        schema:
+          type: string
+          title: To
+        name: to
+        in: query
+      - required: false
+        schema:
+          type: integer
+          maximum: 500.0
+          minimum: 1.0
+          title: Limit
+          default: 50
+        name: limit
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Before Time
+          default: ''
+        name: before_time
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Before Event Id
+          default: ''
+        name: before_event_id
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Actor Id
+          default: ''
+        name: actor_id
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Action
+          default: ''
+        name: action
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Target Type
+          default: ''
+        name: target_type
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Target Id
+          default: ''
+        name: target_id
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Outcome
+          default: ''
+        name: outcome
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - entries
+                - has_more
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditEntry'
+                  has_more:
+                    type: boolean
+        '400':
+          description: Audit request rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail:
+                    type: object
+                    required:
+                    - code
+                    - link
+                    properties:
+                      code:
+                        type: string
+                      link:
+                        type: string
+        '403':
+          description: Audit request rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail:
+                    type: object
+                    required:
+                    - code
+                    - link
+                    properties:
+                      code:
+                        type: string
+                      link:
+                        type: string
+        '404':
+          description: Audit request rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail:
+                    type: object
+                    required:
+                    - code
+                    - link
+                    properties:
+                      code:
+                        type: string
+                      link:
+                        type: string
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/operation_audit_router.py
+  /operation-audits/{event_id}:
+    get:
+      summary: Operation Audits {Event_Id}
+      operationId: get_operation_audit_73_api_mf_model_manager_v1_operation_audits__event_id__get
+      parameters:
+      - required: true
+        schema:
+          type: string
+          title: Event Id
+        name: event_id
+        in: path
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEntry'
+        '400':
+          description: Audit request rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail:
+                    type: object
+                    required:
+                    - code
+                    - link
+                    properties:
+                      code:
+                        type: string
+                      link:
+                        type: string
+        '403':
+          description: Audit request rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail:
+                    type: object
+                    required:
+                    - code
+                    - link
+                    properties:
+                      code:
+                        type: string
+                      link:
+                        type: string
+        '404':
+          description: Audit request rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail:
+                    type: object
+                    required:
+                    - code
+                    - link
+                    properties:
+                      code:
+                        type: string
+                      link:
+                        type: string
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/operation_audit_router.py
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    FastApiError:
+      type: object
+      additionalProperties: true
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        detail:
+          type: string
+        solution:
+          type: string
+        link:
+          type: string
+    AuditEntry:
+      type: object
+      required:
+      - event_id
+      - event_time
+      - recorded_at
+      - actor_id
+      - actor_name
+      - actor_type
+      - auth_method
+      - request_id
+      - source_channel
+      - method
+      - action
+      - target_type
+      - target_id
+      - target_name
+      - outcome
+      - failure_code
+      - failure_message
+      properties:
+        event_id:
+          type: string
+        event_time:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        actor_id:
+          type: string
+        actor_name:
+          type: string
+        actor_type:
+          type: string
+        auth_method:
+          type: string
+        request_id:
+          type: string
+        source_channel:
+          type: string
+        method:
+          type: string
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        target_name:
+          type: string
+        outcome:
+          type: string
+        failure_code:
+          type:
+          - string
+          - 'null'
+        failure_message:
+          type:
+          - string
+          - 'null'
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+servers:
+- url: /api/mf-model-manager/v1
+security:
+- BearerAuth: []

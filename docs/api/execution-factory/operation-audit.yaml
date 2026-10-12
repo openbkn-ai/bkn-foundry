@@ -1,0 +1,207 @@
+openapi: 3.1.0
+info:
+  title: agent-operator-integration operation audit
+  version: 0.1.0
+  description: Read-only management audit. from/to are required RFC3339 timestamps, from < to, with a
+    maximum range of 30 days. limit defaults to 50 and is capped at 500. Runtime execution is not included.
+    Requires Execution Factory administrator permission.
+servers:
+- url: /api/agent-operator-integration/v1
+security:
+- BearerAuth: []
+paths:
+  /operation-audits:
+    get:
+      operationId: agentoperatorintegrationListAudit
+      summary: List management audit records
+      parameters:
+      - name: from
+        description: Start of the range, inclusive, RFC3339. Required.
+        schema:
+          type: string
+          format: date-time
+        in: query
+        required: true
+      - name: to
+        description: End of the range, exclusive, RFC3339. Required, and at most 30 days after `from`.
+        schema:
+          type: string
+          format: date-time
+        in: query
+        required: true
+      - name: actor_id
+        description: Filter by actor.
+        schema:
+          type: string
+        in: query
+      - name: action
+        description: Filter by action.
+        schema:
+          type: string
+        in: query
+      - name: target_type
+        description: Filter by target type.
+        schema:
+          type: string
+        in: query
+      - name: target_id
+        description: Filter by target ID.
+        schema:
+          type: string
+        in: query
+      - name: outcome
+        description: Filter by outcome.
+        schema:
+          type: string
+        in: query
+      - name: limit
+        description: Page size, 50 by default, capped at 500. A larger value is capped, not rejected.
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        in: query
+      - name: before_time
+        description: Cursor from the last entry of the previous page.
+        schema:
+          type: string
+          format: date-time
+        in: query
+      - name: before_event_id
+        description: Cursor from the last entry of the previous page.
+        schema:
+          type: string
+        in: query
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '400': &id001
+          description: Invalid time range or cursor
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/ErrorCompact
+        '401': &id002
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/ErrorCompact
+        '403': &id003
+          description: Audit permission required
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/ErrorCompact
+        '500': &id004
+          description: Query failed
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/ErrorCompact
+  /operation-audits/{event_id}:
+    get:
+      operationId: agentoperatorintegrationGetAudit
+      summary: Get management audit record
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: ../_shared/errors.yaml#/components/schemas/ErrorCompact
+        '500': *id004
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Entry:
+      type: object
+      required:
+      - event_id
+      - event_time
+      - recorded_at
+      - actor_id
+      - actor_name
+      - actor_type
+      - auth_method
+      - request_id
+      - source_channel
+      - method
+      - action
+      - target_type
+      - target_id
+      - target_name
+      - outcome
+      - failure_code
+      - failure_message
+      properties:
+        event_id:
+          type: string
+        event_time:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        actor_id:
+          type: string
+        actor_name:
+          type: string
+        actor_type:
+          type: string
+        auth_method:
+          type: string
+        request_id:
+          type: string
+        source_channel:
+          type: string
+        method:
+          type: string
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        target_name:
+          type: string
+        outcome:
+          type: string
+        failure_code:
+          type: string
+        failure_message:
+          type: string
+    Page:
+      type: object
+      required:
+      - entries
+      - has_more
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entry'
+        has_more:
+          type: boolean

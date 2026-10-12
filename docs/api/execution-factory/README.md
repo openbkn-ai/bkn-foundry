@@ -16,14 +16,16 @@
 | [mcp.yaml](mcp.yaml) | MCP | Probe, CRUD, status, tool debugging, three market operations, proxy tool listing and invocation, and three exposed operations: 16 operations |
 | [toolbox.yaml](toolbox.yaml) | Toolboxes | Toolbox CRUD and status, tool CRUD and enablement, debug and proxy calls, operator conversion, OpenAPI capability packages, and four market operations: 21 operations |
 | [skill.yaml](skill.yaml) | Skills | Registration, list, detail, metadata and package updates, publishing and history, two market operations, three consumer reads, three management reads, execution, and five index-build operations: 25 operations |
+| [operation-audit.yaml](operation-audit.yaml) | Management audit | `GET /operation-audits`, `GET /operation-audits/{event_id}` |
 
-**All 89 public operations are documented.**
+**The principal public surface has 92 documented operations, including MCP transport.**
+The separate [capabilities-lab.yaml](capabilities-lab.yaml) covers 35 operations.
 
 The separate
 [managed-proxy contract](../bkn-safe/proxy-execution-pep.yaml)
 documents the cluster-internal, fail-closed Action and Schedule Tool/MCP
 execution boundary. It is linted but unpublished and is not part of the
-89-operation public API count.
+92-operation public API count.
 
 ## Run a function end to end
 
@@ -118,14 +120,14 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 - **Authorization outage (503):** An endpoint that checks a permission on one resource or resource type — creating, editing, publishing, deleting or executing operators, MCP servers, toolboxes and Skills, plus categories, sandbox administration and function execution — answers `503` with code `AgentOperatorIntegration.ServiceUnavailable.CommonAuthorizationUnavailable` when bkn-safe returns no decision (unreachable, timed out, or a non-2xx response). The request is not performed. Unlike a 403, this does not mean a grant is missing: retry later, and check bkn-safe if it persists. Only a 403 means the account was denied. List endpoints filter results through a batch check and answer `500` in the same situation.
 - **Error envelope:** This service does not use `comm-go/rest.BaseError`. It uses `code`, `description`, `solution`, `link`, and `details`, as defined by [`ErrorCompact`](../_shared/errors.yaml), which is also used by context-loader.
 - **Internal APIs:** `/api/agent-operator-integration/internal-v1` is the internal surface and includes operations such as `POST /function/exec/{version}`, which executes a registered function version with a millisecond timeout. This documentation excludes internal APIs.
-- **Capabilities surface:** `/api/capabilities-lab/v1` is another route group merged from the former capabilities-lab service. It is exposed through Ingress but has different paths and semantics and is not yet documented here.
+- **Capabilities surface:** `/api/capabilities-lab/v1` is another route group merged from the former capabilities-lab service. Its 35 registered operations, including conditional metrics, are documented separately in [capabilities-lab.yaml](capabilities-lab.yaml).
 - **All `*_time` fields are nanoseconds:** Operator, MCP, toolbox, and Skill timestamps use `time.Now().UnixNano()`, for example `1784880971306127803`. Parsing them as milliseconds produces a date near 1970. Sandbox-observability fields ending in `*_at`, including `created_at`, `last_used_at`, and `checked_at`, are RFC3339 strings.
 - **Contract inspection:** Read-only GET operations are probed by default and need no annotation. The 13 `x-contract-probe` annotations in this module are only for operations that must run in batches. List operations use `provides` to feed values such as `box_id`, `skill_id`, and `mcp_id` into detail operations in later batches. See [tools/README.md](../tools/README.md).
 
 ## Publication scope
 
-Only the Ingress-exposed public surface at
-`/api/agent-operator-integration/v1` is documented. This is the surface reached
+The principal Ingress-exposed public surface at
+`/api/agent-operator-integration/v1` is documented alongside the separate capabilities-lab surface. This is the surface reached
 by browsers and Studio. The `internal-v1` surface is intentionally not exposed
 through Ingress. It does not validate tokens and derives identity from the
 caller-supplied `X-Account-ID` header. Exposing it would make roughly 40 write
@@ -135,23 +137,14 @@ documentation.
 
 ## Coverage boundary
 
-All 89 operations on the public `/api/agent-operator-integration/v1` surface are
-documented: 7 function, 4 sandbox-observability, 2 import/export, 14 operator,
-16 MCP, 21 toolbox, and 25 Skill operations.
-
-> The operation total was corrected twice: 89 → 90 after the MCP
-> `Any /mcp/app/{mcp_id}/mcp` route was missed because the route-extraction
-> expression did not count `Any`, and 90 → 91 after
-> `POST /function/infer-schema` was missed because an outdated handler file was
-> inspected. The third change was a removal rather than a correction: 91 → 89
-> when `POST /operator/intcomp` and `POST /tool-box/intcomp` were removed with
-> the built-in component registration mechanism. The current total has been
-> checked line by line against `RegisterPublic` and cross-checked against live
-> access logs.
+All 92 documented operations on the public `/api/agent-operator-integration/v1`
+surface are covered. The count includes the MCP transport route and the two
+management-audit reads. Internal routes and `/api/capabilities-lab/v1` are
+separate surfaces. The capabilities-lab surface has 35 registered operations documented in [capabilities-lab.yaml](capabilities-lab.yaml).
 
 ### Two levels of verification
 
-- **Routes and publication scope:** Every `RegisterPublic` route was checked; all 89 are present.
+- **Routes and publication scope:** Every `RegisterPublic` route was checked, including the MCP `Any` transport registration.
 - **Field-level contracts:** Only operations exercised against a running environment are considered verified. Other schemas were derived from Go types and require manual review when changed.
 
 The historical draft under
@@ -197,4 +190,4 @@ were `GET /tool-box/list` with 265 calls, `GET /skills` with 87,
 Another 40 paths in the logs belonged to `internal-v1`, used inside the cluster
 by bkn-agent and context-loader through ClusterIP for tool proxying and
 `function/exec`. They bypass Ingress and remain outside this documentation.
-The other excluded surface is `/api/capabilities-lab/v1`.
+The separate `/api/capabilities-lab/v1` surface is documented in [capabilities-lab.yaml](capabilities-lab.yaml).

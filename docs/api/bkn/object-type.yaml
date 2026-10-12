@@ -2185,7 +2185,6 @@ components:
         - tags
         - kn_id
         - data_source
-        - data_properties
         - primary_keys
         - display_key
         - type
