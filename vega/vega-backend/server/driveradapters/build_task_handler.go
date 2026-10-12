@@ -323,6 +323,8 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	r.captureBuildTaskAuditName(c, ctx, taskID)
+
 	if err := r.bts.Start(ctx, taskID, req.Reset); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -330,6 +332,8 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	// Start/Stop return only after their guarded task status update commits.
+	c.Set("operation_audit_committed", true)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, nil)
 }
@@ -361,6 +365,8 @@ func (r *restHandler) stopBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	taskID := c.Param("id")
+	r.captureBuildTaskAuditName(c, ctx, taskID)
+
 	if err := r.bts.Stop(ctx, taskID); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -368,8 +374,23 @@ func (r *restHandler) stopBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	// Start/Stop return only after their guarded task status update commits.
+	c.Set("operation_audit_committed", true)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, nil)
 }
 
 // =========================== helpers ===========================
+
+func (r *restHandler) captureBuildTaskAuditName(c *gin.Context, ctx context.Context, taskID string) {
+	if r.auditRecorder == nil {
+		return
+	}
+	// An unavailable source snapshot must not fall back to an unrelated client name.
+	c.Set("operation_audit_target_names", []string{})
+	if task, err := r.bts.GetByID(ctx, taskID); err == nil && task != nil {
+		if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+			c.Set("operation_audit_target_names", []string{name})
+		}
+	}
+}

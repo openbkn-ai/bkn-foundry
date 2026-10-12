@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -124,6 +125,28 @@ func (r *restHandler) AttachCapabilities(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	bindings := result.Bindings
+	if r.auditRecorder != nil {
+		// Only new rows are committed changes; an idempotent mount is not an audit event.
+		ids := make([]string, 0, len(bindings))
+		seen := make(map[string]bool, len(bindings))
+		for _, binding := range bindings {
+			if binding != nil && binding.CreatedByAttach && !seen[binding.ID] {
+				ids = append(ids, binding.ID)
+				seen[binding.ID] = true
+			}
+		}
+		c.Set("operation_audit_skip", true)
+		if len(ids) > 0 {
+			names := r.operationAuditCapabilityNames(c, ctx, knID, branch, ids)
+			if len(names) == len(ids) {
+				c.Set("operation_audit_target_names", names)
+				c.Set("operation_audit_target_ids", ids)
+				c.Set("operation_audit_skip", false)
+			} else {
+				logger.Errorf("operation audit fact rejected: incomplete attached capability snapshot")
+			}
+		}
+	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, &interfaces.CapabilityBindingsList{
 		Entries:    bindings,
@@ -157,34 +180,7 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 	// Capture binding metadata before deletion; a failed audit lookup must not block the mutation.
 	var auditNames []string
 	if r.auditRecorder != nil {
-		if list, lookupErr := r.cbs.ListCapabilities(ctx, interfaces.CapabilityBindingsQueryParams{
-			KNID: knID, Branch: branch, WithDetail: true,
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
-		}); lookupErr == nil && list != nil {
-			selected := make(map[string]bool, len(bindingIDs))
-			for _, id := range bindingIDs {
-				selected[id] = true
-			}
-			knName := c.GetString("operation_audit_kn_name")
-			for _, binding := range list.Entries {
-				if binding == nil || !selected[binding.ID] || knName == "" {
-					continue
-				}
-				name := binding.Name
-				if binding.CapabilityType == interfaces.CAPABILITY_TYPE_MCP_TOOL {
-					// MCP references persist tool_name in CapabilityID, not an opaque ID.
-					// It remains the binding's business name when metadata is unavailable.
-					if name == "" {
-						name = binding.CapabilityID
-					}
-				} else if name == binding.CapabilityID {
-					continue
-				}
-				if name != "" {
-					auditNames = append(auditNames, knName+" / "+name)
-				}
-			}
-		}
+		auditNames = r.operationAuditCapabilityNames(c, ctx, knID, branch, bindingIDs)
 	}
 
 	result, err := r.publishKNCapabilityMutation(ctx, knID, branch, bindingIDs,
@@ -289,4 +285,40 @@ func (r *restHandler) ResolveCapabilities(c *gin.Context, vis hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, list)
+}
+
+// operationAuditCapabilityNames resolves only the affected binding IDs using existing metadata.
+func (r *restHandler) operationAuditCapabilityNames(c *gin.Context, ctx context.Context, knID, branch string, ids []string) []string {
+	list, err := r.cbs.ListCapabilities(ctx, interfaces.CapabilityBindingsQueryParams{
+		KNID: knID, Branch: branch, WithDetail: true,
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+	})
+	if err != nil || list == nil {
+		return nil
+	}
+	selected := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		selected[id] = true
+	}
+	knName := c.GetString("operation_audit_kn_name")
+	var names []string
+	for _, binding := range list.Entries {
+		if binding == nil || !selected[binding.ID] || knName == "" {
+			continue
+		}
+		name := binding.Name
+		if binding.CapabilityType == interfaces.CAPABILITY_TYPE_MCP_TOOL {
+			// MCP CapabilityID is the protocol tool_name, rather than an opaque ID.
+			if name == "" {
+				name = binding.CapabilityID
+			}
+		} else if name == binding.CapabilityID {
+			continue
+		}
+		if name != "" {
+			names = append(names, knName+" / "+name)
+			delete(selected, binding.ID)
+		}
+	}
+	return names
 }

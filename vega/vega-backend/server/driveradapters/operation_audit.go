@@ -52,7 +52,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		}
 		request := captureOperationAuditRequest(c.Request)
 		c.Next()
-		if r == nil || r.auditRecorder == nil || c.Writer.Status() < 200 || c.Writer.Status() >= 300 || c.Writer.Status() == http.StatusAccepted || c.GetBool("operation_audit_preview") {
+		if r == nil || r.auditRecorder == nil || c.Writer.Status() < 200 || c.Writer.Status() >= 300 || (c.Writer.Status() == http.StatusAccepted && !c.GetBool("operation_audit_committed")) || c.GetBool("operation_audit_preview") {
 			return
 		}
 
@@ -209,7 +209,8 @@ func operationAuditTarget(c *gin.Context, targetType string, request map[string]
 			}
 		}
 	}
-	if snapshot, exists := c.Get("operation_audit_target_names"); exists && name == "" {
+	if snapshot, exists := c.Get("operation_audit_target_names"); exists {
+		name = ""
 		if names, ok := snapshot.([]string); ok && len(names) > 0 {
 			name = operationAuditNames(names)
 		}

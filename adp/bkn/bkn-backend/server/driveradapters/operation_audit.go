@@ -146,7 +146,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		c.Writer = responseBody
 		c.Next()
 
-		if r == nil || r.auditRecorder == nil || c.Writer.Status() < 200 || c.Writer.Status() >= 300 || c.Writer.Status() == http.StatusAccepted {
+		if r == nil || r.auditRecorder == nil || c.GetBool("operation_audit_skip") || c.Writer.Status() < 200 || c.Writer.Status() >= 300 || c.Writer.Status() == http.StatusAccepted {
 			return
 		}
 		requestID, err := operationAuditRequestID(c)
@@ -305,6 +305,11 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 	} else if len(requestNames) > 0 {
 		targetName = strings.Join(requestNames, "、")
 	}
+	if snapshot, ok := c.Get("operation_audit_target_ids"); ok {
+		if ids, ok := snapshot.([]string); ok && len(ids) > 0 {
+			targetID = strings.Join(ids, ",")
+		}
+	}
 	observedTargetID := targetID
 
 	if len(targetID) > 256 {
@@ -315,8 +320,7 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 		if names, ok := snapshot.([]string); ok && len(names) > 0 {
 			targetName = operationAuditNames(names)
 		}
-	}
-	if len(requestNames) > 1 {
+	} else if len(requestNames) > 1 {
 		targetName = operationAuditNames(requestNames)
 	}
 	if knID == "" && rule.TargetType == "knowledge_network" && c.Writer.Status() < http.StatusBadRequest {

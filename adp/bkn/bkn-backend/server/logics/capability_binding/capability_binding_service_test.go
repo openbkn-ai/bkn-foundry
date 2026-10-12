@@ -76,6 +76,8 @@ func TestAttachCapabilities(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(len(bindings), ShouldEqual, 2)
+			So(bindings[0].CreatedByAttach, ShouldBeTrue)
+			So(bindings[1].CreatedByAttach, ShouldBeTrue)
 			So(bindings[0].ID, ShouldNotBeEmpty)
 			So(bindings[0].OwnerID, ShouldBeEmpty)
 			So(bindings[1].OwnerID, ShouldEqual, "box-1")
@@ -98,6 +100,7 @@ func TestAttachCapabilities(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(len(bindings), ShouldEqual, 1)
+			So(bindings[0].CreatedByAttach, ShouldBeFalse)
 			So(bindings[0].ID, ShouldEqual, "bind-1")
 		})
 

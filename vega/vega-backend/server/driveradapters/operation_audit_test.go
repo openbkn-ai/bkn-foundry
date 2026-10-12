@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -455,5 +456,148 @@ func TestOperationAuditTaskScopeIsOneItem(t *testing.T) {
 	}
 	if name := operationAuditNames([]string{operationAuditTaskName("Sales", "Orders"), operationAuditTaskName("Sales", "Invoices")}); !strings.Contains(name, "Sales / Orders") || !strings.Contains(name, "Sales / Invoices") || !strings.Contains(name, "共2个") {
 		t.Fatal(name)
+	}
+}
+
+func TestOperationAuditBuildControlRealHandler(t *testing.T) {
+	for _, action := range []string{"start", "stop"} {
+		for _, tc := range []struct {
+			name                            string
+			disabled, denied, lookupFailure bool
+		}{{name: "committed"}, {name: "disabled", disabled: true}, {name: "denied", denied: true}, {name: "lookup_failure", lookupFailure: true}} {
+			t.Run(action+"/"+tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				tasks := vmock.NewMockBuildTaskService(ctrl)
+				store := &capturedOperationAuditRecorder{}
+				h := newOperationAuditTestHandler(store)
+				h.bts = tasks
+				if tc.disabled {
+					h.auditRecorder = nil
+				}
+				if !tc.disabled {
+					var err error
+					if tc.lookupFailure {
+						err = fmt.Errorf("metadata unavailable")
+					}
+					tasks.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{ID: "task-1", CatalogName: "Sales", ResourceName: "Orders"}, err)
+				}
+				var err error
+				if tc.denied {
+					err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+				}
+				if action == "start" {
+					tasks.EXPECT().Start(gomock.Any(), "task-1", false).Return(err)
+				} else {
+					tasks.EXPECT().Stop(gomock.Any(), "task-1").Return(err)
+				}
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				engine := gin.New()
+				engine.Use(h.OperationAudit())
+				engine.POST("/api/vega-backend/v1/build-tasks/:id/"+action, func(c *gin.Context) {
+					c.Set(operationAuditVisitorKey, v)
+					if action == "start" {
+						h.startBuildTask(c, v)
+					} else {
+						h.stopBuildTask(c, v)
+					}
+				})
+				response := httptest.NewRecorder()
+				engine.ServeHTTP(response, httptest.NewRequest("POST", "/api/vega-backend/v1/build-tasks/task-1/"+action, strings.NewReader(`{"name":"forged name"}`)))
+				status := http.StatusAccepted
+				if tc.denied {
+					status = http.StatusForbidden
+				}
+				require.Equal(t, status, response.Code)
+				if tc.disabled || tc.denied || tc.lookupFailure {
+					require.Empty(t, store.entries)
+					return
+				}
+				require.Len(t, store.entries, 1)
+				require.Equal(t, "Sales / Orders", store.entries[0].TargetName)
+				require.Equal(t, action, store.entries[0].Action)
+			})
+		}
+	}
+}
+
+func TestOperationAuditAcceptedWithoutCommitDoesNotRecord(t *testing.T) {
+	store := &capturedOperationAuditRecorder{}
+	h := newOperationAuditTestHandler(store)
+	engine := gin.New()
+	engine.Use(h.OperationAudit())
+	engine.POST("/api/vega-backend/v1/build-tasks/:id/start", func(c *gin.Context) {
+		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: "user"})
+		c.Set("operation_audit_target_names", []string{"Sales / Orders"})
+		c.Status(http.StatusAccepted)
+	})
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest("POST", "/api/vega-backend/v1/build-tasks/task-1/start", nil))
+	require.Equal(t, http.StatusAccepted, response.Code)
+	require.Empty(t, store.entries)
+}
+
+func TestOperationAuditRenameRealHandlers(t *testing.T) {
+	for _, kind := range []string{"catalog", "resource"} {
+		for _, tc := range []struct {
+			name             string
+			disabled, denied bool
+		}{{name: "committed"}, {name: "disabled", disabled: true}, {name: "denied", denied: true}} {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				store := &capturedOperationAuditRecorder{}
+				h := newOperationAuditTestHandler(store)
+				if tc.disabled {
+					h.auditRecorder = nil
+				}
+				var err error
+				if tc.denied {
+					err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+				}
+				body := `{"name":"New Name","expected_update_time":1,"connector_type":"mariadb","connector_config":{}}`
+				if kind == "catalog" {
+					catalogs := vmock.NewMockCatalogService(ctrl)
+					h.cs = catalogs
+
+					catalogs.EXPECT().Update(gomock.Any(), gomock.Any(), false).DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest, _ bool) error {
+						require.Equal(t, "New Name", req.Name)
+						return err
+					})
+				} else {
+					body = `{"name":"New Name","expected_update_time":1,"category":"dataset","schema_definition":[{"name":"title","type":"string"}]}`
+					resources := vmock.NewMockResourceService(ctrl)
+					h.rs = resources
+
+					resources.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
+						require.Equal(t, "New Name", req.Name)
+						return err
+					})
+				}
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				engine := gin.New()
+				engine.Use(h.OperationAudit())
+				engine.PUT("/api/vega-backend/v1/"+kind+"s/:id", func(c *gin.Context) {
+					c.Set(operationAuditVisitorKey, v)
+					if kind == "catalog" {
+						h.updateCatalog(c, v)
+					} else {
+						h.updateResource(c, v)
+					}
+				})
+				response := httptest.NewRecorder()
+				engine.ServeHTTP(response, httptest.NewRequest("PUT", "/api/vega-backend/v1/"+kind+"s/object-1", strings.NewReader(body)))
+				status := http.StatusNoContent
+				if tc.denied {
+					status = http.StatusForbidden
+				}
+				require.Equal(t, status, response.Code)
+				if tc.disabled || tc.denied {
+					require.Empty(t, store.entries)
+					return
+				}
+				require.Len(t, store.entries, 1)
+				require.Equal(t, "New Name", store.entries[0].TargetName)
+				require.Equal(t, "update", store.entries[0].Action)
+			})
+		}
 	}
 }

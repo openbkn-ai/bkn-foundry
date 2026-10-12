@@ -103,3 +103,11 @@ func TestResolveOperationAuditIdentityDoesNotDependOnGrantLookup(t *testing.T) {
 		t.Fatalf("profile = %#v, error = %v", profile, err)
 	}
 }
+
+func TestResolveOperationAuditIdentityRejectsHeaderOnlyActor(t *testing.T) {
+	// Account headers alone cannot authenticate the business actor. No identity call is made.
+	profile, err := resolveOperationAuditIdentity(context.Background(), nil, "", "", "user-1")
+	if err == nil || profile.ActorName != "" {
+		t.Fatalf("profile=%+v error=%v", profile, err)
+	}
+}
