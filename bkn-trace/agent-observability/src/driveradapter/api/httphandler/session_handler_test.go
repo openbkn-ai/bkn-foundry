@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/captureadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
@@ -314,6 +315,51 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 		"/api/agent-observability/v1/interactions/"+interaction.ID, "")
 	if getResponse.Code != http.StatusOK {
 		t.Fatalf("get interaction: %d %s", getResponse.Code, getResponse.Body.String())
+	}
+}
+
+func TestManagedInteractionReportsCoreCaptureState(t *testing.T) {
+	t.Parallel()
+
+	view := captureadmission.New(1, "disabled")
+	service := sessionsvc.New(sessionstore.New(), sessionsvc.Options{CaptureAdmission: view})
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", httphandler.NewSessionHandler(service))
+	conversationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"capture-state","idempotency_key":"ensure"}`)
+	if conversationResponse.Code != http.StatusCreated {
+		t.Fatalf("ensure conversation: %d %s", conversationResponse.Code, conversationResponse.Body.String())
+	}
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, conversationResponse, &conversation)
+	start := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"start"}`)
+	if start.Code != http.StatusCreated {
+		t.Fatalf("start interaction: %d %s", start.Code, start.Body.String())
+	}
+	var started struct {
+		sessionvo.Interaction
+		CaptureEnabled *bool `json:"capture_enabled"`
+	}
+	decodeLifecycleResponse(t, start, &started)
+	if started.ID == "" || started.ConversationID != conversation.ID || started.CaptureEnabled == nil || *started.CaptureEnabled {
+		t.Fatalf("disabled start missing IDs or capture state: %#v", started)
+	}
+	finish := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/interactions/"+started.ID+"/finish",
+		`{"outcome":"completed","idempotency_key":"finish"}`)
+	if finish.Code != http.StatusOK {
+		t.Fatalf("finish interaction: %d %s", finish.Code, finish.Body.String())
+	}
+	var finished struct {
+		sessionvo.Interaction
+		CaptureEnabled *bool `json:"capture_enabled"`
+	}
+	decodeLifecycleResponse(t, finish, &finished)
+	if finished.ID != started.ID || finished.CaptureEnabled == nil || *finished.CaptureEnabled {
+		t.Fatalf("disabled finish missing ID or capture state: %#v", finished)
 	}
 }
 

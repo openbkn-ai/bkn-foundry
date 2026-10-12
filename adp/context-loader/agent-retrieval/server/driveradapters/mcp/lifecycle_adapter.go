@@ -455,7 +455,11 @@ func agentLifecycleView(name string, target any) any {
 			"conversation_id":  value.ConversationID,
 			"execution_status": value.ExecutionStatus,
 		}
-		if bkntrace.CaptureDisabled() {
+		captureDisabled := bkntrace.CaptureDisabled()
+		if value.CaptureEnabled != nil {
+			captureDisabled = !*value.CaptureEnabled
+		}
+		if captureDisabled {
 			result["capture_enabled"] = false
 			result["trace_recorded"] = false
 			if name == toolKeyStartInteraction {
