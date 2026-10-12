@@ -43,6 +43,10 @@ type CapabilityBinding struct {
 	KNID           string `json:"kn_id" mapstructure:"kn_id"`
 	Branch         string `json:"branch" mapstructure:"branch"`
 	CapabilityType string `json:"capability_type" mapstructure:"capability_type"`
+
+	// CreatedByAttach is a transient mutation fact, never serialized or persisted.
+	CreatedByAttach bool `json:"-" mapstructure:"-"`
+
 	// OwnerID is the container the capability belongs to: the tool box for a function, the MCP
 	// Server for an mcp_tool, empty for a skill. The wire name is box_id, matching what the
 	// execution factory, Context Loader and Studio all call it; the column stays type-neutral,

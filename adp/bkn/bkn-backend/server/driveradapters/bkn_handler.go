@@ -275,6 +275,10 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		}
 	}
 
+	if r.auditRecorder != nil {
+		c.Set("operation_audit_target_names", []string{kn.KNName})
+	}
+
 	logger.Debugf("Upload BKN completed: kn_id=%s", knID)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"kn_id": knID, "capabilities": capabilityReport})
