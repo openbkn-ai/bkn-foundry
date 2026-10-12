@@ -6,7 +6,7 @@ BKN Foundry is a **backend-only** platform. Use the CLI, SDKs, or HTTP APIs to o
 
 ## Getting started
 
-**Deploy:** **Linux** is recommended for full installs. **macOS** (optional): local validation with kind — [`deploy/dev/README.md`](../../deploy/dev/README.md) ([中文](../../deploy/dev/README.zh.md)).
+**Deploy:** **Linux** is recommended for full installs. **macOS** (optional): local validation with kind — [`openbkn-deploy/dev/README.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.md) ([中文](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md)).
 
 | Doc | Description |
 | --- | --- |

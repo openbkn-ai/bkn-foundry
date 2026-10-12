@@ -124,7 +124,7 @@ The local limit was increased to 1536 MiB, rollout became healthy, and the same
 frozen input resumed and repeated successfully. This is local deployment
 headroom, not a product schema/runtime change.
 
-Engineer guide: `deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md`.
+Engineer guide: [openbkn-deploy historical conversion guide](https://github.com/openbkn-ai/openbkn-deploy/blob/main/scripts/upgrades/0.2.0/historical_trace_data/README.md).
 The customer cutoff, source backup and TLS/CA configuration are configurable.
 Source tables and completed archives are unchanged. No commit, push, PR update
 or merge is authorized until the user requests it after local acceptance.

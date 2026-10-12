@@ -438,7 +438,7 @@ func TestBuildProxyGrantSourcesDeduplicatesTopLevelAndNestedCopies(t *testing.T)
 }
 
 // proxyVersionFixture is the model shared with the 0.1.5 migration script's
-// tests (deploy/scripts/upgrades/0.1.5/permission_model_transition). Both sides
+// tests (openbkn-deploy/scripts/upgrades/0.1.5/permission_model_transition). Both sides
 // pin the same digest, so neither can change the projection alone.
 func proxyVersionFixture() (*interfaces.KN, []*interfaces.CapabilityBinding) {
 	kn := &interfaces.KN{

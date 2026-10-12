@@ -32,7 +32,6 @@ jobs:
               'oss-gateway':       { owner: 'jiankang-kw', label: 'oss-gateway' },
               'sandbox':           { owner: 'guodawn',     label: 'sandbox' },
               'bkn-trace':         { owner: 'guodawn',     label: 'bkn-trace' },
-              'deploy':            { owner: 'sh00tg0a1',   label: 'deploy' },
             };
 
             const body = context.payload.issue.body || '';

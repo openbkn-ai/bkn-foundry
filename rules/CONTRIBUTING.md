@@ -19,7 +19,7 @@ BKN Foundry is a **monorepo** ([`openbkn-ai/bkn-foundry`](https://github.com/ope
 | **Infra** | [`infra/`](../infra) | `mf-model-manager` (model registry), `oss-gateway-backend`, `sandbox` runtime |
 | **BKN samples** | [`bkn/`](../bkn) | Reference Business Knowledge Networks (e.g. `smart_home_supply_chain`) |
 | **Help** | [`help/`](../help) | Bilingual product docs |
-| **Deploy** | [`deploy/`](../deploy) | One-click `deploy.sh` for Kubernetes (k8s + BKN Foundry charts) |
+| **Deploy** | [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy) | One-click `deploy.sh` for Kubernetes (independent repository) |
 
 External CLI/SDKs that interact with this backend live in their own repositories:
 
@@ -560,10 +560,11 @@ Each module's `README.md` / `AGENTS.md` lists the exact prerequisites, build com
    cd infra/mf-model-manager && pip install -r requirements.txt && pytest
    ```
 
-4. **(Optional) Spin up a full cluster** to test end-to-end via `deploy/` (see [`help/en/install.md`](../help/en/install.md)):
+4. **(Optional) Spin up a full cluster** to test end-to-end via [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy) (see [`help/en/install.md`](../help/en/install.md)):
 
    ```bash
-   cd deploy
+   git clone https://github.com/openbkn-ai/openbkn-deploy.git
+   cd openbkn-deploy
    ./deploy.sh openbkn install
    ```
 

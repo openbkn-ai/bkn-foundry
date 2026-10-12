@@ -34,7 +34,7 @@ OpenBKN 是一个本体驱动的业务知识网络平台，它通过本体建模
 
 - 🛠️ [OpenBKN SDK](https://github.com/openbkn-ai/bkn-sdk) - 终端用户 / Agent 使用的 BKN CLI、TypeScript SDK 与 Agent Skill
 - 🤝 [贡献指南](rules/CONTRIBUTING.zh.md) - 项目贡献指南
-- 🚢 [部署指南](deploy/README.zh.md) - 一键部署到 Kubernetes
+- 🚢 [部署指南](https://github.com/openbkn-ai/openbkn-deploy/blob/main/README.zh.md) - 一键部署到 Kubernetes
 - 📘 [产品文档](help/README.md) - 产品文档与使用指南（[中文](help/zh/README.md) / [EN](help/en/README.md)）
 - 📖 [API 文档](docs/api/) - 各服务 OpenAPI 文档（YAML 真相源 + 渲染的 Markdown / 交互式 HTML）
 - 📦 [示例](https://github.com/openbkn-ai/bkn-samples) - 端到端可运行示例，已独立成仓
@@ -44,14 +44,14 @@ OpenBKN 是一个本体驱动的业务知识网络平台，它通过本体建模
 
 ## 🚀 快速开始
 
-1. **前置与规划** — 阅读 [部署文档](deploy/README.zh.md) 并满足其中前置条件。**正式安装以 Linux 为主**；**macOS** 可选本机 kind 验证见 [Mac 安装（开发向）](deploy/dev/README.zh.md)。
+1. **前置与规划** — 阅读 [部署文档](https://github.com/openbkn-ai/openbkn-deploy/blob/main/README.zh.md) 并满足其中前置条件。**正式安装以 Linux 为主**；**macOS** 可选本机 kind 验证见 [Mac 安装（开发向）](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md)。
 2. **装机前自检 / 修复：`preflight.sh`**（推荐）
 
    在**安装目标主机**上，安装前先做一次系统体检：内核 / sysctl / containerd / `kubectl` / `helm` / Node / BKN CLI 等，缺什么可按需修（每项默认 y/N 询问，`-y` 全自动）：
 
 ```bash
-git clone https://github.com/openbkn-ai/bkn-foundry.git
-cd bkn-foundry/deploy
+git clone https://github.com/openbkn-ai/openbkn-deploy.git
+cd openbkn-deploy
 chmod +x preflight.sh deploy.sh onboard.sh
 
 sudo bash ./preflight.sh                # 仅检查（默认）
@@ -66,7 +66,7 @@ sudo bash ./preflight.sh --help         # 全部参数（--role、--skip、--rep
 3. **执行安装部署脚本**：
 
 ```bash
-# （仍在第 2 步的 deploy/ 目录下）
+# （仍在第 2 步的 openbkn-deploy 目录下）
 
 # 完整安装
 ./deploy.sh openbkn install
@@ -98,12 +98,11 @@ kubectl get pods -A
    在**同一台机器**（kubectl 能访问集群）上执行安装后引导脚本：注册一个 LLM + 一个 embedding；只有当**默认 embedding 实际变更**时才会 patch BKN ConfigMap 并滚动重启 `bkn-backend` / `ontology-query`；在**完整安装**下还会创建业务用户 **`test`**、把 `openbkn admin role list` 中的所有角色都挂上、切换 `openbkn` 到该用户身份：
 
 ```bash
-cd deploy
 sudo bash ./onboard.sh        # 交互模式；或：sudo bash ./onboard.sh -y
 sudo bash ./onboard.sh --help # 所有参数（--config=models.yaml、--enable-bkn-search 等）
 ```
 
-   > **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.openbkn-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.openbkn-ai/` 下）并把 `openbkn` 认证 token 写到 `$HOME/.bkn`。不加 `sudo` 会回退到仓库内模板 `deploy/conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不需要** `sudo`。
+   > **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.openbkn-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.openbkn-ai/` 下）并把 `openbkn` 认证 token 写到 `$HOME/.bkn`。不加 `sudo` 会回退到仓库内模板 `conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash dev/mac.sh onboard`）**不需要** `sudo`。
 
    可重复运行：脚本会先探测平台已有的模型与 ConfigMap 状态，已注册 / 已配置的会自动跳过。完整流程图、ISF 全量下 `openbkn` 的鉴权说明见 [help/zh/install.md — Post-install：`onboard.sh`](help/zh/install.md#post-installonboardsh安装后引导)。
 
