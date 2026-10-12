@@ -162,7 +162,7 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	c.Set("operation_audit_target_names", []string{"能力绑定"})
+	c.Set("operation_audit_target_names", []string{"capability binding"})
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
