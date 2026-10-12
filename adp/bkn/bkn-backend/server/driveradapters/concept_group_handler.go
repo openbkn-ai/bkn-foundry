@@ -556,7 +556,7 @@ func (r *restHandler) DeleteConceptGroup(c *gin.Context) {
 	span.SetAttributes(attr.Key("cg_id").String(cgID))
 
 	// Check that all action type IDs exist.
-	_, exist, err = r.cgs.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
+	cgName, exist, err := r.cgs.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -584,6 +584,7 @@ func (r *restHandler) DeleteConceptGroup(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	c.Set("operation_audit_target_names", []string{cgName})
 
 	logger.Debug("Handler DeleteConceptGroup Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
@@ -1035,7 +1036,7 @@ func (r *restHandler) DeleteObjectTypesFromGroup(c *gin.Context, visitor hydra.V
 	span.SetAttributes(attr.Key("cg_id").String(cgID))
 
 	// Load the existing resource by ID..
-	_, exist, err = r.cgs.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
+	cgName, exist, err := r.cgs.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
@@ -1103,6 +1104,7 @@ func (r *restHandler) DeleteObjectTypesFromGroup(c *gin.Context, visitor hydra.V
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	c.Set("operation_audit_target_names", []string{cgName})
 
 	logger.Debug("Handler DeleteObjectTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)

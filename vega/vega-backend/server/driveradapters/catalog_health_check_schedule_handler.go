@@ -123,6 +123,11 @@ func (r *restHandler) updateCatalogHealthCheckSchedule(c *gin.Context, v hydra.V
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if r.cs != nil {
+		if catalog, getErr := r.cs.GetByID(ctx, catalogID, false); getErr == nil && catalog != nil && catalog.Name != "" {
+			c.Set("operation_audit_target_names", []string{catalog.Name})
+		}
+	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, schedule)
