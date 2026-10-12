@@ -140,6 +140,7 @@ func (r *restHandler) AttachCapabilities(c *gin.Context, vis hydra.Visitor) {
 			names := r.operationAuditCapabilityNames(c, ctx, knID, branch, ids)
 			if len(names) == len(ids) {
 				c.Set("operation_audit_target_names", names)
+				c.Set("operation_audit_target_ids", ids)
 				c.Set("operation_audit_skip", false)
 			} else {
 				logger.Errorf("operation audit fact rejected: incomplete attached capability snapshot")

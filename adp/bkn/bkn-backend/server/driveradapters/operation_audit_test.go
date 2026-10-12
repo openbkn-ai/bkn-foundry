@@ -805,6 +805,9 @@ func TestOperationAuditCapabilityAttachRealHandler(t *testing.T) {
 				return
 			}
 			assertReadableAuditEvent(t, store, "attach", "Sales / "+tc.business)
+			if store.entries[0].TargetID != "binding-1" {
+				t.Fatalf("target ID includes unaffected or duplicate bindings: %s", store.entries[0].TargetID)
+			}
 			if strings.Contains(response.Body.String(), "CreatedByAttach") || strings.Contains(response.Body.String(), "Invoice") {
 				t.Fatalf("audit metadata leaked into response: %s", response.Body.String())
 			}
