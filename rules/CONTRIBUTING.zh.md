@@ -19,7 +19,7 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
 | **Infra** | [`infra/`](../infra) | `mf-model-manager`（模型注册）、`oss-gateway-backend`、`sandbox` 运行时 |
 | **BKN 示例** | [`bkn/`](../bkn) | 业务知识网络示例（如 `smart_home_supply_chain`） |
 | **文档** | [`help/`](../help) | 中英双语产品文档 |
-| **部署** | [`deploy/`](../deploy) | Kubernetes 一键 `deploy.sh`（K8s + BKN Foundry Charts） |
+| **部署** | [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy) | Kubernetes 一键 `deploy.sh`（独立仓库） |
 
 与本后端配套的对外 CLI / SDK 在独立仓库维护：
 
@@ -555,10 +555,11 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
    cd infra/mf-model-manager && pip install -r requirements.txt && pytest
    ```
 
-4. **（可选）拉起完整集群** 做端到端测试，使用 `deploy/`（详见 [`help/zh/install.md`](../help/zh/install.md)）：
+4. **（可选）拉起完整集群** 做端到端测试，使用 [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy)（详见 [`help/zh/install.md`](../help/zh/install.md)）：
 
    ```bash
-   cd deploy
+   git clone https://github.com/openbkn-ai/openbkn-deploy.git
+   cd openbkn-deploy
    ./deploy.sh openbkn install
    ```
 

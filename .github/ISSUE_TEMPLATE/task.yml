@@ -29,7 +29,6 @@ body:
         - oss-gateway
         - sandbox
         - bkn-trace
-        - deploy
         - other
     validations:
       required: true

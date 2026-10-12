@@ -1,6 +1,6 @@
 # BKN Trace：0.1.3 升级到 0.1.4
 
-0.1.4 不迁移 0.1.3 的 BKN Trace 历史数据，也不提供旧 Trace 双读。升级时可使用随 `bkn-foundry` 提供的一次性脚本清理旧数据。
+0.1.4 不迁移 0.1.3 的 BKN Trace 历史数据，也不提供旧 Trace 双读。升级时可使用由 `openbkn-deploy` 提供的一次性脚本清理旧数据。
 
 > 此操作会永久删除指定 MariaDB 数据库中的 BKN Trace 表，以及指定 OpenSearch 中的 Trace、Evidence 与 Projection 数据。只能在已完成备份、已阻断新 Trace 写入的升级窗口执行。
 
@@ -53,11 +53,11 @@ kubectl -n <应用namespace> get deployment agent-observability
 
 ### 2. 运行只读预览
 
-从 `bkn-foundry` 根目录运行：
+从 [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy) 仓库根目录运行：
 
 ```bash
 BKN_TRACE_CLEANUP_CONFIG="$HOME/.openbkn-ai/config.yaml" \
-bash deploy/scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh
+bash ./scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh
 ```
 
 预览不会缩容或删除任何数据。人工复核输出中的以下字段：
@@ -81,7 +81,7 @@ bash deploy/scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh
 ```bash
 BKN_TRACE_CLEANUP_CONFIG="$HOME/.openbkn-ai/config.yaml" \
 BKN_TRACE_CLEANUP_QUIESCE_SECONDS=15 \
-bash deploy/scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh \
+bash ./scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh \
   --confirm \
   --expected-context '<context>' \
   --backup-confirmed \
@@ -121,7 +121,7 @@ kubectl -n <应用namespace> get deployment agent-observability
 
 ```bash
 BKN_TRACE_CLEANUP_OPENSEARCH_CA_FILE=/usr/share/opensearch/config/root-ca.pem \
-bash deploy/scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh
+bash ./scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh
 ```
 
 仅在受控环境中、且明确接受证书校验关闭风险时，才能设置：

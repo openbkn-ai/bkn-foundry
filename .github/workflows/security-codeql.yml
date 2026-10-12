@@ -4,7 +4,7 @@ name: security-codeql
 #
 # Why this is not GitHub's generated default: the repository has no go.mod at
 # its root — Go lives in 13 independent modules under comm-go/, adp/, vega/,
-# bkn-safe/, bkn-trace/, infra/ and deploy/. The Go autobuilder cannot find a
+# bkn-safe/, bkn-trace/ and infra/. The Go autobuilder cannot find a
 # root module, falls back to "run the repository's build script", and ends up
 # executing the root Makefile, which is the redocly API-documentation
 # toolchain. That burns minutes rendering and linting OpenAPI YAML and extracts

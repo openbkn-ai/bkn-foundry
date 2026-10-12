@@ -29,7 +29,7 @@
 `retryable=false`；完成配置前反复刷新不会恢复。混合查询保留可用记录，
 同时返回审计配置状态并将结果标记为 partial。
 
-正式 opt-in profile 与部署后只读事件验收见 [System Audit deployment profile](../../deploy/conf/profiles/README.md)。需要系统审计的部署，在安装器使用的配置文件中显式加入：
+迁出前的 opt-in profile 与部署后只读事件验收说明见 [System Audit profile 历史版本](https://github.com/openbkn-ai/bkn-foundry/blob/191928e1cda4667ec23c75d7e4aba637e513207f/deploy/conf/profiles/README.md)。独立部署仓库尚未包含这份 profile；启用前须确认安装器已支持相应配置。需要系统审计的部署，在安装器使用的配置文件中显式加入：
 
 ```yaml
 core:
@@ -549,7 +549,7 @@ helm upgrade --install agent-observability charts/agent-observability \
 
 ## 历史 clean-slate 数据清理（非 0.1.3 → 0.1.4 升级入口）
 
-`scripts/cleanup_legacy_bkn_trace_data.sh` 是早期 clean-slate 切换后退役旧目标的历史工具；它**不是** 0.1.3 → 0.1.4 的生产升级入口。该升级必须使用 [BKN Trace 0.1.3 升级到 0.1.4](../../help/zh/manual/bkn-trace-0.1.3-to-0.1.4-upgrade.md) 中的 `deploy/scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh`，后者包含停写观察、集群上下文和依赖目标校验。
+`scripts/cleanup_legacy_bkn_trace_data.sh` 是早期 clean-slate 切换后退役旧目标的历史工具；它**不是** 0.1.3 → 0.1.4 的生产升级入口。该升级必须使用 [BKN Trace 0.1.3 升级到 0.1.4](../../help/zh/manual/bkn-trace-0.1.3-to-0.1.4-upgrade.md) 中的 `openbkn-deploy/scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh`，后者包含停写观察、集群上下文和依赖目标校验。
 
 历史工具仅用于在 0.1.4 clean-slate 切换验收通过后，退役明确指定的旧 BKN Trace 服务库表及 Trace、Evidence、Projection 索引中的文档；不会清理日志索引或 MCP、SDK、BKN、Vega 业务数据，也不会自动运行。脚本默认只预览数量；核对目标并完成 Owner 确认后，才可显式增加 `--confirm`。MariaDB 密码可通过 `MYSQL_PWD` 提供，OpenSearch Basic Auth 可通过 `OPENSEARCH_USERNAME` 与 `OPENSEARCH_PASSWORD` 成对提供。
 

@@ -33,7 +33,6 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`release-infra-oss-gateway.yml`](./release-infra-oss-gateway.yml) | release-infra-oss-gateway | `push` (`infra/oss-gateway-backend/**`), `workflow_dispatch` | oss-gateway-backend image + Helm chart |
 | [`release-infra-mf-model-api.yml`](./release-infra-mf-model-api.yml) | release-infra-mf-model-api | `push` (`infra/mf-model-api/**`), `workflow_dispatch` | mf-model-api image + Helm chart (base: model-factory-base) |
 | [`release-infra-mf-model-manager.yml`](./release-infra-mf-model-manager.yml) | release-infra-mf-model-manager | `push` (`infra/mf-model-manager/**`), `workflow_dispatch` | mf-model-manager image + Helm chart (base: model-factory-base) |
-| [`release-proton-mariadb.yml`](./release-proton-mariadb.yml) | release-proton-mariadb | `push` (`deploy/charts/proton-mariadb/**`), `workflow_dispatch` | proton-mariadb Helm chart (chart-only) → GHCR |
 | [`release-bkn-trace-otelcol.yml`](./release-bkn-trace-otelcol.yml) | release-bkn-trace-otelcol | `push` (`bkn-trace/otelcol-contribute-chart/**`), `workflow_dispatch` | otelcol-contrib Helm chart (chart-only) → GHCR |
 | [`release-adp-bkn-backend.yml`](./release-adp-bkn-backend.yml) | release-adp-bkn-backend | `push` (`adp/bkn/bkn-backend/**`), `workflow_dispatch` | bkn-backend image + Helm chart |
 | [`release-adp-ontology-query.yml`](./release-adp-ontology-query.yml) | release-adp-ontology-query | `push` (`adp/bkn/ontology-query/**`), `workflow_dispatch` | ontology-query image + Helm chart |

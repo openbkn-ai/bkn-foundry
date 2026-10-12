@@ -147,8 +147,8 @@ Unit tests require `I18N_MODE_UT=true`; the Makefile sets it automatically.
 
 ## Deployment
 
-The normal deployment path is through the repository-level installer and release
-manifests under `deploy/`.
+The normal deployment path is through the installer and release manifests in
+[openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy).
 
 For service-level image/chart work:
 

@@ -42,7 +42,7 @@ name: Claude Code Review
 # 这里登记过。data-migrator 同理（67 个 Python 文件）。
 #
 # 加目录时按「有没有会被执行的代码」判断，不按目录重要性：docs/ 与 ref/ 里的少量脚本
-# 不入列，deploy/ 只收 scripts/ 这一层——其余是 chart 与 manifest，属于上面说的纯配置。
+# 不入列，平台部署脚本与 Chart 已迁至 openbkn-deploy 独立仓库。
 # 这个文件自身在 .github/ 下，同样不在列表里，所以改它的 PR 不会自我评审。
 # 注意：GitHub Actions 不允许同一事件同时使用 paths 与 paths-ignore，因此这里
 # 只写 include 列表——未列出的路径自动跳过——并用 ! 前缀排除列表内的文档文件。
@@ -59,7 +59,6 @@ on:
       - 'bkn-trace/**'
       - 'comm-go/**'
       - 'data-migrator/**'
-      - 'deploy/scripts/**'
       - 'infra/**'
       # Migrations run once, against a customer's data, and cannot be rolled
       # back. They were the one category of change reaching main unreviewed.
@@ -281,7 +280,7 @@ jobs:
           # 本身就是一个服务。归不进这两类的（docs/、examples/、根文件）落 misc，
           # 宁可多跑一片也不静默丢掉——漏审比多花钱贵。
           TWO_LEVEL = {"adp", "infra"}
-          TOP_LEVEL = {"bkn-safe", "comm-go", "deploy", "data-migrator", "migrations"}
+          TOP_LEVEL = {"bkn-safe", "comm-go", "data-migrator", "migrations"}
 
           # 实测最近 10 个 PR 的 222 个改动文件里只有 44% 是代码：测试 25%、文档 15%、
           # 配置与生成物 12%。此前它们与代码同规格评审——文档也在被追引用点、被做触发式

@@ -2,9 +2,9 @@
 
 This page covers **prerequisites**, **install steps**, and **post-install checks** for BKN Foundry.
 
-> **Platform:** **Linux** is the recommended install target for full stacks (`preflight.sh`, k3s/kubeadm, data services). **macOS** is supported only for **local dev validation** with Docker + **kind** — see [`deploy/dev/README.md`](../../deploy/dev/README.md) ([`README.zh.md`](../../deploy/dev/README.zh.md) in Chinese) and `deploy/dev/mac.sh` (no `preflight.sh` / production parity on the Mac host). Typical flow: start **Docker Desktop** (or any engine that exposes the Docker API), **`bash ./dev/mac.sh cluster up`**, then **`bash ./dev/mac.sh bkn-foundry install`** — `install_openbkn` runs **`ensure_data_services`** first (same Helm bundle as `data-services install`) unless **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**.
+> **Platform:** **Linux** is the recommended install target for full stacks (`preflight.sh`, k3s/kubeadm, data services). **macOS** is supported only for **local dev validation** with Docker + **kind** — see [`dev/README.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.md) ([`README.zh.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md) in Chinese) and `dev/mac.sh` (no `preflight.sh` / production parity on the Mac host). Typical flow: start **Docker Desktop** (or any engine that exposes the Docker API), **`bash ./dev/mac.sh cluster up`**, then **`bash ./dev/mac.sh bkn-foundry install`** — `install_openbkn` runs **`ensure_data_services`** first (same Helm bundle as `data-services install`) unless **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**.
 
-> Use the `deploy.sh` script under the `deploy/` directory from your product bundle or build tree.
+> Use `deploy.sh` from the [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy) repository or its release bundle.
 
 > **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s openbkn install`. A trailing `... install --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
 
@@ -25,17 +25,17 @@ Prepare the host, network, and client tooling before you deploy.
 | Memory | 48 GB | 64 GB |
 | Disk | 200 GB | 500 GB |
 
-`deploy/preflight.sh` and `deploy.sh` support both **Ubuntu/Debian** (apt) and **Rocky/Alma/CentOS Stream/openEuler** (dnf/yum) as documented in `deploy/README.md`.
+`preflight.sh` and `deploy.sh` support both **Ubuntu/Debian** (apt) and **Rocky/Alma/CentOS Stream/openEuler** (dnf/yum) as documented in `README.md`.
 
 ### Git, Node.js, Python
 
 | Tool | Expectation |
 | --- | --- |
 | **Git** | `deploy.sh` / `preflight.sh` **do not** call `git`. Install Git only if you are working from **a cloned repository**. Deployments from an **extracted product tarball** or artifact **do not** require Git on the install host. |
-| **Node.js** | **22.19.0+** aligns with **`@openbkn/bkn-sdk`** npm [`engines`](https://www.npmjs.com/package/@openbkn/bkn-sdk), **`deploy/onboard.sh`**, and preflight checks (`PREFLIGHT_OPENBKN_MIN_NODE`, default **22.19.0**). The full version is compared, not the major: 22.0.0 clears a `>= 22` bar and still cannot install the CLI, because npm skips a release whose `engines` the runtime misses and installs an older one without an error. Bringing up Kubernetes/Helm on the server **does not** require Node; preflight warns if Node is missing or older than **22** (**[WARN]** only—you can run onboard from another machine or install Node via **`preflight.sh --fix`** opt-ins). See **Client tooling** below. |
-| **Python** **3** | **Optional** for normal `preflight` / `deploy.sh`. **`python3`** is **required** if you pass **`deploy/preflight.sh --output=json`** (stdout JSON is emitted via Python). When **`python3`** is on PATH, preflight **requires CPython 3.6+** (same bar as `deploy/scripts/lib/onboard_*.py`; override **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`**, default **3** / **6**). A few kubectl-related helpers also use Python when available. |
+| **Node.js** | **22.19.0+** aligns with **`@openbkn/bkn-sdk`** npm [`engines`](https://www.npmjs.com/package/@openbkn/bkn-sdk), **`onboard.sh`**, and preflight checks (`PREFLIGHT_OPENBKN_MIN_NODE`, default **22.19.0**). The full version is compared, not the major: 22.0.0 clears a `>= 22` bar and still cannot install the CLI, because npm skips a release whose `engines` the runtime misses and installs an older one without an error. Bringing up Kubernetes/Helm on the server **does not** require Node; preflight warns if Node is missing or older than **22** (**[WARN]** only—you can run onboard from another machine or install Node via **`preflight.sh --fix`** opt-ins). See **Client tooling** below. |
+| **Python** **3** | **Optional** for normal `preflight` / `deploy.sh`. **`python3`** is **required** if you pass **`preflight.sh --output=json`** (stdout JSON is emitted via Python). When **`python3`** is on PATH, preflight **requires CPython 3.6+** (same bar as `scripts/lib/onboard_*.py`; override **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`**, default **3** / **6**). A few kubectl-related helpers also use Python when available. |
 
-**`deploy/scripts/lib/onboard_*.py` (invoked by `onboard.sh`)** are written for **CPython 3.6 through current 3.x** — including **CentOS 7’s 3.6.x** — and avoid 3.7-only `subprocess` flags, **PEP 563** annotations, **`yaml.dump(..., sort_keys=...)`** (needs newer PyYAML), etc. **Python 3.5 and older are not supported** (f-strings, among other things). Maintainer/CI: **`bash deploy/scripts/lib/preflight_checks_test.sh`** includes a `py_compile` pass on these files when `python3` is available; set **`EXTRA_PYTHONS="python3.9 python3.12"`** to repeat with more interpreters.
+**`scripts/lib/onboard_*.py` (invoked by `onboard.sh`)** are written for **CPython 3.6 through current 3.x** — including **CentOS 7’s 3.6.x** — and avoid 3.7-only `subprocess` flags, **PEP 563** annotations, **`yaml.dump(..., sort_keys=...)`** (needs newer PyYAML), etc. **Python 3.5 and older are not supported** (f-strings, among other things). Maintainer/CI: **`bash ./scripts/lib/preflight_checks_test.sh`** includes a `py_compile` pass on these files when `python3` is available; set **`EXTRA_PYTHONS="python3.9 python3.12"`** to repeat with more interpreters.
 
 ### Host preparation (typical Linux)
 
@@ -86,12 +86,13 @@ npm install -g @openbkn/bkn-sdk
 
 ---
 
-## 📥 Enter the deploy directory
+## 📥 Enter the openbkn-deploy directory
 
-From your extracted bundle or repo:
+On the target host, clone the deployment repository (or enter its extracted release bundle):
 
 ```bash
-cd deploy
+git clone https://github.com/openbkn-ai/openbkn-deploy.git
+cd openbkn-deploy
 chmod +x deploy.sh
 ```
 
@@ -101,14 +102,14 @@ chmod +x deploy.sh
 
 ## 🩺 Pre-install host check / fix: `preflight.sh`
 
-Before `deploy.sh`, run **`deploy/preflight.sh`** on the **target install host** (`root` / `sudo`). It checks kernel / sysctl / containerd / `kubectl` / `helm` / `python3` (requires **3.6+** when interpreter is on PATH) / Node / `openbkn` CLIs and can apply the missing pieces (each fix is opt-in unless `-y`):
+Before `deploy.sh`, run **`preflight.sh`** on the **target install host** (`root` / `sudo`). It checks kernel / sysctl / containerd / `kubectl` / `helm` / `python3` (requires **3.6+** when interpreter is on PATH) / Node / `openbkn` CLIs and can apply the missing pieces (each fix is opt-in unless `-y`):
 
 ```bash
-sudo bash deploy/preflight.sh                # check-only (default; still requires root)
-sudo bash deploy/preflight.sh --fix          # check + interactive fixes
-sudo bash deploy/preflight.sh --fix -y       # auto-approve every fix
-sudo bash deploy/preflight.sh --list-fixes   # preview which fixes would run, no changes
-sudo bash deploy/preflight.sh --help         # all flags
+sudo bash ./preflight.sh                # check-only (default; still requires root)
+sudo bash ./preflight.sh --fix          # check + interactive fixes
+sudo bash ./preflight.sh --fix -y       # auto-approve every fix
+sudo bash ./preflight.sh --list-fixes   # preview which fixes would run, no changes
+sudo bash ./preflight.sh --help         # all flags
 ```
 
 Common flags:
@@ -119,7 +120,7 @@ Common flags:
 | `--fix` | Check + apply fixes (K8s / sysctl / containerd / Helm / firewall / SELinux / system tuning / sysctl …); also offers Node 22.19+ + `openbkn` |
 | `-y` / `--yes` | Auto-approve **every** fix prompt |
 | `-n` / `--no` | Auto-decline every fix (preview risk text only) |
-| `--fix-allow=LIST` | Comma-separated fix names to auto-approve, others are skipped (e.g. `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`; legacy alias `k8s-apt-source`). Run `sudo bash deploy/preflight.sh --list-fixes` to see all fix names available on this host. |
+| `--fix-allow=LIST` | Comma-separated fix names to auto-approve, others are skipped (e.g. `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`; legacy alias `k8s-apt-source`). Run `sudo bash ./preflight.sh --list-fixes` to see all fix names available on this host. |
 | `--role=target\|admin\|both` | `target` = `kubectl`/`helm` only, `admin` = `openbkn` / Node / npm, `both` (default) covers all |
 | `--no-recheck` | Do not re-run full checks after fixes |
 | `--lenient` | Downgrade install-blocking `[FAIL]` items (sysctl / kernel modules / containerd / kubectl / helm / swap / broken apt sources / missing kubeadm or containerd install candidate / ulimit / inotify / vm.max_map_count / overlay) back to `[WARN]`. Same as `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`. |
@@ -172,16 +173,16 @@ After `--check-only` or `--fix`, preflight prints a **Summary** (counts per stat
   Only then install:
     sudo bash ./deploy.sh openbkn install
     sudo bash ./deploy.sh openbkn install
-  Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node 22+ + openbkn on PATH; sudo bash ./preflight.sh --fix helps …)
+  Finally: sudo bash ./onboard.sh from openbkn-deploy/ (Linux; macOS dev uses plain bash. Node 22+ + openbkn on PATH; sudo bash ./preflight.sh --fix helps …)
 ```
 
 **Notes:**
 
-- **`[FIXED]` stays 0** while there were initial `[FAIL]`s: often means interactive `--fix` was run with **Enter on every prompt** — the default is **no** for each fix. Use **`sudo bash deploy/preflight.sh --fix -y`**, or answer **`y`** where you want a fix applied.
+- **`[FIXED]` stays 0** while there were initial `[FAIL]`s: often means interactive `--fix` was run with **Enter on every prompt** — the default is **no** for each fix. Use **`sudo bash ./preflight.sh --fix -y`**, or answer **`y`** where you want a fix applied.
 - **Common Outstanding [FAIL] buckets** (map to fix names): `docker-disable` (stop Docker when it conflicts with k3s / containerd), `system-tuning` (forwarding, swap, kernel modules, `overlay`), `kernel-limits` (`vm.max_map_count` / inotify), `nofile-limits` (`ulimit -n`), `k8s-pkgs-repo` + `k8s-bins` (Kubernetes repo and `kubeadm`/`kubectl`), `containerd-install`, `helm-v3`. On **RPM** systems, if **`kubernetes.repo` excludes kube packages**, installs need **`--disableexcludes=kubernetes`**; preflight probes and `install_kubernetes` are aligned with that.
 - After **`--fix`**, run **`--check-only` again** and only then proceed to **`deploy.sh`**.
 
-For more troubleshooting and manual fallbacks, see **`deploy/README.md` → Troubleshooting**.
+For more troubleshooting and manual fallbacks, see **`README.md` → Troubleshooting**.
 
 ---
 
@@ -235,14 +236,13 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install: `onboard.sh`
 
-After `deploy.sh openbkn install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
+After `deploy.sh openbkn install`, use **`onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `openbkn-deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
 
 ```bash
-cd deploy
 sudo bash ./onboard.sh --help
 ```
 
-> **Why `sudo`?** `onboard.sh` reads the install config at `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`, mode 700) and writes `openbkn` auth state to `$HOME/.bkn`. Without `sudo`, the current user's home is consulted instead — and falls back to the vendored template `deploy/conf/config.yaml` if that file does not exist, which may resolve a **different** access URL than the one used at install time. The script prints a yellow `[onboard][hint]` at startup whenever this mismatch is likely; silence with `ONBOARD_SUDO_HINT_DISABLED=1`. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) must **not** use `sudo`: Docker Desktop / `kind` / `$HOME` (install config + `openbkn` token) all belong to the current user, and `sudo` redirects them to `/var/root` — splitting install from onboard. `deploy.sh` already short-circuits `check_root` on `Darwin`, so `sudo` adds nothing on macOS. See [`deploy/dev/README.md`](../../deploy/dev/README.md) · [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) for details.
+> **Why `sudo`?** `onboard.sh` reads the install config at `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`, mode 700) and writes `openbkn` auth state to `$HOME/.bkn`. Without `sudo`, the current user's home is consulted instead — and falls back to the vendored template `conf/config.yaml` if that file does not exist, which may resolve a **different** access URL than the one used at install time. The script prints a yellow `[onboard][hint]` at startup whenever this mismatch is likely; silence with `ONBOARD_SUDO_HINT_DISABLED=1`. **macOS dev path** (`bash ./dev/mac.sh onboard`) must **not** use `sudo`: Docker Desktop / `kind` / `$HOME` (install config + `openbkn` token) all belong to the current user, and `sudo` redirects them to `/var/root` — splitting install from onboard. `deploy.sh` already short-circuits `check_root` on `Darwin`, so `sudo` adds nothing on macOS. See [`dev/README.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.md) · [`dev/README.zh.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md) for details.
 
 Typical flags:
 
@@ -250,7 +250,7 @@ Typical flags:
 | --- | --- |
 | *(none)* | Interactive: walks through Node / `openbkn` install (if missing), auth (single CLI — admin is built in via `openbkn admin`), then model / BKN prompts |
 | `-y` / `--yes` | Auto-accept all prompts: bootstrap, HTTP defaults (`admin` + the per-install initial password from `bknSafe.initialPassword` in config.yaml), `test` user creation + role sync, `openbkn` relogin as `test`. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
-| `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `deploy/conf/models.yaml.example` |
+| `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `conf/models.yaml.example` |
 | `--enable-bkn-search` | BKN ConfigMap patch only (after probe) |
 
 **`onboard.sh` performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
@@ -261,7 +261,7 @@ Typical flags:
 4. **User `test`** (`onboard_provision_bkn_safe_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `openbkn admin role list` assigned, then **`openbkn auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
 5. **Model registration** (interactive or YAML) — uses **`~/.bkn` as `test`**. Context Loader's built-in tools are served over MCP only and are no longer registered into the execution factory's toolboxes; see [Quick Start](quick-start.md) for how to list them.
 
-If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
+If any step fails, the script exits non-zero with a clear message; re-run `sudo bash ./onboard.sh` (Linux) / `bash ./onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
 
 At the end, an **English completion report** is printed unless `ONBOARD_NO_COMPLETION_REPORT=1`.
 
@@ -313,7 +313,7 @@ sequenceDiagram
   participant O as onboard.sh
   participant K as openbkn
   participant A as openbkn admin
-  U->>O: run from deploy/
+  U->>O: run from openbkn-deploy/
   O->>K: openbkn auth — HTTP (admin + recorded initial password) or browser
   O->>A: openbkn admin (same login / token) — HTTP defaults or -k browser
   A->>A: user create, password, assign roles
@@ -551,15 +551,15 @@ openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 
 ## 🔧 Troubleshooting
 
-For symptom-based recipes (CoreDNS not ready, image pull failures, missing/legacy Kubernetes apt or yum source, `containerd` cannot be installed, strict mode `[FAIL]` items, etc.) see [`deploy/README.md` → Troubleshooting](../../deploy/README.md#-troubleshooting).
+For symptom-based recipes (CoreDNS not ready, image pull failures, missing/legacy Kubernetes apt or yum source, `containerd` cannot be installed, strict mode `[FAIL]` items, etc.) see [`README.md` → Troubleshooting](https://github.com/openbkn-ai/openbkn-deploy/blob/main/README.md#-troubleshooting).
 
 Most install-blocking issues that `preflight.sh` flags as `[FAIL]` can be auto-fixed:
 
 ```bash
-sudo bash deploy/preflight.sh --fix -y                         # apply every fix non-interactively
-sudo bash deploy/preflight.sh --fix --fix-allow=k8s-pkgs-repo # only configure / migrate the K8s package source (legacy: k8s-apt-source)
-sudo bash deploy/preflight.sh --fix --fix-allow=containerd-install
-sudo bash deploy/preflight.sh --check-only --lenient           # only WARN, never FAIL (lab-box mode)
+sudo bash ./preflight.sh --fix -y                         # apply every fix non-interactively
+sudo bash ./preflight.sh --fix --fix-allow=k8s-pkgs-repo # only configure / migrate the K8s package source (legacy: k8s-apt-source)
+sudo bash ./preflight.sh --fix --fix-allow=containerd-install
+sudo bash ./preflight.sh --check-only --lenient           # only WARN, never FAIL (lab-box mode)
 ```
 
 When in doubt, also collect:

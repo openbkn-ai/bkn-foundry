@@ -1,8 +1,8 @@
 # 🚀 快速开始
 
-以下步骤假设 BKN Foundry 已按 [安装与部署](install.md) 文档完成安装及文中的安装后检查。**完整安装以 Linux 为主**；可选 **macOS** + kind 流程见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)（[English](../../deploy/dev/README.md)）。
+以下步骤假设 BKN Foundry 已按 [安装与部署](install.md) 文档完成安装及文中的安装后检查。**完整安装以 Linux 为主**；可选 **macOS** + kind 流程见 [`dev/README.zh.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md)（[English](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.md)）。
 
-> 新主机安装前，先在目标机上跑 **`sudo bash deploy/preflight.sh`**（仅检查 / 加 `--fix`）确认内核、sysctl、containerd、kubectl、helm、Node 与 `openbkn` CLI 都齐了；`deploy.sh openbkn install` 之后，再跑 **`sudo bash deploy/onboard.sh`**（Linux，与 `sudo deploy.sh` 对齐；macOS 开发路径用普通 `bash`）完成 LLM + embedding 注册、按需 patch BKN ConfigMap（仅在默认变化时执行），并在未显式跳过时建好业务用户 **`test`**（Context Loader 的工具只走 MCP 面，不注册工具箱，onboard 与安装都无相关步骤）。两者详见 [安装与部署 — 装机前体检：`preflight.sh`](install.md#-装机前体检--修复preflightsh) 与 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
+> 新主机安装前，先在目标机上跑 **`sudo bash ./preflight.sh`**（仅检查 / 加 `--fix`）确认内核、sysctl、containerd、kubectl、helm、Node 与 `openbkn` CLI 都齐了；`deploy.sh openbkn install` 之后，再跑 **`sudo bash ./onboard.sh`**（Linux，与 `sudo deploy.sh` 对齐；macOS 开发路径用普通 `bash`）完成 LLM + embedding 注册、按需 patch BKN ConfigMap（仅在默认变化时执行），并在未显式跳过时建好业务用户 **`test`**（Context Loader 的工具只走 MCP 面，不注册工具箱，onboard 与安装都无相关步骤）。两者详见 [安装与部署 — 装机前体检：`preflight.sh`](install.md#-装机前体检--修复preflightsh) 与 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
 
 ---
 
@@ -22,12 +22,12 @@ npm install -g @openbkn/bkn-sdk
 
 平台**必须鉴权**才能使用业务能力。下面有**两条路径**得到一个可登录账号，按你的喜好二选一即可：
 
-#### 路径 A（推荐）：让 `bash deploy/onboard.sh` 自动准备
+#### 路径 A（推荐）：让 `bash ./onboard.sh` 自动准备
 
 `onboard.sh` 在 完整鉴权安装下会**自动**完成：装/登录 `openbkn`（管理能力内置于同一 CLI）→ 创建业务用户 **`test`**（默认密码 `111111`，可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖）→ 把 `openbkn admin role list` 中**所有**角色挂上 → 把本机 `~/.bkn` 切到 `test`。
 
 ```bash
-cd deploy
+cd openbkn-deploy
 sudo bash ./onboard.sh        # 交互模式（Linux，与 sudo deploy.sh 对齐）
 sudo bash ./onboard.sh -y     # 非交互（按默认）
 # macOS 开发路径： bash ./dev/mac.sh onboard       # 无需 sudo
@@ -99,7 +99,7 @@ openbkn context info
 
 **不配模型也能走完数据源接入、知识网络创建和条件查询。** 语义搜索和 Agent 对话分别需要 Embedding 和 LLM。
 
-**推荐路径**：跑 `sudo bash deploy/onboard.sh`（macOS dev：`bash deploy/dev/mac.sh onboard`），它会**交互式**询问你要不要注册 LLM / Embedding，并在新增 Embedding 时按需 patch BKN ConfigMap 自动启用语义搜索；非交互场景用 `sudo bash deploy/onboard.sh --config=models.yaml`（参考 `deploy/conf/models.yaml.example`）。已存在的模型会自动跳过，可重复运行。
+**推荐路径**：在 `openbkn-deploy/` 目录跑 `sudo bash ./onboard.sh`（macOS dev：`bash ./dev/mac.sh onboard`），它会**交互式**询问你要不要注册 LLM / Embedding，并在新增 Embedding 时按需 patch BKN ConfigMap 自动启用语义搜索；非交互场景用 `sudo bash ./onboard.sh --config=models.yaml`（参考 `conf/models.yaml.example`）。已存在的模型会自动跳过，可重复运行。
 
 **手工方式**：见 [模型管理](manual/model.md)，注册 Embedding 后还需 [启用 BKN 语义搜索](manual/model.md#启用-bkn-语义搜索)。
 

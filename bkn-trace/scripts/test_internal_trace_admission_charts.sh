@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-root="$(cd "$(dirname "$0")/../../.." && pwd)"
+root="$(cd "$(dirname "$0")/../.." && pwd)"
 check() {
  local chart="$1" prefix="$2" userkey="$3" passkey="$4"
  local rendered

@@ -34,7 +34,7 @@ OpenBKN is an ontology-driven business knowledge network platform. Through ontol
 
 - 🛠️ [OpenBKN SDK](https://github.com/openbkn-ai/bkn-sdk) - End-user / agent BKN CLI, TypeScript SDK, and the AI agent skill
 - 🤝 [Contributing](rules/CONTRIBUTING.md) - Guidelines for contributing to the project
-- 🚢 [Deployment](deploy/README.md) - One-click deploy to Kubernetes
+- 🚢 [Deployment](https://github.com/openbkn-ai/openbkn-deploy/blob/main/README.md) - One-click deploy to Kubernetes
 - 📘 [Documentation](help/README.md) - Product documentation and usage guides ([EN](help/en/README.md) / [中文](help/zh/README.md))
 - 📖 [API Reference](docs/api/) - OpenAPI docs for every service (YAML source + rendered Markdown / interactive HTML)
 - 📦 [Samples](https://github.com/openbkn-ai/bkn-samples) - Runnable end-to-end walkthroughs, in their own repo
@@ -44,14 +44,14 @@ OpenBKN is an ontology-driven business knowledge network platform. Through ontol
 
 ## 🚀 Quick Start
 
-1. **Prerequisites & planning** — read the [Deployment Guide](deploy/README.md) and satisfy its prerequisites. **Linux** is the supported target for full installs; **macOS** local dev (kind) is optional — see [Mac install (dev)](deploy/dev/README.md) ([中文](deploy/dev/README.zh.md)).
+1. **Prerequisites & planning** — read the [Deployment Guide](https://github.com/openbkn-ai/openbkn-deploy/blob/main/README.md) and satisfy its prerequisites. **Linux** is the supported target for full installs; **macOS** local dev (kind) is optional — see [Mac install (dev)](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.md) ([中文](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md)).
 2. **Pre-install host check / fix with `preflight.sh`** (recommended)
 
    On the **target install host**, run a system check before `deploy.sh`. It verifies kernel / sysctl / containerd / `kubectl` / `helm` / Node / BKN CLIs and can fix what's missing (each fix is opt-in unless `-y`):
 
 ```bash
-git clone https://github.com/openbkn-ai/bkn-foundry.git
-cd bkn-foundry/deploy
+git clone https://github.com/openbkn-ai/openbkn-deploy.git
+cd openbkn-deploy
 chmod +x preflight.sh deploy.sh onboard.sh
 
 sudo bash ./preflight.sh                # check-only (default)
@@ -66,7 +66,7 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 3. **Run installation scripts**:
 
 ```bash
-# (Same deploy/ directory as step 2)
+# (Same openbkn-deploy directory as step 2)
 
 # Install the full BKN Foundry stack
 ./deploy.sh openbkn install
@@ -97,12 +97,11 @@ kubectl get pods -A
    On the **same host** as the install (where `kubectl` reaches the cluster), run the post-install bootstrap. It (re-runnable) registers an LLM + an embedding, patches the BKN ConfigMaps when the default embedding actually changes, and on a **full install** also creates the business user **`test`**, assigns every role from `openbkn admin role list`, and switches `openbkn` to that user:
 
 ```bash
-cd deploy
 sudo bash ./onboard.sh        # interactive; or:  sudo bash ./onboard.sh -y
 sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, …)
 ```
 
-   > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `openbkn` auth token to `$HOME/.bkn`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) does **not** need `sudo`.
+   > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `openbkn` auth token to `$HOME/.bkn`. Running it without `sudo` falls back to the in-repo template `conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash dev/mac.sh onboard`) does **not** need `sudo`.
 
    Re-runs are safe: existing models / BKN defaults are detected and skipped. For the full sequence, the Mermaid flow, and the `openbkn` authentication notes (full ISF), see [help/en/install.md — Post-install: `onboard.sh`](help/en/install.md#post-install-onboardsh).
 
@@ -435,7 +434,7 @@ The license applicable to each file is stated in that file's header.
 
 ## Historical data upgrade
 
-The one-time [015-to-020 upgrade tool](deploy/scripts/upgrades/0.2.0/historical_trace_data/README.md)
+The one-time [015-to-020 upgrade tool](https://github.com/openbkn-ai/openbkn-deploy/blob/main/scripts/upgrades/0.2.0/historical_trace_data/README.md)
 converts retained logs into native Audit data, converts representable Evidence
 into native aggregates, and verifies or rebuilds Core projections from existing
 facts. Conversion losses are reported. No historical query or UI compatibility

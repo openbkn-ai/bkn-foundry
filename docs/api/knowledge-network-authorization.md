@@ -126,7 +126,7 @@ that failure using its own OpenAPI error contract.
 ## Upgrade prerequisites
 
 Before upgrading an existing environment, follow the
-[version-specific migration guide](../../deploy/scripts/upgrades/0.1.5/permission_model_transition/README.md)
+[version-specific migration guide](https://github.com/openbkn-ai/openbkn-deploy/blob/main/scripts/upgrades/0.1.5/permission_model_transition/README.md)
 and validate the result.
 The deploy entry coordinates a read-only plan, BKN managed-proxy and parent-data
 migration, Core/Enterprise authorization migration, backups, reports, and
