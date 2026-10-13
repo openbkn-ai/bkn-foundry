@@ -70,13 +70,14 @@ func (source *filteredCountSource) Search(_ context.Context, query observability
 		return observabilityvo.SourcePage{CountAccuracy: "partial"}, nil
 	}
 	position := source.lastPosition
-	return observabilityvo.SourcePage{Count: 1, CountAccuracy: "partial", LastPosition: &position}, nil
+	return observabilityvo.SourcePage{Count: 1, CountAccuracy: "partial", LastPosition: &position, NextCursor: "more"}, nil
 }
 
 func (source partialCountSource) Search(context.Context, observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	return observabilityvo.SourcePage{
 		Records:       validTestRecords([]observabilityvo.LogRecord{source.record}),
 		Count:         201,
+		NextCursor:    "more",
 		CountAccuracy: "partial",
 	}, nil
 }
@@ -261,8 +262,12 @@ func (source *filteredPageSource) Search(
 		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
 	}
 	records := validTestRecords(source.pages[page])
+	nextCursor := ""
+	if page+1 < len(source.pages) {
+		nextCursor = "more"
+	}
 	return observabilityvo.SourcePage{
-		Records: records, Count: int64(len(records) + boolInt(page+1 < len(source.pages))), CountAccuracy: "exact",
+		Records: records, NextCursor: nextCursor, Count: int64(len(records) + boolInt(page+1 < len(source.pages))), CountAccuracy: "exact",
 	}, nil
 }
 

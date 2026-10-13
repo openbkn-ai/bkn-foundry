@@ -49,6 +49,9 @@ func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQue
 	for _, r := range p.Records {
 		out.Records = append(out.Records, auditLogRecord(r))
 	}
+	if p.Next != nil {
+		out.NextCursor = "more"
+	}
 	out.Count = int64(len(out.Records))
 	if len(out.Records) > 0 {
 		x := out.Records[len(out.Records)-1]
