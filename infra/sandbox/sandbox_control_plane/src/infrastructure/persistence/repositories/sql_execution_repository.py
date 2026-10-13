@@ -66,6 +66,9 @@ class SqlExecutionRepository(IExecutionRepository):
         """Explicitly commit the transaction"""
         await self._session.commit()
 
+    async def rollback(self) -> None:
+        await self._session.rollback()
+
     async def find_by_id(self, execution_id: str) -> Optional[Execution]:
         """Find an execution record by id"""
         # Use a fresh query to avoid stale data from session cache

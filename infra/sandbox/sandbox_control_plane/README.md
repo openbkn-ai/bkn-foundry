@@ -56,6 +56,27 @@ vim .env
 alembic upgrade head
 ```
 
+### Execution result storage
+
+Apply `migrations/sandbox/mariadb/0.2.0/01-expand-execution-results.sql` to an existing
+sandbox database before deploying this version. New installations use the matching
+`0.2.0/init.sql`. Only `f_stdout`, `f_stderr`, and `f_return_value` change to MEDIUMTEXT.
+
+`MAX_EXECUTION_RESULT_BYTES` limits the aggregate UTF-8 bytes of stdout, stderr,
+and the JSON-serialized return value. The default is 4 MiB; supported values are
+1 byte through 8 MiB. An oversized result ends as `failed` with exit code 1 and
+`Sandbox.Execution.OutputLimitExceeded` in `error_message` and `stderr`; the oversized payload
+is discarded rather than returned as a complete result. Runtime failures preserve
+stderr while bounding its separate error summary to 1024 characters.
+
+If result persistence fails, the callback rolls back and tries to record a small
+terminal failure (`Sandbox.Execution.ResultPersistenceFailed`). A database outage
+can still prevent that write and returns a callback error for retry.
+
+The capacity migration can lock the execution table; schedule it with the database
+owner. Roll back the service image while retaining the expanded columns. Shrinking
+them back to TEXT may lose stored results and is not part of service rollback.
+
 ### Run
 
 ```bash

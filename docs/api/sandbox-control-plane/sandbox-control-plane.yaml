@@ -1134,7 +1134,17 @@ paths:
 
         - When the execution record is already terminal, answer 200; this is a repeat report
 
-        - On the first report, update and answer 201'
+        - On the first report, update and answer 201
+
+        ## Output limits
+
+        The aggregate UTF-8 size of stdout, stderr, and the serialized return value
+        is limited by MAX_EXECUTION_RESULT_BYTES (default 4 MiB, maximum 8 MiB).
+        Oversized results are recorded as failed with exit code 1 and
+        Sandbox.Execution.OutputLimitExceeded in error_message and stderr; the payload is discarded.
+        A persistence failure rolls back and attempts to record a small terminal failure
+        with Sandbox.Execution.ResultPersistenceFailed. If the database remains unavailable,
+        the callback still fails and can be retried.'
       operationId: report_execution_result_111_api_v1_internal_executions__execution_id__result_post
       parameters:
       - name: execution_id

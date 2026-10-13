@@ -81,6 +81,13 @@ error_messages = {
         "message_template": "Synchronous execution timeout after {timeout}s",
         "message": "Synchronous execution timed out",
     },
+    "Sandbox.Execution.OutputLimitExceeded": {
+        "message_template": "Result has {size} bytes; limit is {limit} bytes",
+        "message": "Execution result exceeds the output limit",
+    },
+    "Sandbox.Execution.ResultPersistenceFailed": {
+        "message": "Result could not be saved",
+    },
     "Sandbox.Execution.InvalidStatus": {
         "message_template": "Invalid status: {status}",
         "message": "Invalid status",
@@ -96,9 +103,5 @@ error_messages = {
     "Sandbox.Internal.Unexpected": {
         "message_template": "An unexpected error occurred",
         "message": "An unexpected error occurred",
-    },
-    "Sandbox.Internal.Error": {
-        "message_template": "Internal error: {error}",
-        "message": "Internal error",
     },
 }
