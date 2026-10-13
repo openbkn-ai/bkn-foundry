@@ -949,7 +949,7 @@ const docTemplate = `{
                         "name": "interaction_id",
                         "in": "path",
                         "required": true
-                    },
+                    }
                 ],
                 "responses": {
                     "200": {
