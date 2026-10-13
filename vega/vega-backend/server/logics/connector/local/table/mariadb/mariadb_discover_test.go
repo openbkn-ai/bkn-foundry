@@ -140,6 +140,16 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 }
 
 func TestMariaDBConnectorFetchColumns(t *testing.T) {
+	t.Run("empty column metadata fails without replacing existing columns", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanup()
+		mock.ExpectQuery("SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"column"})).RowsWillBeClosed()
+		table := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders", Columns: []interfaces.TableColumnMeta{{Name: "old"}}}
+		require.ErrorContains(t, connector.fetchColumns(context.Background(), table), "column metadata is empty")
+		assert.Equal(t, []interfaces.TableColumnMeta{{Name: "old"}}, table.Columns)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 	defer cleanup()
 	mock.ExpectQuery("SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE").
@@ -147,8 +157,8 @@ func TestMariaDBConnectorFetchColumns(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"COLUMN_NAME", "DATA_TYPE", "COLUMN_TYPE", "IS_NULLABLE", "COLUMN_DEFAULT", "COLUMN_COMMENT",
 			"CHARACTER_MAXIMUM_LENGTH", "NUMERIC_PRECISION", "NUMERIC_SCALE", "DATETIME_PRECISION",
-			"CHARACTER_SET_NAME", "COLLATION_NAME", "ORDINAL_POSITION", "COLUMN_KEY",
-		}).AddRow("id", "int", "int(11)", "NO", nil, nil, nil, nil, nil, nil, nil, nil, 1, "PRI"))
+			"CHARACTER_SET_NAME", "COLLATION_NAME", "COLUMN_KEY", "ORDINAL_POSITION",
+		}).AddRow("id", "int", "int(11)", "NO", nil, nil, nil, nil, nil, nil, nil, nil, "PRI", 1))
 
 	table := &interfaces.TableMeta{Database: "app", Name: "orders"}
 	require.NoError(t, connector.fetchColumns(context.Background(), table))

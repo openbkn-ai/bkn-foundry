@@ -503,6 +503,7 @@ func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interface
 		columns = append(columns, column)
 	}
 
+	// PostgreSQL supports zero-column tables; an empty column list is valid.
 	table.Columns = columns
 	var pks []string
 	for _, col := range columns {

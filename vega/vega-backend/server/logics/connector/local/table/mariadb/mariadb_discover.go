@@ -393,6 +393,10 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 		return err
 	}
 
+	if len(columns) == 0 {
+		return fmt.Errorf("column metadata is empty")
+	}
+
 	table.Columns = columns
 	table.PKs = pkColumns
 	return nil

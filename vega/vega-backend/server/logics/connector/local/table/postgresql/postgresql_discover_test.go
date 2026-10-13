@@ -229,6 +229,20 @@ func TestPostgresqlConnectorListSchemas(t *testing.T) {
 }
 
 func TestPostgresqlConnectorFetchColumns(t *testing.T) {
+	t.Run("zero-column tables are supported", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{config: &postgresqlConfig{Database: "appdb"}, connected: true, db: db, compatibility: postgresqlCompatibility{lateral: true, withOrdinality: true}}
+		mock.ExpectQuery("FROM pg_catalog.pg_class").WithArgs("public", "empty_table").WillReturnRows(sqlmock.NewRows([]string{"column"})).RowsWillBeClosed()
+		mock.ExpectQuery("FROM information_schema.table_constraints tc").WithArgs("appdb", "public", "empty_table").WillReturnRows(sqlmock.NewRows([]string{"column_name"})).RowsWillBeClosed()
+		table := &interfaces.TableMeta{Schema: "public", Name: "empty_table", Columns: []interfaces.TableColumnMeta{{Name: "old"}}, PKs: []string{"old"}}
+		require.NoError(t, connector.fetchColumns(context.Background(), table))
+		assert.Empty(t, table.Columns)
+		assert.Empty(t, table.PKs)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New returned error: %v", err)
