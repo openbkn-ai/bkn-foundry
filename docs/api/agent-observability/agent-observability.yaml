@@ -3057,7 +3057,7 @@ paths:
         name: interaction_id
         required: true
         type: string
-      - description: "Response view: full (default) or summary"
+      - description: 'Response view: full (default) or summary'
         enum:
         - full
         - summary
