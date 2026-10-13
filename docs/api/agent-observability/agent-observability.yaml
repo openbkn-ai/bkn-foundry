@@ -1014,53 +1014,6 @@ definitions:
       total:
         type: integer
     type: object
-  httphandler.operationCallSummariesResponse:
-    properties:
-      entries:
-        items:
-          $ref: '#/definitions/sessionvo.OperationCallSummary'
-        type: array
-      total:
-        type: integer
-    type: object
-  sessionvo.OperationCallSummary:
-    properties:
-      attempt:
-        format: int32
-        type: integer
-      conversation_id:
-        type: string
-      finished_at:
-        format: date-time
-        type: string
-      interaction_id:
-        type: string
-      operation_id:
-        type: string
-      parent_operation_id:
-        type: string
-      protocol:
-        type: string
-      receipt_id:
-        type: string
-      request_id:
-        type: string
-      retryable:
-        type: boolean
-      source_module:
-        type: string
-      span_id:
-        type: string
-      started_at:
-        format: date-time
-        type: string
-      status:
-        type: string
-      tool_name:
-        type: string
-      trace_id:
-        type: string
-    type: object
   httphandler.operationResult:
     properties:
       created:

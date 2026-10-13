@@ -950,17 +950,6 @@ const docTemplate = `{
                         "in": "path",
                         "required": true
                     },
-                    {
-                        "type": "string",
-                        "description": "Response view: full (default) or summary",
-                        "name": "view",
-                        "in": "query",
-                        "required": false,
-                        "enum": [
-                            "full",
-                            "summary"
-                        ]
-                    }
                 ],
                 "responses": {
                     "200": {
@@ -1536,6 +1525,16 @@ const docTemplate = `{
                         "name": "interaction_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "full",
+                            "summary"
+                        ],
+                        "type": "string",
+                        "description": "Response view: full (default) or summary",
+                        "name": "view",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -4069,41 +4068,6 @@ const docTemplate = `{
                 "total": {
                     "type": "integer"
                 }
-            }
-        },
-        "httphandler.operationCallSummariesResponse": {
-            "type": "object",
-            "properties": {
-                "entries": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/sessionvo.OperationCallSummary"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "sessionvo.OperationCallSummary": {
-            "type": "object",
-            "properties": {
-                "attempt": {"type": "integer", "format": "int32"},
-                "conversation_id": {"type": "string"},
-                "finished_at": {"type": "string", "format": "date-time"},
-                "interaction_id": {"type": "string"},
-                "operation_id": {"type": "string"},
-                "parent_operation_id": {"type": "string"},
-                "protocol": {"type": "string"},
-                "receipt_id": {"type": "string"},
-                "request_id": {"type": "string"},
-                "retryable": {"type": "boolean"},
-                "source_module": {"type": "string"},
-                "span_id": {"type": "string"},
-                "started_at": {"type": "string", "format": "date-time"},
-                "status": {"type": "string"},
-                "tool_name": {"type": "string"},
-                "trace_id": {"type": "string"}
             }
         },
         "httphandler.operationResult": {
