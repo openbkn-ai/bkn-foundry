@@ -27,6 +27,10 @@ class IExecutionRepository(ABC):
         """Explicitly commit the transaction (optional - some repos may not implement this)"""
         pass
 
+    async def rollback(self) -> None:
+        """Roll back a failed transaction before retrying a terminal-state write."""
+        return None
+
     @abstractmethod
     async def find_by_id(self, execution_id: str) -> Optional[Execution]:
         """Find an execution record by id"""
