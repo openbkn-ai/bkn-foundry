@@ -324,6 +324,23 @@ func (tx memoryTransaction) ListOperationCallFacts(interactionID string) []sessi
 	return result
 }
 
+func (tx memoryTransaction) ListOperationCallSummaries(interactionID string) []sessionvo.OperationCallSummary {
+	facts := tx.ListOperationCallFacts(interactionID)
+	result := make([]sessionvo.OperationCallSummary, 0, len(facts))
+	for _, fact := range facts {
+		result = append(result, sessionvo.OperationCallSummary{
+			OperationID: fact.OperationID, Attempt: fact.Attempt,
+			ConversationID: fact.ConversationID, InteractionID: fact.InteractionID,
+			ReceiptID: fact.ReceiptID, ToolName: fact.ToolName, Protocol: fact.Protocol,
+			SourceModule: fact.SourceModule, ParentOperationID: fact.ParentOperationID,
+			RequestID: fact.RequestID, TraceID: fact.TraceID, SpanID: fact.SpanID,
+			StartedAt: fact.StartedAt, FinishedAt: fact.FinishedAt,
+			Status: fact.Status, Retryable: fact.Retryable,
+		})
+	}
+	return result
+}
+
 func (tx memoryTransaction) ListOperationCallFactsByTraceID(traceID string) []sessionvo.OperationCallFact {
 	result := make([]sessionvo.OperationCallFact, 0)
 	for _, fact := range tx.s.operationCalls {

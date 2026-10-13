@@ -518,6 +518,29 @@ func (s *Service) ListOperationCallFacts(
 	return result, err
 }
 
+func (s *Service) ListOperationCallSummaries(
+	ctx context.Context,
+	owner sessionvo.Owner,
+	interactionID string,
+) ([]sessionvo.OperationCallSummary, error) {
+	var result []sessionvo.OperationCallSummary
+	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		interaction, found := tx.PeekInteraction(interactionID)
+		if !found {
+			return resourceNotDisclosed(CauseInteractionNotFound)
+		}
+		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
+			return err
+		}
+		result = tx.ListOperationCallSummaries(interactionID)
+		if result == nil {
+			result = []sessionvo.OperationCallSummary{}
+		}
+		return nil
+	})
+	return result, err
+}
+
 func (s *Service) GetOperationCallFact(
 	ctx context.Context,
 	owner sessionvo.Owner,

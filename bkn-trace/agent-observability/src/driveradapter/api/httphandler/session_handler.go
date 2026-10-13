@@ -154,6 +154,11 @@ type operationCallFactsResponse struct {
 	Total   int                           `json:"total"`
 }
 
+type operationCallSummariesResponse struct {
+	Entries []sessionvo.OperationCallSummary `json:"entries"`
+	Total   int                              `json:"total"`
+}
+
 func RegisterSessionRoutes(
 	mux *http.ServeMux,
 	basePath string,
@@ -388,6 +393,16 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 		return
 	}
 	if len(parts) == 2 && parts[1] == "operations" && r.Method == http.MethodGet {
+		if view := r.URL.Query().Get("view"); view != "" && view != "full" && view != "summary" {
+			writeLifecycleError(w, r, http.StatusBadRequest, "operation_view_invalid", "view must be full or summary")
+			return
+		} else if view == "summary" {
+			values, err := h.service.ListOperationCallSummaries(r.Context(), owner, parts[0])
+			h.writeLifecycleResult(w, r, operationCallSummariesResponse{
+				Entries: values, Total: len(values),
+			}, err, http.StatusOK)
+			return
+		}
 		values, err := h.service.ListOperationCallFacts(r.Context(), owner, parts[0])
 		h.writeLifecycleResult(w, r, operationCallFactsResponse{
 			Entries: values, Total: len(values),

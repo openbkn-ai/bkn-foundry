@@ -272,3 +272,4 @@
 "workload requests are accepted only through the internal OpenBKN gateway" = "workload requests are accepted only through the internal OpenBKN gateway"
 
 "workload_identity and a valid endpoint_kind are required" = "workload_identity and a valid endpoint_kind are required"
+"view must be full or summary" = "view must be full or summary"

@@ -503,6 +503,34 @@ func TestEnsureOperationPersistsRealInputWithoutCallerHash(t *testing.T) {
 		profile.Resolution != "matched" {
 		t.Fatalf("operation capability profile was not preserved: %#v", profile)
 	}
+
+	summaryResponse := performLifecycleRequest(t, mux, http.MethodGet,
+		"/api/agent-observability/v1/interactions/"+interaction.ID+"/operations?view=summary", "")
+	if summaryResponse.Code != http.StatusOK {
+		t.Fatalf("read interaction operation summaries: %d %s", summaryResponse.Code, summaryResponse.Body.String())
+	}
+	var summaries struct {
+		Entries []sessionvo.OperationCallSummary `json:"entries"`
+		Total   int                              `json:"total"`
+	}
+	decodeLifecycleResponse(t, summaryResponse, &summaries)
+	if summaries.Total != 1 || len(summaries.Entries) != 1 {
+		t.Fatalf("expected one operation summary, got %#v", summaries)
+	}
+	if summaries.Entries[0].OperationID != facts.Entries[0].OperationID ||
+		summaries.Entries[0].ToolName != "run_sql" || summaries.Entries[0].TraceID != facts.Entries[0].TraceID {
+		t.Fatalf("summary lost operation identity: %#v", summaries.Entries[0])
+	}
+	if strings.Contains(summaryResponse.Body.String(), "SELECT * FROM orders") ||
+		strings.Contains(summaryResponse.Body.String(), "capability_profile") {
+		t.Fatalf("summary response contains full operation payload: %s", summaryResponse.Body.String())
+	}
+
+	invalidView := performLifecycleRequest(t, mux, http.MethodGet,
+		"/api/agent-observability/v1/interactions/"+interaction.ID+"/operations?view=compact", "")
+	if invalidView.Code != http.StatusBadRequest {
+		t.Fatalf("invalid operation view status = %d, want 400: %s", invalidView.Code, invalidView.Body.String())
+	}
 }
 
 func TestCompleteOperationPersistsRealOutputWithoutCallerHash(t *testing.T) {

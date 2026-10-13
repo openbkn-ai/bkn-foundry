@@ -272,3 +272,4 @@
 "workload requests are accepted only through the internal OpenBKN gateway" = "仅接受通过 OpenBKN 内部网关发出的工作负载请求"
 
 "workload_identity and a valid endpoint_kind are required" = "必须提供 workload_identity 和有效的 endpoint_kind"
+"view must be full or summary" = "view 必须是 full 或 summary"
