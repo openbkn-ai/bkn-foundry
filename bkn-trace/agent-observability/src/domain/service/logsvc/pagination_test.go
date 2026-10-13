@@ -38,10 +38,11 @@ func (source *numberedPageSource) Search(ctx context.Context, query observabilit
 	page := observabilityvo.SourcePage{Count: int64(len(source.records)), CountAccuracy: "exact"}
 	for _, record := range source.records {
 		if afterSourcePosition(record, query.PageBefore) {
-			page.Records = append(page.Records, record)
 			if len(page.Records) == query.Limit {
+				page.NextCursor = "more"
 				break
 			}
+			page.Records = append(page.Records, record)
 		}
 	}
 	return page, nil
@@ -142,7 +143,7 @@ func (source *filteredNumberedPageSource) ID() string { return "filtered-numbere
 func (source *filteredNumberedPageSource) Search(_ context.Context, _ observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	source.calls++
 	position := observabilityvo.SourcePosition{EventTimestamp: time.Now().UTC().Add(-time.Duration(source.calls) * time.Second), LogID: strconv.Itoa(source.calls)}
-	return observabilityvo.SourcePage{Count: 201, CountAccuracy: "partial", LastPosition: &position}, nil
+	return observabilityvo.SourcePage{Count: 201, CountAccuracy: "partial", LastPosition: &position, NextCursor: "more"}, nil
 }
 
 func TestNumberedLogPageRejectsSourcesWithoutDirectPagination(t *testing.T) {
@@ -181,9 +182,17 @@ func TestNumberedLogPageStillChecksEachReturnedRecord(t *testing.T) {
 }
 
 // A legacy source intentionally has no SearchNumbered capability.
-type cursorOnlySource struct{ source *numberedPageSource }
+type cursorOnlySource struct {
+	source *numberedPageSource
+	id     string
+}
 
-func (s cursorOnlySource) ID() string { return "bkn-trace-core" }
+func (s cursorOnlySource) ID() string {
+	if s.id != "" {
+		return s.id
+	}
+	return "bkn-trace-core"
+}
 func (s cursorOnlySource) Search(ctx context.Context, q observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	return s.source.Search(ctx, q)
 }
@@ -236,7 +245,7 @@ func (s *slowLegacySource) Search(ctx context.Context, q observabilityvo.LogQuer
 	case <-time.After(40 * time.Millisecond):
 	}
 	position := observabilityvo.SourcePosition{EventTimestamp: time.Now().UTC().Add(-time.Duration(s.calls) * time.Second), LogID: strconv.Itoa(s.calls)}
-	return observabilityvo.SourcePage{Count: 201, CountAccuracy: "partial", LastPosition: &position}, nil
+	return observabilityvo.SourcePage{Count: 201, CountAccuracy: "partial", LastPosition: &position, NextCursor: "more"}, nil
 }
 func TestLegacyReplayDoesNotRenewDeadlineForEachPage(t *testing.T) {
 	source := &slowLegacySource{}
@@ -305,5 +314,131 @@ func TestLedgerFirstPageAndCursorKeepNativeOrderForTimestampTies(t *testing.T) {
 	numbered, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Page: 2, Limit: 20})
 	if err != nil || len(numbered.Records) != 1 || numbered.Records[0].EventID != next.Records[0].EventID {
 		t.Fatalf("numbered and cursor orders differ: result=%+v err=%v", numbered, err)
+	}
+}
+
+// Totals deliberately remain global even after applying the keyset boundary.
+func TestCursorTraversalEndsDespiteGlobalSourceCount(t *testing.T) {
+	for _, limit := range []int{20, 200} {
+		for _, count := range []int{58, 200, 201} {
+			t.Run(fmt.Sprintf("%d-limit-%d", count, limit), func(t *testing.T) {
+				source := newNumberedPageSource(count)
+				service := NewWithCursorKey([]Source{cursorOnlySource{source: source}}, []byte("test-cursor-key"))
+				profile := activeProfile("admin-a", "admin")
+				query := observabilityvo.LogQuery{Limit: limit}
+				var ids []string
+				for page := 0; page < (count+limit-1)/limit; page++ {
+					result, err := service.List(context.Background(), profile, query)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, record := range result.Records {
+						ids = append(ids, record.LogID)
+					}
+					terminal := page == (count+limit-1)/limit-1
+					if (result.NextCursor == "") != terminal {
+						t.Fatalf("page %d: count=%d records=%d cursor=%q", page+1, result.Count, len(result.Records), result.NextCursor)
+					}
+					query.Cursor = result.NextCursor
+				}
+				if len(ids) != count {
+					t.Fatalf("visited %d records, want %d", len(ids), count)
+				}
+				for i, id := range ids {
+					if id != "log-"+strconv.Itoa(i) {
+						t.Fatalf("record %d=%s", i, id)
+					}
+				}
+			})
+		}
+	}
+}
+
+type rawContinuationSource struct {
+	pages []observabilityvo.SourcePage
+	calls int
+}
+
+func (s *rawContinuationSource) ID() string { return "raw-continuation" }
+func (s *rawContinuationSource) Search(_ context.Context, _ observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
+	page := s.pages[min(s.calls, len(s.pages)-1)]
+	s.calls++
+	return page, nil
+}
+
+func TestEmptyCursorBatchesRequirePositionProgress(t *testing.T) {
+	base := time.Now().UTC().Add(-time.Minute)
+	first := observabilityvo.SourcePosition{EventTimestamp: base, LogID: "raw-a", SearchAfter: []any{float64(10), "a"}}
+	advanced := first
+	// Identical public timestamp and ID are valid when the native tuple advances.
+	advanced.SearchAfter = []any{float64(9), "b"}
+	for _, tc := range []struct {
+		name     string
+		position *observabilityvo.SourcePosition
+		next     string
+		wantMore bool
+	}{
+		{"exhausted global count", nil, "", false},
+		{"missing raw boundary", nil, "more", false},
+		{"unchanged boundary", &first, "more", false},
+		{"advancing filtered batch", &advanced, "more", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			visible := validTestRecords(newNumberedPageSource(1).records)
+			visible[0].EventTimestamp = base.Add(-time.Minute)
+			source := &rawContinuationSource{pages: []observabilityvo.SourcePage{
+				{LastPosition: &first, NextCursor: "more", Count: 7, CountAccuracy: "partial"},
+				{LastPosition: tc.position, NextCursor: tc.next, Count: 7, CountAccuracy: "partial"},
+				{Records: visible, Count: 7, CountAccuracy: "partial"},
+			}}
+			service := NewWithCursorKey([]Source{source}, []byte("test-cursor-key"))
+			profile := activeProfile("admin-a", "admin")
+			page, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 20})
+			if err != nil || page.NextCursor == "" || len(page.Records) != 0 {
+				t.Fatalf("first raw page=%+v err=%v", page, err)
+			}
+			next, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 20, Cursor: page.NextCursor})
+			if err != nil || (next.NextCursor != "") != tc.wantMore || len(next.Records) != 0 {
+				t.Fatalf("next raw page=%+v err=%v", next, err)
+			}
+			if tc.wantMore {
+				final, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 20, Cursor: next.NextCursor})
+				if err != nil || len(final.Records) != 1 || final.NextCursor != "" {
+					t.Fatalf("visible final page=%+v err=%v", final, err)
+				}
+			}
+		})
+	}
+}
+
+func TestMixedCursorSourcesEndOnTheLastVisiblePage(t *testing.T) {
+	source := newNumberedPageSource(58)
+	left, right := &numberedPageSource{}, &numberedPageSource{}
+	for i, record := range source.records {
+		if i%2 == 0 {
+			left.records = append(left.records, record)
+		} else {
+			right.records = append(right.records, record)
+		}
+	}
+	service := NewWithCursorKey([]Source{cursorOnlySource{source: left, id: "left"}, cursorOnlySource{source: right, id: "right"}}, []byte("test-cursor-key"))
+	profile := activeProfile("admin-a", "admin")
+	query := observabilityvo.LogQuery{Limit: 20}
+	visited := 0
+	for _, want := range []int{20, 20, 18} {
+		page, err := service.List(context.Background(), profile, query)
+		if err != nil || len(page.Records) != want {
+			t.Fatalf("page=%+v err=%v", page, err)
+		}
+		for _, record := range page.Records {
+			if record.LogID != fmt.Sprint("log-", visited) {
+				t.Fatalf("record %d=%s", visited, record.LogID)
+			}
+			visited++
+		}
+		if (page.NextCursor == "") != (visited == 58) {
+			t.Fatalf("visited=%d cursor=%q", visited, page.NextCursor)
+		}
+		query.Cursor = page.NextCursor
 	}
 }
