@@ -5,6 +5,7 @@ The endpoints the executor calls.
 They are reachable only from inside the container network.
 """
 
+import json
 import logging
 from datetime import datetime
 from typing import Dict
@@ -25,6 +26,7 @@ from src.infrastructure.dependencies import (
     get_execution_repository as get_sql_execution_repository,
     get_session_repository as get_sql_session_repository,
 )
+from src.infrastructure.config.settings import get_settings
 from src.shared.i18n import message
 
 logger = logging.getLogger(__name__)
@@ -164,7 +166,26 @@ async def report_execution_result(
 
     # 5. Update the execution entity for the reported status
     try:
-        if domain_status == ExecutionStatus.COMPLETED:
+        result_bytes = len(report.stdout.encode("utf-8")) + len(report.stderr.encode("utf-8"))
+        if report.return_value is not None:
+            result_bytes += len(json.dumps(report.return_value, ensure_ascii=False).encode("utf-8"))
+        limit = get_settings().max_execution_result_bytes
+        if result_bytes > limit:
+            execution.mark_failed(
+                error_message=(
+                    "Sandbox.Execution.OutputLimitExceeded: "
+                    + message(
+                        "Sandbox.Execution.OutputLimitExceeded", size=result_bytes, limit=limit
+                    )
+                ),
+                exit_code=1,
+                stdout="",
+                stderr="",
+            )
+            execution.stderr = execution.state.error_message or ""
+            execution.return_value = None
+            execution.metrics = None
+        elif domain_status == ExecutionStatus.COMPLETED:
             # Turn the artifact strings into Artifact objects
             now = datetime.now()
             artifact_objects = [
@@ -197,7 +218,7 @@ async def report_execution_result(
 
         elif domain_status == ExecutionStatus.FAILED:
             # Use stderr as the error message, keeping both stdout and stderr
-            error_message = report.stderr if report.stderr else "Execution failed"
+            error_message = report.stderr[:1024] if report.stderr else "Execution failed"
             execution.mark_failed(
                 error_message=error_message,
                 exit_code=report.exit_code,
@@ -218,8 +239,8 @@ async def report_execution_result(
         await execution_repo.commit()
 
         logger.info(
-            f"Execution result recorded: {execution_id}, status={domain_status}, "
-            f"exit_code={report.exit_code}"
+            f"Execution result recorded: {execution_id}, status={execution.state.status}, "
+            f"exit_code={execution.state.exit_code}"
         )
 
         # 6. Answer 201 for the first report
@@ -234,9 +255,36 @@ async def report_execution_result(
             status_code=status.HTTP_409_CONFLICT,
             detail=message("Sandbox.State.Conflict", error=str(e)),
         )
-    except Exception as e:
-        logger.error(f"Failed to record execution result: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=message("Sandbox.Internal.Error", error=str(e)),
-        )
+    except Exception:
+        # The failed flush may have poisoned the transaction. Never log its SQL parameters.
+        try:
+            await execution_repo.rollback()
+            execution = await execution_repo.find_by_id(execution_id)
+            if execution is None:
+                raise RuntimeError("Execution disappeared during result persistence")
+            if not execution.is_terminal():
+                execution.mark_failed(
+                    error_message=(
+                        "Sandbox.Execution.ResultPersistenceFailed: "
+                        + message("Sandbox.Execution.ResultPersistenceFailed")
+                    ),
+                    exit_code=1,
+                    stdout="",
+                    stderr="",
+                )
+                execution.stderr = execution.state.error_message or ""
+                execution.return_value = None
+                execution.metrics = None
+                await execution_repo.save(execution)
+                await execution_repo.commit()
+                logger.warning("Execution result persistence failed: execution_id=%s", execution_id)
+        except Exception:
+            logger.warning(
+                "Execution result terminal write unavailable: execution_id=%s", execution_id
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Sandbox.Execution.ResultPersistenceFailed: "
+                + message("Sandbox.Execution.ResultPersistenceFailed"),
+            ) from None
+        return JSONResponse(status_code=201, content={"message": "Result recorded successfully"})
