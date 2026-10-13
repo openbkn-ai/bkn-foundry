@@ -77,6 +77,13 @@ error_messages = {
         "message_template": "同步执行超时，已等待 {timeout}s",
         "message": "同步执行超时",
     },
+    "Sandbox.Execution.OutputLimitExceeded": {
+        "message_template": "执行结果为 {size} 字节，超过 {limit} 字节上限",
+        "message": "执行结果超过输出上限",
+    },
+    "Sandbox.Execution.ResultPersistenceFailed": {
+        "message": "执行结果保存失败",
+    },
     "Sandbox.Execution.InvalidStatus": {
         "message_template": "状态非法：{status}",
         "message": "状态非法",
@@ -91,10 +98,6 @@ error_messages = {
     },
     "Sandbox.Internal.Unexpected": {
         "message_template": "服务内部错误",
-        "message": "服务内部错误",
-    },
-    "Sandbox.Internal.Error": {
-        "message_template": "服务内部错误：{error}",
         "message": "服务内部错误",
     },
 }
