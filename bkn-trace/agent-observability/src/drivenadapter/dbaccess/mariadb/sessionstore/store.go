@@ -1117,6 +1117,45 @@ func (t *transaction) ListOperationCallFacts(interactionID string) []sessionvo.O
 	return result
 }
 
+const operationCallSummarySelect = `SELECT operation_id, attempt_no, conversation_id,
+	interaction_id, COALESCE(receipt_id, ''), tool_name, protocol, source_module,
+	COALESCE(parent_operation_id, ''), COALESCE(request_id, ''), COALESCE(trace_id, ''),
+	COALESCE(span_id, ''), started_at, finished_at, status, retryable
+	FROM bkn_trace_operation_call_facts `
+
+func (t *transaction) ListOperationCallSummaries(interactionID string) []sessionvo.OperationCallSummary {
+	if t.err != nil {
+		return nil
+	}
+	rows, err := t.tx.QueryContext(t.ctx, operationCallSummarySelect+
+		`WHERE interaction_id=? ORDER BY started_at, operation_id, attempt_no`, interactionID)
+	if err != nil {
+		t.err = err
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]sessionvo.OperationCallSummary, 0)
+	for rows.Next() {
+		var value sessionvo.OperationCallSummary
+		var finishedAt sql.NullTime
+		if err := rows.Scan(
+			&value.OperationID, &value.Attempt, &value.ConversationID, &value.InteractionID,
+			&value.ReceiptID, &value.ToolName, &value.Protocol, &value.SourceModule,
+			&value.ParentOperationID, &value.RequestID, &value.TraceID, &value.SpanID,
+			&value.StartedAt, &finishedAt, &value.Status, &value.Retryable,
+		); err != nil {
+			t.err = err
+			return nil
+		}
+		if finishedAt.Valid {
+			value.FinishedAt = &finishedAt.Time
+		}
+		result = append(result, value)
+	}
+	t.err = rows.Err()
+	return result
+}
+
 func (t *transaction) ListOperationCallFactsByTraceID(traceID string) []sessionvo.OperationCallFact {
 	if t.err != nil {
 		return nil

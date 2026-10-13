@@ -141,6 +141,28 @@ type OperationCallFact struct {
 	Retryable          bool                `json:"retryable"`
 }
 
+// OperationCallSummary is the bounded read model for interaction operation
+// lists. It deliberately excludes input/output/error payloads and capability
+// profiles; callers that need those facts must use the existing full view.
+type OperationCallSummary struct {
+	OperationID       string            `json:"operation_id"`
+	Attempt           uint32            `json:"attempt"`
+	ConversationID    string            `json:"conversation_id"`
+	InteractionID     string            `json:"interaction_id"`
+	ReceiptID         string            `json:"receipt_id,omitempty"`
+	ToolName          string            `json:"tool_name"`
+	Protocol          OperationProtocol `json:"protocol"`
+	SourceModule      string            `json:"source_module"`
+	ParentOperationID string            `json:"parent_operation_id,omitempty"`
+	RequestID         string            `json:"request_id,omitempty"`
+	TraceID           string            `json:"trace_id,omitempty"`
+	SpanID            string            `json:"span_id,omitempty"`
+	StartedAt         time.Time         `json:"started_at"`
+	FinishedAt        *time.Time        `json:"finished_at,omitempty"`
+	Status            AttemptStatus     `json:"status"`
+	Retryable         bool              `json:"retryable"`
+}
+
 // CapabilityProfile freezes the internal producer contract selected for an
 // operation attempt. It is Trace metadata and is not part of public MCP or SDK
 // tool schemas.

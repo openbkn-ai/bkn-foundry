@@ -1525,6 +1525,16 @@ const docTemplate = `{
                         "name": "interaction_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "full",
+                            "summary"
+                        ],
+                        "type": "string",
+                        "description": "Response view: full (default) or summary",
+                        "name": "view",
+                        "in": "query"
                     }
                 ],
                 "responses": {
