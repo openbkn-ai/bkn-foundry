@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Record-integrity materialization failures now use process-local exponential backoff from 30 seconds to 5 minutes, reducing repeated evidence reads and error logs. Source changes bypass backoff; dependency recovery remains retryable without changing integrity verdicts. (#2133)
+
 - Trace/Evidence admission-budget failures now report configuration fields or metric sources through existing error details and Debug diagnostics without repeated polling WARNs. `BKN_TRACE_LOG_LEVEL` (Helm `logLevel`, default `info`) enables these diagnostics at runtime startup. Collector queue sampling rejects missing size and invalid values instead of treating missing data as a healthy zero, while source coverage continues reading refused/failed counters.
 
 - Disabled Audit Kafka consumers remain visible as an unconfigured `audit-ledger`. Audit queries return an actionable, non-retryable configuration error; mixed queries disclose the audit gap. The installer preserves consumer Helm values and checks existing credential and MariaDB Secret references before applying the release.

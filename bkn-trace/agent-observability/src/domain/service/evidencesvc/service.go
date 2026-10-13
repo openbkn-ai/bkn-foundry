@@ -224,6 +224,7 @@ var visibilityStates = map[string]struct{}{
 
 type Service struct {
 	currentRecordIntegrity bool
+	integrityRetries       recordIntegrityRetryState
 	store                  ievidencestore.EvidenceStorePort
 	artifactStore          iartifactstore.ArtifactStorePort
 	projectionSource       iprojectionsource.ProjectionSourcePort
