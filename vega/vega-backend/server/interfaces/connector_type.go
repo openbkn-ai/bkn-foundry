@@ -37,6 +37,7 @@ const (
 	ConnectorTypeSQLServer  string = "sqlserver"
 	ConnectorTypeOpenSearch string = "opensearch"
 	ConnectorTypeOracle     string = "oracle"
+	ConnectorTypeDoris      string = "doris"
 	ConnectorTypeHANA       string = "hana"
 	ConnectorTypeAnyShare   string = "anyshare"
 )

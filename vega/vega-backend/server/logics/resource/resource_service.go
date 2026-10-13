@@ -1979,7 +1979,7 @@ func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool 
 	return jsonNumbersEqual(currentCopy, requestedCopy)
 }
 
-// InitializeJSONIndexAttributes 为新建索引的 JSON 字段记录仅保存原值的策略。
+// InitializeJSONIndexAttributes 为 JSON 字段记录托管索引仅保存原值的统一策略。
 // 已有 Dataset 字段不调用此函数，避免改变不可变的 enabled 参数。
 func InitializeJSONIndexAttributes(schema []*interfaces.Property) {
 	for _, prop := range schema {

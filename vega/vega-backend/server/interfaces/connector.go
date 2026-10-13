@@ -20,16 +20,17 @@ const (
 
 // TableMeta represents table/asset metadata.
 type TableMeta struct {
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	Database    string                `json:"database"`   // The name of the affiliated database (used for instance-level connections)
-	Schema      string                `json:"schema"`     // The name of the schema to which it belongs (used when making instance-level connections)
-	TableType   string                `json:"table_type"` // One of the TableType* constants.
-	Properties  map[string]any        `json:"properties"` // Extended attributes: charset, collation, engine, estimated_row_count, etc
-	Columns     []TableColumnMeta     `json:"columns"`
-	PKs         []string              `json:"primary_keys"`
-	Indices     []TableIndexMeta      `json:"indices"`      // Index list
-	ForeignKeys []TableForeignKeyMeta `json:"foreign_keys"` // List of foreign keys
+	Name          string                `json:"name"`
+	Description   string                `json:"description"`
+	SourceCatalog string                `json:"source_catalog,omitempty"` // 可选源端 catalog；旧连接器留空。
+	Database      string                `json:"database"`                 // The name of the affiliated database (used for instance-level connections)
+	Schema        string                `json:"schema"`                   // The name of the schema to which it belongs (used when making instance-level connections)
+	TableType     string                `json:"table_type"`               // One of the TableType* constants.
+	Properties    map[string]any        `json:"properties"`               // Extended attributes: charset, collation, engine, estimated_row_count, etc
+	Columns       []TableColumnMeta     `json:"columns"`
+	PKs           []string              `json:"primary_keys"`
+	Indices       []TableIndexMeta      `json:"indices"`      // Index list
+	ForeignKeys   []TableForeignKeyMeta `json:"foreign_keys"` // List of foreign keys
 }
 
 // TableColumnMeta represents column metadata.

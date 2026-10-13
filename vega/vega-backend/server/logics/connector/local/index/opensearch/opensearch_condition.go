@@ -1239,7 +1239,7 @@ func exactMatchProperty(fieldName string, schemaDefinition []*interfaces.Propert
 func (c *OpenSearchConnector) exactMatchFieldName(fieldName string, schemaDefinition []*interfaces.Property) (string, error) {
 	prop := exactMatchProperty(fieldName, schemaDefinition)
 	if prop == nil {
-		return fieldName, nil
+		return "", interfaces.NewConditionBuildError("field %q not found in schema", fieldName)
 	}
 	physicalName := propertyPhysicalFieldName(prop)
 	if prop.Type != interfaces.DataType_Text {

@@ -145,9 +145,9 @@ func TestFilterConditionFactory(t *testing.T) {
 			got := cond.(*CurrentCond)
 			assert.Equal(t, CurrentMonth, got.Value)
 		}},
-		{name: "between creates temporary datetime field for unknown name", cfg: constCfg("unknown_created_at", OperationBetween, []any{"2026-01-01", "2026-01-02"}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
+		{name: "between uses declared datetime field", cfg: constCfg("created_at", OperationBetween, []any{"2026-01-01", "2026-01-02"}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
 			got := cond.(*BetweenCond)
-			assert.Equal(t, "unknown_created_at", got.Lfield.Name)
+			assert.Equal(t, "created_at", got.Lfield.Name)
 			assert.Equal(t, interfaces.DataType_Datetime, got.Lfield.Type)
 		}},
 		{name: "match uses remain fields list", cfg: &interfaces.FilterCondCfg{
@@ -608,8 +608,7 @@ func TestComparisonOps(t *testing.T) {
 		}
 	})
 	t.Run("comparison ops field not found", func(t *testing.T) {
-		// 只测试 == 操作符，因为目前只有 EqualCond 实现了对不存在字段的严格检查
-		ops := []string{"=="}
+		ops := []string{"==", "!=", ">", ">=", "<", "<=", "in", "not_in", "between", "out_range"}
 		for _, op := range ops {
 			cfg := constCfg("nonexistent", op, "test")
 			_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())

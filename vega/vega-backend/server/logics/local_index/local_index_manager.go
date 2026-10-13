@@ -264,6 +264,9 @@ func resourceForQuery(resource *interfaces.Resource) *interfaces.Resource {
 	}
 	cloned := *resource
 	cloned.SchemaDefinition = SchemaForQuery(resource.SchemaDefinition)
+	for _, prop := range GeneratedFields(resource.SchemaDefinition) {
+		cloned.SchemaDefinition = append(cloned.SchemaDefinition, prop)
+	}
 	return &cloned
 }
 
@@ -275,6 +278,9 @@ func validateQueryFields(resource *interfaces.Resource, params *interfaces.Resou
 	fields := make([]string, 0, len(params.Sort)+len(params.GroupBy)+1)
 	for _, sort := range params.Sort {
 		if sort != nil {
+			if params.Aggregation == nil && len(params.GroupBy) == 0 && (sort.Field == "_score" || sort.Field == "_id") {
+				continue
+			}
 			// 聚合结果别名不是源字段，不能按源字段类型拒绝排序。
 			if params.Aggregation != nil && (sort.Field == params.Aggregation.Alias || sort.Field == "__value") {
 				continue
@@ -290,13 +296,19 @@ func validateQueryFields(resource *interfaces.Resource, params *interfaces.Resou
 			fields = append(fields, group.Property)
 		}
 	}
+	queryFields := make(map[string]struct{}, len(resource.SchemaDefinition))
+	for _, property := range SchemaForQuery(resource.SchemaDefinition) {
+		queryFields[property.Name] = struct{}{}
+	}
+	for name := range GeneratedFields(resource.SchemaDefinition) {
+		queryFields[name] = struct{}{}
+	}
 	for _, field := range fields {
-		for _, property := range resource.SchemaDefinition {
-			if property != nil && !isQueryableFieldType(property.Type) && property.Name == field {
-				return interfaces.NewConditionBuildError("field %q not found in schema", field)
-			}
+		if _, ok := queryFields[field]; !ok {
+			return interfaces.NewConditionBuildError("field %q not found in schema", field)
 		}
 	}
+
 	return nil
 }
 

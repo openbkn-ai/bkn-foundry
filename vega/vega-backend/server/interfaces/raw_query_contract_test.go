@@ -39,6 +39,11 @@ func TestRawQueryContractValidate(t *testing.T) {
 				},
 			},
 		},
+
+		{
+			name:    "Doris SQL input",
+			request: RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: "doris"},
+		},
 		{
 			name: "oracle SQL input",
 			request: RawQueryContract{

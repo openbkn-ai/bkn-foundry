@@ -131,6 +131,11 @@ func NewAnyShareConnector() interfaces.FilesetConnector {
 	return &AnyShareConnector{}
 }
 
+// ValidateBuildSchema 当前无额外源类型限制，通用构建规则由调用方校验。
+func (c *AnyShareConnector) ValidateBuildSchema(_ *interfaces.Resource) error {
+	return nil
+}
+
 // GetType returns the data source type.
 func (c *AnyShareConnector) GetType() string {
 	return interfaces.ConnectorTypeAnyShare

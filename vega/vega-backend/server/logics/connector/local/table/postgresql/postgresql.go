@@ -69,6 +69,11 @@ func NewPostgresqlConnector() interfaces.TableConnector {
 	return &PostgresqlConnector{}
 }
 
+// ValidateBuildSchema 当前无额外源类型限制，通用构建键规则由 service 校验。
+func (c *PostgresqlConnector) ValidateBuildSchema(_ *interfaces.Resource) error {
+	return nil
+}
+
 // GetType returns the data source type key (consistent with t_connector_type.f_type, factory registration key).
 func (c *PostgresqlConnector) GetType() string {
 	return interfaces.ConnectorTypePostgreSQL

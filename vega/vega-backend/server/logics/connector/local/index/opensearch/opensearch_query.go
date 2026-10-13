@@ -610,9 +610,14 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	if params != nil && len(params.Sort) > 0 {
 		sort := make([]map[string]any, 0, len(params.Sort))
 		for _, s := range params.Sort {
-			resolvedField, err := c.exactMatchFieldName(s.Field, resource.SchemaDefinition)
-			if err != nil {
-				return nil, fmt.Errorf("resolve sort field %q: %w", s.Field, err)
+			resolvedField := s.Field
+			// 文档元字段仅用于排序，不作为普通 schema 字段放行过滤或聚合。
+			if s.Field != "_score" && s.Field != "_id" {
+				var err error
+				resolvedField, err = c.exactMatchFieldName(s.Field, resource.SchemaDefinition)
+				if err != nil {
+					return nil, fmt.Errorf("resolve sort field %q: %w", s.Field, err)
+				}
 			}
 			sort = append(sort, map[string]any{
 				resolvedField: map[string]any{

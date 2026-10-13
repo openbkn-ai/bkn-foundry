@@ -84,6 +84,11 @@ func NewMySQLConnector() interfaces.TableConnector {
 	return &MariaDBConnector{connectorType: interfaces.ConnectorTypeMySQL}
 }
 
+// ValidateBuildSchema 当前无额外源类型限制，通用构建键规则由 service 校验。
+func (c *MariaDBConnector) ValidateBuildSchema(_ *interfaces.Resource) error {
+	return nil
+}
+
 // GetType returns the data source type.
 func (c *MariaDBConnector) GetType() string {
 	if c.connectorType != "" {

@@ -46,6 +46,11 @@ func GetFieldConfig(_ context.Context, ct *interfaces.ConnectorType) (map[string
 	return nil, fmt.Errorf("remote connector %s: %w", ct.Type, ErrFieldConfigNotImplemented)
 }
 
+// ValidateBuildSchema 远程构建校验尚未实现，不能静默视为校验通过。
+func (rc *RemoteConnector) ValidateBuildSchema(_ *interfaces.Resource) error {
+	return fmt.Errorf("remote connector build schema validation is not implemented")
+}
+
 // GetType returns the connector type
 func (r *RemoteConnector) GetType() string {
 	return r.connType.Type

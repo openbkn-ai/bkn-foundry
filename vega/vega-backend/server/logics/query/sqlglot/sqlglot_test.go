@@ -32,6 +32,7 @@ func TestMapDataSourceTypeToDialect(t *testing.T) {
 		{name: "mariadb", sourceType: interfaces.ConnectorTypeMariaDB, want: "mysql"},
 		{name: "sqlserver", sourceType: interfaces.ConnectorTypeSQLServer, want: "tsql"},
 		{name: "oracle", sourceType: interfaces.ConnectorTypeOracle, want: "oracle"},
+		{name: "doris", sourceType: interfaces.ConnectorTypeDoris, want: "doris"},
 		{name: "hana", sourceType: interfaces.ConnectorTypeHANA, want: GenericDialect},
 		{name: "generic dialect", sourceType: GenericDialect, want: GenericDialect},
 		{name: "tsql target dialect", sourceType: "tsql", want: "tsql"},

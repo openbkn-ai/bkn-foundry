@@ -239,6 +239,23 @@ func (cf *connectorFactory) CreateConnectorInstance(ctx context.Context, tp stri
 	return nil, fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
 }
 
+// ValidateBuildSchema 复用已注册 builder，只读校验 schema，无需连接配置或源端 I/O。
+func (cf *connectorFactory) ValidateBuildSchema(tp string, resource *interfaces.Resource) error {
+	cf.mu.RLock()
+	defer cf.mu.RUnlock()
+	connector, ok := cf.connectors[tp]
+	if !ok {
+		return fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
+	}
+	if minimumEdition, exists := cf.connectorRequiredEditions[tp]; exists && !entitlement.AtLeast(minimumEdition) {
+		return fmt.Errorf("connector %s requires edition %s: %w", tp, minimumEdition, ErrConnectorEntitlementDenied)
+	}
+	if !connector.GetEnabled() {
+		return fmt.Errorf("connector %s is disabled: %w", tp, ErrConnectorDisabled)
+	}
+	return connector.ValidateBuildSchema(resource)
+}
+
 // GetSensitiveFields returns a list of sensitive fields based on the connector type
 func (cf *connectorFactory) GetSensitiveFields(tp string) []string {
 	cf.mu.RLock()

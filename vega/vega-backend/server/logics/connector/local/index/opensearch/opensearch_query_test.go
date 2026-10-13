@@ -133,7 +133,7 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	port, err := strconv.Atoi(portText)
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
-	resource := &interfaces.Resource{}
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "status", Type: interfaces.DataType_String}}}
 
 	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{})
 	require.NoError(t, err)

@@ -481,3 +481,55 @@ func TestEnrichTableMetadataCountFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestEnrichTableMetadataDoris(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := vmock.NewMockResourceService(ctrl)
+	connector := vmock.NewMockTableConnector(ctrl)
+	worker := &DiscoverTaskWorker{rs: rs}
+	reference := "`hive`.`sales.eu`.`order.items`"
+	resource := &interfaces.Resource{ID: "r1", SourceIdentifier: reference, SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true}}}}
+	table := &interfaces.TableMeta{SourceCatalog: "hive", Database: "sales.eu", Schema: "sales.eu", Name: "order.items"}
+	connector.EXPECT().GetTableMeta(gomock.Any(), table).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+		meta.Columns = []interfaces.TableColumnMeta{{Name: "wide", Type: "LARGEINT"}, {Name: "payload", Type: "JSON"}, {Name: "new_payload", Type: "JSON"}}
+		return nil
+	})
+	connector.EXPECT().MapType("LARGEINT").Return(interfaces.DataType_String)
+	connector.EXPECT().MapType("JSON").Return(interfaces.DataType_Json).Times(2)
+	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
+		assert.Equal(t, reference, saved.SourceIdentifier)
+		assert.Equal(t, "hive", saved.SourceMetadata["source_catalog"])
+		assert.Equal(t, "sales.eu", saved.SourceMetadata["database"])
+		assert.Equal(t, "order.items", saved.SourceMetadata["name"])
+		require.Len(t, saved.SchemaDefinition, 3)
+		assert.Equal(t, false, saved.SchemaDefinition[1].Attributes["enabled"])
+		assert.Equal(t, false, saved.SchemaDefinition[2].Attributes["enabled"])
+		assert.Equal(t, interfaces.DataType_String, saved.SchemaDefinition[0].Type)
+		assert.Equal(t, "LARGEINT", saved.SchemaDefinition[0].OriginalType)
+		return nil
+	})
+	err := worker.enrichTableMetadata(context.Background(), &interfaces.DiscoverTask{}, connector, []tableDiscoverItem{{resource: resource, tableMeta: table}}, &interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
+	require.NoError(t, err)
+}
+
+func TestEnrichTableMetadataJSON(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := vmock.NewMockResourceService(ctrl)
+	connector := vmock.NewMockTableConnector(ctrl)
+	resource := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true}}}}
+	table := &interfaces.TableMeta{Name: "orders", Schema: "public"}
+	connector.EXPECT().GetTableMeta(gomock.Any(), table).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+		meta.Columns = []interfaces.TableColumnMeta{{Name: "payload", Type: "jsonb"}, {Name: "added", Type: "jsonb"}}
+		return nil
+	})
+	connector.EXPECT().MapType("jsonb").Return(interfaces.DataType_Json).Times(2)
+	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
+		require.Len(t, saved.SchemaDefinition, 2)
+		for _, prop := range saved.SchemaDefinition {
+			assert.Equal(t, false, prop.Attributes["enabled"])
+		}
+		return nil
+	})
+	err := (&DiscoverTaskWorker{rs: rs}).enrichTableMetadata(context.Background(), &interfaces.DiscoverTask{}, connector, []tableDiscoverItem{{resource: resource, tableMeta: table}}, &interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
+	require.NoError(t, err)
+}

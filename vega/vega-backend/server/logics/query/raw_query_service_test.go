@@ -554,6 +554,16 @@ func TestReplacePlaceholderInSQLCode(t *testing.T) {
 		)
 		assert.Equal(t, "SELECT 'it\\'s {{resource-1}}' FROM public.orders", got)
 	})
+	for _, dialect := range []string{"mysql", "doris"} {
+		t.Run(dialect+" double-quoted backslash escapes", func(t *testing.T) {
+			got := replacePlaceholderInSQLCode(
+				`SELECT "a\"b {{resource-1}}" FROM {{resource-1}}`,
+				"{{resource-1}}", "public.orders", dialect,
+			)
+			assert.Equal(t, `SELECT "a\"b {{resource-1}}" FROM public.orders`, got)
+		})
+	}
+
 }
 
 func TestQueryExecutionContext(t *testing.T) {
@@ -1419,6 +1429,16 @@ func TestHasOpenSearchAggregation(t *testing.T) {
 }
 
 func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
+	t.Run("preserves Doris catalog reference", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		reference := "`hive`.`sales.eu`.`o``rders`"
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{Schema: "sales.eu", SourceIdentifier: reference}, nil)
+		got, err := (&rawQueryService{rs: rs}).replaceResourceIDWithSchemaTable(context.Background(), "SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{ConnectorType: interfaces.ConnectorTypeDoris}, "doris")
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM "+reference, got)
+	})
+
 	t.Run("preserves already quoted source reference", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := mock_interfaces.NewMockResourceService(ctrl)

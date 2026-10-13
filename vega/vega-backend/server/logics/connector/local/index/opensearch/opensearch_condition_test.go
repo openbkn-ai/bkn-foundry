@@ -722,3 +722,19 @@ func osLegacyCfg(name string, op string, value any) *interfaces.FilterCondCfg {
 	cfg.LegacyLikeWildcards = true
 	return cfg
 }
+
+func TestOpenSearchConnectorExactMatchFieldName(t *testing.T) {
+	conn := &OpenSearchConnector{}
+	schema := []*interfaces.Property{{Name: "id", OriginalName: "physical_id", Type: interfaces.DataType_Integer}, {Name: "order.items", Type: interfaces.DataType_String}}
+	for _, name := range []string{"missing", "payload.id", "physical_id.child"} {
+		field, err := conn.exactMatchFieldName(name, schema)
+		require.Error(t, err)
+		assert.Empty(t, field)
+		assert.Contains(t, err.Error(), "not found")
+	}
+	for _, name := range []string{"physical_id", "order.items"} {
+		field, err := conn.exactMatchFieldName(name, schema)
+		require.NoError(t, err)
+		assert.Equal(t, name, field)
+	}
+}

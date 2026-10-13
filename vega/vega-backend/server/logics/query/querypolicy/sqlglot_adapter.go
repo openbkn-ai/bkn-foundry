@@ -206,7 +206,7 @@ def replace_code_placeholders(sql):
                         continue
                     end += 1
                     break
-                if dialect == "mysql" and sql[end] == "\\" and quote == "'" and end + 1 < len(sql):
+                if dialect in ("mysql", "doris") and sql[end] == "\\" and quote in ("'", '"') and end + 1 < len(sql):
                     end += 2
                     continue
                 end += 1

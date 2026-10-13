@@ -97,6 +97,11 @@ func NewOpenSearchConnector() interfaces.IndexConnector {
 	return &OpenSearchConnector{}
 }
 
+// ValidateBuildSchema 当前无额外源类型限制，通用构建规则由调用方校验。
+func (c *OpenSearchConnector) ValidateBuildSchema(_ *interfaces.Resource) error {
+	return nil
+}
+
 // GetType returns the data source type.
 func (c *OpenSearchConnector) GetType() string {
 	return interfaces.ConnectorTypeOpenSearch

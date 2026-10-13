@@ -770,6 +770,8 @@ func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (
 		return "tsql", nil
 	case interfaces.ConnectorTypeOracle:
 		return "oracle", nil
+	case interfaces.ConnectorTypeDoris:
+		return "doris", nil
 	case interfaces.ConnectorTypeHANA:
 		return sqlglot.GenericDialect, nil
 	default:
@@ -983,7 +985,7 @@ func replacePlaceholderInSQLCode(sql, placeholder, replacement, inputDialect str
 					end++
 					break
 				}
-				if inputDialect == "mysql" && quote == '\'' && sql[end] == '\\' && end+1 < len(sql) {
+				if (inputDialect == "mysql" || inputDialect == "doris") && (quote == '\'' || quote == '"') && sql[end] == '\\' && end+1 < len(sql) {
 					end += 2
 					continue
 				}

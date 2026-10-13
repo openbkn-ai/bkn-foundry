@@ -68,4 +68,7 @@ type ConnectorFactory interface {
 	// GetSensitiveFields returns the sensitive fields declared by a connector
 	// type that is available under the current entitlement.
 	GetSensitiveFields(tp string) []string
+
+	// ValidateBuildSchema delegates source-specific build validation to the registered connector without creating an instance or opening a source connection.
+	ValidateBuildSchema(tp string, resource *Resource) error
 }

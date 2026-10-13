@@ -50,6 +50,9 @@ type Connector interface {
 
 	// GetMetadata retrieves source metadata, such as version and server information.
 	GetMetadata(ctx context.Context) (map[string]any, error)
+
+	// ValidateBuildSchema checks source-specific local-index and build-key restrictions on a valid resource schema without connecting to the source or modifying the resource. It must work on the registered builder and return caller-safe ordinary errors.
+	ValidateBuildSchema(resource *Resource) error
 }
 
 // TableConnector defines the interface for relational database connectors.

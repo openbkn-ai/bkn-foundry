@@ -244,6 +244,15 @@ func TestExtractTableResourceIDs(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"orders-2026"}, ids)
 	})
+	for _, dialect := range []string{"mysql", "doris"} {
+		t.Run(dialect+" double-quoted backslash escapes", func(t *testing.T) {
+			ids, err := ExtractTableResourceIDs(context.Background(),
+				`SELECT "a\"b {{ignored-resource}}" FROM {{orders-2026}}`, dialect)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"orders-2026"}, ids)
+		})
+	}
+
 }
 
 func requireSQLGlotRuntime(t *testing.T) {
