@@ -6,6 +6,8 @@
 
 ### 变更
 
+- Interaction 操作读取支持不含 payload 的 `view=summary`，默认 full 响应保持兼容；仅按 service 筛选的 Trace 列表改用 canonical MariaDB identity 计数与分页，避免固定候选投影扫描。（#2005、#2143、#2145）
+
 - 记录完整性物化失败后采用进程内指数退避（30 秒至 5 分钟），减少重复证据读取和错误日志。源版本变化可立即重试，依赖恢复后仍能自动完成检查，完整性判定语义不变。（#2133）
 
 - 关闭的 Audit Kafka consumer 以未配置的 `audit-ledger` 状态保留：审计查询返回带修复动作的不可重试配置错误，混合查询明确提示审计数据缺口。安装器升级时保留 consumer 的 Helm values，并在更新 release 前检查凭据与 MariaDB Secret 引用。

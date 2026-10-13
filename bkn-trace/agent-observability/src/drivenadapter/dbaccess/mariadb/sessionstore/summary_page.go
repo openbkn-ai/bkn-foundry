@@ -25,6 +25,10 @@ func (s *Store) ListTraceSummaryIdentities(ctx context.Context, query isessionst
 	if !query.To.IsZero() {
 		where, args = append(where, "r.issued_at<=?"), append(args, query.To.UTC())
 	}
+	if query.Service != "" {
+		where = append(where, traceSummaryServicePredicate())
+		args = append(args, query.Service)
+	}
 	clause := strings.Join(where, " AND ")
 	var total int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT r.trace_id) FROM bkn_trace_receipts r WHERE "+clause, args...).Scan(&total); err != nil {
@@ -283,4 +287,12 @@ func normalizeSummaryPageOffset(offset int) int {
 		return 0
 	}
 	return offset
+}
+
+// Match the same first nonempty source module selected by canonical enrichment,
+// rather than any descendant service. Both count and page use this predicate.
+func traceSummaryServicePredicate() string {
+	return `(SELECT f.source_module FROM bkn_trace_operation_call_facts f
+ WHERE f.trace_id=r.trace_id AND f.source_module<>''
+ ORDER BY f.started_at, f.operation_id, f.attempt_no LIMIT 1)=?`
 }
