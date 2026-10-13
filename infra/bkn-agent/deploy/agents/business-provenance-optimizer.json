@@ -28,7 +28,7 @@
         "limits": {
           "max_turns": 12,
           "max_tool_calls": 12,
-          "timeout_s": 180,
+          "timeout_s": 600,
           "max_output_tokens": 8192
         },
         "status": "published"
