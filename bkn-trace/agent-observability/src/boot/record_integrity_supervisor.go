@@ -16,7 +16,7 @@ type recordIntegrityBatcher interface {
 }
 
 // Generation is bounded and independent of projection configuration and MCP
-// transactions. A failed candidate remains unmaterialized for the next pass.
+// transactions. The batcher defers failed candidates across cursor passes.
 func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBatcher, interval time.Duration) {
 	cursor := ""
 	for {
