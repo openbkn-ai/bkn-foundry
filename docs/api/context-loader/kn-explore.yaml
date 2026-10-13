@@ -479,14 +479,17 @@ components:
             $ref: '#/components/schemas/ConceptGroup'
         object_types:
           type: array
+          nullable: true
           items:
             $ref: '#/components/schemas/ObjectType'
         relation_types:
           type: array
+          nullable: true
           items:
             $ref: '#/components/schemas/RelationType'
         action_types:
           type: array
+          nullable: true
           items:
             $ref: '#/components/schemas/ActionType'
         mounted_capabilities:
