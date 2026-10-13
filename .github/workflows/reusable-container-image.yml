@@ -335,7 +335,21 @@ jobs:
               wait_for_manifest "${child}"
             done
             docker manifest create "${repo}:${tag}" "${children[@]}"
-            docker manifest push "${repo}:${tag}"
+            local push_attempt
+            local push_delay
+            local max_push_attempts=6
+            for ((push_attempt = 1; push_attempt <= max_push_attempts; push_attempt++)); do
+              if docker manifest push "${repo}:${tag}"; then
+                break
+              fi
+              if [ "${push_attempt}" -eq "${max_push_attempts}" ]; then
+                echo "::error::failed to push ${repo}:${tag} after ${max_push_attempts} attempts"
+                return 1
+              fi
+              push_delay=$((push_attempt * 5))
+              echo "Waiting ${push_delay}s before retrying manifest push for ${repo}:${tag} (attempt ${push_attempt}/${max_push_attempts})"
+              sleep "${push_delay}"
+            done
             echo "Pushed multi-arch ${repo}:${tag}"
             docker manifest inspect "${repo}:${tag}" | head -30
           }
