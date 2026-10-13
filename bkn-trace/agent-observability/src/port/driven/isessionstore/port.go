@@ -41,6 +41,7 @@ type Transaction interface {
 	SaveOperation(operation sessionvo.Operation)
 	FindOperationCallFact(operationID string, attempt uint32) (sessionvo.OperationCallFact, bool)
 	ListOperationCallFacts(interactionID string) []sessionvo.OperationCallFact
+	ListOperationCallSummaries(interactionID string) []sessionvo.OperationCallSummary
 	ListOperationCallFactsByTraceID(traceID string) []sessionvo.OperationCallFact
 	ListFirstOperationSourceModulesByTraceIDs(traceIDs []string) map[string]string
 	SaveOperationCallFact(fact sessionvo.OperationCallFact)
@@ -81,6 +82,7 @@ type Store interface {
 }
 
 type SummaryPageQuery struct {
+	Service                string
 	IncludeRegisteredCalls bool
 	Scope                  evidencevo.QueryScope
 	From                   time.Time

@@ -29,6 +29,20 @@ func TestSummaryOwnerWherePreservesLegacySubjectBoundary(t *testing.T) {
 	}
 }
 
+func TestTraceSummaryServicePredicateUsesCanonicalFirstOperation(t *testing.T) {
+	predicate := traceSummaryServicePredicate()
+	for _, fragment := range []string{
+		"SELECT f.source_module FROM bkn_trace_operation_call_facts f",
+		"f.trace_id=r.trace_id",
+		"ORDER BY f.started_at, f.operation_id, f.attempt_no",
+		"LIMIT 1",
+	} {
+		if !strings.Contains(predicate, fragment) {
+			t.Fatalf("service predicate missing %q: %s", fragment, predicate)
+		}
+	}
+}
+
 func TestSummaryOwnerWherePinsASCIIIdentityParametersToASCIIBinaryCollation(t *testing.T) {
 	where, _ := summaryOwnerWhere("c", isessionstore.SummaryPageQuery{Scope: evidencevo.QueryScope{
 		AccountID: "super_admin", AccountType: "service",

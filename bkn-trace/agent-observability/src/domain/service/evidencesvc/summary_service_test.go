@@ -191,6 +191,29 @@ func TestListTraceExecutionsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	}
 }
 
+func TestListTraceExecutionsUsesIdentityPageForServiceFilter(t *testing.T) {
+	base := evidencestore.New()
+	store := &pagingSessionStore{Store: sessionstore.New(), tracePage: isessionstore.SummaryIdentityPage{
+		Entries: []isessionstore.SummaryIdentity{{ID: "trace-service", StartedAt: "2026-08-19T09:00:00Z"}}, Total: 1,
+	}}
+	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{
+		pageSummaryTrace("trace-service", "req-service", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo"),
+	}}}
+	service := New(base, WithProjectionSource(projection), WithSessionStore(store))
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Service: "context-loader", Limit: 1,
+	})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-service" {
+		t.Fatalf("service-filtered page=%+v err=%v", page, err)
+	}
+	if len(store.traceQueries) != 1 || store.traceQueries[0].Service != "context-loader" {
+		t.Fatalf("service filter was not pushed to the identity query: %+v", store.traceQueries)
+	}
+	if len(projection.queries) != 1 || len(projection.queries[0].TraceIDs) != 1 || projection.queries[0].TraceIDs[0] != "trace-service" {
+		t.Fatalf("projection was not restricted to selected identity: %+v", projection.queries)
+	}
+}
+
 func TestListConversationsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	base := evidencestore.New()
 	store := &pagingSessionStore{Store: sessionstore.New(), conversationPage: isessionstore.SummaryIdentityPage{
