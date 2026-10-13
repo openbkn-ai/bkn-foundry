@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"reflect"
@@ -346,5 +347,76 @@ func TestManagedFunctionFailurePayloadKeepsOnlySafeExecutionFacts(t *testing.T) 
 	}
 	if _, exists := payload["stderr"]; exists {
 		t.Fatalf("failure payload exposed stderr: %#v", payload)
+	}
+}
+
+// A caller cancellation must not cancel the inner Operation's terminal write.
+func TestManagedFunctionGuardFinalizesAfterCallerCancellation(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("failed=%t", fail), func(t *testing.T) {
+			finished := false
+			client := bkntrace.NewLifecycleClient("http://trace.test", &http.Client{
+				Transport: managedFunctionRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+					switch {
+					case request.Method == http.MethodGet:
+						return managedFunctionJSONResponse(http.StatusOK, bkntrace.Interaction{
+							InteractionID: "int-1", ConversationID: "conv-1", ExecutionStatus: "active",
+							LeaseToken: "lease-1", LeaseEpoch: 1,
+						}), nil
+					case strings.HasSuffix(request.URL.Path, "/operations:ensure"):
+						return managedFunctionJSONResponse(http.StatusCreated, bkntrace.OperationResult{
+							Created: true, Execute: true,
+							Operation: bkntrace.Operation{OperationID: "op-function-1", ConversationID: "conv-1",
+								InteractionID: "int-1", Attempt: 1, AttemptStatus: "pending", CreatedAt: time.Now().UTC()},
+							Receipt: bkntrace.Receipt{ReceiptID: "receipt-function-1", ReceiptStatus: "pending"},
+						}), nil
+					case strings.Contains(request.URL.Path, "/attempts/1:"):
+						if request.Context().Err() != nil {
+							t.Fatal("terminal write inherited caller cancellation")
+						}
+						want := "/attempts/1:complete"
+						if fail {
+							want = "/attempts/1:fail"
+						}
+						if !strings.HasSuffix(request.URL.Path, want) {
+							t.Fatalf("terminal endpoint = %s", request.URL.Path)
+						}
+						finished = true
+						return managedFunctionJSONResponse(http.StatusOK, bkntrace.OperationResult{}), nil
+					default:
+						t.Fatalf("unexpected request: %s", request.URL.Path)
+						return nil, errors.New("unexpected request")
+					}
+				}),
+			})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
+				RequestID: "req_12345678", ConversationID: "conv-1", InteractionID: "int-1", OperationID: "op-execute-tool", Attempt: 1,
+			})
+			ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+				AccountID: "user-1", AccountType: interfaces.AccessorTypeUser, TokenInfo: &interfaces.TokenInfo{ClientID: "app-1"},
+			})
+			guard := &managedFunctionGuard{guard: bkntrace.NewGuard(client), enabled: true}
+			result, err := guard.Execute(ctx, ManagedFunctionTraceInput{
+				KnowledgeNetworkID: "supply", ToolboxID: "box-1", ToolID: "function-1",
+				Descriptor: interfaces.ManagedFunctionDescriptor{ToolID: "function-1", Name: "function"},
+			}, func(context.Context) (map[string]any, error) {
+				cancel()
+				if fail {
+					return nil, context.Canceled
+				}
+				return map[string]any{"value": 42}, nil
+			})
+			if !finished {
+				t.Fatal("inner Operation remained pending")
+			}
+			if fail && !errors.Is(err, context.Canceled) {
+				t.Fatalf("failure = %v", err)
+			}
+			if !fail && (err != nil || result["value"] != 42) {
+				t.Fatalf("business result changed: %v, %v", result, err)
+			}
+		})
 	}
 }
