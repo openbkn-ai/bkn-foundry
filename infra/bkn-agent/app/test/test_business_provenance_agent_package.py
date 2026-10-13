@@ -90,3 +90,18 @@ def test_optimizer_prompt_constrains_skill_identity_scope_and_recovery():
         "not_evaluable",
     ):
         assert required in prompt
+
+
+def test_optimizer_has_a_600_second_budget_without_changing_other_limits():
+    item = _agent_package()
+    assert item["agent_id"] == "business_provenance_optimizer"
+    assert item["spec"]["limits"] == {
+        "max_turns": 12,
+        "max_tool_calls": 12,
+        "timeout_s": 600,
+        "max_output_tokens": 8192,
+    }
+    claim_package = json.loads(
+        PACKAGE.with_name("business-provenance-claim-attribution.json").read_text(encoding="utf-8")
+    )
+    assert claim_package["items"][0]["spec"]["limits"]["timeout_s"] == 75
