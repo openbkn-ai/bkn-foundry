@@ -252,6 +252,8 @@ def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, mon
             json=customized_spec, headers=headers,
         )
         assert customized.status_code == 200
+        assert customized.json()["model"] == "custom-model"
+        assert customized.json()["limits"]["timeout_s"] == 180
         # Existing upsert semantics overwrite manual settings, not just timeout.
         repeat = client.post("/api/bkn-agent/v1/import", json={"package": package}, headers=headers)
         foreign = client.post(
