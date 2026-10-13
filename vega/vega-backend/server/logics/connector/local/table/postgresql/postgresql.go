@@ -11,16 +11,58 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/mitchellh/mapstructure"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
+)
+
+const (
+	// PORT_MIN is the lowest valid TCP port.
+	PORT_MIN = 1
+	// PORT_MAX is the highest valid TCP port.
+	PORT_MAX = 65535
+	// DATABASE_NAME_MAX_LENGTH is the maximum byte length accepted for a configured database name.
+	DATABASE_NAME_MAX_LENGTH = 63
+	// SCHEMA_NAME_MAX_LENGTH is the maximum byte length accepted for a configured schema name.
+	SCHEMA_NAME_MAX_LENGTH = 63
+	// MAX_TIMEOUT_SECONDS keeps the driver timeout within a time.Duration.
+	MAX_TIMEOUT_SECONDS = int64(math.MaxInt64 / int64(time.Second))
+)
+
+var (
+	sessionTimeoutPattern = regexp.MustCompile(`^\+?([0-9]+(?:\.[0-9]*)?|\.[0-9]+)\s*(us|ms|s|min|h|d)?$`)
+
+	SYSTEM_SCHEMAS = []string{
+		"information_schema",
+		"pg_catalog",
+		"pg_toast",
+	}
+	SYSTEM_SCHEMAS_MAP = map[string]bool{
+		"information_schema": true,
+		"pg_catalog":         true,
+		"pg_toast":           true,
+	}
+	allowedOptions = map[string]struct{}{
+		"sslmode":                             {},
+		"connect_timeout":                     {},
+		"application_name":                    {},
+		"fallback_application_name":           {},
+		"client_encoding":                     {},
+		"statement_timeout":                   {},
+		"lock_timeout":                        {},
+		"idle_in_transaction_session_timeout": {},
+	}
 )
 
 type postgresqlConfig struct {
@@ -33,34 +75,12 @@ type postgresqlConfig struct {
 	Options  map[string]any `mapstructure:"options"`
 }
 
-var (
-	SYSTEM_SCHEMAS = []string{
-		"information_schema",
-		"pg_catalog",
-		"pg_toast",
-	}
-	SYSTEM_SCHEMAS_MAP = map[string]bool{
-		"information_schema": true,
-		"pg_catalog":         true,
-		"pg_toast":           true,
-	}
-)
-
-const (
-	databaseNameMaxLength = 63 // The default upper limit of PostgreSQL identifiers
-	portMin               = 1
-	portMax               = 65535
-)
-
 // The PostgresqlConnector implements TableConnector (PostgreSQL).
 type PostgresqlConnector struct {
-	enabled bool
-
-	config *postgresqlConfig
-
-	connected bool
-	db        *sql.DB
-
+	enabled       bool
+	config        *postgresqlConfig
+	connected     bool
+	db            *sql.DB
 	compatibility postgresqlCompatibility
 }
 
@@ -118,7 +138,7 @@ func (c *PostgresqlConnector) GetFieldConfig() map[string]interfaces.ConnectorFi
 		"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
 		"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
 		"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-		"options":  {Name: "连接参数", Type: "object", Description: "连接参数（如 sslmode、connect_timeout 等）", Required: false, Encrypted: false},
+		"options":  {Name: "连接参数", Type: "object", Description: "可选；仅支持 sslmode、connect_timeout、application_name、fallback_application_name、client_encoding、statement_timeout、lock_timeout、idle_in_transaction_session_timeout；connect_timeout 为非负整数秒，会话超时为毫秒或带 PostgreSQL 时间单位的字符串，0 表示禁用；sslmode 默认为 disable，不支持 SSL 文件", Required: false, Encrypted: false},
 	}
 }
 
@@ -133,18 +153,18 @@ func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Co
 		return nil, fmt.Errorf("postgresql connector config is incomplete")
 	}
 
-	if pCfg.Port < portMin || pCfg.Port > portMax {
-		return nil, fmt.Errorf("port %d is out of valid range (%d-%d)", pCfg.Port, portMin, portMax)
+	if pCfg.Port < PORT_MIN || pCfg.Port > PORT_MAX {
+		return nil, fmt.Errorf("port %d is out of valid range (%d-%d)", pCfg.Port, PORT_MIN, PORT_MAX)
 	}
 
-	if len(pCfg.Database) > databaseNameMaxLength {
-		return nil, fmt.Errorf("database name exceeds maximum length of %d characters", databaseNameMaxLength)
+	if len(pCfg.Database) > DATABASE_NAME_MAX_LENGTH {
+		return nil, fmt.Errorf("database name exceeds maximum length of %d characters", DATABASE_NAME_MAX_LENGTH)
 	}
 
 	seen := make(map[string]bool)
 	for _, s := range pCfg.Schemas {
-		if len(s) > databaseNameMaxLength {
-			return nil, fmt.Errorf("schema name '%s' exceeds maximum length of %d characters", s, databaseNameMaxLength)
+		if len(s) > SCHEMA_NAME_MAX_LENGTH {
+			return nil, fmt.Errorf("schema name '%s' exceeds maximum length of %d characters", s, SCHEMA_NAME_MAX_LENGTH)
 		}
 		// Check whether there are duplicate elements in the array
 		if seen[s] {
@@ -153,9 +173,98 @@ func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Co
 		seen[s] = true
 	}
 
+	options, err := c.normalizeOptions(pCfg.Options)
+	if err != nil {
+		return nil, err
+	}
+	pCfg.Options = options
+
 	return &PostgresqlConnector{
 		config: &pCfg,
 	}, nil
+}
+
+// normalizeOptions validates allowed options and trims text values without changing timeout units.
+func (c *PostgresqlConnector) normalizeOptions(options map[string]any) (map[string]any, error) {
+	normalized := make(map[string]any, len(options)+1)
+	for key, value := range options {
+		name := strings.TrimSpace(key)
+		if _, allowed := allowedOptions[name]; !allowed {
+			return nil, fmt.Errorf("unsupported postgresql option %q", key)
+		}
+		if _, duplicate := normalized[name]; duplicate {
+			return nil, fmt.Errorf("duplicate postgresql option %q", name)
+		}
+		switch name {
+		case "sslmode":
+			mode, ok := value.(string)
+			if !ok {
+				return nil, fmt.Errorf("postgresql option sslmode must be a string")
+			}
+			mode = strings.TrimSpace(mode)
+			switch mode {
+			case "", "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
+				value = mode
+			default:
+				return nil, fmt.Errorf("postgresql option sslmode must be disable, allow, prefer, require, verify-ca or verify-full")
+			}
+		case "connect_timeout":
+			var seconds int64
+			var ok bool
+			if text, isString := value.(string); isString {
+				var err error
+				text = strings.TrimSpace(text)
+				seconds, err = strconv.ParseInt(text, 10, 64)
+				value = text
+				ok = err == nil
+			} else {
+				seconds, ok = common.NumberAsInt64(value)
+			}
+			// lib/pq converts seconds to time.Duration; reject overflow before opening a connection.
+			if !ok || seconds < 0 || seconds > MAX_TIMEOUT_SECONDS {
+				return nil, fmt.Errorf("postgresql option connect_timeout must be a non-negative integer not greater than %d seconds", MAX_TIMEOUT_SECONDS)
+			}
+		case "statement_timeout", "lock_timeout", "idle_in_transaction_session_timeout":
+			var amount float64
+			var ok bool
+			milliseconds := true
+			if text, isString := value.(string); isString {
+				text = strings.TrimSpace(text)
+				match := sessionTimeoutPattern.FindStringSubmatch(text)
+				if match == nil {
+					return nil, fmt.Errorf("postgresql option %s must be a non-negative timeout in milliseconds or with a PostgreSQL time unit", name)
+				}
+				var err error
+				amount, err = strconv.ParseFloat(match[1], 64)
+				ok = err == nil
+				milliseconds = match[2] == "" || match[2] == "ms"
+				value = text
+			} else {
+				amount, ok = common.NumberAsFloat64(value)
+			}
+			// Validate millisecond values locally; PostgreSQL checks ranges for other units.
+			if !ok || math.IsNaN(amount) || math.IsInf(amount, 0) || amount < 0 || (milliseconds && amount > math.MaxInt32) {
+				return nil, fmt.Errorf("postgresql option %s must be a non-negative finite timeout; millisecond values must not exceed %d", name, math.MaxInt32)
+			}
+		case "application_name", "fallback_application_name":
+			applicationName, ok := value.(string)
+			if !ok {
+				return nil, fmt.Errorf("postgresql option %s must be a string", name)
+			}
+			value = strings.TrimSpace(applicationName)
+		case "client_encoding":
+			encoding, ok := value.(string)
+			if !ok || strings.TrimSpace(encoding) == "" {
+				return nil, fmt.Errorf("postgresql option client_encoding must be a nonempty string")
+			}
+			value = strings.TrimSpace(encoding)
+		}
+		normalized[name] = value
+	}
+	if mode, exists := normalized["sslmode"]; !exists || mode == "" {
+		normalized["sslmode"] = "disable"
+	}
+	return normalized, nil
 }
 
 // connectionString builds the PostgreSQL connection URL from connector settings.
@@ -169,7 +278,12 @@ func (c *PostgresqlConnector) connectionString() string {
 	q := u.Query()
 	if c.config.Options != nil {
 		for k, v := range c.config.Options {
-			q.Set(k, fmt.Sprintf("%v", v))
+			if integer, ok := common.NumberAsInt64(v); ok {
+				// Encode integer options without scientific notation when serializing JSON numbers.
+				q.Set(k, strconv.FormatInt(integer, 10))
+			} else {
+				q.Set(k, fmt.Sprintf("%v", v))
+			}
 		}
 	}
 	if q.Get("sslmode") == "" {

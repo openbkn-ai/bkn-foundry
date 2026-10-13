@@ -171,7 +171,7 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 		seen[db] = struct{}{}
 		mCfg.Databases[idx] = db
 	}
-	options, err := normalizeOptions(mCfg.Options)
+	options, err := c.normalizeOptions(mCfg.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 }
 
 // normalizeOptions validates supported driver options and converts their values to DSN strings.
-func normalizeOptions(options map[string]any) (map[string]any, error) {
+func (c *MariaDBConnector) normalizeOptions(options map[string]any) (map[string]any, error) {
 	normalized := make(map[string]any, len(options))
 	for key, value := range options {
 		name := strings.TrimSpace(key)

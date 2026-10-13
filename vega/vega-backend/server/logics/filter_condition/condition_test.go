@@ -610,11 +610,17 @@ func TestComparisonOps(t *testing.T) {
 	t.Run("comparison ops field not found", func(t *testing.T) {
 		ops := []string{"==", "!=", ">", ">=", "<", "<=", "in", "not_in", "between", "out_range"}
 		for _, op := range ops {
-			cfg := constCfg("nonexistent", op, "test")
-			_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-			if err == nil {
-				t.Errorf("operation '%s': expected error for unknown field", op)
-			}
+			t.Run(op, func(t *testing.T) {
+				var value any = 1
+				switch op {
+				case "in", "not_in", "between", "out_range":
+					value = []any{1, 2}
+				}
+				cfg := constCfg("nonexistent", op, value)
+				condition, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+				require.ErrorContains(t, err, "not found in schema")
+				assert.Nil(t, condition)
+			})
 		}
 	})
 }

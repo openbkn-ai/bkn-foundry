@@ -184,9 +184,10 @@ func TestMariaDBConnectorNew(t *testing.T) {
 	})
 }
 
-func TestNormalizeOptions(t *testing.T) {
+func TestMariaDBConnectorNormalizeOptions(t *testing.T) {
+	connector := &MariaDBConnector{}
 	t.Run("trims duration before validation", func(t *testing.T) {
-		got, err := normalizeOptions(map[string]any{"timeout": " 5s ", "readTimeout": " 1.5s ", "writeTimeout": " 0s "})
+		got, err := connector.normalizeOptions(map[string]any{"timeout": " 5s ", "readTimeout": " 1.5s ", "writeTimeout": " 0s "})
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{"timeout": "5s", "readTimeout": "1.5s", "writeTimeout": "0s"}, got)
 	})
@@ -225,7 +226,7 @@ func TestNormalizeOptions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := normalizeOptions(tt.options)
+			got, err := connector.normalizeOptions(tt.options)
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				assert.Nil(t, got)
@@ -249,7 +250,7 @@ func TestNormalizeOptions(t *testing.T) {
 		{"false", false, "false"},
 	} {
 		t.Run("boolean "+tt.name, func(t *testing.T) {
-			got, err := normalizeOptions(map[string]any{"tls": tt.input})
+			got, err := connector.normalizeOptions(map[string]any{"tls": tt.input})
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got["tls"])
 		})
