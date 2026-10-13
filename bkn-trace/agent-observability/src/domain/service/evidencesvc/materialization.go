@@ -9,11 +9,66 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
+
+const (
+	recordIntegrityRetryInitial = 30 * time.Second
+	recordIntegrityRetryMax     = 5 * time.Minute
+	recordIntegrityRetryLimit   = 1000
+)
+
+// Retry state is process-local: restart or eviction permits another attempt.
+// It never changes the stored verdict or the underlying evidence.
+type recordIntegrityRetryState struct {
+	mu      sync.Mutex
+	entries map[string]recordIntegrityRetry
+}
+
+type recordIntegrityRetry struct {
+	version uint64
+	delay   time.Duration
+	after   time.Time
+}
+
+func (s *Service) recordIntegrityRetryDeferred(id string, version uint64, now time.Time) bool {
+	s.integrityRetries.mu.Lock()
+	defer s.integrityRetries.mu.Unlock()
+	retry, exists := s.integrityRetries.entries[id]
+	return exists && retry.version == version && now.Before(retry.after)
+}
+
+func (s *Service) deferRecordIntegrityRetry(id string, version uint64, now time.Time) {
+	s.integrityRetries.mu.Lock()
+	defer s.integrityRetries.mu.Unlock()
+	entries := s.integrityRetries.entries
+	if entries == nil {
+		entries = make(map[string]recordIntegrityRetry)
+		s.integrityRetries.entries = entries
+	}
+	previous, exists := entries[id]
+	delay := recordIntegrityRetryInitial
+	if exists && previous.version == version {
+		delay = min(previous.delay*2, recordIntegrityRetryMax)
+	}
+	if !exists && len(entries) >= recordIntegrityRetryLimit {
+		// Prefer evicting the candidate whose next attempt is due earliest.
+		var oldestID string
+		var earliest time.Time
+		for key, retry := range entries {
+			if earliest.IsZero() || retry.after.Before(earliest) {
+				oldestID, earliest = key, retry.after
+			}
+		}
+		delete(entries, oldestID)
+	}
+	entries[id] = recordIntegrityRetry{version: version, delay: delay, after: now.Add(delay)}
+}
 
 func storedRecordIntegrity(interaction sessionvo.Interaction) (*evidencevo.RecordIntegrity, bool, error) {
 	if interaction.ExecutionStatus == sessionvo.InteractionActive {
@@ -42,8 +97,12 @@ func storedRecordIntegrity(interaction sessionvo.Interaction) (*evidencevo.Recor
 
 // PersistRecordIntegrityBatch is a bounded background pass, independent of
 // business requests and page reads. A failed candidate remains uncomputed and
-// is retried on the next cursor pass; it does not prevent later candidates.
+// is retried after capped backoff; it does not prevent later candidates.
 func (s *Service) PersistRecordIntegrityBatch(ctx context.Context, afterID string, limit int) (string, error) {
+	return s.persistRecordIntegrityBatch(ctx, afterID, limit, time.Now)
+}
+
+func (s *Service) persistRecordIntegrityBatch(ctx context.Context, afterID string, limit int, now func() time.Time) (string, error) {
 	if !s.currentRecordIntegrity {
 		return "", nil
 	}
@@ -68,6 +127,9 @@ func (s *Service) PersistRecordIntegrityBatch(ctx context.Context, afterID strin
 			return nextID, errors.Join(append(failures, err)...)
 		}
 		nextID = candidate.ID
+		if s.recordIntegrityRetryDeferred(candidate.ID, candidate.IntegritySourceVersion, now()) {
+			continue
+		}
 		var interaction sessionvo.Interaction
 		var owner sessionvo.Owner
 		found := false
@@ -106,7 +168,14 @@ func (s *Service) PersistRecordIntegrityBatch(ctx context.Context, afterID strin
 			}
 		}
 		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				s.deferRecordIntegrityRetry(candidate.ID, candidate.IntegritySourceVersion, now())
+			}
 			failures = append(failures, fmt.Errorf("materialize record integrity %s: %w", candidate.ID, err))
+		} else {
+			s.integrityRetries.mu.Lock()
+			delete(s.integrityRetries.entries, candidate.ID)
+			s.integrityRetries.mu.Unlock()
 		}
 	}
 	return nextID, errors.Join(failures...)
