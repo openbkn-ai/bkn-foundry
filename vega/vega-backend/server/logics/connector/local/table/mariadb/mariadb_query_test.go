@@ -194,7 +194,7 @@ func TestBuildDateFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, connector.buildDateFormat("created_at", "created_at", tt.interval))
+			assert.Equal(t, tt.want, connector.buildDateFormat("created_at", tt.interval))
 		})
 	}
 }

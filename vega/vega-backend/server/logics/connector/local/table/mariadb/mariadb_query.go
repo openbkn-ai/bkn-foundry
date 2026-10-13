@@ -143,7 +143,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 		column := originalName(groupByItem.Property)
 		// Check whether calendar_interval is needed
 		if groupByItem.CalendarInterval != "" {
-			dateFmt := c.buildDateFormat(groupByItem.Property, mariadbQuoteColumnName(column), groupByItem.CalendarInterval)
+			dateFmt := c.buildDateFormat(mariadbQuoteColumnName(column), groupByItem.CalendarInterval)
 			selectFields = append(selectFields, dateFmt+" AS "+mariadbQuoteColumnName(groupByItem.Property))
 		} else {
 			selectFields = append(selectFields,
@@ -232,7 +232,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 			// Check whether calendar_interval is needed
 			if groupByItem.CalendarInterval != "" {
 				groupByFields = append(groupByFields,
-					c.buildDateFormat(groupByItem.Property, column, groupByItem.CalendarInterval))
+					c.buildDateFormat(column, groupByItem.CalendarInterval))
 			} else {
 				groupByFields = append(groupByFields, column)
 			}
@@ -271,7 +271,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 		for _, groupByItem := range params.GroupBy {
 			if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
 				// Use the full date_format expression
-				sortField = c.buildDateFormat(groupByItem.Property,
+				sortField = c.buildDateFormat(
 					mariadbQuoteColumnName(originalName(groupByItem.Property)), groupByItem.CalendarInterval)
 				break
 			}
@@ -490,7 +490,7 @@ func formatInValues(value any) string {
 // buildDateFormat builds the date_format expression based on calendar_interval
 // Support the calendar_interval enumeration values of OpenSearch: minute, hour, day, week, month, quarter, year
 // Note: The validity of calendar_interval has been verified in the validateCalendarInterval method in validate_resource_data.go
-func (c *MariaDBConnector) buildDateFormat(alias, dateField, calendarInterval string) string {
+func (c *MariaDBConnector) buildDateFormat(dateField, calendarInterval string) string {
 	var dateFmt string
 	switch calendarInterval {
 	case interfaces.CALENDAR_UNIT_MINUTE:

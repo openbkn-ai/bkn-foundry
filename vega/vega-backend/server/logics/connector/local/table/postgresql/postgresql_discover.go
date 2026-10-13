@@ -174,12 +174,11 @@ func discoverableRelationsBuilder() sq.SelectBuilder {
 
 // listTables filters readable tables and views by optional schema and table name.
 func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName string) ([]*interfaces.TableMeta, error) {
-	if err := c.Connect(ctx); err != nil {
-		return nil, err
-	}
-
 	if schema != "" && !c.schemaAllowed(schema) {
 		return nil, fmt.Errorf("schema %q is outside the connector scope", schema)
+	}
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
 	}
 
 	builder := discoverableRelationsBuilder().Columns(
@@ -277,11 +276,11 @@ func (c *PostgresqlConnector) mapTableType(relKind string) string {
 
 // GetTableMeta fills the table metadata.
 func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
-	if err := c.Connect(ctx); err != nil {
-		return err
-	}
 	if !c.schemaAllowed(table.Schema) {
 		return fmt.Errorf("schema %q is outside the connector scope", table.Schema)
+	}
+	if err := c.Connect(ctx); err != nil {
+		return err
 	}
 
 	if err := c.fetchTableStatus(ctx, table); err != nil {
@@ -343,11 +342,17 @@ func (c *PostgresqlConnector) fetchTableStatus(ctx context.Context, table *inter
 	table.TableType = c.mapTableType(relKind.String)
 	table.Description = description.String
 
-	table.Properties = map[string]any{
-		"estimated_row_count": estimatedRowCount.Int64,
-		"data_length":         totalBytes.Int64,
-		"index_length":        indexBytes.Int64,
+	properties := make(map[string]any)
+	if estimatedRowCount.Valid && estimatedRowCount.Int64 >= 0 {
+		properties["estimated_row_count"] = estimatedRowCount.Int64
 	}
+	if totalBytes.Valid && totalBytes.Int64 >= 0 {
+		properties["data_length"] = totalBytes.Int64
+	}
+	if indexBytes.Valid && indexBytes.Int64 >= 0 {
+		properties["index_length"] = indexBytes.Int64
+	}
+	table.Properties = properties
 	return nil
 }
 

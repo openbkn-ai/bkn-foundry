@@ -8,12 +8,14 @@ package postgresql
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -44,6 +46,20 @@ func TestPostgresqlConnectorTableTypeFromRelKind(t *testing.T) {
 }
 
 func TestPostgresqlConnectorListTables(t *testing.T) {
+	t.Run("rejects scope before connecting", func(t *testing.T) {
+		connector := &PostgresqlConnector{config: &postgresqlConfig{Schemas: []string{"app"}}}
+		connected := false
+		patches := gomonkey.ApplyMethod(connector, "Connect", func(_ *PostgresqlConnector, _ context.Context) error {
+			connected = true
+			return errors.New("unexpected connection attempt")
+		})
+		defer patches.Reset()
+
+		tables, err := connector.listTables(context.Background(), "outside", "")
+		require.ErrorContains(t, err, "scope")
+		assert.Nil(t, tables)
+		assert.False(t, connected)
+	})
 	t.Run("excludes partition children and accepts null optional description", func(t *testing.T) {
 		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 		if err != nil {
@@ -569,6 +585,26 @@ func TestPostgresqlConnectorDecodeTableMeta(t *testing.T) {
 
 func TestPostgresqlConnectorFetchTableStatus(t *testing.T) {
 	for _, tc := range []struct {
+		name  string
+		value driver.Value
+	}{{"NULL", nil}, {"negative", int64(-1)}, {"zero retained", int64(0)}} {
+		t.Run("valid properties "+tc.name, func(t *testing.T) {
+			c, mock, cleanup := newPostgresqlConnectorMock(t, nil)
+			defer cleanup()
+			mock.ExpectQuery("SELECT c.relkind::text").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"relkind", "description", "est_rows", "total_bytes", "index_bytes"}).AddRow("r", nil, tc.value, tc.value, tc.value))
+			previous := map[string]any{"legacy": true}
+			table := &interfaces.TableMeta{Name: "orders", Schema: "app", Properties: previous}
+			require.NoError(t, c.fetchTableStatus(context.Background(), table))
+			want := map[string]any{}
+			if tc.name == "zero retained" {
+				want = map[string]any{"estimated_row_count": int64(0), "data_length": int64(0), "index_length": int64(0)}
+			}
+			assert.Equal(t, want, table.Properties)
+			assert.Equal(t, map[string]any{"legacy": true}, previous)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+	for _, tc := range []struct {
 		name         string
 		description  any
 		want         string
@@ -619,8 +655,16 @@ func TestPostgresqlConnectorGetTableMetaRejectsOutsideScope(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	connector := &PostgresqlConnector{config: &postgresqlConfig{Schemas: []string{"app"}}, connected: true, db: db}
+	connector.connected = false
+	connected := false
+	patches := gomonkey.ApplyMethod(connector, "Connect", func(_ *PostgresqlConnector, _ context.Context) error {
+		connected = true
+		return errors.New("unexpected connection attempt")
+	})
+	defer patches.Reset()
 	table := &interfaces.TableMeta{Database: "other", Schema: "other", Name: "orders"}
 	err = connector.GetTableMeta(context.Background(), table)
 	require.ErrorContains(t, err, "outside")
+	assert.False(t, connected)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

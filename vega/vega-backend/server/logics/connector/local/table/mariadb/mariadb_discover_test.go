@@ -8,6 +8,7 @@ package mariadb
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -22,6 +24,43 @@ import (
 )
 
 func TestMariaDBConnectorListTables(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		statistic driver.Value
+		timestamp driver.Value
+	}{
+		{"NULL", nil, nil}, {"negative and zero time", int64(-1), time.Time{}}, {"zero retained", int64(0), nil},
+	} {
+		t.Run("valid properties "+tc.name, func(t *testing.T) {
+			c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanup()
+			c.connected = true
+			mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").WithArgs("app").WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", "", "", tc.statistic, nil, tc.timestamp, tc.timestamp, tc.statistic, tc.statistic))
+			tables, err := c.ListTables(context.Background())
+			require.NoError(t, err)
+			require.Len(t, tables, 1)
+			want := map[string]any{}
+			if tc.name == "zero retained" {
+				want = map[string]any{"estimated_row_count": int64(0), "data_length": int64(0), "index_length": int64(0)}
+			}
+			assert.Equal(t, want, tables[0].Properties)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+	t.Run("rejects scope before connecting", func(t *testing.T) {
+		connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"app"}}}
+		connected := false
+		patches := gomonkey.ApplyMethod(connector, "Connect", func(_ *MariaDBConnector, _ context.Context) error {
+			connected = true
+			return errors.New("unexpected connection attempt")
+		})
+		defer patches.Reset()
+
+		tables, err := connector.listTables(context.Background(), "outside", "")
+		require.ErrorContains(t, err, "scope")
+		assert.Nil(t, tables)
+		assert.False(t, connected)
+	})
 	t.Run("rejects database outside configured scope before querying", func(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 		defer cleanup()
@@ -61,7 +100,7 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, tables, 1)
 		assert.Equal(t, "", tables[0].Description)
-		assert.Equal(t, "", tables[0].Properties["engine"])
+		assert.Empty(t, tables[0].Properties)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -362,6 +401,29 @@ func TestMariaDBConnectorDecodeTableMeta(t *testing.T) {
 
 func TestMariaDBConnectorFetchTableStatus(t *testing.T) {
 	for _, tc := range []struct {
+		name      string
+		statistic driver.Value
+		timestamp driver.Value
+	}{
+		{"NULL", nil, nil}, {"negative and zero time", int64(-1), time.Time{}}, {"zero retained", int64(0), nil},
+	} {
+		t.Run("valid properties "+tc.name, func(t *testing.T) {
+			c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanup()
+			mock.ExpectQuery("SELECT TABLE_TYPE, AUTO_INCREMENT, ENGINE").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION", "TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH"}).AddRow("BASE TABLE", tc.statistic, "", "", tc.statistic, nil, tc.timestamp, tc.timestamp, tc.statistic, tc.statistic))
+			previous := map[string]any{"legacy": true}
+			table := &interfaces.TableMeta{Name: "orders", Database: "app", Schema: "app", Properties: previous}
+			require.NoError(t, c.fetchTableStatus(context.Background(), table))
+			want := map[string]any{}
+			if tc.name == "zero retained" {
+				want = map[string]any{"auto_increment": int64(0), "estimated_row_count": int64(0), "data_length": int64(0), "index_length": int64(0)}
+			}
+			assert.Equal(t, want, table.Properties)
+			assert.Equal(t, map[string]any{"legacy": true}, previous)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+	for _, tc := range []struct {
 		name                           string
 		populated, valid, queryFailure bool
 		collation                      any
@@ -426,9 +488,17 @@ func TestMariaDBConnectorGetTableMetaRejectsOutsideScope(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"app"}}, connected: true, db: db}
+	connector.connected = false
+	connected := false
+	patches := gomonkey.ApplyMethod(connector, "Connect", func(_ *MariaDBConnector, _ context.Context) error {
+		connected = true
+		return errors.New("unexpected connection attempt")
+	})
+	defer patches.Reset()
 	table := &interfaces.TableMeta{Database: "other", Schema: "other", Name: "orders"}
 	err = connector.GetTableMeta(context.Background(), table)
 	require.ErrorContains(t, err, "outside")
+	assert.False(t, connected)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
