@@ -89,6 +89,21 @@ func (mr *MockOntologyManagerAccessMockRecorder) GetMetricExecutionContext(ctx, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetricExecutionContext", reflect.TypeOf((*MockOntologyManagerAccess)(nil).GetMetricExecutionContext), ctx, knID, branch, metricID)
 }
 
+// GetObjectMetricExecutionContext mocks base method.
+func (m *MockOntologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Context, knID, branch, metricID string, version int) (*interfaces.ObjectMetricExecutionContextV1, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetObjectMetricExecutionContext", ctx, knID, branch, metricID, version)
+	ret0, _ := ret[0].(*interfaces.ObjectMetricExecutionContextV1)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetObjectMetricExecutionContext indicates an expected call of GetObjectMetricExecutionContext.
+func (mr *MockOntologyManagerAccessMockRecorder) GetObjectMetricExecutionContext(ctx, knID, branch, metricID, version any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectMetricExecutionContext", reflect.TypeOf((*MockOntologyManagerAccess)(nil).GetObjectMetricExecutionContext), ctx, knID, branch, metricID, version)
+}
+
 // GetObjectType mocks base method.
 func (m *MockOntologyManagerAccess) GetObjectType(ctx context.Context, knID, branch, otId string) (interfaces.ObjectType, bool, error) {
 	m.ctrl.T.Helper()
