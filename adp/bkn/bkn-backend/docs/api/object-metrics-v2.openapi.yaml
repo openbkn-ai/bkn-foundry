@@ -1,0 +1,393 @@
+openapi: 3.1.0
+info:
+  title: OpenBKN Object Metrics API
+  version: 2.0.0
+  description: Versioned, object-centered metric authoring API. Published versions are immutable.
+servers:
+  - url: /api/bkn-backend
+paths:
+  /v2/object-metrics/capabilities:
+    get:
+      operationId: getObjectMetricCapabilities
+      responses:
+        "200":
+          description: Supported registries and domain capabilities.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricCapabilities" }
+  /v2/knowledge-networks/{kn_id}/object-metrics:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/Branch"
+    get:
+      operationId: listObjectMetrics
+      parameters:
+        - { name: owner_object_type_id, in: query, schema: { type: string } }
+        - { name: metric_type, in: query, schema: { $ref: "#/components/schemas/ObjectMetricType" } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/LifecycleStatus" } }
+        - { name: keyword, in: query, schema: { type: string } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 20 } }
+      responses:
+        "200":
+          description: Latest metric versions matching the filters.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricList" }
+    post:
+      operationId: createObjectMetricDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectMetricDefinition" }
+      responses:
+        "201":
+          description: Draft created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+  /v2/knowledge-networks/{kn_id}/object-metrics/validate:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/Branch"
+    post:
+      operationId: validateObjectMetric
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectMetricDefinition" }
+      responses:
+        "200":
+          description: Stable validation issues and inferred output shape.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationResult" }
+  /v2/knowledge-networks/{kn_id}/object-metrics/preview:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/Branch"
+    post:
+      operationId: previewObjectMetricContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectMetricDefinition" }
+      responses:
+        "200":
+          description: Validation plus inferred result contract. This endpoint does not execute business data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricPreview" }
+  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/MetricId"
+      - $ref: "#/components/parameters/Branch"
+      - $ref: "#/components/parameters/Version"
+    get:
+      operationId: getObjectMetric
+      responses:
+        "200":
+          description: Requested version, or the latest version when omitted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+    put:
+      operationId: updateObjectMetricDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectMetricDefinition" }
+      responses:
+        "200":
+          description: Draft updated. Identity, owner, code, type and version are server protected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+    delete:
+      operationId: deleteObjectMetricDraft
+      responses:
+        "204": { description: Draft removed. Published versions cannot be deleted. }
+  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/versions:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/MetricId"
+      - $ref: "#/components/parameters/Branch"
+    post:
+      operationId: createNextObjectMetricDraftVersion
+      responses:
+        "201":
+          description: A draft copied from the latest published version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+    get:
+      operationId: listObjectMetricVersions
+      responses:
+        "200":
+          description: All immutable and draft versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ObjectMetricRecord" }
+  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/publish:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/MetricId"
+      - $ref: "#/components/parameters/Branch"
+      - $ref: "#/components/parameters/RequiredVersion"
+    post:
+      operationId: publishObjectMetricVersion
+      responses:
+        "200":
+          description: Immutable published metric version. The saved version must already be in validated status; an optional authored logical property is created after publication.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+        "422": { description: Definition or referenced ontology is invalid. }
+  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/validate:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/MetricId"
+      - $ref: "#/components/parameters/Branch"
+      - $ref: "#/components/parameters/RequiredVersion"
+    post:
+      operationId: validateSavedObjectMetricVersion
+      description: Runs authoritative validation for a saved draft and persists its lifecycle status as validated. Any later edit returns it to draft.
+      responses:
+        "200":
+          description: Saved metric version marked as validated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+        "422": { description: Definition or referenced ontology is invalid. }
+  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/logic-properties:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/MetricId"
+      - $ref: "#/components/parameters/Branch"
+      - $ref: "#/components/parameters/RequiredVersion"
+    post:
+      operationId: bindObjectMetricAsLogicProperty
+      description: Only published object-instance metrics can be bound. Object identity is inherited from the owner object type.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [object_type_id, property_name, display_name]
+              properties:
+                object_type_id: { type: string }
+                property_name: { type: string }
+                display_name: { type: string }
+                comment: { type: string }
+      responses:
+        "201": { description: The created object-class logical property. }
+  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deprecate:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/MetricId"
+      - $ref: "#/components/parameters/Branch"
+      - $ref: "#/components/parameters/RequiredVersion"
+    post:
+      operationId: deprecateObjectMetricVersion
+      responses:
+        "200":
+          description: Published version marked as deprecated. Existing pinned dependencies remain valid.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+components:
+  parameters:
+    KnowledgeNetworkId: { name: kn_id, in: path, required: true, schema: { type: string } }
+    MetricId: { name: metric_id, in: path, required: true, schema: { type: string, format: uuid } }
+    Branch: { name: branch, in: query, schema: { type: string, default: main } }
+    Version: { name: version, in: query, schema: { type: integer, minimum: 1 } }
+    RequiredVersion: { name: version, in: query, required: true, schema: { type: integer, minimum: 1 } }
+  schemas:
+    ObjectMetricType: { type: string, enum: [atomic, derived, composite] }
+    CalculationScope: { type: string, enum: [object_instance, object_set] }
+    LifecycleStatus: { type: string, enum: [draft, validated, published, deprecated] }
+    OutputShape: { type: string, enum: [object_value, summary, grouped, time_series] }
+    ObjectMetricDefinition:
+      type: object
+      required: [code, name, description, owner_object_type_id, metric_type, calculation_scope, result_semantics, specification, query_capabilities, lifecycle]
+      properties:
+        id: { type: string, description: Ignored on create; protected on update. }
+        version: { type: integer, minimum: 1 }
+        code: { type: string, pattern: "^[a-z][a-z0-9_]*$" }
+        name: { type: string, minLength: 1 }
+        description: { type: string, minLength: 1 }
+        owner_object_type_id: { type: string }
+        metric_type: { $ref: "#/components/schemas/ObjectMetricType" }
+        calculation_scope: { $ref: "#/components/schemas/CalculationScope" }
+        result_semantics: { type: object, additionalProperties: true }
+        specification:
+          oneOf:
+            - { $ref: "#/components/schemas/AtomicSpecification" }
+            - { $ref: "#/components/schemas/DerivedSpecification" }
+            - { $ref: "#/components/schemas/CompositeSpecification" }
+        query_capabilities: { type: object, additionalProperties: true }
+        logic_property:
+          $ref: "#/components/schemas/ObjectMetricLogicProperty"
+        lifecycle: { type: object, additionalProperties: true }
+    ObjectMetricLogicProperty:
+      type: object
+      description: Optional authoring intent. The logical property is created only after this metric version is published.
+      required: [property_name, display_name]
+      properties:
+        property_name: { type: string, pattern: "^[a-z][a-z0-9_]*$" }
+        display_name: { type: string, minLength: 1 }
+        comment: { type: string }
+    AtomicSpecification:
+      type: object
+      required: [kind, measure]
+      properties:
+        kind: { const: atomic }
+        measure:
+          type: object
+          required: [aggregation]
+          properties:
+            aggregation: { type: string, enum: [identity, count_rows, count, count_distinct, sum, avg, min, max] }
+            expression: { $ref: "#/components/schemas/Expression" }
+    DerivedSpecification:
+      type: object
+      required: [kind, base_metric, business_qualifiers]
+      properties:
+        kind: { const: derived }
+        base_metric: { $ref: "#/components/schemas/MetricRef" }
+        business_qualifiers: { $ref: "#/components/schemas/ObjectMetricBusinessQualifiers" }
+    ObjectMetricBusinessQualifiers:
+      type: object
+      additionalProperties: false
+      properties:
+        filters:
+          type: object
+          description: Typed condition AST applied to the current object instance.
+          additionalProperties: true
+        relation_path:
+          type: object
+          description: Optional relationship path and related-instance qualifier.
+          additionalProperties: true
+        event_time: { $ref: "#/components/schemas/PropertyRef" }
+        time_window: { $ref: "#/components/schemas/ObjectMetricTimeWindow" }
+    ObjectMetricTimeWindow:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [mode]
+          properties:
+            mode: { const: unbounded }
+        - type: object
+          additionalProperties: false
+          required: [mode, length, unit]
+          properties:
+            mode: { const: rolling }
+            length: { type: integer, minimum: 1 }
+            unit: { type: string, enum: [minute, hour, day, week, month, quarter, year] }
+            timezone: { type: string, description: IANA timezone name. }
+        - type: object
+          additionalProperties: false
+          required: [mode, period, timezone]
+          properties:
+            mode: { type: string, enum: [calendar_period, period_to_date] }
+            period: { type: string, enum: [day, week, month, quarter, year] }
+            timezone: { type: string, description: IANA timezone name. }
+            week_start: { type: string, enum: [monday, sunday] }
+        - type: object
+          additionalProperties: false
+          required: [mode, start_at, end_at, timezone]
+          properties:
+            mode: { const: fixed_range }
+            start_at: { type: integer, format: int64, description: Inclusive Unix time in milliseconds. }
+            end_at: { type: integer, format: int64, description: Inclusive Unix time in milliseconds and greater than start_at. }
+            timezone: { type: string, description: IANA timezone used to interpret the authored range. }
+    CompositeSpecification:
+      type: object
+      required: [kind, dependencies, expression, alignment, null_policy, zero_division_policy]
+      properties:
+        kind: { const: composite }
+        dependencies:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/ObjectMetricDependency" }
+        expression: { $ref: "#/components/schemas/Expression" }
+        alignment: { type: object, additionalProperties: true }
+        null_policy: { type: string, enum: [propagate, coalesce_zero] }
+        zero_division_policy: { type: string, enum: [unavailable, null, zero] }
+    Expression:
+      type: object
+      description: Typed expression AST. node_type selects property, dependency, literal, call, unary or binary payload.
+      required: [node_type]
+      additionalProperties: true
+    MetricRef:
+      type: object
+      required: [metric_id, version]
+      properties:
+        metric_id: { type: string }
+        version: { type: integer, minimum: 1 }
+    ObjectMetricDependency:
+      type: object
+      required: [alias, metric_ref, object_alignment, evaluation_context]
+      properties:
+        alias: { type: string }
+        metric_ref: { $ref: "#/components/schemas/MetricRef" }
+        object_alignment: { type: object, additionalProperties: true }
+        evaluation_context: { type: object, additionalProperties: true }
+        rollup_aggregation:
+          type: string
+          enum: [sum, avg, min, max, count, count_distinct]
+          description: Required when this dependency is rolled up across object instances or statistical grain.
+    ObjectMetricRecord:
+      type: object
+      required: [definition, kn_id, branch, creator, updater, create_time, update_time]
+      properties:
+        definition: { $ref: "#/components/schemas/ObjectMetricDefinition" }
+        kn_id: { type: string }
+        branch: { type: string }
+        creator: { type: object, additionalProperties: true }
+        updater: { type: object, additionalProperties: true }
+        create_time: { type: integer, format: int64 }
+        update_time: { type: integer, format: int64 }
+    ObjectMetricList:
+      type: object
+      required: [entries, total_count]
+      properties:
+        entries: { type: array, items: { $ref: "#/components/schemas/ObjectMetricRecord" } }
+        total_count: { type: integer, minimum: 0 }
+    ValidationIssue:
+      type: object
+      required: [code, field, message]
+      properties:
+        code: { type: string }
+        field: { type: string }
+        message: { type: string }
+    ValidationResult:
+      type: object
+      required: [valid, issues, output_shape]
+      properties:
+        valid: { type: boolean }
+        issues: { type: array, items: { $ref: "#/components/schemas/ValidationIssue" } }
+        output_shape: { $ref: "#/components/schemas/OutputShape" }
+    ObjectMetricPreview:
+      type: object
+      required: [validation, output_schema]
+      properties:
+        validation: { $ref: "#/components/schemas/ValidationResult" }
+        output_schema: { type: object, additionalProperties: true }
+    ObjectMetricCapabilities:
+      type: object
+      properties:
+        time_window_modes:
+          type: array
+          items: { type: string, enum: [unbounded, rolling, calendar_period, period_to_date, fixed_range] }
+      additionalProperties:
+        oneOf:
+          - { type: array, items: { type: string } }
+          - { type: object, additionalProperties: { type: string } }
