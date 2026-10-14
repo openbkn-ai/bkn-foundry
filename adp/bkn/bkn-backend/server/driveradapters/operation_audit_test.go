@@ -273,7 +273,7 @@ func TestOperationAuditFactsUseLogicPropertySnapshot(t *testing.T) {
 	context.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties", nil)
 	context.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "metric-a"}}
 	context.Set("operation_audit_target_ids", []string{"order"})
-	context.Set("operation_audit_target_names", []string{"履约耗时"})
+	context.Set("operation_audit_target_names", []string{"订单"})
 	facts := operationAuditFacts(
 		context,
 		operationAuditRule{Action: "update", TargetType: "object_type"},
@@ -281,7 +281,7 @@ func TestOperationAuditFactsUseLogicPropertySnapshot(t *testing.T) {
 		[]byte(`{"name":"duration","display_name":"履约耗时"}`),
 		"req-test",
 	)
-	if facts.targetID != "order" || facts.targetName != "履约耗时" {
+	if facts.targetID != "order" || facts.targetName != "订单" {
 		t.Fatalf("facts = %#v", facts)
 	}
 	entry := operationaudit.Entry{
