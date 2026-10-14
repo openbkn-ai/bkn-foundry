@@ -6,10 +6,44 @@
 package object_type
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
+
+func TestObjectMetricLiteralTypePreservesPreciseJSONNumbers(t *testing.T) {
+	tests := []struct {
+		name  string
+		value json.Number
+		want  string
+	}{
+		{name: "integer", value: json.Number("42"), want: "int64"},
+		{name: "decimal", value: json.Number("100.25"), want: "decimal"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := objectMetricLiteralType(tt.value); got != tt.want {
+				t.Fatalf("objectMetricLiteralType(%q) = %q, want %q", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildObjectMetricQueryFromLogicPropertyTypesPreciseJSONNumberFilters(t *testing.T) {
+	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "order",
+	}}
+	query, err := buildObjectMetricQueryFromLogicProperty(objectType, []interfaces.Filter{{
+		Name: "amount", Operation: ">", Value: json.Number("100.25"),
+	}}, interfaces.MetricPropertyDynamicParams{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if query.Filter == nil || len(query.Filter.Right) != 1 || query.Filter.Right[0].ValueType != "decimal" {
+		t.Fatalf("unexpected precise-number filter: %#v", query.Filter)
+	}
+}
 
 func TestBuildObjectMetricQueryFromLogicPropertyUsesCompleteObjectIdentity(t *testing.T) {
 	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{

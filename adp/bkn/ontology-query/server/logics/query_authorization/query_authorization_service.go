@@ -150,8 +150,10 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricQuery(ctx context.Conte
 }
 
 // AuthorizeObjectMetricTrial treats an unpublished definition as a KN-scoped
-// calculation. It requires access to the containing knowledge network and to
-// the data resources mounted by the definition's owner object type.
+// calculation. In addition to the owner it requires every relation, target
+// object type, and published metric that the caller-supplied definition can
+// read. The paid runtime must not be the first permission boundary for trial
+// definitions because it receives an already accepted execution request.
 func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Context,
 	knID, branch string, definition *interfaces.ObjectMetricDefinitionV1) error {
 	if err := validateQueryIdentity(ctx, knID, branch, "object-metric-trial"); err != nil {
@@ -171,7 +173,73 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Conte
 	if err != nil {
 		return err
 	}
-	return s.require(ctx, append(resources, dependencies...))
+	resources = append(resources, dependencies...)
+
+	specification := definition.Specification
+	if qualifiers := specification.BusinessQualifiers; qualifiers != nil && qualifiers.RelationPath != nil {
+		pathResources, err := s.objectMetricRelationPathResources(ctx, knID, qualifiers.RelationPath.Steps)
+		if err != nil {
+			return err
+		}
+		resources = append(resources, pathResources...)
+	}
+	if specification.BaseMetric != nil {
+		metricResource, err := objectMetricRefResource(ctx, knID, *specification.BaseMetric)
+		if err != nil {
+			return err
+		}
+		resources = append(resources, metricResource)
+	}
+	for _, dependency := range specification.Dependencies {
+		metricResource, err := objectMetricRefResource(ctx, knID, dependency.MetricRef)
+		if err != nil {
+			return err
+		}
+		resources = append(resources, metricResource)
+		pathResources, err := s.objectMetricRelationPathResources(ctx, knID, dependency.ObjectAlignment.RelationPath)
+		if err != nil {
+			return err
+		}
+		resources = append(resources, pathResources...)
+	}
+	return s.require(ctx, uniquePermissionResources(resources))
+}
+
+func (s *queryAuthorizationService) objectMetricRelationPathResources(ctx context.Context,
+	knID string, steps []interfaces.ObjectMetricRelationStepV1) ([]interfaces.PermissionResource, error) {
+	resources := make([]interfaces.PermissionResource, 0, len(steps)*2)
+	for _, step := range steps {
+		relationType, err := s.loadRelationType(ctx, knID, step.RelationTypeID)
+		if err != nil {
+			return nil, err
+		}
+		targetObjectType, err := s.loadObjectType(ctx, knID, step.TargetObjectTypeID)
+		if err != nil {
+			return nil, err
+		}
+		relationResources, err := relationTypeResources(ctx, knID, step.RelationTypeID, relationType)
+		if err != nil {
+			return nil, err
+		}
+		objectResources, err := objectTypeResources(ctx, knID, targetObjectType)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, relationResources...)
+		resources = append(resources, objectResources...)
+	}
+	return resources, nil
+}
+
+func objectMetricRefResource(ctx context.Context, knID string,
+	ref interfaces.ObjectMetricRefV1) (interfaces.PermissionResource, error) {
+	if err := validateResourceID(knID, ref.MetricID); err != nil {
+		return interfaces.PermissionResource{}, invalidQuery(ctx, err.Error())
+	}
+	if ref.Version < 1 {
+		return interfaces.PermissionResource{}, invalidQuery(ctx, "object metric reference version must be positive")
+	}
+	return interfaces.KNChildPermissionResource(interfaces.PermissionResourceTypeMetric, knID, ref.MetricID), nil
 }
 
 func (s *queryAuthorizationService) AuthorizeMetricDryRun(ctx context.Context,
@@ -575,6 +643,20 @@ func allResourcesAllowed(allowed map[string]struct{}, resources []interfaces.Per
 
 func permissionResourceKey(resource interfaces.PermissionResource) string {
 	return resource.Type + "\x00" + resource.ID
+}
+
+func uniquePermissionResources(resources []interfaces.PermissionResource) []interfaces.PermissionResource {
+	result := make([]interfaces.PermissionResource, 0, len(resources))
+	seen := make(map[string]struct{}, len(resources))
+	for _, resource := range resources {
+		key := permissionResourceKey(resource)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, resource)
+	}
+	return result
 }
 
 func validateMetricScope(ctx context.Context, knID string, definition *interfaces.MetricDefinition) error {
