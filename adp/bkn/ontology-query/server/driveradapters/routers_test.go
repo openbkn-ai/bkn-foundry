@@ -75,6 +75,14 @@ func (allowQueryAuthorizationService) AuthorizeMetricQuery(context.Context, stri
 	return nil
 }
 
+func (allowQueryAuthorizationService) AuthorizeObjectMetricQuery(context.Context, string, string, string) error {
+	return nil
+}
+
+func (allowQueryAuthorizationService) AuthorizeObjectMetricTrial(context.Context, string, string, *interfaces.ObjectMetricDefinitionV1) error {
+	return nil
+}
+
 func (allowQueryAuthorizationService) AuthorizeMetricDryRun(context.Context, string, string, *interfaces.MetricDefinition) error {
 	return nil
 }
@@ -145,6 +153,29 @@ func Test_RestHandler_HealthCheck(t *testing.T) {
 		engine.ServeHTTP(w, req)
 		So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
 	})
+}
+
+func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	engine := gin.New()
+	handler := &restHandler{appSetting: &common.AppSetting{}}
+	handler.RegisterPublic(engine)
+
+	objectMetricPath := "/api/ontology-query/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/data"
+	for _, route := range engine.Routes() {
+		if route.Path == objectMetricPath {
+			t.Fatalf("community handler unexpectedly registered %q", objectMetricPath)
+		}
+	}
+
+	RegisterObjectMetricRoutes(engine, &common.AppSetting{}, nil, nil)
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodPost && route.Path == objectMetricPath {
+			return
+		}
+	}
+	t.Fatalf("extension registration did not mount POST %q", objectMetricPath)
 }
 
 func Test_RestHandler_verifyJsonContentType(t *testing.T) {

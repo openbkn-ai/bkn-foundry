@@ -31,6 +31,7 @@ service:
       interface:
         path:
           - /api/ontology-query/v1
+          - /api/ontology-query/v2
 
 # Anti-affinity settings
 antiAffinity:

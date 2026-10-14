@@ -50,6 +50,7 @@ type restHandler struct {
 	ats        interfaces.ActionTypeService
 	kns        interfaces.KnowledgeNetworkService
 	ms         interfaces.MetricQueryService
+	oms        interfaces.ObjectMetricQueryServiceV1
 	ots        interfaces.ObjectTypeService
 	qas        interfaces.QueryAuthorizationService
 	oma        interfaces.OntologyManagerAccess
