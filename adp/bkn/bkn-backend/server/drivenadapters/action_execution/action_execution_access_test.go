@@ -14,7 +14,7 @@ import (
 	restmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func TestCheckActionExecutionForwardsCurrentSubject(t *testing.T) {

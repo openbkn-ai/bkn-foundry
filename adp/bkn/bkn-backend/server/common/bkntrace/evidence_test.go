@@ -15,7 +15,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func testTraceContext() context.Context {

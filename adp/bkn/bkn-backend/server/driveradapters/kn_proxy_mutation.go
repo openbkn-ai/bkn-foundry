@@ -8,7 +8,7 @@ import (
 	"context"
 	"database/sql"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func (r *restHandler) publishKNChildMutation(ctx context.Context, changes *interfaces.KN, mergeMode string,

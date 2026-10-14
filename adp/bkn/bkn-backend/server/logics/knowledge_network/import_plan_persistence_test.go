@@ -10,9 +10,9 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/interfaces"
-	mock_interfaces "bkn-backend/interfaces/mock"
-	"bkn-backend/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 func TestPersistNormalizedImportPlanRestoresOnlyValidMemberships(t *testing.T) {

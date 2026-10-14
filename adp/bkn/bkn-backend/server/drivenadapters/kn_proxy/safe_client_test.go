@@ -11,7 +11,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func TestSafeClientUsesManagedInternalContracts(t *testing.T) {

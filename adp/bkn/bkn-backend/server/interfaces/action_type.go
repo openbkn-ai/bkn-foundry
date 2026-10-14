@@ -7,7 +7,7 @@
 package interfaces
 
 import (
-	cond "bkn-backend/common/condition"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 )
 
 const (

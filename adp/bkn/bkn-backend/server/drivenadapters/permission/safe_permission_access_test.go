@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // capturedFilter is the decoded /resource-filter request body.

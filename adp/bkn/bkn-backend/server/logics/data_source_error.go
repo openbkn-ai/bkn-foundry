@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	berrors "bkn-backend/errors"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 )
 
 // UnsupportedObjectTypeDataSourceError returns a client-facing 400 for invalid object-type bindings.

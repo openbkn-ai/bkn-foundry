@@ -18,7 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 
-	"bkn-backend/locale"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/locale"
 )
 
 const kafkaAuditSourceID = "bkn-backend"

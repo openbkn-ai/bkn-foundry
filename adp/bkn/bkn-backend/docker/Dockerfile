@@ -20,7 +20,7 @@ ENV GOPROXY=${GOPROXY_URL}
 RUN set -ex; \
     cd /workspace/adp/bkn/bkn-backend/server; \
     go mod download -x; \
-    export flags="-X 'bkn-backend/version.ServerVersion=${SERVER_VERSION}'"; \
+    export flags="-X 'github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/version.ServerVersion=${SERVER_VERSION}'"; \
     CGO_ENABLED=1 go build -ldflags "-s -w $flags" -o ./bin/bkn-backend-server;
 
 ########################### Stage 1 ########################

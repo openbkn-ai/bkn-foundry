@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 const maxResponseBytes = 4 << 20

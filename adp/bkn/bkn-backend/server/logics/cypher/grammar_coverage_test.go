@@ -15,7 +15,7 @@ import (
 
 	"github.com/antlr4-go/antlr/v4"
 
-	"bkn-backend/logics/cypher/parsing"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher/parsing"
 )
 
 // The corpus in testdata carries one query for every rule of the openCypher

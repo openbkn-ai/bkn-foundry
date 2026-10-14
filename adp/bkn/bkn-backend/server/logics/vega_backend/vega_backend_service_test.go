@@ -11,8 +11,8 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/interfaces"
-	interfacesmock "bkn-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	interfacesmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
 func TestVegaBackendService_GetResourceByID(t *testing.T) {

@@ -9,7 +9,7 @@ package interfaces
 import (
 	"encoding/json"
 
-	cond "bkn-backend/common/condition"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 )
 
 // Metric type and scope constants (bkn-metrics.yaml, DESIGN §3.2).

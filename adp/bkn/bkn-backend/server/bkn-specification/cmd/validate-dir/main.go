@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"os"
 
-	"bkn-backend/bkn-specification/bkn"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 )
 
 func main() {
