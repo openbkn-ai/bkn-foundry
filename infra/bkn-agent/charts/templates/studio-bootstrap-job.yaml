@@ -1,0 +1,61 @@
+{{- /*
+Copyright openbkn.ai
+
+Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+*/ -}}
+{{- if .Values.studioBootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-studio-bootstrap" .Values.image.name | quote }}
+  namespace: {{ .Values.namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "20"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.studioBootstrap.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.studioBootstrap.activeDeadlineSeconds }}
+  template:
+    spec:
+      restartPolicy: Never
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: studio-bootstrap
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "app.bootstrap.studio"]
+          args:
+            - initialize
+            - --owner-id
+            - {{ required "studioBootstrap.ownerId must be a provisioned management principal" .Values.studioBootstrap.ownerId | quote }}
+            - --actor-id
+            - {{ required "studioBootstrap.actorId is required for audit attribution" .Values.studioBootstrap.actorId | quote }}
+            {{- range .Values.studioBootstrap.installedFeatures }}
+            - --installed-feature
+            - {{ . | quote }}
+            {{- end }}
+            {{- range $name, $state := .Values.studioBootstrap.dependencies }}
+            {{- if not (has $state (list "ready" "missing" "unknown")) }}
+            {{- fail (printf "studioBootstrap.dependencies.%s must be ready, missing or unknown" $name) }}
+            {{- end }}
+            - --dependency
+            - {{ printf "%s=%s" $name $state | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: RDSHOST
+              value: {{ .Values.depServices.rds.host | quote }}
+            - name: RDSPORT
+              value: {{ .Values.depServices.rds.port | quote }}
+            - name: RDSDBNAME
+              value: {{ .Values.depServices.rds.database | quote }}
+            - name: RDSUSER
+              value: {{ .Values.depServices.rds.user | quote }}
+            - name: RDSPASS
+              value: {{ .Values.depServices.rds.password | quote }}
+{{- end }}

@@ -69,6 +69,35 @@ agent 定义+prompt 当前版本，保留原 id upsert 幂等，同名不同 id 
 agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执行工厂里留一份工具描述。
 把某个 agent 挂给另一个 agent 用 `tool_refs` 里的 `type: agent`，不经过工厂。
 
+## Studio 默认 Agent 初始化（#2170）
+
+`deploy/agents/studio-presets.json` 提供智能问答和基础数据问答默认包；图探索适配尚未安装时明确跳过。当前包为 draft，Studio 用户入口与查询范围约束在 #2151 后续任务中实现，初始化完成不代表可以向终端用户开放。
+
+本功能归属 0.2.1。先由全局迁移流程应用 `migrations/bkn-agent/mariadb/0.2.1/01-agent-preset-bootstrap.sql` 并准备管理主体，再运行初始化命令。命令使用部署环境的 RDS 配置及数据库管理权限；`--owner-id` 是已准备的配置管理主体，`--actor-id` 标识实际管理操作者，不是未来查询工具的用户身份。命令不会创建用户/权限、执行 DDL 或自动探测依赖。
+
+Schema 沿用统一 `core-data-migrator`：首次安装选择 0.2.1 的完整 `init.sql`，已有 0.2.0 安装只执行 `01-agent-preset-bootstrap.sql`。Agent 启动和初始化 Job 不负责建表；默认配置内容由迁移完成后的初始化命令独立安装。
+
+```bash
+python -m app.bootstrap.studio initialize --owner-id preset-management-principal --actor-id deployment-operator
+```
+
+首次创建每个场景的 Prompt、Agent、默认绑定和归属记录使用一个事务。已有定义、自定义绑定和停用状态保留；资源删除后归属记录仍在，不会自动复活。初始化按场景输出 created/preserved/skipped/failed，任何失败使命令以非零状态退出，成功场景不回滚。配置包同一版本内容不可修改。
+
+Helm 可显式启用 `studioBootstrap.enabled=true` 并设置 `ownerId`、`actorId`，运行 post-install/post-upgrade 初始化 Job；默认关闭，避免在 schema/身份未准备好的升级中写库。失败 Job 保留供排查。发布启用和迁移执行须另行审批。
+
+升级只登记新默认值。先读取当前配置和候选版本对比，之后由管理员明确采用：
+
+```bash
+python -m app.bootstrap.studio diff --owner-id preset-management-principal --package-id studio-smart-qa --version 2
+python -m app.bootstrap.studio adopt --owner-id preset-management-principal --actor-id administrator --package-id studio-smart-qa --version 2 --expected-digest DIGEST_FROM_DIFF
+```
+
+示例版本 2 需要先由新版配置包初始化登记。采用时锁定现有资源并校验比较摘要；并发编辑使旧摘要失效。采用不更改场景绑定、Agent 的 draft/published 状态或个人 Prompt 覆写，不恢复已删除资源。登记过的旧包可用于显式回退，并保留 Prompt 版本历史。
+
+初始化结果中的 dependency 状态来自 `--dependency model=ready` 等部署方观测，未提供时为 unknown。它不是健康探针，也不是许可证检查；本批报告 `executable=false`，不能据此绕过后续的用户入口与授权检查。
+
+完整设计维护于 [bkn-docs 的 #2151 方案](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn-agent/design/issue-2151-studio-agent-migration.md)。
+
 ### Lifecycle owner attribution
 
 For Context Loader interactions, `bkn_start_interaction` returns response-only

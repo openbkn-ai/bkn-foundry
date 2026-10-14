@@ -61,6 +61,18 @@ provenanceBootstrap:
     existingSecret: bkn-agent-provenance-bootstrap
     secretKey: token
 
+studioBootstrap:
+  # Enable only after the preset schema migration and management principal are
+  # provisioned. This delivery does not publish/enable the Studio user surface.
+  enabled: false
+  ownerId: ""
+  actorId: ""
+  installedFeatures: []
+  # Deployment-reported observations, not inferred health or licence grants.
+  dependencies: {}
+  backoffLimit: 3
+  activeDeadlineSeconds: 120
+
 observability:
   otelEnabled: "true"
   logsEnabled: "true"
