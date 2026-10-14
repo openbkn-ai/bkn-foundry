@@ -332,6 +332,13 @@ components:
       properties:
         metric_id: { type: string }
         version: { type: integer, minimum: 1 }
+    PropertyRef:
+      type: object
+      required: [object_type_id, property_name]
+      properties:
+        object_type_id: { type: string }
+        property_name: { type: string }
+        relation_path_alias: { type: string }
     ObjectMetricDependency:
       type: object
       required: [alias, metric_ref, object_alignment, evaluation_context]
