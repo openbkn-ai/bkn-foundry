@@ -8,9 +8,12 @@ package postgresql
 
 import (
 	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
-// pgQuoteIdent double quotes escape PostgreSQL identifiers.
+// pgQuoteIdent quotes one identifier and escapes embedded double quotes by doubling them.
+// Dots remain part of the identifier; this helper does not parse qualified names.
 func pgQuoteIdent(s string) string {
 	if s == "" {
 		return `""`
@@ -18,7 +21,8 @@ func pgQuoteIdent(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
-// pgQuoteColumnName column name/alias qualification; Support "alias.col" -> "alias.col".
+// pgQuoteColumnName quotes a column or alias-qualified column name.
+// A dot separates alias and column: t1.col becomes "t1"."col".
 func pgQuoteColumnName(name string) string {
 	if name == "" {
 		return `""`
@@ -29,4 +33,14 @@ func pgQuoteColumnName(name string) string {
 		return pgQuoteIdent(alias) + "." + pgQuoteIdent(col)
 	}
 	return pgQuoteIdent(strings.TrimSpace(name))
+}
+
+// BuildSourceIdentifier returns a SQL-ready table reference without connecting to the source.
+func (c *PostgresqlConnector) BuildSourceIdentifier(meta *interfaces.TableMeta) string {
+	return pgQuoteIdent(meta.Schema) + "." + pgQuoteIdent(meta.Name)
+}
+
+// BuildOriginalName returns the unquoted source name without connecting to the source.
+func (c *PostgresqlConnector) BuildOriginalName(meta *interfaces.TableMeta) string {
+	return meta.Schema + "." + meta.Name
 }

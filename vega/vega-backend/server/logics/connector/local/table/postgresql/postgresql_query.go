@@ -32,7 +32,7 @@ func convertRawValue(v any, preserveBinary bool) any {
 	return v
 }
 
-// convertValue converts time values with time zones to the current time zone and handles other types
+// convertValue converts zoned time values to the server time zone and preserves binary output when requested.
 func convertValue(v any, colName string, origTypeMap map[string]string, preserveBinary bool) any {
 	if v == nil {
 		return nil
@@ -76,26 +76,26 @@ func (c *PostgresqlConnector) BuildCountSQL(sql string) string {
 	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) AS _raw_query_total", sql)
 }
 
-// ExecuteRawSQL executes the original SQL query
+// ExecuteRawSQL executes validated source SQL and converts driver values for the response.
 func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("connect failed: %w", err)
+		return nil, fmt.Errorf("failed to connect for raw query: %w", err)
 	}
 
 	rows, err := c.db.QueryContext(ctx, sql)
 	if err != nil {
-		return nil, fmt.Errorf("execute query failed: %w", classifyQueryError(err))
+		return nil, fmt.Errorf("failed to execute raw query: %w", postgresqlQueryError(err))
 	}
 	defer func() { _ = rows.Close() }()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("get columns failed: %w", err)
+		return nil, fmt.Errorf("failed to read result columns: %w", err)
 	}
 
 	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
-		return nil, fmt.Errorf("get column types failed: %w", err)
+		return nil, fmt.Errorf("failed to read result column types: %w", err)
 	}
 
 	response := &interfaces.RawQueryResponse{
@@ -120,7 +120,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 		}
 
 		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, fmt.Errorf("scan row failed: %w", err)
+			return nil, fmt.Errorf("failed to scan result row: %w", err)
 		}
 
 		row := make(map[string]any)
@@ -130,7 +130,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 		response.Entries = append(response.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows failed: %w", classifyQueryError(err))
+		return nil, fmt.Errorf("failed to iterate result rows: %w", postgresqlQueryError(err))
 	}
 
 	totalCount := int64(len(response.Entries))
@@ -139,7 +139,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 	return response, nil
 }
 
-// ExecuteQuery performs single-table queries.
+// ExecuteQuery builds and executes a single-table query with filtering, grouping, sorting, and paging.
 func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 	if params.Paging.Offset < 0 || params.Paging.Limit < 0 {
@@ -147,7 +147,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 
 	if err := c.Connect(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect for query: %w", err)
 	}
 
 	fieldMap := map[string]*interfaces.Property{}
@@ -175,7 +175,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	if params.ActualFilterCond != nil {
 		condition, err = c.ConvertFilterCondition(params.ActualFilterCond)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to convert filter condition: %w", err)
 		}
 	}
 
@@ -328,13 +328,13 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", classifyQueryError(err))
+		return nil, fmt.Errorf("failed to execute query: %w", postgresqlQueryError(err))
 	}
 	defer func() { _ = rows.Close() }()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read result columns: %w", err)
 	}
 	result.Columns = columns
 
@@ -354,7 +354,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		}
 
 		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan result row: %w", err)
 		}
 
 		row := make(map[string]any)
@@ -364,7 +364,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		result.Entries = append(result.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, classifyQueryError(err)
+		return nil, fmt.Errorf("failed to iterate result rows: %w", postgresqlQueryError(err))
 	}
 
 	// Total number of processed items (for detailed inquiries only)
@@ -382,7 +382,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		var total int64
 		row := c.db.QueryRowContext(ctx, countQuery, countArgs...)
 		if err := row.Scan(&total); err != nil {
-			return nil, fmt.Errorf("failed to scan total: %w", classifyQueryError(err))
+			return nil, fmt.Errorf("failed to scan total: %w", postgresqlQueryError(err))
 		}
 		result.Total = total
 	}
@@ -390,7 +390,8 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	return result, nil
 }
 
-func classifyQueryError(err error) error {
+// postgresqlQueryError classifies unknown-column errors and preserves the source error chain.
+func postgresqlQueryError(err error) error {
 	var driverErr *pq.Error
 	if errors.As(err, &driverErr) && string(driverErr.Code) == "42703" {
 		return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
@@ -420,7 +421,7 @@ func (c *PostgresqlConnector) buildDateFormat(dateField, calendarInterval string
 	}
 }
 
-// buildHavingCondition builds the HAVING condition
+// buildHavingCondition builds a predicate against the aggregation result.
 func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClause, aggAlias string) (string, error) {
 	if having.Field != "__value" {
 		return "", fmt.Errorf("HAVING field must be '__value'")
@@ -461,7 +462,7 @@ func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClau
 	return fmt.Sprintf("%s %s ?", aggAlias, op), nil
 }
 
-// Format IN Values: Format the list of values for the in operation
+// formatInValues formats scalar or list values for a HAVING IN predicate.
 func formatInValues(value any) string {
 	switch v := value.(type) {
 	case []any:

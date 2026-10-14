@@ -390,7 +390,7 @@ func (c *AnyShareConnector) convertFilterConditionWithOpr(ctx context.Context, c
 	case filter_condition.OperationBetween:
 		return c.convertFilterConditionBetween(ctx, condition, tracker)
 	default:
-		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelFileset)
+		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), fmt.Errorf("the fileset query channel does not support this operation"))
 	}
 }
 
@@ -764,10 +764,6 @@ func (c *AnyShareConnector) convertFilterConditionIn(ctx context.Context, condit
 		return nil, fmt.Errorf("condition is not *filter_condition.InCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
-
 	customFields := map[string]bool{
 		"created_at":  true,
 		"modified_at": true,
@@ -859,10 +855,6 @@ func (c *AnyShareConnector) convertFilterConditionNotIn(ctx context.Context, con
 		return nil, fmt.Errorf("condition is not *filter_condition.NotInCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
-
 	customFields := map[string]bool{
 		"created_at":  true,
 		"modified_at": true,
@@ -930,10 +922,6 @@ func (c *AnyShareConnector) convertFilterConditionRange(ctx context.Context, con
 		return nil, fmt.Errorf("condition is not *filter_condition.RangeCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
-
 	customFields := map[string]bool{
 		"created_at":  true,
 		"modified_at": true,
@@ -988,10 +976,6 @@ func (c *AnyShareConnector) convertFilterConditionBetween(ctx context.Context, c
 	cond, ok := condition.(*filter_condition.BetweenCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.BetweenCond")
-	}
-
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 
 	customFields := map[string]bool{

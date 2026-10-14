@@ -53,44 +53,27 @@ func (e *SourceQueryInvalidParameterError) Error() string {
 }
 func (e *SourceQueryInvalidParameterError) Unwrap() error { return e.Cause }
 
-// UnsupportedOperationError reports an operator unsupported by a query channel.
+// UnsupportedOperationError reports an unsupported operator with a caller-safe explanation.
 type UnsupportedOperationError struct {
 	Operation string
-	Channel   string
 	Cause     error
 }
 
-// NewUnsupportedOperationError identifies an operator unsupported by the selected channel.
-func NewUnsupportedOperationError(operation, channel string) *UnsupportedOperationError {
-	return &UnsupportedOperationError{Operation: operation, Channel: channel}
+// NewUnsupportedOperationError preserves the caller's explanation and original error chain.
+// Cause must be safe for callers because Error includes its message.
+func NewUnsupportedOperationError(operation string, cause error) *UnsupportedOperationError {
+	return &UnsupportedOperationError{Operation: operation, Cause: cause}
 }
 
 func (e *UnsupportedOperationError) Error() string {
 	msg := fmt.Sprintf("operation %s is not supported", e.Operation)
-	if e.Channel != "" {
-		msg += fmt.Sprintf(" by the %s query channel", e.Channel)
-	}
-	if hint := e.hint(); hint != "" {
-		msg += "; " + hint
+	if e.Cause != nil {
+		msg += fmt.Sprintf(": %v", e.Cause)
 	}
 	return msg
 }
 
 func (e *UnsupportedOperationError) Unwrap() error { return e.Cause }
-
-func (e *UnsupportedOperationError) hint() string {
-	if e.Channel != "sql" {
-		return ""
-	}
-	switch e.Operation {
-	case "match", "match_phrase", "multi_match":
-		return "full-text operations need a local index on the resource: build one, " +
-			"or use like/not_like/contain/prefix/regex on this channel"
-	case "knn_vector":
-		return "vector search needs a local index with a vector feature on the field: build one first"
-	}
-	return ""
-}
 
 // ConditionBuildError identifies a caller-supplied condition that the query channel cannot represent.
 type ConditionBuildError struct {

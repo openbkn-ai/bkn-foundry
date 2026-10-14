@@ -201,7 +201,7 @@ func TestBuildDateFormat(t *testing.T) {
 
 func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 	connector := &MariaDBConnector{}
-	// fact 表带一个名为 key 的列——MySQL 保留字，裸拼进 SELECT 会在执行期报 1064
+	// The source column key is a reserved word and must be quoted in SELECT.
 	resource := &interfaces.Resource{
 		SourceIdentifier: "`yanfeng_kb`.`fact`",
 		SchemaDefinition: []*interfaces.Property{
@@ -255,8 +255,8 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
-	// 构建任务补出来的向量字段只有 Name 没有 OriginalName，取不到就回落到属性名，
-	// 否则会拼出空标识符 `` 让整条 SQL 报错
+	// Generated vector fields have no OriginalName; use Name instead of
+	// producing an empty quoted identifier.
 	t.Run("a property without original_name falls back to the property name", func(t *testing.T) {
 		schemaless := &interfaces.Resource{
 			SourceIdentifier: "`yanfeng_kb`.`fact`",
@@ -284,7 +284,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
-	// 默认查全字段这条路也要走兜底，否则 original_name 为空的属性会拼出空标识符
+	// Default projection must use the same name fallback as explicit projection.
 	t.Run("select all falls back for a property without original_name", func(t *testing.T) {
 		schemaless := &interfaces.Resource{
 			SourceIdentifier: "`yanfeng_kb`.`fact`",
@@ -324,7 +324,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
-	// 别名与 schema 属性同名时，排序必须认聚合别名而不是那个属性的源列
+	// Sorting must prefer an aggregate alias over a same-named source property.
 	t.Run("sorting by an aggregate alias that shadows a property uses the alias", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			GroupBy:     []*interfaces.GroupByItem{{Property: "key"}},

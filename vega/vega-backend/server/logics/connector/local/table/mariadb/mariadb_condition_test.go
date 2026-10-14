@@ -99,7 +99,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		sql, _ := toSQL(t, c, cond)
-		// OriginalName 是 "t1.col"，应该生成 `t1`.`col`
+		// OriginalName t1.col must become the qualified identifier `t1`.`col`.
 		if sql != "`t1`.`col` = ?" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
@@ -293,15 +293,15 @@ func TestMariaDBConnectorConvertFilterConditionLike(t *testing.T) {
 	})
 	t.Run("convert like special chars", func(t *testing.T) {
 		c := &MariaDBConnector{}
-		// A % in the value matches literally and the caller has to escape it; an unescaped one
-		// is rejected back in NewFilterCondition
+		// The caller escapes a literal percent sign; NewFilterCondition rejects
+		// unescaped percent wildcards before SQL conversion.
 		cond := mustNewCond(t, "name", "like", `100\%`)
 		_, args := toSQL(t, c, cond)
 		argStr, ok := args[0].(string)
 		if !ok {
 			t.Fatalf("expected string arg, got %T", args[0])
 		}
-		// % 应被转义为 \%
+		// Preserve the escaped percent sign in the bound LIKE pattern.
 		if !strings.Contains(argStr, `\%`) {
 			t.Errorf("expected escaped %%, got %s", argStr)
 		}
@@ -483,8 +483,8 @@ func TestMariaDBConnectorConvertFilterConditionPrefix(t *testing.T) {
 			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field}},
 			Lfield: field, Value: "ali",
 		}
-		expr, err := (&MariaDBConnector{}).ConvertFilterConditionPrefix(cond)
-		if expr != nil || err == nil || !strings.Contains(err.Error(), "only supports ValueFrom_Const") {
+		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Name: "name", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}}, map[string]*interfaces.Property{"name": field})
+		if expr != nil || err == nil || !strings.Contains(err.Error(), "value_from") {
 			t.Fatalf("expected constant-source error and nil expression, got expr=%v err=%v", expr, err)
 		}
 	})
@@ -550,7 +550,7 @@ func TestSpecialReplacer(t *testing.T) {
 			{`100%_done`, `100\%\_done`},
 		}
 		for _, tt := range tests {
-			got := Special.Replace(tt.input)
+			got := likeEscaper.Replace(tt.input)
 			if got != tt.expected {
 				t.Errorf("Special.Replace(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
@@ -558,6 +558,7 @@ func TestSpecialReplacer(t *testing.T) {
 	})
 }
 
+// testFieldsMap defines the scalar fields and alias used by condition tests.
 func testFieldsMap() map[string]*interfaces.Property {
 	return map[string]*interfaces.Property{
 		"name":       {Name: "name", OriginalName: "name", Type: interfaces.DataType_String},
@@ -571,6 +572,7 @@ func testFieldsMap() map[string]*interfaces.Property {
 	}
 }
 
+// toSQL compiles a condition and fails the test if conversion or SQL serialization fails.
 func toSQL(t *testing.T, connector *MariaDBConnector, cond interfaces.FilterCondition) (string, []interface{}) {
 	t.Helper()
 	sqlizer, err := connector.ConvertFilterCondition(cond)
@@ -584,6 +586,7 @@ func toSQL(t *testing.T, connector *MariaDBConnector, cond interfaces.FilterCond
 	return sql, args
 }
 
+// mustNewCond constructs a validated constant condition against the test schema.
 func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCondition {
 	t.Helper()
 	cfg := &interfaces.FilterCondCfg{
@@ -599,4 +602,102 @@ func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCond
 		t.Fatalf("NewFilterCondition(%s, %s) failed: %v", name, op, err)
 	}
 	return cond
+}
+
+func TestMariaDBConnectorConvertFilterConditionCurrent(t *testing.T) {
+	for _, tc := range []struct{ interval, format string }{
+		{"year", "%Y"}, {"month", "%Y-%m"}, {"week", "%x-%v"},
+		{"day", "%Y-%m-%d"}, {"hour", "%Y-%m-%d %H"}, {"minute", "%Y-%m-%d %H:%i"},
+	} {
+		t.Run(tc.interval, func(t *testing.T) {
+			fields := map[string]*interfaces.Property{"created": {Name: "created", OriginalName: "created_at", Type: interfaces.DataType_Datetime}}
+			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationCurrent, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: tc.interval}}
+			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expr, err := (&MariaDBConnector{}).ConvertFilterConditionCurrent(cond)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sql, args, err := expr.ToSql()
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "DATE_FORMAT(`created_at`, '" + tc.format + "') = DATE_FORMAT(NOW(), '" + tc.format + "')"
+			if sql != want || len(args) != 0 {
+				t.Fatalf("got SQL %q args %v, want %q without parameters", sql, args, want)
+			}
+		})
+	}
+}
+
+func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
+	field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
+	for _, tc := range []struct {
+		name  string
+		value any
+		valid bool
+	}{
+		{"positive int", 2, true}, {"positive float integer", float64(2), true},
+		{"positive json integer", json.Number("2"), true}, {"zero", float64(0), false},
+		{"negative", float64(-1), false}, {"fractional", float64(1.5), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationBefore, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: []any{tc.value, "day"}}}
+			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
+			if err != nil {
+				t.Fatal(err)
+			}
+			expr, err := (&MariaDBConnector{}).ConvertFilterConditionBefore(cond)
+			if !tc.valid {
+				if err == nil || expr != nil {
+					t.Fatalf("expected rejection, got expression %v error %v", expr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			sql, args, err := expr.ToSql()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sql != "`created` < DATE_SUB(NOW(), INTERVAL ? DAY)" || len(args) != 1 || args[0] != int64(2) {
+				t.Fatalf("unexpected SQL %q args %v", sql, args)
+			}
+		})
+	}
+	t.Run("unit whitelist", func(t *testing.T) {
+		for _, tc := range []struct {
+			unit  string
+			valid bool
+		}{
+			{"second", true}, {"microsecond", true}, {"DAY", true}, {"MiNuTe", true},
+			{"day_second", false}, {"day) OR 1=1 --", false}, {"unknown", false},
+		} {
+			t.Run(tc.unit, func(t *testing.T) {
+				cond := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(2), tc.unit}}
+				expr, err := (&MariaDBConnector{}).ConvertFilterConditionBefore(cond)
+				if !tc.valid {
+					if err == nil || expr != nil {
+						t.Fatalf("expected unit rejection, got expression %v error %v", expr, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				sql, args, err := expr.ToSql()
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := "`created` < DATE_SUB(NOW(), INTERVAL ? " + strings.ToUpper(tc.unit) + ")"
+				if sql != want || len(args) != 1 || args[0] != int64(2) {
+					t.Fatalf("unexpected SQL %q args %v", sql, args)
+				}
+			})
+		}
+	})
+
 }

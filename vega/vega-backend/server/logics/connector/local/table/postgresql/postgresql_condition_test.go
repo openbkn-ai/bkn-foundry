@@ -19,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
+// testFieldsMap provides properties for filter-conversion tests.
 func testFieldsMap() map[string]*interfaces.Property {
 	return map[string]*interfaces.Property{
 		"age":        {Name: "age", OriginalName: "age", Type: interfaces.DataType_Integer},
@@ -37,6 +38,7 @@ func TestBooleanConditionRejectsNumericField(t *testing.T) {
 	}
 }
 
+// mustNewCond compiles a filter condition and fails the test on invalid input.
 func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCondition {
 	t.Helper()
 	cfg := &interfaces.FilterCondCfg{
@@ -52,6 +54,7 @@ func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCond
 	return cond
 }
 
+// toSQL renders a converted filter and returns its bound arguments.
 func toSQL(t *testing.T, connector *PostgresqlConnector, cond interfaces.FilterCondition) (string, []interface{}) {
 	t.Helper()
 	sqlizer, err := connector.ConvertFilterCondition(cond)
@@ -81,8 +84,8 @@ func TestPostgresqlConnectorConvertFilterConditionPrefix(t *testing.T) {
 			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field}},
 			Lfield: field, Value: "ali",
 		}
-		expr, err := (&PostgresqlConnector{}).ConvertFilterConditionPrefix(cond)
-		require.ErrorContains(t, err, "only supports ValueFrom_Const")
+		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Name: "name", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}}, map[string]*interfaces.Property{"name": field})
+		require.ErrorContains(t, err, "value_from")
 		assert.Nil(t, expr)
 	})
 }

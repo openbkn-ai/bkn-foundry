@@ -21,18 +21,18 @@ func TestPostgresqlMapType(t *testing.T) {
 		in   string
 		want string
 	}{
-		// 已知标量类型
+		// Known scalar types.
 		{"int4", interfaces.DataType_Integer},
 		{"INT4", interfaces.DataType_Integer},
 		{"text", interfaces.DataType_Text},
 		{"jsonb", interfaces.DataType_Json},
 		{"enum", interfaces.DataType_String},
-		// 数组类型：udt_name 形式（带下划线前缀）—— 不识别
+		// Array udt_name values with underscore prefixes remain unsupported.
 		{"_int4", interfaces.DataType_Other},
 		{"_text", interfaces.DataType_Other},
-		// data_type 形式
+		// Standard information_schema data_type names.
 		{"ARRAY", interfaces.DataType_Other},
-		// 完全未知
+		// Unknown source types.
 		{"unknown_type", interfaces.DataType_Other},
 		{"", interfaces.DataType_Other},
 	}

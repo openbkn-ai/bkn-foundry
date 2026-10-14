@@ -389,6 +389,7 @@ func TestMariaDBConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// validMariaDBConfig returns minimal connection settings with the supplied test port.
 func validMariaDBConfig(port int) interfaces.ConnectorConfig {
 	return interfaces.ConnectorConfig{
 		"host":     "127.0.0.1",
@@ -398,6 +399,7 @@ func validMariaDBConfig(port int) interfaces.ConnectorConfig {
 	}
 }
 
+// newMariaDBConnectorMock returns a scoped connector with a mock pool and its cleanup function.
 func newMariaDBConnectorMock(t *testing.T, databases []string) (*MariaDBConnector, sqlmock.Sqlmock, func()) {
 	t.Helper()
 

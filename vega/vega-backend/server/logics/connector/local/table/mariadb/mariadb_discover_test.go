@@ -140,6 +140,20 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 }
 
 func TestMariaDBConnectorFetchColumns(t *testing.T) {
+	t.Run("query failure preserves cause and context", func(t *testing.T) {
+		c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanup()
+		cause := errors.New("source unavailable")
+		mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").WithArgs("app", "orders").WillReturnError(cause)
+		table := &interfaces.TableMeta{Database: "app", Name: "orders", Columns: []interfaces.TableColumnMeta{{Name: "old"}}}
+		before := *table
+		err := c.fetchColumns(context.Background(), table)
+		require.ErrorIs(t, err, cause)
+		assert.ErrorContains(t, err, "failed to execute column metadata query")
+		assert.Equal(t, before, *table)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("empty column metadata fails without replacing existing columns", func(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 		defer cleanup()
@@ -252,6 +266,7 @@ func TestMariaDBConnectorListSchemas(t *testing.T) {
 	})
 }
 
+// mariaDBTableRows defines the exact column order returned by the table discovery query.
 func mariaDBTableRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"TABLE_SCHEMA", "TABLE_NAME", "TABLE_TYPE", "ENGINE", "TABLE_COLLATION",
@@ -296,53 +311,6 @@ func TestMariaDBConnectorCountRows(t *testing.T) {
 				assert.Equal(t, tc.count, count)
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
-		})
-	}
-}
-
-func TestMariaDBConnectorBuildSourceIdentifier(t *testing.T) {
-	for _, tc := range []struct{ name, namespace, table, want string }{
-		{"ordinary", "sales", "orders", "`sales`.`orders`"},
-		{"dot in component", "sales.eu", "orders.part", "`sales.eu`.`orders.part`"},
-		{"spaces", " sales ", " orders ", "` sales `.` orders `"},
-		{"reserved word", "schema", "select", "`schema`.`select`"},
-		{"case", "Sales", "Orders", "`Sales`.`Orders`"},
-		{"quote", "sch`ema", "ord`ers", "`sch``ema`.`ord``ers`"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			meta := &interfaces.TableMeta{Database: tc.namespace, Name: tc.table}
-			reference := (&MariaDBConnector{}).BuildSourceIdentifier(meta)
-			assert.Equal(t, tc.want, reference)
-			assert.Equal(t, tc.namespace, meta.Database)
-			assert.Equal(t, tc.table, meta.Name)
-		})
-	}
-
-	t.Run("does not mutate metadata or connect", func(t *testing.T) {
-		connector := &MariaDBConnector{}
-		meta := &interfaces.TableMeta{Database: "sales", Name: "order.items"}
-		before := *meta
-		assert.Equal(t, "`sales`.`order.items`", connector.BuildSourceIdentifier(meta))
-		assert.Equal(t, connector.BuildSourceIdentifier(meta), connector.BuildSourceIdentifier(meta))
-		assert.False(t, connector.connected)
-		assert.Equal(t, before, *meta)
-	})
-}
-
-func TestMariaDBConnectorBuildOriginalName(t *testing.T) {
-	connector := &MariaDBConnector{}
-	for _, tc := range []struct {
-		name string
-		meta *interfaces.TableMeta
-		want string
-	}{
-		{"database preferred", &interfaces.TableMeta{Database: "app", Schema: "sales", Name: "orders"}, "app.orders"},
-		{"schema fallback", &interfaces.TableMeta{Schema: "app", Name: "orders"}, "app.orders"},
-		{"raw components", &interfaces.TableMeta{Database: "app`db", Name: "order.items"}, "app`db.order.items"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := connector.BuildOriginalName(tc.meta)
-			assert.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -538,5 +506,33 @@ func TestMariaDBConnectorListSchemasFiltersOutsideScope(t *testing.T) {
 	schemas, err := connector.listSchemas(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"Sales"}, schemas)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMariaDBConnectorFetchIndexes(t *testing.T) {
+	c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+	defer cleanup()
+	cause := errors.New("source unavailable")
+	mock.ExpectQuery("SELECT INDEX_NAME, COLUMN_NAME").WithArgs("app", "orders").WillReturnError(cause)
+	table := &interfaces.TableMeta{Database: "app", Name: "orders", Indices: []interfaces.TableIndexMeta{{Name: "old"}}}
+	before := *table
+	err := c.fetchIndexes(context.Background(), table)
+	require.ErrorIs(t, err, cause)
+	assert.ErrorContains(t, err, "failed to execute index metadata query")
+	assert.Equal(t, before, *table)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMariaDBConnectorFetchForeignKeys(t *testing.T) {
+	c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+	defer cleanup()
+	cause := errors.New("source unavailable")
+	mock.ExpectQuery("SELECT CONSTRAINT_NAME, COLUMN_NAME").WithArgs("app", "orders").WillReturnError(cause)
+	table := &interfaces.TableMeta{Database: "app", Name: "orders", ForeignKeys: []interfaces.TableForeignKeyMeta{{Name: "old"}}}
+	before := *table
+	err := c.fetchForeignKeys(context.Background(), table)
+	require.ErrorIs(t, err, cause)
+	assert.ErrorContains(t, err, "failed to execute foreign key metadata query")
+	assert.Equal(t, before, *table)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

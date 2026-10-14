@@ -150,7 +150,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionWithOpr(condition interfaces
 	case filter_condition.OperationKnnVector:
 		return c.ConvertFilterConditionKnnVector(condition, schemaDefinition)
 	default:
-		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelOpenSearch)
+		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), fmt.Errorf("the opensearch query channel does not support this operation"))
 	}
 }
 
@@ -421,10 +421,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionIn(condition interfaces.Filt
 		return nil, fmt.Errorf("condition is not *filter_condition.InCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [in] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	fieldName := cond.Lfield.OriginalName
 	if fieldName == "" {
 		fieldName = cond.Lfield.Name
@@ -450,10 +446,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	cond, ok := condition.(*filter_condition.NotInCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotInCond")
-	}
-
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [not_in] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
 	fieldName := cond.Lfield.OriginalName
@@ -487,10 +479,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionLike(condition interfaces.Fi
 		return nil, fmt.Errorf("condition is not *filter_condition.LikeCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [like] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	fieldName := cond.Lfield.OriginalName
 	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
 	if err != nil {
@@ -518,10 +506,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotLike(condition interfaces
 	cond, ok := condition.(*filter_condition.NotLikeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotLikeCond")
-	}
-
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [not_like] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
 	fieldName := cond.Lfield.OriginalName
@@ -558,9 +542,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionContain(condition interfaces
 		return nil, fmt.Errorf("condition is not *filter_condition.ContainCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [contain] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
 	// The text contains queries that must use match /match_phrase
 	values := cond.Value
 	should := make([]map[string]any, len(values))
@@ -588,10 +569,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotContain(condition interfa
 		return nil, fmt.Errorf("condition is not *filter_condition.NotContainCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [not_contain] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	values := cond.Value
 	mustNot := make([]map[string]any, len(values))
 	for i, v := range values {
@@ -617,10 +594,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionRange(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.RangeCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [range] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	values := cond.Value
 	if len(values) != 2 {
 		return nil, interfaces.NewConditionBuildError("range condition requires exactly 2 values")
@@ -642,10 +615,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionOutRange(condition interface
 	cond, ok := condition.(*filter_condition.OutRangeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.OutRangeCond")
-	}
-
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [out_range] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
 	values := cond.Value
@@ -873,10 +842,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotPrefix(condition interfac
 		return nil, fmt.Errorf("condition is not *filter_condition.NotPrefixCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [not_prefix] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	vStr := cond.Value
 	return map[string]any{
 		"bool": map[string]any{
@@ -895,10 +860,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionBetween(condition interfaces
 	cond, ok := condition.(*filter_condition.BetweenCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.BetweenCond")
-	}
-
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [between] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
 	values := cond.Value
@@ -958,10 +919,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionRegex(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.RegexCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [regex] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	return map[string]any{
 		"regexp": map[string]any{
 			cond.Lfield.OriginalName: cond.Value,
@@ -1013,10 +970,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionBefore(condition interfaces.
 		return nil, fmt.Errorf("condition is not *filter_condition.BeforeCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [before] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	values := cond.Value
 	if len(values) != 2 {
 		return nil, interfaces.NewConditionBuildError("before condition requires exactly 2 values")
@@ -1057,9 +1010,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionCurrent(condition interfaces
 		return nil, fmt.Errorf("condition is not *filter_condition.CurrentCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [current] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
 	// Get current time
 	now := time.Now()
 	// Calculate the start and end of the current period

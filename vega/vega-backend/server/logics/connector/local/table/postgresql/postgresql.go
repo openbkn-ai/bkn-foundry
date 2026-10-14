@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package postgresql provides a PostgreSQL table connector: the connection target is a single database; The configuration item "schemas" represents the schema whitelist.
+// Package postgresql provides a table connector for one database with optional schema discovery scope.
 package postgresql
 
 import (
@@ -75,7 +75,7 @@ type postgresqlConfig struct {
 	Options  map[string]any `mapstructure:"options"`
 }
 
-// The PostgresqlConnector implements TableConnector (PostgreSQL).
+// PostgresqlConnector implements the PostgreSQL table connector.
 type PostgresqlConnector struct {
 	enabled       bool
 	config        *postgresqlConfig
@@ -84,17 +84,17 @@ type PostgresqlConnector struct {
 	compatibility postgresqlCompatibility
 }
 
-// NewPostgresqlConnector creates the PostgreSQL connector builder
+// NewPostgresqlConnector creates the PostgreSQL connector builder.
 func NewPostgresqlConnector() interfaces.TableConnector {
 	return &PostgresqlConnector{}
 }
 
-// ValidateBuildSchema 当前无额外源类型限制，通用构建键规则由 service 校验。
+// ValidateBuildSchema adds no source-specific restrictions; the service validates common build-key rules.
 func (c *PostgresqlConnector) ValidateBuildSchema(_ *interfaces.Resource) error {
 	return nil
 }
 
-// GetType returns the data source type key (consistent with t_connector_type.f_type, factory registration key).
+// GetType returns the PostgreSQL connector type.
 func (c *PostgresqlConnector) GetType() string {
 	return interfaces.ConnectorTypePostgreSQL
 }
@@ -104,32 +104,32 @@ func (c *PostgresqlConnector) GetName() string {
 	return interfaces.ConnectorTypePostgreSQL
 }
 
-// GetMode returns the connector mode.
+// GetMode returns the local connector mode.
 func (c *PostgresqlConnector) GetMode() string {
 	return interfaces.ConnectorModeLocal
 }
 
-// GetCategory returns the connector category.
+// GetCategory returns the table connector category.
 func (c *PostgresqlConnector) GetCategory() string {
 	return interfaces.ConnectorCategoryTable
 }
 
-// Whether GetEnabled is enabled.
+// GetEnabled reports whether the connector is enabled.
 func (c *PostgresqlConnector) GetEnabled() bool {
 	return c.enabled
 }
 
-// Set the enabled status of SetEnabled.
+// SetEnabled updates the connector enabled state.
 func (c *PostgresqlConnector) SetEnabled(enabled bool) {
 	c.enabled = enabled
 }
 
-// GetSensitiveFields: Sensitive fields.
+// GetSensitiveFields lists configuration fields that require encryption.
 func (c *PostgresqlConnector) GetSensitiveFields() []string {
 	return []string{"password"}
 }
 
-// The GetFieldConfig connection form field (must be exactly the same as the JSON of t_connector_type in the migration).
+// GetFieldConfig returns connection form fields matching the connector-type migration.
 func (c *PostgresqlConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
 		"host":     {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
@@ -166,7 +166,7 @@ func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Co
 		if len(s) > SCHEMA_NAME_MAX_LENGTH {
 			return nil, fmt.Errorf("schema name '%s' exceeds maximum length of %d characters", s, SCHEMA_NAME_MAX_LENGTH)
 		}
-		// Check whether there are duplicate elements in the array
+		// Reject duplicate schema names using exact source spelling.
 		if seen[s] {
 			return nil, fmt.Errorf("duplicate element found in 'schemas': %s", s)
 		}
@@ -294,7 +294,8 @@ func (c *PostgresqlConnector) connectionString() string {
 	return u.String()
 }
 
-// Connect establishes a connection.
+// Connect opens and verifies a pool, then detects metadata-query compatibility.
+// Failed initialization closes the candidate pool before returning the error.
 func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 	if c.connected {
 		return nil
@@ -302,57 +303,63 @@ func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 
 	db, err := sql.Open("postgres", c.connectionString())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open PostgreSQL connection: %w", err)
 	}
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return err
+		return fmt.Errorf("failed to ping PostgreSQL connection: %w", err)
 	}
 
 	compatibility := detectPostgresqlCompatibility(ctx, db)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		_ = db.Close()
-		return ctxErr
+		return fmt.Errorf("failed to detect PostgreSQL compatibility: %w", ctxErr)
 	}
 
 	c.db, c.compatibility, c.connected = db, compatibility, true
 	return nil
 }
 
-// Close to close the connection.
+// Close releases the connection pool and clears connection state.
 func (c *PostgresqlConnector) Close(ctx context.Context) error {
 	if c.db != nil {
 		err := c.db.Close()
 		c.connected = false
 		c.db = nil
-		return err
+		if err != nil {
+			return fmt.Errorf("failed to close PostgreSQL connection: %w", err)
+		}
+		return nil
 	}
 	return nil
 }
 
-// Ping detects the connection.
+// Ping connects if necessary and checks source availability.
 func (c *PostgresqlConnector) Ping(ctx context.Context) error {
 	if err := c.Connect(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to connect for ping: %w", err)
 	}
-	return c.db.PingContext(ctx)
+	if err := c.db.PingContext(ctx); err != nil {
+		return fmt.Errorf("failed to ping PostgreSQL connection: %w", err)
+	}
+	return nil
 }
 
-// TestConnection test connection; If a schema whitelist is configured, verify the existence.
+// TestConnection verifies the connection and checks configured schemas.
 func (c *PostgresqlConnector) TestConnection(ctx context.Context) error {
 	if err := c.Connect(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to connect for connection test: %w", err)
 	}
 	if len(c.config.Schemas) > 0 {
 		if err := c.validateSchemas(ctx); err != nil {
-			return err
+			return fmt.Errorf("failed to validate configured schemas: %w", err)
 		}
 	}
 	return nil
 }
 
-// validateSchemas checks that every configured schema exists and is accessible.
+// validateSchemas checks that every configured schema exists in the database.
 func (c *PostgresqlConnector) validateSchemas(ctx context.Context) error {
 	for _, s := range c.config.Schemas {
 		var exists bool

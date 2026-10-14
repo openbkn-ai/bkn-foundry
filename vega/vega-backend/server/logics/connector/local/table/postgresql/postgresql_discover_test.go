@@ -8,6 +8,7 @@ package postgresql
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -370,6 +371,21 @@ func TestPostgresqlConnectorFetchDomainMetadataSkipsQueryWithoutDomains(t *testi
 }
 
 func TestPostgresqlConnectorFetchIndexes(t *testing.T) {
+	t.Run("source error retains cause and operation", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		table := &interfaces.TableMeta{Schema: "sales", Name: "orders"}
+		cause := errors.New("source unavailable")
+		mock.ExpectQuery("SELECT").WithArgs("sales", "orders").WillReturnError(cause)
+
+		err = connector.fetchIndexes(context.Background(), table)
+
+		require.ErrorIs(t, err, cause)
+		assert.ErrorContains(t, err, "failed to execute index metadata query")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -395,6 +411,21 @@ func TestPostgresqlConnectorFetchIndexes(t *testing.T) {
 }
 
 func TestPostgresqlConnectorFetchForeignKeys(t *testing.T) {
+	t.Run("source error retains cause and operation", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		table := &interfaces.TableMeta{Schema: "sales", Name: "orders"}
+		cause := errors.New("source unavailable")
+		mock.ExpectQuery("SELECT").WithArgs("sales", "orders").WillReturnError(cause)
+
+		err = connector.fetchForeignKeys(context.Background(), table)
+
+		require.ErrorIs(t, err, cause)
+		assert.ErrorContains(t, err, "failed to execute foreign key metadata query")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -485,52 +516,6 @@ func TestPostgresqlConnectorCountRows(t *testing.T) {
 	}
 }
 
-func TestPostgresqlConnectorBuildSourceIdentifier(t *testing.T) {
-	for _, tc := range []struct{ name, namespace, table, want string }{
-		{"ordinary", "sales", "orders", "\"sales\".\"orders\""},
-		{"dot in component", "sales.eu", "orders.part", "\"sales.eu\".\"orders.part\""},
-		{"spaces", " sales ", " orders ", "\" sales \".\" orders \""},
-		{"reserved word", "schema", "select", "\"schema\".\"select\""},
-		{"case", "Sales", "Orders", "\"Sales\".\"Orders\""},
-		{"quote", "sch\"ema", "ord\"ers", "\"sch\"\"ema\".\"ord\"\"ers\""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			meta := &interfaces.TableMeta{Schema: tc.namespace, Name: tc.table}
-			reference := (&PostgresqlConnector{}).BuildSourceIdentifier(meta)
-			assert.Equal(t, tc.want, reference)
-			assert.Equal(t, tc.namespace, meta.Schema)
-			assert.Equal(t, tc.table, meta.Name)
-		})
-	}
-
-	t.Run("does not mutate metadata or connect", func(t *testing.T) {
-		connector := &PostgresqlConnector{}
-		meta := &interfaces.TableMeta{Schema: "sales", Name: "order.items"}
-		before := *meta
-		assert.Equal(t, "\"sales\".\"order.items\"", connector.BuildSourceIdentifier(meta))
-		assert.Equal(t, connector.BuildSourceIdentifier(meta), connector.BuildSourceIdentifier(meta))
-		assert.False(t, connector.connected)
-		assert.Equal(t, before, *meta)
-	})
-}
-
-func TestPostgresqlConnectorBuildOriginalName(t *testing.T) {
-	connector := &PostgresqlConnector{}
-	for _, tc := range []struct {
-		name string
-		meta *interfaces.TableMeta
-		want string
-	}{
-		{"schema qualified", &interfaces.TableMeta{Database: "app", Schema: "sales", Name: "orders"}, "sales.orders"},
-		{"raw components", &interfaces.TableMeta{Schema: "sales space", Name: "order.items"}, "sales space.order.items"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := connector.BuildOriginalName(tc.meta)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestPostgresqlConnectorDecodeTableMeta(t *testing.T) {
 	for _, tc := range []struct {
 		name, original       string
@@ -598,6 +583,22 @@ func TestPostgresqlConnectorDecodeTableMeta(t *testing.T) {
 }
 
 func TestPostgresqlConnectorFetchTableStatus(t *testing.T) {
+	t.Run("missing table retains source error and metadata", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		table := &interfaces.TableMeta{Schema: "sales", Name: "orders", Description: "previous", Properties: map[string]any{"legacy": true}}
+		mock.ExpectQuery("SELECT c.relkind::text").WithArgs("sales", "orders").WillReturnError(sql.ErrNoRows)
+
+		err = connector.fetchTableStatus(context.Background(), table)
+
+		require.ErrorIs(t, err, sql.ErrNoRows)
+		assert.ErrorContains(t, err, "table metadata not found or inaccessible")
+		assert.Equal(t, "previous", table.Description)
+		assert.Equal(t, map[string]any{"legacy": true}, table.Properties)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 	for _, tc := range []struct {
 		name  string
 		value driver.Value

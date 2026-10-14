@@ -223,7 +223,7 @@ func TestFilterConditionFactory(t *testing.T) {
 		errContain string
 	}{
 		{name: "range rejects string field", cfg: constCfg("name", OperationRange, []any{1, 2}), errContain: "not a date/number field"},
-		{name: "before rejects integer first interval value", cfg: constCfg("created_at", OperationBefore, []any{3, CurrentDay}), errContain: "interval value should be an number"},
+		{name: "before rejects nonnumeric interval", cfg: constCfg("created_at", OperationBefore, []any{"invalid", CurrentDay}), errContain: "interval value should be an number"},
 		{name: "current rejects unsupported unit", cfg: constCfg("created_at", OperationCurrent, "quarter"), errContain: "right value should be"},
 		{name: "multi match requires fields array", cfg: constCfg("", OperationMultiMatch, "hello"), errContain: "'fields' value should be an array"},
 		{name: "multi match rejects unknown match type", cfg: &interfaces.FilterCondCfg{
@@ -848,5 +848,85 @@ func TestMarkLegacyLikeWildcards(t *testing.T) {
 
 	t.Run("tolerates a nil condition", func(t *testing.T) {
 		assert.Equal(t, 0, MarkLegacyLikeWildcards(nil))
+	})
+}
+
+func TestConditionConstructorsRejectNilValues(t *testing.T) {
+	fields := testFieldsMap()
+	for _, operation := range []string{OperationEqual, OperationNotEqual, OperationGt, OperationGte, OperationLt, OperationLte} {
+		t.Run(operation, func(t *testing.T) {
+			cfg := &interfaces.FilterCondCfg{Name: "age", Operation: operation, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const}}
+			condition, err := OperationMap[operation].New(context.Background(), cfg, fields)
+			require.ErrorContains(t, err, "must not be nil")
+			assert.Nil(t, condition)
+		})
+	}
+	for _, operation := range []string{OperationRange, OperationOutRange, OperationBetween} {
+		for _, values := range [][]any{{nil, 2}, {1, nil}} {
+			t.Run(operation, func(t *testing.T) {
+				cfg := &interfaces.FilterCondCfg{Name: "age", Operation: operation, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: values}}
+				condition, err := OperationMap[operation].New(context.Background(), cfg, fields)
+				require.ErrorContains(t, err, "must not be nil")
+				assert.Nil(t, condition)
+			})
+		}
+	}
+}
+
+func TestConstantOnlyConditionConstructorsRejectFieldSources(t *testing.T) {
+	for operation, prototype := range OperationMap {
+		if !prototype.NeedConstValue() {
+			continue
+		}
+		t.Run(operation, func(t *testing.T) {
+			cfg := constCfg("name", operation, "other_name")
+			cfg.ValueFrom = interfaces.ValueFrom_Field
+			cfg.RemainCfg = map[string]any{"fields": []any{"name"}}
+			fields := testFieldsMap()
+			switch operation {
+			case OperationRange, OperationOutRange, OperationBetween, OperationBefore, OperationCurrent:
+				cfg.Name = "created_at"
+			case OperationKnnVector:
+				fields["name"].Type = interfaces.DataType_Vector
+			}
+			condition, err := prototype.New(context.Background(), cfg, fields)
+			require.ErrorContains(t, err, "value_from")
+			assert.Nil(t, condition)
+		})
+	}
+}
+
+func TestNewFilterConditionValidatesValueFrom(t *testing.T) {
+	for _, operation := range []string{OperationEqual, OperationNull, OperationAnd} {
+		t.Run(operation+" rejects unknown source", func(t *testing.T) {
+			cfg := constCfg("name", operation, "value")
+			cfg.ValueFrom = "unknown"
+			condition, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+			require.ErrorContains(t, err, "value_from")
+			assert.Nil(t, condition)
+		})
+	}
+	t.Run("rejects nested unknown source", func(t *testing.T) {
+		child := constCfg("name", OperationEqual, "value")
+		child.ValueFrom = "unknown"
+		cfg := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{child}}
+		condition, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.ErrorContains(t, err, "value_from")
+		assert.Nil(t, condition)
+	})
+	t.Run("defaults to constant", func(t *testing.T) {
+		cfg := constCfg("name", OperationEqual, "value")
+		cfg.ValueFrom = ""
+		condition, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.ValueFrom_Const, cfg.ValueFrom)
+		assert.IsType(t, &EqualCond{}, condition)
+	})
+	t.Run("supports field comparison", func(t *testing.T) {
+		cfg := constCfg("name", OperationEqual, "other_name")
+		cfg.ValueFrom = interfaces.ValueFrom_Field
+		condition, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.NoError(t, err)
+		assert.Equal(t, testFieldsMap()["other_name"], condition.(*EqualCond).Rfield)
 	})
 }

@@ -46,6 +46,10 @@ func (c *LteCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("condition [lte] only supports single value")
 	}
 
+	if cfg.Value == nil {
+		return nil, fmt.Errorf("condition [lte] value must not be nil")
+	}
+
 	cond := &LteCond{
 		Cfg:    cfg,
 		Lfield: field,

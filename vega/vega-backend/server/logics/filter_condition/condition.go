@@ -40,6 +40,10 @@ func NewFilterCondition(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("unsupported operation: %s", cfg.Operation)
 	}
 
+	if err := NormalizeValueFrom(cfg); err != nil {
+		return nil, err
+	}
+
 	cond, err := condFactory.New(ctx, cfg, fieldsMap)
 	if err != nil {
 		return nil, err
@@ -67,6 +71,9 @@ func NormalizeValueFrom(cfg *interfaces.FilterCondCfg) error {
 		if err := NormalizeValueFrom(child); err != nil {
 			return err
 		}
+	}
+	if cfg.ValueFrom != "" && cfg.ValueFrom != interfaces.ValueFrom_Const && cfg.ValueFrom != interfaces.ValueFrom_Field {
+		return fmt.Errorf("operation %q does not support value_from %q", cfg.Operation, cfg.ValueFrom)
 	}
 	if !factory.NeedValue() {
 		return nil

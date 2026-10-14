@@ -55,6 +55,10 @@ func (c *OutRangeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("condition [out_range] right value should be an array of length 2")
 	}
 
+	if val[0] == nil || val[1] == nil {
+		return nil, fmt.Errorf("condition [out_range] bounds must not be nil")
+	}
+
 	return &OutRangeCond{
 		Cfg:    cfg,
 		Lfield: field,

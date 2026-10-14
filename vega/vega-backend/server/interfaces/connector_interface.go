@@ -78,13 +78,13 @@ type TableConnector interface {
 	CountRows(ctx context.Context, sourceIdentifier string) (int64, error)
 
 	// BuildPagedSQL wraps validated read-only SQL with source-specific pagination using offset and limit.
-	BuildPagedSQL(sql string, offset, limit int) string
+	BuildPagedSQL(sqlStr string, offset, limit int) string
 	// BuildCountSQL wraps validated read-only SQL in a query that counts its result rows.
-	BuildCountSQL(sql string) string
+	BuildCountSQL(sqlStr string) string
 	// ExecuteQuery executes a single-table query using resource and params, taking the table reference directly from resource.SourceIdentifier.
 	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
 	// ExecuteRawSQL executes read-only SQL that has passed unified query validation, returning column information, data, and a count.
-	ExecuteRawSQL(ctx context.Context, sql string) (*RawQueryResponse, error)
+	ExecuteRawSQL(ctx context.Context, sqlStr string) (*RawQueryResponse, error)
 }
 
 // FileConnector defines the interface for file/document storage connectors.

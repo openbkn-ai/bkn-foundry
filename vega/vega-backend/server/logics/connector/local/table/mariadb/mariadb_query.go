@@ -4,7 +4,6 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package mariadb provides MariaDB database connector implementation.
 package mariadb
 
 import (
@@ -21,7 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 )
 
-// convertValue converts []byte to string for MariaDB driver compatibility
+// convertValue converts driver byte slices to strings unless binary content must be preserved.
 func convertValue(v any, preserveBinary bool) any {
 	if b, ok := v.([]byte); ok {
 		if preserveBinary {
@@ -32,7 +31,8 @@ func convertValue(v any, preserveBinary bool) any {
 	return v
 }
 
-// BuildPagedSQL applies MariaDB paging syntax to a validated query.
+// BuildPagedSQL wraps validated read-only SQL with LIMIT and OFFSET.
+// The inner query retains its own ordering and limits; the newline terminates trailing line comments.
 func (c *MariaDBConnector) BuildPagedSQL(sqlStr string, offset, limit int) string {
 	if offset < 0 {
 		offset = 0
@@ -43,251 +43,14 @@ func (c *MariaDBConnector) BuildPagedSQL(sqlStr string, offset, limit int) strin
 	return fmt.Sprintf("SELECT * FROM (%s\n) AS _raw_query_page LIMIT %d OFFSET %d", strings.TrimSpace(sqlStr), limit, offset)
 }
 
-// BuildCountSQL applies MariaDB total-count syntax to a validated query.
+// BuildCountSQL counts the full result of validated SQL, including any original limit.
+// The newline terminates trailing line comments before the wrapper closes.
 func (c *MariaDBConnector) BuildCountSQL(sqlStr string) string {
 	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s\n) AS _raw_query_total", strings.TrimSpace(sqlStr))
 }
 
-// ExecuteRawSQL executes the original SQL query
-func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*interfaces.RawQueryResponse, error) {
-	if err := c.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("connect failed: %w", err)
-	}
-
-	rows, err := c.db.QueryContext(ctx, sqlStr)
-	if err != nil {
-		return nil, fmt.Errorf("execute query failed: %w", classifyQueryError(err))
-	}
-	defer func() { _ = rows.Close() }()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, fmt.Errorf("get columns failed: %w", err)
-	}
-
-	columnTypes, err := rows.ColumnTypes()
-	if err != nil {
-		return nil, fmt.Errorf("get column types failed: %w", err)
-	}
-
-	response := &interfaces.RawQueryResponse{
-		Columns: make([]interfaces.ColumnInfo, len(columns)),
-		Entries: make([]map[string]any, 0),
-	}
-
-	// Fill column information
-	for i, col := range columns {
-		response.Columns[i] = interfaces.ColumnInfo{
-			Name: col,
-			Type: c.MapType(columnTypes[i].DatabaseTypeName()),
-		}
-	}
-
-	// Read the result row
-	for rows.Next() {
-		values := make([]any, len(columns))
-		valuePtrs := make([]any, len(columns))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, fmt.Errorf("scan row failed: %w", err)
-		}
-
-		row := make(map[string]any)
-		for i, col := range columns {
-			row[col] = convertValue(values[i], false)
-		}
-		response.Entries = append(response.Entries, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows failed: %w", classifyQueryError(err))
-	}
-
-	totalCount := int64(len(response.Entries))
-	response.TotalCount = &totalCount
-
-	return response, nil
-}
-
-// buildSelectBuilder assembles the SELECT statement for detail and aggregate queries.
-//
-// Every identifier — table, column, alias — must go through quoteColumnName.
-// A source column named after a SQL reserved word (say `key`) survives DDL, catalog
-// discover and bkn push untouched, because none of them build a query; concatenating it
-// raw only fails at execution time with a 1064 that names nothing useful.
-func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
-	params *interfaces.ResourceDataQueryParams, fieldMap map[string]*interfaces.Property,
-	condition sq.Sqlizer) (sq.SelectBuilder, error) {
-	if params.Paging.Offset < 0 || params.Paging.Limit < 0 {
-		return sq.SelectBuilder{}, fmt.Errorf("paging offset and limit must not be negative")
-	}
-
-	// Source column name. Fall back to the property name when the schema has no mapping,
-	// and also when the property carries no original_name: build tasks add vector fields
-	// with a Name and no OriginalName (appendTaskEmbeddingVectorFields), and without the
-	// fallback those render as an empty quoted identifier.
-	originalName := func(property string) string {
-		if field, ok := fieldMap[property]; ok && field.OriginalName != "" {
-			return field.OriginalName
-		}
-		return property
-	}
-
-	// Construct the SELECT clause
-	selectFields := []string{}
-
-	// Add the GROUP BY field (when aggregating queries)
-	for _, groupByItem := range params.GroupBy {
-		column := originalName(groupByItem.Property)
-		// Check whether calendar_interval is needed
-		if groupByItem.CalendarInterval != "" {
-			dateFmt := c.buildDateFormat(mariadbQuoteColumnName(column), groupByItem.CalendarInterval)
-			selectFields = append(selectFields, dateFmt+" AS "+mariadbQuoteColumnName(groupByItem.Property))
-		} else {
-			selectFields = append(selectFields,
-				mariadbQuoteColumnName(column)+" AS "+mariadbQuoteColumnName(groupByItem.Property))
-		}
-	}
-
-	// Add the aggregate field (when aggregating queries)
-	var aggAlias string
-	if params.Aggregation != nil {
-		aggField := mariadbQuoteColumnName(originalName(params.Aggregation.Property))
-
-		// Determine the aggregate function
-		aggFunc := params.Aggregation.Aggr
-		switch aggFunc {
-		case "count_distinct":
-			aggFunc = "COUNT(DISTINCT " + aggField + ")"
-		default:
-			aggFunc = strings.ToUpper(aggFunc) + "(" + aggField + ")"
-		}
-
-		// Determine the alias
-		if params.Aggregation.Alias != "" {
-			aggAlias = params.Aggregation.Alias
-		} else {
-			aggAlias = "__value"
-		}
-
-		selectFields = append(selectFields, aggFunc+" AS "+mariadbQuoteColumnName(aggAlias))
-	} else if params.Having != nil && params.Having.Field == "count(*)" {
-		// When HAVING uses count(*), add the COUNT(*) aggregate automatically
-		aggAlias = "__value"
-		selectFields = append(selectFields, "COUNT(*) AS "+mariadbQuoteColumnName(aggAlias))
-	}
-
-	// Select every field when the query is neither aggregated nor grouped
-	selectField := func(name string) string {
-		column := mariadbQuoteColumnName(originalName(name))
-		if prop := fieldMap[name]; prop != nil && prop.Type == interfaces.DataType_Binary {
-			if params.BinaryMode == nil {
-				return "NULL AS " + mariadbQuoteColumnName(name)
-			}
-			switch *params.BinaryMode {
-			case interfaces.BinaryModeMetadata:
-				return "OCTET_LENGTH(" + column + ") AS " + mariadbQuoteColumnName(name)
-			case interfaces.BinaryModeContent:
-				return column + " AS " + mariadbQuoteColumnName(name)
-			default:
-				return "NULL AS " + mariadbQuoteColumnName(name)
-			}
-		}
-		return column + " AS " + mariadbQuoteColumnName(name)
-	}
-	// output_fields controls detail-query projection only. Aggregate projection is
-	// defined by group_by, aggregation, or count(*) having; appending any other
-	// plain field would violate aggregate semantics and differs from PostgreSQL.
-	if len(params.GroupBy) == 0 && params.Aggregation == nil && params.Having == nil {
-		if len(params.OutputFields) > 0 {
-			for _, outName := range params.OutputFields {
-				selectFields = append(selectFields, selectField(outName))
-			}
-		} else if len(selectFields) == 0 {
-			// No output fields specified, so query them all. This branch needs the
-			// originalName fallback too, or a property with an empty original_name
-			// renders as an empty identifier and breaks the statement.
-			for _, prop := range resource.SchemaDefinition {
-				selectFields = append(selectFields, selectField(prop.Name))
-			}
-		}
-	}
-
-	// Build the query
-	builder := sq.Select(selectFields...).
-		From(resource.SourceIdentifier)
-
-	// Add the WHERE condition
-	if condition != nil {
-		builder = builder.Where(condition)
-	}
-
-	// Add GROUP BY (when aggregating queries)
-	if len(params.GroupBy) > 0 {
-		groupByFields := []string{}
-		for _, groupByItem := range params.GroupBy {
-			column := mariadbQuoteColumnName(originalName(groupByItem.Property))
-			// Check whether calendar_interval is needed
-			if groupByItem.CalendarInterval != "" {
-				groupByFields = append(groupByFields,
-					c.buildDateFormat(column, groupByItem.CalendarInterval))
-			} else {
-				groupByFields = append(groupByFields, column)
-			}
-		}
-		builder = builder.GroupBy(groupByFields...)
-	}
-
-	// Add the HAVING condition (when aggregating queries)
-	if params.Having != nil && (params.Aggregation != nil || (params.Having.Field == "count(*)")) {
-		havingCond, err := c.buildHavingCondition(params.Having, aggAlias)
-		if err != nil {
-			return builder, fmt.Errorf("failed to build HAVING condition: %w", err)
-		}
-		if havingCond != "" {
-			builder = builder.Having(havingCond)
-		}
-	}
-
-	// Add ORDER BY
-	for _, sortItem := range params.Sort {
-		dir := "ASC"
-		if sortItem.Direction == interfaces.DESC_DIRECTION {
-			dir = "DESC"
-		}
-
-		// Resolve the sort field against the SELECT aliases first: when an alias matches a
-		// property name the caller means the aggregate, but schema resolution would pick
-		// that property's source column instead. The default sql_mode has no
-		// ONLY_FULL_GROUP_BY, so that does not error — it orders by an arbitrary row.
-		sortField := mariadbQuoteColumnName(originalName(sortItem.Field))
-		if aggAlias != "" && sortItem.Field == aggAlias {
-			sortField = mariadbQuoteColumnName(aggAlias)
-		}
-
-		// Check whether this is a GROUP BY field using calendar_interval
-		for _, groupByItem := range params.GroupBy {
-			if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
-				// Use the full date_format expression
-				sortField = c.buildDateFormat(
-					mariadbQuoteColumnName(originalName(groupByItem.Property)), groupByItem.CalendarInterval)
-				break
-			}
-		}
-
-		builder = builder.OrderBy(sortField + " " + dir)
-	}
-
-	// Add LIMIT and OFFSET
-	if params.CursorEncoded == "" {
-		builder = builder.Offset(uint64(params.Paging.Offset))
-	}
-	return builder.Limit(uint64(params.Paging.Limit)), nil
-}
-
-// ExecuteQuery runs a structured single-table query and returns rows and optional totals.
+// ExecuteQuery runs a structured query using the resource schema and compiled filter.
+// NeedTotal issues a separate count for detail queries; aggregate queries return their entries.
 func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 
@@ -295,9 +58,9 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		return nil, err
 	}
 
-	fieldMap := map[string]*interfaces.Property{}
-	for _, prop := range resource.SchemaDefinition {
-		fieldMap[prop.Name] = prop
+	fields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
+	for _, property := range resource.SchemaDefinition {
+		fields[property.Name] = property
 	}
 
 	var condition sq.Sqlizer
@@ -313,12 +76,12 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		Entries: make([]map[string]any, 0),
 	}
 
-	builder, err := c.buildSelectBuilder(resource, params, fieldMap, condition)
+	builder, err := c.buildSelectBuilder(resource, params, fields, condition)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build SQL and execute it
+	// Serialize the statement and retain the converter's bound arguments.
 	query, args, err := builder.ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
@@ -333,7 +96,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", classifyQueryError(err))
+		return nil, fmt.Errorf("failed to execute query: %w", mariadbQueryError(err))
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -369,12 +132,11 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		result.Entries = append(result.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, classifyQueryError(err)
+		return nil, mariadbQueryError(err)
 	}
 
-	// Total processing (detail query only) : Independent COUNT query, aligned with the postgresql connector.
-	// Previously, directly take len(result.Entries) - that is, the number of rows on this page. For tables with more than one page, total is always equal to
-	// LIMIT (The progress bar of the build task shows "20802/1000", which indicates this bug)
+	// Count the complete filtered detail result without pagination, rather than
+	// treating the number of rows on this page as the total.
 	if params.NeedTotal && !isAggregate {
 		countBuilder := sq.Select("COUNT(1)").
 			From(resource.SourceIdentifier)
@@ -389,7 +151,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		var total int64
 		row := c.db.QueryRowContext(ctx, countQuery, countArgs...)
 		if err := row.Scan(&total); err != nil {
-			return nil, fmt.Errorf("failed to scan total: %w", classifyQueryError(err))
+			return nil, fmt.Errorf("failed to scan total: %w", mariadbQueryError(err))
 		}
 		result.Total = total
 	}
@@ -397,7 +159,236 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	return result, nil
 }
 
-func classifyQueryError(err error) error {
+// ExecuteRawSQL executes SQL that has passed the caller's read-only and resource policy checks.
+// Column types come from the driver, byte values become strings, and TotalCount is the returned row count.
+func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*interfaces.RawQueryResponse, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("connect failed: %w", err)
+	}
+
+	rows, err := c.db.QueryContext(ctx, sqlStr)
+	if err != nil {
+		return nil, fmt.Errorf("execute query failed: %w", mariadbQueryError(err))
+	}
+	defer func() { _ = rows.Close() }()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("get columns failed: %w", err)
+	}
+
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, fmt.Errorf("get column types failed: %w", err)
+	}
+
+	response := &interfaces.RawQueryResponse{
+		Columns: make([]interfaces.ColumnInfo, len(columns)),
+		Entries: make([]map[string]any, 0),
+	}
+
+	// Map driver-reported column types to the response schema.
+	for i, col := range columns {
+		response.Columns[i] = interfaces.ColumnInfo{
+			Name: col,
+			Type: c.MapType(columnTypes[i].DatabaseTypeName()),
+		}
+	}
+
+	// Scan rows into entries using the driver's column order.
+	for rows.Next() {
+		values := make([]any, len(columns))
+		valuePtrs := make([]any, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, fmt.Errorf("scan row failed: %w", err)
+		}
+
+		row := make(map[string]any)
+		for i, col := range columns {
+			row[col] = convertValue(values[i], false)
+		}
+		response.Entries = append(response.Entries, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows failed: %w", mariadbQueryError(err))
+	}
+
+	totalCount := int64(len(response.Entries))
+	response.TotalCount = &totalCount
+
+	return response, nil
+}
+
+// buildSelectBuilder assembles projection, filtering, grouping, HAVING, sorting, and paging.
+// Resource.SourceIdentifier is already quoted and is used directly as the table reference.
+// Column and result-alias references use connector quoting, including reserved words such as key.
+func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams, fieldMap map[string]*interfaces.Property,
+	condition sq.Sqlizer) (sq.SelectBuilder, error) {
+	if params.Paging.Offset < 0 || params.Paging.Limit < 0 {
+		return sq.SelectBuilder{}, fmt.Errorf("paging offset and limit must not be negative")
+	}
+
+	// Generated fields may lack OriginalName; use the property name rather than
+	// producing an empty SQL identifier.
+	originalName := func(property string) string {
+		if field, ok := fieldMap[property]; ok && field.OriginalName != "" {
+			return field.OriginalName
+		}
+		return property
+	}
+
+	selectFields := []string{}
+
+	// Project grouping dimensions using their resource names as aliases.
+	for _, groupByItem := range params.GroupBy {
+		column := originalName(groupByItem.Property)
+		// Calendar intervals use the same expression in projection and grouping.
+		if groupByItem.CalendarInterval != "" {
+			dateFmt := c.buildDateFormat(mariadbQuoteColumnName(column), groupByItem.CalendarInterval)
+			selectFields = append(selectFields, dateFmt+" AS "+mariadbQuoteColumnName(groupByItem.Property))
+		} else {
+			selectFields = append(selectFields,
+				mariadbQuoteColumnName(column)+" AS "+mariadbQuoteColumnName(groupByItem.Property))
+		}
+	}
+
+	// Project the aggregate expression and its result alias.
+	var aggAlias string
+	if params.Aggregation != nil {
+		aggField := mariadbQuoteColumnName(originalName(params.Aggregation.Property))
+
+		aggFunc := params.Aggregation.Aggr
+		switch aggFunc {
+		case "count_distinct":
+			aggFunc = "COUNT(DISTINCT " + aggField + ")"
+		default:
+			aggFunc = strings.ToUpper(aggFunc) + "(" + aggField + ")"
+		}
+
+		// Use __value when no aggregate alias is supplied.
+		if params.Aggregation.Alias != "" {
+			aggAlias = params.Aggregation.Alias
+		} else {
+			aggAlias = "__value"
+		}
+
+		selectFields = append(selectFields, aggFunc+" AS "+mariadbQuoteColumnName(aggAlias))
+	} else if params.Having != nil && params.Having.Field == "count(*)" {
+		// A count(*) HAVING clause requires an implicit COUNT(*) projection.
+		aggAlias = "__value"
+		selectFields = append(selectFields, "COUNT(*) AS "+mariadbQuoteColumnName(aggAlias))
+	}
+
+	// Detail projection follows the requested binary representation.
+	selectField := func(name string) string {
+		column := mariadbQuoteColumnName(originalName(name))
+		if prop := fieldMap[name]; prop != nil && prop.Type == interfaces.DataType_Binary {
+			if params.BinaryMode == nil {
+				return "NULL AS " + mariadbQuoteColumnName(name)
+			}
+			switch *params.BinaryMode {
+			case interfaces.BinaryModeMetadata:
+				return "OCTET_LENGTH(" + column + ") AS " + mariadbQuoteColumnName(name)
+			case interfaces.BinaryModeContent:
+				return column + " AS " + mariadbQuoteColumnName(name)
+			default:
+				return "NULL AS " + mariadbQuoteColumnName(name)
+			}
+		}
+		return column + " AS " + mariadbQuoteColumnName(name)
+	}
+	// OutputFields controls detail projection only. Aggregate projection consists
+	// of grouping dimensions and the aggregate result; extra plain columns would
+	// violate grouping semantics.
+	if len(params.GroupBy) == 0 && params.Aggregation == nil && params.Having == nil {
+		if len(params.OutputFields) > 0 {
+			for _, outName := range params.OutputFields {
+				selectFields = append(selectFields, selectField(outName))
+			}
+		} else if len(selectFields) == 0 {
+			// Without an explicit projection, include all resource fields using
+			// the same original-name fallback as requested fields.
+			for _, prop := range resource.SchemaDefinition {
+				selectFields = append(selectFields, selectField(prop.Name))
+			}
+		}
+	}
+
+	builder := sq.Select(selectFields...).
+		From(resource.SourceIdentifier)
+
+	// Apply the compiled filter before grouping.
+	if condition != nil {
+		builder = builder.Where(condition)
+	}
+
+	// Group by source expressions, including calendar intervals.
+	if len(params.GroupBy) > 0 {
+		groupByFields := []string{}
+		for _, groupByItem := range params.GroupBy {
+			column := mariadbQuoteColumnName(originalName(groupByItem.Property))
+			// Calendar intervals use the same expression in projection and grouping.
+			if groupByItem.CalendarInterval != "" {
+				groupByFields = append(groupByFields,
+					c.buildDateFormat(column, groupByItem.CalendarInterval))
+			} else {
+				groupByFields = append(groupByFields, column)
+			}
+		}
+		builder = builder.GroupBy(groupByFields...)
+	}
+
+	// Apply HAVING only to queries with an aggregate result.
+	if params.Having != nil && (params.Aggregation != nil || (params.Having.Field == "count(*)")) {
+		havingCond, err := c.buildHavingCondition(params.Having, aggAlias)
+		if err != nil {
+			return builder, fmt.Errorf("failed to build HAVING condition: %w", err)
+		}
+		if havingCond != "" {
+			builder = builder.Having(havingCond)
+		}
+	}
+
+	for _, sortItem := range params.Sort {
+		dir := "ASC"
+		if sortItem.Direction == interfaces.DESC_DIRECTION {
+			dir = "DESC"
+		}
+
+		// An aggregate alias takes precedence over a same-named resource property.
+		// Resolving it as a source column can silently sort arbitrary rows when
+		// ONLY_FULL_GROUP_BY is disabled.
+		sortField := mariadbQuoteColumnName(originalName(sortItem.Field))
+		if aggAlias != "" && sortItem.Field == aggAlias {
+			sortField = mariadbQuoteColumnName(aggAlias)
+		}
+
+		// Calendar-group sorting uses the same expression as GROUP BY.
+		for _, groupByItem := range params.GroupBy {
+			if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
+				sortField = c.buildDateFormat(
+					mariadbQuoteColumnName(originalName(groupByItem.Property)), groupByItem.CalendarInterval)
+				break
+			}
+		}
+
+		builder = builder.OrderBy(sortField + " " + dir)
+	}
+
+	// Core supplies the keyset filter; cursor queries omit offset pagination.
+	if params.CursorEncoded == "" {
+		builder = builder.Offset(uint64(params.Paging.Offset))
+	}
+	return builder.Limit(uint64(params.Paging.Limit)), nil
+}
+
+// mariadbQueryError identifies unknown-column errors while preserving the driver cause.
+func mariadbQueryError(err error) error {
 	var driverErr *mysql.MySQLError
 	if errors.As(err, &driverErr) && driverErr.Number == 1054 {
 		return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
@@ -405,16 +396,14 @@ func classifyQueryError(err error) error {
 	return err
 }
 
-// buildHavingCondition builds the HAVING condition
+// buildHavingCondition renders HAVING for __value or count(*) using the selected aggregate alias.
 func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause, aggAlias string) (string, error) {
-	// Support the __value and count(*) fields
 	if having.Field != "__value" && having.Field != "count(*)" {
 		return "", fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}
 
-	// Determine the field expression used in the HAVING clause. The alias comes straight
-	// from the request body and is not validated, so a reserved word passes SELECT — which
-	// quotes it — and then fails HAVING with a 1064 unless it is quoted here too.
+	// Quote the result alias consistently with SELECT, including reserved words.
+	// count(*) is a fixed aggregate expression rather than an identifier.
 	var fieldExpr string
 	if having.Field == "count(*)" {
 		fieldExpr = "COUNT(*)"
@@ -454,7 +443,7 @@ func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause,
 		return "", fmt.Errorf("unsupported HAVING operation: %s", having.Operation)
 	}
 
-	// Format the value of the HAVING condition
+	// Render scalar values as SQL literals; this path does not return bound arguments.
 	var valueStr string
 	switch v := having.Value.(type) {
 	case string:
@@ -467,7 +456,8 @@ func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause,
 	return fmt.Sprintf("%s %s %s", fieldExpr, op, valueStr), nil
 }
 
-// Format IN Values: Format the list of values for the in operation
+// formatInValues renders a comma-separated SQL value list for HAVING.
+// String slices receive SQL quotes; other values are formatted directly.
 func formatInValues(value any) string {
 	switch v := value.(type) {
 	case []any:
@@ -487,9 +477,9 @@ func formatInValues(value any) string {
 	}
 }
 
-// buildDateFormat builds the date_format expression based on calendar_interval
-// Support the calendar_interval enumeration values of OpenSearch: minute, hour, day, week, month, quarter, year
-// Note: The validity of calendar_interval has been verified in the validateCalendarInterval method in validate_resource_data.go
+// buildDateFormat groups a quoted date expression by a validated calendar interval.
+// Minute through year use DATE_FORMAT; quarter uses a year-and-quarter label.
+// The caller validates the interval before invoking this helper.
 func (c *MariaDBConnector) buildDateFormat(dateField, calendarInterval string) string {
 	var dateFmt string
 	switch calendarInterval {

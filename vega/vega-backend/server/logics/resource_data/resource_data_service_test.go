@@ -847,7 +847,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "name", Type: interfaces.DataType_String}},
 		}
 	}
-	unsupported := interfaces.NewUnsupportedOperationError("regex", filter_condition.QueryChannelSQL)
+	unsupported := interfaces.NewUnsupportedOperationError("regex", fmt.Errorf("the sql query channel does not support this operation"))
 
 	t.Run("table connector unknown column becomes HTTP 400 without driver details", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1028,7 +1028,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
-			Return(nil, interfaces.NewUnsupportedOperationError("regex", filter_condition.QueryChannelFileset))
+			Return(nil, interfaces.NewUnsupportedOperationError("regex", fmt.Errorf("the fileset query channel does not support this operation")))
 
 		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
 		assertUnsupportedOperationHTTPError(t, err)

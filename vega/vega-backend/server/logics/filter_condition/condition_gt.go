@@ -46,6 +46,10 @@ func (c *GtCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("condition [gt] only supports single value")
 	}
 
+	if cfg.Value == nil {
+		return nil, fmt.Errorf("condition [gt] value must not be nil")
+	}
+
 	cond := &GtCond{
 		Cfg:    cfg,
 		Lfield: field,

@@ -55,6 +55,10 @@ func (c *RangeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("condition [range] right value should be an array of length 2")
 	}
 
+	if val[0] == nil || val[1] == nil {
+		return nil, fmt.Errorf("condition [range] bounds must not be nil")
+	}
+
 	return &RangeCond{
 		Cfg:    cfg,
 		Lfield: field,

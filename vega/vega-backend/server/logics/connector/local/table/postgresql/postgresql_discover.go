@@ -9,6 +9,7 @@ package postgresql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -153,11 +154,14 @@ func (c *PostgresqlConnector) fetchDomainMetadata(ctx context.Context,
 	return metadata, nil
 }
 
-// ListTables lists tables, views and materialized views. Fill in the database name for TableMeta.Database and the Schema name for schema.
+// ListTables lists readable relations in the configured discovery scope.
+// Each result retains raw database and schema names for later metadata reads.
 func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
 	return c.listTables(ctx, "", "")
 }
 
+// discoverableRelationsBuilder selects readable, non-temporary relations outside system schemas.
+// Inherited and partition child relations are excluded to avoid discovering their data twice.
 func discoverableRelationsBuilder() sq.SelectBuilder {
 	return stmtBuilder.Select().
 		From("pg_catalog.pg_class c").
@@ -178,7 +182,7 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 		return nil, fmt.Errorf("schema %q is outside the connector scope", schema)
 	}
 	if err := c.Connect(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect for table discovery: %w", err)
 	}
 
 	builder := discoverableRelationsBuilder().Columns(
@@ -205,7 +209,7 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list tables: %w", err)
+		return nil, fmt.Errorf("failed to execute list tables query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -225,9 +229,9 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 			return nil, fmt.Errorf("required table metadata contains NULL")
 		}
 
-		// SQL 条件用于缩小范围；配置范围统一按源端原始名称精确匹配。
-		// 此处过滤可避免数据库比较规则与配置语义不一致，
-		// 并保留普通 SQL 条件，避免 BINARY/COLLATE 影响索引使用或条件下推。
+		// SQL predicates narrow the results; configured scope uses exact source names.
+		// Filter after scanning to preserve exact matching regardless of database comparison rules,
+		// without BINARY/COLLATE casts that could prevent index use or predicate pushdown.
 		if !c.schemaAllowed(schema.String) {
 			continue
 		}
@@ -249,7 +253,8 @@ func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName 
 	return tables, nil
 }
 
-// schemaAllowed 判断 schema 是否在配置的发现范围内。
+// schemaAllowed checks configured scope using exact source names.
+// An empty scope allows every schema; default system-schema exclusions belong to discovery.
 func (c *PostgresqlConnector) schemaAllowed(schema string) bool {
 	if len(c.config.Schemas) == 0 {
 		return true
@@ -274,27 +279,32 @@ func (c *PostgresqlConnector) mapTableType(relKind string) string {
 	}
 }
 
-// GetTableMeta fills the table metadata.
+// GetTableMeta refreshes status, columns, indexes, and foreign keys using raw name components.
+// Scope is checked before connecting; each successful stage updates its part of table.
 func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
 	if !c.schemaAllowed(table.Schema) {
 		return fmt.Errorf("schema %q is outside the connector scope", table.Schema)
 	}
 	if err := c.Connect(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to connect for table metadata: %w", err)
 	}
 
+	// Refresh table type, description, and optional table properties.
 	if err := c.fetchTableStatus(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch table status: %w", err)
 	}
 
+	// Refresh columns and primary-key column names.
 	if err := c.fetchColumns(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch columns: %w", err)
 	}
 
+	// Refresh secondary and primary index metadata.
 	if err := c.fetchIndexes(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch indexes: %w", err)
 	}
 
+	// Refresh foreign-key constraints and referenced columns.
 	if err := c.fetchForeignKeys(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch foreign keys: %w", err)
 	}
@@ -302,6 +312,7 @@ func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interface
 }
 
 // fetchTableStatus retrieves the table type, description, estimated row count, and storage sizes.
+// Missing rows retain sql.ErrNoRows; failed reads leave the existing snapshot unchanged.
 func (c *PostgresqlConnector) fetchTableStatus(ctx context.Context, table *interfaces.TableMeta) error {
 	relKinds := "'" + strings.Join(tableRelKinds, "', '") + "'"
 	//nolint:gosec // Relation kinds are static constants, not user input.
@@ -330,10 +341,10 @@ func (c *PostgresqlConnector) fetchTableStatus(ctx context.Context, table *inter
 		&totalBytes,
 		&indexBytes,
 	); err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("table metadata not found or inaccessible: %s.%s", table.Schema, table.Name)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("table metadata not found or inaccessible: %s.%s: %w", table.Schema, table.Name, err)
 		}
-		return err
+		return fmt.Errorf("failed to read table status: %w", err)
 	}
 	if !relKind.Valid {
 		return fmt.Errorf("required table metadata contains NULL")
@@ -393,7 +404,7 @@ func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interface
 
 	rows, err := c.db.QueryContext(ctx, query, table.Schema, table.Name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to execute column metadata query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -443,11 +454,11 @@ func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interface
 
 	domains, err := c.fetchDomainMetadata(ctx, domainOIDs)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch domain metadata: %w", err)
 	}
 	pkSet, err := c.fetchPrimaryKeyColumns(ctx, table.Schema, table.Name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch primary key columns: %w", err)
 	}
 
 	columns := make([]interfaces.TableColumnMeta, 0, len(rawColumns))
@@ -534,7 +545,7 @@ func (c *PostgresqlConnector) fetchPrimaryKeyColumns(ctx context.Context, schema
 
 	rows, err := c.db.QueryContext(ctx, query, c.config.Database, schema, tableName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute primary key metadata query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -542,7 +553,7 @@ func (c *PostgresqlConnector) fetchPrimaryKeyColumns(ctx context.Context, schema
 	for rows.Next() {
 		var col sql.NullString
 		if err := rows.Scan(&col); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan primary key metadata: %w", err)
 		}
 		if !col.Valid {
 			return nil, fmt.Errorf("required primary key metadata contains NULL")
@@ -550,7 +561,7 @@ func (c *PostgresqlConnector) fetchPrimaryKeyColumns(ctx context.Context, schema
 		out[col.String] = true
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to iterate primary key metadata: %w", err)
 	}
 	return out, nil
 }
@@ -561,7 +572,7 @@ func (c *PostgresqlConnector) fetchIndexes(ctx context.Context, table *interface
 
 	rows, err := c.db.QueryContext(ctx, query, table.Schema, table.Name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to execute index metadata query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -577,7 +588,7 @@ func (c *PostgresqlConnector) fetchIndexes(ctx context.Context, table *interface
 			&isPrimary,
 			&ord,
 		); err != nil {
-			return err
+			return fmt.Errorf("failed to scan index metadata: %w", err)
 		}
 		if !indexName.Valid || !columnName.Valid || !isUnique.Valid || !isPrimary.Valid || !ord.Valid {
 			return fmt.Errorf("required index metadata contains NULL")
@@ -595,7 +606,7 @@ func (c *PostgresqlConnector) fetchIndexes(ctx context.Context, table *interface
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		return fmt.Errorf("failed to iterate index metadata: %w", err)
 	}
 
 	indices := make([]interfaces.TableIndexMeta, 0)
@@ -674,7 +685,7 @@ func (c *PostgresqlConnector) fetchForeignKeys(ctx context.Context, table *inter
 
 	rows, err := c.db.QueryContext(ctx, query, table.Schema, table.Name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to execute foreign key metadata query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -688,7 +699,7 @@ func (c *PostgresqlConnector) fetchForeignKeys(ctx context.Context, table *inter
 			&refSchemaName,
 			&refTableName,
 		); err != nil {
-			return err
+			return fmt.Errorf("failed to scan foreign key metadata: %w", err)
 		}
 		if !constraintName.Valid || !columnName.Valid || !refColumnName.Valid || !refSchemaName.Valid || !refTableName.Valid {
 			return fmt.Errorf("required foreign key metadata contains NULL")
@@ -708,7 +719,7 @@ func (c *PostgresqlConnector) fetchForeignKeys(ctx context.Context, table *inter
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		return fmt.Errorf("failed to iterate foreign key metadata: %w", err)
 	}
 
 	var fks []interfaces.TableForeignKeyMeta
@@ -794,7 +805,7 @@ func (c *PostgresqlConnector) foreignKeyMetadataQuery() string {
 // GetMetadata returns instance/session-level metadata.
 func (c *PostgresqlConnector) GetMetadata(ctx context.Context) (map[string]any, error) {
 	if err := c.Connect(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect for database metadata: %w", err)
 	}
 
 	metadata := make(map[string]any)
@@ -802,7 +813,7 @@ func (c *PostgresqlConnector) GetMetadata(ctx context.Context) (map[string]any, 
 	var version sql.NullString
 	versionRow := c.db.QueryRowContext(ctx, `SELECT version()`)
 	if err := versionRow.Scan(&version); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read database version: %w", err)
 	}
 	if !version.Valid {
 		return nil, fmt.Errorf("required database metadata contains NULL")
@@ -823,14 +834,14 @@ func (c *PostgresqlConnector) GetMetadata(ctx context.Context) (map[string]any, 
 	`
 	rows, err := c.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute database settings query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var k, v sql.NullString
 		if err := rows.Scan(&k, &v); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan database setting: %w", err)
 		}
 		if !k.Valid {
 			return nil, fmt.Errorf("required database setting metadata contains NULL")
@@ -838,12 +849,12 @@ func (c *PostgresqlConnector) GetMetadata(ctx context.Context) (map[string]any, 
 		metadata[k.String] = v.String
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to iterate database settings: %w", err)
 	}
 
 	schemas, err := c.listSchemas(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list schemas: %w", err)
 	}
 	metadata["schemas"] = schemas
 
@@ -867,11 +878,11 @@ func (c *PostgresqlConnector) listSchemas(ctx context.Context) ([]string, error)
 
 	sqlStr, args, err := builder.ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("build list schemas query: %w", err)
+		return nil, fmt.Errorf("failed to build list schemas query: %w", err)
 	}
 	rows, err := c.db.QueryContext(ctx, sqlStr, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list schemas: %w", err)
+		return nil, fmt.Errorf("failed to list schemas: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -879,15 +890,15 @@ func (c *PostgresqlConnector) listSchemas(ctx context.Context) ([]string, error)
 	for rows.Next() {
 		var schema sql.NullString
 		if err := rows.Scan(&schema); err != nil {
-			return nil, fmt.Errorf("scan schema: %w", err)
+			return nil, fmt.Errorf("failed to scan schema name: %w", err)
 		}
 		if !schema.Valid {
 			return nil, fmt.Errorf("required schema metadata contains NULL")
 		}
 
-		// SQL 条件用于缩小范围；配置范围统一按源端原始名称精确匹配。
-		// 此处过滤可避免数据库比较规则与配置语义不一致，
-		// 并保留普通 SQL 条件，避免 BINARY/COLLATE 影响索引使用或条件下推。
+		// SQL predicates narrow the results; configured scope uses exact source names.
+		// Filter after scanning to preserve exact matching regardless of database comparison rules,
+		// without BINARY/COLLATE casts that could prevent index use or predicate pushdown.
 		if !c.schemaAllowed(schema.String) {
 			continue
 		}
@@ -895,29 +906,29 @@ func (c *PostgresqlConnector) listSchemas(ctx context.Context) ([]string, error)
 		schemas = append(schemas, schema.String)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate schemas: %w", err)
+		return nil, fmt.Errorf("failed to iterate schemas: %w", err)
 	}
 	return schemas, nil
 }
 
-// CountRows 使用源 SQL 表引用获取表或视图的精确数量。
+// CountRows returns an exact row count using the SQL-ready source identifier.
 func (c *PostgresqlConnector) CountRows(ctx context.Context, sourceIdentifier string) (int64, error) {
 	if sourceIdentifier == "" {
 		return 0, fmt.Errorf("empty source identifier")
 	}
 	if err := c.Connect(ctx); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to connect for row count: %w", err)
 	}
 
 	query, args, err := sq.Select("COUNT(*)").
 		From(sourceIdentifier).
 		ToSql()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to build row count query: %w", err)
 	}
 	var count int64
 	if err := c.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to read row count: %w", err)
 	}
 	if count < 0 {
 		return 0, fmt.Errorf("invalid negative row count")
@@ -925,26 +936,16 @@ func (c *PostgresqlConnector) CountRows(ctx context.Context, sourceIdentifier st
 	return count, nil
 }
 
-// BuildSourceIdentifier 生成源 SQL 表引用，不连接源数据库。
-func (c *PostgresqlConnector) BuildSourceIdentifier(meta *interfaces.TableMeta) string {
-	return pgQuoteIdent(meta.Schema) + "." + pgQuoteIdent(meta.Name)
-}
-
-// BuildOriginalName 生成不含 SQL 引用符的源端名称，不连接源数据库。
-func (c *PostgresqlConnector) BuildOriginalName(meta *interfaces.TableMeta) string {
-	return meta.Schema + "." + meta.Name
-}
-
 // DecodeTableMeta decodes source metadata and restores missing legacy name components.
 // Historical components are assumed not to contain dots or SQL quoting characters.
 func (c *PostgresqlConnector) DecodeTableMeta(metadata map[string]any) (*interfaces.TableMeta, error) {
 	data, err := sonic.Marshal(metadata)
 	if err != nil {
-		return nil, fmt.Errorf("serialize table metadata: %w", err)
+		return nil, fmt.Errorf("failed to serialize table metadata: %w", err)
 	}
 	table := &interfaces.TableMeta{}
 	if err := common.UnmarshalPreciseJSON(data, table); err != nil {
-		return nil, fmt.Errorf("decode table metadata: %w", err)
+		return nil, fmt.Errorf("failed to decode table metadata: %w", err)
 	}
 	if _, ok := metadata["description"]; !ok {
 		table.Description, _ = metadata["original_description"].(string)

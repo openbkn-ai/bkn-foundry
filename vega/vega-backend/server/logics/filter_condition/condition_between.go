@@ -55,6 +55,10 @@ func (c *BetweenCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("condition [between] right value should be an array of length 2")
 	}
 
+	if val[0] == nil || val[1] == nil {
+		return nil, fmt.Errorf("condition [between] bounds must not be nil")
+	}
+
 	return &BetweenCond{
 		Cfg:    cfg,
 		Lfield: field,

@@ -367,6 +367,7 @@ func TestPostgresqlConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// validPostgresqlConfig provides a valid configuration with the requested port.
 func validPostgresqlConfig(port int) interfaces.ConnectorConfig {
 	return interfaces.ConnectorConfig{
 		"host":     "postgres",
@@ -377,6 +378,7 @@ func validPostgresqlConfig(port int) interfaces.ConnectorConfig {
 	}
 }
 
+// newPostgresqlConnectorMock creates a connected SQL mock with the requested schema scope.
 func newPostgresqlConnectorMock(t *testing.T, schemas []string) (*PostgresqlConnector, sqlmock.Sqlmock, func()) {
 	t.Helper()
 
