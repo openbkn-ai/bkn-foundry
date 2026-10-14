@@ -14,7 +14,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pymysql
@@ -42,7 +42,7 @@ def stable_code(metric_id: str) -> str:
 
 def published_at(row: dict[str, Any]) -> str:
     milliseconds = int(row.get("f_update_time") or row.get("f_create_time") or 0)
-    return datetime.fromtimestamp(milliseconds / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
+    return datetime.fromtimestamp(milliseconds / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def unit_spec(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -78,6 +78,22 @@ def translate(row: dict[str, Any]) -> Decision:
     formula = parse_json(row.get("f_calculation_formula"), {})
     if formula.get("condition") or formula.get("group_by") or formula.get("order_by") or formula.get("having"):
         return Decision(metric_id, "manual_review", "legacy business qualifiers must be separated into a derived metric")
+    try:
+        time_dimension = parse_json(row.get("f_time_dimension"), {})
+    except (TypeError, ValueError):
+        return Decision(metric_id, "manual_review", "time dimension is not valid JSON")
+    if not isinstance(time_dimension, dict):
+        return Decision(metric_id, "manual_review", "time dimension does not use the expected object shape")
+    time_property = str(time_dimension.get("property") or time_dimension.get("field") or "").strip()
+    default_range_policy = str(time_dimension.get("default_range_policy") or "").strip()
+    if default_range_policy not in {"", "none"}:
+        return Decision(
+            metric_id,
+            "manual_review",
+            f"time dimension default range policy cannot be migrated losslessly: {default_range_policy!r}",
+        )
+    if time_dimension and not time_property:
+        return Decision(metric_id, "manual_review", "time dimension property is missing")
     aggregation = formula.get("aggregation") or {}
     aggr = aggregation.get("aggr")
     prop = aggregation.get("property")
@@ -100,8 +116,6 @@ def translate(row: dict[str, Any]) -> Decision:
         "physical_type": "int64" if is_count else "decimal",
         "semantic_type": "count" if is_count else "measure",
     }
-    if not is_count:
-        value.update({"precision": 18, "scale": 2, "rounding_mode": "half_up"})
     unit = unit_spec(row)
     if unit:
         value["unit"] = unit
@@ -133,7 +147,9 @@ def translate(row: dict[str, Any]) -> Decision:
                 for item in analysis
                 if item.get("name")
             ],
-            "time_dimensions": [],
+            "time_dimensions": [
+                {"object_type_id": row["f_scope_ref"], "property_name": time_property}
+            ] if time_property else [],
         },
         "lifecycle": {
             "status": "published",
@@ -154,7 +170,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=int(os.getenv("BKN_DB_PORT", "3306")))
     parser.add_argument("--user", default=os.getenv("BKN_DB_USER", "root"))
     parser.add_argument("--password", default=os.getenv("BKN_DB_PASSWORD", ""))
-    parser.add_argument("--database", default=os.getenv("BKN_DB_NAME", "bkn_backend"))
+    parser.add_argument("--database", default=os.getenv("BKN_DB_NAME", "openbkn"))
     parser.add_argument("--kn-id")
     parser.add_argument("--branch", default="main")
     parser.add_argument("--apply", action="store_true")
@@ -182,7 +198,7 @@ def main() -> int:
     select = """
         SELECT f_id, f_kn_id, f_branch, f_name, f_comment, f_unit_type, f_unit,
                f_metric_type, f_scope_type, f_scope_ref, f_calculation_formula,
-               f_analysis_dimensions, f_creator, f_creator_type, f_create_time,
+               f_analysis_dimensions, f_time_dimension, f_creator, f_creator_type, f_create_time,
                f_updater, f_updater_type, f_update_time
           FROM t_metric_definition
          WHERE """ + " AND ".join(where)
