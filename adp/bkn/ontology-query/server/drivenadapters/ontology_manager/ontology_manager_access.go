@@ -294,6 +294,60 @@ func (oma *ontologyManagerAccess) GetMetricExecutionContext(ctx context.Context,
 	return &executionContext, nil
 }
 
+// GetObjectMetricExecutionContext loads one immutable object-metric version
+// together with its complete, version-pinned dependency closure. The internal
+// bkn-backend endpoint performs metric query_data authorization for the caller.
+func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Context, knID string, branch string,
+	metricID string, version int) (*interfaces.ObjectMetricExecutionContextV1, error) {
+
+	httpURL := fmt.Sprintf("%s/%s/object-metrics/%s/execution-context?branch=%s&version=%d",
+		oma.ontologyManagerUrl, knID, metricID, branch, version)
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get object metric execution context")
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl: httpURL, HttpMethod: http.MethodGet, HttpContentType: rest.ContentTypeJson,
+	})
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{}
+	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	}
+	headers := map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
+	}
+	respCode, result, err := oma.httpClient.GetNoUnmarshal(ctx, httpURL, nil, headers)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "HTTP GET failed")
+		return nil, fmt.Errorf("get object metric execution context: %w", err)
+	}
+	if respCode != http.StatusOK {
+		var baseError rest.BaseError
+		if err := sonic.Unmarshal(result, &baseError); err != nil {
+			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal BaseError failed")
+			return nil, err
+		}
+		httpErr := &rest.HTTPError{HTTPCode: respCode, BaseError: baseError}
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "HTTP status is not 200")
+		return nil, httpErr
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("object metric execution context response is empty")
+	}
+	var executionContext interfaces.ObjectMetricExecutionContextV1
+	if err := sonic.Unmarshal(result, &executionContext); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal execution context failed")
+		return nil, err
+	}
+	if executionContext.Root == nil || executionContext.Root.Definition.ID != metricID ||
+		executionContext.Root.Definition.Version != version {
+		return nil, fmt.Errorf("object metric execution context does not match requested version")
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return &executionContext, nil
+}
+
 func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.Context, knID string,
 	branch string, query interfaces.PathsQueryBaseOnSource) ([]interfaces.RelationTypePath, error) {
 
