@@ -13,7 +13,7 @@ import (
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"go.uber.org/mock/gomock"
 
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func TestResolveKnowledgeNetworkProxyUsesCallerAndCanonicalEndpoint(t *testing.T) {

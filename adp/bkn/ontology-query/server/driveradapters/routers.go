@@ -23,19 +23,19 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"ontology-query/common"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	"ontology-query/logics"
-	"ontology-query/logics/action_logs"
-	"ontology-query/logics/action_scheduler"
-	"ontology-query/logics/action_type"
-	"ontology-query/logics/auth"
-	"ontology-query/logics/knowledge_network"
-	"ontology-query/logics/metric"
-	"ontology-query/logics/object_type"
-	queryauthorization "ontology-query/logics/query_authorization"
-	"ontology-query/version"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_scheduler"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/knowledge_network"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/metric"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
+	queryauthorization "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/query_authorization"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/version"
 )
 
 type RestHandler interface {
@@ -50,6 +50,7 @@ type restHandler struct {
 	ats        interfaces.ActionTypeService
 	kns        interfaces.KnowledgeNetworkService
 	ms         interfaces.MetricQueryService
+	oms        interfaces.ObjectMetricQueryServiceV1
 	ots        interfaces.ObjectTypeService
 	qas        interfaces.QueryAuthorizationService
 	oma        interfaces.OntologyManagerAccess

@@ -20,8 +20,8 @@ import (
 	"github.com/opensearch-project/opensearch-go/v2"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"ontology-query/common"
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 var (

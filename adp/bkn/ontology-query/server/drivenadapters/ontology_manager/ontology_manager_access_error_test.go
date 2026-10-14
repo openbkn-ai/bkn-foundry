@@ -14,8 +14,8 @@ import (
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"go.uber.org/mock/gomock"
 
-	"ontology-query/common"
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func TestListRelationTypesPreservesForbiddenError(t *testing.T) {

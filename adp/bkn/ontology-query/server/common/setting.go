@@ -21,7 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/spf13/viper"
 
-	"ontology-query/version"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/version"
 )
 
 // ServerSetting contains server configuration.

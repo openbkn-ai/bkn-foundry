@@ -221,6 +221,9 @@ type LogicProperty struct {
 	DataSource   *ResourceInfo `json:"data_source,omitempty" mapstructure:"data_source"`
 	Parameters   []Parameter   `json:"parameters,omitempty" mapstructure:"parameters"`
 	AnalysisDims []Field       `json:"analysis_dimensions,omitempty"`
+	// MetricBinding preserves the immutable object-metric version and its execution/error policies.
+	// It is populated only for object_metric_v1-backed logical properties.
+	MetricBinding *MetricPropertyBindingV1 `json:"metric_binding,omitempty" mapstructure:"metric_binding"`
 }
 
 type Field struct {

@@ -5,8 +5,8 @@
 package knowledge_network
 
 import (
-	"ontology-query/interfaces"
-	"ontology-query/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 )
 
 // levelObjectFromProjectedRow trusts only the system identity emitted by the

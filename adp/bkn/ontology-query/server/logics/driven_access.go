@@ -7,7 +7,9 @@
 package logics
 
 import (
-	"ontology-query/interfaces"
+	"sync"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 var (
@@ -18,6 +20,9 @@ var (
 	OSA interfaces.OpenSearchAccess
 	VBA interfaces.VegaBackendAccess
 	PCR interfaces.ProxyContextResolver
+
+	objectMetricQueryMu      sync.RWMutex
+	objectMetricQueryService interfaces.ObjectMetricQueryServiceV1
 )
 
 func SetAuthAccess(aa interfaces.AuthAccess) {
@@ -46,4 +51,20 @@ func SetVegaBackendAccess(v interfaces.VegaBackendAccess) {
 
 func SetProxyContextResolver(resolver interfaces.ProxyContextResolver) {
 	PCR = resolver
+}
+
+// SetObjectMetricQueryService installs the paid object-metric runtime during
+// Boot -> Setup -> Run assembly. Keeping this socket in core allows object
+// logical properties to resolve the optional provider without importing EE.
+func SetObjectMetricQueryService(service interfaces.ObjectMetricQueryServiceV1) {
+	objectMetricQueryMu.Lock()
+	defer objectMetricQueryMu.Unlock()
+	objectMetricQueryService = service
+}
+
+// ObjectMetricQueryService returns the currently assembled optional runtime.
+func ObjectMetricQueryService() interfaces.ObjectMetricQueryServiceV1 {
+	objectMetricQueryMu.RLock()
+	defer objectMetricQueryMu.RUnlock()
+	return objectMetricQueryService
 }

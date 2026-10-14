@@ -7,7 +7,7 @@
 package interfaces
 
 import (
-	cond "ontology-query/common/condition"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 )
 
 // Metric scope (bkn-metrics.yaml / DESIGN §3.2).

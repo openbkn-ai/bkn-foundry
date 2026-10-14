@@ -13,10 +13,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"ontology-query/common"
-	permissionaccess "ontology-query/drivenadapters/permission"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	permissionaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/permission"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 type permissionService struct {

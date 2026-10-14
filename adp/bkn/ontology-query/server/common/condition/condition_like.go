@@ -10,8 +10,8 @@ import (
 	"context"
 	"fmt"
 
-	"ontology-query/common"
-	dtype "ontology-query/interfaces/data_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 )
 
 type LikeCond struct {

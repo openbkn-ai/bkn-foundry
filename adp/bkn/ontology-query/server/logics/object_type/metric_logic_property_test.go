@@ -10,9 +10,9 @@ import (
 	"context"
 	"testing"
 
-	cond "ontology-query/common/condition"
-	"ontology-query/interfaces"
-	omock "ontology-query/interfaces/mock"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"

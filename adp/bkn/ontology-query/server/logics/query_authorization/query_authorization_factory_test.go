@@ -7,7 +7,7 @@ package query_authorization
 import (
 	"testing"
 
-	"ontology-query/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 )
 
 func TestQueryAuthorizationIsAlwaysEnabledWithAuthentication(t *testing.T) {
