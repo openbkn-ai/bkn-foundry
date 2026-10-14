@@ -15,11 +15,31 @@
 ## 本地运行
 
 ```bash
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock
 uvicorn main:app --port 30800
 ```
 
 关键环境变量见 `app/config.py`（RDS*、MF_MODEL_API_PRIVATE_BASE、OPERATOR_INTEGRATION_BASE、CHECKPOINTER_BACKEND）。
+
+## 0.2.1 LangGraph 依赖基线（#2174 / #537）
+
+运行锁固定 LangGraph 1.2.15，并锁定 LangChain、checkpoint/MySQL saver、MCP adapters 和可观测集成的完整依赖树；`requirements.txt` 继续表达可接受范围。Docker 从 `requirements.lock` 安装，CI 从同一运行锁和受它约束的 `test-requirements.lock` 安装，均验证分发文件 hash。测试依赖不进入运行镜像。
+
+```bash
+pip install --require-hashes -r test-requirements.lock
+OTEL_ENABLED=false python -m pytest -q
+```
+
+显式升级时生成两份协调的锁，评审版本与 hash 差异后再测试，不在构建时重新解析：
+
+```bash
+uv pip compile requirements.txt --python-version 3.12 --universal --generate-hashes --output-file requirements.lock
+uv pip compile requirements.txt test-requirements.txt --constraint requirements.lock --python-version 3.12 --universal --generate-hashes --output-file test-requirements.lock
+```
+
+`fixtures/langgraph/checkpoint-1.2.9.json` 来自隔离的 LangGraph 1.2.9 环境，记录捕获时其他依赖版本。兼容测试在新基线读取该 checkpoint，并继续真实 Agent 对话；它验证库层兼容，不代表线上所有历史 checkpoint 或 MariaDB 已验证。捕获脚本为 `scripts/capture_langgraph_checkpoint.py`，只使用内存 saver、假模型与本地工具，无外部调用。
+
+回退时将 `requirements.txt`、两份锁和相关适配恢复为同一已验证提交并重新构建，不删除历史 checkpoint；在真实数据库完成恢复兼容验收前，不执行线上升级或回退。
 
 ## Trace Evidence 安装与升级
 
