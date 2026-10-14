@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -19,11 +20,13 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 	permissionlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
+	propertyaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/property_access"
 )
 
 type queryAuthorizationService struct {
 	models      interfaces.OntologyManagerAccess
 	permissions interfaces.PermissionService
+	properties  interfaces.PropertyAccessService
 }
 
 var (
@@ -34,6 +37,7 @@ func NewQueryAuthorizationService(appSetting *common.AppSetting) interfaces.Quer
 	return &queryAuthorizationService{
 		models:      logics.OMA,
 		permissions: permissionlogic.NewPermissionService(appSetting),
+		properties:  permissionlogic.NewPropertyAccessService(appSetting),
 	}
 }
 
@@ -204,7 +208,146 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Conte
 		}
 		resources = append(resources, pathResources...)
 	}
-	return s.require(ctx, uniquePermissionResources(resources))
+
+	propertyRequirements, err := objectMetricPropertyRequirements(definition)
+	if err != nil {
+		return invalidQuery(ctx, err.Error())
+	}
+	referencedObjectTypeIDs := make(map[string]struct{}, len(propertyRequirements)+1)
+	if alignment := definition.Specification.Alignment; alignment != nil {
+		if resultOwnerID := strings.TrimSpace(alignment.ResultOwnerObjectTypeID); resultOwnerID != "" {
+			referencedObjectTypeIDs[resultOwnerID] = struct{}{}
+		}
+	}
+	for objectTypeID := range propertyRequirements {
+		referencedObjectTypeIDs[objectTypeID] = struct{}{}
+	}
+	objectTypes := map[string]interfaces.ObjectType{definition.OwnerObjectTypeID: objectType}
+	orderedObjectTypeIDs := make([]string, 0, len(referencedObjectTypeIDs))
+	for objectTypeID := range referencedObjectTypeIDs {
+		orderedObjectTypeIDs = append(orderedObjectTypeIDs, objectTypeID)
+	}
+	sort.Strings(orderedObjectTypeIDs)
+	for _, objectTypeID := range orderedObjectTypeIDs {
+		if _, loaded := objectTypes[objectTypeID]; loaded {
+			continue
+		}
+		referencedObjectType, err := s.loadObjectType(ctx, knID, objectTypeID)
+		if err != nil {
+			return err
+		}
+		dependencies, err := objectTypeResources(ctx, knID, referencedObjectType)
+		if err != nil {
+			return err
+		}
+		resources = append(resources, dependencies...)
+		objectTypes[objectTypeID] = referencedObjectType
+	}
+	if err := s.require(ctx, uniquePermissionResources(resources)); err != nil {
+		return err
+	}
+	if len(propertyRequirements) == 0 {
+		return nil
+	}
+	referencedObjectTypes := make([]interfaces.ObjectType, 0, len(propertyRequirements))
+	for _, objectTypeID := range orderedObjectTypeIDs {
+		if _, required := propertyRequirements[objectTypeID]; required {
+			referencedObjectTypes = append(referencedObjectTypes, objectTypes[objectTypeID])
+		}
+	}
+	plan, err := propertyaccess.Build(ctx, s.properties, referencedObjectTypes)
+	if err != nil {
+		return err
+	}
+	for _, objectTypeID := range orderedObjectTypeIDs {
+		properties, required := propertyRequirements[objectTypeID]
+		if required && !plan.AllFull(propertyaccess.ObjectTypeRef(knID, objectTypeID), properties) {
+			return queryPermissionDenied(ctx, "query_data with full property access was not granted for every object metric input")
+		}
+	}
+	return nil
+}
+
+func objectMetricPropertyRequirements(definition *interfaces.ObjectMetricDefinitionV1) (map[string][]string, error) {
+	requirements := make(map[string][]string)
+	var collectionErr error
+	add := func(ref *interfaces.ObjectMetricPropertyRefV1) {
+		if ref == nil || collectionErr != nil {
+			return
+		}
+		objectTypeID := strings.TrimSpace(ref.ObjectTypeID)
+		propertyName := strings.TrimSpace(ref.PropertyName)
+		if objectTypeID == "" || propertyName == "" {
+			collectionErr = fmt.Errorf("object metric property_ref requires object_type_id and property_name")
+			return
+		}
+		requirements[objectTypeID] = append(requirements[objectTypeID], propertyName)
+	}
+	var walkExpression func(*interfaces.ObjectMetricExpressionV1)
+	walkExpression = func(expression *interfaces.ObjectMetricExpressionV1) {
+		if expression == nil {
+			return
+		}
+		add(expression.PropertyRef)
+		for index := range expression.Arguments {
+			walkExpression(&expression.Arguments[index])
+		}
+		walkExpression(expression.Left)
+		walkExpression(expression.Right)
+	}
+	var walkCondition func(*interfaces.ObjectMetricConditionV1)
+	walkCondition = func(condition *interfaces.ObjectMetricConditionV1) {
+		if condition == nil {
+			return
+		}
+		if condition.Left != nil {
+			add(condition.Left.PropertyRef)
+		}
+		for index := range condition.Right {
+			add(condition.Right[index].PropertyRef)
+		}
+		for index := range condition.Children {
+			walkCondition(&condition.Children[index])
+		}
+	}
+	if definition == nil {
+		return requirements, nil
+	}
+	specification := definition.Specification
+	if specification.Measure != nil {
+		walkExpression(specification.Measure.Expression)
+	}
+	walkExpression(specification.Expression)
+	if qualifiers := specification.BusinessQualifiers; qualifiers != nil {
+		walkCondition(qualifiers.Filters)
+		add(qualifiers.EventTime)
+		if qualifiers.RelationPath != nil {
+			walkCondition(qualifiers.RelationPath.RelatedFilters)
+		}
+	}
+	for index := range specification.Dependencies {
+		add(specification.Dependencies[index].EvaluationContext.FilterContext.Dimension)
+	}
+	if alignment := specification.Alignment; alignment != nil {
+		for index := range alignment.GroupByDimensions {
+			add(&alignment.GroupByDimensions[index])
+		}
+		add(alignment.TimeKey)
+	}
+	for index := range definition.ResultSemantics.StatisticalGrain.GroupByDimensions {
+		add(&definition.ResultSemantics.StatisticalGrain.GroupByDimensions[index])
+	}
+	for index := range definition.QueryCapabilities.AnalysisDimensions {
+		add(&definition.QueryCapabilities.AnalysisDimensions[index])
+	}
+	for index := range definition.QueryCapabilities.TimeDimensions {
+		add(&definition.QueryCapabilities.TimeDimensions[index])
+	}
+	for objectTypeID, properties := range requirements {
+		requirements[objectTypeID] = uniqueStrings(properties)
+		sort.Strings(requirements[objectTypeID])
+	}
+	return requirements, collectionErr
 }
 
 func (s *queryAuthorizationService) objectMetricRelationPathResources(ctx context.Context,
