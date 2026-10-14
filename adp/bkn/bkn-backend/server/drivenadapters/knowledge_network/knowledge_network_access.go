@@ -42,6 +42,7 @@ var knChildResourceTables = []struct {
 	{interfaces.RESOURCE_TYPE_RELATION_TYPE, "t_relation_type"},
 	{interfaces.RESOURCE_TYPE_ACTION_TYPE, "t_action_type"},
 	{interfaces.RESOURCE_TYPE_METRIC, "t_metric_definition"},
+	{interfaces.RESOURCE_TYPE_METRIC, "t_object_metric_definition"},
 	{interfaces.RESOURCE_TYPE_RISK_TYPE, "t_risk_type"},
 }
 
@@ -1163,7 +1164,7 @@ func (kna *knowledgeNetworkAccess) ListKnSrcs(ctx context.Context,
 }
 
 // ListKNChildResourceCandidates returns the authorization identities of all
-// model children under the requested knowledge networks. The six child tables
+// model children under the requested knowledge networks. The child tables
 // are read in one round trip so list visibility does not degrade into N+1
 // queries as the number of networks grows.
 func (kna *knowledgeNetworkAccess) ListKNChildResourceCandidates(ctx context.Context,
