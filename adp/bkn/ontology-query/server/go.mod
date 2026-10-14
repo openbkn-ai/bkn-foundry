@@ -1,4 +1,4 @@
-module ontology-query
+module github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server
 
 go 1.25.0
 

@@ -6,7 +6,7 @@
 
 package condition
 
-import "ontology-query/locale"
+import "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 
 func init() {
 	locale.Register()

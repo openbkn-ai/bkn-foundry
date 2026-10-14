@@ -10,7 +10,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func TestPublicActionExecutionRedactsProxySnapshot(t *testing.T) {

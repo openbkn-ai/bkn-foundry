@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	"ontology-query/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 )
 
 type EqCond struct {

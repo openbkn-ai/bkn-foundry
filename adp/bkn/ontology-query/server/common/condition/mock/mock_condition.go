@@ -11,7 +11,7 @@ package mock_condition
 
 import (
 	context "context"
-	condition "ontology-query/common/condition"
+	condition "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
