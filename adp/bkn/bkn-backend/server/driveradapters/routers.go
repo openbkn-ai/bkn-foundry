@@ -61,6 +61,7 @@ type restHandler struct {
 	rts                     interfaces.RelationTypeService
 	rtsRisk                 interfaces.RiskTypeService
 	ms                      interfaces.MetricService
+	oms                     interfaces.ObjectMetricServiceV1
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 	cqs                     interfaces.CypherQueryService
@@ -121,8 +122,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.GET("/api/bkn-backend/v1/health", r.HealthCheck)
 
 	bknApiV1 := c.Group("/api/bkn-backend/v1")
+	bknApiV2 := c.Group("/api/bkn-backend/v2")
 	otlApiV1 := c.Group("/api/ontology-manager/v1")
 	bknApiV1.Use(rest.PrivateNoCacheMiddleware())
+	bknApiV2.Use(rest.PrivateNoCacheMiddleware())
 	otlApiV1.Use(rest.PrivateNoCacheMiddleware())
 	bknApiV1.GET("/proxy-accounts", r.ListKNProxiesByEx)
 	bknApiV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxyByEx)

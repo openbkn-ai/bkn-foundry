@@ -110,3 +110,26 @@ func TestRegisterPublicIncludesOAuthProxyGovernanceRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	engine := gin.New()
+	handler := &restHandler{appSetting: &common.AppSetting{}}
+	handler.RegisterPublic(engine)
+
+	objectMetricPath := "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics"
+	for _, route := range engine.Routes() {
+		if route.Path == objectMetricPath {
+			t.Fatalf("community handler unexpectedly registered %q", objectMetricPath)
+		}
+	}
+
+	RegisterObjectMetricRoutes(engine, &common.AppSetting{}, nil, nil)
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodPost && route.Path == objectMetricPath {
+			return
+		}
+	}
+	t.Fatalf("extension registration did not mount POST %q", objectMetricPath)
+}
